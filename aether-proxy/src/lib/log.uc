@@ -1,5 +1,6 @@
 'use strict';
 
+import * as fs from 'fs';
 import * as syslog from 'log';
 import * as C from 'aetherproxy.const';
 
@@ -34,7 +35,7 @@ const EVENTS = {
 	DATA_UPDATED: 'notice',
 	MANIFEST_BAD_SIGNATURE: 'error',
 	NO_SPACE: 'error', ARCH_UNSUPPORTED: 'error',
-	CMD_FAILED: 'error'
+	CMD_FAILED: 'error', FS_FAILED: 'error'
 };
 
 // aether-proxy level -> syslog priority name, and numeric rank for filtering.
@@ -44,6 +45,7 @@ const RANK = { error: 0, warn: 1, notice: 2, info: 3, debug: 4 };
 // Default level is notice (docs/09 "levels").
 let threshold = 'notice';
 let opened = false;
+let event_run_dir = C.RUN_DIR;
 
 function set_level(level) {
 	if (RANK[level] == null)
@@ -83,6 +85,98 @@ function format_line(code, args, message) {
 	return join(' ', parts);
 }
 
+function open_syslog() {
+	if (opened)
+		return;
+
+	// Facility daemon; the tag is what `logread -e '^aether-proxy'` matches.
+	syslog.openlog(C.SYSLOG_TAG, [], 'daemon');
+	opened = true;
+}
+
+function fs_err() {
+	return fs.error() ?? 'unknown error';
+}
+
+function fs_failed(op, path, detail) {
+	open_syslog();
+	syslog.syslog(PRIORITY.error, '%s', format_line('FS_FAILED', { op, path, detail }));
+}
+
+// Retain the newer half once the JSONL history exceeds the configured ring size.
+export function trim_event_history(text) {
+	let lines = split(text ?? '', '\n');
+	let count = length(lines);
+	if (count && lines[count - 1] == '')
+		count--;
+	if (count <= 500)
+		return text ?? '';
+
+	let retained = [];
+	for (let i = count >> 1; i < count; i++)
+		push(retained, lines[i]);
+
+	return join('\n', retained) + '\n';
+};
+
+function append_event(level, code, args) {
+	if (RANK[level] > RANK.notice)
+		return;
+
+	let path = event_run_dir + '/' + C.EVENTS_FILE;
+	let line = sprintf('%J', { ts: time(), level, code, args: args ?? {} }) + '\n';
+	let fp = fs.open(path, 'a');
+
+	if (!fp) {
+		fs_failed('open', path, fs_err());
+		return;
+	}
+
+	let written = fp.write(line);
+	let write_err = fs.error();
+	let closed = fp.close();
+	if (written == null || !closed) {
+		fs_failed('write', path, write_err ?? fs_err());
+		return;
+	}
+
+	let text = fs.readfile(path);
+	if (text == null) {
+		fs_failed('read', path, fs_err());
+		return;
+	}
+
+	let trimmed = trim_event_history(text);
+	if (trimmed == text)
+		return;
+
+	let pid = fs.readlink('/proc/self');
+	let temp = `${path}.tmp.${pid ?? 'unknown'}`;
+	let tmp_fp = fs.open(temp, 'w');
+	if (!tmp_fp) {
+		fs_failed('open', temp, fs_err());
+		return;
+	}
+
+	let tmp_written = tmp_fp.write(trimmed);
+	let tmp_error = fs.error();
+	let tmp_closed = tmp_fp.close();
+	if (tmp_written == null || !tmp_closed) {
+		let detail = tmp_error ?? fs_err();
+		if (!fs.unlink(temp))
+			detail += `; unlink ${temp}: ${fs_err()}`;
+		fs_failed('write', temp, detail);
+		return;
+	}
+
+	if (!fs.rename(temp, path)) {
+		let detail = fs_err();
+		if (!fs.unlink(temp))
+			detail += `; unlink ${temp}: ${fs_err()}`;
+		fs_failed('rename', path, detail);
+	}
+}
+
 // Returns true if the line was handed to syslog, false if filtered by level.
 // Unknown codes are a programming error and die loudly (docs/12 rule 8).
 function event(level, code, args, message) {
@@ -94,16 +188,18 @@ function event(level, code, args, message) {
 	if (RANK[level] == null)
 		die(`log.event: unknown level '${level}'`);
 
+	append_event(level, code, args);
+
 	if (RANK[level] > RANK[threshold])
 		return false;
 
-	if (!opened) {
-		// Facility daemon; the tag is what `logread -e '^aether-proxy'` matches.
-		syslog.openlog(C.SYSLOG_TAG, [], 'daemon');
-		opened = true;
-	}
+	open_syslog();
 
 	return syslog.syslog(PRIORITY[level], '%s', format_line(code, args, message));
 }
 
-export { event, set_level, format_line };
+function set_run_dir(path) {
+	event_run_dir = path ?? C.RUN_DIR;
+}
+
+export { event, set_level, set_run_dir, format_line };
