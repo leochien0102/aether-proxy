@@ -57,7 +57,13 @@ for f in $(printf '%s\n' "$changed" | grep -E '\.uc$'); do
 		err=$(tests/host/ucode -e "import * as m from '$mod';" 2>&1) || { fail "$f does not load as $mod"; printf '%s\n' "$err" | head -5 | sed 's/^/      /'; uc_bad=1; }
 		;;
 	*)
-		err=$(tests/host/ucode -c -o /dev/null "$f" 2>&1) || { fail "$f does not compile"; printf '%s\n' "$err" | head -5 | sed 's/^/      /'; uc_bad=1; }
+		# Files with top-level exports (unit tests, other modules) must be loaded as
+		# modules; `ucode -c` compiles in script mode and rejects `export`.
+		if grep -qE '^export ' "$f"; then
+			err=$(tests/host/ucode -e "import * as m from '$(pwd)/$f';" 2>&1) || { fail "$f does not load as a module"; printf '%s\n' "$err" | head -5 | sed 's/^/      /'; uc_bad=1; }
+		else
+			err=$(tests/host/ucode -c -o /dev/null "$f" 2>&1) || { fail "$f does not compile"; printf '%s\n' "$err" | head -5 | sed 's/^/      /'; uc_bad=1; }
+		fi
 		;;
 	esac
 done
