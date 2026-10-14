@@ -1,0 +1,144 @@
+# 12 ucode 实现规范
+
+D1 已定为 ucode（[ADR-0002](adr/0002-backend-language.md)）。本文规定代码怎么组织、怎么写、怎么测。
+**所有实现任务都必须遵守**，与本文冲突的写法在评审时一律退回。
+
+## 目标运行环境
+
+- 最低 ucode 版本：OpenWrt 24.10 自带的 `2025.07.18`（`3f64c808`）。不准使用这之后才出现的函数。
+  拿不准时到该提交的源码 `lib/<模块>.c` 中查函数表。
+- 允许使用的模块：`fs`、`uci`、`uloop`、`socket`、`digest`、`log`、`resolv`、`struct`、`math`，以及 ucode 内置函数。
+  需要其他模块时先改本文档。
+- 包依赖与此一致：`ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-uloop`、`ucode-mod-socket`、`ucode-mod-digest`、
+  `ucode-mod-log`、`ucode-mod-resolv`（这些在 24.10.8 / 25.12.5 的 base feed 中均存在）。
+
+## 目录布局
+
+```
+aether-proxy/                         后端包目录
+├── Makefile
+├── files/
+│   ├── aether-proxy.init             → /etc/init.d/aether-proxy
+│   ├── aether-proxy.config           → /etc/config/aetherproxy
+│   ├── aether-proxy.hotplug          → /etc/hotplug.d/iface/90-aether-proxy
+│   ├── 30-aether-proxy.nft           → /usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft
+│   ├── keys/                         → /etc/aether-proxy/keys/
+│   └── data/                         → /usr/share/aether-proxy/data/（规则数据基线）
+└── src/
+    ├── aether-proxy                  → /usr/bin/aether-proxy（入口，只做参数解析和分发）
+    └── lib/                          → /usr/share/ucode/aetherproxy/
+        ├── const.uc                  常量（01 常量表的唯一实现）
+        ├── log.uc                    事件与 syslog（09）
+        ├── sys.uc                    外部命令、文件原子写入、锁
+        ├── schema.uc                 UCI 字段表（05 的机器可读版本）
+        ├── config.uc                 读取 UCI → 快照；校验
+        ├── data.uc                   读取规则数据与自定义列表
+        ├── state.uc                  state.json / events.jsonl / probe.json 读写
+        ├── render/
+        │   ├── nft.uc  chinadns.uc  dnsmasq.uc  xray.uc  outbound.uc
+        ├── uri.uc  identity.uc  subscribe.uc
+        ├── daemon.uc  monitor.uc  dnstier.uc  probe.uc  job.uc  update.uc
+        └── cmd/                      每个子命令一个文件：check.uc、render.uc、status.uc ……
+```
+
+模块按点号路径导入，`aetherproxy.render.nft` 对应 `/usr/share/ucode/aetherproxy/render/nft.uc`
+（ucode 的 `require` 把点号替换为 `/`，已核实）：
+
+```js
+import * as nft from 'aetherproxy.render.nft';
+```
+
+入口 `/usr/bin/aether-proxy` 第一行为 `#!/usr/bin/ucode -S`（`-S` 为严格模式，未声明的变量直接报错）。
+所有 `.uc` 文件第一行写 `'use strict';`。
+
+## 编码规则
+
+1. **纯函数与副作用分离。** `render/*`、`uri.uc`、`identity.uc`、`schema.uc` 以及 `config.uc` 中的校验部分**不准**调用 `fs`、`uci`、
+   `system`、`sys.*`。它们的输入是普通对象，输出是字符串或普通对象。读写文件、执行命令只出现在 `cmd/*`、`daemon.uc`、`sys.uc`、
+   `state.uc`、`data.uc` 中。
+2. **外部命令只通过 `sys.run()` 执行**，不准在其他地方直接调用 `system()` 或 `fs.popen()`：
+   ```js
+   // 返回 { code, stdout, stderr }；code != 0 时自动记 CMD_FAILED（opts.quiet 为 true 时除外，调用方必须自己处理）
+   sys.run(['nft', '-f', path], { timeout: 10 });
+   ```
+   参数必须以**数组**传入，由 `sys.run` 负责 shell 转义（单引号包裹，内部单引号转写为 `'\''`）。不准拼接 shell 字符串。
+3. **文件写入只通过 `sys.write_atomic(path, content)`**：写到同目录下的临时文件，然后 `fs.rename`。不准就地覆盖。
+4. **错误必须显式处理**：`fs.*` 返回 `null` 时，用 `fs.error()` 取得原因并记事件。禁止 `try { … } catch {}` 吞掉异常；
+   捕获后必须记事件或继续向上抛出。
+5. **常量只从 `const.uc` 读取。** 端口、mark、表名、路径都不准在其他文件中以字面量出现（golden 夹具中的期望输出除外）。
+6. **渲染输出必须确定**：同样的输入必须产生逐字节相同的输出。对象键按模板中的书写顺序插入；集合元素在渲染前排序
+   （IP 按数值排序，域名按字典序排序）；不准把时间戳、随机数写进渲染产物。
+7. JSON 输出统一用 `sprintf('%.J', obj)`（xray.json 用 `'%.2J'` 便于阅读）。
+8. 命名：文件与函数用 `snake_case`；常量用 `UPPER_SNAKE`；事件码只能使用 [09](09-logging.md) 目录中已有的值。
+9. 注释用英文，只解释「为什么」；用户可见的文字（LuCI）用英文原文加 po 翻译。
+
+## 配置快照
+
+`config.load(cursor)` 返回：
+
+```js
+{ ok: true, snapshot: { main: {…}, dns: {…}, update: {…}, probe: {…}, hosts: [ … ], subscriptions: { s_xxx: {…} }, nodes: { n_xxx: {…} } } }
+{ ok: false, errors: [ { field: "host[2].mac", code: "duplicate", detail: "aa:bb:… also in host[0]" } ] }
+```
+
+- 快照中的值都已归一化：bool 为 `true`/`false`，int 为数字，list 一律是数组（单值也是），未设置的字段填上默认值，MAC 统一为小写冒号格式。
+- `schema.uc` 用一张声明式的表描述 [05](05-config.md) 中的每个字段（类型、默认值、枚举、是否必填、所属协议）。
+  `config.uc` 依据这张表完成读取和第一层校验；跨字段的规则（主机冲突、协议必填项）写成单独的函数。
+- 渲染器只接收快照，绝不自己读 UCI。
+
+渲染上下文：
+
+```js
+render(snapshot, {
+  data:    { chnroute4: [...], gfw_static4: [...], direct_ip4: [...], proxy_ip4: [...] },   // data.uc 读取
+  runtime: { node_ip: "203.0.113.10", dns_tier: "T2", restored: { gfw4: [...], udirect4: [...], uproxy4: [...] } },
+  paths:   { data_dir: "...", custom_dir: "...", boot_list: "..." }                          // chinadns 配置中引用的文件路径
+})
+```
+
+## 测试
+
+### 宿主机环境
+
+`tests/host/bootstrap.sh` 在 Ubuntu 上从源码编译并安装到 `tests/host/prefix/`：`json-c`（系统包）、`libubox`、`uci`、`ucode`。
+ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-DUCI_SUPPORT=ON -DULOOP_SUPPORT=ON -DUBUS_SUPPORT=OFF -DRTNL_SUPPORT=OFF -DNL80211_SUPPORT=OFF`。
+脚本必须幂等，CI 和本地开发共用。
+
+### 测试运行器
+
+`tests/run.uc`：
+
+- 遍历 `tests/fixtures/*/`。每个夹具目录中，UCI 配置文件**必须命名为 `aetherproxy`**，运行器用 `uci.cursor(<夹具目录>)` 读取。
+- 依次执行 `config.load` → 四个渲染器，把输出与 `expected/` 中的文件逐字节比较，不一致时打印 unified diff。
+- `expected/error.json` 存在时，表示该用例期望校验失败，比较 `errors` 数组。
+- `--update` 参数用实际输出覆盖期望文件。**使用 `--update` 后必须在 PR 描述中说明每个期望文件为什么改变。**
+- `tests/unit/*.uc`：URI 解析、身份匹配等纯函数的表驱动测试，每个文件导出 `cases` 数组和 `run(case)` 函数。
+- 退出码：全部通过为 0，否则为 1。
+
+### CI 中的额外校验（`.github/workflows/test.yml`）
+
+1. 运行 `tests/run.uc`。
+2. 下载与 `const.uc` 中 `XRAY_MIN_VERSION` 相同版本的官方 Xray（linux-64），对每个 `expected/xray.json` 执行 `xray run -test -c`。
+3. `sudo nft -c -f` 检查每个 `expected/aether-proxy.nft`（GitHub 的 Ubuntu runner 内核带有 nft tproxy、socket 模块；
+   失败时先确认是否是模块缺失，而不是规则错误）。
+4. 下载 chinadns-ng 的 x86_64 静态二进制，用 `timeout 2 chinadns-ng -C <conf>` 启动每个 `expected/chinadns.conf`，
+   超时退出（退出码 124）算通过，提前以非零码退出算失败。运行前先用 `sudo nft -f` 创建它引用的表和集合。
+
+## 打包
+
+- 两个包都是 `PKGARCH:=all`，同一份产物适用于所有架构。
+- `aether-proxy/Makefile` 使用 `include $(INCLUDE_DIR)/package.mk`，`Build/Compile` 为空，在 `Package/aether-proxy/install` 中按上面的布局安装文件；
+  `conffiles` 列出 `/etc/config/aetherproxy` 和 `/etc/aether-proxy/custom/`。
+- `postinst` / `prerm`：在非 `IPKG_INSTROOT`（即真机安装）时执行 `fw4 reload`，见 [02](02-dataplane.md)「与 fw4 的对接」。
+- `luci-app-aether-proxy/Makefile` 使用 `luci.mk`，`LUCI_DEPENDS:=+aether-proxy +rpcd-mod-ucode`。
+- 版本号：`PKG_VERSION` 采用 `MAJOR.MINOR.PATCH`，首个版本为 `0.1.0`；`PKG_RELEASE` 从 `1` 开始。apk 要求版本号符合其格式，不要带字母后缀。
+- 包构建 CI（`.github/workflows/build.yml`）使用 `openwrt/gh-action-sdk`，矩阵为 x86_64 架构的 24.10.8（产出 ipk）和 25.12.5（产出 apk）。
+  SDK 容器标签的确切写法由 M0 的探针任务 S5 确认。
+
+## 协作流程
+
+- 每张任务卡一个分支，命名 `m<里程碑>/<简短描述>`，例如 `m1/render-nft`。完成后开 PR 合入 `main`。
+- 提交信息使用 emoji 格式：`✨ feat(<范围>): …`、`🐞 fix(<范围>): …`、`📝 docs(<范围>): …`、`🧪 test(<范围>): …`、`🐳 chore(<范围>): …`。
+  范围取模块名，例如 `render-nft`、`config`、`ci`。提交信息不带 AI 署名尾注（`Co-authored-by` 之类）。
+- PR 描述必须包含：对应的任务卡编号、验收命令的实际输出、偏离或未覆盖的设计点（`TODO(design)` 列表）。
+- **改设计先改 `docs/`**，与代码放在不同的提交中；设计改动由设计负责人确认后才能合并。
