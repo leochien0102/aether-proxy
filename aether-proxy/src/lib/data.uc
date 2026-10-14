@@ -102,6 +102,48 @@ function read_file(path) {
 	return { state: 'ok', text };
 }
 
+// Locates the rule-data domain lists that chinadns-ng reads directly (docs/05 "列表文件的解析规则"):
+// data_dir first, then the packaged baseline. The files are not parsed here (chnlist has 50k+
+// lines and chinadns-ng does its own parsing); only their existence is checked, so that a
+// missing file is an error instead of an omitted config line.
+// opts: same as load(). Returns { ok, paths: { gfwlist, chnlist, apple }, errors: [ { file, code, detail? } ] }.
+export function resolve_domain_paths(opts) {
+	let dirs = [
+		{ dir: opts?.data_dir ?? C.DATA_DIR },
+		{ dir: opts?.baseline_dir ?? C.BASELINE_DATA_DIR }
+	];
+	let out = { ok: true, paths: {}, errors: [] };
+
+	for (let name, file in C.DATA_DOMAIN_FILES) {
+		let found = false;
+
+		for (let d in dirs) {
+			let path = d.dir + '/' + file;
+
+			if (fs.stat(path) != null) {
+				out.paths[name] = path;
+				found = true;
+				break;
+			}
+
+			let err = fs.error() ?? 'unknown error';
+
+			if (err != 'No such file or directory') {
+				push(out.errors, { file: path, code: 'read_failed', detail: err });
+				found = true;  // reported; no silent fallback to the baseline
+				break;
+			}
+		}
+
+		if (!found)
+			push(out.errors, { file: dirs[1].dir + '/' + file, code: 'missing_data' });
+	}
+
+	out.ok = !length(out.errors);
+
+	return out;
+};
+
 // opts (all optional, for tests): { data_dir, baseline_dir, custom_dir }.
 //
 // Returns

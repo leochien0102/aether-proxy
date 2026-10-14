@@ -81,3 +81,19 @@ export const RESERVED4 = [
 	'172.16.0.0/12', '192.0.0.0/24', '192.0.2.0/24', '192.88.99.0/24', '192.168.0.0/16',
 	'198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '224.0.0.0/4', '240.0.0.0/4'
 ];
+
+// T1.7 (check / render subcommands)
+export const STAGING_SUBDIR = 'staging';
+export const BOOT_LIST_FILE = 'boot.txt';
+// Rule-data domain lists (docs/08 "数据格式"), keyed by the render context's `paths` names.
+export const DATA_DOMAIN_FILES = { gfwlist: 'gfwlist.txt', chnlist: 'chnlist.txt', apple: 'apple.txt' };
+// Render artifact name (as accepted by `render`) -> staged file name.
+export const ARTIFACT_FILES = {
+	nft: 'aether-proxy.nft',
+	chinadns: 'chinadns.conf',
+	dnsmasq: 'dnsmasq.conf',
+	xray: 'xray.json'
+};
+export const XRAY_COMPONENT = 'xray';
+export const CHINADNS_COMPONENT = 'chinadns-ng';
+export const PRECHECK_NFT_FILE = 'precheck.nft';
