@@ -1,6 +1,7 @@
 'use strict';
 
 import * as sys from 'aetherproxy.sys';
+import * as fs from 'fs';
 
 export const cases = [
 	{
@@ -58,6 +59,11 @@ export const cases = [
 		kind: 'quick',
 		argv: [ 'printf', 'done' ],
 		opts: { timeout: 30 }
+	},
+	{
+		name: 'timeout implementation uses integer sleep only',
+		expect: 'PASS',
+		kind: 'source'
 	}
 ];
 
@@ -120,6 +126,17 @@ export function run(c) {
 
 		if (r.code != 0 || r.stdout != 'done' || r.timed_out || elapsed >= 1 || before != after)
 			return failed(sprintf('result %.J, elapsed %.3f seconds, sleep count %d -> %d', r, elapsed, before, after));
+
+		return 'PASS';
+	}
+
+	if (c.kind == 'source') {
+		let source = fs.readfile('aether-proxy/src/lib/sys.uc');
+
+		if (source == null)
+			return failed('cannot read sys.uc source');
+		if (match(source, /sleep +[0-9]*\./))
+			return failed('fractional sleep duration found in sys.uc');
 
 		return 'PASS';
 	}
