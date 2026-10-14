@@ -57,6 +57,10 @@ import * as nft from 'aetherproxy.render.nft';
 2. **函数声明不会提升**：必须先定义、后使用。
 3. **`require()` 不能加载带 `export` 的模块**：模块之间一律用 `import * as x from 'aetherproxy.xxx';` 或 `import { a } from '…';`。
    需要按名称动态加载模块时（例如测试运行器），用 `loadstring("import * as m from '<模块>'; return m;")`。
+4. **数组没有 `.join()` 方法**：用内置函数 `join(sep, arr)`。
+5. **`fs.open()` / `fs.popen()` 失败后 `fs.error()` 可能返回 `null`**：取错误原因时要兜底（`fs.error() ?? 'unknown error'`）。
+6. **`rindex()` 在匹配位于偏移 0 时报告未命中**：需要时在字符串前补一个字符再查找。
+7. **宿主机（glibc）上 getopt 会重排参数**：`ucode script version --json` 中的 `--json` 会被 ucode 自己吃掉，宿主机上要写成 `ucode script -- version --json` 或设置 `POSIXLY_CORRECT=1`。OpenWrt 用 musl，不受影响。
 
 ## 编码规则
 
@@ -144,7 +148,7 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 - 两个包都是 `PKGARCH:=all`，同一份产物适用于所有架构。
 - `aether-proxy/Makefile` 使用 `include $(INCLUDE_DIR)/package.mk`，`Build/Compile` 为空，在 `Package/aether-proxy/install` 中按上面的布局安装文件；
   `conffiles` 列出 `/etc/config/aetherproxy` 和 `/etc/aether-proxy/custom/`。
-- `postinst` / `prerm`：在非 `IPKG_INSTROOT`（即真机安装）时执行 `fw4 reload`，见 [02](02-dataplane.md)「与 fw4 的对接」。
+- `postinst` / `postrm`：在非 `IPKG_INSTROOT`（即真机安装）时执行 `fw4 reload`，见 [02](02-dataplane.md)「与 fw4 的对接」。
 - `luci-app-aether-proxy/Makefile` 使用 `luci.mk`，`LUCI_DEPENDS:=+aether-proxy +rpcd-mod-ucode`。
 - 版本号：`PKG_VERSION` 采用 `MAJOR.MINOR.PATCH`，首个版本为 `0.1.0`；`PKG_RELEASE` 从 `1` 开始。apk 要求版本号符合其格式，不要带字母后缀。
 - 包构建 CI（`.github/workflows/build.yml`）使用 `openwrt/gh-action-sdk`，矩阵为 x86_64 架构的 24.10.8（产出 ipk）和 25.12.5（产出 apk）。

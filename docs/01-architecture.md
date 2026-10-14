@@ -87,14 +87,14 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 
 | 包 | 内容 | 架构 | 依赖 |
 |---|---|---|---|
-| `aether-proxy` | `aether-proxy`、init 脚本、hotplug、默认配置、数据基线、公钥、fw4 include | `all` | `kmod-nft-tproxy`、`kmod-nft-socket`、`ip-full`、`curl`、`ca-bundle`、`resolveip`、`usign`、`dnsmasq`（任一变体） |
+| `aether-proxy` | `aether-proxy`、init 脚本、hotplug、默认配置、数据基线、公钥、fw4 include | `all` | `firewall4`、`kmod-nft-tproxy`、`kmod-nft-socket`、`ip-full`、`curl`、`ca-bundle`、`resolveip`、`usign`、`dnsmasq`（任一变体均可，`dnsmasq-full` 等变体声明了 `PROVIDES:=dnsmasq`），以及下面的 ucode 模块 |
 | `luci-app-aether-proxy` | JS 视图、rpcd 插件、ACL、菜单 | `all` | `aether-proxy`、`luci-base`、`rpcd-mod-ucode` |
 | `luci-i18n-aether-proxy-zh-cn` | 翻译（luci.mk 自动生成） | `all` | — |
 
 **不硬依赖** `xray-core` / `chinadns-ng`：官方 OpenWrt feed 里没有 chinadns-ng，aether-proxy 会自行下载
 （[08](08-updates.md)）。feed 里有的发行版（lede、ImmortalWrt）可以装上，当作基线兜底。
 
-后端为 ucode 时追加依赖 `ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-socket`、`ucode-mod-uloop`、`ucode-mod-digest`。
+ucode 模块依赖：`ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-socket`、`ucode-mod-uloop`、`ucode-mod-digest`、`ucode-mod-log`、`ucode-mod-resolv`（与 [12](12-ucode.md) 一致）。
 官方 24.10.8 与 25.12.5 的 base feed 中均已提供（2026-10-14 核对下载目录）。`luci-app-aether-proxy` 另需 `rpcd-mod-ucode`。
 
 ## 仓库布局（独立 feed 仓库）

@@ -193,7 +193,7 @@ meta mark & 0x00080000 == 0x00080000 accept comment "aether-proxy: tproxy delive
 
 fw4 会把它插在 `inet fw4` 的 input 链最前面（firewall4 模板里的 `fw4.includes('chain-prepend', 'input')`）。
 aether-proxy 未运行时没有包带这个标记，这条规则不起作用。**这是 aether-proxy 唯一写进 fw4 的东西**，并且是安装时
-随包放入的静态文件，运行时不修改它。安装或卸载后需要执行一次 `fw4 reload`（写在包的 postinst / prerm 中）。
+随包放入的静态文件，运行时不修改它。安装或卸载后需要执行一次 `fw4 reload`（写在包的 postinst / **postrm** 中：卸载时必须等 include 文件删除之后再 reload，放在 prerm 里摘不掉规则）。
 
 ## 内核与模块前提
 
