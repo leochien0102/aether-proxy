@@ -106,9 +106,18 @@ import * as nft from 'aetherproxy.render.nft';
 render(snapshot, {
   data:    { chnroute4: [...], gfw_static4: [...], direct_ip4: [...], proxy_ip4: [...] },   // data.uc 读取
   runtime: { node_ip: "203.0.113.10", dns_tier: "T2", restored: { gfw4: [...], udirect4: [...], uproxy4: [...] } },
-  paths:   { data_dir: "...", custom_dir: "...", boot_list: "..." }                          // chinadns 配置中引用的文件路径
+  paths:   { gfwlist: "...", chnlist: "...", apple: "...",                                   // chinadns 配置中引用的文件，
+             proxy_domain: "...", direct_domain: "...", boot_list: "..." }                    // 每个都是完整路径
 })
 ```
+
+渲染器约定（M1 的四个渲染器都必须遵守）：
+
+- 每个渲染器模块导出 `export function render(snapshot, ctx) { … };`，**返回字符串**，以恰好一个 `\n` 结尾。
+  Xray 渲染器另外导出 `build(snapshot, ctx)` 返回配置对象，`render` 为 `sprintf('%.2J', build(…)) + '\n'`。
+- 渲染器只读取 `snapshot` 与 `ctx`，不读文件、不调用 `sys`、不取当前时间。`ctx` 中缺少的字段按空值处理
+  （空数组、`null`），不准抛异常；`ctx.paths` 中的路径由调用方（`check` / daemon）解析好再传入，渲染器只负责原样写进配置。
+- 需要新增常量时，追加到 `const.uc` 末尾、以注释标明任务卡编号的独立区块中，不要改动已有常量的位置（多张卡并行时便于合并）。
 
 ## 测试
 
@@ -128,6 +137,8 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 
 - 遍历 `tests/fixtures/*/`。每个夹具目录中，UCI 配置文件**必须命名为 `aetherproxy`**，运行器用 `uci.cursor(<夹具目录>)` 读取。
 - 渲染上下文 `ctx`（`{ data, runtime, paths }`）取自夹具中可选的 `context.json`；没有时使用空上下文。
+- **夹具通过它携带的期望文件声明要检查哪些产物**：`expected/` 中没有某个产物的文件，就不渲染、不比较该产物。
+  所以每张渲染器卡只需要为自己的产物提供期望文件。
 - 运行器顶部有一张「期望文件名 → 渲染模块」的表；对应模块不存在时该产物报 SKIP，存在时调用其导出的 `render(snapshot, ctx)`。
   新增渲染器只需要创建模块文件，不需要改动运行器结构。
 - 单元测试 import 的 `aetherproxy.*` 模块不存在时报 SKIP；模块存在但出错时报 FAIL。

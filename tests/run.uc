@@ -14,6 +14,7 @@
 //                                                            (%.2J of config.load().snapshot)
 //                   tests/fixtures/<case>/expected/error.json  expect validation failure
 //                   A fixture whose expected/ holds only snapshot.json runs no renderers.
+//                   A renderer runs only for fixtures that carry its expected/<file>.
 // Unit tests:       tests/unit/*.uc, each exporting `cases` (array) and run(case).
 //                   A case passes when run(case) deep-equals case.expect.
 //
@@ -321,11 +322,13 @@ function run_fixture(name) {
 		if (!wants_render)
 			break;
 
+		// A fixture declares which artifacts it checks by the expected files it carries, so
+		// renderer cards can add fixtures independently without covering every artifact.
+		if (fs.stat(dir + '/expected/' + art.file) == null)
+			continue;
+
 		let render;
 		if (art.builtin) {
-			// Harness-only renderer: only for fixtures that opt in with the file.
-			if (fs.stat(dir + '/expected/' + art.file) == null)
-				continue;
 			render = art.render;
 		}
 		else if (!module_exists(art.module)) {
