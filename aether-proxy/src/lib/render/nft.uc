@@ -128,6 +128,8 @@ export function render(snapshot, ctx) {
 	push(out, `${T}chain prerouting {`);
 	push(out, `${T}${T}type filter hook prerouting priority mangle; policy accept;`);
 	push(out, `${T}${T}iifname != { ${lan} } return`);
+	// The inet table also sees IPv6; v1 is IPv4-only, so let it pass before any tproxy ip rule.
+	push(out, `${T}${T}meta nfproto != ipv4 return`);
 	push(out, `${T}${T}meta l4proto != { tcp, udp } return`);
 	push(out, `${T}${T}meta l4proto tcp socket transparent 1 meta mark set meta mark | ${mark} accept`);
 	push(out, `${T}${T}fib daddr type local return`);

@@ -24,6 +24,7 @@ table inet aetherproxy {
 	chain prerouting {
 		type filter hook prerouting priority mangle; policy accept;
 		iifname != { "br-guest", "br-lan" } return
+		meta nfproto != ipv4 return
 		meta l4proto != { tcp, udp } return
 		meta l4proto tcp socket transparent 1 meta mark set meta mark | 0x00080000 accept
 		fib daddr type local return

@@ -38,7 +38,7 @@ const main = [
 	{ name: 'enabled', type: 'bool', default: false },
 	{ name: 'mode', type: 'enum', enum: [ 'gfw', 'bypass_cn', 'global' ], default: 'bypass_cn' },
 	{ name: 'node', type: 'string', default: null },
-	{ name: 'lan_ifaces', type: 'list', item: 'string', default: [ 'br-lan' ] },
+	{ name: 'lan_ifaces', type: 'list', item: 'string', min_items: 1, default: [ 'br-lan' ] },
 	{ name: 'unlisted_policy', type: 'enum', enum: [ 'follow', 'direct' ], default: 'follow' },
 	{ name: 'quic_block', type: 'bool', default: true },
 	{ name: 'dns_hijack', type: 'bool', default: true },
