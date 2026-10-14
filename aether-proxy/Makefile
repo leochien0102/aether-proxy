@@ -50,6 +50,7 @@ define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/custom
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/keys
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
+	$(INSTALL_DATA) ./files/data/*.txt $(1)/usr/share/aether-proxy/data/
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input
 	$(INSTALL_DATA) ./files/30-aether-proxy.nft $(1)/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft
 	# conffiles cannot list directories; keep.d entries may (sysupgrade runs find on them).
