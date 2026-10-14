@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Wrapper around the host-built ucode: sets library path and the module search
+# path so that `import ... from 'aetherproxy.<name>'` resolves to
+# aether-proxy/src/lib/<name>.uc (the on-device /usr/share/ucode/aetherproxy/).
+set -eu
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREFIX="$HERE/prefix"
+[ -x "$PREFIX/bin/ucode" ] || { echo "ucode wrapper: run tests/host/bootstrap.sh first" >&2; exit 127; }
+export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# tests/host/modules/aetherproxy is a committed symlink to aether-proxy/src/lib, so the
+# glob below maps `aetherproxy.sys` -> aether-proxy/src/lib/sys.uc (dots become directories).
+exec "$PREFIX/bin/ucode" -L "$HERE/modules/*.uc" -L "$HERE/modules/*/*.uc" "$@"
