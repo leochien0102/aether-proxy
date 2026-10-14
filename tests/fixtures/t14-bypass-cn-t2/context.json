@@ -1,0 +1,1 @@
+{"paths":{"gfwlist":"/etc/aether-proxy/data/gfwlist.txt","chnlist":"/etc/aether-proxy/data/chnlist.txt","apple":"/etc/aether-proxy/data/apple.txt","proxy_domain":"/etc/aether-proxy/custom/proxy_domain.txt","direct_domain":"/etc/aether-proxy/custom/direct_domain.txt","boot_list":"/var/run/aether-proxy/boot.txt"},"runtime":{"dns_tier":"T2"}}
