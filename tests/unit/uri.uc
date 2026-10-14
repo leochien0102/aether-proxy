@@ -167,8 +167,13 @@ export const cases = [
 		expect: { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_FORMAT_UNSUPPORTED' }
 	},
 	{
-		name: 'all-invalid body fails', fn: 'body', input: 'hysteria2://token@h.example:443\n',
-		expect: { ok: false, nodes: [], skipped: { unsupported_scheme: 1 }, warnings: [], error: 'SUB_DECODE_FAILED' }
+		name: 'invalid Base64 body fails decoding', fn: 'body', input: '%%%not-base64%%%',
+		expect: { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_DECODE_FAILED' }
+	},
+	{
+		name: 'decoded body with no valid nodes has a distinct error', fn: 'body',
+		input: 'hysteria2://token@h.example:443\n',
+		expect: { ok: false, nodes: [], skipped: { unsupported_scheme: 1 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
 	},
 	{
 		name: 'duplicate strong keys remain for T5.3', fn: 'body',

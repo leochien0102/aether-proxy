@@ -462,8 +462,7 @@ export function parse_body(text) {
 		skipped[reason] = skipped_counts[reason];
 
 	if (!length(nodes))
-		// TODO(design): docs/06 requires whole-body failure but assigns no code for zero valid nodes.
-		return { ok: false, nodes, skipped, warnings, error: 'SUB_DECODE_FAILED' };
+		return { ok: false, nodes, skipped, warnings, error: 'SUB_NO_VALID_NODES' };
 
 	return { ok: true, nodes, skipped, warnings, error: null };
 };
