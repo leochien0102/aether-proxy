@@ -151,11 +151,11 @@ aether-proxy 未运行时不做自动更新。
 
 | 节点字段 | Xray 位置 |
 |---|---|
-| vless | `settings.vnext[0] = {address, port, users:[{id: uuid, encryption, flow}]}` |
-| vmess | `settings.vnext[0] = {address, port, users:[{id: uuid, security: method}]}` |
-| trojan | `settings.servers[0] = {address, port, password}` |
-| shadowsocks | `settings.servers[0] = {address, port, method, password}` |
-| transport | `streamSettings.network` |
+| vless | `settings = {address, port, id: uuid, encryption, flow}` |
+| vmess | `settings = {address, port, id: uuid, security: method}` |
+| trojan | `settings = {address, port, password}` |
+| shadowsocks | `settings = {address, port, method, password}` |
+| transport | `streamSettings.method` |
 | ws | `wsSettings = {path, host}` |
 | httpupgrade | `httpupgradeSettings = {path, host}` |
 | xhttp | `xhttpSettings = {path, host, mode}` |
@@ -164,7 +164,8 @@ aether-proxy 未运行时不做自动更新。
 | security=tls | `tlsSettings = {serverName: sni 或原始域名, alpn, fingerprint, pinnedPeerCertSha256, verifyPeerCertByName}`（后两个为空时不输出） |
 | security=reality | `realitySettings = {serverName: sni, fingerprint（缺省 chrome）, publicKey: reality_pbk, shortId: reality_sid, spiderX: reality_spx}` |
 
-- 已在 Xray v26.9.30 源码核实（2026-10-14）：`tunnel` 协议及 `rewriteAddress` / `rewritePort` / `allowedNetwork` / `followRedirect` 字段存在，旧名 `dokodemo-door` 和旧字段 `address` / `port` / `network` 仍被接受；`raw` 与 `tcp` 等价；`rawSettings`、`xhttpSettings` 存在；VLESS 出站同时接受 `vnext` 写法和扁平写法（`address`/`port`/`id` 直接写在 settings 中），渲染器使用 `vnext`。
+- 已在 Xray v26.9.30 源码核实（2026-10-14）：`tunnel` 协议及 `rewriteAddress` / `rewritePort` / `allowedNetwork` / `followRedirect` 字段存在，旧名 `dokodemo-door` 和旧字段 `address` / `port` / `network` 仍被接受；`raw` 与 `tcp` 等价；`rawSettings`、`xhttpSettings` 存在；四种出站（VLESS、VMess、Trojan、Shadowsocks）都接受扁平写法（`address`/`port`/`id` 或 `password` 直接写在 `settings` 中）；`streamSettings` 中 `method` 与 `network` 等价（源码中 `method` 覆盖 `network`），ssr-plus 自 Xray 26.7.11 起改用 `method`。
+- **一律使用新版命名**（2026-10-15 决定）：入站用 `tunnel` 及 `rewrite*` 字段，出站用扁平写法，`streamSettings` 用 `method`，传输用 `raw`。最低版本 26.9.30 已全部支持，不为旧版本保留旧字段名。旧写法 `vnext`/`servers`/`network`/`dokodemo-door` 只在解析导入的配置时识别，渲染时不输出。
 - Xray 升级可能再次移除字段。渲染器只输出本文档列出的字段；CI 的 golden 测试用清单中的**当前** Xray 版本执行 `run -test`，升级 Xray 前必须先让这一步通过。
 - 渲染器的正确性以 golden 测试为准（[11](11-plan.md)）：每种协议 × 传输 × 安全层的组合至少一个夹具，
   并且在 CI 中用真实的 Xray 二进制执行 `xray run -test` 验证。
