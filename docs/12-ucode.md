@@ -88,11 +88,14 @@ import * as nft from 'aetherproxy.render.nft';
 `config.load(cursor)` 返回：
 
 ```js
-{ ok: true, snapshot: { main: {…}, dns: {…}, update: {…}, probe: {…}, hosts: [ … ], subscriptions: { s_xxx: {…} }, nodes: { n_xxx: {…} } } }
+{ ok: true, snapshot: { main: {…}, dns: {…}, update: {…}, probe: {…}, hosts: [ … ], subscriptions: { s_xxx: {…} }, nodes: { n_xxx: {…} } },
+  warnings: [ { code: "NODE_STALE_IN_USE", args: {…} } ] }
 { ok: false, errors: [ { field: "host[2].mac", code: "duplicate", detail: "aa:bb:… also in host[0]" } ] }
 ```
 
 - 快照中的值都已归一化：bool 为 `true`/`false`，int 为数字，list 一律是数组（单值也是），未设置的字段填上默认值，MAC 统一为小写冒号格式。
+- `config.uc` 是纯模块，不能自己写日志，所以需要记录的非致命问题放在 `warnings` 中返回，由调用方用 `log.event` 记录。
+- 已定的归一化细节（T1.1 实现，2026-10-14 确认）：bool 只接受 `0`/`1`；空字符串视为未设置；未知 UCI 选项忽略；CIDR 带主机位（如 `192.168.1.5/24`）为非法；判重时 `x.x.x.x` 与 `x.x.x.x/32` 视为同一项；`enabled=0` 的 host 也参与冲突校验；Shadowsocks 允许的加密方式列表 `SS_METHODS` 定义在 `schema.uc`。
 - `schema.uc` 用一张声明式的表描述 [05](05-config.md) 中的每个字段（类型、默认值、枚举、是否必填、所属协议）。
   `config.uc` 依据这张表完成读取和第一层校验；跨字段的规则（主机冲突、协议必填项）写成单独的函数。
 - 渲染器只接收快照，绝不自己读 UCI。

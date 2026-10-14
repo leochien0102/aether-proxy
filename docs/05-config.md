@@ -54,7 +54,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `enabled` | bool | `1` | |
 | `name` | 字符串 | — | |
-| `url` | URL | — | |
+| `url` | URL | — | 必填 |
 | `user_agent` | 字符串 | `aether-proxy/<版本>` | 部分机场按 UA 决定返回格式，可改 |
 | `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | `auto` | `auto` = 先直连，失败再经代理（[06](06-nodes-subscription.md)） |
 | `interval_hours` | int | `24` | 0 = 只手动更新 |
@@ -86,9 +86,11 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `sni` / `alpn`(list) / `fingerprint` | 字符串 | tls / reality |
 | `pinned_cert_sha256` | 字符串 | tls：证书 SHA-256 指纹固定（逗号分隔，可多个），渲染为 `pinnedPeerCertSha256` |
 | `verify_name` | 字符串 | tls：按指定名称校验证书，渲染为 `verifyPeerCertByName` |
+| `reality_pbk` / `reality_sid` / `reality_spx` | 字符串 | reality |
 
 > Xray 26.9.30 已**移除** `allowInsecure`（配置中出现即报错，2026-10-14 核实 `infra/conf/transport_security.go`），所以节点没有「跳过证书校验」字段。
-| `reality_pbk` / `reality_sid` / `reality_spx` | 字符串 | reality |
+
+必填与默认值：`protocol`、`address`、`port` 必填；`security` 默认 `none`；`stale` 默认 `0`；`source` 未设置时视为 `manual`。
 
 运行时状态（检测结果、最后错误）**不写 UCI**，放在 `/var/run/aether-proxy/`，避免反复写 flash。
 
@@ -98,7 +100,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `channel_urls` | list URL | 项目发布地址 + 可选镜像 | 清单下载地址，按顺序尝试（[08](08-updates.md)） |
 | `data_auto` | bool | `1` | 自动更新规则数据 |
-| `data_hour` | 0–23 | `4` | 每天几点检查（分钟在安装时随机生成并写入 `data_minute`） |
+| `data_hour` | 0–23 | `4` | 每天几点检查 |
+| `data_minute` | 0–59 | 空 | 安装时由 uci-defaults 随机生成并写入，用于把各设备的请求错开；为空时按 `30` 处理 |
 | `xray_auto` | enum(`off`\|`notify`\|`auto`) | `notify` | |
 | `chinadns_auto` | enum(`off`\|`notify`) | `notify` | **不提供 auto**（[08](08-updates.md)） |
 
@@ -126,7 +129,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 
 ## 校验规则（`aether-proxy check` 必须全部实现）
 
-1. `enabled=1` 时 `node` 必须指向存在且非 stale 的节点（stale 节点允许使用，但记 WARN `NODE_STALE_IN_USE`）。
+1. `enabled=1` 时 `node` 必须指向存在的节点。指向 stale 节点**允许**，但要在结果的 `warnings` 中返回 `NODE_STALE_IN_USE`，由调用方记录。
 2. host：`ip` 和 `mac` 至少一个；`direct` + `udp=1` 报错；不同 host 之间 IP、CIDR、MAC 完全相同报错。
 3. `trust_dns` 1–2 个合法 IPv4。
 4. 所有 list 中的 IPv4/CIDR/MAC/域名语法合法。
