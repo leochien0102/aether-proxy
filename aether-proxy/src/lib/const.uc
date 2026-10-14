@@ -48,3 +48,13 @@ export const TMP_DIR = '/tmp';
 export const DATA_IP_FILES = { chnroute4: 'chnroute4.txt', gfw_static4: 'gfw_static4.txt' };
 export const CUSTOM_IP_FILES = { direct_ip4: 'direct_ip.txt', proxy_ip4: 'proxy_ip.txt' };
 export const CUSTOM_DOMAIN_FILES = { direct_domain: 'direct_domain.txt', proxy_domain: 'proxy_domain.txt' };
+
+// T1.6 (Xray renderer)
+export const PROXY_TAG = 'proxy';
+export const DIRECT_TAG = 'direct';
+export const TPROXY_IN_TAG = 'tproxy-in';
+export const HTTP_IN_TAG = 'http-in';
+export const DNS_IN_TAG_PREFIX = 'dns-in-';
+export const HTTP_LISTEN = '127.0.0.1';
+export const DNS_LISTEN = '127.0.0.1';
+export const TPROXY_LISTEN = '0.0.0.0';
