@@ -14,7 +14,7 @@
 
 | # | 条件 | 动作 | 说明 |
 |---|---|---|---|
-| 0 | 不是从 `lan_ifaces` 进入，或不是 TCP/UDP | 直连 | |
+| 0 | 不是从 `lan_ifaces` 进入，或不是 IPv4，或不是 TCP/UDP | 直连 | inet 表也会看到 IPv6 包；首版只处理 IPv4，必须在进入 TPROXY 规则前放行 |
 | 1 | 已有透明 socket（`socket transparent 1`） | 打标记并接受 | 已建立连接的快路径 |
 | 2 | 目的地址是本机（`fib daddr type local`） | 直连 | |
 | 3 | 目的端口 53 且开启了 DNS 劫持 | 直连 | 交给 nat 链的劫持规则，避免被 TPROXY 抢走 |
@@ -94,6 +94,7 @@ table inet aetherproxy {
 	chain prerouting {
 		type filter hook prerouting priority mangle; policy accept;
 		iifname != { {{LAN_IFACES}} } return
+		meta nfproto != ipv4 return
 		meta l4proto != { tcp, udp } return
 		meta l4proto tcp socket transparent 1 meta mark set meta mark | 0x00080000 accept
 		fib daddr type local return
