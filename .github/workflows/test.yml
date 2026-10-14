@@ -32,6 +32,9 @@ jobs:
       - name: Run tests
         run: tests/host/ucode tests/run.uc
 
+      - name: Run CLI scenario tests
+        run: bash tests/cli/run.sh
+
   # Real-tool validation of the golden files. Logic lives in tests/ci/*.sh so it can be run
   # locally. Versions come from aether-proxy/src/lib/const.uc; nothing is duplicated here.
   validate-xray:
