@@ -31,3 +31,30 @@ jobs:
 
       - name: Run tests
         run: tests/host/ucode tests/run.uc
+
+  # Real-tool validation of the golden files. Logic lives in tests/ci/*.sh so it can be run
+  # locally. Versions come from aether-proxy/src/lib/const.uc; nothing is duplicated here.
+  validate-xray:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: xray run -test on every expected/xray.json
+        run: bash tests/ci/xray.sh
+
+  validate-nft:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nftables
+        run: sudo apt-get update && sudo apt-get install -y nftables
+      - name: nft -c -f on every expected/aether-proxy.nft
+        run: bash tests/ci/nft.sh
+
+  validate-chinadns:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nftables
+        run: sudo apt-get update && sudo apt-get install -y nftables
+      - name: chinadns-ng -C on every expected/chinadns.conf
+        run: bash tests/ci/chinadns.sh
