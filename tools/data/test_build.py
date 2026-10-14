@@ -89,6 +89,51 @@ class CidrParsingTests(unittest.TestCase):
         self.assertEqual(build.cidr_lines(networks), ["10.0.0.0/31", "10.0.0.2"])
 
 
+class AppleSourceSemanticsTests(unittest.TestCase):
+    def setUp(self):
+        self.valid_lists = {
+            "gfwlist.txt": ["google.com"] + [f"gfw{index}.example" for index in range(2999)],
+            "chnlist.txt": ["baidu.com"] + [f"cn{index}.example" for index in range(49999)],
+            "apple.txt": [f"cdn{index}.apple.com" for index in range(50)],
+            "chnroute4.txt": ["114.114.114.114", "223.5.5.5"]
+            + [str(ipaddress.IPv4Address(0x0A000000 + index)) for index in range(3000)],
+            "gfw_static4.txt": ["10.0.0.0/8"],
+        }
+
+    def test_apple_subdomain_without_apex_passes_sanity_check(self):
+        build.validate_outputs(self.valid_lists)
+        self.assertNotIn("apple.com", self.valid_lists["apple.txt"])
+
+    def test_generated_apple_list_does_not_add_apex(self):
+        raw = {
+            "gfwlist.b64": base64.b64encode(b"google.com\n"),
+            "china-domains.conf": b"server=/baidu.com/114.114.114.114\n",
+            "apple-domains.conf": b"server=/cdn.apple.com/114.114.114.114\n",
+            "delegated-apnic-latest": (
+                b"apnic|CN|ipv4|114.114.114.114|1|20260101|allocated\n"
+                b"apnic|CN|ipv4|223.5.5.5|1|20260101|allocated\n"
+            ),
+            "telegram-cidr.txt": b"10.0.0.0/8\n",
+        }
+        metadata = {
+            name: {"downloaded_at": "2026-01-01T00:00:00+00:00"}
+            for name in build.SOURCES
+        }
+
+        minimums = {filename: 0 for filename in build.MIN_LINES}
+        generated = build.build_outputs(raw, b"10.0.0.0/8\n", metadata, minimums)
+        self.assertEqual(generated["apple.txt"], b"cdn.apple.com\n")
+        self.assertNotIn("apple.com", generated["apple.txt"].decode().splitlines())
+
+    def test_apple_list_without_apple_subdomains_fails_sanity_check(self):
+        invalid = {
+            **self.valid_lists,
+            "apple.txt": [f"cdn{index}.other.example" for index in range(50)],
+        }
+        with self.assertRaisesRegex(ValueError, r"subdomain ending in \.apple\.com"):
+            build.validate_outputs(invalid)
+
+
 class OutputSafetyTests(unittest.TestCase):
     def test_sanity_failure_creates_no_output(self):
         raw = {

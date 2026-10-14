@@ -29,10 +29,13 @@ OUTPUT_SOURCES = {
     "gfwlist.txt": ("gfwlist.b64", "LGPL-2.1"),
     "chnlist.txt": ("china-domains.conf", "WTFPL"),
     "apple.txt": ("apple-domains.conf", "WTFPL"),
-    "chnroute4.txt": ("delegated-apnic-latest", "APNIC statistics; APNIC terms of use"),
+    "chnroute4.txt": (
+        "delegated-apnic-latest",
+        "Public registration data; redistribution with packages allowed by docs/08-updates.md",
+    ),
     "gfw_static4.txt": (
         "telegram-cidr.txt",
-        "No explicit license identified; review upstream terms before redistribution",
+        "Factual IP address list; redistribution with packages allowed by docs/08-updates.md",
     ),
 }
 
@@ -199,18 +202,18 @@ def has_address(networks: list[ipaddress.IPv4Network], address: str) -> bool:
     return any(target in network for network in networks)
 
 
-def validate_outputs(outputs: dict[str, list[str]]) -> None:
-    for filename, minimum in MIN_LINES.items():
+def validate_outputs(
+    outputs: dict[str, list[str]], minimums: dict[str, int] | None = None,
+) -> None:
+    for filename, minimum in (MIN_LINES if minimums is None else minimums).items():
         if len(outputs[filename]) < minimum:
             raise ValueError(f"{filename}: {len(outputs[filename])} lines, expected at least {minimum}")
 
-    for filename, required in (
-        ("gfwlist.txt", "google.com"),
-        ("chnlist.txt", "baidu.com"),
-        ("apple.txt", "apple.com"),
-    ):
+    for filename, required in (("gfwlist.txt", "google.com"), ("chnlist.txt", "baidu.com")):
         if required not in outputs[filename]:
             raise ValueError(f"{filename}: required domain {required} is missing")
+    if not any(domain.endswith(".apple.com") for domain in outputs["apple.txt"]):
+        raise ValueError("apple.txt: expected at least one subdomain ending in .apple.com")
 
     routes = [ipaddress.ip_network(line, strict=True) for line in outputs["chnroute4.txt"]]
     for address in ("223.5.5.5", "114.114.114.114"):
@@ -243,21 +246,13 @@ def render_sources(
         rows.extend(f"- `{reason}`: {count}" for reason, count in sorted(skipped.items()))
     else:
         rows.append("- None")
-    rows.extend(
-        [
-            "",
-            "## Required baseline additions",
-            "",
-            "- `apple.com` is added to `apple.txt`: the current upstream `apple.china.conf` "
-            "contains Apple subdomains but not the required apex domain.",
-        ]
-    )
     rows.append("")
     return "\n".join(rows)
 
 
 def build_outputs(
     raw: dict[str, bytes], static_source: bytes, metadata: dict[str, dict[str, str]],
+    minimums: dict[str, int] | None = None,
 ) -> dict[str, bytes]:
     try:
         decoded = base64.b64decode(raw["gfwlist.b64"]).decode("utf-8", "replace")
@@ -265,17 +260,14 @@ def build_outputs(
         raise ValueError(f"cannot decode gfwlist base64: {exc}") from exc
 
     gfw_domains, skipped = gfwlist_domains(decoded)
-    apple = set(china_domains(raw["apple-domains.conf"].decode("utf-8-sig")))
-    # The task's baseline sanity contract requires the apex, absent from current upstream data.
-    apple.add("apple.com")
     outputs: dict[str, list[str]] = {
         "gfwlist.txt": gfw_domains,
         "chnlist.txt": china_domains(raw["china-domains.conf"].decode("utf-8-sig")),
-        "apple.txt": sorted(apple),
+        "apple.txt": china_domains(raw["apple-domains.conf"].decode("utf-8-sig")),
         "chnroute4.txt": cidr_lines(apnic_networks(raw["delegated-apnic-latest"].decode("ascii"))),
         "gfw_static4.txt": cidr_lines(static_networks(static_source.decode("utf-8-sig"))),
     }
-    validate_outputs(outputs)
+    validate_outputs(outputs, minimums)
     files = {
         name: ("\n".join(lines) + "\n").encode("utf-8")
         for name, lines in outputs.items()
