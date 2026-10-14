@@ -1,0 +1,33 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # bootstrap.sh itself needs only git, cmake, make, gcc and pkg-config; it
+      # builds json-c from source when the system lacks it. Installing the
+      # system package here just saves that build.
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake pkg-config libjson-c-dev
+
+      - name: Compute component revisions
+        id: revs
+        run: echo "revs=$(bash tests/host/bootstrap.sh --revs)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache host prefix
+        uses: actions/cache@v4
+        with:
+          path: tests/host/prefix
+          key: host-prefix-${{ runner.os }}-${{ steps.revs.outputs.revs }}-${{ hashFiles('tests/host/bootstrap.sh') }}
+
+      - name: Bootstrap libubox / uci / ucode
+        run: bash tests/host/bootstrap.sh
+
+      - name: Run tests
+        run: tests/host/ucode tests/run.uc
