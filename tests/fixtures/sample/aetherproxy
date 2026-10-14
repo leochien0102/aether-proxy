@@ -1,3 +1,10 @@
 config main 'main'
 	option enabled '1'
 	option mode 'gfw'
+	option node 'n_00000000000000000000000000000001'
+
+config node 'n_00000000000000000000000000000001'
+	option protocol 'trojan'
+	option address 'node.example.com'
+	option port '443'
+	option password 'secret'

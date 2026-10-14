@@ -1,0 +1,4 @@
+config node 'n_11111111111111111111111111111111'
+	option protocol 'vless'
+	option address 'a.example.com'
+	option port '443'

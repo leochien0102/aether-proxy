@@ -1,0 +1,66 @@
+{
+  "main": {
+    "enabled": false,
+    "mode": "bypass_cn",
+    "node": null,
+    "lan_ifaces": [
+      "br-lan"
+    ],
+    "unlisted_policy": "follow",
+    "quic_block": true,
+    "dns_hijack": true,
+    "ipv6_filter": true,
+    "filter_https_rr": true,
+    "fail_open": true,
+    "sniffing": true,
+    "log_level": "notice",
+    "xray_log_level": "warning",
+    "boot_wait_timeout": 120,
+    "boot_check_targets": [
+      "223.5.5.5:53",
+      "119.29.29.29:53"
+    ],
+    "xray_bin": null,
+    "chinadns_bin": null
+  },
+  "dns": {
+    "china_dns": [
+      "223.5.5.5",
+      "119.29.29.29"
+    ],
+    "trust_dns": [
+      "8.8.8.8",
+      "1.1.1.1"
+    ],
+    "direct_dns": [
+      "tcp://8.8.8.8",
+      "tcp://1.1.1.1"
+    ],
+    "allow_china_fallback": true,
+    "dns_probe_domain": "www.google.com",
+    "dnsmasq_instance": null
+  },
+  "update": {
+    "channel_urls": [
+    ],
+    "data_auto": true,
+    "data_hour": 4,
+    "xray_auto": "notify",
+    "chinadns_auto": "notify"
+  },
+  "probe": {
+    "url": "https://www.gstatic.com/generate_204",
+    "expect_code": 204,
+    "timeout": 5,
+    "fail_threshold": 3,
+    "recover_threshold": 2,
+    "node_timeout": 3,
+    "node_concurrency": 8
+  },
+  "hosts": [
+  ],
+  "subscriptions": {
+  },
+  "nodes": {
+  }
+}

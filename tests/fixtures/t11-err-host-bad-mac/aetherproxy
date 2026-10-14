@@ -1,0 +1,2 @@
+config host
+	list mac 'aa:bb:cc:dd:ee'

@@ -1,0 +1,6 @@
+config host
+	list mac 'aa:bb:cc:dd:ee:ff'
+
+config host
+	list mac 'AA-BB-CC-DD-EE-FF'
+	option policy 'proxy'

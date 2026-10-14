@@ -1,0 +1,2 @@
+config host
+	list ip '192.168.1.0/33'

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "host[0].ip",
+      "code": "required",
+      "detail": "at least one of ip and mac must be set"
+    }
+  ]
+}

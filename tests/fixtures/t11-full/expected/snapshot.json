@@ -1,0 +1,244 @@
+{
+  "main": {
+    "enabled": true,
+    "mode": "gfw",
+    "node": "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "lan_ifaces": [
+      "br-lan",
+      "br-guest"
+    ],
+    "unlisted_policy": "direct",
+    "quic_block": false,
+    "dns_hijack": false,
+    "ipv6_filter": false,
+    "filter_https_rr": false,
+    "fail_open": false,
+    "sniffing": false,
+    "log_level": "debug",
+    "xray_log_level": "info",
+    "boot_wait_timeout": 0,
+    "boot_check_targets": [
+      "1.1.1.1:53",
+      "114.114.114.114:53"
+    ],
+    "xray_bin": "/opt/bin/xray",
+    "chinadns_bin": "/opt/bin/chinadns-ng"
+  },
+  "dns": {
+    "china_dns": [
+      "udp://114.114.114.114#5353"
+    ],
+    "trust_dns": [
+      "9.9.9.9"
+    ],
+    "direct_dns": [
+      "tls://dns.google@8.8.8.8",
+      "tcp://1.1.1.1"
+    ],
+    "allow_china_fallback": false,
+    "dns_probe_domain": "www.example.org",
+    "dnsmasq_instance": "main"
+  },
+  "update": {
+    "channel_urls": [
+      "https://updates.example.com/manifest.json",
+      "https://mirror.example.net/manifest.json"
+    ],
+    "data_auto": false,
+    "data_hour": 23,
+    "xray_auto": "auto",
+    "chinadns_auto": "off"
+  },
+  "probe": {
+    "url": "http://probe.example.com/ok",
+    "expect_code": 200,
+    "timeout": 10,
+    "fail_threshold": 5,
+    "recover_threshold": 4,
+    "node_timeout": 7,
+    "node_concurrency": 16
+  },
+  "hosts": [
+    {
+      "enabled": false,
+      "name": "tv",
+      "ip": [
+        "192.168.1.10",
+        "192.168.1.0/24"
+      ],
+      "mac": [
+        "aa:bb:cc:dd:ee:01"
+      ],
+      "policy": "proxy",
+      "udp": true
+    },
+    {
+      "enabled": true,
+      "name": "phone",
+      "ip": [
+      ],
+      "mac": [
+        "aa:bb:cc:dd:ee:02"
+      ],
+      "policy": "direct",
+      "udp": false
+    },
+    {
+      "enabled": true,
+      "name": null,
+      "ip": [
+        "10.0.0.0/8"
+      ],
+      "mac": [
+      ],
+      "policy": "follow",
+      "udp": false
+    }
+  ],
+  "subscriptions": {
+    "s_00000001": {
+      "enabled": true,
+      "name": null,
+      "url": "http://sub.example.org/a",
+      "user_agent": "aether-proxy/0.0.0-dev",
+      "fetch_via": "auto",
+      "interval_hours": 24
+    },
+    "s_0123abcd": {
+      "enabled": false,
+      "name": "airport",
+      "url": "https://sub.example.com/link?token=abc",
+      "user_agent": "custom-ua/1.0",
+      "fetch_via": "proxy",
+      "interval_hours": 0
+    }
+  },
+  "nodes": {
+    "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
+      "label": "HK 01",
+      "source": "s_0123abcd",
+      "stale": true,
+      "match_strong": "vless|hk.example.com|443|u|ws|/p|h",
+      "match_weak": "vless|hk.example.com|443",
+      "protocol": "vless",
+      "address": "hk.example.com",
+      "port": 443,
+      "uuid": "11111111-2222-4333-8444-555555555555",
+      "password": "unused",
+      "method": "unused",
+      "flow": "xtls-rprx-vision",
+      "encryption": "none",
+      "transport": "ws",
+      "host": "cdn.example.com",
+      "path": "/ws",
+      "service_name": "svc",
+      "xhttp_mode": "auto",
+      "header_type": "http",
+      "security": "reality",
+      "sni": "www.microsoft.com",
+      "alpn": [
+        "h2",
+        "http/1.1"
+      ],
+      "fingerprint": "chrome",
+      "pinned_cert_sha256": "ff00",
+      "verify_name": "v.example.com",
+      "reality_pbk": "PUBKEY",
+      "reality_sid": "abcd",
+      "reality_spx": "/spx"
+    },
+    "n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+      "label": null,
+      "source": null,
+      "stale": false,
+      "match_strong": null,
+      "match_weak": null,
+      "protocol": "shadowsocks",
+      "address": "203.0.113.7",
+      "port": 8388,
+      "uuid": null,
+      "password": "pw",
+      "method": "2022-blake3-aes-128-gcm",
+      "flow": null,
+      "encryption": null,
+      "transport": "raw",
+      "host": null,
+      "path": null,
+      "service_name": null,
+      "xhttp_mode": null,
+      "header_type": null,
+      "security": "tls",
+      "sni": null,
+      "alpn": [
+      ],
+      "fingerprint": null,
+      "pinned_cert_sha256": "aa11,bb22",
+      "verify_name": "ss.example.com",
+      "reality_pbk": null,
+      "reality_sid": null,
+      "reality_spx": null
+    },
+    "n_cccccccccccccccccccccccccccccccc": {
+      "label": null,
+      "source": null,
+      "stale": false,
+      "match_strong": null,
+      "match_weak": null,
+      "protocol": "vmess",
+      "address": "vm.example.com",
+      "port": 10086,
+      "uuid": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+      "password": null,
+      "method": "auto",
+      "flow": null,
+      "encryption": null,
+      "transport": "grpc",
+      "host": null,
+      "path": null,
+      "service_name": "g",
+      "xhttp_mode": null,
+      "header_type": null,
+      "security": "none",
+      "sni": null,
+      "alpn": [
+      ],
+      "fingerprint": null,
+      "pinned_cert_sha256": null,
+      "verify_name": null,
+      "reality_pbk": null,
+      "reality_sid": null,
+      "reality_spx": null
+    },
+    "n_dddddddddddddddddddddddddddddddd": {
+      "label": null,
+      "source": null,
+      "stale": false,
+      "match_strong": null,
+      "match_weak": null,
+      "protocol": "trojan",
+      "address": "tj.example.com",
+      "port": 443,
+      "uuid": null,
+      "password": "p",
+      "method": null,
+      "flow": null,
+      "encryption": null,
+      "transport": "xhttp",
+      "host": null,
+      "path": null,
+      "service_name": null,
+      "xhttp_mode": "packet-up",
+      "header_type": null,
+      "security": "none",
+      "sni": null,
+      "alpn": [
+      ],
+      "fingerprint": null,
+      "pinned_cert_sha256": null,
+      "verify_name": null,
+      "reality_pbk": null,
+      "reality_sid": null,
+      "reality_spx": null
+    }
+  }
+}

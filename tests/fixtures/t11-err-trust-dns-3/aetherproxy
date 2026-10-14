@@ -1,0 +1,4 @@
+config dns 'dns'
+	list trust_dns '8.8.8.8'
+	list trust_dns '1.1.1.1'
+	list trust_dns '9.9.9.9'

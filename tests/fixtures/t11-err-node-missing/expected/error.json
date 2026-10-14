@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "main.node",
+      "code": "unknown_node",
+      "detail": "node n_22222222222222222222222222222222 does not exist"
+    }
+  ]
+}

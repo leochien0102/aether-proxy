@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "host[0].udp",
+      "code": "conflict",
+      "detail": "udp (game mode) cannot be set when policy is direct"
+    }
+  ]
+}

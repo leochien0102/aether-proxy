@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "dns.trust_dns",
+      "code": "too_many",
+      "detail": "at most 2 entries allowed, got 3"
+    }
+  ]
+}
