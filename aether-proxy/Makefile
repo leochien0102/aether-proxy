@@ -16,7 +16,7 @@ define Package/aether-proxy
   PKGARCH:=all
   DEPENDS:= \
 	+kmod-nft-tproxy +kmod-nft-socket +ip-full +curl +ca-bundle \
-	+resolveip +usign +dnsmasq \
+	+firewall4 +resolveip +usign +dnsmasq \
 	+ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
 	+ucode-mod-digest +ucode-mod-log +ucode-mod-resolv
 endef
@@ -55,8 +55,6 @@ define Package/aether-proxy/install
 	$(INSTALL_DATA) ./files/30-aether-proxy.nft $(1)/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft
 endef
 
-# TODO(design): docs/02 puts fw4 reload in prerm, but the include file is still present
-# at that point, so the reload does not drop the rule. A postrm would be needed.
 define Package/aether-proxy/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
@@ -64,7 +62,7 @@ fw4 reload || echo "aether-proxy: fw4 reload failed (rc=$$?), run it manually" >
 exit 0
 endef
 
-define Package/aether-proxy/prerm
+define Package/aether-proxy/postrm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 fw4 reload || echo "aether-proxy: fw4 reload failed (rc=$$?), run it manually" >&2
