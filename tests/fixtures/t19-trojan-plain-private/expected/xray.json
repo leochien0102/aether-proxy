@@ -64,16 +64,12 @@
       "tag": "proxy",
       "protocol": "trojan",
       "settings": {
-        "servers": [
-          {
-            "address": "192.168.50.2",
-            "port": 443,
-            "password": "secret"
-          }
-        ]
+        "address": "192.168.50.2",
+        "port": 443,
+        "password": "secret"
       },
       "streamSettings": {
-        "network": "raw"
+        "method": "raw"
       }
     },
     {

@@ -64,17 +64,13 @@
       "tag": "proxy",
       "protocol": "shadowsocks",
       "settings": {
-        "servers": [
-          {
-            "address": "ss.example.com",
-            "port": 8388,
-            "method": "aes-256-gcm",
-            "password": "pw"
-          }
-        ]
+        "address": "ss.example.com",
+        "port": 8388,
+        "method": "aes-256-gcm",
+        "password": "pw"
       },
       "streamSettings": {
-        "network": "raw"
+        "method": "raw"
       }
     },
     {

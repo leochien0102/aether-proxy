@@ -64,16 +64,12 @@
       "tag": "proxy",
       "protocol": "trojan",
       "settings": {
-        "servers": [
-          {
-            "address": "203.0.113.13",
-            "port": 443,
-            "password": "secret"
-          }
-        ]
+        "address": "203.0.113.13",
+        "port": 443,
+        "password": "secret"
       },
       "streamSettings": {
-        "network": "raw",
+        "method": "raw",
         "security": "tls",
         "tlsSettings": {
           "serverName": "tj.example.com"
