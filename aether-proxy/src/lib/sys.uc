@@ -20,17 +20,43 @@ function q(arg) {
 }
 
 // Runs inside `sh -c`. Needs a wrapper because ucode has no way to capture stdout and
-// stderr separately: stderr goes to a mktemp file, and the exit code plus that file's
-// path are appended to stdout after a marker line. argv arrives as "$@", so nothing
-// from the caller is ever interpolated into the script text.
+// stderr separately: stderr goes to a mktemp file, and the exit code, timeout flag, and
+// that file's path are appended to stdout after a marker line. argv arrives as "$@", so
+// nothing from the caller is ever interpolated into the script text.
 const WRAPPER = join(' ', [
 	'e=$(mktemp ' + C.TMP_DIR + '/aether-proxy-sys.XXXXXX) ||',
-	'{ printf "\\n@@AP-RC@@ 125 -\\n"; exit 125; };',
-	'"$@" </dev/null 2>"$e"; rc=$?;',
-	'printf "\\n@@AP-RC@@ %s %s\\n" "$rc" "$e"'
+	'{ printf "\\n@@AP-RC@@ 125 - false -\\n"; exit 125; };',
+	'helper=$e.wrapper; : >"$helper"; exec 2>>"$helper";',
+	'timeout=$1; shift; timer=-;',
+	'if [ "$timeout" = "-" ]; then',
+	'  "$@" </dev/null 2>"$e"; rc=$?; timed=false;',
+	'else',
+	'  done=$e.done; child=$e.pid; timed_file=$e.timeout; finished=$e.finished;',
+	'  ( exec "$@" </dev/null 2>>"$e" ) 2>>"$helper" & runner=$!;',
+	'  printf "%s\\n" "$runner" >"$child";',
+	'  ( t=;',
+	"    trap 'if [ -n \"$t\" ]; then kill \"$t\" 2>>\"$helper\"; wait \"$t\" 2>>\"$helper\"; fi; : >\"$finished\"; exit 0' TERM;",
+	'    sleep "$timeout" & t=$!; wait "$t"; t=;',
+	'    if [ ! -f "$done" ]; then',
+	'      : >"$timed_file"; IFS= read -r c <"$child"; kill -TERM "$c" 2>>"$helper";',
+	'      sleep 1 & t=$!; wait "$t"; t=;',
+	'      if [ ! -f "$done" ]; then kill -KILL "$c" 2>>"$helper"; fi;',
+	'    fi;',
+	'    : >"$finished" ) 2>>"$helper" & timer=$!;',
+	'  wait "$runner"; rc=$?; : >"$done";',
+	'  if [ ! -f "$finished" ]; then kill -TERM "$timer" 2>>"$helper"; fi;',
+	'  wait "$timer" 2>>"$helper";',
+	'  if [ -f "$timed_file" ]; then rc=124; timed=true; else timed=false; fi;',
+	'  rm -f "$done" "$child" "$timed_file" "$finished" 2>>"$e";',
+	'fi;',
+	'while IFS= read -r line; do if [ "$line" != "Terminated" ]; then printf "%s\\n" "$line" >>"$e"; fi; done <"$helper";',
+	'rm -f "$helper" 2>>"$e";',
+	'printf "\\n@@AP-RC@@ %s %s %s\\n" "$rc" "$e" "$timed"'
 ]);
 const MARKER = "\n@@AP-RC@@ ";
 
+// ash may print "Terminated" when a background child is signalled; discard that shell
+// job notification while preserving every other wrapper diagnostic and command stderr.
 function first_line(s, max) {
 	let line = split(trim(s ?? ''), '\n')[0];
 
@@ -38,9 +64,9 @@ function first_line(s, max) {
 }
 
 // run(argv, opts) -> { code, stdout, stderr }
-// opts.timeout: seconds, enforced with timeout(1). opts.quiet: do not log CMD_FAILED.
-// code is -1 if the wrapper's result could not be read, and 124/143 on a timeout
-// (busybox and coreutils differ).
+// opts.timeout: seconds. opts.quiet: do not log CMD_FAILED. timed_out distinguishes a
+// timeout from a command that independently exits with code 124.
+// code is -1 if the wrapper's result could not be read, or 124 on a timeout.
 function run(argv, opts) {
 	if (type(argv) != 'array' || !length(argv))
 		die('sys.run: argv must be a non-empty array');
@@ -49,14 +75,9 @@ function run(argv, opts) {
 
 	let args = map(argv, a => `${a}`);
 
-	if (opts.timeout != null) {
-		// TODO(design): docs do not say how timeouts are enforced; relies on timeout(1)
-		// being present (OpenWrt busybox applet, enabled by default).
-		unshift(args, 'timeout', `${opts.timeout}`);
-	}
-
-	let cmdline = 'sh -c ' + q(WRAPPER) + ' sh ' + join(' ', map(args, q));
-	let res = { code: -1, stdout: '', stderr: '' };
+	let timeout = opts.timeout == null ? '-' : `${opts.timeout}`;
+	let cmdline = 'sh -c ' + q(WRAPPER) + ' sh ' + q(timeout) + ' ' + join(' ', map(args, q));
+	let res = { code: -1, stdout: '', stderr: '', timed_out: false };
 	let fp = fs.popen(cmdline, 'r');
 
 	if (!fp) {
@@ -74,12 +95,13 @@ function run(argv, opts) {
 			res.stderr = `wrapper produced no result (sh exit ${wrc})`;
 		}
 		else {
-			let m = match(substr(out, pos + length(MARKER)), /^([0-9]+) ([^\n]*)\n$/);
+			let m = match(substr(out, pos + length(MARKER)), /^([0-9]+) ([^ ]+) (true|false)\n$/);
 
 			res.stdout = substr(out, 1, pos - 1);
 
 			if (m) {
 				res.code = +m[1];
+				res.timed_out = m[3] == 'true';
 
 				if (m[2] == '-') {
 					res.stderr = 'mktemp failed';
@@ -98,11 +120,16 @@ function run(argv, opts) {
 	}
 
 	if (res.code != 0 && !opts.quiet) {
-		log.event('error', 'CMD_FAILED', {
+		let args = {
 			cmd: join(' ', argv),
 			rc: res.code,
 			stderr: first_line(res.stderr, 200)
-		});
+		};
+
+		if (res.timed_out)
+			args.timed_out = true;
+
+		log.event('error', 'CMD_FAILED', args);
 	}
 
 	return res;
