@@ -7,67 +7,17 @@
 // (docs/12 rule 1) and takes those plain objects, so it can be tested without UCI.
 
 import * as C from 'aetherproxy.const';
+import { ipv4, ip_or_cidr, domain, ip_key } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
 // ------------------------------------------------------------------ syntax validators
 // Each takes a string and returns the normalized value, or null when the syntax is invalid.
-
-function valid_octet(s) {
-	return match(s, /^(0|[1-9][0-9]{0,2})$/) != null && +s <= 255;
-}
-
-function ipv4(s) {
-	let p = split(s, '.');
-
-	if (length(p) != 4)
-		return null;
-
-	for (let o in p)
-		if (!valid_octet(o))
-			return null;
-
-	return s;
-}
-
-// IPv4 or a.b.c.d/len. Host bits must be zero (nft interval sets reject a prefix with
-// host bits; failing here is the conservative choice).
-function ip_or_cidr(s) {
-	let p = split(s, '/');
-
-	if (length(p) == 1)
-		return ipv4(s);
-
-	if (length(p) != 2 || ipv4(p[0]) == null || match(p[1], /^(0|[1-9][0-9]?)$/) == null)
-		return null;
-
-	let len = +p[1];
-
-	if (len > 32)
-		return null;
-
-	let o = map(split(p[0], '.'), x => +x);
-	let addr = (o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3];
-	let mask = len == 0 ? 0 : (0xFFFFFFFF << (32 - len)) & 0xFFFFFFFF;
-
-	return (addr & ~mask & 0xFFFFFFFF) == 0 ? s : null;
-}
 
 function mac(s) {
 	if (match(s, /^[0-9a-fA-F]{2}([:-][0-9a-fA-F]{2}){5}$/) == null)
 		return null;
 
 	return lc(replace(s, '-', ':'));
-}
-
-function domain(s) {
-	if (length(s) < 1 || length(s) > 253)
-		return null;
-
-	for (let label in split(s, '.'))
-		if (length(label) > 63 || match(label, /^[A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?$/) == null)
-			return null;
-
-	return s;
 }
 
 function address(s) {
@@ -290,11 +240,6 @@ function normalize_section(fields, raw, prefix, errors) {
 }
 
 // ------------------------------------------------------------------ cross-field rules
-
-function ip_key(s) {
-	// 1.2.3.4 and 1.2.3.4/32 select the same host.
-	return replace(s, /\/32$/, '');
-}
 
 // Records the first host that uses `key`; reports once per value when another host repeats it.
 function note_value(seen, reported, key, value, i, field, errors) {
