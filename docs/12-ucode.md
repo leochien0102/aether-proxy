@@ -162,7 +162,8 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 
 - 两个包都是 `PKGARCH:=all`，同一份产物适用于所有架构。
 - `aether-proxy/Makefile` 使用 `include $(INCLUDE_DIR)/package.mk`，`Build/Compile` 为空，在 `Package/aether-proxy/install` 中按上面的布局安装文件；
-  `conffiles` 列出 `/etc/config/aetherproxy` 和 `/etc/aether-proxy/custom/`。
+  `conffiles` 只列 `/etc/config/aetherproxy`（conffiles 不支持目录）。需要跨 sysupgrade 保留的目录 `/etc/aether-proxy/custom/`、`/etc/aether-proxy/state/` 写在 `files/aether-proxy.keep`，安装为 `/lib/upgrade/keep.d/aether-proxy-data`（sysupgrade 对 keep.d 的每一行执行 find，目录可用）。`/etc/aether-proxy/data/` 不保留，升级后从发布通道重新获取。
+- `const.uc` 中的版本号写成 `$(PKG_VERSION)-r$(PKG_RELEASE)`（如 `0.1.0-r1`），与包管理器显示的版本格式一致，便于比较。
 - `postinst` / `postrm`：在非 `IPKG_INSTROOT`（即真机安装）时执行 `fw4 reload`，见 [02](02-dataplane.md)「与 fw4 的对接」。
 - `luci-app-aether-proxy/Makefile` 使用 `luci.mk`，`LUCI_DEPENDS:=+aether-proxy +rpcd-mod-ucode`。
 - 版本号：`PKG_VERSION` 采用 `MAJOR.MINOR.PATCH`，首个版本为 `0.1.0`；`PKG_RELEASE` 从 `1` 开始。apk 要求版本号符合其格式，不要带字母后缀。
