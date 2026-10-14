@@ -1,0 +1,119 @@
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "none"
+  },
+  "inbounds": [
+    {
+      "tag": "tproxy-in",
+      "listen": "0.0.0.0",
+      "port": 31080,
+      "protocol": "tunnel",
+      "settings": {
+        "allowedNetwork": "tcp,udp",
+        "followRedirect": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tproxy": "tproxy"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "routeOnly": false
+      }
+    },
+    {
+      "tag": "dns-in-0",
+      "listen": "127.0.0.1",
+      "port": 31082,
+      "protocol": "tunnel",
+      "settings": {
+        "rewriteAddress": "8.8.8.8",
+        "rewritePort": 53,
+        "allowedNetwork": "tcp"
+      }
+    },
+    {
+      "tag": "dns-in-1",
+      "listen": "127.0.0.1",
+      "port": 31083,
+      "protocol": "tunnel",
+      "settings": {
+        "rewriteAddress": "1.1.1.1",
+        "rewritePort": 53,
+        "allowedNetwork": "tcp"
+      }
+    },
+    {
+      "tag": "http-in",
+      "listen": "127.0.0.1",
+      "port": 31081,
+      "protocol": "http",
+      "settings": {
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vmess",
+      "settings": {
+        "vnext": [
+          {
+            "address": "203.0.113.12",
+            "port": 443,
+            "users": [
+              {
+                "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+                "security": "auto"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "vm.example.com",
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ],
+          "fingerprint": "chrome",
+          "pinnedPeerCertSha256": "aa11,bb22",
+          "verifyPeerCertByName": "vm.example.com"
+        },
+        "wsSettings": {
+          "path": "/vm",
+          "host": "cdn.example.com"
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "tproxy-in",
+          "dns-in-0",
+          "dns-in-1",
+          "http-in"
+        ],
+        "outboundTag": "proxy"
+      }
+    ]
+  }
+}

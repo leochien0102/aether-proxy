@@ -61,3 +61,14 @@ export const DNS_TUNNEL_ADDR = '127.0.0.1';
 export const CHINADNS_CACHE = 4096;
 export const CHINADNS_CACHE_STALE = 3600;
 export const CHINADNS_VERDICT_CACHE = 4096;
+
+// T1.6 (Xray renderer)
+export const PROXY_TAG = 'proxy';
+export const DIRECT_TAG = 'direct';
+export const TPROXY_IN_TAG = 'tproxy-in';
+export const HTTP_IN_TAG = 'http-in';
+export const DNS_IN_TAG_PREFIX = 'dns-in-';
+export const HTTP_LISTEN = '127.0.0.1';
+// Must equal the address chinadns-ng uses as its T1 upstream.
+export const DNS_LISTEN = DNS_TUNNEL_ADDR;
+export const TPROXY_LISTEN = '0.0.0.0';
