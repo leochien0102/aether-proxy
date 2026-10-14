@@ -45,6 +45,7 @@
     ],
     "data_auto": true,
     "data_hour": 4,
+    "data_minute": null,
     "xray_auto": "notify",
     "chinadns_auto": "notify"
   },

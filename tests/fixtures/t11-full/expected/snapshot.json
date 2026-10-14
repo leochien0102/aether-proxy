@@ -46,6 +46,7 @@
     ],
     "data_auto": false,
     "data_hour": 23,
+    "data_minute": 17,
     "xray_auto": "auto",
     "chinadns_auto": "off"
   },

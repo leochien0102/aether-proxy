@@ -33,6 +33,7 @@ config update 'update'
 	list channel_urls 'https://mirror.example.net/manifest.json'
 	option data_auto '0'
 	option data_hour '23'
+	option data_minute '17'
 	option xray_auto 'auto'
 	option chinadns_auto 'off'
 

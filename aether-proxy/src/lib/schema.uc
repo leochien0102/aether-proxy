@@ -125,6 +125,8 @@ const update = [
 	{ name: 'channel_urls', type: 'list', item: 'url', default: [] },
 	{ name: 'data_auto', type: 'bool', default: true },
 	{ name: 'data_hour', type: 'int', min: 0, max: 23, default: 4 },
+	// Randomized by uci-defaults at install time; consumers treat null as 30 (docs/05).
+	{ name: 'data_minute', type: 'int', min: 0, max: 59, default: null },
 	{ name: 'xray_auto', type: 'enum', enum: [ 'off', 'notify', 'auto' ], default: 'notify' },
 	{ name: 'chinadns_auto', type: 'enum', enum: [ 'off', 'notify' ], default: 'notify' }
 ];
