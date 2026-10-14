@@ -42,3 +42,9 @@ export const RUN_DIR = '/var/run/aether-proxy';
 export const DOWNLOAD_DIR = '/tmp/aether-proxy-dl';
 export const UPLOAD_DIR = '/tmp/aether-proxy-upload';
 export const TMP_DIR = '/tmp';
+
+// Rule data and custom list file names (docs/05 "文件", docs/08 "数据格式"), keyed by the
+// name used in the render context's `data`.
+export const DATA_IP_FILES = { chnroute4: 'chnroute4.txt', gfw_static4: 'gfw_static4.txt' };
+export const CUSTOM_IP_FILES = { direct_ip4: 'direct_ip.txt', proxy_ip4: 'proxy_ip.txt' };
+export const CUSTOM_DOMAIN_FILES = { direct_domain: 'direct_domain.txt', proxy_domain: 'proxy_domain.txt' };

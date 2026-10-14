@@ -60,3 +60,17 @@ export function ip_key(s) {
 	return replace(s, /\/32$/, '');
 };
 
+// Splits a string accepted by ip_or_cidr() into { addr, len } where addr is the network
+// address as an integer; a bare address has len 32. Returns null when invalid.
+export function cidr_parts(s) {
+	if (ip_or_cidr(s) == null)
+		return null;
+
+	let p = split(s, '/');
+	let o = map(split(p[0], '.'), x => +x);
+
+	return {
+		addr: (o[0] << 24) | (o[1] << 16) | (o[2] << 8) | o[3],
+		len: length(p) == 2 ? +p[1] : 32
+	};
+};
