@@ -130,6 +130,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 ## 动态集合的导出与恢复
 
 - 导出：`nft -j list set inet aetherproxy <set>`，把元素写入 `/var/run/aether-proxy/sets.save`（tmpfs，整机重启会丢失）。
+  文件格式：`{ "gfw4": ["1.2.3.4", …], "udirect4": […], "uproxy4": […] }`，元素为裸 IPv4 字符串（不带超时等属性），即渲染上下文 `ctx.runtime.restored` 的格式。
 - 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去；加载完成后删除该文件。
 - 只有 stop、reload（整表替换）、failsafe 恢复这三处会导出。
 
