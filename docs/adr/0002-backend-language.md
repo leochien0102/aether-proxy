@@ -11,7 +11,7 @@
 | JSON 生成与解析 | Xray 配置、state、事件、清单、作业 |
 | 读写 UCI | 全部 |
 | Base64、URL 解码 | 订阅 |
-| SHA-256 | 身份匹配键（可以调用 `sha256sum`） |
+| SHA-256 | 发布通道的文件校验（调用 busybox `sha256sum`）；身份匹配键不再哈希 |
 | 不依赖 DNS、可计时的 TCP connect | 节点检测、开机等待 |
 | 子进程监督（拉起、退避重启、转发 stdout） | daemon |
 | 信号与定时器 | daemon |

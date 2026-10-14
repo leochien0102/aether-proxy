@@ -7,10 +7,9 @@ D1 已定为 ucode（[ADR-0002](adr/0002-backend-language.md)）。本文规定�
 
 - 最低 ucode 版本：OpenWrt 24.10 自带的 `2025.07.18`（`3f64c808`）。不准使用这之后才出现的函数。
   拿不准时到该提交的源码 `lib/<模块>.c` 中查函数表。
-- 允许使用的模块：`fs`、`uci`、`uloop`、`socket`、`digest`、`log`、`resolv`、`struct`、`math`，以及 ucode 内置函数。
+- 允许使用的模块：`fs`、`uci`、`uloop`、`socket`、`log`、`struct`、`math`，以及 ucode 内置函数（不再使用 `digest`、`resolv`，见 [01](01-architecture.md)「包拆分」）。
   需要其他模块时先改本文档。
-- 包依赖与此一致：`ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-uloop`、`ucode-mod-socket`、`ucode-mod-digest`、
-  `ucode-mod-log`、`ucode-mod-resolv`（这些在 24.10.8 / 25.12.5 的 base feed 中均存在）。
+- 包依赖与此一致：`ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-uloop`、`ucode-mod-socket`、`ucode-mod-log`。
 
 ## 目录布局
 

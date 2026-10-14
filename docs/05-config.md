@@ -84,7 +84,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `header_type` | 字符串 | raw 的 `http` 伪装（首版只透传 `none`/`http`） |
 | `security` | enum(`none`\|`tls`\|`reality`) | |
 | `sni` / `alpn`(list) / `fingerprint` | 字符串 | tls / reality |
-| `pinned_cert_sha256` | 字符串 | tls：证书 SHA-256 指纹固定（逗号分隔，可多个），原样渲染为 `pinnedPeerCertSha256`（Xray 自己按逗号拆分，已核实 v26.9.30 源码）。首版不校验十六进制格式，格式错误由 `xray run -test` 报出 |
+| `pinned_cert_sha256` | 字符串 | tls：证书 SHA-256 指纹固定（逗号分隔，可多个），原样渲染为 `pinnedPeerCertSha256`（Xray 自己按逗号拆分，已核实 v26.9.30 源码）。格式按校验规则 7 检查 |
 | `verify_name` | 字符串 | tls：按指定名称校验证书，渲染为 `verifyPeerCertByName` |
 | `reality_pbk` / `reality_sid` / `reality_spx` | 字符串 | reality |
 

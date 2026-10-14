@@ -65,7 +65,7 @@
 
 节点 ID = UCI 段名 `n_<32位十六进制>`，首次落地时生成，之后不变。LuCI、日志、引用一律使用节点 ID，不用名称或序号。
 
-匹配键（存在 `match_strong` / `match_weak` 字段中，值为下列字符串的 SHA-256 十六进制）：
+匹配键（存在 `match_strong` / `match_weak` 字段中，**直接存下列拼接字符串本身，不做哈希**——凭据本来就在同一个配置文件里，哈希不带来保密性，还会引入 `ucode-mod-digest` 依赖；2026-10-15 决定）：
 
 ```
 tdisc  = path + "|" + host + "|" + service_name
