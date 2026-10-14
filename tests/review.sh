@@ -122,6 +122,11 @@ fi
 if [ -n "$(git status --porcelain)" ]; then
 	warn "working tree not clean (uncommitted changes are not reviewed)"
 fi
+main_wt=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+if [ "$main_wt" != "$(pwd)" ] && [ -n "$(git -C "$main_wt" status --porcelain)" ]; then
+	fail "main checkout $main_wt has uncommitted changes (task work must stay in its own worktree)"
+	git -C "$main_wt" status --porcelain | head -5 | sed 's/^/      /'
+fi
 
 echo "== $fails FAIL, $warns WARN"
 [ $fails -eq 0 ]

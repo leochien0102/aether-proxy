@@ -19,35 +19,36 @@ M2 及以后的任务卡在前一个里程碑完成、探针结论写回设计�
 
 ### 1. 开工
 
-在 WSL 中为每张卡建一个独立的 worktree 和分支（不要在主检出上直接改）：
+worktree 由脚本创建，执行者在开工提示里第一步就运行它（在 WSL 中，任何目录下都可以）：
 
 ```bash
-cd /workspace/openwrt/aether-proxy
-git switch main && git pull --ff-only
-git worktree add ../aether-proxy-wt/<卡号> -b <分支名>
-cd ../aether-proxy-wt/<卡号>
-bash tests/host/bootstrap.sh          # 新 worktree 需要先编译宿主机 ucode（约 20 秒）
-bash tests/review.sh                  # 基线：此时应只有「缺少 report」一项 FAIL
+bash /workspace/openwrt/aether-proxy/tests/start-task.sh <卡号>
 ```
 
-分支名见任务卡；任务卡没写时用 `m<里程碑>/<简短描述>`。
+脚本会：从任务卡的「**分支**」一行读出分支名（任务卡没写时作为第二个参数传入）；基于本地 `main` 在
+`/workspace/openwrt/aether-proxy-wt/<卡号>` 建 worktree（已存在就复用）；编译宿主机 ucode；跑一次基线检查（此时缺少报告的 FAIL 是正常的）；
+最后打印工作目录。主检出有未提交的改动时拒绝创建。
 
 ### 2. 交给 agent 的开工提示
 
-把下面这段原样交给 agent，替换 `<卡号>`：
+OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luci-extras 等别的仓库）。把下面这段原样交给 agent，替换 `<卡号>`：
 
 ```
-你在 /workspace/openwrt/aether-proxy-wt/<卡号> 这个 git worktree 中工作（aether-proxy 仓库，OpenWrt 透明代理应用，后端 ucode）。
-任务：完成任务卡 <卡号>（在 docs/tasks/ 下）。
+任务：完成 aether-proxy 仓库的任务卡 <卡号>（OpenWrt 透明代理应用，后端 ucode）。
 
-开工前完整阅读：
+第一步：运行 bash /workspace/openwrt/aether-proxy/tests/start-task.sh <卡号>
+它会建好专用的 git worktree 并打印工作目录。之后所有读写、命令都只在那个目录里进行；
+不要修改 /workspace/openwrt/aether-proxy（主检出）以及 /workspace/openwrt 下的任何其他仓库。
+
+开工前在该目录中完整阅读：
 1. docs/tasks/README.md 的「执行约定」——包括禁止事项、完成标准、报告格式
 2. docs/README.md「给实现者的规则」
 3. docs/12-ucode.md 全文（硬性规范，尤其「ucode 2025.07.18 的语法限制」）
-4. 任务卡本身及其「必读」列出的章节
+4. 任务卡本身（docs/tasks/ 下）及其「必读」列出的章节
 
 只做任务卡范围内的事。设计文档没覆盖的情况不要自行决定：按最保守的方式实现，在代码中标注 TODO(design)，并写进报告。
-完成后运行 bash tests/review.sh，FAIL 必须为 0，然后按约定写 reports/<卡号>.md 并提交。不要 git push。
+完成后在工作目录中运行 CI_TOOLS_DIR=/workspace/openwrt/ci-spike/tools bash tests/review.sh，FAIL 必须为 0；
+然后按约定写 reports/<卡号>.md 并提交到本卡分支。不要 git push，提交信息不要带任何 AI 署名尾注。
 ```
 
 ### 3. 禁止事项
