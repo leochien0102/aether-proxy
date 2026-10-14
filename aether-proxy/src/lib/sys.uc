@@ -144,8 +144,38 @@ function write_atomic(path, content) {
 	return true;
 }
 
+// mkdir -p. Returns true, or null on failure (reason in error()).
+function mkdir_p(path) {
+	let cur = substr(path, 0, 1) == '/' ? '' : '.';
+
+	for (let part in split(path, '/')) {
+		if (part == '')
+			continue;
+
+		cur += '/' + part;
+
+		let st = fs.stat(cur);
+
+		if (st != null) {
+			if (st.type == 'directory')
+				continue;
+
+			last_error = `${cur} exists and is not a directory`;
+			return null;
+		}
+
+		if (!fs.mkdir(cur)) {
+			last_error = `mkdir ${cur}: ${fs_err()}`;
+			return null;
+		}
+	}
+
+	last_error = null;
+	return true;
+}
+
 function error() {
 	return last_error;
 }
 
-export { q, run, write_atomic, error };
+export { q, run, write_atomic, mkdir_p, error };
