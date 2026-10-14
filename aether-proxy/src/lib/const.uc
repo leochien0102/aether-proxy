@@ -48,3 +48,16 @@ export const TMP_DIR = '/tmp';
 export const DATA_IP_FILES = { chnroute4: 'chnroute4.txt', gfw_static4: 'gfw_static4.txt' };
 export const CUSTOM_IP_FILES = { direct_ip4: 'direct_ip.txt', proxy_ip4: 'proxy_ip.txt' };
 export const CUSTOM_DOMAIN_FILES = { direct_domain: 'direct_domain.txt', proxy_domain: 'proxy_domain.txt' };
+
+// T1.4 (chinadns-ng renderer): nft set names that chinadns-ng writes resolved IPs into
+// (docs/03-dns.md). Prefixed so they cannot collide with the T1.3 nft renderer's block.
+export const CHINADNS_SET_CHNROUTE4 = 'chnroute4';
+export const CHINADNS_SET_GFW4 = 'gfw4';
+export const CHINADNS_SET_UPROXY4 = 'uproxy4';
+export const CHINADNS_SET_UDIRECT4 = 'udirect4';
+// Loopback address of the Xray DNS tunnel inbounds (the T1 upstreams).
+export const DNS_TUNNEL_ADDR = '127.0.0.1';
+// chinadns-ng cache sizing (docs/03-dns.md template)
+export const CHINADNS_CACHE = 4096;
+export const CHINADNS_CACHE_STALE = 3600;
+export const CHINADNS_VERDICT_CACHE = 4096;

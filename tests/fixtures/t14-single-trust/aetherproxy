@@ -1,0 +1,13 @@
+config main 'main'
+	option enabled '1'
+	option mode 'bypass_cn'
+	option node 'n_00000000000000000000000000000001'
+
+config dns 'dns'
+	list trust_dns '9.9.9.9'
+
+config node 'n_00000000000000000000000000000001'
+	option protocol 'trojan'
+	option address 'node.example.com'
+	option port '443'
+	option password 'secret'
