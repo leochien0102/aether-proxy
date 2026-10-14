@@ -35,6 +35,17 @@ init.d / hotplug / daemon ──────────────────
 | `events [--since ts] [--level l]` | 读取结构化事件 | 否 |
 | `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取 logd 中的相关行 | 否 |
 
+### 仅供测试的选项
+
+`check` 与 `render` 接受下列选项，用于在宿主机上脱离真实系统运行测试。rpcd 插件**不准**传递这些选项：
+
+| 选项 | 作用 |
+|---|---|
+| `--confdir <目录>` | UCI 配置目录（默认 `/etc/config`），其中的文件名为 `aetherproxy` |
+| `--data-dir <目录>` / `--baseline-dir <目录>` / `--custom-dir <目录>` | 覆盖规则数据、包内基线、自定义列表目录 |
+| `--run-dir <目录>` | 覆盖 `/var/run/aether-proxy`（staging 与 `boot.txt` 所在位置） |
+| `--no-precheck` | 跳过前置检查与外部工具校验（`nft -c`、`xray run -test`），只做配置校验与渲染 |
+
 ## 作业机制
 
 LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
