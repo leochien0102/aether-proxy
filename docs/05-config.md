@@ -144,6 +144,13 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）。
 6. 节点字段按协议检查必填项：vless/vmess 需要 `uuid`；trojan/ss 需要 `password`；ss 需要 `method` 在 Xray 支持列表内；
    `reality` 需要 `reality_pbk` 和 `sni`。
+7. 节点取值必须是 Xray v26.9.30 启动时能接受的（2026-10-14 用真实 Xray 校验夹具时发现，规则对照 `infra/conf/xray.go`、`transport_security.go`）：
+   - `reality_pbk`：无填充 base64url 编码的 32 字节（恰好 43 个字符 `[A-Za-z0-9_-]`），否则 `invalid_reality_key`
+   - `reality_sid`：十六进制、长度为偶数且不超过 16，否则 `invalid_short_id`
+   - `pinned_cert_sha256`：逗号分隔的每一项去掉冒号后是 64 位十六进制，否则 `invalid_cert_hash`
+   - **明文禁令**：`trojan`，以及 `encryption` 为空或 `none` 的 `vless`，当 `security=none` 时，`address` 必须是私有 IPv4
+     （`10/8`、`100.64/10`、`127/8`、`169.254/16`、`172.16/12`、`192.168/16`），否则 `insecure_transport`。
+     Xray 对私有**域名**也放行，但它的私有域名表在 geodata 中，这里一律按公网处理（保守）。
 
 ## 默认配置文件（随包安装）
 

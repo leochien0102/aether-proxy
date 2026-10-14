@@ -19,7 +19,8 @@
 5. 新的节点数少于旧节点数的 50%（且旧节点数 ≥ 4）→ 照常应用，同时记 WARN `SUB_SHRANK`。
 
 跳过原因（固定枚举，LuCI 中翻译）：`unsupported_scheme`、`unsupported_transport`、`unsupported_security`、
-`ss_plugin`、`vmess_alterid`、`ipv6_address`、`malformed`、`missing_field`、`duplicate`（同一次订阅内 strong 键重复，保留第一条）。
+`ss_plugin`、`vmess_alterid`、`ipv6_address`、`malformed`、`missing_field`、`duplicate`（同一次订阅内 strong 键重复，保留第一条）、
+`insecure_transport`、`invalid_value`（节点取值违反 [05](05-config.md) 校验规则 7，即 Xray 会拒绝启动的节点）。
 
 ### URI 格式
 
