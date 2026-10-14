@@ -1,0 +1,20 @@
+config global 'main'
+	option enabled '0'
+	option mode 'bypass_cn'
+	list lan_ifaces 'br-lan'
+	option unlisted_policy 'follow'
+
+config dns 'dns'
+	list china_dns '223.5.5.5'
+	list china_dns '119.29.29.29'
+	list trust_dns '8.8.8.8'
+	list trust_dns '1.1.1.1'
+	list direct_dns 'tcp://8.8.8.8'
+	list direct_dns 'tcp://1.1.1.1'
+
+config update 'update'
+	option data_auto '1'
+	option xray_auto 'notify'
+	option chinadns_auto 'notify'
+
+config probe 'probe'

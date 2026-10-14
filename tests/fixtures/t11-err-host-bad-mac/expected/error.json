@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "host[0].mac",
+      "code": "invalid_mac",
+      "detail": "item 0: \"aa:bb:cc:dd:ee\" is not valid"
+    }
+  ]
+}

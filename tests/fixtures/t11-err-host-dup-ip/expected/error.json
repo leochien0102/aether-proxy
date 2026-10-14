@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "host[1].ip",
+      "code": "duplicate",
+      "detail": "192.168.1.5/32 also in host[0]"
+    }
+  ]
+}

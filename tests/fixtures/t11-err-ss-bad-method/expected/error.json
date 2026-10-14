@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.method",
+      "code": "unsupported_method",
+      "detail": "\"rc4-md5\" is not a supported shadowsocks method"
+    }
+  ]
+}

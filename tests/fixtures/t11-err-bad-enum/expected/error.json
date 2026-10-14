@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "main.mode",
+      "code": "invalid_enum",
+      "detail": "\"turbo\" is not one of gfw|bypass_cn|global"
+    }
+  ]
+}

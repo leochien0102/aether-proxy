@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "main.node",
+      "code": "required",
+      "detail": "node must be set when enabled=1"
+    }
+  ]
+}

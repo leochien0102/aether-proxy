@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.reality_pbk",
+      "code": "required",
+      "detail": "reality_pbk is required when security=reality"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "host[1].mac",
+      "code": "duplicate",
+      "detail": "aa:bb:cc:dd:ee:ff also in host[0]"
+    }
+  ]
+}

@@ -10,7 +10,10 @@
 //                   tests/fixtures/<case>/context.json       optional render context
 //                                                            ({data, runtime, paths})
 //                   tests/fixtures/<case>/expected/<file>    expected render output
+//                   tests/fixtures/<case>/expected/snapshot.json  the normalized config snapshot
+//                                                            (%.2J of config.load().snapshot)
 //                   tests/fixtures/<case>/expected/error.json  expect validation failure
+//                   A fixture whose expected/ holds only snapshot.json runs no renderers.
 // Unit tests:       tests/unit/*.uc, each exporting `cases` (array) and run(case).
 //                   A case passes when run(case) deep-equals case.expect.
 //
@@ -300,7 +303,24 @@ function run_fixture(name) {
 		return;
 	}
 
+	let has_snapshot = fs.stat(dir + '/expected/snapshot.json') != null;
+	if (has_snapshot) {
+		if (!module_exists('aetherproxy.config'))
+			report('skip', name + '/snapshot.json', 'missing module aetherproxy.config');
+		else
+			compare_output(name, 'snapshot.json', sprintf('%.2J', res.snapshot) + '\n', dir);
+	}
+
+	// A snapshot-only fixture (no renderer output expected) does not exercise the renderers.
+	let wants_render = !has_snapshot;
+	for (let art in ARTIFACTS)
+		if (fs.stat(dir + '/expected/' + art.file) != null)
+			wants_render = true;
+
 	for (let art in ARTIFACTS) {
+		if (!wants_render)
+			break;
+
 		let render;
 		if (art.builtin) {
 			// Harness-only renderer: only for fixtures that opt in with the file.

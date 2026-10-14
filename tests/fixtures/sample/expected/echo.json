@@ -1,4 +1,24 @@
 {
-  "enabled": "1",
-  "mode": "gfw"
+  "enabled": true,
+  "mode": "gfw",
+  "node": "n_00000000000000000000000000000001",
+  "lan_ifaces": [
+    "br-lan"
+  ],
+  "unlisted_policy": "follow",
+  "quic_block": true,
+  "dns_hijack": true,
+  "ipv6_filter": true,
+  "filter_https_rr": true,
+  "fail_open": true,
+  "sniffing": true,
+  "log_level": "notice",
+  "xray_log_level": "warning",
+  "boot_wait_timeout": 120,
+  "boot_check_targets": [
+    "223.5.5.5:53",
+    "119.29.29.29:53"
+  ],
+  "xray_bin": null,
+  "chinadns_bin": null
 }
