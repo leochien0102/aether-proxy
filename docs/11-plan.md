@@ -105,7 +105,7 @@ CI 中额外执行：用真实 Xray 二进制对每个 `expected/xray.json` 执�
 
 | 维度 | 取值 |
 |---|---|
-| 固件 | 自建 lede（luci 25.12）、OpenWrt 24.10、OpenWrt 25.12、ImmortalWrt（当前稳定版） |
+| 固件 | 自建 lede（luci 25.12，opkg/ipk，内核 6.18）、OpenWrt 24.10（ipk）、OpenWrt 25.12（apk）、ImmortalWrt（当前稳定版，按其实际包格式） |
 | 架构 | x86_64、aarch64（如 rk3528）；mipsel 只做安装和渲染冒烟（如果有设备） |
 | 流量卸载 | 关闭、软件卸载、硬件卸载（仅支持的设备） |
 | 共存 | 同时装有 ssr-plus 但未启用；mwan3 已启用 |
