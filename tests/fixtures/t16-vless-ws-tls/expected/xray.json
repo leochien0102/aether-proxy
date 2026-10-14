@@ -64,21 +64,13 @@
       "tag": "proxy",
       "protocol": "vless",
       "settings": {
-        "vnext": [
-          {
-            "address": "ws.example.com",
-            "port": 443,
-            "users": [
-              {
-                "id": "11111111-2222-4333-8444-555555555555",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
+        "address": "ws.example.com",
+        "port": 443,
+        "id": "11111111-2222-4333-8444-555555555555",
+        "encryption": "none"
       },
       "streamSettings": {
-        "network": "ws",
+        "method": "ws",
         "security": "tls",
         "tlsSettings": {
           "serverName": "ws.example.com"
