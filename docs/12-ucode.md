@@ -167,7 +167,19 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 - `luci-app-aether-proxy/Makefile` 使用 `luci.mk`，`LUCI_DEPENDS:=+aether-proxy +rpcd-mod-ucode`。
 - 版本号：`PKG_VERSION` 采用 `MAJOR.MINOR.PATCH`，首个版本为 `0.1.0`；`PKG_RELEASE` 从 `1` 开始。apk 要求版本号符合其格式，不要带字母后缀。
 - 包构建 CI（`.github/workflows/build.yml`）使用 `openwrt/gh-action-sdk`，矩阵为 x86_64 架构的 24.10.8（产出 ipk）和 25.12.5（产出 apk）。
-  SDK 容器标签的确切写法由 M0 的探针任务 S5 确认。
+  以下参数由 S5 确认（[spikes/S5/README.md](../spikes/S5/README.md)）：
+  - `ARCH` 是步骤级环境变量，值就是 `ghcr.io/openwrt/sdk` 的镜像标签：`x86_64-24.10.8`、`x86_64-25.12.5`（必须带版本后缀，只写 `x86_64` 得到的是 master）。
+  - 检出用 `fetch-depth: 0`：`luci-i18n-*` 的版本号由 po 目录的 git 历史算出（形如 `26.287.20981~ba764d5`），不是 `0.1.0-r1`。
+  - 设 `FEEDNAME: aetherproxy` 与设计中的 feed 名一致；产物在 `bin/packages/x86_64/<FEEDNAME>/`，同级的 `base/`、`luci/` 是依赖包，不要上传。
+    `PKGARCH:=all` 的包也在这个目录，没有 `all/` 子目录。
+  - 不设 `PRIVATE_KEY` / `KEY_BUILD` / `INDEX` 也能编：包用 SDK 临时密钥签名，安装需要 `apk add --allow-untrusted`（ipk 用 `opkg install`）。
+    固定签名密钥留给 M7。
+  - 产物：24.10.8 为 `aether-proxy_0.1.0-r1_all.ipk`、`luci-app-aether-proxy_0.1.0-r1_all.ipk`、`luci-i18n-aether-proxy-zh-cn_<po版本>_all.ipk`；
+    25.12.5 为 `aether-proxy-0.1.0-r1.apk`、`luci-app-aether-proxy-0.1.0-r1.apk`、`luci-i18n-aether-proxy-zh-cn-<po版本>.apk`（apk 中架构字段是 `noarch`）。
+  - 包管理器看到的版本是 `0.1.0-r1`（OpenWrt 加了 `r`），而 `const.uc` 中被替换进去的是 `0.1.0-1`；两者格式不同，不要直接比较。
+  - 设了 `PACKAGES` 时，若某包在该架构不可用，Action 只打 `::warning` 并跳过，不会失败；CI 要自行检查三个包都在产物目录中。
+  - 宿主机可用 `staging_dir/host/bin/apk adbdump --allow-untrusted <file>.apk` 查看 apk 元数据。
+  - `conffiles` 中的目录项（`/etc/aether-proxy/custom/`）不会进入产物，实际只有 `/etc/config/aetherproxy`，见 S5 记录。
 
 ## 协作流程
 
