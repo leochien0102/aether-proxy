@@ -1,0 +1,112 @@
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "none"
+  },
+  "inbounds": [
+    {
+      "tag": "tproxy-in",
+      "listen": "0.0.0.0",
+      "port": 31080,
+      "protocol": "tunnel",
+      "settings": {
+        "allowedNetwork": "tcp,udp",
+        "followRedirect": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tproxy": "tproxy"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "routeOnly": false
+      }
+    },
+    {
+      "tag": "dns-in-0",
+      "listen": "127.0.0.1",
+      "port": 31082,
+      "protocol": "tunnel",
+      "settings": {
+        "rewriteAddress": "8.8.8.8",
+        "rewritePort": 53,
+        "allowedNetwork": "tcp"
+      }
+    },
+    {
+      "tag": "dns-in-1",
+      "listen": "127.0.0.1",
+      "port": 31083,
+      "protocol": "tunnel",
+      "settings": {
+        "rewriteAddress": "1.1.1.1",
+        "rewritePort": 53,
+        "allowedNetwork": "tcp"
+      }
+    },
+    {
+      "tag": "http-in",
+      "listen": "127.0.0.1",
+      "port": 31081,
+      "protocol": "http",
+      "settings": {
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [
+          {
+            "address": "ws.example.com",
+            "port": 443,
+            "users": [
+              {
+                "id": "11111111-2222-4333-8444-555555555555",
+                "encryption": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "ws.example.com"
+        },
+        "wsSettings": {
+          "path": "/ws",
+          "host": "ws.example.com"
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "tproxy-in",
+          "dns-in-0",
+          "dns-in-1",
+          "http-in"
+        ],
+        "outboundTag": "proxy"
+      }
+    ]
+  }
+}
