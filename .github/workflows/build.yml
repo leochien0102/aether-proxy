@@ -1,0 +1,64 @@
+name: build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: 24.10.8
+            arch: x86_64-24.10.8
+            package_ext: ipk
+          - sdk: 25.12.5
+            arch: x86_64-25.12.5
+            package_ext: apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build OpenWrt packages
+        uses: openwrt/gh-action-sdk@v11
+        env:
+          ARCH: ${{ matrix.arch }}
+          FEEDNAME: aetherproxy
+          PACKAGES: aether-proxy luci-app-aether-proxy
+
+      - name: Verify package artifacts
+        env:
+          PACKAGE_EXT: ${{ matrix.package_ext }}
+        run: |
+          set -eu
+          package_dir="bin/packages/x86_64/aetherproxy"
+          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
+            if [ "$PACKAGE_EXT" = ipk ]; then
+              pattern="$package"_*.ipk
+            else
+              pattern="$package"-*.apk
+            fi
+            found=false
+            for artifact in "$package_dir"/$pattern; do
+              if [ -f "$artifact" ]; then
+                found=true
+                break
+              fi
+            done
+            if [ "$found" != true ]; then
+              echo "::error::Missing $package (*.$PACKAGE_EXT) in $package_dir"
+              exit 1
+            fi
+          done
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.sdk }}
+          path: bin/packages/x86_64/aetherproxy/*
+          if-no-files-found: error
