@@ -5,6 +5,7 @@ config main 'main'
 
 config node 'n_00000000000000000000000000000001'
 	option protocol 'trojan'
+	option security 'tls'
 	option address 'node.example.com'
 	option port '443'
 	option password 'secret'

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.reality_pbk",
+      "code": "invalid_reality_key",
+      "detail": "must be a 32-byte key in unpadded base64url (43 characters)"
+    }
+  ]
+}

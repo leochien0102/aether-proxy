@@ -7,7 +7,7 @@ import { normalize } from 'aetherproxy.config';
 const NODE = 'n_11111111111111111111111111111111';
 
 function vless(extra) {
-	let n = { protocol: 'vless', address: 'a.example.com', port: '443', uuid: 'u' };
+	let n = { protocol: 'vless', address: 'a.example.com', port: '443', uuid: 'u', security: 'tls' };
 
 	for (let k, v in extra)
 		n[k] = v;
@@ -25,11 +25,11 @@ export const cases = [
 	{ name: 'nested CIDRs allowed', raw: { hosts: [ { ip: '192.168.1.0/24' }, { ip: '192.168.1.10' } ] }, expect: [] },
 	{ name: 'bad upstream', raw: { dns: { direct_dns: 'https://8.8.8.8' } }, expect: [ 'dns.direct_dns:invalid_upstream' ] },
 	{ name: 'bad boot target', raw: { main: { boot_check_targets: '1.1.1.1' } }, expect: [ 'main.boot_check_targets:invalid_hostport' ] },
-	{ name: 'bad node name', raw: { nodes: { n_x: { protocol: 'trojan', address: 'a.b', port: '1', password: 'p' } } },
+	{ name: 'bad node name', raw: { nodes: { n_x: { protocol: 'trojan', security: 'tls', address: 'a.b', port: '1', password: 'p' } } },
 	  expect: [ 'node.n_x:invalid_name' ] },
 	{ name: 'node port 0', raw: vless({ port: '0' }), expect: [ 'node.' + NODE + '.port:out_of_range' ] },
 	{ name: 'numeric address must be IPv4', raw: vless({ address: '1.2.3' }), expect: [ 'node.' + NODE + '.address:invalid_address' ] },
-	{ name: 'trojan needs password', raw: { nodes: { [NODE]: { protocol: 'trojan', address: 'a.b', port: '1' } } },
+	{ name: 'trojan needs password', raw: { nodes: { [NODE]: { protocol: 'trojan', security: 'tls', address: 'a.b', port: '1' } } },
 	  expect: [ 'node.' + NODE + '.password:required' ] },
 	{ name: 'reality needs sni and pbk', raw: vless({ security: 'reality' }),
 	  expect: [ 'node.' + NODE + '.sni:required', 'node.' + NODE + '.reality_pbk:required' ] },

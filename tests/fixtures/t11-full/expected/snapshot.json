@@ -142,9 +142,9 @@
         "http/1.1"
       ],
       "fingerprint": "chrome",
-      "pinned_cert_sha256": "ff00",
+      "pinned_cert_sha256": "38d7d3dca8dc94f667f870541e98be33b4e1319f7ccc2419f1515774c271916e",
       "verify_name": "v.example.com",
-      "reality_pbk": "PUBKEY",
+      "reality_pbk": "bEj5Ey_FUC3BG3l94gfyMc3wL-PY3FEbceSbeXgZDoM",
       "reality_sid": "abcd",
       "reality_spx": "/spx"
     },
@@ -173,7 +173,7 @@
       "alpn": [
       ],
       "fingerprint": null,
-      "pinned_cert_sha256": "aa11,bb22",
+      "pinned_cert_sha256": "30c07ed862900574d87fde20ff227737a5379845a4df0316c443baed1ec8ddc6,0B:BD:9E:4A:66:58:51:AE:F7:FB:5D:73:C7:EC:AE:DC:F8:36:C8:E7:45:F0:79:79:F2:22:C5:BF:73:BA:FA:62",
       "verify_name": "ss.example.com",
       "reality_pbk": null,
       "reality_sid": null,
@@ -230,7 +230,7 @@
       "service_name": null,
       "xhttp_mode": "packet-up",
       "header_type": null,
-      "security": "none",
+      "security": "tls",
       "sni": null,
       "alpn": [
       ],

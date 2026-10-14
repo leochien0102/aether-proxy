@@ -7,7 +7,7 @@
 // (docs/12 rule 1) and takes those plain objects, so it can be tested without UCI.
 
 import * as C from 'aetherproxy.const';
-import { ipv4, ip_or_cidr, domain, ip_key } from 'aetherproxy.net';
+import { ipv4, ip_or_cidr, domain, ip_key, private_ipv4 } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
 // ------------------------------------------------------------------ syntax validators
@@ -289,6 +289,34 @@ function check_node(n, at, errors) {
 	if (n.protocol == 'shadowsocks' && n.method != null && index(SS_METHODS, n.method) < 0)
 		push(errors, { field: at + '.method', code: 'unsupported_method',
 			detail: `"${n.method}" is not a supported shadowsocks method` });
+
+	// The format rules below mirror what Xray v26.9.30 rejects at startup (docs/05 rule 6).
+	if (n.reality_pbk != null && !match(n.reality_pbk, /^[A-Za-z0-9_-]{43}$/))
+		push(errors, { field: at + '.reality_pbk', code: 'invalid_reality_key',
+			detail: 'must be a 32-byte key in unpadded base64url (43 characters)' });
+
+	if (n.reality_sid != null && !match(n.reality_sid, /^([0-9a-fA-F][0-9a-fA-F]){0,8}$/))
+		push(errors, { field: at + '.reality_sid', code: 'invalid_short_id',
+			detail: 'must be hex with an even length of at most 16 characters' });
+
+	if (n.pinned_cert_sha256 != null) {
+		for (let v in split(n.pinned_cert_sha256, ',')) {
+			v = trim(v);
+
+			if (v != '' && !match(replace(v, /:/g, ''), /^[0-9a-fA-F]{64}$/)) {
+				push(errors, { field: at + '.pinned_cert_sha256', code: 'invalid_cert_hash',
+					detail: `"${v}" is not a SHA-256 hex digest` });
+				break;
+			}
+		}
+	}
+
+	let plaintext = (n.protocol == 'vless' && (n.encryption == null || n.encryption == 'none'))
+		|| n.protocol == 'trojan';
+
+	if (plaintext && n.security == 'none' && !private_ipv4(n.address))
+		push(errors, { field: at + '.security', code: 'insecure_transport',
+			detail: `${n.protocol} without TLS/REALITY is only allowed to a private IPv4 address` });
 }
 
 function check_main(snap, errors, warnings) {
