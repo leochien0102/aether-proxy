@@ -1,0 +1,3 @@
+# Kept across sysupgrade in addition to conffiles (docs/12 "打包").
+/etc/aether-proxy/custom/
+/etc/aether-proxy/state/

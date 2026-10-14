@@ -27,7 +27,6 @@ endef
 
 define Package/aether-proxy/conffiles
 /etc/config/aetherproxy
-/etc/aether-proxy/custom/
 endef
 
 define Build/Prepare
@@ -45,7 +44,7 @@ define Package/aether-proxy/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aether-proxy $(1)/usr/bin/aether-proxy
 	$(INSTALL_DIR) $(1)/usr/share/ucode/aetherproxy
 	$(CP) $(PKG_BUILD_DIR)/lib/. $(1)/usr/share/ucode/aetherproxy/
-	sed -i 's|@@VERSION@@|$(PKG_VERSION)-$(PKG_RELEASE)|' $(1)/usr/share/ucode/aetherproxy/const.uc
+	sed -i 's|@@VERSION@@|$(PKG_VERSION)-r$(PKG_RELEASE)|' $(1)/usr/share/ucode/aetherproxy/const.uc
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/aether-proxy.config $(1)/etc/config/aetherproxy
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/custom
@@ -53,6 +52,9 @@ define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input
 	$(INSTALL_DATA) ./files/30-aether-proxy.nft $(1)/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft
+	# conffiles cannot list directories; keep.d entries may (sysupgrade runs find on them).
+	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
+	$(INSTALL_DATA) ./files/aether-proxy.keep $(1)/lib/upgrade/keep.d/aether-proxy-data
 endef
 
 define Package/aether-proxy/postinst
