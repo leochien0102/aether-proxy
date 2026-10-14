@@ -22,7 +22,7 @@ function origin_domain(node) {
 
 function stream_settings(node) {
 	let net = node.transport ?? 'raw';
-	let ss = { network: net };
+	let ss = { method: net };
 	let domain = origin_domain(node);
 
 	switch (node.security) {
@@ -82,22 +82,29 @@ export function build_outbound(node, node_ip) {
 
 	switch (node.protocol) {
 	case 'vless': {
-		let user = { id: node.uuid, encryption: node.encryption ?? 'none' };
-		put(user, 'flow', node.flow);
-		settings.vnext = [ { address: addr, port: node.port, users: [ user ] } ];
+		settings.address = addr;
+		settings.port = node.port;
+		settings.id = node.uuid;
+		settings.encryption = node.encryption ?? 'none';
+		put(settings, 'flow', node.flow);
 		break;
 	}
 	case 'vmess':
-		settings.vnext = [ {
-			address: addr, port: node.port,
-			users: [ { id: node.uuid, security: node.method ?? 'auto' } ]
-		} ];
+		settings.address = addr;
+		settings.port = node.port;
+		settings.id = node.uuid;
+		settings.security = node.method ?? 'auto';
 		break;
 	case 'trojan':
-		settings.servers = [ { address: addr, port: node.port, password: node.password } ];
+		settings.address = addr;
+		settings.port = node.port;
+		settings.password = node.password;
 		break;
 	case 'shadowsocks':
-		settings.servers = [ { address: addr, port: node.port, method: node.method, password: node.password } ];
+		settings.address = addr;
+		settings.port = node.port;
+		settings.method = node.method;
+		settings.password = node.password;
 		break;
 	}
 

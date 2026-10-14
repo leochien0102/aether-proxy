@@ -64,21 +64,13 @@
       "tag": "proxy",
       "protocol": "vmess",
       "settings": {
-        "vnext": [
-          {
-            "address": "198.51.100.20",
-            "port": 10086,
-            "users": [
-              {
-                "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
-                "security": "aes-128-gcm"
-              }
-            ]
-          }
-        ]
+        "address": "198.51.100.20",
+        "port": 10086,
+        "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+        "security": "aes-128-gcm"
       },
       "streamSettings": {
-        "network": "raw",
+        "method": "raw",
         "rawSettings": {
           "header": {
             "type": "http"

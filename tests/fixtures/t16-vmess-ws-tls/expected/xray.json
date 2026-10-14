@@ -64,21 +64,13 @@
       "tag": "proxy",
       "protocol": "vmess",
       "settings": {
-        "vnext": [
-          {
-            "address": "203.0.113.12",
-            "port": 443,
-            "users": [
-              {
-                "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
-                "security": "auto"
-              }
-            ]
-          }
-        ]
+        "address": "203.0.113.12",
+        "port": 443,
+        "id": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+        "security": "auto"
       },
       "streamSettings": {
-        "network": "ws",
+        "method": "ws",
         "security": "tls",
         "tlsSettings": {
           "serverName": "vm.example.com",
