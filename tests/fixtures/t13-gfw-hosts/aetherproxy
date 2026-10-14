@@ -1,0 +1,61 @@
+config global 'main'
+	option enabled '1'
+	option mode 'gfw'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option unlisted_policy 'direct'
+	option quic_block '1'
+	option dns_hijack '1'
+	list lan_ifaces 'br-lan'
+	list lan_ifaces 'br-guest'
+config dns 'dns'
+
+config update 'update'
+
+config probe 'probe'
+
+config host
+	option name 'nas'
+	list ip '192.168.1.20'
+	list ip '192.168.1.0/28'
+	list mac 'AA:BB:CC:DD:EE:02'
+	option policy 'direct'
+
+config host
+	option name 'pc'
+	list ip '192.168.1.100/32'
+	list ip '192.168.1.9'
+	option policy 'proxy'
+
+config host
+	option name 'console'
+	list ip '192.168.1.50'
+	list mac 'aa:bb:cc:dd:ee:10'
+	option policy 'proxy'
+	option udp '1'
+
+config host
+	option name 'laptop'
+	list ip '192.168.2.0/24'
+	list mac 'aa:bb:cc:dd:ee:01'
+	option policy 'follow'
+
+config host
+	option name 'tv'
+	list mac 'aa:bb:cc:dd:ee:20'
+	option policy 'follow'
+	option udp '1'
+
+config host
+	option enabled '0'
+	option name 'off'
+	list ip '192.168.1.200'
+	list mac 'aa:bb:cc:dd:ee:99'
+	option policy 'proxy'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'shadowsocks'
+	option address '203.0.113.7'
+	option port '8388'
+	option password 'pw'
+	option method 'aes-256-gcm'
+
