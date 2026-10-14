@@ -51,6 +51,13 @@ import * as nft from 'aetherproxy.render.nft';
 入口 `/usr/bin/aether-proxy` 第一行为 `#!/usr/bin/ucode -S`（`-S` 为严格模式，未声明的变量直接报错）。
 所有 `.uc` 文件第一行写 `'use strict';`。
 
+### ucode 2025.07.18 的语法限制（2026-10-14 实测）
+
+1. **`export function` 后面必须加分号**：写成 `export function f() { … };`，否则整个模块编译失败（`Syntax error: Unexpected token`）。
+2. **函数声明不会提升**：必须先定义、后使用。
+3. **`require()` 不能加载带 `export` 的模块**：模块之间一律用 `import * as x from 'aetherproxy.xxx';` 或 `import { a } from '…';`。
+   需要按名称动态加载模块时（例如测试运行器），用 `loadstring("import * as m from '<模块>'; return m;")`。
+
 ## 编码规则
 
 1. **纯函数与副作用分离。** `render/*`、`uri.uc`、`identity.uc`、`schema.uc` 以及 `config.uc` 中的校验部分**不准**调用 `fs`、`uci`、
@@ -106,9 +113,17 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 
 ### 测试运行器
 
+运行方式：`tests/host/ucode tests/run.uc`。`tests/host/ucode` 是包装脚本：设置库路径，并通过 `-L` 加入模块搜索路径
+（`tests/host/modules/aetherproxy` 是指向 `aether-proxy/src/lib` 的符号链接，使 `aetherproxy.sys` 解析到 `aether-proxy/src/lib/sys.uc`）。
+传给运行器的选项要放在 `--` 之后（ucode 自己会解析以 `-` 开头的参数）：`tests/host/ucode tests/run.uc -- --update`。
+
 `tests/run.uc`：
 
 - 遍历 `tests/fixtures/*/`。每个夹具目录中，UCI 配置文件**必须命名为 `aetherproxy`**，运行器用 `uci.cursor(<夹具目录>)` 读取。
+- 渲染上下文 `ctx`（`{ data, runtime, paths }`）取自夹具中可选的 `context.json`；没有时使用空上下文。
+- 运行器顶部有一张「期望文件名 → 渲染模块」的表；对应模块不存在时该产物报 SKIP，存在时调用其导出的 `render(snapshot, ctx)`。
+  新增渲染器只需要创建模块文件，不需要改动运行器结构。
+- 单元测试 import 的 `aetherproxy.*` 模块不存在时报 SKIP；模块存在但出错时报 FAIL。
 - 依次执行 `config.load` → 四个渲染器，把输出与 `expected/` 中的文件逐字节比较，不一致时打印 unified diff。
 - `expected/error.json` 存在时，表示该用例期望校验失败，比较 `errors` 数组。
 - `--update` 参数用实际输出覆盖期望文件。**使用 `--update` 后必须在 PR 描述中说明每个期望文件为什么改变。**
