@@ -204,6 +204,10 @@ aether-proxy 未运行时没有包带这个标记，这条规则不起作用。*
 - `ip rule` 支持 fwmark/mask（`ip-full`）
 - `lan_ifaces` 中的每个接口都存在
 
+**真机核实（2026-10-14）**：在一台 aarch64 设备上（自建 lede，系统版本 24.10.5、内核 6.18.55、ip-full 6.18、Xray 26.9.30）运行 `aether-proxy check`，
+三种模式生成的规则均通过 `nft -c`（含 `tproxy`、`socket transparent`、`fib`、`ether saddr`），生成的 Xray 配置均通过 `run -test`，
+前置检查全部通过。这只验证了规则能被内核接受，规则加载后的实际行为仍待 S2/S3。
+
 ## 已知限制（写进用户文档）
 
 - GFW 模式依赖 DNS 填充 `gfw4`：客户端如果绕过路由器 DNS（浏览器内置 DoH、Android 严格模式私有 DNS），
