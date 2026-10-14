@@ -4,7 +4,16 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'aether-proxy/**'
+      - 'luci-app-aether-proxy/**'
+      - '.github/workflows/build.yml'
   pull_request:
+    paths:
+      - 'aether-proxy/**'
+      - 'luci-app-aether-proxy/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
 
 jobs:
   packages:
