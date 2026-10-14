@@ -74,3 +74,25 @@ export function cidr_parts(s) {
 		len: length(p) == 2 ? +p[1] : 32
 	};
 };
+
+// Ranges Xray treats as private for its "no plaintext VLESS/Trojan to public addresses" rule
+// (infra/conf/xray.go requiresTransportSecurity, v26.9.30). Domains are never treated as
+// private here: Xray's private-domain list lives in geodata, so we stay conservative.
+const PRIVATE4 = [ '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16', '172.16.0.0/12', '192.168.0.0/16' ];
+
+export function private_ipv4(s) {
+	let a = cidr_parts(s);
+
+	if (a == null || a.len != 32)
+		return false;
+
+	for (let r in PRIVATE4) {
+		let n = cidr_parts(r);
+		let mask = (0xFFFFFFFF << (32 - n.len)) & 0xFFFFFFFF;
+
+		if ((a.addr & mask) == n.addr)
+			return true;
+	}
+
+	return false;
+};
