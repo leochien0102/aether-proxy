@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.reality_sid",
+      "code": "invalid_short_id",
+      "detail": "must be hex with an even length of at most 16 characters"
+    }
+  ]
+}

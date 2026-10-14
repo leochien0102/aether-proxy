@@ -1,0 +1,8 @@
+config node 'n_11111111111111111111111111111111'
+	option protocol 'vless'
+	option address 'a.example.com'
+	option port '443'
+	option uuid '11111111-2222-4333-8444-555555555555'
+	option security 'reality'
+	option sni 'www.example.com'
+	option reality_pbk 'PUBKEY'

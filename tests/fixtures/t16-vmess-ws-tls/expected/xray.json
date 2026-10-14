@@ -87,7 +87,7 @@
             "http/1.1"
           ],
           "fingerprint": "chrome",
-          "pinnedPeerCertSha256": "aa11,bb22",
+          "pinnedPeerCertSha256": "30c07ed862900574d87fde20ff227737a5379845a4df0316c443baed1ec8ddc6,0B:BD:9E:4A:66:58:51:AE:F7:FB:5D:73:C7:EC:AE:DC:F8:36:C8:E7:45:F0:79:79:F2:22:C5:BF:73:BA:FA:62",
           "verifyPeerCertByName": "vm.example.com"
         },
         "wsSettings": {

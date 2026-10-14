@@ -13,6 +13,7 @@ config dns 'dns'
 
 config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 	option protocol 'vless'
+	option security 'tls'
 	option address 'plain.example.com'
 	option port '8443'
 	option uuid '11111111-2222-4333-8444-555555555555'

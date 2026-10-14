@@ -79,6 +79,10 @@
       },
       "streamSettings": {
         "network": "httpupgrade",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "plain.example.com"
+        },
         "httpupgradeSettings": {
           "path": "/hu",
           "host": "h.example.com"

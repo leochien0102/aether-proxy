@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.security",
+      "code": "insecure_transport",
+      "detail": "trojan without TLS/REALITY is only allowed to a private IPv4 address"
+    }
+  ]
+}

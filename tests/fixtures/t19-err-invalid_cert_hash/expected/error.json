@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_11111111111111111111111111111111.pinned_cert_sha256",
+      "code": "invalid_cert_hash",
+      "detail": "\"aa11\" is not a SHA-256 hex digest"
+    }
+  ]
+}
