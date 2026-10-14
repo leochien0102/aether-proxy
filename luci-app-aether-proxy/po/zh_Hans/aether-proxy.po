@@ -1,0 +1,11 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: zh_Hans\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Unable to read the version."
+msgstr "无法读取版本号。"
+
+msgid "aether-proxy"
+msgstr "aether-proxy"

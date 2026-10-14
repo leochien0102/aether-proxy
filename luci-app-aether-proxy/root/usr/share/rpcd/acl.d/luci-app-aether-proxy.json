@@ -1,0 +1,14 @@
+{
+	"luci-app-aether-proxy": {
+		"description": "Grant access to aether-proxy",
+		"read": {
+			"ubus": {
+				"aetherproxy": [ "status" ]
+			},
+			"uci": [ "aetherproxy" ]
+		},
+		"write": {
+			"uci": [ "aetherproxy" ]
+		}
+	}
+}

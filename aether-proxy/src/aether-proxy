@@ -1,0 +1,45 @@
+#!/usr/bin/ucode -S
+'use strict';
+
+import * as C from 'aetherproxy.const';
+
+const USAGE = `Usage: aether-proxy <command> [options]
+
+Commands:
+  version [--json]   print the installed version
+  --help             show this help
+`;
+
+function cmd_version(args) {
+	if (length(args) == 1 && args[0] == '--json') {
+		print(sprintf('%.J', { ok: true, version: C.VERSION }), '\n');
+		return 0;
+	}
+
+	if (length(args)) {
+		warn(USAGE);
+		return 2;
+	}
+
+	print(`aether-proxy ${C.VERSION}\n`);
+	return 0;
+}
+
+function main(argv) {
+	let cmd = argv[0];
+
+	if (cmd == '--help' || cmd == '-h') {
+		print(USAGE);
+		return 0;
+	}
+
+	// TODO(design): subcommands from docs/10 that are not implemented yet are treated
+	// like unknown ones (usage, exit 2); the docs do not define a "not implemented" code.
+	if (cmd == 'version')
+		return cmd_version(slice(argv, 1));
+
+	warn(USAGE);
+	return 2;
+}
+
+exit(main(ARGV));
