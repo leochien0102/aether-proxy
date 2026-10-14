@@ -39,8 +39,9 @@ opts() {
 }
 
 # --- 1. enabled=1 without a node: configuration error, exit 2, nothing staged
-out="$(ap check --json --no-precheck $(opts "$FIX/t11-err-enabled-no-node" "$T/run1") 2>/dev/null)"; rc=$?
+out="$(ap check --json --no-precheck $(opts "$FIX/t11-err-enabled-no-node" "$T/run1") 2>"$T/check-fail.stderr")"; rc=$?
 expect "no node: exit code 2" 2 "$rc"
+expect "check --json failure: stderr empty" "" "$(cat "$T/check-fail.stderr")"
 expect "no node: ok false" false "$(echo "$out" | jget ok)"
 expect "no node: code" CONFIG_INVALID "$(echo "$out" | jget code)"
 expect "no node: error field" main.node "$(echo "$out" | jget errors.0.field)"
@@ -48,8 +49,9 @@ expect "no node: error code" required "$(echo "$out" | jget errors.0.code)"
 [ ! -e "$T/run1" ] && ok "no node: run dir untouched" || bad "no node: run dir untouched"
 
 # --- 2. valid config: exit 0, staging files equal render output byte for byte
-out="$(ap check --json --no-precheck $(opts "$FIX/sample" "$T/run2") 2>/dev/null)"; rc=$?
+out="$(ap check --json --no-precheck $(opts "$FIX/sample" "$T/run2") 2>"$T/check-ok.stderr")"; rc=$?
 expect "valid: exit code 0" 0 "$rc"
+expect "check --json success: stderr empty" "" "$(cat "$T/check-ok.stderr")"
 expect "valid: ok true" true "$(echo "$out" | jget ok)"
 expect "valid: staging path" "$T/run2/staging" "$(echo "$out" | jget staging)"
 
@@ -77,7 +79,8 @@ for needle in "$T/custom/proxy_domain.txt" "$T/custom/direct_domain.txt" "$T/run
 done
 
 # render --json wraps the same bytes
-out="$(ap render nft --json $(opts "$FIX/sample" "$T/run2") 2>/dev/null)"
+out="$(ap render nft --json $(opts "$FIX/sample" "$T/run2") 2>"$T/render-json.stderr")"
+expect "render --json: stderr empty" "" "$(cat "$T/render-json.stderr")"
 expect "render --json: ok" true "$(echo "$out" | jget ok)"
 expect "render --json: file" aether-proxy.nft "$(echo "$out" | jget file)"
 
@@ -108,6 +111,13 @@ ap render $(opts "$FIX/sample" "$T/run4") >/dev/null 2>&1; rc=$?
 expect "render without name: exit code 2" 2 "$rc"
 out="$(ap render nosuch --json $(opts "$FIX/sample" "$T/run4") 2>/dev/null)"
 expect "render unknown name --json: ok false" false "$(echo "$out" | jget ok)"
+out="$(ap version --json 2>"$T/version-json.stderr")"; rc=$?
+expect "version --json: exit code 0" 0 "$rc"
+expect "version --json: stderr empty" "" "$(cat "$T/version-json.stderr")"
+expect "version --json: parses as object" true "$(echo "$out" | jget ok)"
+version="$(echo "$out" | jget version)"
+[ -n "$version" ] && [ "$version" != '<missing>' ] \
+	&& ok "version --json: version present" || bad "version --json: version present"
 ap check --bogus >/dev/null 2>&1; rc=$?
 expect "check unknown option: exit code 2" 2 "$rc"
 

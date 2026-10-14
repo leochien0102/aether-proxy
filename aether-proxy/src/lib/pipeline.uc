@@ -130,9 +130,6 @@ export function build(opts) {
 export function finish(opts, result, exit, human) {
 	if (opts.json) {
 		print(sprintf('%.J', result), '\n');
-
-		if (human)
-			warn(human + '\n');
 	}
 	else if (human) {
 		if (exit == 0)
