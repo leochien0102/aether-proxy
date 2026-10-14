@@ -1,0 +1,14 @@
+{
+	"admin/services/aether-proxy": {
+		"title": "aether-proxy",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ],
+			"uci": { "aetherproxy": true }
+		}
+	}
+}
