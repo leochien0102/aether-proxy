@@ -48,3 +48,12 @@ export const TMP_DIR = '/tmp';
 export const DATA_IP_FILES = { chnroute4: 'chnroute4.txt', gfw_static4: 'gfw_static4.txt' };
 export const CUSTOM_IP_FILES = { direct_ip4: 'direct_ip.txt', proxy_ip4: 'proxy_ip.txt' };
 export const CUSTOM_DOMAIN_FILES = { direct_domain: 'direct_domain.txt', proxy_domain: 'proxy_domain.txt' };
+
+// T1.3 (nft renderer)
+export const DNS_PORT = 53;
+// Reserved / special-purpose IPv4 ranges for the nft `reserved4` set (docs/01 "常量"). Order is render order.
+export const RESERVED4 = [
+	'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16',
+	'172.16.0.0/12', '192.0.0.0/24', '192.0.2.0/24', '192.88.99.0/24', '192.168.0.0/16',
+	'198.18.0.0/15', '198.51.100.0/24', '203.0.113.0/24', '224.0.0.0/4', '240.0.0.0/4'
+];
