@@ -15,7 +15,7 @@
    解码失败 → **整体解析失败**（`SUB_DECODE_FAILED`）。
 2. 内容以 `proxies:` 开头或含有 `\nproxies:` → `SUB_FORMAT_UNSUPPORTED`（Clash YAML，首版不支持）。
 3. 按 `\r?\n` 切行，逐行解析 URI。每一行只会得到一个结果：一个节点，或一条跳过原因。
-4. 解析结果中有效节点数为 0 → **整体失败**，保留旧节点。≥ 1 → 继续，跳过的行按原因计数，写进事件 `SUB_UPDATED`。
+4. 解析结果中有效节点数为 0 → **整体失败**（`SUB_NO_VALID_NODES`），保留旧节点。≥ 1 → 继续，跳过的行按原因计数，写进事件 `SUB_UPDATED`。
 5. 新的节点数少于旧节点数的 50%（且旧节点数 ≥ 4）→ 照常应用，同时记 WARN `SUB_SHRANK`。
 
 跳过原因（固定枚举，LuCI 中翻译）：`unsupported_scheme`、`unsupported_transport`、`unsupported_security`、

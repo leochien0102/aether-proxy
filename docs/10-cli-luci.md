@@ -34,12 +34,12 @@ init.d / hotplug / daemon ──────────────────
 | `update data` | 更新规则数据 | 是 |
 | `job start <子命令...>` | 以后台作业方式运行一个长任务，立即返回 `{"job": "<id>"}` | 否 |
 | `job status <id>` | 输出作业状态 | 否 |
-| `events [--since ts] [--level l]` | 读取结构化事件 | 否 |
+| `events [--since ts] [--level l]` | 读取结构化事件。`--since` 包含边界（`ts >= since`）；`--level` 表示**该等级及以上**（例如 `warn` 返回 warn 与 error） | 否 |
 | `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取 logd 中的相关行 | 否 |
 
 ### 仅供测试的选项
 
-`check` 与 `render` 接受下列选项，用于在宿主机上脱离真实系统运行测试。rpcd 插件**不准**传递这些选项：
+`check`、`render`、`status`、`events`、`probe` 接受下列选项中与自己相关的部分，用于在宿主机上脱离真实系统运行测试。rpcd 插件**不准**传递这些选项：
 
 | 选项 | 作用 |
 |---|---|

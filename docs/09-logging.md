@@ -58,7 +58,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 {"ts":1760400000,"level":"warn","code":"DNS_TIER_CHANGED","args":{"from":"T1","to":"T2","reason":"proxy_unhealthy"}}
 ```
 
-保留最近 500 行（超过时截掉前面的一半）。LuCI 的「事件」视图读取这个文件，按 `code` 套用中文模板显示，
+保留最近 500 行（超过时截掉前面的一半）。读取时跳过无法解析的行（断电可能留下半行）并计数，不能因个别坏行导致整个读取失败。LuCI 的「事件」视图读取这个文件，按 `code` 套用中文模板显示，
 例如 `DNS_TIER_CHANGED` → 「DNS 已从 {from} 切换到 {to}（原因：{reason}）」。
 
 ## 事件码目录（首版）
@@ -87,6 +87,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `SUB_UPDATED` | notice | `sub`、`added`、`updated`、`stale`、`removed`、`skipped`（按原因计数的对象） |
 | `SUB_FETCH_FAILED` / `SUB_DECODE_FAILED` / `SUB_FORMAT_UNSUPPORTED` / `SUB_APPLY_INVALID` / `SUB_PROXY_UNAVAILABLE` | error | `sub`、`detail` |
 | `SUB_SHRANK` | warn | `sub`、`old`、`new` |
+| `SUB_NO_VALID_NODES` | error | `sub`、`skipped`（按原因计数）。解码成功但没有任何可导入的节点（与 `SUB_DECODE_FAILED` 区分） |
 | `UPDATE_AVAILABLE` | notice | `component`、`current`、`latest` |
 | `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `component`、`version` |
 | `DATA_UPDATED` | notice | `items` |
