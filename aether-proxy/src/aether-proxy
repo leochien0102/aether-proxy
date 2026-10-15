@@ -11,6 +11,7 @@ import * as daemon from 'aetherproxy.cmd.daemon';
 import * as cleanup from 'aetherproxy.cmd.cleanup';
 import * as sub from 'aetherproxy.cmd.sub';
 import * as job from 'aetherproxy.cmd.job';
+import * as update from 'aetherproxy.cmd.update';
 
 const USAGE = `Usage: aether-proxy <command> [options]
 
@@ -22,6 +23,7 @@ Commands:
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   sub update         download and atomically apply subscriptions
+  update check       check signed package and data updates
   job start          start a long-running command as a background job
   job status         print the state of a background job
   daemon [--boot]    start and supervise proxy components
@@ -78,6 +80,8 @@ function main(argv) {
 		return sub.run(slice(argv, 1));
 	if (cmd == 'job')
 		return job.run(slice(argv, 1));
+	if (cmd == 'update')
+		return update.run(slice(argv, 1));
 
 	warn(USAGE);
 	return 2;

@@ -1,0 +1,9 @@
+#!/bin/sh
+if [ "$1" = status ]; then
+	case "$UPDATE_INSTALLED_MODE" in
+		missing) exit 0 ;;
+		versions) printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_INSTALLED_VERSION:-26.9.30-r5}"; exit 0 ;;
+		*) printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_INSTALLED_VERSION:-0.1.0-r1}"; exit 0 ;;
+	esac
+fi
+exit 2

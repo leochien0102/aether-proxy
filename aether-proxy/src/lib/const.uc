@@ -169,3 +169,12 @@ export const SCHEDULE_MAX_JITTER = 0.1;
 export const SCHEDULE_RANDOM_RANGE = 4294967296;
 export const SCHEDULE_TEST_INTERVAL_ENV = 'AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS';
 export const SCHEDULE_TEST_HOUR_ENV = 'AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS';
+
+// T7.3 (signed update checks)
+export const UPDATE_FILE = 'updates.json';
+export const UPDATE_PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy' ];
+export const UPDATE_MANIFEST_MAX = 1048576;
+export const UPDATE_DOWNLOAD_MAX_SECS = 30;
+export const UPDATE_COMMAND_TIMEOUT_SECS = 35;
+export const UPDATE_SPACE_RESERVE = 1048576;
+export const UPDATE_RELEASE_FILE = '/etc/openwrt_release';
