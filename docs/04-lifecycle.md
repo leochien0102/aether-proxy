@@ -59,6 +59,7 @@
 - procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`）。
 - `aether-proxy daemon` 是监督进程：执行上面的启动步骤，以**子进程**方式拉起并重启 Xray、chinadns-ng
   （退避 5s → 10s → 30s → 60s 封顶），然后进入 monitor 循环。
+  子进程用 `uloop.process` 拉起，继承 daemon 的 stdout/stderr（日志由 procd 收集，见 [09](09-logging.md)「子进程日志」）；退出由回调通知，不轮询。daemon 记录每个子进程是否处于「主动停止」中，不是主动停止的退出一律视为崩溃。连续稳定运行 5 分钟后退避计数归零。
 - 收到 SIGTERM：按「停止」的顺序清理，然后退出。
 - `/etc/init.d/aether-proxy`：
   - `start_service`：先同步执行 `aether-proxy check`（第 1–3 步加第 5 步，只校验不改动；失败就不注册实例，

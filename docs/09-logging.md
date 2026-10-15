@@ -17,13 +17,20 @@
 
 Xray 的 access 日志固定关闭（隐私和 CPU 开销），error 日志等级由 `xray_log_level` 决定。chinadns-ng 不开 `-v`。
 
-## 子进程日志
+## 子进程日志（S1 已定，2026-10-15）
 
-ucode 的 `uloop.process` 不支持重定向子进程的 stdio（2026-10-14 核实 `lib/uloop.c`），所以「逐行转发并打上各自标签」需要别的办法。候选方案在 M0 的探针任务 S1 中实测后选定，结论写回本节：
+宿主机实验结论：
+- `fs.popen` 加 `uloop.handle` **不可行**：`fs` 句柄带 stdio 缓冲，一次读入多行后事件循环不再触发，尾部行与 EOF 会卡在缓冲区里；
+  ucode 2025.07.18 没有把描述符设为非阻塞的手段。
+- `uloop.process` 可靠：退出回调能拿到退出码，按 pid 结束进程后回调及时触发，子进程的 stdout/stderr 原样继承父进程。
 
-1. `fs.popen("echo $$; exec <bin> <args> 2>&1")`：第一行读出 pid（`exec` 不改变 pid），之后用 `uloop.handle` 监听管道逐行读取；退出由 EOF 加 `close()` 的返回值判断。
-2. 启动命令改为 `sh -c '<bin> <args> 2>&1 | logger -t <标签>'`：实现最简单，但 pid 指向 sh，停止时要杀整个进程组。
-3. 子进程直接继承 daemon 的 stdout，由 procd（`procd_set_param stdout 1`）收集：最省事，但所有输出共用一个标签。
+**决定**：Xray 与 chinadns-ng 由 daemon 用 `uloop.process` 拉起，**直接继承 daemon 的 stdout/stderr**；init 脚本对 daemon 实例设置
+`procd_set_param stdout 1` 与 `procd_set_param stderr 1`，由 procd 统一写入 logd。代价是三者共用 procd 给该实例的标签，
+不再有 `aether-proxy-xray` / `aether-proxy-dns` 两个独立标签——两者的输出格式本身可以区分（Xray 为 `[Info]`/`[Warning]` 前缀，chinadns-ng 为 `[main.zig:…]` 之类的源码位置），
+LuCI 原始日志页按内容过滤即可。上方「来源与标签」表中这两行以本节为准。
+
+注意：被信号结束的子进程在 `uloop.process` 回调里报告的退出码也是 0，与正常退出无法区分。daemon 必须自己记录「这次是主动停止」，
+凡不是主动停止的退出一律视为崩溃并按退避重启。
 
 ## 等级
 
