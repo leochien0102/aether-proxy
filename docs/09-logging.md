@@ -78,6 +78,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `PRECHECK_FAILED` | error | `missing` |
 | `RENDER_INVALID` | error | `artifact`、`detail` |
 | `START_FAILED` | error | `step`、`detail` |
+| `JOB_LOST` | warn | `job`、`kind`（作业文件为 running 但工作进程已不存在，见 10「作业机制」） |
 | `START_RETRY` | warn | `attempt`、`in_secs`（启动失败后 daemon 内的退避重试，见 04） |
 | `NET_WAIT_TIMEOUT` | warn | `waited` |
 | `COMPONENT_MISSING` / `COMPONENT_TOO_OLD` | error | `component`、`version`、`min` |

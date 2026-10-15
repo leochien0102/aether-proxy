@@ -124,6 +124,16 @@ weak   = protocol|lower(address)|port|transport|tdisc
 `aether-proxy sub update [<段名>]` 触发。执行时以子进程方式运行，不阻塞 monitor 循环（[10](10-cli-luci.md) 作业机制）。
 aether-proxy 未运行时不做自动更新。
 
+细节（2026-10-15 定，T6.3）：
+
+- daemon 进入 monitor 阶段后另起一个 60 秒的 uloop 定时器检查是否到期，不放进 monitor 的一轮里。
+- 每个启用且 `interval_hours > 0` 的订阅：到期时间 = `sub.json` 中该订阅的 `last_attempt`（没有就视为 daemon 启动时刻）+ `interval_hours × 3600 × (1 + 抖动)`，
+  抖动在 daemon 启动时为每个订阅取一次 `[0, 0.1)` 的随机数（`/dev/urandom`），之后不变。
+- 到期 → 执行 `aether-proxy job start sub update <段名>`（经 `sys.run`，立即返回）；退出码 3（已有订阅作业在跑）→ 本轮跳过，下一分钟再看。
+  同一分钟内只发起一个订阅的作业，按段名排序取第一个到期的。
+- 以 `last_attempt` 而不是 `last_ok` 计时：下载失败也要等满一个周期再试，避免对机场频繁重试。
+- daemon 不在 `running`/`degraded`（例如 `failsafe`、`error`）时不发起。
+
 ## Xray 配置渲染
 
 渲染产物 `/var/run/aether-proxy/xray.json`。字段名以**设备上实际运行的 Xray 版本**为准，下面按新版文档（`tunnel` 协议，

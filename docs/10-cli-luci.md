@@ -67,6 +67,23 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 - 前端每 2 秒轮询一次 `job status`。轮询使用 settle-once 写法：回调、`.catch()`、硬超时三条路径谁先到谁生效。
 - 作业文件保留 1 小时。
 
+实现约定（2026-10-15 定，T6.2）：
+
+- **允许的作业**（`job start` 后面跟的子命令，按前两个词识别种类）：`probe nodes [<id>...]` → 种类 `probe_nodes`；`sub update [<sub>]` → `sub_update`。
+  M7 再加 `update …`。其他子命令一律拒绝（`USAGE`，退出码 2）。
+- **作业 ID**：`j_<启动时间秒>_<发起进程 pid>`，满足正则 `^j_[0-9]+_[0-9]+$`。
+- **作业文件**在 `<run-dir>/jobs/<id>.json`，字段：`id`、`kind`、`cmd`（显示用字符串）、`argv`（数组，工作进程据此执行，不经 shell 拼接）、`state`、`pid`（工作进程）、
+  `started`、`finished`、`exit`（子命令退出码）、`result`（子命令 `--json` 输出解析后的对象）、`error`（失败时的 `code`，没有就为 `CMD_FAILED`）。全部经 `sys.write_atomic` 写。
+- **启动**：`job start` 先检查同种类是否有 `running` 且 pid 仍存活（核对 `/proc/<pid>/cmdline` 含 `job run`）的作业，有就退出码 3（`{"ok": false, "code": "BUSY", "job": "<id>"}`）；
+  否则写作业文件（`running`），以 `sh -c '"$@" </dev/null >/dev/null 2>&1 &' sh <自身> job run <id>` 的方式放到后台后**立即返回** `{"job": "<id>"}`。
+  后台进程被 init 收养，不依赖发起者存活（rpcd 调用结束、daemon 重启都不影响）。
+- **工作进程** `job run <id>`（内部子命令，不出现在用法说明里）：取种类锁 `/var/lock/aether-proxy-job-<kind>.lock`（拿不到 → 作业记为 `failed`、`error: BUSY`），
+  把自身 pid 写进作业文件，经 `sys.run` 执行 `<自身> <argv…> --json`（超时 600 秒，作业进程不受 daemon 的 10 秒限制），解析输出，写 `ok`/`failed`。
+- **自身路径**：`/usr/bin/aether-proxy`；指定了 `--bin-dir` 时用 `<bin-dir>/aether-proxy`（测试放一个包装脚本）。`job start` 收到的测试选项（`--confdir`、`--run-dir`、`--sys-root`、`--bin-dir`）原样传给子命令。
+- **工作进程消失**：`job status` 读到 `running` 但 pid 已不存在（或命令行不再匹配）→ 改写为 `failed`、`error: JOB_LOST`，记 WARN `JOB_LOST`。
+- **清理**：每次 `job start` 删除 `finished` 早于 1 小时的作业文件。
+- `job status <id>`：输出作业文件（`--json` 时原样，否则人读格式）；ID 格式不对 → `USAGE`（退出码 2）；文件不存在 → `JOB_NOT_FOUND`（退出码 2，不是事件码）。
+
 ## rpcd 插件
 
 形式：`/usr/share/rpcd/ucode/aetherproxy.uc`（rpcd 的 ucode 插件机制，与后端语言选择无关，24.10 起可用）。
