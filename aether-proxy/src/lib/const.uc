@@ -136,3 +136,6 @@ export const MONITOR_DNS_FAILURES = 2;
 export const MONITOR_T3_RETRY_SECS = 300;
 export const MONITOR_NODE_REFRESH_SECS = 600;
 export const DEV_NULL = '/dev/null';
+
+// T2.9 (startup retry backoff)
+export const START_RETRY_DELAYS = [ 30, 60, 300 ];

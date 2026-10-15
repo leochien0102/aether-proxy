@@ -145,7 +145,7 @@ function load_restored_sets(daemon) {
 	if (!table.ok)
 		return { ok: false, detail: table.detail };
 	if (!table.exists)
-		return { ok: true, sets: { gfw4: [], udirect4: [], uproxy4: [] } };
+		return apply.sets_load(daemon.ctx);
 	return apply.sets_export(daemon.ctx);
 };
 
@@ -369,6 +369,7 @@ initial_state = (service, now) => {
 		state: service?.state ?? 'starting',
 		dns_tier: service?.dns_tier ?? 'T2',
 		dns_failsafe: service?.dns_failsafe == true,
+		table_missing_count: 0,
 		xray_down_count: 0,
 		xray_down_reported: false,
 		chinadns_down_count: 0,
@@ -396,6 +397,7 @@ next = (state, obs, cfg) => {
 		state: old.state ?? 'starting',
 		dns_tier: old.dns_tier ?? 'T2',
 		dns_failsafe: old.dns_failsafe == true,
+		table_missing_count: old.table_missing_count ?? 0,
 		xray_down_count: old.xray_down_count ?? 0,
 		xray_down_reported: old.xray_down_reported == true,
 		chinadns_down_count: old.chinadns_down_count ?? 0,
@@ -445,10 +447,16 @@ next = (state, obs, cfg) => {
 		}
 	};
 
-	// 1. Restore a missing table first; do not recreate interception while fail-open is active.
-	if (obs.table_present == false && out.state != 'failsafe') {
-		action('nft_reload');
-		event('warn', 'NFT_TABLE_RESTORED', {});
+	// 1. Debounce a missing ruleset so transient observation gaps do not trigger a reload.
+	if (obs.table_present == false) {
+		out.table_missing_count = min(out.table_missing_count + 1, C.MONITOR_FAILSAFE_ROUNDS);
+		if (out.table_missing_count >= C.MONITOR_FAILSAFE_ROUNDS && out.state != 'failsafe') {
+			action('nft_reload');
+			event('warn', 'NFT_TABLE_RESTORED', {});
+		}
+	}
+	else if (obs.table_present == true) {
+		out.table_missing_count = 0;
 	}
 
 	// 2. A single missing sample is tolerated; only a crossing to round two emits a down event.
