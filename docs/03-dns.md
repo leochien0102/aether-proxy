@@ -145,6 +145,19 @@ verdict-cache 4096
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
 T1 又依赖这个节点本身，形成死锁。
 
+## 真机验证（2026-10-15，aarch64 / 自建 lede / 内核 6.18 / chinadns-ng 2025.06.20 / Xray 26.9.30）
+
+在一次维护窗口中按 04 的启动顺序手工拉起各组件（绕过大陆模式）：
+
+- chinadns-ng 2025.06.20 接受本文模板生成的全部配置项（低于设计最低版本 2025.08.09，但这些选项都已存在）。
+- dnsmasq 默认实例的 conf-dir 为 `/tmp/dnsmasq.d`（`/var/etc/dnsmasq.conf.cfg01411c` 中的 `conf-dir=`）；放入片段并重启即改走 chinadns-ng，删除片段并重启即恢复。
+- 国内域名解析到国内地址；AAAA 被过滤；`boot` 组成功解析节点域名；T1（经节点）解析被墙域名正常。
+- **T2（直连境外 DNS）解析不了被墙域名**（`www.google.com` 无应答），但能解析未被墙的域名（节点域名）：GFW 针对被墙域名的 TCP DNS 查询做了干扰。
+  这符合 T2 的定位（代理不可用时让未被墙的境外域名照常解析），但意味着**启动后到首次健康检测通过之间，被墙域名会短暂解析失败**，属预期行为，写进用户文档。
+- **`china_dns` 中的 `119.29.29.29` 在 chinadns-ng 走 TCP 时被反复重置**（`recv(tcpi://119.29.29.29) failed: Connection reset by peer`），
+  国内解析因另一个上游 `223.5.5.5` 正常而未受影响。默认值需要调整（见 [05](05-config.md) `china_dns`，待定）。
+- 本次未覆盖：`gfw` 模式下 `gfw4` 的填充、`udirect4`/`uproxy4` 的填充、chinadns-ng 重启后缓存清空、dnsmasq SIGHUP 清缓存。
+
 ## IPv4-only 的泄漏处理
 
 - `ipv6_filter=1`（默认）：chinadns-ng `no-ipv6`，所有 AAAA 查询返回 NODATA。

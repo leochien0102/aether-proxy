@@ -208,6 +208,10 @@ aether-proxy 未运行时没有包带这个标记，这条规则不起作用。*
 三种模式生成的规则均通过 `nft -c`（含 `tproxy`、`socket transparent`、`fib`、`ether saddr`），生成的 Xray 配置均通过 `run -test`，
 前置检查全部通过。这只验证了规则能被内核接受，规则加载后的实际行为仍待 S2/S3。
 
+**加载后的行为（2026-10-15 同一设备的维护窗口，绕过大陆模式）**：整表加载与 `ip rule`/`ip route` 成功；`fw4 reload` 之后 `inet aetherproxy` 仍在；
+LAN 客户端访问境外站点经节点（出口为节点 IP），访问国内站点直连（出口为本地运营商），视频站点正常。
+尚未覆盖：游戏模式 UDP、QUIC 拒绝、`input_guard`、`ether saddr`（MAC 主机）、动态集合导出后恢复。
+
 ## 已知限制（写进用户文档）
 
 - GFW 模式依赖 DNS 填充 `gfw4`：客户端如果绕过路由器 DNS（浏览器内置 DoH、Android 严格模式私有 DNS），
