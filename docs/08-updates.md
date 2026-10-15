@@ -14,7 +14,9 @@
 **规则转换、上游校验、架构映射都在 CI 中完成**，设备只负责下载、验签、校验哈希。
 这样设备侧的逻辑最简单，转换规则也可以在不升级 aether-proxy 的情况下修正。
 
-CI（**单独的发布仓库** `leochien0102/aether-proxy-channel` 中的 `.github/workflows/channel.yml`，见下方「发布仓库」）每天运行一次，外加手动触发：
+CI（**单独的发布仓库** `leochien0102/aether-proxy-channel` 中的 `.github/workflows/channel.yml`，见下方「发布仓库」）每天运行一次，外加手动触发。
+生成发布目录的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 只负责 checkout、运行它、签名、发布：
+
 
 1. **数据**：拉取上游 → 转换为统一格式 → 合理性检查 → 与上一版比较，没有变化就不发布。
 2. **组件**：跟踪 Xray-core、chinadns-ng 的上游 release。用上游提供的摘要（Xray 的 `.dgst`）校验下载内容，
@@ -131,9 +133,9 @@ LuCI 中可以上传二进制（用于首次安装时无法访问 GitHub 的情�
 1. 下载清单，对比本地各数据项的 `sha256`（`/etc/aether-proxy/data/*.sha256`）。没有变化就结束。
 2. 下载变化的数据项，校验 `sha256`，解压后再做一次设备端合理性检查（行数 ≥ 清单中 `lines` 的 90%）。
 3. 写入 `/etc/aether-proxy/data/<名称>.txt.tmp` → `mv` 为正式文件，同时更新 `.sha256`。
-4. 应用：
-   - `chnroute4`、`gfw_static4`：在一个 `nft -f` 事务中执行 `flush set` + `add element`，不中断流量。
-   - `gfwlist`、`chnlist`、`apple`：重启 chinadns-ng，然后 SIGHUP dnsmasq。
+4. 应用：服务在运行时执行一次 reload（`/etc/init.d/aether-proxy reload`），**不另写一套应用逻辑**（2026-10-15 改）。
+   增量重载会按产物哈希判断（04「重载」）：`chnroute4`、`gfw_static4` 写在 nft 产物里 → 整表原子替换（先导出动态集合，不中断流量）；
+   `gfwlist`、`chnlist`、`apple` 由 `chinadns.conf` 按路径引用、其内容已计入哈希 → 重启 chinadns-ng 并 HUP dnsmasq。
 5. 读取数据的顺序：`/etc/aether-proxy/data/` 中存在就用它，否则使用包内的 `/usr/share/aether-proxy/data/` 基线。
 
 flash 写入量：数据只在内容变化时写，按每天最多一次计，每次约 1–2MB，可以接受。
