@@ -1,7 +1,7 @@
 #!/bin/sh
 
 [ "${ACTION:-}" = ifup ] || exit 0
-[ -n "${INTERFACE:-}" ] || exit 0
+[ -n "${DEVICE:-}" ] || exit 0
 
 . /lib/functions.sh
 . /lib/functions/procd.sh
@@ -10,9 +10,10 @@ config_load aetherproxy
 config_get_bool enabled main enabled 0
 [ "$enabled" = 1 ] || exit 0
 
+# lan_ifaces holds L3 device names (br-lan), so compare DEVICE, not the logical INTERFACE.
 AETHER_PROXY_IS_LAN=0
 _aether_proxy_check_iface() {
-	[ "$1" = "$INTERFACE" ] && AETHER_PROXY_IS_LAN=1
+	[ "$1" = "$DEVICE" ] && AETHER_PROXY_IS_LAN=1
 }
 config_list_foreach main lan_ifaces _aether_proxy_check_iface
 [ "$AETHER_PROXY_IS_LAN" = 0 ] || exit 0

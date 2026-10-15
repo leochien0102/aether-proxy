@@ -38,7 +38,9 @@ run_init() {
 		procd_add_reload_trigger() { printf 'trigger %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return "${SIGNAL_RC:-0}"; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
-		start() { start_service "$@"; }
+		start() { printf 'start\n' >> "$PROCD_LOG"; start_service "$@"; }
+		stop() { printf 'stop\n' >> "$PROCD_LOG"; }
+		procd_running() { [ "${TEST_RUNNING:-1}" = 1 ]; }
 		. "$INIT"
 		AETHER_PROXY="$T/bin-aether-proxy"
 		case "$mode" in
@@ -81,6 +83,15 @@ expect "failed reload check is rejected" 1 "$rc"
 run_init reload 1 0 init-reload; rc=$?
 expect "valid reload succeeds" 0 "$rc"
 grep -Fxq "signal aether-proxy * HUP" "$T/init-reload.log" && ok "reload sends HUP" || bad "reload sends HUP"
+run_init reload 0 0 init-reload-disabled; rc=$?
+expect "reload with enabled=0 succeeds" 0 "$rc"
+grep -Fxq stop "$T/init-reload-disabled.log" && ! contains "$T/init-reload-disabled.log" 'signal aether-proxy' \
+	&& ok "reload with enabled=0 stops the service" || bad "reload with enabled=0 stops the service"
+TEST_RUNNING=0 run_init reload 1 0 init-reload-start; rc=$?
+expect "reload of a stopped service succeeds" 0 "$rc"
+grep -Fxq start "$T/init-reload-start.log" && grep -Fxq 'open aether-proxy' "$T/init-reload-start.log" \
+	&& ! contains "$T/init-reload-start.log" 'signal aether-proxy' \
+	&& ok "reload of a stopped service starts it" || bad "reload of a stopped service starts it"
 run_init stop 1 0 init-stop; rc=$?
 expect "service_stopped cleanup succeeds" 0 "$rc"
 grep -Fxq 'aether-proxy cleanup' "$T/init-stop.log" && ok "service_stopped runs cleanup" || bad "service_stopped runs cleanup"
@@ -89,7 +100,7 @@ expect "service_triggers succeeds" 0 "$rc"
 grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger registered" || bad "reload trigger registered"
 
 run_hotplug() {
-	local iface="$1" enabled="$2" ifaces="$3" output="$4" ubus_rc="${5:-0}"
+	local device="$1" enabled="$2" ifaces="$3" output="$4" ubus_rc="${5:-0}"
 	(
 		export PROCD_LOG="$T/$output.log" TEST_ENABLED="$enabled" TEST_LAN_IFACES="$ifaces"
 		export UBUS_RC="$ubus_rc" UBUS_OUTPUT="${6:-{\"aether-proxy\":{\"instances\":{\"main\":{\"running\":true}}}}}"
@@ -100,7 +111,7 @@ run_hotplug() {
 		ubus() { printf 'ubus %s\n' "$*" >> "$PROCD_LOG"; printf '%s\n' "$UBUS_OUTPUT"; return "$UBUS_RC"; }
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return 0; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
-		ACTION=ifup INTERFACE="$iface"
+		ACTION=ifup DEVICE="$device" INTERFACE=lan
 		. "$T/hotplug.test.sh"
 	)
 }

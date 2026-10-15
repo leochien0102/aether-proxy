@@ -40,6 +40,18 @@ service_triggers() {
 }
 
 reload_service() {
+	# enabled toggled off: stop; not running yet (toggled on, or start failed earlier): start.
+	config_load aetherproxy
+	config_get_bool enabled main enabled 0
+	if [ "$enabled" != 1 ]; then
+		stop
+		return 0
+	fi
+	if ! procd_running aether-proxy; then
+		start
+		return $?
+	fi
+
 	"$AETHER_PROXY" check
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
