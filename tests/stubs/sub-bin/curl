@@ -1,0 +1,41 @@
+#!/bin/sh
+out=''
+url=''
+via_proxy=0
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+	-o) out="$2"; shift 2; continue ;;
+	-x) via_proxy=1; shift 2; continue ;;
+	-A|--max-time|--max-filesize) shift 2; continue ;;
+	-*) shift; continue ;;
+	*) url="$1"; shift; continue ;;
+	esac
+done
+printf 'curl proxy=%s url=%s\n' "$via_proxy" "$url" >> "$STUB_LOG"
+if [ "$via_proxy" -eq 1 ]; then
+	rc=${STUB_CURL_PROXY_RC:-0}
+else
+	rc=${STUB_CURL_DIRECT_RC:-0}
+fi
+if [ -n "${STUB_CURL_FAIL_URL:-}" ] && [ "${url#*"$STUB_CURL_FAIL_URL"}" != "$url" ]; then
+	rc=${STUB_CURL_URL_RC:-22}
+fi
+if [ "$rc" -ne 0 ]; then
+	echo 'stub curl failure' >&2
+	exit "$rc"
+fi
+if [ -n "${STUB_CURL_EMPTY_URL:-}" ] && [ "${url#*"$STUB_CURL_EMPTY_URL"}" != "$url" ]; then
+	: > "$out"
+elif [ "${STUB_CURL_EMPTY:-0}" = 1 ]; then
+	: > "$out"
+else
+	body="$STUB_CURL_BODY"
+	if [ -n "${STUB_CURL_BODY_ALT:-}" ] && [ "${url#*sub-b}" != "$url" ]; then
+		body="$STUB_CURL_BODY_ALT"
+	fi
+	cat "$body" > "$out"
+fi
+if [ -n "${STUB_CURL_REPLACE_CONFIG:-}" ]; then
+	cp "$STUB_CURL_REPLACE_CONFIG" "$SYSROOT/etc/config/aetherproxy"
+fi
+exit 0

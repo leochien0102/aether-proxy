@@ -1,0 +1,6 @@
+#!/bin/sh
+printf 'xray %s\n' "$*" >> "$STUB_LOG"
+if [ "$1" = run ] && [ "$2" = -test ]; then
+	exit "${STUB_XRAY_TEST_RC:-0}"
+fi
+exit 64

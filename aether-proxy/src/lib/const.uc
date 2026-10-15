@@ -139,3 +139,15 @@ export const DEV_NULL = '/dev/null';
 
 // T2.9 (startup retry backoff)
 export const START_RETRY_DELAYS = [ 30, 60, 300 ];
+
+// T5.3 (subscription update)
+export const SUB_LOCK_FILE = '/var/lock/aether-proxy-sub.lock';
+export const SUB_WORK_SUBDIR = 'sub-work';
+export const SUB_TEMP_PACKAGE = 'aetherproxy_sub';
+export const SUB_STATE_FILE = 'sub.json';
+export const PROG_INIT = '/etc/init.d/aether-proxy';
+export const SUB_DELTA_SUBDIR = '.delta';
+export const SUB_RENDER_SUBDIR = 'render';
+export const RANDOM_DEVICE = '/dev/urandom';
+export const SUB_SNAPSHOT_PACKAGE = 'aetherproxy_sub_snapshot';
+export const SUB_SNAPSHOT_SUBDIR = 'snapshot';
