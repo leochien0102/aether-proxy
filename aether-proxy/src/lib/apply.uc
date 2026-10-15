@@ -351,23 +351,42 @@ function dnsmasq_install(ctx, content) {
 	return result('dnsmasq fragment installed');
 };
 
+// Removal does not need the unique LAN conf-dir that install needs: our fragment is looked
+// for in every dnsmasq instance's conf-dir, so cleanup still works while dnsmasq is being
+// regenerated or the LAN interfaces changed since install.
 function dnsmasq_remove(ctx) {
 	setup_log(ctx);
-	let found = dnsmasq_confdir(ctx);
-	if (!found.ok)
-		return found;
-	let path = `${found.confdir}/${C.DNSMASQ_FRAGMENT}`;
-	if (fs.stat(path) == null)
+	let dir = system_path(ctx, C.DNSMASQ_CONFIG_DIR);
+	let names = list_files(dir);
+	if (names == null)
+		return failed(ctx, 'dnsmasq_remove', `cannot list ${dir}: ${fs.error() ?? 'unknown error'}`);
+	let confdirs = [];
+	for (let name in names) {
+		if (!match(name, /^dnsmasq\.conf\./))
+			continue;
+		let config = parse_conf_file(`${dir}/${name}`);
+		if (config != null && !array_has(confdirs, config.confdir))
+			push(confdirs, config.confdir);
+	}
+	let removed = {};
+	for (let confdir in sort(confdirs)) {
+		let path = `${system_path(ctx, confdir)}/${C.DNSMASQ_FRAGMENT}`;
+		if (fs.stat(path) == null)
+			continue;
+		let previous = fs.readfile(path);
+		if (previous == null)
+			return failed(ctx, 'dnsmasq_remove', `cannot read ${path}: ${fs.error() ?? 'unknown error'}`);
+		if (!fs.unlink(path))
+			return failed(ctx, 'dnsmasq_remove', `cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
+		removed[path] = previous;
+	}
+	if (!length(removed))
 		return result('dnsmasq fragment absent');
-	let previous = fs.readfile(path);
-	if (previous == null)
-		return failed(ctx, 'dnsmasq_remove', `cannot read ${path}: ${fs.error() ?? 'unknown error'}`);
-	if (!fs.unlink(path))
-		return failed(ctx, 'dnsmasq_remove', `cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
 	let err = dnsmasq_restart(ctx);
 	if (err != null) {
-		if (!sys.write_atomic(path, previous))
-			err += `; rollback failed: ${sys.error()}`;
+		for (let path, previous in removed)
+			if (!sys.write_atomic(path, previous))
+				err += `; rollback of ${path} failed: ${sys.error()}`;
 		return failed(ctx, 'dnsmasq_remove', err);
 	}
 	return result('dnsmasq fragment removed');

@@ -172,11 +172,16 @@ function run_dnsmasq() {
 	let extra = apply.dnsmasq_extra_servers(c);
 	if (!installed.ok || !extra.ok || sprintf('%.J', extra.servers) != sprintf('%.J', [ 'server=8.8.8.8', 'server=9.9.9.9' ]))
 		return fail(`install/extra servers mismatch: ${sprintf('%.J', extra)}`);
+	// Removal must not depend on finding a unique LAN conf-dir (LAN interfaces changed since install).
+	let moved = apply.dnsmasq_remove({ ...c, lan_ifaces: [ 'br-gone' ] });
+	if (!moved.ok || fs.stat(`${found.confdir}/${C.DNSMASQ_FRAGMENT}`) != null)
+		return fail(`remove without a unique LAN conf-dir: ${sprintf('%.J', moved)}`);
+	apply.dnsmasq_install(c, 'server=127.0.0.1#31053\n');
 	let removed = apply.dnsmasq_remove(c), removed_again = apply.dnsmasq_remove(c);
 	let hup = apply.dnsmasq_hup(c);
 	if (!removed.ok || !removed_again.ok || !hup.ok || fs.stat(`${found.confdir}/${C.DNSMASQ_FRAGMENT}`) != null)
 		return fail('dnsmasq remove/HUP mismatch');
-	if (length(filter(split(read(t.log_path), '\n'), l => match(l, /dnsmasq restart/))) != 2)
+	if (length(filter(split(read(t.log_path), '\n'), l => match(l, /dnsmasq restart/))) != 4)
 		return fail('restart call count mismatch');
 	write(`${t.base}/etc/init.d/dnsmasq`, '#!/bin/sh\nexit 1\n');
 	fs.chmod(`${t.base}/etc/init.d/dnsmasq`, 493);
