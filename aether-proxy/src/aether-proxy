@@ -4,6 +4,8 @@
 import * as C from 'aetherproxy.const';
 import * as check from 'aetherproxy.cmd.check';
 import * as render from 'aetherproxy.cmd.render';
+import * as status from 'aetherproxy.cmd.status';
+import * as events from 'aetherproxy.cmd.events';
 import * as probe from 'aetherproxy.cmd.probe';
 
 const USAGE = `Usage: aether-proxy <command> [options]
@@ -12,6 +14,8 @@ Commands:
   version [--json]   print the installed version
   check [--json]     validate the configuration and render into staging
   render <name>      print one artifact (xray|nft|chinadns|dnsmasq)
+  status [--json]    print the latest runtime state
+  events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   --help             show this help
 `;
@@ -50,6 +54,11 @@ function main(argv) {
 	if (cmd == 'render')
 		return render.run(slice(argv, 1));
 
+	if (cmd == 'status')
+		return status.run(slice(argv, 1));
+
+	if (cmd == 'events')
+		return events.run(slice(argv, 1));
 	if (cmd == 'probe')
 		return probe.run(slice(argv, 1));
 

@@ -48,6 +48,7 @@ export function parse_args(args) {
 		}
 	}
 
+	log.set_run_dir(opts.run_dir ?? C.RUN_DIR);
 	return { opts, positional };
 };
 

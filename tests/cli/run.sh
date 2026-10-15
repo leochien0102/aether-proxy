@@ -47,6 +47,7 @@ opts() {
 }
 
 # --- 1. enabled=1 without a node: configuration error, exit 2, nothing staged
+mkdir -p "$T/run1"
 out="$(ap check --json --no-precheck $(opts "$FIX/t11-err-enabled-no-node" "$T/run1") 2>"$T/check-fail.stderr")"; rc=$?
 expect "no node: exit code 2" 2 "$rc"
 expect "check --json failure: stderr empty" "" "$(cat "$T/check-fail.stderr")"
@@ -54,7 +55,12 @@ expect "no node: ok false" false "$(echo "$out" | jget ok)"
 expect "no node: code" CONFIG_INVALID "$(echo "$out" | jget code)"
 expect "no node: error field" main.node "$(echo "$out" | jget errors.0.field)"
 expect "no node: error code" required "$(echo "$out" | jget errors.0.code)"
-[ ! -e "$T/run1" ] && ok "no node: run dir untouched" || bad "no node: run dir untouched"
+[ ! -e "$T/run1/staging" ] && ok "no node: no staging written" || bad "no node: no staging written"
+[ -s "$T/run1/events.jsonl" ] && ok "no node: structured failure event appended" || bad "no node: structured failure event appended"
+expect "no node: event is one JSONL object" CONFIG_INVALID "$(head -n 1 "$T/run1/events.jsonl" | jget code)"
+expect "no node: event severity" error "$(head -n 1 "$T/run1/events.jsonl" | jget level)"
+[ -n "$(head -n 1 "$T/run1/events.jsonl" | jget ts)" ] \
+	&& ok "no node: event timestamp present" || bad "no node: event timestamp present"
 
 # --- 2. valid config: exit 0, staging files equal render output byte for byte
 out="$(ap check --json --no-precheck $(opts "$FIX/sample" "$T/run2") 2>"$T/check-ok.stderr")"; rc=$?
@@ -129,6 +135,50 @@ version="$(echo "$out" | jget version)"
 ap check --bogus >/dev/null 2>&1; rc=$?
 expect "check unknown option: exit code 2" 2 "$rc"
 
+# --- 5. runtime status/events are isolated to the test run directory
+mkdir -p "$T/status-empty"
+out="$(ap status --json --run-dir "$T/status-empty" 2>"$T/status-empty.stderr")"; rc=$?
+expect "status missing file: exit code 0" 0 "$rc"
+expect "status missing file: stderr empty" "" "$(cat "$T/status-empty.stderr")"
+expect "status missing file: stopped default" stopped "$(echo "$out" | jget state)"
+
+mkdir -p "$T/status-populated"
+printf '{"state":"running","dns_tier":"T1","future_field":{"kept":true}}\n' > "$T/status-populated/state.json"
+out="$(ap status --json --run-dir "$T/status-populated" 2>"$T/status-populated.stderr")"; rc=$?
+expect "status existing file: exit code 0" 0 "$rc"
+expect "status existing file: stderr empty" "" "$(cat "$T/status-populated.stderr")"
+expect "status existing file: state" running "$(echo "$out" | jget state)"
+expect "status existing file: unknown field preserved" true "$(echo "$out" | jget future_field.kept)"
+
+mkdir -p "$T/events"
+cat > "$T/events/events.jsonl" <<'EVENTS'
+{"ts":100,"level":"notice","code":"SERVICE_STARTED","args":{"mode":"gfw"}}
+{"ts":150,"level":"notice","code":"TRUNCATED"
+not-json
+{"ts":200,"level":"warn","code":"DNS_TIER_CHANGED","args":{"from":"T1","to":"T2"}}
+{"ts":300,"level":"error","code":"XRAY_DOWN","args":{}}
+EVENTS
+out="$(ap events --json --run-dir "$T/events" 2>"$T/events-all.stderr")"; rc=$?
+expect "events: exit code 0" 0 "$rc"
+expect "events: stderr empty" "" "$(cat "$T/events-all.stderr")"
+expect "events: first row" SERVICE_STARTED "$(echo "$out" | jget events.0.code)"
+expect "events: third row" XRAY_DOWN "$(echo "$out" | jget events.2.code)"
+expect "events: malformed lines skipped" 2 "$(echo "$out" | jget skipped)"
+
+out="$(ap events --json --since 200 --run-dir "$T/events" 2>"$T/events-since.stderr")"; rc=$?
+expect "events since: exit code 0" 0 "$rc"
+expect "events since: stderr empty" "" "$(cat "$T/events-since.stderr")"
+expect "events since: inclusive boundary" 200 "$(echo "$out" | jget events.0.ts)"
+expect "events since: later event retained" 300 "$(echo "$out" | jget events.1.ts)"
+expect "events since: earlier event removed" '<missing>' "$(echo "$out" | jget events.2.ts)"
+expect "events since: malformed count preserved" 2 "$(echo "$out" | jget skipped)"
+
+out="$(ap events --json --level warn --run-dir "$T/events" 2>"$T/events-level.stderr")"; rc=$?
+expect "events level: exit code 0" 0 "$rc"
+expect "events level: stderr empty" "" "$(cat "$T/events-level.stderr")"
+expect "events level: warn selected" DNS_TIER_CHANGED "$(echo "$out" | jget events.0.code)"
+expect "events level: more severe error included" XRAY_DOWN "$(echo "$out" | jget events.1.code)"
+expect "events level: less severe notice excluded" '<missing>' "$(echo "$out" | jget events.2.ts)"
 # --- 5. TCP node probes use a local ucode listener or TEST-NET only
 cat > "$T/probe-listener.uc" <<'UCODE'
 'use strict';
