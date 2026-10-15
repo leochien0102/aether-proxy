@@ -405,6 +405,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	ctx.service_mode = snapshot.main.mode;
 	ctx.service_node = snapshot.main.node;
 	ctx.lan_ifaces = read_lan_ifaces(opts, snapshot);
+	ctx.dnsmasq_instance = snapshot.dns?.dnsmasq_instance ?? null;
 	let staging = `${run_dir(ctx)}/${C.STAGING_SUBDIR}`;
 	if (!sys.mkdir_p(run_dir(ctx))) {
 		locked.close();
@@ -589,7 +590,9 @@ function start_sequence(ctx, opts, signal_pending) {
 		record_step(ctx, 'start_xray_listen', step_started);
 	}
 
-	if (!degraded) {
+	// Node unresolved (degraded): with fail_open=0 the interception is still installed, so
+	// proxy targets fail instead of leaking out directly (04 step 9). Xray stays down.
+	if (!degraded || snapshot.main.fail_open == false) {
 		step_started = monotonic_ms();
 		let saved_sets = apply.sets_load(ctx);
 		if (!saved_sets.ok) {

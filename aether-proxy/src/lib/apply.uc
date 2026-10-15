@@ -309,6 +309,13 @@ function dnsmasq_confdir(ctx) {
 	let names = list_files(dir);
 	if (names == null)
 		return failed(ctx, 'dnsmasq_confdir', `cannot list ${dir}: ${fs.error() ?? 'unknown error'}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
+	// dns.dnsmasq_instance pins one instance by its UCI section name (03).
+	if (ctx.dnsmasq_instance) {
+		let config = parse_conf_file(`${dir}/dnsmasq.conf.${ctx.dnsmasq_instance}`);
+		if (config == null)
+			return failed(ctx, 'dnsmasq_confdir', `dnsmasq instance '${ctx.dnsmasq_instance}' has no conf-dir in ${dir}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
+		return result('dnsmasq conf-dir found', { confdir: system_path(ctx, config.confdir) });
+	}
 	let candidates = [];
 	for (let name in names) {
 		if (!instance_conf(name))

@@ -409,8 +409,17 @@ export function run_worker(id) {
 			stderr: parse_error ?? 'child stdout is not a JSON object'
 		});
 	}
-	else if (ran.code != 0)
-		error = type(parsed.code) == 'string' ? parsed.code : 'CMD_FAILED';
+	else if (ran.code != 0) {
+		error = type(parsed.code) == 'string' ? parsed.code : null;
+		// sub update reports per subscription; surface the first failing code (by name).
+		if (error == null && type(parsed.subs) == 'object')
+			for (let name in sort(keys(parsed.subs)))
+				if (type(parsed.subs[name]) == 'object' && parsed.subs[name].ok == false && type(parsed.subs[name].code) == 'string') {
+					error = parsed.subs[name].code;
+					break;
+				}
+		error ??= 'CMD_FAILED';
+	}
 	let finished = read_job_file(path);
 	if (!finished.ok) {
 		report_fs('read', path, finished.detail);

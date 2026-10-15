@@ -104,6 +104,17 @@ else
 	bad "subscription job reaches failed"
 fi
 
+# sub update reports per subscription (no top-level code): the job surfaces the first failing one.
+export JOB_STUB_JSON='{"ok":false,"subs":{"s_00000001":{"ok":true,"code":null},"s_00000002":{"ok":false,"code":"SUB_NO_VALID_NODES"}}}' JOB_STUB_EXIT=1
+out=$(start_sub); rc=$?
+unset JOB_STUB_JSON JOB_STUB_EXIT
+id=$(get_json "$out" job)
+if result=$(wait_terminal "$id" failed); then
+	expect "per-subscription failure code becomes the job error" SUB_NO_VALID_NODES "$(get_json "$result" error)"
+else
+	bad "per-subscription failure job reaches failed"
+fi
+
 # Invalid stdout is not silently accepted as a successful result.
 export JOB_STUB_MODE=invalid JOB_STUB_OUTPUT='stub output is not JSON'
 out=$(start_probe); rc=$?

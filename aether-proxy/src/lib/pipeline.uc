@@ -19,7 +19,8 @@ const RENDERERS = { nft, chinadns, dnsmasq, xray };
 // Value options (test-only ones included, docs/10 "仅供测试的选项") -> key in the result.
 const VALUE_OPTS = {
 	'--confdir': 'confdir', '--data-dir': 'data_dir', '--baseline-dir': 'baseline_dir',
-	'--custom-dir': 'custom_dir', '--run-dir': 'run_dir'
+	'--custom-dir': 'custom_dir', '--run-dir': 'run_dir',
+	'--sys-root': 'sys_root', '--bin-dir': 'bin_dir'
 };
 const FLAG_OPTS = { '--json': 'json', '--no-precheck': 'no_precheck' };
 

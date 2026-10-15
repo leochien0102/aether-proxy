@@ -149,6 +149,16 @@ expect "status existing file: exit code 0" 0 "$rc"
 expect "status existing file: stderr empty" "" "$(cat "$T/status-populated.stderr")"
 expect "status existing file: state" running "$(echo "$out" | jget state)"
 expect "status existing file: unknown field preserved" true "$(echo "$out" | jget future_field.kept)"
+echo "$out" | grep -q '"probe": null' && ok "status without probe.json: probe is null" || bad "status without probe.json: probe is null" "$out"
+printf '{"at":1234,"nodes":{"n_a":{"ok":3,"fail":0},"n_b":{"ok":0,"fail":3,"error":"timeout"}}}\n' > "$T/status-populated/probe.json"
+out="$(ap status --json --run-dir "$T/status-populated" 2>>"$T/status-populated.stderr")"
+expect "status probe summary: total" 2 "$(echo "$out" | jget probe.total)"
+expect "status probe summary: reachable" 1 "$(echo "$out" | jget probe.reachable)"
+expect "status probe summary: at" 1234 "$(echo "$out" | jget probe.at)"
+echo "$out" | grep -q '"updates_available": null' && ok "status updates_available is null before M7" || bad "status updates_available is null before M7" "$out"
+printf '{broken' > "$T/status-populated/state.json"
+ap status --json --run-dir "$T/status-populated" >/dev/null 2>&1; rc=$?
+expect "status with a corrupt state.json fails cleanly" 1 "$rc"
 
 mkdir -p "$T/events"
 cat > "$T/events/events.jsonl" <<'EVENTS'
@@ -228,6 +238,11 @@ expect "probe local listener: stderr empty" "" "$(cat "$T/probe-local.stderr")"
 expect "probe local listener: three connects succeeded" 3 "$(echo "$out" | jget nodes.n_00000000000000000000000000000001.ok)"
 expect "probe local listener: zero failures" 0 "$(echo "$out" | jget nodes.n_00000000000000000000000000000001.fail)"
 expect "probe local listener: result persisted" 3 "$(tests/host/ucode "$JGET" -- nodes.n_00000000000000000000000000000001.ok < "$T/probe-local-run/probe.json")"
+# --sys-root moves the default run dir; --bin-dir is accepted (job start forwards both).
+mkdir -p "$T/probe-root/var/run/aether-proxy" "$T/probe-bin"
+ap probe nodes n_00000000000000000000000000000001 --json --confdir "$T/probe-local" --sys-root "$T/probe-root" --bin-dir "$T/probe-bin" >/dev/null 2>"$T/probe-root.stderr"; rc=$?
+expect "probe with --sys-root/--bin-dir: exit code 0" 0 "$rc"
+[ -s "$T/probe-root/var/run/aether-proxy/probe.json" ] && ok "probe with --sys-root writes under the root" || bad "probe with --sys-root writes under the root" "$(cat "$T/probe-root.stderr")"
 
 if kill -0 "$SERVER_PID"; then kill "$SERVER_PID"; fi
 wait "$SERVER_PID"

@@ -36,7 +36,11 @@ function parse_args(args) {
 
 function public_results(result) {
 	let subs = {};
-	for (let name, item in result.subs)
+	for (let name, item in result.subs) {
+		if (item.disabled) {
+			subs[name] = { ok: true, disabled: true };
+			continue;
+		}
 		subs[name] = {
 			ok: item.ok,
 			code: item.code,
@@ -47,6 +51,7 @@ function public_results(result) {
 			removed: item.removed,
 			skipped: item.skipped
 		};
+	}
 	return { ok: result.ok, subs };
 }
 

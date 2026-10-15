@@ -307,6 +307,17 @@ expect "corrupt sub.json does not block the update" 0 "$rc"
 "$UCODE" -l fs -e "let v = json(fs.readfile('$R/etc/aether-proxy/state/sub.json')); exit(type(v) == 'object' && v.s_00000001 ? 0 : 1);" 2>>"$T/corrupt.err" \
 	&& ok "corrupt sub.json is rewritten as a valid record" || bad "corrupt sub.json is rewritten as a valid record" "$(cat "$T/corrupt.err")"
 
+# Disabled subscriptions: skipped and left out of the result; named explicitly -> disabled, no download.
+make_root "$T/root-disabled"; write_config; BODY="$FIX/one-node.txt"
+sed -i "/config subscription 's_00000002'/,/^$/ s/option enabled '1'/option enabled '0'/" "$R/etc/config/aetherproxy"
+out=$(ap --json 2>/dev/null); rc=$?
+echo "$out" | grep -q '"s_00000002"' && bad "disabled subscription is left out of the result" "$out" || ok "disabled subscription is left out of the result"
+: > "$R/calls.log"
+out=$(ap s_00000002 --json 2>/dev/null); rc=$?
+expect "named disabled subscription exits successfully" 0 "$rc"
+echo "$out" | grep -q '"disabled": true' && ok "named disabled subscription is reported as disabled" || bad "named disabled subscription is reported as disabled" "$out"
+! grep -q '^curl ' "$R/calls.log" && ok "named disabled subscription is not downloaded" || bad "named disabled subscription is not downloaded"
+
 # State and structured events have the documented per-subscription shape.
 R="$T/root1"
 state="$R/etc/aether-proxy/state/sub.json"

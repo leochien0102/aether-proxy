@@ -34,7 +34,7 @@ export function run(args) {
 		return usage(parsed.error, json);
 
 	let opts = parsed.opts;
-	let allowed_options = [ 'json', 'confdir', 'run_dir' ];
+	let allowed_options = [ 'json', 'confdir', 'run_dir', 'sys_root', 'bin_dir' ];
 	for (let key in keys(opts))
 		if (index(allowed_options, key) < 0)
 			return usage(`option --${replace(key, /_/g, '-')} is not supported by probe`, json);
@@ -68,8 +68,9 @@ export function run(args) {
 		}
 
 	let result = probe.probe_nodes(loaded.snapshot.nodes, ids,
-		loaded.snapshot.probe.node_timeout, loaded.snapshot.probe.node_concurrency);
-	let run_dir = pipeline.run_dir(opts);
+		loaded.snapshot.probe.node_timeout, loaded.snapshot.probe.node_concurrency, opts.bin_dir);
+	// --sys-root moves the default run dir like everywhere else (10, test-only options).
+	let run_dir = opts.run_dir ?? (opts.sys_root ? replace(opts.sys_root, /\/$/, '') + C.RUN_DIR : C.RUN_DIR);
 	let path = run_dir + '/' + C.PROBE_FILE;
 
 	if (!sys.write_atomic(path, sprintf('%.J', result) + '\n')) {

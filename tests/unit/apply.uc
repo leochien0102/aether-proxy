@@ -196,6 +196,12 @@ function run_dnsmasq() {
 		return fail('restart failure accepted');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_KILLALL_RC=1\n');
 	let hup_failed = apply.dnsmasq_hup(c);
+	// dns.dnsmasq_instance pins an instance by section name, ignoring lan_ifaces.
+	let pinned = apply.dnsmasq_confdir({ ...c, dnsmasq_instance: 'guest' });
+	if (!pinned.ok || pinned.confdir != `${t.base}/tmp/dnsmasq-guest.d`)
+		return fail(`pinned dnsmasq_instance: ${sprintf('%.J', pinned)}`);
+	if (apply.dnsmasq_confdir({ ...c, dnsmasq_instance: 'nosuch' }).ok)
+		return fail('unknown dnsmasq_instance accepted');
 	// Seen on a device: the only instance has no interface= line, plus a temp file
 	// (<file>.<pid>) left by an interrupted dnsmasq init with the same conf-dir.
 	let lone = `${t.base}/lone`;

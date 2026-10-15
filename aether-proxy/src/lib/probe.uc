@@ -40,15 +40,16 @@ function error_kind(code, text) {
 	return 'other';
 }
 
-function resolve_node(node, timeout) {
+function resolve_node(node, timeout, bin_dir) {
 	if (ipv4(node.address) != null)
 		return { ip: node.address };
 
-	let result = sys.run([ 'resolveip', '-4', '-t', `${timeout}`, node.address ], { timeout, quiet: true });
+	let resolveip = bin_dir ? `${bin_dir}/resolveip` : 'resolveip';
+	let result = sys.run([ resolveip, '-4', '-t', `${timeout}`, node.address ], { timeout, quiet: true });
 	if (result.code != 0)
 		return { error: 'resolve_failed' };
 
-	// TODO(design): docs/07 does not define address selection if resolveip returns several IPv4s.
+	// Several A records: the first valid one, as for the bootstrap resolution (03).
 	for (let candidate in split(trim(result.stdout ?? ''), /[[:space:]]+/))
 		if (ipv4(candidate) != null)
 			return { ip: candidate };
@@ -234,12 +235,12 @@ function summarize_node(record) {
 }
 
 // nodes is a normalized config snapshot map; ids is its sorted selected subset.
-export function probe_nodes(nodes, ids, timeout, concurrency) {
+export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir) {
 	let results = {};
 	let jobs = [];
 
 	for (let id in ids) {
-		let resolved = resolve_node(nodes[id], timeout);
+		let resolved = resolve_node(nodes[id], timeout, bin_dir);
 		if (resolved.error != null) {
 			// TODO(design): docs/07 does not define whether DNS failure increments the TCP fail count.
 			// Count the three planned checks as failed while preserving the specific resolve_failed code.

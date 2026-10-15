@@ -325,6 +325,23 @@ has_line "$L5" 'chinadns-ng -C' && ok "degraded mode keeps chinadns running" || 
 stop_daemon; expect "degraded daemon stops successfully" 0 "$?"
 assert_no_children "$R5"
 
+# 5b. Same, with fail_open=0: interception stays installed (proxy targets fail, no leak), Xray stays down.
+R5B="$T/sys5b"; L5B="$T/sys5b/calls.log"; make_root "$R5B"; : > "$L5B"
+FO_CONF="$T/failopen-off-conf"; mkdir -p "$FO_CONF"
+sed "/option enabled '1'/a\\	option fail_open '0'" "$FIX/aetherproxy" > "$FO_CONF/aetherproxy"
+STUB_RESOLVE_FAIL=1 start_daemon "$R5B" "$L5B" --confdir "$FO_CONF"
+if wait_for "$R5B/var/run/aether-proxy/state.json" 'degraded'; then
+	ok "fail_open=0: unresolved node enters degraded"
+else
+	bad "fail_open=0: unresolved node enters degraded" "$(cat "$R5B/daemon.stderr")"
+fi
+wait_for "$L5B" 'ip rule add' >/dev/null
+! has_line "$L5B" 'xray run -c' && ok "fail_open=0 degraded skips xray" || bad "fail_open=0 degraded skips xray"
+has_line "$L5B" 'nft -f ' && ok "fail_open=0 degraded still loads nft" || bad "fail_open=0 degraded still loads nft"
+has_line "$L5B" 'ip rule add' && ok "fail_open=0 degraded still adds the ip rule" || bad "fail_open=0 degraded still adds the ip rule"
+stop_daemon; expect "fail_open=0 degraded daemon stops successfully" 0 "$?"
+assert_no_children "$R5B"
+
 # 6. Conflict is rejected before cleanup or any system-changing operation.
 R6="$T/sys6"; L6="$T/sys6/calls.log"; make_root "$R6"; : > "$L6"
 printf 'table inet ss_spec\n' > "$R6/conflicts"

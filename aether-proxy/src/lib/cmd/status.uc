@@ -4,6 +4,7 @@ import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as state from 'aetherproxy.state';
+import * as fs from 'fs';
 
 function usage(args, detail) {
 	let json = index(args, '--json') >= 0;
@@ -14,11 +15,34 @@ function usage(args, detail) {
 function human_status(value) {
 	let lines = [ `state: ${value.state ?? 'unknown'}` ];
 
-	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'node_ip', 'since', 'last_probe', 'last_error', 'components', 'render_hash' ])
+	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'node_ip', 'since', 'last_probe', 'last_error', 'probe', 'updates_available', 'components', 'render_hash' ])
 		if (value[field] != null)
 			push(lines, `${field}: ${sprintf('%J', value[field])}`);
 
 	return join('\n', lines);
+}
+
+// probe.json summary for status (10): null when there is no usable probe result yet.
+function probe_summary(run_dir) {
+	let text = fs.readfile(`${run_dir}/${C.PROBE_FILE}`);
+	if (text == null)
+		return null;
+	let data = null;
+	try {
+		data = json(text);
+	}
+	catch (e) {
+		return null;	// a half-written or damaged file is not worth failing status for
+	}
+	if (type(data) != 'object' || type(data.nodes) != 'object')
+		return null;
+	let total = 0, reachable = 0;
+	for (let id, node in data.nodes) {
+		total++;
+		if (type(node) == 'object' && (node.ok ?? 0) > 0)
+			reachable++;
+	}
+	return { at: data.at ?? null, total, reachable };
 }
 
 export function run(args) {
@@ -42,5 +66,7 @@ export function run(args) {
 			{ ok: false, code: 'FS_FAILED', detail }, 1, `cannot read status: ${detail}`);
 	}
 
+	current.probe = probe_summary(run_dir);
+	current.updates_available = null;	// filled in by the update channel (M7)
 	return pipeline.finish(parsed.opts, current, 0, human_status(current));
 };

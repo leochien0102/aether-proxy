@@ -382,11 +382,14 @@ function run(daemon) {
 		return { ok: true, actions: [], snapshot, state: daemon.state };
 	}
 	let old_state = daemon.state;
+	let old_instance = daemon.ctx.dnsmasq_instance;
+	daemon.ctx.dnsmasq_instance = snapshot.dns?.dnsmasq_instance ?? null;
 	daemon.state = { ...daemon.state, node_ip };
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
 		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node);
 	if (!applied.ok) {
 		daemon.state = old_state;
+		daemon.ctx.dnsmasq_instance = old_instance;
 		return failure(daemon, 'actions', applied.detail);
 	}
 	daemon.snapshot = snapshot;

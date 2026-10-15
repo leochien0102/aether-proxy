@@ -712,7 +712,9 @@ export function update(ctx, sub_name) {
 	for (let name in names) {
 		let sub = snapshot.subscriptions[name];
 		if (sub.enabled != true) {
-			results[name] = make_update_result(true, null, null);
+			// 06: disabled subscriptions are not processed and, unless named, not reported.
+			if (sub_name != null)
+				results[name] = { ...make_update_result(true, null, null), disabled: true };
 			continue;
 		}
 		any_attempt = true;
