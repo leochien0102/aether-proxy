@@ -15,6 +15,7 @@ import * as config from 'aetherproxy.config';
 import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
 import * as reload from 'aetherproxy.reload';
+import * as schedule from 'aetherproxy.schedule';
 import * as uci from 'uci';
 
 const BOOT_OPTS = {
@@ -731,6 +732,117 @@ function retry_delay(index) {
 	return C.START_RETRY_DELAYS[min(index, length(C.START_RETRY_DELAYS) - 1)];
 };
 
+function numeric(value) {
+	return type(value) == 'int' || type(value) == 'double';
+};
+
+function subscription_jitter_value() {
+	let fp = fs.open(C.RANDOM_DEVICE, 'r');
+	if (fp == null)
+		return { ok: false, detail: `open ${C.RANDOM_DEVICE}: ${fs.error() ?? 'unknown error'}` };
+	let bytes = fp.read(4);
+	let read_error = fs.error();
+	let closed = fp.close();
+	if (bytes == null || length(bytes) != 4 || !closed)
+		return { ok: false, detail: `read ${C.RANDOM_DEVICE}: ${read_error ?? fs.error() ?? 'unknown error'}` };
+	let value = ord(bytes, 0) * 16777216 + ord(bytes, 1) * 65536 + ord(bytes, 2) * 256 + ord(bytes, 3);
+	return { ok: true, value: value / C.SCHEDULE_RANDOM_RANGE * C.SCHEDULE_MAX_JITTER };
+};
+
+function reconcile_subscription_jitter(ctx, subs, current) {
+	let jitter = { ...(current ?? {}) };
+	for (let name in keys(jitter))
+		if (subs[name] == null)
+			delete jitter[name];
+	for (let name, sub in subs) {
+		if (sub.enabled != true || !numeric(sub.interval_hours) || sub.interval_hours <= 0 || index(keys(jitter), name) >= 0)
+			continue;
+		let sampled = subscription_jitter_value();
+		if (!sampled.ok) {
+			// TODO(design): random-source failure has no retry policy; keep this subscription unscheduled.
+			jitter[name] = null;
+			setup_log(ctx);
+			log.event('error', 'FS_FAILED', { op: 'read', path: C.RANDOM_DEVICE, detail: sampled.detail });
+		}
+		else
+			jitter[name] = sampled.value;
+	}
+	return jitter;
+};
+
+function schedule_interval_ms() {
+	let value = getenv(C.SCHEDULE_TEST_INTERVAL_ENV);
+	if (match(value ?? '', /^[0-9]+$/) == null)
+		return C.SCHEDULE_INTERVAL_MS;
+	let ms = +value;
+	return ms >= 10 && ms < C.SCHEDULE_INTERVAL_MS ? ms : C.SCHEDULE_INTERVAL_MS;
+};
+
+function schedule_test_hour_seconds() {
+	let value = getenv(C.SCHEDULE_TEST_HOUR_ENV);
+	if (match(value ?? '', /^[0-9]+(\.[0-9]+)?$/) == null)
+		return C.SCHEDULE_HOUR_SECS;
+	let seconds = +value;
+	return seconds > 0 && seconds < C.SCHEDULE_HOUR_SECS ? seconds : C.SCHEDULE_HOUR_SECS;
+};
+
+function schedule_subs(subs) {
+	let test_seconds = schedule_test_hour_seconds();
+	if (test_seconds == C.SCHEDULE_HOUR_SECS)
+		return subs;
+	let scale = test_seconds / C.SCHEDULE_HOUR_SECS;
+	let adjusted = {};
+	for (let name, sub in subs)
+		adjusted[name] = numeric(sub.interval_hours)
+			? { ...sub, interval_hours: sub.interval_hours * scale }
+			: sub;
+	return adjusted;
+};
+
+function read_subscription_status(ctx) {
+	let path = `${state_dir(ctx)}/${C.SUB_STATE_FILE}`;
+	let text = fs.readfile(path);
+	if (text == null) {
+		let detail = fs.error() ?? 'unknown error';
+		if (detail == 'No such file or directory')
+			return {};
+		log.event('error', 'FS_FAILED', { op: 'read', path, detail });
+		return null;
+	}
+	let status = null, parse_error = null;
+	try {
+		status = json(text);
+	}
+	catch (e) {
+		parse_error = e.message ?? `${e}`;
+	}
+	if (type(status) != 'object') {
+		let detail = `invalid ${path}: ${parse_error ?? 'expected a JSON object'}`;
+		// TODO(design): scheduling behavior for a corrupt sub.json is unspecified; skip this tick.
+		log.event('error', 'FS_FAILED', { op: 'parse', path, detail });
+		return null;
+	}
+	return status;
+};
+
+function schedule_subscription_job(ctx, opts, name) {
+	let argv = [ cmd(ctx, C.PROG), 'job', 'start', 'sub', 'update', name,
+		'--confdir', opts.confdir, '--run-dir', run_dir(ctx) ];
+	if (ctx.root != '')
+		push(argv, '--sys-root', ctx.root);
+	if (ctx.bin_dir != null)
+		push(argv, '--bin-dir', ctx.bin_dir);
+	let result = sys.run(argv, { timeout: 10, quiet: true });
+	if (result.code == 3)
+		return;
+	if (result.code != 0) {
+		let args = { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) };
+		if (result.timed_out)
+			args.timed_out = true;
+		log.event('error', 'CMD_FAILED', args);
+	}
+};
+
 function run(args) {
 	let parsed = parse_options(args, true);
 	if (parsed.error) {
@@ -740,6 +852,7 @@ function run(args) {
 	let opts = resolved_opts(parsed.opts);
 	let ctx = make_context(opts, []);
 	setup_log(ctx);
+	let daemon_started_at = time();
 	if (!uloop.init()) {
 		event_failure(ctx, 'uloop_init', 'cannot initialize uloop');
 		return 1;
@@ -767,6 +880,35 @@ function run(args) {
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
+		let schedule_started_at = daemon_started_at;
+		let subscription_jitter = reconcile_subscription_jitter(ctx, result.snapshot.subscriptions, {});
+		let subscription_timer = null;
+
+		function cancel_subscription_timer() {
+			if (subscription_timer != null) {
+				subscription_timer.cancel();
+				subscription_timer = null;
+			}
+		};
+
+		function schedule_tick() {
+			if (index([ 'running', 'degraded' ], monitor_daemon.machine.state) < 0)
+				return;
+			let status = read_subscription_status(ctx);
+			if (status == null)
+				return;
+			let name = schedule.due(schedule_subs(monitor_daemon.snapshot.subscriptions), status,
+				subscription_jitter, time(), schedule_started_at);
+			if (name != null)
+				schedule_subscription_job(ctx, opts, name);
+		};
+
+		subscription_timer = uloop.interval(schedule_interval_ms(), schedule_tick);
+		if (subscription_timer == null) {
+			// TODO(design): there is no scheduler-specific event code for timer allocation failure.
+			setup_log(ctx);
+			log.event('error', 'START_FAILED', { step: 'subscription_schedule', detail: 'uloop.interval returned null' });
+		}
 
 		while (signal != 'stop') {
 			if (signal == 'tick') {
@@ -794,6 +936,7 @@ function run(args) {
 				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
 				if (changed.stop) {
 					stopping = true;
+					cancel_subscription_timer();
 					let stop_errors = shutdown(ctx, children, true);
 					if (length(stop_errors))
 						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
@@ -809,12 +952,15 @@ function run(args) {
 					monitor_daemon.snapshot = changed.snapshot;
 					monitor_daemon.state = changed.state;
 					monitor_daemon.machine.node_ip = changed.state.node_ip;
+					subscription_jitter = reconcile_subscription_jitter(ctx,
+						changed.snapshot.subscriptions, subscription_jitter);
 				}
 				continue;
 			}
 			signal = null;
 			uloop.run();
 		}
+		cancel_subscription_timer();
 
 		if (signal == 'stop' && !stopping) {
 			while (monitor_daemon?.busy)
