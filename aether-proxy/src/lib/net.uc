@@ -96,3 +96,44 @@ export function private_ipv4(s) {
 
 	return false;
 };
+
+function ipv4_number(s) {
+	let octets = map(split(s, '.'), value => +value);
+	return octets[0] * 16777216 + octets[1] * 65536 + octets[2] * 256 + octets[3];
+};
+
+function ipv4_string(value) {
+	let a = int(value / 16777216);
+	value -= a * 16777216;
+	let b = int(value / 65536);
+	value -= b * 65536;
+	let c = int(value / 256);
+	let d = value - c * 256;
+	return `${a}.${b}.${c}.${d}`;
+};
+
+// Convert an inclusive IPv4 range to its minimal, non-overlapping CIDR cover.
+export function range_to_cidrs(a, b) {
+	if (type(a) != 'string' || type(b) != 'string' || ipv4(a) == null || ipv4(b) == null)
+		return null;
+
+	let first = ipv4_number(a), last = ipv4_number(b);
+	if (first > last)
+		return null;
+
+	let out = [], current = first;
+	while (current <= last) {
+		let host_bits = 0, block = 1;
+		while (host_bits < 32) {
+			let bigger = block * 2;
+			if (current % bigger != 0 || current + bigger - 1 > last)
+				break;
+			block = bigger;
+			host_bits++;
+		}
+		push(out, host_bits == 0 ? ipv4_string(current) : `${ipv4_string(current)}/${32 - host_bits}`);
+		current += block;
+	}
+
+	return out;
+};
