@@ -59,6 +59,9 @@ jobs:
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
+      - name: Test release-channel builder
+        run: python3 -m unittest discover tools/channel
+
   # Real-tool validation of the golden files. Logic lives in tests/ci/*.sh so it can be run
   # locally. Versions come from aether-proxy/src/lib/const.uc; nothing is duplicated here.
   validate-xray:
