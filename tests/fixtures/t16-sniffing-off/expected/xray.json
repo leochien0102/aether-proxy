@@ -64,21 +64,13 @@
       "tag": "proxy",
       "protocol": "vless",
       "settings": {
-        "vnext": [
-          {
-            "address": "plain.example.com",
-            "port": 8443,
-            "users": [
-              {
-                "id": "11111111-2222-4333-8444-555555555555",
-                "encryption": "none"
-              }
-            ]
-          }
-        ]
+        "address": "plain.example.com",
+        "port": 8443,
+        "id": "11111111-2222-4333-8444-555555555555",
+        "encryption": "none"
       },
       "streamSettings": {
-        "network": "httpupgrade",
+        "method": "httpupgrade",
         "security": "tls",
         "tlsSettings": {
           "serverName": "plain.example.com"

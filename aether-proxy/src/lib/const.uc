@@ -38,6 +38,7 @@ export const KEYS_DIR = '/etc/aether-proxy/keys';
 export const STATE_DIR = '/etc/aether-proxy/state';
 export const STATE_FILE = 'state.json';
 export const EVENTS_FILE = 'events.jsonl';
+export const PROBE_FILE = 'probe.json';
 export const BASELINE_DATA_DIR = '/usr/share/aether-proxy/data';
 export const BIN_DIR = '/usr/share/aether-proxy/bin';
 export const RUN_DIR = '/var/run/aether-proxy';

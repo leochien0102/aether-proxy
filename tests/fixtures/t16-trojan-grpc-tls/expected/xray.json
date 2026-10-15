@@ -64,16 +64,12 @@
       "tag": "proxy",
       "protocol": "trojan",
       "settings": {
-        "servers": [
-          {
-            "address": "203.0.113.14",
-            "port": 443,
-            "password": "secret"
-          }
-        ]
+        "address": "203.0.113.14",
+        "port": 443,
+        "password": "secret"
       },
       "streamSettings": {
-        "network": "grpc",
+        "method": "grpc",
         "security": "tls",
         "tlsSettings": {
           "serverName": "tg.example.com"

@@ -11,7 +11,15 @@ JGET="$ROOT/tests/cli/jget.uc"
 FIX="$ROOT/tests/fixtures"
 
 T="$(mktemp -d)"
-trap 'rm -rf "$T"' EXIT
+SERVER_PID=''
+cleanup() {
+	if [ -n "$SERVER_PID" ]; then
+		if kill -0 "$SERVER_PID"; then kill "$SERVER_PID"; fi
+		wait "$SERVER_PID"
+	fi
+	rm -rf "$T"
+}
+trap cleanup EXIT
 
 pass=0
 fail=0
@@ -145,6 +153,8 @@ expect "status existing file: unknown field preserved" true "$(echo "$out" | jge
 mkdir -p "$T/events"
 cat > "$T/events/events.jsonl" <<'EVENTS'
 {"ts":100,"level":"notice","code":"SERVICE_STARTED","args":{"mode":"gfw"}}
+{"ts":150,"level":"notice","code":"TRUNCATED"
+not-json
 {"ts":200,"level":"warn","code":"DNS_TIER_CHANGED","args":{"from":"T1","to":"T2"}}
 {"ts":300,"level":"error","code":"XRAY_DOWN","args":{}}
 EVENTS
@@ -153,6 +163,7 @@ expect "events: exit code 0" 0 "$rc"
 expect "events: stderr empty" "" "$(cat "$T/events-all.stderr")"
 expect "events: first row" SERVICE_STARTED "$(echo "$out" | jget events.0.code)"
 expect "events: third row" XRAY_DOWN "$(echo "$out" | jget events.2.code)"
+expect "events: malformed lines skipped" 2 "$(echo "$out" | jget skipped)"
 
 out="$(ap events --json --since 200 --run-dir "$T/events" 2>"$T/events-since.stderr")"; rc=$?
 expect "events since: exit code 0" 0 "$rc"
@@ -160,12 +171,148 @@ expect "events since: stderr empty" "" "$(cat "$T/events-since.stderr")"
 expect "events since: inclusive boundary" 200 "$(echo "$out" | jget events.0.ts)"
 expect "events since: later event retained" 300 "$(echo "$out" | jget events.1.ts)"
 expect "events since: earlier event removed" '<missing>' "$(echo "$out" | jget events.2.ts)"
+expect "events since: malformed count preserved" 2 "$(echo "$out" | jget skipped)"
 
 out="$(ap events --json --level warn --run-dir "$T/events" 2>"$T/events-level.stderr")"; rc=$?
 expect "events level: exit code 0" 0 "$rc"
 expect "events level: stderr empty" "" "$(cat "$T/events-level.stderr")"
-expect "events level: exact level selected" DNS_TIER_CHANGED "$(echo "$out" | jget events.0.code)"
-expect "events level: other levels removed" '<missing>' "$(echo "$out" | jget events.1.ts)"
+expect "events level: warn selected" DNS_TIER_CHANGED "$(echo "$out" | jget events.0.code)"
+expect "events level: more severe error included" XRAY_DOWN "$(echo "$out" | jget events.1.code)"
+expect "events level: less severe notice excluded" '<missing>' "$(echo "$out" | jget events.2.ts)"
+# --- 5. TCP node probes use a local ucode listener or TEST-NET only
+cat > "$T/probe-listener.uc" <<'UCODE'
+'use strict';
+import * as socket from 'socket';
+import * as fs from 'fs';
+let server = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+if (server == null || !server.bind({ address: '127.0.0.1', port: 0 }) || !server.listen(32))
+	exit(1);
+let bound = server.sockname();
+let port_file = fs.open(ARGV[0], 'w');
+if (port_file == null)
+	exit(1);
+port_file.write(`${bound.port}\n`);
+port_file.close();
+while (true) {
+	let peer = server.accept();
+	if (peer != null)
+		peer.close();
+}
+UCODE
+"$UCODE" "$T/probe-listener.uc" "$T/probe.port" > "$T/probe-listener.stdout" 2>"$T/probe-listener.stderr" &
+SERVER_PID=$!
+for attempt in {1..50}; do
+	[ -s "$T/probe.port" ] && break
+	sleep 0.05
+done
+local_port="$(cat "$T/probe.port")"
+[ -n "$local_port" ] && ok "probe listener: ucode bound random loopback port" || bad "probe listener: ucode bound random loopback port"
+
+mkdir -p "$T/probe-local" "$T/probe-local-run"
+cat > "$T/probe-local/aetherproxy" <<EOF
+config main 'main'
+	option enabled '0'
+config probe 'probe'
+	option node_timeout '1'
+	option node_concurrency '8'
+config node 'n_00000000000000000000000000000001'
+	option protocol 'trojan'
+	option address '127.0.0.1'
+	option port '$local_port'
+	option password 'test-password'
+	option security 'tls'
+EOF
+out="$(ap probe nodes n_00000000000000000000000000000001 --json --confdir "$T/probe-local" --run-dir "$T/probe-local-run" 2>"$T/probe-local.stderr")"; rc=$?
+expect "probe local listener: exit code 0" 0 "$rc"
+expect "probe local listener: stderr empty" "" "$(cat "$T/probe-local.stderr")"
+expect "probe local listener: three connects succeeded" 3 "$(echo "$out" | jget nodes.n_00000000000000000000000000000001.ok)"
+expect "probe local listener: zero failures" 0 "$(echo "$out" | jget nodes.n_00000000000000000000000000000001.fail)"
+expect "probe local listener: result persisted" 3 "$(tests/host/ucode "$JGET" -- nodes.n_00000000000000000000000000000001.ok < "$T/probe-local-run/probe.json")"
+
+if kill -0 "$SERVER_PID"; then kill "$SERVER_PID"; fi
+wait "$SERVER_PID"
+SERVER_PID=''
+out="$(ap probe nodes n_00000000000000000000000000000001 --json --confdir "$T/probe-local" --run-dir "$T/probe-local-run" 2>"$T/probe-refused.stderr")"; rc=$?
+expect "probe closed loopback port: exit code 0" 0 "$rc"
+expect "probe closed loopback port: refused" refused "$(echo "$out" | jget nodes.n_00000000000000000000000000000001.error)"
+
+mkdir -p "$T/probe-one-net" "$T/probe-one-net-run"
+cat > "$T/probe-one-net/aetherproxy" <<'EOF'
+config main 'main'
+	option enabled '0'
+config probe 'probe'
+	option node_timeout '1'
+config node 'n_00000000000000000000000000000002'
+	option protocol 'trojan'
+	option address '192.0.2.1'
+	option port '65000'
+	option password 'test-password'
+	option security 'tls'
+EOF
+start_ns=$(date +%s%N)
+out="$(ap probe nodes n_00000000000000000000000000000002 --json --confdir "$T/probe-one-net" --run-dir "$T/probe-one-net-run" 2>"$T/probe-one-net.stderr")"; rc=$?
+end_ns=$(date +%s%N)
+elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
+expect "probe one TEST-NET node: exit code 0" 0 "$rc"
+reason="$(echo "$out" | jget nodes.n_00000000000000000000000000000002.error)"
+case "$reason" in timeout|unreachable) ok "probe one TEST-NET node: timeout/unreachable";; *) bad "probe one TEST-NET node: timeout/unreachable" "got '$reason'";; esac
+[ "$elapsed_ms" -lt 5000 ] && ok "probe one TEST-NET node: under 5 seconds" || bad "probe one TEST-NET node: under 5 seconds" "${elapsed_ms}ms"
+
+mkdir -p "$T/probe-net" "$T/probe-net-run"
+{
+	cat <<'UCI'
+config main 'main'
+	option enabled '0'
+config probe 'probe'
+	option node_timeout '1'
+	option node_concurrency '8'
+UCI
+	for octet in {1..10}; do
+		id=$(printf 'n_%032x' "$((100 + octet))")
+		cat <<UCI
+config node '$id'
+	option protocol 'trojan'
+	option address '192.0.2.$octet'
+	option port '65000'
+	option password 'test-password'
+	option security 'tls'
+UCI
+	done
+} > "$T/probe-net/aetherproxy"
+start_ns=$(date +%s%N)
+out="$(ap probe nodes --json --confdir "$T/probe-net" --run-dir "$T/probe-net-run" 2>"$T/probe-net.stderr")"; rc=$?
+end_ns=$(date +%s%N)
+elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
+expect "probe TEST-NET: exit code 0" 0 "$rc"
+expect "probe TEST-NET: 10 nodes returned" 10 "$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)["nodes"]))' <<< "$out")"
+reason="$(echo "$out" | jget nodes.n_00000000000000000000000000000065.error)"
+case "$reason" in timeout|unreachable) ok "probe TEST-NET: timeout/unreachable classified";; *) bad "probe TEST-NET: timeout/unreachable classified" "got '$reason'";; esac
+[ "$elapsed_ms" -lt 6000 ] && ok "probe concurrency: 10 nodes completed in ${elapsed_ms}ms" || bad "probe concurrency: 10 nodes under 6 seconds" "${elapsed_ms}ms"
+
+mkdir -p "$T/fakebin" "$T/probe-dns" "$T/probe-dns-run"
+cat > "$T/fakebin/resolveip" <<'SH'
+#!/bin/sh
+case "$*" in
+	*nonexistent.invalid*) exit 1 ;;
+	*) echo 127.0.0.1; exit 0 ;;
+esac
+SH
+chmod +x "$T/fakebin/resolveip"
+cat > "$T/probe-dns/aetherproxy" <<'EOF'
+config main 'main'
+	option enabled '0'
+config probe 'probe'
+	option node_timeout '1'
+config node 'n_000000000000000000000000000000c9'
+	option protocol 'trojan'
+	option address 'nonexistent.invalid'
+	option port '443'
+	option password 'test-password'
+	option security 'tls'
+EOF
+out="$(PATH="$T/fakebin:$PATH" ap probe nodes n_000000000000000000000000000000c9 --json --confdir "$T/probe-dns" --run-dir "$T/probe-dns-run" 2>"$T/probe-dns.stderr")"; rc=$?
+expect "probe unresolved domain: exit code 0" 0 "$rc"
+expect "probe unresolved domain: resolve_failed" resolve_failed "$(echo "$out" | jget nodes.n_000000000000000000000000000000c9.error)"
 
 echo
 echo "$pass passed, $fail failed"
