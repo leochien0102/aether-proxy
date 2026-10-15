@@ -56,7 +56,7 @@
 启动顺序有硬依赖：chinadns-ng → dnsmasq → 解析节点 → Xray 监听 → 加载 nft。procd 的多个实例是在
 `start_service` 返回后才统一拉起的，表达不了这种顺序。所以：
 
-- procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`）。
+- procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`，`term_timeout 15`：有序停止要导出集合、删表、重启 dnsmasq，procd 默认等 5 秒就 SIGKILL，在慢的路由器上不够）。
 - `aether-proxy daemon` 是监督进程：执行上面的启动步骤，以**子进程**方式拉起并重启 Xray、chinadns-ng
   （退避 5s → 10s → 30s → 60s 封顶），然后进入 monitor 循环。
   子进程用 `uloop.process` 拉起，继承 daemon 的 stdout/stderr（日志由 procd 收集，见 [09](09-logging.md)「子进程日志」）；退出由回调通知，不轮询。daemon 记录每个子进程是否处于「主动停止」中，不是主动停止的退出一律视为崩溃。连续稳定运行 5 分钟后退避计数归零。
