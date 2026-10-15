@@ -177,6 +177,15 @@ reload 改模式只替换 nft、Xray 不重启、动态集合保留；配置不�
 且 `fw4 reload` 后表与 ip rule 仍在；阻断节点 90 秒降到 T2 / `degraded`，恢复后 34 秒回到 T1 / `running`；
 stop 清理干净并保存集合，boot 后集合恢复；`kill -9` daemon 后 procd 拉起、孤儿子进程被清理；`kill -9` 后立即 stop 由 `cleanup` 兜底并保存集合。
 
+补测（2026-10-15 晚，第二次窗口）也全部通过：三种主机策略与 `unlisted_policy=direct`、DNS 劫持（`direct` 主机不劫持）、自定义名单（只重启 chinadns-ng）、
+`fw4 flush` 后第二轮重建、Xray 无法重启 → `failsafe`（摘除拦截后境外直连，恢复约 19 秒）、chinadns-ng 无法重启 → DNS 回落（仍可解析，恢复约 19 秒）、
+daemon 启动失败 → 留在 `error` 并按 30 秒重试成功；真实订阅导入 7 个节点、第二次更新文件不变、`xray run -test` 通过。
+
+测试方法上的教训（以后的验收照此做）：
+- 改策略后要用**新连接**验证（`curl`），不要刷新浏览器页面：已被 TPROXY 接管的连接由 `socket transparent` 规则继续交给 Xray，开启流量卸载时已建立的转发连接绕过 prerouting，二者都沿用旧路径。这是预期行为——策略与模式变化只影响新连接。
+- 改域名名单后先清客户端 DNS 缓存（Windows `ipconfig /flushdns`）：名单靠 DNS 应答填集合，客户端用缓存时查询到不了路由器。
+- `fw4 flush` 之后 `fw4 reload` 会拒绝执行（fw4 表已不存在），要用 `/etc/init.d/firewall restart` 重建。
+
 验收中发现、已修正的实现问题（宿主机测试都没能暴露，记在这里供以后参考）：
 
 - Go（Xray）把 `0.0.0.0` 监听开成一个 IPv6 双栈 socket，只出现在 `/proc/net/tcp6`；端口检查必须同时读 `tcp` 和 `tcp6`。
@@ -185,3 +194,5 @@ stop 清理干净并保存集合，boot 后集合恢复；`kill -9` daemon 后 p
 - dnsmasq init 被打断时会留下 `dnsmasq.conf.<section>.<pid>` 临时文件；conf-dir 发现要忽略它，并按目录而不是文件计数。
 - busybox 可能没有 `od`；uci-defaults 改用 ucode 读 `/dev/urandom`。
 - pid 文件指向的进程已不存在或被复用时，`cleanup` 只删 pid 文件，不算失败。
+- `chinadns.conf` 按路径引用名单，只改名单时渲染文本不变，reload 判定无变化；哈希改为覆盖被引用的名单（见「重载」）。
+- 路由表 233 已空时 `ip route flush` 返回 ESRCH（No such process），按成功处理。
