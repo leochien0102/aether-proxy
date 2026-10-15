@@ -437,7 +437,7 @@ function resolve_node(ctx, address) {
 		if (net.ipv4(trim(line)) != null && !array_has(ips, trim(line)))
 				push(ips, trim(line));
 		if (length(ips)) {
-			// TODO(design): resolveip can return several A records; choose its first valid result.
+			// Several A records: take the first valid one (03-dns.md, bootstrap resolution).
 			let ip = ips[0], path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
 			let old = read_lkg(ctx, address);
 			if (old != ip) {
