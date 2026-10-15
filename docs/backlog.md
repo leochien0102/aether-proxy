@@ -58,8 +58,8 @@
 
 ### 操作的现有实现路径
 
-- 切换节点：改 `main.node` 后 reload（增量，只重启 Xray）。
-- 重启：`/etc/init.d/aether-proxy restart`。
+- 切换节点：改 `main.node` 后 reload（增量，只重启 Xray），之后**自动做一次健康检测**并在首页显示结果（仓库所有者确认）。reload 完成后发一次 USR1 即可，不需要新机制。
+- 重启：重启整个服务（`/etc/init.d/aether-proxy restart`），不只重启 Xray（仓库所有者确认）。
 - 测当前节点延迟：向 daemon 发 USR1，monitor 立即跑一轮代理健康检测，`last_probe` 几秒内更新（与首页显示的是同一个指标：经节点请求 `generate_204` 的耗时）。
 - 更新订阅：`job start sub update`。
 
