@@ -13,7 +13,7 @@ export const cases = [
 	{ name: 'start stop and pid file lifecycle', expect: 'PASS', kind: 'lifecycle' },
 	{ name: 'crash backoff is cancelled by stop', expect: 'PASS', kind: 'cancel-restart' },
 	{ name: 'TERM escalates to KILL after grace', expect: 'PASS', kind: 'kill' },
-	{ name: 'kill_stale verifies the command line', expect: 'PASS', kind: 'stale' },
+	{ name: 'kill_stale kills only a matching command line, drops a stale pid file', expect: 'PASS', kind: 'stale' },
 	{ name: 'stable runtime resets backoff index', expect: 'PASS', kind: 'stable' }
 ];
 
@@ -103,11 +103,12 @@ export function run(c) {
 				return done(fail(`pid file write: ${sys.error()}`));
 			uloop.timer(100, () => {
 				let wrong = sup.kill_stale(dir, 'child', 'does-not-match');
-				if (wrong.ok || !fs.stat(`${C.PROC_DIR}/${pid}`)) {
+				if (!wrong.ok || !fs.stat(`${C.PROC_DIR}/${pid}`) || fs.stat(`${dir}/child.pid`)) {
 					sys.run([ 'kill', '-KILL', `${pid}` ], { quiet: true });
-					done(fail('mismatch was not safely rejected'));
+					done(fail(`mismatch must leave the process alone and drop the pid file: ${wrong.detail}`));
 					return;
 				}
+				sys.write_atomic(`${dir}/child.pid`, `${pid}\n`);
 				let killed = sup.kill_stale(dir, 'child', 'sleep');
 				uloop.timer(100, () => done(killed.ok && !fs.stat(`${C.PROC_DIR}/${pid}`) ? 'PASS' : fail(`matching process not stopped: ${killed.detail}`)));
 			});

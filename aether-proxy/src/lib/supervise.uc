@@ -167,8 +167,12 @@ function kill_stale(run_dir, name, command_match) {
 	let pid = +text;
 	let proc_path = `${C.PROC_DIR}/${pid}`;
 	let cmdline = fs.readfile(`${proc_path}/cmdline`);
-	if (cmdline == null || index(cmdline, command_match) < 0)
-		return { ok: false, detail: `pid ${pid} command line does not match` };
+	// Gone, or the pid now belongs to someone else: not ours to kill (04), and the pid file
+	// is stale either way. Treating this as a failure blocked every later cleanup and start.
+	if (cmdline == null || index(cmdline, command_match) < 0) {
+		unlink_pid(path);
+		return { ok: true, detail: `stale pid file removed (pid ${pid} is not ${command_match})` };
+	}
 
 	let term = kill_process(pid, 'TERM');
 	if (term.code != 0)
