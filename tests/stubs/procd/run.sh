@@ -148,7 +148,7 @@ run_defaults() {
 			esac
 			return 2
 		}
-		od() { printf '%s\n' "$TEST_OD_VALUE"; return 0; }
+		ucode() { printf '%s' "$TEST_OD_VALUE"; return 0; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
 		. "$DEFAULTS"
 	)

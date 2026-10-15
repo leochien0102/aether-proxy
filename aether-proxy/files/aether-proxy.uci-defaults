@@ -14,17 +14,16 @@ if [ "$rc" -ne 1 ] && [ "$rc" -ne 0 ]; then
 	exit 1
 fi
 
-random=$(od -An -N2 -tu2 /dev/urandom)
+# ucode is a hard dependency; od/hexdump are optional busybox applets and missing on some builds.
+random=$(ucode -l fs -e 'let f = fs.open("/dev/urandom"); let b = f.read(2); f.close(); print(ord(b, 0) * 256 + ord(b, 1));')
 rc=$?
 if [ "$rc" -ne 0 ]; then
-	log_failure 'od -An -N2 -tu2 /dev/urandom' "$rc"
+	log_failure 'reading /dev/urandom with ucode' "$rc"
 	exit 1
 fi
-set -- $random
-random=${1:-}
 case "$random" in
 	''|*[!0-9]*)
-		logger -t aether-proxy-uci-defaults 'od returned invalid unsigned integer'
+		logger -t aether-proxy-uci-defaults 'ucode returned an invalid unsigned integer'
 		exit 1
 		;;
 esac
