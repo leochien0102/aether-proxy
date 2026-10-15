@@ -768,7 +768,7 @@ function run(args) {
 		});
 	}
 
-	let exit_code = 0, retry_index = 0, finished = false;
+	let exit_code = 0, retry_index = 0, retry_attempt = 0, finished = false;
 
 	function run_monitor(result, children) {
 		ctx.service_mode = result.snapshot.main.mode;
@@ -880,6 +880,7 @@ function run(args) {
 		let children = result.children ?? { xray: null, dns: null };
 		if (result.ok) {
 			retry_index = 0;
+			retry_attempt = 0;
 			run_monitor(result, children);
 			continue;
 		}
@@ -933,7 +934,7 @@ function run(args) {
 		}
 
 		let delay = retry_delay(retry_index);
-		let attempt = retry_index + 1;
+		let attempt = ++retry_attempt;
 		retry_index = min(retry_index + 1, length(C.START_RETRY_DELAYS) - 1);
 		setup_log(ctx);
 		log.event('warn', 'START_RETRY', { attempt, in_secs: delay });
