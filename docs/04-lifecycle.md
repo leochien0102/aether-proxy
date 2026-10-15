@@ -150,3 +150,4 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 | dnsmasq 被用户重启 | conf-dir 片段仍在，自动恢复对接 |
 | 整机断电 | tmpfs 清空；aether-proxy 开机重新完整启动；未启用时不留任何痕迹 |
 | `fw4 flush` | 下一轮 monitor 重建规则表（最长约 30 秒的直连窗口） |
+| monitor 查询规则表本身出错（`nft list` 失败） | 本轮按「表存在」处理，不重建，记 ERR；下一轮再查。理由：查询失败多半是 nft 暂时不可用，此时重建同样会失败，还可能把集合导出成空的 |
