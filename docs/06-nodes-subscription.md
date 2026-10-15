@@ -88,13 +88,29 @@ weak   = protocol|lower(address)|port|transport|tdisc
 
 ## 原子应用
 
-1. 在内存中算出完整的变更（新增、修改、标记 stale、删除）。
-2. 对新的当前节点（如果有变化）做一次 Xray 渲染加 `xray run -test`，失败 → 整体放弃，保留旧节点（`SUB_APPLY_INVALID`）。
-3. 用**独立的 savedir** 写 UCI：`uci -t /var/run/aether-proxy/uci-save batch` + `uci -t … commit aetherproxy`。
-   不能用默认 savedir，否则会把用户在 LuCI 里尚未保存的修改一起提交。
-   batch 中任意一条失败 → `uci -t … revert aetherproxy`，整体放弃。
-4. 提交成功后，如果当前节点的字段发生了变化 → `/etc/init.d/aether-proxy reload`。
-5. 订阅状态（最后成功时间、节点数、跳过计数）写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）。
+一次 `sub update` 依次处理每个启用的订阅（指定段名时只处理那一个）；订阅之间互不影响，一个失败不阻止其他订阅。对每个订阅：
+
+1. 下载（「订阅获取」）、解析（「订阅解析」）。同一次订阅内 strong 键重复的节点按跳过原因 `duplicate` 计数，保留第一条。
+2. 用「节点身份」的算法与该订阅的旧节点（`source` 等于该订阅段名）匹配，在内存中算出完整变更：新增、修改、标记 stale、恢复（清除 stale）、删除。
+   - 新节点 ID：`n_` 加 32 位小写十六进制，取自 `/dev/urandom` 的 16 字节，按 UUID v4 设置版本位与变体位（第 7 字节高 4 位为 `4`，第 9 字节高 2 位为 `10`），与现有段名重复时重新生成。
+   - 沿用旧 ID 时，新节点有的协议字段覆盖写入，**新节点没有的协议字段从旧段中删除**（例如旧节点有 `flow`、新节点没有）。
+     `label`、`source`、`match_strong`、`match_weak` 随之更新；`stale` 按匹配结果设置或删除。
+   - 「被引用」的判断：首版只有 `main.node`。
+3. 当前节点（`main.node`）受影响时（字段变化、被标记 stale 不算变化），先在**临时副本**上校验：把 `/etc/config/aetherproxy` 复制到临时 confdir，
+   应用第 2 步的变更，用该 confdir 走完整渲染加 `xray run -test`。失败 → 整体放弃该订阅，保留旧节点（`SUB_APPLY_INVALID`）。
+4. 写 UCI：用 ucode `uci.cursor(<confdir>, '/var/run/aether-proxy/uci-save')`（**独立的 delta 目录**），在其中执行全部 add/set/delete 后 `commit('aetherproxy')`。
+   不能用默认的 `/tmp/.uci`，否则会把用户在 LuCI 里尚未保存的修改一起提交。任意一步失败 → 对该 cursor `revert('aetherproxy')`，整体放弃（`SUB_APPLY_INVALID`）。
+   不用 `uci` 命令行的 `batch`：值里可能有任意字符，经 shell 转义容易出错。
+5. 提交成功后，当前节点的字段发生了变化且服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`）→ 执行 `/etc/init.d/aether-proxy reload`。
+   执行前先释放订阅锁（见下），避免与 reload 中的 `check` 相互等待。
+6. 订阅状态写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）：`{ "<段名>": { "last_attempt": <时间>, "last_ok": <时间>|null, "nodes": <数量>, "skipped": { <原因>: <数量> }, "error": <事件码>|null } }`。
+
+**互斥**：`sub update` 使用独立的锁 `/var/lock/aether-proxy-sub.lock`（非阻塞，拿不到 → 退出码 3，`BUSY`），不使用 daemon 的全局锁——
+它只改 UCI，不直接改系统状态；系统状态的变化统一经 reload 交给 daemon。
+
+**命令**：`aether-proxy sub update [<段名>] [--json]`，同步执行；支持 10「仅供测试的选项」中的 `--confdir`、`--run-dir`、`--sys-root`、`--bin-dir`。
+退出码：全部订阅成功 0；任一订阅失败 1；段名不存在或不是 `subscription` 段 2；拿不到锁 3。
+`--json` 输出 `{ "ok": <bool>, "subs": { "<段名>": { "ok": <bool>, "code": <事件码>|null, "added": n, "updated": n, "stale": n, "revived": n, "removed": n, "skipped": {…} } } }`。
 
 ## 调度
 
