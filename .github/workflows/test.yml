@@ -44,6 +44,9 @@ jobs:
       - name: Run reload integration tests
         run: bash tests/reload/run.sh
 
+      - name: Run init script tests
+        run: bash tests/stubs/procd/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
