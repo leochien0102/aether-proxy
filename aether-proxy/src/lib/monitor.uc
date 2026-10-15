@@ -101,8 +101,10 @@ function observe(daemon) {
 	let proxy = xray_listening ? probe_proxy(daemon, daemon.snapshot) : null;
 	let dns = !machine.dns_failsafe && (machine.dns_tier == 'T2' || machine.dns_tier == 'T3')
 		? probe_dns(daemon, daemon.snapshot) : null;
-	// TODO(design): on an nft inspection error, assume the table is present to avoid rebuilding
-	// from an observation that may itself be incomplete; define a retry/error state if needed.
+	// An inspection error counts as "present" for this round (04, failure semantics): rebuilding
+	// would fail the same way and could export empty sets.
+	if (!table.ok)
+		log_failure(daemon, 'nft_table_exists', table.detail);
 	return {
 		now: time(),
 		table_present: table.ok ? table.exists : true,
