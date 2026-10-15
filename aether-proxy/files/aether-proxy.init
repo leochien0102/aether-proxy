@@ -25,9 +25,11 @@ start_service() {
 		procd_append_param command --boot
 	fi
 	procd_set_param respawn 3600 5 5
-	# Orderly stop exports sets, deletes the table and restarts dnsmasq; procd's default
-	# 5 s before SIGKILL is too short on slow routers (service_stopped cleans up after it).
-	procd_set_param term_timeout 15
+	# SIGTERM is handled after the synchronous part of a running monitor round (up to ~20 s:
+	# curl plus two resolveip), then the orderly stop exports sets, deletes the table and
+	# restarts dnsmasq. procd's default 5 s before SIGKILL is far too short; if 30 s still
+	# runs out, service_stopped's cleanup does the same steps.
+	procd_set_param term_timeout 30
 	procd_set_param stdout 1
 	procd_set_param stderr 1
 	procd_close_instance
