@@ -179,7 +179,7 @@ table inet aetherproxy {
   只有直接连路由器内部端口的包才会被丢弃。Xray 的 tunnel 入站因此可以按官方透明代理教程监听 `0.0.0.0`。
 - QUIC 拒绝用第二个标记位 `QUIC_MARK=0x00100000`（加入 [01](01-architecture.md) 常量表）。
   `reject` 用于 UDP 时默认回 ICMP port-unreachable，正好是 QUIC 回落需要的信号。
-- **chinadns-ng 写入的三个动态集合（`gfw4`、`udirect4`、`uproxy4`）必须带 `flags interval`**：chinadns-ng 总是把每个 IP 作为区间（起点 + `NFT_SET_ELEM_INTERVAL_END` 终点）写入（源码 `src/ipset.c` 的 `add_ip_nftset()`），写进普通集合会被内核以 EINVAL 拒绝。2026-10-15 真机窗口中 `gfw` 模式因此完全失效（`gfw4` 始终为空），CI 的 chinadns-ng 校验只启动进程、不写集合，没能发现。
+- **chinadns-ng 写入的三个动态集合（`gfw4`、`udirect4`、`uproxy4`）必须带 `flags interval`**：chinadns-ng 总是把每个 IP 作为区间（起点 + `NFT_SET_ELEM_INTERVAL_END` 终点）写入（源码 `src/ipset.c` 的 `add_ip_nftset()`），写进普通集合会被内核以 EINVAL 拒绝。2026-10-15 真机窗口中 `gfw` 模式因此完全失效（`gfw4` 始终为空），CI 的 chinadns-ng 校验只启动进程、不写集合，没能发现。同日在设备上用一张不挂钩子的临时表对照验证：chinadns-ng 2025.06.20 向普通集合写入报 EINVAL、集合为空；向带 `flags interval; auto-merge;` 的集合写入成功。
 - 动态集合（`gfw4`、`udirect4`、`uproxy4`）在整表替换前先导出，替换时写回（`{{restored …}}`），
   详见 [04](04-lifecycle.md)。
 
