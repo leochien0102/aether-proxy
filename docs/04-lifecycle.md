@@ -78,7 +78,8 @@
 
 ## 重载（`aether-proxy reload`，UCI 变更触发）
 
-init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service` 先执行 `aether-proxy check`，
+init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service` 先看两种状态切换：`enabled` 变为 0 时执行 `stop`；
+服务没在运行（刚启用，或之前启动失败）时执行 `start`。其余情况先执行 `aether-proxy check`，
 失败就不做任何改动（错误留在事件里）；通过则向 daemon 发 `SIGHUP`，由 daemon 执行下面的流程：
 
 1. 重新读取配置并校验，失败则不做任何改动。
