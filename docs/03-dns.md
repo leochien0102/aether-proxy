@@ -136,7 +136,7 @@ verdict-cache 4096
 
 1. 渲染时把所有节点域名写入 `boot.txt`，chinadns-ng 对这些域名使用 `direct_dns`，不经过 Xray。
 2. 启动流程中，chinadns-ng 和 dnsmasq 片段就位之后，用 `resolveip -4 -t 5 <域名>` 解析当前节点的域名
-   （走系统解析器，最终落到 `boot` 组）。返回多个 IPv4 时取第一个合法的公网地址，不做轮换或测速；
+   （走系统解析器，最终落到 `boot` 组）。返回多个 IPv4 时取第一个合法地址，不做轮换或测速；
    需要固定 IP 的用户直接把节点地址写成 IP。
 3. 成功：把 IP 写进 Xray 出站的 `address`（域名保留在 `serverName` / `host` 中），并更新 LKG 文件
    `/etc/aether-proxy/state/node-ip.json`（值变化时才写）。
