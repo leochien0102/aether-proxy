@@ -759,8 +759,8 @@ function reconcile_subscription_jitter(ctx, subs, current) {
 			continue;
 		let sampled = subscription_jitter_value();
 		if (!sampled.ok) {
-			// TODO(design): random-source failure has no retry policy; keep this subscription unscheduled.
-			jitter[name] = null;
+			// Jitter only spreads load; without a random source schedule without it (06).
+			jitter[name] = 0;
 			setup_log(ctx);
 			log.event('error', 'FS_FAILED', { op: 'read', path: C.RANDOM_DEVICE, detail: sampled.detail });
 		}
@@ -817,11 +817,16 @@ function read_subscription_status(ctx) {
 		parse_error = e.message ?? `${e}`;
 	}
 	if (type(status) != 'object') {
-		let detail = `invalid ${path}: ${parse_error ?? 'expected a JSON object'}`;
-		// TODO(design): scheduling behavior for a corrupt sub.json is unspecified; skip this tick.
-		log.event('error', 'FS_FAILED', { op: 'parse', path, detail });
-		return null;
+		// Same as sub update (06 step 7): a corrupt status record counts as empty, so every
+		// subscription is timed from daemon start; the next update rewrites the file. Logged
+		// once per bad file, not on every 60 s tick.
+		if (ctx.sub_status_corrupt != text) {
+			ctx.sub_status_corrupt = text;
+			log.event('error', 'FS_FAILED', { op: 'parse', path, detail: `invalid ${path}: ${parse_error ?? 'expected a JSON object'}; treated as empty` });
+		}
+		return {};
 	}
+	ctx.sub_status_corrupt = null;
 	return status;
 };
 

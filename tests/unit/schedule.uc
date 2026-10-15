@@ -63,6 +63,18 @@ export const cases = [
 		subs: SUBS, status: { s_00000001: { last_attempt: STARTED } }, jitter: { s_00000001: 0.05 },
 		now: STARTED + 3780, started_at: 0,
 		expect: 's_00000001'
+	},
+	{
+		name: 'malformed status entry is timed from daemon start, not skipped forever',
+		subs: SUBS, status: { s_00000001: 'garbage' }, jitter: { s_00000001: 0 },
+		now: STARTED + 3600, started_at: STARTED,
+		expect: 's_00000001'
+	},
+	{
+		name: 'malformed last_attempt is timed from daemon start',
+		subs: SUBS, status: { s_00000001: { last_attempt: 'yesterday' } }, jitter: { s_00000001: 0 },
+		now: STARTED + 3600, started_at: STARTED,
+		expect: 's_00000001'
 	}
 ];
 

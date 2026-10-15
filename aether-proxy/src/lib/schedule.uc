@@ -22,21 +22,13 @@ export function due(subs, status, jitter, now, started_at) {
 		if (!number(fraction) || fraction < 0 || fraction >= C.SCHEDULE_MAX_JITTER)
 			continue;
 
+		// A missing or malformed record counts as "never attempted": time it from daemon start
+		// rather than leaving the subscription unscheduled forever.
 		let base = started_at;
 		let previous = status[name];
-		if (previous != null) {
-			if (type(previous) != 'object') {
-				// TODO(design): invalid per-subscription status has no defined fallback; skip this entry.
-				continue;
-			}
-			if (previous.last_attempt != null) {
-				if (!number(previous.last_attempt))
-					continue;
-				base = previous.last_attempt;
-			}
-		}
+		if (type(previous) == 'object' && number(previous.last_attempt))
+			base = previous.last_attempt;
 
-		// TODO(design): malformed last_attempt has no documented recovery; skip rather than retry early.
 		let due_at = base + sub.interval_hours * C.SCHEDULE_HOUR_SECS * (1 + fraction);
 		if (now >= due_at)
 			return name;
