@@ -121,7 +121,7 @@ start_daemon() {
 	DAEMON_PID=$!
 }
 wait_for() {
-	local file="$1" pattern="$2" attempts="${3:-100}"
+	local file="$1" pattern="$2" attempts="${3:-400}"	# 20 s: a loaded host is slow, a hit returns at once
 	for _ in $(seq 1 "$attempts"); do
 		[ -e "$file" ] && { [ -z "$pattern" ] || grep -Fq -- "$pattern" "$file"; } && return 0
 		if [ -n "$DAEMON_PID" ] && ! kill -0 "$DAEMON_PID" 2>>"$QUIET"; then return 1; fi
@@ -133,7 +133,9 @@ stop_daemon() {
 	local pid="$DAEMON_PID"
 	[ -n "$pid" ] || return 0
 	kill -TERM "$pid"
-	for _ in {1..100}; do
+	# Up to 30 s (procd's term_timeout): SIGTERM waits for the synchronous part of a running
+	# monitor round, which some scenarios stretch on purpose (STUB_RESOLVE_DELAY).
+	for _ in {1..600}; do
 		if ! kill -0 "$pid" 2>>"$QUIET"; then break; fi
 		sleep 0.05
 	done
