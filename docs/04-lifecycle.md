@@ -125,6 +125,8 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
 6. **节点 IP 刷新**：距上次超过 10 分钟就重新解析（[03](03-dns.md)）。
 
+daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 10 秒的超时；一轮检测累计超过 30 秒时跳过下一轮。因此 SIGTERM 最多延迟一个命令的超时时间。
+
 monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要拿全局锁。拿不到锁就跳过本轮（说明用户正在操作），
 不要阻塞等待。
 
