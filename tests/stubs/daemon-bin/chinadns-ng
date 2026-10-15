@@ -1,0 +1,14 @@
+#!/bin/sh
+argv=$*
+config=''
+while [ $# -gt 0 ]; do
+	if [ "$1" = -C ]; then shift; config=$1; break; fi
+	shift
+done
+SYSROOT=${config%/var/run/aether-proxy/current/*}
+STUB_LOG="$SYSROOT/calls.log"
+printf 'chinadns-ng %s\n' "$argv" >> "$STUB_LOG"
+echo "$$" > "$SYSROOT/chinadns.pid"
+cleanup() { rm -f "$SYSROOT/chinadns.pid"; exit 0; }
+trap cleanup TERM INT
+while :; do sleep 1 & wait $!; done

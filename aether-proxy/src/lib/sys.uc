@@ -201,8 +201,30 @@ function mkdir_p(path) {
 	return true;
 }
 
+// Opens and holds a non-blocking exclusive flock. Closing the returned handle releases it.
+function lock(path) {
+	let parent = substr(path, 0, rindex(path, '/'));
+	if (parent != '' && !mkdir_p(parent))
+		return null;
+
+	let fp = fs.open(path, 'a');
+	if (fp == null) {
+		last_error = `open lock ${path}: ${fs_err()}`;
+		return null;
+	}
+
+	if (!fp.lock('xn')) {
+		last_error = `lock ${path}: ${fs_err()}`;
+		fp.close();
+		return null;
+	}
+
+	last_error = null;
+	return fp;
+}
+
 function error() {
 	return last_error;
 }
 
-export { q, run, write_atomic, mkdir_p, error };
+export { q, run, write_atomic, mkdir_p, lock, error };

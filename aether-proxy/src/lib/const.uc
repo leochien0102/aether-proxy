@@ -116,3 +116,13 @@ export const NFT_DYNAMIC_SETS = [ 'gfw4', 'udirect4', 'uproxy4' ];
 export const CONFLICT_NFT_SSR = 'ss_spec';
 export const CONFLICT_NFT_PASSWALL_PREFIX = 'passwall';
 export const CONFLICT_PROCESSES = [ 'clash', 'mihomo' ];
+
+// T2.4 (daemon lifecycle)
+export const CONFIG_DIR = '/etc/config';
+export const PROC_NET_TCP = '/proc/net/tcp';
+export const SYS_CLASS_NET = '/sys/class/net';
+export const DAEMON_CURRENT_DIR = 'current';
+export const DAEMON_PREVIOUS_DIR = 'previous';
+export const DAEMON_PORT_WAIT_SECS = 5;
+export const DAEMON_POLL_MS = 100;
+export const DAEMON_MONITOR_MS = 30000;

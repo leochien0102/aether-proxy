@@ -7,6 +7,8 @@ import * as render from 'aetherproxy.cmd.render';
 import * as status from 'aetherproxy.cmd.status';
 import * as events from 'aetherproxy.cmd.events';
 import * as probe from 'aetherproxy.cmd.probe';
+import * as daemon from 'aetherproxy.cmd.daemon';
+import * as cleanup from 'aetherproxy.cmd.cleanup';
 
 const USAGE = `Usage: aether-proxy <command> [options]
 
@@ -17,6 +19,8 @@ Commands:
   status [--json]    print the latest runtime state
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
+  daemon [--boot]    start and supervise proxy components
+  cleanup            remove runtime system state
   --help             show this help
 `;
 
@@ -61,6 +65,10 @@ function main(argv) {
 		return events.run(slice(argv, 1));
 	if (cmd == 'probe')
 		return probe.run(slice(argv, 1));
+	if (cmd == 'daemon')
+		return daemon.run(slice(argv, 1));
+	if (cmd == 'cleanup')
+		return cleanup.run(slice(argv, 1));
 
 	warn(USAGE);
 	return 2;

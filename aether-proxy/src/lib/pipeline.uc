@@ -107,7 +107,16 @@ export function build(opts) {
 		direct_domain: custom_dir + '/' + C.CUSTOM_DOMAIN_FILES.direct_domain,
 		boot_list: run_dir(opts) + '/' + C.BOOT_LIST_FILE
 	};
-	let ctx = { data: d.data, runtime: static_runtime(), paths };
+	let runtime = opts.runtime ?? static_runtime();
+	let ctx = {
+		data: d.data,
+		runtime: {
+			node_ip: runtime.node_ip ?? null,
+			dns_tier: runtime.dns_tier ?? 'T2',
+			restored: runtime.restored ?? {}
+		},
+		paths
+	};
 	let artifacts = {};
 
 	for (let name, mod in RENDERERS) {

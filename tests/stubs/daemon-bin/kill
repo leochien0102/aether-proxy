@@ -1,0 +1,3 @@
+#!/bin/sh
+printf 'kill %s\n' "$*" >> "$STUB_LOG"
+exec /bin/kill "$@"
