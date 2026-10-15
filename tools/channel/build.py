@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Any
 
 
-PACKAGE_NAMES = ("xray-core", "aether-proxy", "luci-app-aether-proxy")
+PACKAGE_NAMES = ("xray-core", "aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
+# Architecture-independent packages: their apk file names carry no architecture at all.
+ARCH_ALL = ("aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 DATA_NAMES = ("gfwlist", "chnlist", "apple", "chnroute4", "gfw_static4")
 
 
@@ -42,30 +44,52 @@ def collect_packages(directory: Path) -> tuple[dict[str, Any], dict[str, bytes],
 
     parsed: dict[str, dict[str, dict[str, dict[str, tuple[Path, bytes]]]]] = {}
     ignored: set[str] = set()
+    # Layout as the SDK writes it: <directory>/<target arch>/<feed>/<file>. ipk names carry the
+    # package architecture (<name>_<version>_<arch>.ipk, "all" for noarch); apk names from the
+    # 25.12 SDK carry none (<name>-<version>.apk), so the architecture comes from ARCH_ALL or the
+    # first path component.
     for path in sorted(directory.rglob("*")):
         if not path.is_file() or path.suffix not in (".ipk", ".apk"):
             continue
         kind = path.suffix[1:]
+        rel = path.relative_to(directory)
+        arch_dir = rel.parts[0] if len(rel.parts) > 1 else None
+        # Longest name first, so "aether-proxy" cannot claim "aether-proxy-…" of another package.
+        names = sorted(PACKAGE_NAMES, key=len, reverse=True)
         match = None
-        for package_name in PACKAGE_NAMES:
+        claimed = None
+        for package_name in names:
             separator = "_" if kind == "ipk" else "-"
-            suffix = ".ipk" if kind == "ipk" else ".apk"
             prefix = package_name + separator
-            if path.name.startswith(prefix) and path.name.endswith(suffix):
-                version_arch = path.name[len(prefix):-len(suffix)]
-                version, delimiter, arch = version_arch.partition("_")
+            if not path.name.startswith(prefix):
+                continue
+            rest = path.name[len(prefix):-len(path.suffix)]
+            if kind == "ipk":
+                version, delimiter, arch = rest.partition("_")
                 if delimiter and version and arch:
                     match = (package_name, version, arch)
-                break
+            else:
+                arch = "all" if package_name in ARCH_ALL else arch_dir
+                version = rest
+                if arch and arch != "all" and version.endswith("_" + arch):
+                    version = version[:-len(arch) - 1]
+                if arch and version and "_" not in version:
+                    match = (package_name, version, arch)
+            claimed = package_name
+            break
         if match is None:
-            if any(path.name.startswith(name + ("_" if kind == "ipk" else "-")) for name in PACKAGE_NAMES):
-                raise ValueError(f"malformed {kind} package filename: {path.name}")
+            if claimed is not None:
+                raise ValueError(f"malformed or unplaceable {kind} package file: {rel}")
             ignored.add(path.name)
             continue
         name, version, arch = match
         content = path.read_bytes()
         slot = parsed.setdefault(name, {}).setdefault(version, {}).setdefault(arch, {})
         if kind in slot:
+            # Every target's SDK builds the noarch packages again (bytes may differ by build
+            # time); one copy is enough, keep the first in path order.
+            if arch == "all":
+                continue
             raise ValueError(f"duplicate {kind} package for {name} {version} {arch}")
         slot[kind] = (path, content)
 
@@ -83,7 +107,9 @@ def collect_packages(directory: Path) -> tuple[dict[str, Any], dict[str, bytes],
             assets[arch] = {}
             for kind in ("ipk", "apk"):
                 path, content = formats[kind]
-                filename = path.name
+                # Release assets are flat: give arch-specific apks the architecture in the name,
+                # otherwise every target's xray-core-<version>.apk would collide.
+                filename = path.name if kind == "ipk" or arch == "all" else f"{name}-{version}_{arch}.apk"
                 if filename in copied and copied[filename] != content:
                     raise ValueError(f"conflicting package asset filename: {filename}")
                 copied[filename] = content
@@ -113,11 +139,14 @@ def collect_data(directory: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         version = content_hash[:12]
         filename = f"{name}-{version}.txt.gz"
         compressed = gzip_data(content)
+        # size/sha256 describe the downloaded .gz (checked like any asset, 08 "下载");
+        # content_sha256 is the plain list, compared with the device's local copy.
         metadata[name] = {
             "version": version,
             "url": filename,
-            "sha256": content_hash,
-            "size": len(content),
+            "sha256": sha256(compressed),
+            "size": len(compressed),
+            "content_sha256": content_hash,
             "lines": len(content.splitlines()),
         }
         copied[filename] = compressed
