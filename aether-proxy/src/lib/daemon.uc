@@ -269,30 +269,10 @@ function hash_artifacts(ctx, current) {
 	return { ok: true, hashes };
 };
 
-function hex_value(number) {
-	const digits = '0123456789ABCDEF';
-	let value = number, out = '';
-	while (value > 0) {
-		let digit = value % 16;
-		out = substr(digits, digit, 1) + out;
-		value = int(value / 16);
-	}
-	while (length(out) < 4)
-		out = '0' + out;
-	return out;
-};
-
 function port_listening(opts) {
-	let path = root_path(opts, C.PROC_NET_TCP);
-	let text = fs.readfile(path);
-	if (text == null)
-		return false;
-	let port_hex = lc(hex_value(C.TPROXY_PORT));
-	for (let line in split(text, '\n')) {
-		let fields = split(trim(line), /[[:space:]]+/);
-		if (length(fields) >= 4 && lc(split(fields[1], ':')[1]) == port_hex && fields[3] == '0A')
+	for (let file in [ C.PROC_NET_TCP, C.PROC_NET_TCP6 ])
+		if (net.tcp_listening(fs.readfile(root_path(opts, file)), C.TPROXY_PORT))
 			return true;
-	}
 	return false;
 };
 

@@ -120,6 +120,7 @@ export const CONFLICT_PROCESSES = [ 'clash', 'mihomo' ];
 // T2.4 (daemon lifecycle)
 export const CONFIG_DIR = '/etc/config';
 export const PROC_NET_TCP = '/proc/net/tcp';
+export const PROC_NET_TCP6 = '/proc/net/tcp6';
 export const SYS_CLASS_NET = '/sys/class/net';
 export const DAEMON_CURRENT_DIR = 'current';
 export const DAEMON_PREVIOUS_DIR = 'previous';

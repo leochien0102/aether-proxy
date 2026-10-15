@@ -33,28 +33,10 @@ function run(ctx, name, args, timeout) {
 	return sys.run([ command(ctx, name), ...args ], { timeout: timeout ?? 10 });
 };
 
-function hex_value(number) {
-	const digits = '0123456789ABCDEF';
-	let out = '', value = number;
-	while (value > 0) {
-		out = substr(digits, value % 16, 1) + out;
-		value = int(value / 16);
-	}
-	while (length(out) < 4)
-		out = '0' + out;
-	return out;
-};
-
 function port_listening(daemon, port) {
-	let text = fs.readfile(system_path(daemon.ctx, C.PROC_NET_TCP));
-	if (text == null)
-		return false;
-	let wanted = lc(hex_value(port));
-	for (let line in split(text, '\n')) {
-		let fields = split(trim(line), /[[:space:]]+/);
-		if (length(fields) >= 4 && lc(split(fields[1], ':')[1]) == wanted && fields[3] == '0A')
+	for (let file in [ C.PROC_NET_TCP, C.PROC_NET_TCP6 ])
+		if (net.tcp_listening(fs.readfile(system_path(daemon.ctx, file)), port))
 			return true;
-	}
 	return false;
 };
 

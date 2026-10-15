@@ -137,3 +137,18 @@ export function range_to_cidrs(a, b) {
 
 	return out;
 };
+
+// True if a /proc/net/tcp or /proc/net/tcp6 text has a socket in LISTEN (0A) on port.
+// Both files matter: Go (Xray) binds a wildcard address as one dual-stack IPv6 socket,
+// so a listener on 0.0.0.0 shows up only in tcp6.
+export function tcp_listening(text, port) {
+	if (text == null)
+		return false;
+	let wanted = sprintf('%04X', port);
+	for (let line in split(text, '\n')) {
+		let fields = split(trim(line), /[[:space:]]+/);
+		if (length(fields) >= 4 && uc(split(fields[1], ':')[1] ?? '') == wanted && fields[3] == '0A')
+			return true;
+	}
+	return false;
+};

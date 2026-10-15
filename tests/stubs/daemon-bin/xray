@@ -8,13 +8,12 @@ if [ "$1" = run ] && [ "$2" = -c ]; then
 	STUB_LOG="$SYSROOT/calls.log"
 	printf 'xray %s\n' "$*" >> "$STUB_LOG"
 	echo "$$" > "$SYSROOT/xray.pid"
-	printf '  0: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"
+	# Like the real Xray (Go): a 0.0.0.0 listener is one dual-stack socket, listed only in tcp6.
+	printf '  0: 00000000000000000000000000000000:7968 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp6"
 	cleanup() {
-		tmp="$SYSROOT/proc/net/tcp.tmp"
-		if ! grep -v '0100007F:7968' "$SYSROOT/proc/net/tcp" > "$tmp"; then
-			printf 'xray stub failed to remove its TCP entry\n' >> "$STUB_LOG"
-		fi
-		mv "$tmp" "$SYSROOT/proc/net/tcp"
+		tmp="$SYSROOT/proc/net/tcp6.tmp"
+		grep -v ':7968 0000' "$SYSROOT/proc/net/tcp6" > "$tmp"	# exits 1 when nothing is left; that is fine
+		mv "$tmp" "$SYSROOT/proc/net/tcp6"
 		rm -f "$SYSROOT/xray.pid"
 		exit 0
 	}
