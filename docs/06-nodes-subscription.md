@@ -96,14 +96,18 @@ weak   = protocol|lower(address)|port|transport|tdisc
    - 沿用旧 ID 时，新节点有的协议字段覆盖写入，**新节点没有的协议字段从旧段中删除**（例如旧节点有 `flow`、新节点没有）。
      `label`、`source`、`match_strong`、`match_weak` 随之更新；`stale` 按匹配结果设置或删除。
    - 「被引用」的判断：首版只有 `main.node`。
-3. 当前节点（`main.node`）受影响时（字段变化、被标记 stale 不算变化），先在**临时副本**上校验：把 `/etc/config/aetherproxy` 复制到临时 confdir，
-   应用第 2 步的变更，用该 confdir 走完整渲染加 `xray run -test`。失败 → 整体放弃该订阅，保留旧节点（`SUB_APPLY_INVALID`）。
-4. 写 UCI：用 ucode `uci.cursor(<confdir>, '/var/run/aether-proxy/uci-save')`（**独立的 delta 目录**），在其中执行全部 add/set/delete 后 `commit('aetherproxy')`。
-   不能用默认的 `/tmp/.uci`，否则会把用户在 LuCI 里尚未保存的修改一起提交。任意一步失败 → 对该 cursor `revert('aetherproxy')`，整体放弃（`SUB_APPLY_INVALID`）。
-   不用 `uci` 命令行的 `batch`：值里可能有任意字符，经 shell 转义容易出错。
-5. 提交成功后，当前节点的字段发生了变化且服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`）→ 执行 `/etc/init.d/aether-proxy reload`。
+3. **生成新配置文件**：把 `/etc/config/aetherproxy` 原样复制为 `/var/run/aether-proxy/sub-work/aetherproxy_sub`（**换一个包名**），
+   用 ucode `uci.cursor('/var/run/aether-proxy/sub-work', '/var/run/aether-proxy/sub-work/.delta')` 对包 `aetherproxy_sub` 执行第 2 步的全部 add/set/delete 后 `commit`。
+   任意一步失败 → 整体放弃（`SUB_APPLY_INVALID`）。不用 `uci` 命令行的 `batch`：值里可能有任意字符，经 shell 转义容易出错。
+   **为什么换包名**：libuci 在创建上下文时就把默认的 `/tmp/.uci` 加进 delta 路径，设置 savedir 只是追加一个路径；`commit` 时会把**所有** delta 路径里同名包的未提交修改
+   一起写进文件（libuci `delta.c` 的 `uci_load_delta`，`uci -t` 命令行同样如此）。所以「独立 savedir」挡不住 LuCI 里尚未保存的修改；换包名后 `/tmp/.uci` 中不会有它的 delta。
+4. 当前节点（`main.node`）受影响时（字段变化；被标记 stale 不算变化），把生成的文件以包名 `aetherproxy` 放进另一个临时 confdir，用它走完整渲染加 `xray run -test`。
+   失败 → 整体放弃该订阅，保留旧节点（`SUB_APPLY_INVALID`）。
+5. **替换**：重新读取 `/etc/config/aetherproxy`，与第 3 步复制时的内容比较。不同（期间有人提交了配置）→ 放弃本次（`SUB_APPLY_INVALID`，`detail` 写明是并发修改），
+   等下次更新；相同 → 用 `sys.write_atomic` 写入。用户在 LuCI 中未提交的修改仍留在 `/tmp/.uci`，之后照常叠加在新文件之上。
+6. 替换成功后，当前节点的字段发生了变化且服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`）→ 执行 `/etc/init.d/aether-proxy reload`。
    执行前先释放订阅锁（见下），避免与 reload 中的 `check` 相互等待。
-6. 订阅状态写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）：`{ "<段名>": { "last_attempt": <时间>, "last_ok": <时间>|null, "nodes": <数量>, "skipped": { <原因>: <数量> }, "error": <事件码>|null } }`。
+7. 订阅状态写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）：`{ "<段名>": { "last_attempt": <时间>, "last_ok": <时间>|null, "nodes": <数量>, "skipped": { <原因>: <数量> }, "error": <事件码>|null } }`。
 
 **互斥**：`sub update` 使用独立的锁 `/var/lock/aether-proxy-sub.lock`（非阻塞，拿不到 → 退出码 3，`BUSY`），不使用 daemon 的全局锁——
 它只改 UCI，不直接改系统状态；系统状态的变化统一经 reload 交给 daemon。
