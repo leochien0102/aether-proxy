@@ -72,12 +72,13 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 
 | 代码 | 等级 | 参数 |
 |---|---|---|
-| `SERVICE_STARTED` / `SERVICE_STOPPED` | notice | `mode`、`node` |
+| `SERVICE_STARTED` / `SERVICE_STOPPED` | notice | `mode`、`node`；`SERVICE_STARTED` 另有 `elapsed_ms`、`steps`（步骤名 → 毫秒） |
 | `BUSY` | warn | `holder` |
 | `CONFIG_INVALID` | error | `field`、`reason` |
 | `PRECHECK_FAILED` | error | `missing` |
 | `RENDER_INVALID` | error | `artifact`、`detail` |
 | `START_FAILED` | error | `step`、`detail` |
+| `START_RETRY` | warn | `attempt`、`in_secs`（启动失败后 daemon 内的退避重试，见 04） |
 | `NET_WAIT_TIMEOUT` | warn | `waited` |
 | `COMPONENT_MISSING` / `COMPONENT_TOO_OLD` | error | `component`、`version`、`min` |
 | `NODE_RESOLVE_FALLBACK` / `NODE_RESOLVE_FAILED` | warn / error | `node`、`domain`、`lkg_ip` |
