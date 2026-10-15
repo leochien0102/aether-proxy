@@ -42,6 +42,7 @@
   },
   "update": {
     "channel_urls": [
+      "https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/"
     ],
     "data_auto": true,
     "data_hour": 4,

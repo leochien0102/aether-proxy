@@ -178,3 +178,6 @@ export const UPDATE_DOWNLOAD_MAX_SECS = 30;
 export const UPDATE_COMMAND_TIMEOUT_SECS = 35;
 export const UPDATE_SPACE_RESERVE = 1048576;
 export const UPDATE_RELEASE_FILE = '/etc/openwrt_release';
+
+// Default update channel (05 `channel_urls`, 08 "发布仓库").
+export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';

@@ -120,7 +120,7 @@ const node = [
 const update = [
 	// TODO(design): 05 says "project release URL + optional mirrors" without giving the URL
 	// (D3/D4 undecided), so the default is an empty list.
-	{ name: 'channel_urls', type: 'list', item: 'url', default: [] },
+	{ name: 'channel_urls', type: 'list', item: 'url', default: [ C.CHANNEL_DEFAULT_URL ] },
 	{ name: 'data_auto', type: 'bool', default: true },
 	{ name: 'data_hour', type: 'int', min: 0, max: 23, default: 4 },
 	// Randomized by uci-defaults at install time; consumers treat null as 30 (docs/05).

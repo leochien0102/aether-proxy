@@ -28,7 +28,7 @@ for _ in {1..100}; do curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1 && curl 
 make_manifest() {
  python3 - "$T" <<'PY'
 import hashlib,json,os,sys
-t=sys.argv[1]; content=b'local package fixture\n'; m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':{'chnroute4':{'version':'v1','url':'data.gz','sha256':'a'*64,'size':1,'lines':1}}}
+t=sys.argv[1]; content=b'local package fixture\n'; m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':{'chnroute4':{'version':'v1','url':'data.gz','sha256':'a'*64,'size':1,'content_sha256':'b'*64,'lines':1}}}
 for name,version in [('xray-core','26.10.10-r1'),('aether-proxy','0.2.0-r1'),('luci-app-aether-proxy','0.2.0-r1')]:
  a={}
  for arch in ('aarch64_generic','all'):
@@ -133,4 +133,20 @@ export UPDATE_INSTALLED_MODE=normal UPDATE_INSTALLED_VERSION=26.9.30-r5
 out=$(ap job start update check --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_check job starts' 0 "$?"; id=$(get "$out" job)
 for _ in {1..200}; do js=$(ap job status "$id" --json --sys-root "$T/root" --run-dir "$T/run"); state=$(get "$js" state); [ "$state" = ok ] || [ "$state" = failed ] && break; sleep .05; done
 expect 'update_check job completes' ok "$(get "$js" state)"; expect 'job result matches updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["result"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$js")"
+# 11 data change is judged by content_sha256 (the local .sha256 holds the plain list's hash)
+printf '%s\n' "$(printf 'b%.0s' $(seq 64))" > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(run_check); expect 'same content hash means unchanged data' false "$(get "$out" data.chnroute4.changed)"
+printf '%s\n' "$(printf 'a%.0s' $(seq 64))" > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(run_check); expect 'the .gz hash is not mistaken for the content hash' true "$(get "$out" data.chnroute4.changed)"
+rm -f "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+# 12 no address answers at all: exit 1 and UPDATE_FETCH_FAILED, not a signature failure
+mkdir -p "$T/conf-down"
+cat > "$T/conf-down/aetherproxy" <<'UCI'
+config update 'update'
+ list channel_urls 'http://127.0.0.1:18097/'
+ list channel_urls 'http://127.0.0.1:18098/'
+UCI
+out=$(ap update check --json --confdir "$T/conf-down" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
+expect 'unreachable channels exit 1' 1 "$rc"; expect 'unreachable channels report UPDATE_FETCH_FAILED' UPDATE_FETCH_FAILED "$(get "$out" code)"
+grep -q '"code": "UPDATE_FETCH_FAILED"' "$T/run/events.jsonl" && ok 'UPDATE_FETCH_FAILED event logged' || bad 'UPDATE_FETCH_FAILED event logged'
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

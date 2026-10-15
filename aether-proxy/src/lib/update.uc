@@ -90,17 +90,14 @@ function download_manifest(ctx, base, proxied_first, index) {
 	let sig_path = `${ctx.download_dir}/manifest-${index}.json.sig`;
 	if (!fetch_file(ctx, channel_url(base, 'manifest.json'), manifest_path, C.UPDATE_MANIFEST_MAX, proxied_first) ||
 		!fetch_file(ctx, channel_url(base, 'manifest.json.sig'), sig_path, C.UPDATE_MANIFEST_MAX, proxied_first))
-		return null;
-	let manifest = read_object(manifest_path);
-	if (manifest == null || manifest.schema != 2) {
-		log.event('error', 'MANIFEST_BAD_SIGNATURE', { url: base });
-		return null;
-	}
+		return { reached: false };
+	// Verify before parsing: nothing from an unverified file is interpreted.
 	let usign = ctx.bin_dir ? `${ctx.bin_dir}/usign` : 'usign';
 	let verified = sys.run([ usign, '-V', '-q', '-m', manifest_path, '-P', ctx.keys_dir ], { timeout: 10, quiet: true });
-	if (verified.code != 0) {
+	let manifest = verified.code == 0 ? read_object(manifest_path) : null;
+	if (manifest == null || manifest.schema != 2) {
 		log.event('error', 'MANIFEST_BAD_SIGNATURE', { url: base });
-		return null;
+		return { reached: true };
 	}
 	return { manifest, path: manifest_path };
 }
@@ -188,7 +185,8 @@ function data_status(ctx, manifest) {
 			if (detail != 'No such file or directory')
 				log.event('error', 'FS_FAILED', { op: 'read', path: local_path, detail });
 		}
-		result[name] = { changed: local == null || trim(local) != manifest.data[name].sha256 };
+		// .sha256 holds the plain list's hash, so compare content_sha256, not the .gz sha256 (08).
+		result[name] = { changed: local == null || trim(local) != manifest.data[name].content_sha256 };
 	}
 	return result;
 }
@@ -216,9 +214,7 @@ function build_result(ctx, manifest, base, arch, pm) {
 			installed: installed.version,
 			available: current.version,
 			newer,
-			// TODO(design): 08's example omits an asset field; T7.3's apk acceptance requires
-			// retaining the selected package-manager asset key for verification.
-			asset: asset == null ? null : asset.url
+			asset: asset == null ? null : asset.url	// file name for this arch and pm (08 "检查")
 		};
 	}
 	return {
@@ -298,22 +294,25 @@ export function check(opts) {
 	let loaded = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
 	if (!loaded.ok)
 		return { ok: false, code: 'CONFIG_INVALID', exit: 2, detail: loaded.detail };
-	// TODO(design): docs/08 does not define update check behavior for an empty channel list.
-	if (!length(loaded.urls))
-		return { ok: false, code: 'USAGE', exit: 2, detail: 'no update channel URLs are configured' };
+	// An empty channel list is a configuration problem (08 "检查"), not a usage error.
+	if (!length(loaded.urls)) {
+		log.event('error', 'CONFIG_INVALID', { field: 'update.channel_urls', reason: 'empty' });
+		return { ok: false, code: 'CONFIG_INVALID', exit: 2, detail: 'no update channel URLs are configured' };
+	}
 	if (!sys.mkdir_p(ctx.download_dir)) {
 		let detail = sys.error() ?? 'unknown error';
 		log.event('error', 'FS_FAILED', { op: 'mkdir', path: ctx.download_dir, detail });
 		return { ok: false, code: 'FS_FAILED', exit: 1, detail: `cannot create ${ctx.download_dir}: ${sys.error()}` };
 	}
-	let proxied = proxy_running(ctx), selected = null;
+	let proxied = proxy_running(ctx), selected = null, reached = false;
 	for (let i = 0; i < length(loaded.urls); i++) {
 		let base = loaded.urls[i];
 		let candidate = download_manifest(ctx, base, proxied, i);
-		if (candidate != null) {
+		if (candidate.manifest != null) {
 			selected = { ...candidate, base };
 			break;
 		}
+		reached ||= candidate.reached;
 	}
 	let download_names = fs.lsdir(ctx.download_dir);
 	if (download_names == null) {
@@ -327,10 +326,14 @@ export function check(opts) {
 			log.event('error', 'FS_FAILED', { op: 'unlink', path: `${ctx.download_dir}/${name}`, detail });
 			return { ok: false, code: 'FS_FAILED', exit: 1, detail };
 		}
-	// TODO(design): no event/exit mapping distinguishes unreachable channels from a channel
-	// whose manifest failed verification; fail closed using the documented verification code.
-	if (selected == null)
+	// 08: some address served a manifest that failed verification -> 4; none answered at all
+	// -> 1 with UPDATE_FETCH_FAILED (LuCI tells "cannot reach the channel" from "bad signature").
+	if (selected == null && reached)
 		return { ok: false, code: 'MANIFEST_BAD_SIGNATURE', exit: 4, detail: 'no channel provided a valid signed schema 2 manifest' };
+	if (selected == null) {
+		log.event('error', 'UPDATE_FETCH_FAILED', { urls: loaded.urls });
+		return { ok: false, code: 'UPDATE_FETCH_FAILED', exit: 1, detail: 'no update channel could be reached' };
+	}
 	let release_path = system_path(root, C.UPDATE_RELEASE_FILE);
 	let release = fs.readfile(release_path);
 	if (release == null) {
