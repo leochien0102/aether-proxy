@@ -107,7 +107,9 @@ weak   = protocol|lower(address)|port|transport|tdisc
    等下次更新；相同 → 用 `sys.write_atomic` 写入。用户在 LuCI 中未提交的修改仍留在 `/tmp/.uci`，之后照常叠加在新文件之上。
 6. 替换成功后，当前节点的字段发生了变化且服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`）→ 执行 `/etc/init.d/aether-proxy reload`。
    执行前先释放订阅锁（见下），避免与 reload 中的 `check` 相互等待。
-7. 订阅状态写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）：`{ "<段名>": { "last_attempt": <时间>, "last_ok": <时间>|null, "nodes": <数量>, "skipped": { <原因>: <数量> }, "error": <事件码>|null } }`。
+7. 订阅状态写入 `/etc/aether-proxy/state/sub.json`（值变化时才写）。它只是状态记录：内容损坏时记 `FS_FAILED` 并当作空记录重新开始，不阻止更新；
+   读不了（I/O 错误）时记 `FS_FAILED`，本次不做任何更新；配置已替换后写状态失败，记 `FS_FAILED`、退出码 1，配置保留。
+   第 6 步的 reload 失败不回滚配置（新文件已通过 `xray run -test`），结果里报告失败，daemon 继续运行旧的渲染结果直到下一次 reload。格式：`{ "<段名>": { "last_attempt": <时间>, "last_ok": <时间>|null, "nodes": <数量>, "skipped": { <原因>: <数量> }, "error": <事件码>|null } }`。
 
 **互斥**：`sub update` 使用独立的锁 `/var/lock/aether-proxy-sub.lock`（非阻塞，拿不到 → 退出码 3，`BUSY`），不使用 daemon 的全局锁——
 它只改 UCI，不直接改系统状态；系统状态的变化统一经 reload 交给 daemon。
