@@ -126,7 +126,7 @@ verdict-cache 4096
   server=127.0.0.1#31053
   ```
 - conf-dir 路径的确定方法：读取 `/var/etc/dnsmasq.conf.*` 中的 `conf-dir=` 行。有多个实例时，选择服务
-  `lan_ifaces` 的那个实例。UCI `aetherproxy.dns.dnsmasq_instance` 可以显式指定。找不到时失败（`DNSMASQ_CONFDIR_NOT_FOUND`）。
+  `lan_ifaces` 的那个实例。UCI `aetherproxy.dns.dnsmasq_instance` 可以显式指定（填 dnsmasq 的 UCI 段名，对应 `/var/etc/dnsmasq.conf.<段名>`；指定后只看这一个实例，不再按 `lan_ifaces` 选择）。找不到时失败（`DNSMASQ_CONFDIR_NOT_FOUND`）。
 - 写入或删除片段之后执行 `/etc/init.d/dnsmasq restart`（conf-dir 变化需要重启，SIGHUP 不会重新读取配置）。
 - 如果检测到 UCI 中已配置 `list server`，记一条 WARN（`DNSMASQ_EXTRA_SERVERS`）：这些服务器会和 aether-proxy 并行，
   可能导致 DNS 泄漏或污染。只提示，不去改它。

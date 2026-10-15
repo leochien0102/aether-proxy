@@ -32,12 +32,18 @@ aether-proxy/                         后端包目录
         ├── schema.uc                 UCI 字段表（05 的机器可读版本）
         ├── config.uc                 读取 UCI → 快照；校验
         ├── data.uc                   读取规则数据与自定义列表
-        ├── state.uc                  state.json / events.jsonl / probe.json 读写
+        ├── state.uc                  state.json 读写
+        ├── net.uc                    IPv4/CIDR/域名等纯函数，/proc/net/tcp(6) 监听解析
+        ├── pipeline.uc               读配置 → 快照 → 四个渲染产物（check、render、daemon、reload 共用）
         ├── render/
         │   ├── nft.uc  chinadns.uc  dnsmasq.uc  xray.uc  outbound.uc
-        ├── uri.uc  identity.uc  subscribe.uc
-        ├── daemon.uc  monitor.uc  dnstier.uc  probe.uc  job.uc  update.uc
-        └── cmd/                      每个子命令一个文件：check.uc、render.uc、status.uc ……
+        ├── apply.uc                  有副作用的原语：nft、ip rule、dnsmasq、集合导出、节点解析、产物哈希
+        ├── supervise.uc              子进程监督（uloop.process、退避、pid 文件）
+        ├── daemon.uc  monitor.uc  reload.uc  schedule.uc   daemon 主循环、monitor 状态机、增量重载、订阅调度
+        ├── uri.uc  identity.uc  sub.uc                       订阅解析、身份匹配、sub update
+        ├── probe.uc  job.uc                                  节点检测、作业机制
+        └── cmd/                      每个子命令一个文件：check、render、status、events、probe、daemon、cleanup、sub、job
+（M7 再加 update.uc。实际布局以代码为准，增减模块时同步改这里。）
 ```
 
 模块按点号路径导入，`aetherproxy.render.nft` 对应 `/usr/share/ucode/aetherproxy/render/nft.uc`

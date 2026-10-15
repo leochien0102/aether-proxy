@@ -35,7 +35,7 @@
 | 6 | staging 提交为当前（`mv`），记录 `render_hash` | — |
 | 7 | 启动 chinadns-ng（DNS 级别 T2） | 回滚 |
 | 8 | 写入 dnsmasq 片段并重启 dnsmasq | 回滚 |
-| 9 | 引导解析节点 IP（[03](03-dns.md)），用结果补全 Xray 配置并再次 `-test` | 解析失败 → 继续，状态记为 `degraded`，不启动 Xray，跳到第 12 步 |
+| 9 | 引导解析节点 IP（[03](03-dns.md)），用结果补全 Xray 配置并再次 `-test` | 解析失败 → 继续，状态记为 `degraded`，不启动 Xray。`fail_open=1`（默认）：跳过第 10、11 步，流量全部直连；`fail_open=0`：跳过第 10 步，**仍执行第 11 步**（加载 nft 与 ip rule），代理目标的流量失败而不是改走直连（2026-10-15 复审后补） |
 | 10 | 启动 Xray，在 5 秒内等待 `TPROXY_PORT` 进入监听（读取 `/proc/net/tcp`） | 回滚 |
 | 11 | 加载 nft 表（含恢复动态集合）、添加 ip rule / route | 回滚 |
 | 12 | 进入 monitor 循环，由它判定为 `running` / `degraded` | — |

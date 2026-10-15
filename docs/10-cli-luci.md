@@ -23,7 +23,7 @@ init.d / hotplug / daemon ──────────────────
 | `daemon [--boot]` | procd 实例入口（[04](04-lifecycle.md)） | 常驻 |
 | `check` | 校验配置并完成全部渲染，不改动系统状态 | 否 |
 | `cleanup` | 幂等清理 | 否 |
-| `status` | 输出 `state.json`，并附带 `probe.json` 摘要和 `updates_available` | 否 |
+| `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）和 `updates_available`（M7 之前恒为 `null`） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
@@ -47,8 +47,11 @@ init.d / hotplug / daemon ──────────────────
 | `--data-dir <目录>` / `--baseline-dir <目录>` / `--custom-dir <目录>` | 覆盖规则数据、包内基线、自定义列表目录 |
 | `--run-dir <目录>` | 覆盖 `/var/run/aether-proxy`（staging 与 `boot.txt` 所在位置） |
 | `--no-precheck` | 跳过前置检查与外部工具校验（`nft -c`、`xray run -test`），只做配置校验与渲染 |
-| `--sys-root <目录>` | 系统路径前缀（`/etc/init.d/*`、`/var/etc`、`/tmp/dnsmasq.d`、`/proc/net/tcp`、`/sys/class/net`、`/var/lock`、`/etc/aether-proxy/state`），即 T2.3 的 `ctx.root`。用于 `daemon`、`cleanup` |
-| `--bin-dir <目录>` | 外部命令从该目录取（命令替身），即 T2.3 的 `ctx.bin_dir`；子进程（xray、chinadns-ng）的可执行文件同样从这里找。用于 `daemon`、`cleanup` |
+| `--sys-root <目录>` | 系统路径前缀（`/etc/init.d/*`、`/var/etc`、`/tmp/dnsmasq.d`、`/proc/net/tcp`、`/sys/class/net`、`/var/lock`、`/etc/aether-proxy/state`），即 T2.3 的 `ctx.root`。用于 `daemon`、`cleanup`、`sub`、`job`、`probe` |
+| `--bin-dir <目录>` | 外部命令从该目录取（命令替身），即 T2.3 的 `ctx.bin_dir`；子进程（xray、chinadns-ng）的可执行文件同样从这里找。用于 `daemon`、`cleanup`、`check`、`sub`、`job`、`probe` |
+
+`job start` 把这些选项原样转给子命令，同时经环境变量 `AETHER_PROXY_JOB_RUN_DIR`、`AETHER_PROXY_JOB_SYS_ROOT`、`AETHER_PROXY_JOB_BIN_DIR` 交给后台的 `job run`（它自己的作业文件位置要跟着变）。
+若干测试专用的环境变量只用于缩短集成测试中的等待：`AETHER_PROXY_TEST_RETRY_DELAY`（启动重试间隔）、`AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS`、`AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS`（订阅调度）；正式环境不设置。
 
 ## 作业机制
 

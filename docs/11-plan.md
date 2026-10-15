@@ -62,7 +62,7 @@ tests/
 │   ├── data/             精简的规则数据
 │   ├── runtime.json      渲染所需的运行态输入（节点 IP、DNS 级别、恢复的集合）
 │   └── expected/         xray.json、aether-proxy.nft、chinadns.conf、dnsmasq.conf
-└── uri/<用例名>.txt + .expected.json      URI 解析
+（URI 解析的用例写在 tests/unit/uri.uc 里的表中，不另设 uri/ 目录：用例多为单行 URI，内嵌更便于对照。）
 ```
 
 必备用例（M1、M4、M5 各自补齐）：

@@ -106,7 +106,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `NO_SPACE` / `ARCH_UNSUPPORTED` | error | `need`、`free` / `arch` |
 | `CMD_FAILED` | error | `cmd`、`rc`、`stderr` |
 | `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出） |
-| `FS_FAILED` | error | `op`（open/write/rename/unlink/mkdir）、`path`、`detail`（调用方在 `sys.write_atomic` 等返回失败时记录） |
+| `FS_FAILED` | error | `op`（open/read/parse/write/rename/unlink/mkdir/stat/list，以及 `reload-config` 等说明具体步骤的值）、`path`、`detail`（调用方在 `sys.write_atomic` 等返回失败时记录） |
 
 新增事件码时同步修改本表、LuCI 的翻译模板和 po 文件。
 
