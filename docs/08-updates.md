@@ -19,7 +19,8 @@ CI（**单独的发布仓库** `leochien0102/aether-proxy-channel` 中的 `.gith
 
 
 1. **数据**：拉取上游 → 转换为统一格式 → 合理性检查 → 与上一版比较，没有变化就不发布。
-2. **组件**：跟踪 Xray-core、chinadns-ng 的上游 release。用上游提供的摘要（Xray 的 `.dgst`）校验下载内容，
+2. **组件**：跟踪 Xray-core、chinadns-ng 的上游**最新版本，含 prerelease**（2026-10-15 定：我们是客户端，新版 Xray 对旧服务端向下兼容，官方也是这样发布的；
+   渲染只用最新正式版认识的写法，所以通道里的新版本同样能用，见 06「Xray 配置渲染」）。收录前用该版本对本仓库全部 golden 配置跑 `xray run -test`，有失败就不收录、CI 报错。用上游提供的摘要（Xray 的 `.dgst`）校验下载内容，
    按架构解包出单个二进制并用 gzip 压缩（设备只需要 busybox 的 `gunzip`，不需要 `unzip`）。
 3. 生成 `manifest.json`，用 **usign** 私钥签名得到 `manifest.json.sig`。
 4. 把清单和所有资产发布到固定 tag（如 `channel-stable`）的 GitHub Release。
@@ -55,9 +56,9 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   },
   "components": {
     "xray": {
-      "version": "26.9.30",
+      "version": "26.3.27",
       "min_app": "1.0.0",
-      "assets": { "arm64": { "url": "xray-26.9.30-arm64.gz", "sha256": "…", "size": 12345678, "unpacked_size": 30000000 } }
+      "assets": { "arm64": { "url": "xray-26.3.27-arm64.gz", "sha256": "…", "size": 12345678, "unpacked_size": 30000000 } }
     },
     "chinadns-ng": { "version": "2025.08.09", "assets": { } }
   },

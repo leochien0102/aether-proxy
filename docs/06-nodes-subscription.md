@@ -139,8 +139,9 @@ aether-proxy 未运行时不做自动更新。
 ## Xray 配置渲染
 
 渲染产物 `/var/run/aether-proxy/xray.json`。字段名以**设备上实际运行的 Xray 版本**为准，下面按新版文档（`tunnel` 协议，
-旧称 `dokodemo-door`）书写。aether-proxy 管理的 Xray 有最低版本要求（写成常量，首版定为实现时 helloworld 中的版本 26.9.30），
-低于最低版本时 start 失败（`COMPONENT_TOO_OLD`）。
+旧称 `dokodemo-door`）书写。aether-proxy 管理的 Xray 有最低版本要求（写成常量 `XRAY_MIN_VERSION`），
+低于最低版本时 start 失败（`COMPONENT_TOO_OLD`）。**最低版本取 Xray 的最新正式版**（GitHub 未标 prerelease 的最新 release，2026-10-15 为 26.3.27），
+渲染只用该版本认识的写法：绝大多数服务端跑的是正式版或更旧的版本，新的 prerelease 会在一段时间内兼容旧写法（2026-10-15 决定，取代此前的「一律新版命名」）。
 
 ```json
 {
@@ -148,17 +149,17 @@ aether-proxy 未运行时不做自动更新。
   "inbounds": [
     {
       "tag": "tproxy-in", "listen": "0.0.0.0", "port": 31080, "protocol": "tunnel",
-      "settings": { "allowedNetwork": "tcp,udp", "followRedirect": true },
+      "settings": { "network": "tcp,udp", "followRedirect": true },
       "streamSettings": { "sockopt": { "tproxy": "tproxy" } },
       "sniffing": { "enabled": {{sniffing}}, "destOverride": ["http", "tls", "quic"], "routeOnly": false }
     },
     {
       "tag": "dns-in-0", "listen": "127.0.0.1", "port": 31082, "protocol": "tunnel",
-      "settings": { "rewriteAddress": "{{trust_dns[0]}}", "rewritePort": 53, "allowedNetwork": "tcp" }
+      "settings": { "address": "{{trust_dns[0]}}", "port": 53, "network": "tcp" }
     },
     {
       "tag": "dns-in-1", "listen": "127.0.0.1", "port": 31083, "protocol": "tunnel",
-      "settings": { "rewriteAddress": "{{trust_dns[1] 或 trust_dns[0]}}", "rewritePort": 53, "allowedNetwork": "tcp" }
+      "settings": { "address": "{{trust_dns[1] 或 trust_dns[0]}}", "port": 53, "network": "tcp" }
     },
     { "tag": "http-in", "listen": "127.0.0.1", "port": 31081, "protocol": "http", "settings": {} }
   ],
@@ -199,7 +200,12 @@ aether-proxy 未运行时不做自动更新。
 | security=reality | `realitySettings = {serverName: sni, fingerprint（缺省 chrome）, publicKey: reality_pbk, shortId: reality_sid, spiderX: reality_spx}` |
 
 - 已在 Xray v26.9.30 源码核实（2026-10-14）：`tunnel` 协议及 `rewriteAddress` / `rewritePort` / `allowedNetwork` / `followRedirect` 字段存在，旧名 `dokodemo-door` 和旧字段 `address` / `port` / `network` 仍被接受；`raw` 与 `tcp` 等价；`rawSettings`、`xhttpSettings` 存在；四种出站（VLESS、VMess、Trojan、Shadowsocks）都接受扁平写法（`address`/`port`/`id` 或 `password` 直接写在 `settings` 中）；`streamSettings` 中 `method` 与 `network` 等价（源码中 `method` 覆盖 `network`），ssr-plus 自 Xray 26.7.11 起改用 `method`。
-- **一律使用新版命名**（2026-10-15 决定）：入站用 `tunnel` 及 `rewrite*` 字段，出站用扁平写法，`streamSettings` 用 `method`，传输用 `raw`。最低版本 26.9.30 已全部支持，不为旧版本保留旧字段名。旧写法 `vnext`/`servers`/`network`/`dokodemo-door` 只在解析导入的配置时识别，渲染时不输出。
+- ~~一律使用新版命名~~（2026-10-15 上午的决定，同日下午改为按最新正式版书写）。现行规则：入站协议名用 `tunnel`、字段用 **`address` / `port` / `network`**（26.3.27 没有 `rewrite*` / `allowedNetwork`）；
+  出站用扁平写法；`streamSettings` 用 **`network`**（26.3.27 没有 `method`）；传输名用 `raw`。
+- 已在源码核实（2026-10-15，S7）：26.3.27 认识 `tunnel` 协议名、扁平出站、`pinnedPeerCertSha256`、`verifyPeerCertByName`、`raw`、`serviceName`；
+  26.9.30 与 26.10.10 仍接受 `address`/`port`/`network`（`dokodemo.go` 中原样映射到 `rewrite*` / `allowedNetwork`）和 `streamSettings.network`。
+  **注意**：Xray 忽略不认识的字段，用旧版本跑 `run -test` 能通过并不说明字段被识别——26.3.27 遇到 `rewriteAddress` 会让 DNS 隧道没有上游，遇到 `method` 会让 ws/grpc/xhttp 节点退回 raw，`run -test` 都照样通过。
+  因此 CI 对最低版本与最新版本各跑一遍 golden，且新增字段前要对照最低版本的源码。
 - Xray 升级可能再次移除字段。渲染器只输出本文档列出的字段；CI 的 golden 测试用清单中的**当前** Xray 版本执行 `run -test`，升级 Xray 前必须先让这一步通过。
 - 渲染器的正确性以 golden 测试为准（[11](11-plan.md)）：每种协议 × 传输 × 安全层的组合至少一个夹具，
   并且在 CI 中用真实的 Xray 二进制执行 `xray run -test` 验证。

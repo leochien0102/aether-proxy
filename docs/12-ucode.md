@@ -157,7 +157,7 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 ### CI 中的额外校验（`.github/workflows/test.yml`）
 
 1. 运行 `tests/run.uc`。
-2. 下载与 `const.uc` 中 `XRAY_MIN_VERSION` 相同版本的官方 Xray（linux-64），对每个 `expected/xray.json` 执行 `xray run -test -c`。
+2. 下载与 `const.uc` 中 `XRAY_MIN_VERSION` 相同版本的官方 Xray（linux-64），以及 `tests/ci/xray.sh` 中固定的一个较新版本（当前为最新 prerelease），对每个 `expected/xray.json` 各执行一次 `xray run -test -c`。
 3. `sudo nft -c -f` 检查每个 `expected/aether-proxy.nft`（GitHub 的 Ubuntu runner 内核带有 nft tproxy、socket 模块；
    失败时先确认是否是模块缺失，而不是规则错误）。
 4. 下载 chinadns-ng 的 x86_64 静态二进制，用 `timeout 2 chinadns-ng -C <conf>` 启动每个 `expected/chinadns.conf`，
