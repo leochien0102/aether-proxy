@@ -65,7 +65,7 @@ function create(opts) {
 			return;
 		}
 
-		// TODO(design): CHILD_STARTED is in 09 but absent from the current log.uc event registry.
+		log.event('info', 'CHILD_STARTED', { name: opts.name, pid });
 		emit(cb, 'started', { name: opts.name, pid });
 		if (stable_timer != null)
 			stable_timer.cancel();
@@ -107,7 +107,7 @@ function create(opts) {
 		let delay = delays[min(restart_index, length(delays) - 1)];
 		restart_index = min(restart_index + 1, length(delays) - 1);
 		let info = { name: opts.name, pid: exited_pid, code, restart_in: delay };
-		// TODO(design): CHILD_CRASHED is in 09 but absent from the current log.uc event registry.
+		log.event('warn', 'CHILD_CRASHED', info);
 		restart_timer = uloop.timer(delay * 1000, () => {
 			restart_timer = null;
 			emit(cb, 'restarting', { name: opts.name, restart_in: delay });

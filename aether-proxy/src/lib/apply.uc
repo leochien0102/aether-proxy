@@ -416,7 +416,7 @@ function read_lkg(ctx, address) {
 		return null;
 	try {
 		let obj = json(text);
-		// TODO(design): persist the address with its IP so a stale answer cannot cross node changes.
+		// The LKG entry is bound to the node address, so switching nodes never reuses another node's IP.
 		return obj.address == address && net.ipv4(obj.ip) != null ? obj.ip : null;
 	}
 	catch (e) {

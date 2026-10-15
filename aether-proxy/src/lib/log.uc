@@ -35,7 +35,8 @@ const EVENTS = {
 	DATA_UPDATED: 'notice',
 	MANIFEST_BAD_SIGNATURE: 'error',
 	NO_SPACE: 'error', ARCH_UNSUPPORTED: 'error',
-	CMD_FAILED: 'error', FS_FAILED: 'error'
+	CMD_FAILED: 'error', FS_FAILED: 'error', CMD_RUN: 'debug',
+	CHILD_STARTED: 'info', CHILD_CRASHED: 'warn', SUB_NO_VALID_NODES: 'error'
 };
 
 // aether-proxy level -> syslog priority name, and numeric rank for filtering.
