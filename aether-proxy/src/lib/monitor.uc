@@ -29,8 +29,10 @@ function command(ctx, name) {
 	return ctx.bin_dir ? `${ctx.bin_dir}/${name}` : name;
 };
 
-function run(ctx, name, args, timeout) {
-	return sys.run([ command(ctx, name), ...args ], { timeout: timeout ?? 10 });
+// Probes fail by design while the node or a DNS tier is down; the monitor reports that
+// through its own events, so a failing probe is not also a CMD_FAILED error.
+function run(ctx, name, args, timeout, quiet) {
+	return sys.run([ command(ctx, name), ...args ], { timeout: timeout ?? 10, quiet: quiet ?? false });
 };
 
 function port_listening(daemon, port) {
@@ -56,7 +58,7 @@ function probe_proxy(daemon, snapshot) {
 		'--silent', '--output', C.DEV_NULL, '--write-out', '%{http_code} %{time_total}',
 		'--max-time', `${timeout}`, '-x', `http://${C.HTTP_LISTEN}:${C.HTTP_PORT}`, snapshot.probe.url
 	];
-	let result = run(daemon.ctx, 'curl', args, timeout);
+	let result = run(daemon.ctx, 'curl', args, timeout, true);
 	let parsed = match(trim(result.stdout ?? ''), /^([0-9]{3})[[:space:]]+([0-9.]+)/);
 	let latency = parsed ? int(+parsed[2] * 1000 + 0.5) : null;
 	return {
@@ -66,7 +68,7 @@ function probe_proxy(daemon, snapshot) {
 };
 
 function probe_dns(daemon, snapshot) {
-	let result = run(daemon.ctx, 'resolveip', [ '-4', '-t', '5', snapshot.dns.dns_probe_domain ], 5);
+	let result = run(daemon.ctx, 'resolveip', [ '-4', '-t', '5', snapshot.dns.dns_probe_domain ], 5, true);
 	if (result.code != 0)
 		return false;
 	for (let address in split(trim(result.stdout ?? ''), /[[:space:]]+/))
