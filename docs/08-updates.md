@@ -96,6 +96,26 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 数据生成器（`tools/data/`）与 `gfw_static4.txt` 仍在 aether-proxy 仓库：发布 CI 每次 checkout aether-proxy 的 `main` 来运行生成器，生成器改动不需要同步两个仓库。
 - 发布仓库是公开仓库，只有仓库所有者可以写入；workflow 只在定时、手动触发与仓库所有者的推送上运行，不在 PR 上运行（PR 拿不到 Secret，也不应发布）。
 
+### S7 探针结论（2026-10-15）
+
+**usign**
+- 源码只有 7 个 C 文件，不依赖任何库，`gcc` 一条命令即可编译（不定义 `USE_LIBUBOX` 时自带 base64）。宿主机测试与发布 CI 都从 `git.openwrt.org/project/usign.git` 的固定提交 `c4c72b1b` 编译，与测试路由器固件中的版本一致；
+  OpenWrt 24.10 的 `f1f65026` 与它之间只差一个改 CMake 最低版本的提交，签名与验签代码完全相同。不用 signify。
+- `usign -V -m <文件> -P <目录>`：从签名中读出签名密钥的指纹，只在目录中找名为 `<16 位小写十六进制指纹>` 的公钥文件（与 `/etc/opkg/keys/` 相同的约定）。
+  实测：正确签名 rc=0；篡改内容 rc=1；签名用的公钥不在目录中 rc=1；目录中放多个公钥、换另一把私钥签名仍然通过（轮换可行）。`-q` 只用退出码。
+
+**上游资产**
+- Xray：`Xray-linux-<键>.zip` 与 `.zip.dgst`（含 `MD5=`、`SHA1=`、`SHA2-256=`、`SHA2-512=` 行）。arch 键示例：`arm64-v8a`、`64`、`32`、`arm32-v7a`、`arm32-v5/v6`、`mips32le`、`mips32`、`mips64le`、`riscv64`、`loong64`。
+  **近期版本几乎都标为 prerelease**（2026-10 时 GitHub 的 latest 仍是 26.3.27），通道按「最新版本含 prerelease」跟踪，见上方「发布通道」。
+- chinadns-ng：**未压缩的单个二进制**，命名 `chinadns-ng+wolfssl@<三元组>@<cpu>@fast+lto`（如 `aarch64-linux-musl@generic+v8a`、`x86_64-linux-musl@x86_64`、`mipsel-linux-musl@mips32+soft_float`），
+  **没有摘要文件**。校验办法：发布仓库保存「版本 → 各资产 sha256」记录，首次见到某版本时记下（取自 GitHub 的 HTTPS 下载），之后同一版本的文件一旦变化，CI 失败、不发布。
+
+**测试路由器**（aarch64，自建 lede）
+- `DISTRIB_ARCH='aarch64_generic'` → Xray `arm64-v8a`、chinadns-ng `aarch64-linux-musl@generic+v8a`。
+- 有 `usign`、`gunzip`、`sha256sum`，**没有 `unzip`**（印证「CI 解压后改用 gzip」）。
+- 空间：`/tmp` 约 1 GB，overlay 剩约 390 MB。
+- 试运行输出：`Xray 26.9.30 (Xray, Penetrates Everything.) …`、`ChinaDNS-NG 2025.06.20 be347b5 | …`——版本号都是第二个字段。
+
 ## 设备端流程
 
 ### 下载（所有更新共用）
