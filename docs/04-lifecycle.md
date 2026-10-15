@@ -105,6 +105,10 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 
 **比对的是输出而不是输入**：生成器自身升级后输出变了，也会被检测到（避免 ssr-plus U8 那类问题）。
 
+`chinadns.conf` 按路径引用域名名单（`gfwlist-file`、`chnlist-file`、`group-dnl`），名单内容变了配置文本却不变。所以它的哈希是「配置文件哈希 + 每个被引用文件的哈希」拼成的串；
+比对时配置文件部分用 `current/` 中现在的文件（monitor 切 DNS 级别会重写它），名单部分用上次生效时（启动或上一次 reload）记在 `render_hash` 里的值——名单不在 `current/` 里，现读只会读到已经改过的内容。
+（真机验收时发现：只改自定义名单，reload 判定无变化，chinadns-ng 没有重启。规则数据更新同样依赖这一点。）
+
 ## 等待网络（仅 `--boot`）
 
 用于 PPPoE、静态地址场景下，WAN 还没真正可用、代理进程却已经先启动的问题。
