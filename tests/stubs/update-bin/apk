@@ -1,0 +1,7 @@
+#!/bin/sh
+if [ "$1" = list ] && [ "$2" = -I ]; then
+	[ "$UPDATE_INSTALLED_MODE" = missing ] && exit 0
+	printf '%s-%s noarch {installed}\n' "$3" "${UPDATE_APK_VERSION:-26.9.30-r5}"
+	exit 0
+fi
+exit 2

@@ -55,6 +55,7 @@ define Package/aether-proxy/install
 	$(INSTALL_BIN) ./files/aether-proxy.uci-defaults $(1)/etc/uci-defaults/99-aether-proxy
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/custom
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/keys
+	$(foreach key,$(wildcard ./files/keys/*),$(INSTALL_DATA) $(key) $(1)/etc/aether-proxy/keys/;)
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
 	$(INSTALL_DATA) ./files/data/*.txt $(1)/usr/share/aether-proxy/data/
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input

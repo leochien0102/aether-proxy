@@ -45,6 +45,28 @@ function probe_summary(run_dir) {
 	return { at: data.at ?? null, total, reachable };
 }
 
+function updates_summary(run_dir) {
+	let path = `${run_dir}/${C.UPDATE_FILE}`;
+	let text = fs.readfile(path);
+	if (text == null) {
+		let detail = fs.error() ?? 'unknown error';
+		if (detail != 'No such file or directory')
+			log.event('error', 'FS_FAILED', { op: 'read', path, detail });
+		return null;
+	}
+	try {
+		let value = json(text);
+		if (type(value) == 'object')
+			return value;
+		log.event('error', 'FS_FAILED', { op: 'parse', path, detail: 'expected a JSON object' });
+		return null;
+	}
+	catch (e) {
+		log.event('error', 'FS_FAILED', { op: 'parse', path, detail: e.message ?? `${e}` });
+		return null;
+	}
+}
+
 export function run(args) {
 	let parsed = pipeline.parse_args(args);
 	if (parsed.error)
@@ -67,6 +89,6 @@ export function run(args) {
 	}
 
 	current.probe = probe_summary(run_dir);
-	current.updates_available = null;	// filled in by the update channel (M7)
+	current.updates_available = updates_summary(run_dir);
 	return pipeline.finish(parsed.opts, current, 0, human_status(current));
 };

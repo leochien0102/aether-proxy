@@ -167,6 +167,10 @@ function clean_old_jobs(ctx) {
 	return { ok: true, names: retained };
 }
 
+function lock_kind(kind) {
+	return substr(kind, 0, 7) == 'update_' ? 'update' : kind;
+}
+
 function find_busy(ctx, names, kind) {
 	for (let name in names) {
 		if (match(name, /\.json$/) == null)
@@ -178,7 +182,7 @@ function find_busy(ctx, names, kind) {
 		if (!loaded.ok)
 			return { error: loaded.detail, path };
 		let job = loaded.job;
-		if (job.kind == kind && job.state == 'running' && worker_alive(job))
+		if (lock_kind(job.kind) == kind && job.state == 'running' && worker_alive(job))
 			return { job: job.id };
 	}
 	return null;
@@ -189,6 +193,8 @@ function kind_for(argv) {
 		return 'probe_nodes';
 	if (length(argv) >= 2 && argv[0] == 'sub' && argv[1] == 'update')
 		return 'sub_update';
+	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'check')
+		return 'update_check';
 	return null;
 }
 
@@ -257,13 +263,13 @@ function launch_job(ctx, job) {
 export function start(argv, opts) {
 	let kind = kind_for(argv);
 	if (kind == null)
-		return fail('USAGE', 'only `probe nodes` and `sub update` can run as jobs', 2);
+		return fail('USAGE', 'unsupported job command', 2);
 	let ctx = context(opts);
 	log.set_run_dir(ctx.run_dir);
 	let listed = clean_old_jobs(ctx);
 	if (!listed.ok)
 		return fail('FS_FAILED', listed.detail, 1);
-	let busy = find_busy(ctx, listed.names, kind);
+	let busy = find_busy(ctx, listed.names, lock_kind(kind));
 	if (busy?.error != null) {
 		report_fs('read', busy.path, busy.error);
 		return fail('FS_FAILED', busy.error, 1);
@@ -367,7 +373,7 @@ export function run_worker(id) {
 	if (!saved.ok)
 		return 1;
 
-	let lock_path = system_path(ctx.root, `${C.JOB_LOCK_PREFIX}${job.kind}${C.JOB_LOCK_SUFFIX}`);
+	let lock_path = system_path(ctx.root, `${C.JOB_LOCK_PREFIX}${lock_kind(job.kind)}${C.JOB_LOCK_SUFFIX}`);
 	let lock = sys.lock(lock_path);
 	if (lock == null) {
 		let detail = sys.error() ?? 'cannot acquire kind lock';

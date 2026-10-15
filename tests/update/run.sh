@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -u
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+UCODE="$ROOT/tests/host/ucode"; ENTRY="$ROOT/aether-proxy/src/aether-proxy"; USIGN="$ROOT/tests/host/prefix/bin/usign"
+T=$(mktemp -d "$ROOT/tests/update/tmp.XXXXXX"); PIDS=(); pass=0; fail=0
+cleanup() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || :; wait "$p" 2>/dev/null || :; done; if [ "${KEEP_TMP:-0}" = 1 ]; then echo "kept $T"; else rm -rf "$T"; fi; }
+trap cleanup EXIT INT TERM
+ok() { pass=$((pass+1)); echo "PASS  $1"; }; bad() { fail=$((fail+1)); echo "FAIL  $1${2:+: $2}"; }
+expect() { [ "$2" = "$3" ] && ok "$1" || bad "$1" "expected '$2', got '$3'"; }
+get() { python3 -c 'import json,sys
+v=json.load(sys.stdin)
+for k in sys.argv[1].split("."): v=v[int(k)] if isinstance(v,list) else v[k]
+print("<null>" if v is None else str(v).lower() if isinstance(v,bool) else v)' "$2" <<<"$1"; }
+ap() { "$UCODE" -S "$ENTRY" -- "$@"; }
+mkdir -p "$T/root/etc/aether-proxy/keys" "$T/root/etc/aether-proxy/data" "$T/root/tmp" "$T/run" "$T/conf" "$T/bin" "$T/ch1" "$T/ch2"
+"$USIGN" -G -p "$T/pub" -s "$T/sec" >/dev/null 2>&1
+fp=$("$USIGN" -F -p "$T/pub"); cp "$T/pub" "$T/root/etc/aether-proxy/keys/$fp"
+cp "$ROOT/tests/stubs/update-bin/opkg" "$T/bin/opkg"; cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin"/*
+cp "$USIGN" "$T/bin/usign"
+printf "DISTRIB_ARCH='aarch64_generic'\n" > "$T/root/etc/openwrt_release"
+cat > "$T/conf/aetherproxy" <<'UCI'
+config update 'update'
+ list channel_urls 'http://127.0.0.1:18080/'
+ list channel_urls 'http://127.0.0.1:18081/'
+UCI
+for i in 1 2; do python3 -m http.server $((18079+i)) --bind 127.0.0.1 --directory "$T/ch$i" >"$T/http$i" 2>&1 & PIDS+=("$!"); done
+for _ in {1..100}; do curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1 && curl -fsS http://127.0.0.1:18081/ >/dev/null 2>&1 && break; sleep .05; done
+make_manifest() {
+ python3 - "$T" <<'PY'
+import hashlib,json,os,sys
+t=sys.argv[1]; content=b'local package fixture\n'; m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':{'chnroute4':{'version':'v1','url':'data.gz','sha256':'a'*64,'size':1,'lines':1}}}
+for name,version in [('xray-core','26.10.10-r1'),('aether-proxy','0.2.0-r1'),('luci-app-aether-proxy','0.2.0-r1')]:
+ a={}
+ for arch in ('aarch64_generic','all'):
+  a[arch]={}
+  for pm,ext in [('opkg','ipk'),('apk','apk')]:
+   fn=f'{name}_{version}_{arch}.{ext}' if ext=='ipk' else f'{name}-{version}_{arch}.apk'
+   for d in ('ch1','ch2'): open(os.path.join(t,d,fn),'wb').write(content)
+   a[arch][pm]={'url':fn,'sha256':hashlib.sha256(content).hexdigest(),'size':len(content)}
+ m['packages'][name]={'current':{'version':version,'assets':a},'previous':None}
+for d in ('ch1','ch2'): json.dump(m,open(os.path.join(t,d,'manifest.json'),'w'))
+PY
+ "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
+ "$USIGN" -S -m "$T/ch2/manifest.json" -s "$T/sec" >/dev/null 2>&1
+}
+make_manifest
+cat > "$T/bin/aether-proxy" <<WRAPPER
+#!/bin/sh
+exec "$UCODE" -S "$ENTRY" -- "\$@"
+WRAPPER
+chmod +x "$T/bin/aether-proxy"
+run_check() { ap update check --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>"$T/stderr"; }
+export UPDATE_INSTALLED_MODE=normal UPDATE_INSTALLED_VERSION=26.9.30-r5
+# 1 opkg check, versions/newer/architecture/pm/asset and status linkage
+rm "$T/bin/apk"
+out=$(run_check); expect 'signed opkg check succeeds' 0 "$?"; expect 'opkg stderr empty' '' "$(cat "$T/stderr")"
+expect 'architecture is stored' aarch64_generic "$(get "$out" arch)"; expect 'opkg selected' opkg "$(get "$out" pm)"
+expect 'installed package version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'available package version' 26.10.10-r1 "$(get "$out" packages.xray-core.available)"
+expect 'newer version detected' true "$(get "$out" packages.xray-core.newer)"; expect 'opkg asset key' xray-core_26.10.10-r1_aarch64_generic.ipk "$(get "$out" packages.xray-core.asset)"
+status=$(ap status --json --run-dir "$T/run"); expect 'status reads updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["updates_available"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$status")"
+# 2 apk precedence and apk version/asset parsing
+cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin/apk"
+export UPDATE_APK_VERSION=26.9.30-r5; out=$(run_check); expect 'apk check succeeds' 0 "$?"; expect 'apk preferred' apk "$(get "$out" pm)"
+expect 'apk installed version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'apk asset key' xray-core-26.10.10-r1_aarch64_generic.apk "$(get "$out" packages.xray-core.asset)"; rm "$T/bin/apk"
+# 3 tampered first address falls through
+printf ' ' >> "$T/ch1/manifest.json"; out=$(run_check); expect 'tampered first address falls through' 0 "$?"
+expect 'second channel selected' http://127.0.0.1:18081/ "$(get "$out" url)"; grep -q '"code": "MANIFEST_BAD_SIGNATURE"' "$T/run/events.jsonl" && ok 'bad signature event logged' || bad 'bad signature event logged'; make_manifest
+# 4 all bad signatures fail rc 4 without replacing updates.json
+cp "$T/run/updates.json" "$T/old"; printf x >> "$T/ch1/manifest.json"; printf x >> "$T/ch2/manifest.json"; out=$(run_check); expect 'all bad signatures exit 4' 4 "$?"
+expect 'failure code is signature' MANIFEST_BAD_SIGNATURE "$(get "$out" code)"; cmp -s "$T/old" "$T/run/updates.json" && ok 'failed check preserves updates.json' || bad 'failed check preserves updates.json'; make_manifest
+# 5 unknown key is not trusted
+"$USIGN" -G -p "$T/otherpub" -s "$T/othersec" >/dev/null 2>&1; "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/othersec" >/dev/null 2>&1
+out=$(run_check); expect 'unknown signer falls back' http://127.0.0.1:18081/ "$(get "$out" url)"; make_manifest
+# 6 invalid JSON and schema=1 use next address
+printf '{broken' > "$T/ch1/manifest.json"; printf bad > "$T/ch1/manifest.json.sig"; out=$(run_check); expect 'non-JSON manifest fallback' http://127.0.0.1:18081/ "$(get "$out" url)"
+python3 -c 'import json,sys;json.dump({"schema":1},open(sys.argv[1],"w"))' "$T/ch1/manifest.json"; "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
+out=$(run_check); expect 'schema 1 manifest fallback' http://127.0.0.1:18081/ "$(get "$out" url)"; make_manifest
+# 7 architecture missing is nonfatal and event logged
+python3 - "$T/ch1/manifest.json" <<'PY'
+import json,sys
+p=sys.argv[1];m=json.load(open(p))
+for v in m['packages'].values():v['current']['assets'].pop('aarch64_generic');v['current']['assets'].pop('all')
+json.dump(m,open(p,'w'))
+PY
+"$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
+out=$(run_check); expect 'unsupported architecture check succeeds' 0 "$?"; expect 'unsupported arch package not newer' false "$(get "$out" packages.xray-core.newer)"
+grep -q '"code": "ARCH_UNSUPPORTED"' "$T/run/events.jsonl" && ok 'ARCH_UNSUPPORTED logged' || bad 'ARCH_UNSUPPORTED logged'; make_manifest
+# 8 uninstalled package and both numeric/revision comparisons
+export UPDATE_INSTALLED_MODE=missing; out=$(run_check); expect 'missing package check succeeds' 0 "$?"; expect 'missing version is null' '<null>' "$(get "$out" packages.xray-core.installed)"; expect 'missing package is not newer' false "$(get "$out" packages.xray-core.newer)"
+export UPDATE_INSTALLED_MODE=versions UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check); expect '26.10.10-r1 > 26.9.30-r5' true "$(get "$out" packages.xray-core.newer)"
+export UPDATE_INSTALLED_VERSION=26.10.10-r0; out=$(run_check); expect 'r1 > r0' true "$(get "$out" packages.xray-core.newer)"
+python3 - "$T" <<'PY'
+import json,os,sys
+t=sys.argv[1]; p=os.path.join(t,'ch1','manifest.json'); m=json.load(open(p)); pkg=m['packages']['xray-core']['current']; pkg['version']='26.9.30-r6'
+for arch,types in pkg['assets'].items():
+ for pm,asset in types.items():
+  old=asset['url']; new=old.replace('26.10.10-r1','26.9.30-r6'); asset['url']=new
+  for d in ('ch1','ch2'): open(os.path.join(t,d,new),'wb').write(open(os.path.join(t,d,old),'rb').read())
+json.dump(m,open(p,'w'))
+PY
+"$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
+export UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check)
+expect '26.9.30-r6 > 26.9.30-r5' true "$(get "$out" packages.xray-core.newer)"; make_manifest
+# 9 asset helper checksum failure cleanup and test-only low-space hook
+cat > "$T/asset.uc" <<'UCODE'
+'use strict';
+import * as update from 'aetherproxy.update';
+print(sprintf('%.J', update.download_asset({sys_root:ARGV[0],bin_dir:ARGV[1]},ARGV[2],{url:ARGV[3],size:+ARGV[4],sha256:ARGV[5]},'asset-test')),'\n');
+UCODE
+asset=xray-core_26.10.10-r1_aarch64_generic.ipk; size=$(wc -c < "$T/ch1/$asset" | tr -d ' '); hash=$(sha256sum "$T/ch1/$asset"|cut -d' ' -f1)
+export AETHER_PROXY_TEST_TMP_FREE=99999999; result=$("$UCODE" "$T/asset.uc" -- "$T/root" "$T/bin" http://127.0.0.1:18080 "$asset" "$size" 0000000000000000000000000000000000000000000000000000000000000000)
+expect 'asset checksum mismatch rejected' UPDATE_VERIFY_FAILED "$(get "$result" code)"; [ ! -e "$T/root/tmp/aether-proxy-dl/asset-test" ] && ok 'bad asset removed' || bad 'bad asset removed'
+export AETHER_PROXY_TEST_TMP_FREE=1; result=$("$UCODE" "$T/asset.uc" -- "$T/root" "$T/bin" http://127.0.0.1:18080 "$asset" "$size" "$hash"); expect 'low space returns NO_SPACE' NO_SPACE "$(get "$result" code)"; unset AETHER_PROXY_TEST_TMP_FREE
+# A bad first mirror is discarded and the following address may supply the checked asset.
+python3 - "$T/ch1/$asset" "$size" <<'PY'
+import sys
+open(sys.argv[1],'wb').write(b'X'*int(sys.argv[2]))
+PY
+cat > "$T/asset-fallback.uc" <<'UCODE'
+'use strict';
+import * as update from 'aetherproxy.update';
+print(sprintf('%.J', update.download_asset({sys_root:ARGV[0],bin_dir:ARGV[1]},[ARGV[2],ARGV[3]],
+	{url:ARGV[4],size:+ARGV[5],sha256:ARGV[6]},'asset-fallback')),'\n');
+UCODE
+result=$("$UCODE" "$T/asset-fallback.uc" -- "$T/root" "$T/bin" http://127.0.0.1:18080 http://127.0.0.1:18081 "$asset" "$size" "$hash")
+expect 'bad first asset mirror falls back' true "$(get "$result" ok)"
+# T7.3 deliberately leaves the following CLI branches unimplemented.
+out=$(ap update package xray-core --json); expect 'package update remains USAGE' USAGE "$(get "$out" code)"
+out=$(ap update data --json); expect 'data update remains USAGE' USAGE "$(get "$out" code)"
+out=$(ap job start update package xray-core); expect 'unimplemented package update is not a job' USAGE "$(get "$out" code)"
+# 10 real update_check background job
+export UPDATE_INSTALLED_MODE=normal UPDATE_INSTALLED_VERSION=26.9.30-r5
+out=$(ap job start update check --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_check job starts' 0 "$?"; id=$(get "$out" job)
+for _ in {1..200}; do js=$(ap job status "$id" --json --sys-root "$T/root" --run-dir "$T/run"); state=$(get "$js" state); [ "$state" = ok ] || [ "$state" = failed ] && break; sleep .05; done
+expect 'update_check job completes' ok "$(get "$js" state)"; expect 'job result matches updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["result"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$js")"
+echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]
