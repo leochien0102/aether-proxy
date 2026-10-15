@@ -265,17 +265,7 @@ function publish_staging(ctx, staging, current) {
 };
 
 function hash_artifacts(ctx, current) {
-	let hashes = {};
-	for (let name, filename in C.ARTIFACT_FILES) {
-		let r = sys.run([ 'sha256sum', `${current}/${filename}` ], { timeout: 10 });
-		if (r.code != 0)
-			return { ok: false, detail: `sha256sum ${filename} failed (${r.code}): ${r.stderr}` };
-		let m = match(trim(r.stdout), /^([0-9a-fA-F]{64})\s/);
-		if (m == null)
-			return { ok: false, detail: `cannot parse sha256sum output for ${filename}` };
-		hashes[name] = lc(m[1]);
-	}
-	return { ok: true, hashes };
+	return apply.artifact_hashes(ctx, current);
 };
 
 function port_listening(opts) {
@@ -792,8 +782,15 @@ function run(args) {
 				let live = hash_artifacts(ctx, `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`);
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
-				if (live.ok)
+				if (live.ok) {
 					base.render_hash = live.hashes;
+					// The referenced lists are not part of current/, so re-reading them now would
+					// already see the edit. Keep the live config hash but the list hashes recorded
+					// when this render was applied (start or last reload).
+					let stored = monitor_daemon.state.render_hash?.chinadns;
+					if (type(stored) == 'string')
+						base.render_hash.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);
+				}
 				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
 				if (changed.stop) {
 					stopping = true;

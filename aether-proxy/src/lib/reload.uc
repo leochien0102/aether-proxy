@@ -65,20 +65,6 @@ function write_artifacts(dir, artifacts) {
 	return { ok: true };
 };
 
-function hash_artifacts(dir) {
-	let hashes = {};
-	for (let name, file in C.ARTIFACT_FILES) {
-		let result = sys.run([ 'sha256sum', `${dir}/${file}` ], { timeout: 10 });
-		if (result.code != 0)
-			return { ok: false, detail: `sha256sum ${file} failed (${result.code}): ${result.stderr}` };
-		let m = match(trim(result.stdout), /^([0-9a-fA-F]{64})\s/);
-		if (m == null)
-			return { ok: false, detail: `cannot parse sha256sum output for ${file}` };
-		hashes[name] = lc(m[1]);
-	}
-	return { ok: true, hashes };
-};
-
 function write_stage(dir, artifacts) {
 	let rm = sys.run([ 'rm', '-rf', dir ], { timeout: 10 });
 	if (rm.code != 0)
@@ -300,7 +286,7 @@ function run(daemon) {
 		discard_stage(daemon, stage);
 		return failure(daemon, 'staging', written.detail);
 	}
-	let rough_hashes = hash_artifacts(stage);
+	let rough_hashes = apply.artifact_hashes(daemon.ctx, stage);
 	if (!rough_hashes.ok) {
 		discard_stage(daemon, stage);
 		return failure(daemon, 'hash', rough_hashes.detail);
@@ -375,7 +361,7 @@ function run(daemon) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'validation', checked, checked.code);
 		}
-		let h = hash_artifacts(stage);
+		let h = apply.artifact_hashes(daemon.ctx, stage);
 		if (!h.ok) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'hash', h.detail);

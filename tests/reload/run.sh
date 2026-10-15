@@ -139,6 +139,21 @@ done
 expect "node-only reload does not replace nft" "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
 expect "node-only reload does not restart chinadns" "$dns_before" "$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')"
 
+# Custom list content only: chinadns.conf names the list by path, so the text is unchanged;
+# the artifact hash covers the list content and chinadns-ng must still restart (04).
+nft_before=$(count_calls "$LOG" 'nft -f ')
+dns_before=$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')
+xray_before=$(cat "$SYSROOT/xray.pid")
+printf 'example-proxy.test\n' >> "$T/custom/proxy_domain.txt"
+kill -HUP "$DAEMON_PID"
+for _ in {1..200}; do
+	[ "$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')" -gt "$dns_before" ] && break
+	sleep 0.05
+done
+[ "$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')" -gt "$dns_before" ] && ok "list-only reload restarts chinadns" || bad "list-only reload restarts chinadns"
+expect "list-only reload does not replace nft" "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
+expect "list-only reload leaves xray pid unchanged" "$xray_before" "$(cat "$SYSROOT/xray.pid")"
+
 # Node address change: the bootstrap IP is re-resolved, so node_ip4 (nft) and Xray both change.
 nft_before=$(count_calls "$LOG" 'nft -f ')
 xray_before=$(cat "$SYSROOT/xray.pid")

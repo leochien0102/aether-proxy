@@ -537,10 +537,66 @@ function conflicts(ctx) {
 	return result('conflicting services inspected', { conflicts: sort(active) });
 };
 
+function sha256_file(path) {
+	let r = sys.run([ 'sha256sum', path ], { timeout: 10 });
+	if (r.code != 0)
+		return { ok: false, detail: `sha256sum ${path} failed (${r.code}): ${r.stderr}` };
+	let m = match(trim(r.stdout), /^([0-9a-fA-F]{64})\s/);
+	if (m == null)
+		return { ok: false, detail: `cannot parse sha256sum output for ${path}` };
+	return { ok: true, hash: lc(m[1]) };
+};
+
+// List files chinadns-ng reads by path: *-file keys and group-dnl, comma-separated.
+function chinadns_list_paths(text) {
+	let paths = [];
+	for (let line in split(text ?? '', '\n')) {
+		let m = match(trim(line), /^([a-z0-9-]+)[ \t]+(.+)$/);
+		if (m == null || !(match(m[1], /-file$/) || m[1] == 'group-dnl'))
+			continue;
+		for (let path in split(m[2], ','))
+			if (trim(path) != '')
+				push(paths, trim(path));
+	}
+	return paths;
+};
+
+// Hashes of the rendered artifacts in dir, as compared by reload (04). chinadns.conf names its
+// domain lists by path, so its hash also covers the content of every list it references: a
+// changed custom or data list must restart chinadns-ng even though the config text is the same.
+function artifact_hashes(ctx, dir) {
+	let hashes = {};
+	for (let name, file in C.ARTIFACT_FILES) {
+		let own = sha256_file(`${dir}/${file}`);
+		if (!own.ok)
+			return own;
+		hashes[name] = own.hash;
+	}
+	let parts = [ hashes.chinadns ];
+	for (let path in chinadns_list_paths(fs.readfile(`${dir}/${C.ARTIFACT_FILES.chinadns}`))) {
+		// Default lists are device paths under the system root; --custom-dir/--data-dir (tests)
+		// put real paths into the config, so fall back to the path as written.
+		let full = system_path(ctx, path);
+		if (fs.stat(full) == null && fs.stat(path) != null)
+			full = path;
+		if (fs.stat(full) == null) {
+			push(parts, `${path}:missing`);
+			continue;
+		}
+		let list = sha256_file(full);
+		if (!list.ok)
+			return list;
+		push(parts, `${path}:${list.hash}`);
+	}
+	hashes.chinadns = join(',', parts);
+	return { ok: true, hashes };
+};
+
 export {
 	nft_load, nft_delete, nft_table_exists, nft_flush_prerouting,
 	sets_export, sets_save, sets_load,
 	route_add, route_del,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
-	resolve_node, write_boot_list, conflicts
+	resolve_node, write_boot_list, conflicts,
+	artifact_hashes
 };
