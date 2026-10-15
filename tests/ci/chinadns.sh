@@ -74,7 +74,7 @@ probe_gfwlist=''
 
 cleanup_probe() {
 	if [ -n "$probe_pid" ]; then
-		if kill -0 "$probe_pid"; then kill "$probe_pid"; fi
+		if $SUDO kill -0 "$probe_pid"; then $SUDO kill "$probe_pid"; fi
 		wait "$probe_pid"
 	fi
 	if [ -n "$probe_table" ]; then $SUDO nft delete table inet "$probe_table"; fi
@@ -158,10 +158,10 @@ else
 		fail=$((fail + 1))
 	else
 		probe_table=$(printf '%s\n' "$ruleset" | sed -n 's/^table inet \([A-Za-z0-9_]*\) {$/\1/p' | head -n 1)
-		"$bin" -C "$probe_conf" >"$probe_log" 2>&1 &
+		$SUDO "$bin" -C "$probe_conf" >"$probe_log" 2>&1 &
 		probe_pid=$!
 		sleep 1
-		if ! kill -0 "$probe_pid"; then
+		if ! $SUDO kill -0 "$probe_pid"; then
 			wait "$probe_pid"
 			rc=$?
 			echo "FAIL chinadns-ng dynamic-set write: process exited before query (rc=$rc)"
