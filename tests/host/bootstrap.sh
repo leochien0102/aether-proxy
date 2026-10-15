@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build json-c (only if missing), libubox, uci and ucode from source into
+# Build json-c (only if missing), libubox, uci, ucode and usign from source into
 # tests/host/prefix. Idempotent: each component records its commit in
 # prefix/.stamp/<name>; a matching stamp skips the build entirely.
 # Needs only: git, cmake, make, a C compiler, pkg-config. No root required.
@@ -20,15 +20,19 @@ LIBUBOX_REV=49056d178f42da98048a5d4c23f83a6f6bc6dd80
 UCI_REV=16ff0badbde7e17ec3bd1f827ffe45922956cf86
 # json-c: only built when pkg-config cannot find it (OpenWrt 24.10 ships 0.18).
 JSONC_REV=41a55cfcedb54d9c1874f2f0eb07b504091d7e37 # tag json-c-0.18-20240915
+# usign: the version in the test router's firmware (2025-10-03); OpenWrt 24.10's f1f65026 differs
+# only in CMake (docs/08 "S7"). Used by the update-channel tests (sign with a throwaway key, verify).
+USIGN_REV=c4c72b1b07945ee192361dc751291a7c98d6adcd
 
 UCODE_URLS=(https://github.com/jow-/ucode.git)
 LIBUBOX_URLS=(https://git.openwrt.org/project/libubox.git https://github.com/openwrt/libubox.git)
 UCI_URLS=(https://git.openwrt.org/project/uci.git https://github.com/openwrt/uci.git)
 JSONC_URLS=(https://github.com/json-c/json-c.git)
+USIGN_URLS=(https://git.openwrt.org/project/usign.git https://github.com/openwrt/usign.git)
 
 # Print the exact revision list for CI cache keys: `bootstrap.sh --revs`.
 if [ "${1:-}" = "--revs" ]; then
-	echo "ucode=$UCODE_REV libubox=$LIBUBOX_REV uci=$UCI_REV json-c=$JSONC_REV"
+	echo "ucode=$UCODE_REV libubox=$LIBUBOX_REV uci=$UCI_REV json-c=$JSONC_REV usign=$USIGN_REV"
 	exit 0
 fi
 
@@ -108,6 +112,16 @@ if ! done_already ucode "$UCODE_STAMP"; then
 	fetch ucode "$UCODE_REV" "${UCODE_URLS[@]}"
 	build ucode "$UCODE_STAMP" -DUCI_SUPPORT=ON -DULOOP_SUPPORT=ON -DUBUS_SUPPORT=OFF \
 		-DRTNL_SUPPORT=OFF -DNL80211_SUPPORT=OFF
+fi
+
+# usign: 7 C files, no dependencies (without USE_LIBUBOX it brings its own base64).
+if ! done_already usign "$USIGN_REV"; then
+	fetch usign "$USIGN_REV" "${USIGN_URLS[@]}"
+	echo "bootstrap: building usign @ ${USIGN_REV:0:8}"
+	mkdir -p "$PREFIX/bin"
+	( cd "$SRC/usign" && cc -O2 -std=gnu99 -o "$PREFIX/bin/usign" \
+		ed25519.c edsign.c f25519.c fprime.c sha512.c main.c base64.c )
+	echo "$USIGN_REV" > "$STAMP/usign"
 fi
 
 "$HERE/ucode" -e 'import * as uci from "uci"; import * as fs from "fs"; print("bootstrap: ready, ucode modules uci+fs load OK\n")'
