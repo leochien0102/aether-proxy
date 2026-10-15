@@ -18,7 +18,7 @@
     "boot_wait_timeout": 120,
     "boot_check_targets": [
       "223.5.5.5:53",
-      "119.29.29.29:53"
+      "114.114.114.114:53"
     ],
     "xray_bin": null,
     "chinadns_bin": null

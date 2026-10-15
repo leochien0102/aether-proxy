@@ -49,13 +49,13 @@ const main = [
 	{ name: 'log_level', type: 'enum', enum: [ 'error', 'warn', 'notice', 'info', 'debug' ], default: 'notice' },
 	{ name: 'xray_log_level', type: 'enum', enum: [ 'error', 'warning', 'info', 'debug' ], default: 'warning' },
 	{ name: 'boot_wait_timeout', type: 'int', min: 0, max: 600, default: 120 },
-	{ name: 'boot_check_targets', type: 'list', item: 'hostport', default: [ '223.5.5.5:53', '119.29.29.29:53' ] },
+	{ name: 'boot_check_targets', type: 'list', item: 'hostport', default: [ '223.5.5.5:53', '114.114.114.114:53' ] },
 	{ name: 'xray_bin', type: 'path', default: null },
 	{ name: 'chinadns_bin', type: 'path', default: null }
 ];
 
 const dns = [
-	{ name: 'china_dns', type: 'list', item: 'upstream', default: [ '223.5.5.5', '119.29.29.29' ] },
+	{ name: 'china_dns', type: 'list', item: 'upstream', default: [ '223.5.5.5', '114.114.114.114' ] },
 	{ name: 'trust_dns', type: 'list', item: 'ipv4', min_items: 1, max_items: 2, default: [ '8.8.8.8', '1.1.1.1' ] },
 	{ name: 'direct_dns', type: 'list', item: 'upstream', default: [ 'tcp://8.8.8.8', 'tcp://1.1.1.1' ] },
 	{ name: 'allow_china_fallback', type: 'bool', default: true },
