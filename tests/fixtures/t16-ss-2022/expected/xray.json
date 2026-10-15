@@ -10,7 +10,7 @@
       "port": 31080,
       "protocol": "tunnel",
       "settings": {
-        "allowedNetwork": "tcp,udp",
+        "network": "tcp,udp",
         "followRedirect": true
       },
       "streamSettings": {
@@ -34,9 +34,9 @@
       "port": 31082,
       "protocol": "tunnel",
       "settings": {
-        "rewriteAddress": "9.9.9.9",
-        "rewritePort": 53,
-        "allowedNetwork": "tcp"
+        "address": "9.9.9.9",
+        "port": 53,
+        "network": "tcp"
       }
     },
     {
@@ -45,9 +45,9 @@
       "port": 31083,
       "protocol": "tunnel",
       "settings": {
-        "rewriteAddress": "9.9.9.9",
-        "rewritePort": 53,
-        "allowedNetwork": "tcp"
+        "address": "9.9.9.9",
+        "port": 53,
+        "network": "tcp"
       }
     },
     {
@@ -70,7 +70,7 @@
         "password": "cGFzc3dvcmQxMjM0NTY3OA=="
       },
       "streamSettings": {
-        "method": "raw"
+        "network": "raw"
       }
     },
     {

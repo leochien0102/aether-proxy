@@ -27,7 +27,7 @@ export const ROUTE_TABLE = 233;
 export const RULE_PREF = 900;
 
 // Minimum component versions
-export const XRAY_MIN_VERSION = '26.9.30';
+export const XRAY_MIN_VERSION = '26.3.27';
 export const CHINADNS_MIN_VERSION = '2025.08.09';
 
 // Paths

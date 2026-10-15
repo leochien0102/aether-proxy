@@ -14,7 +14,8 @@ export function build(snapshot, ctx) {
 
 	let tproxy = {
 		tag: C.TPROXY_IN_TAG, listen: C.TPROXY_LISTEN, port: C.TPROXY_PORT, protocol: 'tunnel',
-		settings: { allowedNetwork: 'tcp,udp', followRedirect: true },
+		// Field names as the latest stable Xray knows them (06): newer releases map them to rewrite*/allowedNetwork.
+		settings: { network: 'tcp,udp', followRedirect: true },
 		streamSettings: { sockopt: { tproxy: 'tproxy' } },
 		sniffing: { enabled: main.sniffing == true, destOverride: [ 'http', 'tls', 'quic' ], routeOnly: false }
 	};
@@ -28,7 +29,7 @@ export function build(snapshot, ctx) {
 
 		push(inbounds, {
 			tag: tag, listen: C.DNS_LISTEN, port: C.DNS_TUNNEL_PORTS[i], protocol: 'tunnel',
-			settings: { rewriteAddress: trust[i] ?? trust[0], rewritePort: 53, allowedNetwork: 'tcp' }
+			settings: { address: trust[i] ?? trust[0], port: 53, network: 'tcp' }
 		});
 		push(tags, tag);
 	}

@@ -22,7 +22,9 @@ function origin_domain(node) {
 
 function stream_settings(node) {
 	let net = node.transport ?? 'raw';
-	let ss = { method: net };
+	// `network`, not `method`: the latest stable Xray has no streamSettings.method and would
+	// silently fall back to raw (06).
+	let ss = { network: net };
 	let domain = origin_domain(node);
 
 	switch (node.security) {

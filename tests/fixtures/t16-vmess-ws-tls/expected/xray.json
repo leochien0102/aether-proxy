@@ -10,7 +10,7 @@
       "port": 31080,
       "protocol": "tunnel",
       "settings": {
-        "allowedNetwork": "tcp,udp",
+        "network": "tcp,udp",
         "followRedirect": true
       },
       "streamSettings": {
@@ -34,9 +34,9 @@
       "port": 31082,
       "protocol": "tunnel",
       "settings": {
-        "rewriteAddress": "8.8.8.8",
-        "rewritePort": 53,
-        "allowedNetwork": "tcp"
+        "address": "8.8.8.8",
+        "port": 53,
+        "network": "tcp"
       }
     },
     {
@@ -45,9 +45,9 @@
       "port": 31083,
       "protocol": "tunnel",
       "settings": {
-        "rewriteAddress": "1.1.1.1",
-        "rewritePort": 53,
-        "allowedNetwork": "tcp"
+        "address": "1.1.1.1",
+        "port": 53,
+        "network": "tcp"
       }
     },
     {
@@ -70,7 +70,7 @@
         "security": "auto"
       },
       "streamSettings": {
-        "method": "ws",
+        "network": "ws",
         "security": "tls",
         "tlsSettings": {
           "serverName": "vm.example.com",
