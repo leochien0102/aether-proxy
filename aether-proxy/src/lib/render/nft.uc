@@ -114,9 +114,9 @@ export function render(snapshot, ctx) {
 	push(out, set_block('gfw_static4', 'ipv4_addr', true, sort_ips(data.gfw_static4)));
 	push(out, set_block('direct_ip4', 'ipv4_addr', true, sort_ips(data.direct_ip4)));
 	push(out, set_block('proxy_ip4', 'ipv4_addr', true, sort_ips(data.proxy_ip4)));
-	push(out, set_block('gfw4', 'ipv4_addr', false, sort_ips(restored.gfw4), 'chinadns-ng add-taggfw-ip'));
-	push(out, set_block('udirect4', 'ipv4_addr', false, sort_ips(restored.udirect4), 'chinadns-ng group-ipset'));
-	push(out, set_block('uproxy4', 'ipv4_addr', false, sort_ips(restored.uproxy4), 'chinadns-ng group-ipset'));
+	push(out, set_block('gfw4', 'ipv4_addr', true, sort_ips(restored.gfw4), 'chinadns-ng add-taggfw-ip'));
+	push(out, set_block('udirect4', 'ipv4_addr', true, sort_ips(restored.udirect4), 'chinadns-ng group-ipset'));
+	push(out, set_block('uproxy4', 'ipv4_addr', true, sort_ips(restored.uproxy4), 'chinadns-ng group-ipset'));
 	push(out, '');
 
 	for (let p in [ 'direct', 'proxy', 'follow', 'udp' ]) {
