@@ -74,3 +74,11 @@
 - 首页需要的数据应当都能从现有只读接口取得：`status`（`state.json`、`probe.json` 摘要、`updates_available`）、`events`、`sub.json`；
   新增接口时优先扩展这些输出，而不是让前端直接读文件（[10](10-cli-luci.md) rpcd 插件）。
 - 长任务（节点检测、订阅更新）只能经作业机制发起与轮询（[10](10-cli-luci.md)「作业机制」），首页上的按钮也不例外。
+
+## B3 `fail_open=0` 且 Xray 缺位时的失败形态（待真机验证）
+
+- 状态：观察项（2026-10-15 复审提出），不是缺陷。
+- 情形：节点解析失败进入 `degraded` 且 `fail_open=0` 时，nft 与 ip rule 已安装而 Xray 未运行（04 第 9 步）。
+- 待验证：代理目标的 TCP 连接是**立即被拒绝**（TPROXY 找不到监听 socket，包经表 233 送入本机，无 socket 时内核回 RST），还是**挂起直到超时**。
+  下次真机窗口顺带测：让节点解析失败（错误的节点域名）+ `fail_open=0`，在 LAN 上 `curl -m 10 https://ipinfo.io/ip`，看耗时与报错。
+- 若为挂起：考虑在 Xray 缺位时给 proxy 链加 `reject with tcp reset`（快速失败），属新的设计决定。
