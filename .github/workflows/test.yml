@@ -50,6 +50,9 @@ jobs:
       - name: Run subscription update tests
         run: bash tests/sub/run.sh
 
+      - name: Run job mechanism tests
+        run: bash tests/job/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
