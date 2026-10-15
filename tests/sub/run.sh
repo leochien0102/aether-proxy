@@ -282,9 +282,30 @@ expect "concurrent config edit reports SUB_APPLY_INVALID" SUB_APPLY_INVALID "$(p
 cmp -s "$T/concurrent.config" "$R/etc/config/aetherproxy" \
 	&& ok "concurrent writer content is preserved" || bad "concurrent writer content is preserved"
 
-# Do not touch the host's /tmp/.uci: the hermetic package-delta equivalent above uses the
-# temporary sysroot; the real global-delta case is skipped by the worktree-only policy.
-echo 'SKIP real /tmp/.uci/aetherproxy delta case (global UCI state is outside this worktree)'
+# libuci always reads the real /tmp/.uci, whatever savedir is set (06 step 3), so the LuCI
+# case can only be shown there. Runs only when no such delta exists; the file is removed after.
+if [ -e /tmp/.uci/aetherproxy ]; then
+	echo 'SKIP real /tmp/.uci/aetherproxy delta case (a delta already exists on this host)'
+else
+	make_root "$T/root-luci"; write_config; BODY="$FIX/one-node.txt"
+	made_dir=0; [ -d /tmp/.uci ] || { mkdir -p /tmp/.uci && made_dir=1; }
+	printf "aetherproxy.main.mode='global'\n" > /tmp/.uci/aetherproxy
+	ap s_00000001 >/dev/null 2>"$T/luci.err"; rc=$?
+	luci_mode=$(sed -n "s/^[[:space:]]*option mode '\(.*\)'/\1/p" "$R/etc/config/aetherproxy")
+	luci_delta=$(cat /tmp/.uci/aetherproxy)
+	rm -f /tmp/.uci/aetherproxy; [ "$made_dir" = 1 ] && rmdir /tmp/.uci
+	expect "real LuCI delta scenario exits successfully" 0 "$rc"
+	expect "real LuCI delta is not committed" gfw "$luci_mode"
+	expect "real LuCI delta stays pending" "aetherproxy.main.mode='global'" "$luci_delta"
+fi
+
+# A corrupt sub.json is only a status record: logged, replaced, and the update proceeds.
+make_root "$T/root-corrupt"; write_config; BODY="$FIX/one-node.txt"
+printf '{broken' > "$R/etc/aether-proxy/state/sub.json"
+ap s_00000001 >/dev/null 2>"$T/corrupt.err"; rc=$?
+expect "corrupt sub.json does not block the update" 0 "$rc"
+"$UCODE" -l fs -e "let v = json(fs.readfile('$R/etc/aether-proxy/state/sub.json')); exit(type(v) == 'object' && v.s_00000001 ? 0 : 1);" 2>>"$T/corrupt.err" \
+	&& ok "corrupt sub.json is rewritten as a valid record" || bad "corrupt sub.json is rewritten as a valid record" "$(cat "$T/corrupt.err")"
 
 # State and structured events have the documented per-subscription shape.
 R="$T/root1"
