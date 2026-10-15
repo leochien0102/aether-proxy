@@ -103,6 +103,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `package`、`version`（数据更新的 `UPDATE_VERIFY_FAILED` 用 `item`） |
 | `DATA_UPDATED` | notice | `items` |
 | `MANIFEST_BAD_SIGNATURE` | error | `url` |
+| `UPDATE_FETCH_FAILED` | error | `urls`（所有发布通道地址都连不上；与验签失败区分，见 08「检查」） |
 | `NO_SPACE` / `ARCH_UNSUPPORTED` | error | `need`、`free` / `arch` |
 | `CMD_FAILED` | error | `cmd`、`rc`、`stderr` |
 | `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出） |
