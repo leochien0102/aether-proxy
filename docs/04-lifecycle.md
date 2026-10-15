@@ -60,7 +60,7 @@
 启动顺序有硬依赖：chinadns-ng → dnsmasq → 解析节点 → Xray 监听 → 加载 nft。procd 的多个实例是在
 `start_service` 返回后才统一拉起的，表达不了这种顺序。所以：
 
-- procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`，`term_timeout 15`：有序停止要导出集合、删表、重启 dnsmasq，procd 默认等 5 秒就 SIGKILL，在慢的路由器上不够）。
+- procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`，`term_timeout 30`：SIGTERM 要等当前一轮检测的同步部分，再导出集合、删表、重启 dnsmasq；procd 默认等 5 秒就 SIGKILL，远远不够）。
 - `aether-proxy daemon` 是监督进程：执行上面的启动步骤，以**子进程**方式拉起并重启 Xray、chinadns-ng
   （退避 5s → 10s → 30s → 60s 封顶），然后进入 monitor 循环。
   子进程用 `uloop.process` 拉起，继承 daemon 的 stdout/stderr（日志由 procd 收集，见 [09](09-logging.md)「子进程日志」）；退出由回调通知，不轮询。daemon 记录每个子进程是否处于「主动停止」中，不是主动停止的退出一律视为崩溃。连续稳定运行 5 分钟后退避计数归零。
@@ -140,7 +140,7 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
 6. **节点 IP 刷新**：距上次超过 10 分钟就重新解析（[03](03-dns.md)）。
 
-daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 10 秒的超时；一轮检测累计超过 30 秒时跳过下一轮。因此 SIGTERM 最多延迟一个命令的超时时间。
+daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 10 秒的超时；一轮检测累计超过 30 秒时跳过下一轮。信号只在回到事件循环时处理，所以 SIGTERM 要等当前一轮检测的同步部分做完，最坏约 20 秒（curl 加两次 resolveip）；procd 的 `term_timeout` 因此设为 30 秒，仍超时则由 `cleanup` 兜底。
 
 monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要拿全局锁。拿不到锁就跳过本轮（说明用户正在操作），
 不要阻塞等待。
