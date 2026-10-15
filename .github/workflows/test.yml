@@ -53,6 +53,9 @@ jobs:
       - name: Run job mechanism tests
         run: bash tests/job/run.sh
 
+      - name: Run subscription schedule tests
+        run: bash tests/schedule/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
