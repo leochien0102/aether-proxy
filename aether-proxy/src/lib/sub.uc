@@ -604,10 +604,18 @@ function read_subscription_state(path) {
 			return { ok: true, text: null, value: {} };
 		return { ok: false, detail: `read ${path}: ${detail}` };
 	}
-	let value = json(text);
+	// sub.json is only a status record (06 step 7): a corrupt one is logged and replaced
+	// on the next write instead of blocking every update. json() throws on bad input.
+	let value = null;
+	try {
+		value = json(text);
+	}
+	catch (e) {
+		value = null;
+	}
 	if (type(value) != 'object') {
-		// TODO(design): docs/06 does not specify recovery from corrupt sub.json; callers abort before edits.
-		return { ok: false, detail: `parse ${path}: expected a JSON object` };
+		log.event('error', 'FS_FAILED', { op: 'read', path, detail: 'not a JSON object; starting a fresh status record' });
+		return { ok: true, text, value: {} };
 	}
 	return { ok: true, text, value };
 }
@@ -688,7 +696,7 @@ export function update(ctx, sub_name) {
 	if (!prior_state.ok) {
 		lock.close();
 		log.event('error', 'FS_FAILED', { op: 'read', path: status_path, detail: prior_state.detail });
-		// TODO(design): status-file read errors are not assigned a subscription event code.
+		// An unreadable (not merely corrupt) status file is an I/O fault: FS_FAILED, no update (06 step 7).
 		return { ok: false, code: 'FS_FAILED', exit: 1, detail: prior_state.detail, subs: {} };
 	}
 
@@ -752,13 +760,22 @@ export function update(ctx, sub_name) {
 	lock.close();
 
 	let service_state = fs.readfile(ctx.opts.run_dir + '/' + C.STATE_FILE);
-	let state_obj = service_state == null ? null : json(service_state);
+	let state_obj = null;
+	if (service_state != null) {
+		try {
+			state_obj = json(service_state);
+		}
+		catch (e) {
+			state_obj = null;	// unreadable state counts as "not running": no reload
+		}
+	}
 	let service_active = type(state_obj) == 'object' && index([ 'starting', 'running', 'degraded' ], state_obj.state) >= 0;
 	if (reload_needed && service_active) {
 		let reloaded = test_init_reload(ctx);
 		if (!reloaded.ok) {
 			overall_ok = false;
-			// TODO(design): docs/06 requires reload after replace but does not define rollback on failure.
+			// No rollback (06 step 6): the new file already passed xray -test; a failed reload is
+			// reported and the daemon keeps running the previous render until the next reload.
 			for (let name, outcome in status_updates)
 				if (outcome.current_changed) {
 					results[name].ok = false;
@@ -788,7 +805,7 @@ export function update(ctx, sub_name) {
 	let saved_state = write_subscription_state(ctx, prior_state, status_updates);
 	if (!saved_state.ok) {
 		log.event('error', 'FS_FAILED', { op: 'write', path: status_path, detail: saved_state.detail });
-		// TODO(design): docs/06 does not define status-write failure after config replacement.
+		// The config is already replaced and stays; only the status record is missing (06 step 7).
 		overall_ok = false;
 	}
 	if (!any_attempt)
