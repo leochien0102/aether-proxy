@@ -100,3 +100,7 @@ export const ARTIFACT_FILES = {
 export const XRAY_COMPONENT = 'xray';
 export const CHINADNS_COMPONENT = 'chinadns-ng';
 export const PRECHECK_NFT_FILE = 'precheck.nft';
+
+// T2.2 (child process supervision)
+export const PROC_DIR = '/proc';
+export const SUPERVISE_TERM_GRACE_MS = 1000;
