@@ -6,16 +6,16 @@ import * as log from 'aetherproxy.log';
 import * as pipeline from 'aetherproxy.pipeline';
 
 const LEVELS = [ 'error', 'warn', 'notice', 'info', 'debug' ];
+const LEVEL_RANK = { error: 0, warn: 1, notice: 2, info: 3, debug: 4 };
 
-// `level` is an exact-match filter; docs/10 does not define threshold semantics.
+// A requested level includes events at that severity and all more severe levels.
 export function filter_events(events, since, level) {
 	let out = [];
 
-	// TODO(design): use an inclusive lower bound; docs/10 does not define --since boundary semantics.
 	for (let event in events) {
 		if (since != null && event.ts < since)
 			continue;
-		if (level != null && event.level != level)
+		if (level != null && LEVEL_RANK[event.level] > LEVEL_RANK[level])
 			continue;
 		push(out, event);
 	}
@@ -80,25 +80,42 @@ function load_events(run_dir) {
 	let text = fs.readfile(path);
 	if (text == null)
 		return { error: `read ${path}: ${fs.error() ?? 'unknown error'}`, path };
+	if (text == '')
+		return { events: [], skipped: 0 };
 
 	let events = [];
+	let skipped = 0;
 	let lines = split(text, '\n');
-	for (let i, line in lines) {
-		if (line == '' && i == length(lines) - 1)
-			continue;
-		if (line == '')
-			return { error: `parse ${path}: empty line ${i + 1}`, path };
+	let count = length(lines);
+	if (lines[count - 1] == '')
+		count--;
 
-		let event = json(line);
-		// TODO(design): docs/09 does not define recovery from a corrupt JSONL row; fail closed.
+	for (let i = 0; i < count; i++) {
+		let line = trim(lines[i]);
+		if (line == '') {
+			skipped++;
+			continue;
+		}
+
+		let event;
+		try {
+			event = json(line);
+		}
+		catch (e) {
+			skipped++;
+			continue;
+		}
+
 		if (type(event) != 'object' || (type(event.ts) != 'int' && type(event.ts) != 'double')
-			|| index(LEVELS, event.level) < 0 || type(event.code) != 'string' || type(event.args) != 'object')
-			return { error: `parse ${path}: invalid event on line ${i + 1}`, path };
+			|| index(LEVELS, event.level) < 0 || type(event.code) != 'string' || type(event.args) != 'object') {
+			skipped++;
+			continue;
+		}
 
 		push(events, event);
 	}
 
-	return { events };
+	return { events, skipped };
 };
 
 function usage(args, detail) {
@@ -111,12 +128,18 @@ function event_error(opts, err) {
 	return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: err.error }, 1, err.error);
 }
 
-function human_events(events) {
+function human_events(events, skipped) {
+	let lines = [];
 	if (!length(events))
-		return 'No events.';
+		push(lines, 'No events.');
+	else
+		for (let event in events)
+			push(lines, `${event.ts} ${event.level} ${event.code} ${sprintf('%J', event.args)}`);
 
-	return join('\n', map(events, event =>
-		`${event.ts} ${event.level} ${event.code} ${sprintf('%J', event.args)}`));
+	if (skipped)
+		push(lines, `Skipped malformed event lines: ${skipped}`);
+
+	return join('\n', lines);
 }
 
 export function run(args) {
@@ -130,5 +153,6 @@ export function run(args) {
 		return event_error(opts, loaded);
 
 	let selected = filter_events(loaded.events, opts.since, opts.level);
-	return pipeline.finish(opts, { ok: true, events: selected }, 0, human_events(selected));
+	return pipeline.finish(opts, { ok: true, events: selected, skipped: loaded.skipped }, 0,
+		human_events(selected, loaded.skipped));
 };

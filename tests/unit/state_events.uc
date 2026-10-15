@@ -36,8 +36,10 @@ export const cases = [
 		expect: { count: 500, first: 0, last: 499 } },
 	{ name: '501 events drop the older half', kind: 'trim', input: 501,
 		expect: { count: 251, first: 250, last: 500 } },
-	{ name: 'since includes boundary and level is exact', kind: 'filter', since: 200, level: 'warn',
-		expect: [ 'DNS_TIER_CHANGED', 'NODE_STALE' ] },
+	{ name: 'since includes its boundary', kind: 'filter', since: 200,
+		expect: [ 'DNS_TIER_CHANGED', 'XRAY_DOWN', 'NODE_STALE' ] },
+	{ name: 'warn includes more severe error events', kind: 'filter', level: 'warn',
+		expect: [ 'DNS_TIER_CHANGED', 'XRAY_DOWN', 'NODE_STALE' ] },
 	{ name: 'no filter preserves input order', kind: 'filter',
 		expect: [ 'SERVICE_STARTED', 'DNS_TIER_CHANGED', 'XRAY_DOWN', 'NODE_STALE' ] }
 ];
