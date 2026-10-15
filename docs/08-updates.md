@@ -125,6 +125,27 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 3. 按需下载资产，校验 `size` 和 `sha256`，任一不符就删除并换下一个地址。
 4. 空间预检：`/tmp` 可用空间 ≥ `size + unpacked_size + 1MB`；目标文件系统可用空间 ≥ `unpacked_size + 1MB`。不足 → `NO_SPACE`，不下载。
 
+### 检查（`aether-proxy update check`，T7.3）
+
+下载并验签清单后，对比本机状态，结果原子写入 `/var/run/aether-proxy/updates.json`，`status` 的 `updates_available` 直接取它（没有该文件时为 `null`）：
+
+```json
+{
+  "checked": 1760400000,
+  "url": "<实际取到清单的 channel_urls 地址>",
+  "arch": "aarch64_generic", "asset_key": "arm64",
+  "components": {
+    "xray": { "installed": "26.9.30", "available": "26.10.10", "newer": true },
+    "chinadns-ng": { "installed": "2025.06.20", "available": "2025.08.09", "newer": true }
+  },
+  "data": { "chnroute4": { "changed": true }, "gfwlist": { "changed": false } }
+}
+```
+
+- `installed` 取自试运行输出的第二个字段（S7）；组件不存在时为 `null`。版本比较按点号分段的数字逐段比较（`26.10.10` > `26.9.30`）。
+- 本机架构不在 `arch_map` 中 → `asset_key: null`，组件的 `available` 照常填写、`newer` 为 `false`，并记 `ARCH_UNSUPPORTED`（数据仍可更新）。
+- 有组件 `newer: true` 时记 `UPDATE_AVAILABLE`（每个组件、每个新版本只记一次）。
+
 ### 组件安装（`aether-proxy update component <名称> [--version <v>]`）
 
 1. 下载并校验 → `gunzip` → `chmod +x` → 试运行：`xray version` 或 `chinadns-ng -V`，退出码必须为 0，
