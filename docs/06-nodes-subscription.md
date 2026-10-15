@@ -133,6 +133,8 @@ aether-proxy 未运行时不做自动更新。
   同一分钟内只发起一个订阅的作业，按段名排序取第一个到期的。
 - 以 `last_attempt` 而不是 `last_ok` 计时：下载失败也要等满一个周期再试，避免对机场频繁重试。
 - daemon 不在 `running`/`degraded`（例如 `failsafe`、`error`）时不发起。
+- `sub.json` 损坏，或某个订阅的记录、`last_attempt` 格式不对：按「没有记录」处理（以 daemon 启动时刻计时），与 `sub update` 的处理一致；损坏只记一次 `FS_FAILED`，不每分钟重复。
+  读 `/dev/urandom` 失败时抖动取 0，照常调度。
 
 ## Xray 配置渲染
 
