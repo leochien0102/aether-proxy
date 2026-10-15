@@ -102,8 +102,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `data_auto` | bool | `1` | 自动更新规则数据 |
 | `data_hour` | 0–23 | `4` | 每天几点检查 |
 | `data_minute` | 0–59 | 空 | 安装时由 uci-defaults 随机生成并写入，用于把各设备的请求错开；为空时按 `30` 处理 |
-| `xray_auto` | enum(`off`\|`notify`\|`auto`) | `notify` | |
-| `chinadns_auto` | enum(`off`\|`notify`) | `notify` | **不提供 auto**（[08](08-updates.md)） |
+| `xray_auto` | enum(`off`\|`notify`\|`auto`) | `notify` | `xray-core` 软件包的更新策略（[08](08-updates.md)「调度」）；`aether-proxy` 自身只提示。chinadns-ng 不进发布通道，没有对应选项 |
 
 ## `config probe 'probe'`
 
@@ -172,7 +171,6 @@ config dns 'dns'
 config update 'update'
 	option data_auto '1'
 	option xray_auto 'notify'
-	option chinadns_auto 'notify'
 
 config probe 'probe'
 ```

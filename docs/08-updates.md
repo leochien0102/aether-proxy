@@ -2,28 +2,27 @@
 
 ## 范围
 
-| 对象 | 内容 | 默认策略 |
+| 对象 | 方式 | 默认策略 |
 |---|---|---|
-| `xray` | Xray 二进制 | `notify`：发现新版本只提示，用户点击后安装；可改为 `auto` |
-| `chinadns-ng` | chinadns-ng 二进制 | `notify`，**不提供自动安装**；安装后必须通过 DNS 自检，否则自动回滚 |
-| 规则数据 | `gfwlist`、`chnlist`、`apple`、`chnroute4`、`gfw_static4` | 每天自动 |
-| aether-proxy 自身 | 由包管理器（opkg/apk）负责 | aether-proxy 不负责 |
+| `xray-core` | **软件包**：发布仓库按 Makefile 从源码编译，**先过我们的测试再改 Makefile 的版本**，产物（ipk/apk）随签名清单发布；设备经包管理器安装 | `notify`：发现新版本只提示，用户点击后安装；可改为 `auto` |
+| `aether-proxy`、`luci-app-aether-proxy` | **软件包**：同上，由仓库所有者决定何时把新版本放进通道 | `notify`（不提供自动安装） |
+| `chinadns-ng` | **不进通道**，只随固件或软件源更新：DNS 出问题影响全网解析，代价远大于 Xray（2026-10-15 定，与 helloworld 一致） | — |
+| 规则数据 | `gfwlist`、`chnlist`、`apple`、`chnroute4`、`gfw_static4`，经签名清单每天更新 | 每天自动 |
+
+（2026-10-15 改为软件包方案，取代此前的「下载官方预编译二进制、自管版本目录」。参照 helloworld 的发布方式——用官方 SDK 编译软件包发到 GitHub Release、设备下载后用包管理器安装——并补上它缺少的两点：**签名与哈希校验**（它直接安装下载的包，apk 还加了 `--allow-untrusted`）和**安装后检查与回滚**。）
 
 ## 发布通道（服务端）
 
-**规则转换、上游校验、架构映射都在 CI 中完成**，设备只负责下载、验签、校验哈希。
-这样设备侧的逻辑最简单，转换规则也可以在不升级 aether-proxy 的情况下修正。
+**编译、测试、数据转换都在 CI 中完成**，设备只负责下载、验签、校验哈希、调用包管理器。
 
-CI（**单独的发布仓库** `leochien0102/aether-proxy-channel` 中的 `.github/workflows/channel.yml`，见下方「发布仓库」）每天运行一次，外加手动触发。
-生成发布目录的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 只负责 checkout、运行它、签名、发布：
+发布 CI 在**单独的发布仓库** `leochien0102/aether-proxy-channel`（见下方「发布仓库」）。生成发布目录与清单的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 负责编译、运行它、签名、发布：
 
-
-1. **数据**：拉取上游 → 转换为统一格式 → 合理性检查 → 与上一版比较，没有变化就不发布。
-2. **组件**：跟踪 Xray-core、chinadns-ng 的上游**最新版本，含 prerelease**（2026-10-15 定：我们是客户端，新版 Xray 对旧服务端向下兼容，官方也是这样发布的；
-   渲染只用最新正式版认识的写法，所以通道里的新版本同样能用，见 06「Xray 配置渲染」）。收录前用该版本对本仓库全部 golden 配置跑 `xray run -test`，有失败就不收录、CI 报错。用上游提供的摘要（Xray 的 `.dgst`）校验下载内容，
-   按架构解包出单个二进制并用 gzip 压缩（设备只需要 busybox 的 `gunzip`，不需要 `unzip`）。
-3. 生成 `manifest.json`，用 **usign** 私钥签名得到 `manifest.json.sig`。
-4. 把清单和所有资产发布到固定 tag（如 `channel-stable`）的 GitHub Release。
+1. **软件包**：用 OpenWrt 官方 SDK 编译，矩阵为「SDK 版本 × 目标」——24.10（ipk）与 25.12（apk）各编 `aarch64_generic`、`x86_64`（首版范围，以后按需增加）。
+   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`aether-proxy`、`luci-app-aether-proxy`（取 aether-proxy 仓库的指定提交）。
+2. **Xray 版本闸门**：定时任务发现上游有新版本（含 prerelease）时，在发布仓库开一个改 Makefile 版本与 `PKG_HASH` 的 PR；PR 的检查用新版本对 aether-proxy 仓库全部 golden 配置跑 `xray run -test`（用官方 linux-64 二进制或本次编译出的 x86_64 包中的二进制）。
+   **检查通过、仓库所有者合并后**才进入发布。PR 上的检查拿不到签名私钥，也不发布。
+3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
+4. 生成 `manifest.json`，用 **usign** 私钥签名得到 `manifest.json.sig`，与所有资产一起发布到固定 tag `channel-stable` 的 GitHub Release。
 
 ### 数据格式与来源（初始选择，CI 中可替换）
 
@@ -47,20 +46,22 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 ```json
 {
-  "schema": 1,
-  "generated": "2026-10-14T04:00:00Z",
-  "arch_map": {
-    "aarch64_generic": "arm64", "aarch64_cortex-a53": "arm64",
-    "x86_64": "amd64",
-    "mipsel_24kc": "mipsle-softfloat"
-  },
-  "components": {
-    "xray": {
-      "version": "26.3.27",
-      "min_app": "1.0.0",
-      "assets": { "arm64": { "url": "xray-26.3.27-arm64.gz", "sha256": "…", "size": 12345678, "unpacked_size": 30000000 } }
+  "schema": 2,
+  "generated": "2026-10-15T04:00:00Z",
+  "packages": {
+    "xray-core": {
+      "current": {
+        "version": "26.9.30-r1",
+        "assets": {
+          "aarch64_generic": {
+            "ipk": { "url": "xray-core_26.9.30-r1_aarch64_generic.ipk", "sha256": "…", "size": 0 },
+            "apk": { "url": "xray-core-26.9.30-r1_aarch64_generic.apk", "sha256": "…", "size": 0 }
+          }
+        }
+      },
+      "previous": { "version": "26.7.28-r1", "assets": { } }
     },
-    "chinadns-ng": { "version": "2025.08.09", "assets": { } }
+    "aether-proxy": { "current": { "version": "0.2.0-r1", "assets": { "all": { "ipk": { }, "apk": { } } } }, "previous": null }
   },
   "data": {
     "chnroute4": { "version": "20261014", "url": "chnroute4-20261014.txt.gz", "sha256": "…", "size": 0, "lines": 0 }
@@ -68,10 +69,10 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 }
 ```
 
-- `arch_map` 的键是设备 `/etc/openwrt_release` 中的 `DISTRIB_ARCH`，值是资产键。映射表由 CI 维护
-  （mips 的软浮点、arm 的 v5/v6/v7 差异在这里处理；chinadns-ng 的变体选择可参照 helloworld `chinadns-ng/Makefile` 中的判断逻辑）。
-- `url` 是相对路径，相对于下载清单所用的那个 `channel_urls` 地址。这样镜像只需要整体镜像目录即可。
-- 设备的 `DISTRIB_ARCH` 不在 `arch_map` 中 → `ARCH_UNSUPPORTED`，提示用户手动上传二进制。
+- `assets` 的键直接是 OpenWrt 的包架构（设备 `/etc/openwrt_release` 的 `DISTRIB_ARCH`，与 `opkg print-architecture` 一致），`all` 用于架构无关的包。不再需要额外的架构映射表。
+- 每个包保留 `current` 与 `previous` 两个版本的资产：回滚时安装 `previous`（opkg/apk 本身不保留旧包）。
+- `url` 是相对路径，相对于下载清单所用的那个 `channel_urls` 地址，镜像只需整体镜像目录。
+- 设备的 `DISTRIB_ARCH` 不在某个包的 `assets` 中 → 该包对本机不可用（`ARCH_UNSUPPORTED`），提示用户自行从软件源安装。
 
 ### 签名
 
@@ -94,7 +95,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 - 默认 `channel_urls` 为 `https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/`（[05](05-config.md)），镜像地址追加在其后。
 - 数据生成器（`tools/data/`）与 `gfw_static4.txt` 仍在 aether-proxy 仓库：发布 CI 每次 checkout aether-proxy 的 `main` 来运行生成器，生成器改动不需要同步两个仓库。
-- 发布仓库是公开仓库，只有仓库所有者可以写入；workflow 只在定时、手动触发与仓库所有者的推送上运行，不在 PR 上运行（PR 拿不到 Secret，也不应发布）。
+- 发布仓库是公开仓库，只有仓库所有者可以写入。发布（读私钥、签名、上传）只在定时、手动触发与 `main` 上的推送运行；PR 上只跑编译与 golden 检查（拿不到 Secret，也不发布）。
+- 发布仓库维护 `xray-core` 的 Makefile（自己编写，不复制 helloworld 或 openwrt/packages 的文件，README 规则 8），以及要打包的 aether-proxy 提交（一个版本文件）。
 
 ### S7 探针结论（2026-10-15）
 
@@ -108,10 +110,10 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - Xray：`Xray-linux-<键>.zip` 与 `.zip.dgst`（含 `MD5=`、`SHA1=`、`SHA2-256=`、`SHA2-512=` 行）。arch 键示例：`arm64-v8a`、`64`、`32`、`arm32-v7a`、`arm32-v5/v6`、`mips32le`、`mips32`、`mips64le`、`riscv64`、`loong64`。
   **近期版本几乎都标为 prerelease**（2026-10 时 GitHub 的 latest 仍是 26.3.27），通道按「最新版本含 prerelease」跟踪，见上方「发布通道」。
 - chinadns-ng：**未压缩的单个二进制**，命名 `chinadns-ng+wolfssl@<三元组>@<cpu>@fast+lto`（如 `aarch64-linux-musl@generic+v8a`、`x86_64-linux-musl@x86_64`、`mipsel-linux-musl@mips32+soft_float`），
-  **没有摘要文件**。校验办法：发布仓库保存「版本 → 各资产 sha256」记录，首次见到某版本时记下（取自 GitHub 的 HTTPS 下载），之后同一版本的文件一旦变化，CI 失败、不发布。
+  **没有摘要文件**。（chinadns-ng 后来决定不进通道，此条仅作记录。）
 
 **测试路由器**（aarch64，自建 lede）
-- `DISTRIB_ARCH='aarch64_generic'` → Xray `arm64-v8a`、chinadns-ng `aarch64-linux-musl@generic+v8a`。
+- `DISTRIB_ARCH='aarch64_generic'`（与官方 armsr/armv8 SDK 的包架构一致，helloworld 的发布也用它）。
 - 有 `usign`、`gunzip`、`sha256sum`，**没有 `unzip`**（印证「CI 解压后改用 gzip」）。
 - 空间：`/tmp` 约 1 GB，overlay 剩约 390 MB。
 - 试运行输出：`Xray 26.9.30 (Xray, Penetrates Everything.) …`、`ChinaDNS-NG 2025.06.20 be347b5 | …`——版本号都是第二个字段。
@@ -123,7 +125,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 1. 依次尝试 `channel_urls`。每个地址：Xray 正在运行时先经代理（`-x http://127.0.0.1:31081`），失败再直连。
 2. 下载 `manifest.json` 和 `.sig` 到 `/tmp/aether-proxy-dl/`，用 `usign -V -m manifest.json -P /etc/aether-proxy/keys` 验签。
 3. 按需下载资产，校验 `size` 和 `sha256`，任一不符就删除并换下一个地址。
-4. 空间预检：`/tmp` 可用空间 ≥ `size + unpacked_size + 1MB`；目标文件系统可用空间 ≥ `unpacked_size + 1MB`。不足 → `NO_SPACE`，不下载。
+4. 空间预检：下载前 `/tmp` 可用空间 ≥ `size + 1MB`，不足 → `NO_SPACE`，不下载。软件包安装所需的 overlay 空间由包管理器自己检查，它报空间不足时同样记 `NO_SPACE`。
+5. 清单 `schema` 不是 2，或 JSON 解析失败 → 视同验签失败，换下一个地址。
 
 ### 检查（`aether-proxy update check`，T7.3）
 
@@ -133,40 +136,33 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 {
   "checked": 1760400000,
   "url": "<实际取到清单的 channel_urls 地址>",
-  "arch": "aarch64_generic", "asset_key": "arm64",
-  "components": {
-    "xray": { "installed": "26.9.30", "available": "26.10.10", "newer": true },
-    "chinadns-ng": { "installed": "2025.06.20", "available": "2025.08.09", "newer": true }
+  "arch": "aarch64_generic", "pm": "opkg",
+  "packages": {
+    "xray-core": { "installed": "26.9.30-r1", "available": "26.10.10-r1", "newer": true },
+    "aether-proxy": { "installed": "0.1.0-r1", "available": "0.2.0-r1", "newer": true }
   },
   "data": { "chnroute4": { "changed": true }, "gfwlist": { "changed": false } }
 }
 ```
 
-- `installed` 取自试运行输出的第二个字段（S7）；组件不存在时为 `null`。版本比较按点号分段的数字逐段比较（`26.10.10` > `26.9.30`）。
-- 本机架构不在 `arch_map` 中 → `asset_key: null`，组件的 `available` 照常填写、`newer` 为 `false`，并记 `ARCH_UNSUPPORTED`（数据仍可更新）。
-- 有组件 `newer: true` 时记 `UPDATE_AVAILABLE`（每个组件、每个新版本只记一次）。
+- `pm`：有 `apk` 命令为 `apk`，否则有 `opkg` 为 `opkg`。`installed` 取自包管理器（`opkg status <包>` 的 `Version:`、`apk list -I <包>`）；没装为 `null`。
+- 版本比较：先按 `-r` 前的上游版本逐段比较数字，相同再比 `r` 后的数字（`26.10.10-r1` > `26.9.30-r5`）。
+- 包对本机架构不可用 → `available` 照常填、`newer: false`，记 `ARCH_UNSUPPORTED`。
+- 有包 `newer: true` 时记 `UPDATE_AVAILABLE`（每个包、每个新版本只记一次）。
 
-### 组件安装（`aether-proxy update component <名称> [--version <v>]`）
+### 软件包安装（`aether-proxy update package <包> [--previous]`，T7.4）
 
-1. 下载并校验 → `gunzip` → `chmod +x` → 试运行：`xray version` 或 `chinadns-ng -V`，退出码必须为 0，
-   输出中必须包含清单里的版本号。
-2. 移动到 `/usr/share/aether-proxy/bin/<组件>/<版本>/`。先写到同一文件系统下的临时名，再 `mv`，避免留下半个文件。
-3. 用当前配置做校验（Xray：`run -test`）。失败 → 删除新版本，结束（`UPDATE_VERIFY_FAILED`）。
-4. 原子切换：`ln -sfn <版本目录> current.tmp && mv -T current.tmp current`。旧版本的路径记入 `previous`（同样是符号链接）。
-5. 通知 daemon 重启对应的子进程。
-6. 安装后检查（失败 → 切回 `previous`，再重启子进程，记 ERR `UPDATE_ROLLED_BACK`）：
-   - Xray：60 秒内代理健康检测至少成功 1 次。如果更新前就处于不健康状态，只检查 TPROXY 端口在 5 秒内进入监听。
-   - chinadns-ng：10 秒内经 dnsmasq 成功解析 `baidu.com` 和 `dns_probe_domain`，DNS 级别保持不变。
-7. 版本保留：保留 `current` 和 `previous`。空间不足时只删除 `previous`，**绝不删除 `current`**。
-   包管理器安装的系统二进制永远作为最终兜底（[01](01-architecture.md) 查找顺序）。
+1. 下载并验签清单；取本机架构与包管理器对应的资产（`--previous` 时取 `previous`），按清单校验 `size` 与 `sha256`。
+2. 记下当前已装版本（用于回滚判断）。
+3. 安装：opkg 用 `opkg install <文件>`；apk 用 `apk add --allow-untrusted <文件>`。**只在第 1 步的验签与哈希都通过之后**才这样调用——
+   完整性由我们的签名清单保证，`--allow-untrusted` 只是跳过 apk 对 SDK 临时构建密钥的签名检查。
+4. 安装后检查（失败 → 安装清单中的 `previous` 资产回滚，记 ERR `UPDATE_ROLLED_BACK`）：
+   - `xray-core`：daemon 重启 Xray 后 60 秒内代理健康检测至少成功 1 次；更新前就不健康时，只检查 TPROXY 端口在 5 秒内进入监听。
+   - `aether-proxy`（及 luci 包）：`/etc/init.d/aether-proxy restart` 后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时只检查 `aether-proxy check` 通过。
+5. 成功记 `UPDATE_INSTALLED`。
 
-`chinadns-ng` 不提供自动安装，原因：DNS 一旦出问题会影响全网解析，要求用户在场。即便如此，上面的安装后检查和
-自动回滚仍然必须执行。
-
-### 手动上传
-
-LuCI 中可以上传二进制（用于首次安装时无法访问 GitHub 的情况）。上传的文件没有签名可以校验，只做第 1 步的试运行、
-第 3 步的配置校验，并显示「未经签名校验」的警告。版本号取自试运行的输出。
+更新 `aether-proxy` 自身时，执行更新的是作业进程：ucode 在启动时就加载完了全部模块，安装过程中替换磁盘上的文件不影响它跑完。
+不提供「手动上传二进制」：没有通道时，用户可以在 LuCI 的软件包页面或 `opkg install` 直接安装软件源里的包。
 
 ### 数据更新（`aether-proxy update data`）
 
@@ -187,14 +183,12 @@ flash 写入量：数据只在内容变化时写，按每天最多一次计，�
 daemon 内部计时，不修改 crontab：
 
 - 数据：每天 `data_hour:data_minute`。
-- 组件：每天检查一次新版本。`notify` 写入 `state.json` 的 `updates_available`，由 LuCI 显示；
-  `auto`（仅 Xray）直接安装。
+- 软件包：每天检查一次新版本（`update check`），结果写 `updates.json`，由 LuCI 显示；`xray_auto=auto` 时对 `xray-core` 直接发起安装作业。`aether-proxy` 自身只提示。
 - 所有更新都以作业方式执行（[10](10-cli-luci.md)），同一时间只运行一个更新作业。
 
 ## 首次安装引导
 
-官方 OpenWrt 上安装 aether-proxy 后既没有 Xray 也没有 chinadns-ng，而此时没有代理，直连 GitHub 很可能失败。LuCI 首页检测到
-`COMPONENT_MISSING` 时显示引导：
+官方 OpenWrt 上安装 aether-proxy 后可能没有 Xray 或 chinadns-ng（`COMPONENT_MISSING`）。LuCI 首页提示：
 
-1. 「从发布通道下载」（会依次尝试 `channel_urls` 中的镜像地址）
-2. 「手动上传」（显示本机的 `DISTRIB_ARCH` 和应当下载的资产名）
+1. Xray：「从发布通道安装 `xray-core`」（`update package xray-core`，会依次尝试 `channel_urls` 中的镜像地址）；也可以在软件包页面从软件源安装。
+2. chinadns-ng：只能从软件源安装（不进通道）。显示本机的 `DISTRIB_ARCH`，方便用户找到对应的包。

@@ -71,8 +71,6 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 | `/etc/aether-proxy/keys/` | flash（包内） | usign 公钥 |
 | `/etc/aether-proxy/state/` | flash | 少量需要跨重启的状态：节点 LKG IP、订阅最后成功时间。**只在值变化时写** |
 | `/usr/share/aether-proxy/data/` | ROM（包内） | 规则数据基线快照 |
-| `/usr/share/aether-proxy/bin/<组件>/<版本>/` | overlay | aether-proxy 自己下载的组件二进制 |
-| `/usr/share/aether-proxy/bin/<组件>/current` | overlay | 指向当前版本的符号链接 |
 | `/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft` | 包内静态文件 | 放行带 FWMARK 的入站（见 [02](02-dataplane.md)） |
 | `/var/run/aether-proxy/` | tmpfs | 渲染产物、`state.json`、`events.jsonl`、`jobs/`、staging |
 | `/tmp/aether-proxy-dl/` | tmpfs | 下载临时目录 |
@@ -80,9 +78,10 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 ## 组件二进制的查找顺序
 
 1. UCI `aetherproxy.main.xray_bin` / `chinadns_bin` 显式指定的路径（高级选项）
-2. `/usr/share/aether-proxy/bin/<组件>/current/<组件>`（aether-proxy 管理的版本）
-3. 系统 `PATH` 中的同名程序（feed 安装的 `xray-core`、`chinadns-ng` 包）
-4. 都没有：start 失败，事件 `COMPONENT_MISSING`，LuCI 引导用户下载或上传
+2. 系统 `PATH` 中的同名程序（`xray-core`、`chinadns-ng` 软件包，来自固件、软件源或发布通道）
+3. 都没有：start 失败，事件 `COMPONENT_MISSING`，LuCI 引导用户安装（[08](08-updates.md)「首次安装引导」）
+
+（2026-10-15 起组件一律以软件包安装，不再有 aether-proxy 自管的 `/usr/share/aether-proxy/bin/` 版本目录。）
 
 ## 包拆分
 

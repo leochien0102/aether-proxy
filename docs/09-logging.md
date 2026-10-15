@@ -99,8 +99,8 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `SUB_FETCH_FAILED` / `SUB_DECODE_FAILED` / `SUB_FORMAT_UNSUPPORTED` / `SUB_APPLY_INVALID` / `SUB_PROXY_UNAVAILABLE` | error | `sub`、`detail` |
 | `SUB_SHRANK` | warn | `sub`、`old`、`new` |
 | `SUB_NO_VALID_NODES` | error | `sub`、`skipped`（按原因计数）。解码成功但没有任何可导入的节点（与 `SUB_DECODE_FAILED` 区分） |
-| `UPDATE_AVAILABLE` | notice | `component`、`current`、`latest` |
-| `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `component`、`version` |
+| `UPDATE_AVAILABLE` | notice | `package`、`current`、`latest` |
+| `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `package`、`version`（数据更新的 `UPDATE_VERIFY_FAILED` 用 `item`） |
 | `DATA_UPDATED` | notice | `items` |
 | `MANIFEST_BAD_SIGNATURE` | error | `url` |
 | `NO_SPACE` / `ARCH_UNSUPPORTED` | error | `need`、`free` / `arch` |

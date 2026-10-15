@@ -29,8 +29,7 @@ init.d / hotplug / daemon ──────────────────
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
 | `update check` | 检查新版本 | 是 |
-| `update component <name> [--version v]` | 安装组件 | 是 |
-| `update upload <name> <path>` | 安装手动上传的组件 | 是 |
+| `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本（[08](08-updates.md)） | 是 |
 | `update data` | 更新规则数据 | 是 |
 | `job start <子命令...>` | 以后台作业方式运行一个长任务，立即返回 `{"job": "<id>"}` | 否 |
 | `job status <id>` | 输出作业状态 | 否 |
@@ -73,7 +72,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 实现约定（2026-10-15 定，T6.2）：
 
 - **允许的作业**（`job start` 后面跟的子命令，按前两个词识别种类）：`probe nodes [<id>...]` → 种类 `probe_nodes`；`sub update [<sub>]` → `sub_update`。
-  M7 再加 `update …`。其他子命令一律拒绝（`USAGE`，退出码 2）。
+  M7 再加 `update check` → `update_check`、`update package …` → `update_package`、`update data` → `update_data`（三者共用一把「更新」锁，同时只跑一个）。其他子命令一律拒绝（`USAGE`，退出码 2）。
 - **作业 ID**：`j_<启动时间秒>_<发起进程 pid>`，满足正则 `^j_[0-9]+_[0-9]+$`。
 - **作业文件**在 `<run-dir>/jobs/<id>.json`，字段：`id`、`kind`、`cmd`（显示用字符串）、`argv`（数组，工作进程据此执行，不经 shell 拼接）、`state`、`pid`（工作进程）、
   `started`、`finished`、`exit`（子命令退出码）、`result`（子命令 `--json` 输出解析后的对象）、`error`（失败时的 `code`，没有就为 `CMD_FAILED`）。全部经 `sys.write_atomic` 写。
@@ -97,12 +96,11 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `status` | — | `status` |
 | `service` | `action: start\|stop\|restart` | `/etc/init.d/aether-proxy <action>` |
 | `check` | — | `check` |
-| `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_component\|update_data`，`args`（按 kind 校验） | `job start …` |
+| `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data`，`args`（按 kind 校验） | `job start …` |
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
 | `log` | `source`、`lines`（1–2000） | `log` |
 | `node_import` | `uri`（≤ 4096 字节） | `node import` |
-| `upload_component` | `name`、`path`（必须位于 `/tmp/aether-proxy-upload/` 下） | `job start update upload …` |
 | `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`，`content` | 读写 `/etc/aether-proxy/custom/<name>.txt`（保存前逐行校验） |
 
 ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`、`events`、`log`、`job_status`、`list_file`）归 read，
