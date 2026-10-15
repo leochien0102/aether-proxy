@@ -2,6 +2,7 @@
 
 import * as sys from 'aetherproxy.sys';
 import * as fs from 'fs';
+import * as uloop from 'uloop';
 
 export const cases = [
 	{
@@ -59,6 +60,16 @@ export const cases = [
 		kind: 'quick',
 		argv: [ 'printf', 'done' ],
 		opts: { timeout: 30 }
+	},
+	{
+		name: 'a child exiting mid-run (SIGCHLD) does not lose the result',
+		expect: 'PASS',
+		kind: 'sigchld'
+	},
+	{
+		name: 'lock fd is not inherited by spawned children',
+		expect: 'PASS',
+		kind: 'lock_cloexec'
 	},
 	{
 		name: 'timeout implementation uses integer sleep only',
@@ -126,6 +137,40 @@ export function run(c) {
 
 		if (r.code != 0 || r.stdout != 'done' || r.timed_out || elapsed >= 1 || before != after)
 			return failed(sprintf('result %.J, elapsed %.3f seconds, sleep count %d -> %d', r, elapsed, before, after));
+
+		return 'PASS';
+	}
+
+	if (c.kind == 'sigchld') {
+		uloop.init();
+		for (let i = 0; i < 3; i++) {
+			uloop.process('/bin/sleep', [ '0.1' ], {}, () => {});
+			let r = sys.run([ 'sh', '-c', 'sleep 0.4; echo ok' ], { quiet: true });
+
+			if (r.code != 0 || r.stdout != 'ok\n')
+				return failed(sprintf('round %d: %.J', i, r));
+			uloop.run(200);
+		}
+
+		return 'PASS';
+	}
+
+	if (c.kind == 'lock_cloexec') {
+		let path = `/tmp/aether-proxy-test-lock.${fs.readlink('/proc/self')}`;
+		let lock = sys.lock(path);
+
+		if (lock == null)
+			return failed(`cannot take ${path}: ${sys.error()}`);
+		uloop.init();
+		let child = uloop.process('/bin/sleep', [ '2' ], {}, () => {});
+		uloop.run(200);	// let the child get past exec(); before exec it still holds the fd
+		lock.close();
+		let again = sys.lock(path);
+		child.delete();
+		fs.unlink(path);
+		if (again == null)
+			return failed('lock still held after close: the child inherited the fd');
+		again.close();
 
 		return 'PASS';
 	}

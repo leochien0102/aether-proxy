@@ -7,6 +7,7 @@ import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 
 let last_error = null;
+let run_seq = 0;
 
 // fs.open() and fs.popen() failures do not always set fs.error() in ucode 2025.07.18
 // (verified on the pinned build), so never print it bare.
@@ -76,18 +77,25 @@ function run(argv, opts) {
 	let args = map(argv, a => `${a}`);
 
 	let timeout = opts.timeout == null ? '-' : `${opts.timeout}`;
-	let cmdline = 'sh -c ' + q(WRAPPER) + ' sh ' + q(timeout) + ' ' + join(' ', map(args, q));
 	let res = { code: -1, stdout: '', stderr: '', timed_out: false };
-	let fp = fs.popen(cmdline, 'r');
+	// The wrapper writes to a file, not a pipe: uloop's SIGCHLD handler has no SA_RESTART,
+	// so a supervised child exiting mid-read cut popen() reads short (EINTR) and the
+	// result was lost. system() retries waitpid() on EINTR and leaves SIGCHLD alone.
+	run_seq++;
+	let out_path = `${C.TMP_DIR}/aether-proxy-run.${fs.readlink('/proc/self') ?? 'x'}.${run_seq}`;
+	let wrc = system([ 'sh', '-c', 'exec >"$1" || exit 125; shift; ' + WRAPPER, 'sh', out_path, timeout, ...args ]);
+	let text = fs.readfile(out_path);
 
-	if (!fp) {
-		res.stderr = `popen failed: ${fs_err()}`;
+	if (text != null && !fs.unlink(out_path))
+		res.stderr = `(cannot remove ${out_path}: ${fs_err()})`;
+
+	if (text == null) {
+		res.stderr = `wrapper produced no result (sh exit ${wrc})`;
 	}
 	else {
 		// The leading newline sidesteps rindex() failing to report a match at offset 0
 		// (seen on the pinned ucode build) when the command printed nothing.
-		let out = '\n' + (fp.read('all') ?? '');
-		let wrc = fp.close();
+		let out = '\n' + text;
 		let pos = rindex(out, MARKER);
 
 		if (pos < 0) {
@@ -207,7 +215,9 @@ function lock(path) {
 	if (parent != '' && !mkdir_p(parent))
 		return null;
 
-	let fp = fs.open(path, 'a');
+	// 'e' = O_CLOEXEC: children spawned while the lock is held (chinadns-ng during startup)
+	// must not inherit it, or an orphan keeps the lock after a SIGKILLed daemon.
+	let fp = fs.open(path, 'ae');
 	if (fp == null) {
 		last_error = `open lock ${path}: ${fs_err()}`;
 		return null;
