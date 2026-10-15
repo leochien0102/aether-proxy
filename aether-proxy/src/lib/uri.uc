@@ -447,7 +447,7 @@ export function parse_body(text) {
 
 		let result = parse_line(line);
 		if (result.node != null) {
-			// Same-subscription strong-key deduplication is deliberately left to T5.3.
+			// Strong-key deduplication happens later, in sub.plan (06 step 1).
 			push(nodes, result.node);
 			for (let warning in (result.warnings ?? []))
 				push(warnings, warning);

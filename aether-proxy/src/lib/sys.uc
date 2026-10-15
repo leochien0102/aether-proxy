@@ -45,14 +45,14 @@ const WRAPPER = join(' ', [
 	'    fi;',
 	'    : >"$finished" ) 2>>"$helper" & timer=$!;',
 	'  wait "$runner"; rc=$?; : >"$done";',
-	// The timer may finish between the -f test and the kill; that race is harmless, so its
-	// "can't kill pid" is discarded instead of being mixed into the command's stderr.
-	'  if [ ! -f "$finished" ]; then kill -TERM "$timer" 2>/dev/null; fi;',
+	// The timer may finish between the -f test and the kill; that race is harmless, and its
+	// "can't kill pid" is dropped by the helper filter below instead of reaching stderr.
+	'  if [ ! -f "$finished" ]; then kill -TERM "$timer" 2>>"$helper"; fi;',
 	'  wait "$timer" 2>>"$helper";',
 	'  if [ -f "$timed_file" ]; then rc=124; timed=true; else timed=false; fi;',
 	'  rm -f "$done" "$child" "$timed_file" "$finished" 2>>"$e";',
 	'fi;',
-	'while IFS= read -r line; do if [ "$line" != "Terminated" ]; then printf "%s\\n" "$line" >>"$e"; fi; done <"$helper";',
+	'while IFS= read -r line; do case "$line" in Terminated|*"can\'t kill pid"*) ;; *) printf "%s\\n" "$line" >>"$e" ;; esac; done <"$helper";',
 	'rm -f "$helper" 2>>"$e";',
 	'printf "\\n@@AP-RC@@ %s %s %s\\n" "$rc" "$e" "$timed"'
 ]);

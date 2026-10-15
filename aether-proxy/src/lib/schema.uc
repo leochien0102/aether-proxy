@@ -75,8 +75,6 @@ const host = [
 const subscription = [
 	{ name: 'enabled', type: 'bool', default: true },
 	{ name: 'name', type: 'string', default: null },
-	// TODO(design): 05 gives no default for `url` and does not say it is required; a
-	// subscription without one cannot be fetched, so it is rejected.
 	{ name: 'url', type: 'url', required: true, default: null },
 	{ name: 'user_agent', type: 'string', default: C.PROG + '/' + C.VERSION },
 	{ name: 'fetch_via', type: 'enum', enum: [ 'auto', 'direct', 'proxy' ], default: 'auto' },

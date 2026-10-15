@@ -186,7 +186,7 @@ export function run(args) {
 	let validation = {};
 	let errors = [];
 
-	let r = sys.run([ 'nft', '-c', '-f', files.nft ], { timeout: 10, quiet: true });
+	let r = sys.run([ options.bin_dir ? `${options.bin_dir}/nft` : 'nft', '-c', '-f', files.nft ], { timeout: 10, quiet: true });
 
 	validation.nft = { ok: r.code == 0 };
 

@@ -176,7 +176,7 @@ export const cases = [
 		expect: { ok: false, nodes: [], skipped: { unsupported_scheme: 1 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
 	},
 	{
-		name: 'duplicate strong keys remain for T5.3', fn: 'body',
+		name: 'parse_body keeps duplicates (sub.plan deduplicates)', fn: 'body',
 		input: BODY_URI + '\n' + BODY_URI,
 		expect: { ok: true, nodes: [
 			{ protocol: 'vless', address: 'body.example', port: 443, uuid: UUID, label: 'body', transport: 'raw', security: 'tls', encryption: 'none' },

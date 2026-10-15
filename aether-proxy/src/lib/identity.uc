@@ -100,7 +100,7 @@ export function match(old_nodes, new_nodes, opts) {
 		let candidates = [];
 		for (let id in old_ids) {
 			let old = old_nodes[id];
-			if (!used[id] && old.protocol == node.protocol && old.label == node.label)
+			if (!used[id] && old.protocol == node.protocol && length(node.label ?? '') > 0 && old.label == node.label)
 				push(candidates, id);
 		}
 

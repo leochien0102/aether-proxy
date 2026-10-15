@@ -36,7 +36,13 @@ function read(run_dir) {
 		return null;
 	}
 
-	let obj = json(text);
+	let obj = null;
+	try {
+		obj = json(text);	// throws on bad input
+	}
+	catch (e) {
+		obj = null;
+	}
 	if (type(obj) != 'object') {
 		last_error = `parse ${path}: expected a JSON object`;
 		return null;

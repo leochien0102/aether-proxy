@@ -558,8 +558,6 @@ next = (state, obs, cfg) => {
 			out.last_t2_retry = now;
 			out.t2_retry_pending = true;
 			tier('T2', 'periodic_retry');
-			out.last_t2_retry = now;
-			out.t2_retry_pending = true;
 		}
 	}
 

@@ -183,17 +183,19 @@ function run_attempts(results, jobs, timeout, concurrency) {
 				continue;
 			}
 
-			if (now >= job.deadline) {
-				finish_pending(results, job, 'timeout', now);
-				continue;
-			}
-
+			// Check readiness before the deadline: a connect that completed in this poll round
+			// must not be recorded as a timeout just because the clock passed the deadline too.
 			if (ready[job.key]) {
 				let so_error = job.sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR);
 				if (so_error == 0)
 					finish_pending(results, job, null, now);
 				else
 					finish_pending(results, job, error_kind(so_error, socket.error()), now);
+				continue;
+			}
+
+			if (now >= job.deadline) {
+				finish_pending(results, job, 'timeout', now);
 				continue;
 			}
 
