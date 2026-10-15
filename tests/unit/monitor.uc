@@ -22,9 +22,15 @@ function test(name, state, obs, cfg, actions, codes, fields) {
 
 export const cases = [
 	{ name: 'monitor cadence follows running state', expect: 'PASS', kind: 'interval' },
-	test('missing table is restored before other decisions', {},
+	test('one missing-table sample is debounced', {},
 		{ now: 1000, table_present: false, xray_listening: true, chinadns_listening: true }, CFG,
-		[ 'nft_reload' ], [ 'NFT_TABLE_RESTORED' ], { state: 'running' }),
+		[], [], { state: 'running', table_missing_count: 1 }),
+	test('two missing-table rounds schedule one reload', { table_missing_count: 1 },
+		{ now: 1010, table_present: false, xray_listening: true, chinadns_listening: true }, CFG,
+		[ 'nft_reload' ], [ 'NFT_TABLE_RESTORED' ], { state: 'running', table_missing_count: 2 }),
+	test('a present middle sample clears table debounce', { table_missing_count: 1 },
+		{ now: 1010, table_present: true, xray_listening: true, chinadns_listening: true }, CFG,
+		[], [], { state: 'running', table_missing_count: 0 }),
 	test('first xray-down round is tolerated', { xray_down_count: 0 },
 		{ now: 1010, table_present: true, xray_listening: false, chinadns_listening: true }, CFG,
 		[], [], { xray_down_count: 1, state: 'running' }),
@@ -87,7 +93,7 @@ export const cases = [
 	test('node refresh runs at ten minutes', { last_node_refresh: 1000 },
 		{ now: 1600, table_present: true, xray_listening: true, chinadns_listening: true }, CFG,
 		[ 'refresh_node_ip' ], [], { last_node_refresh: 1600 }),
-	test('combined restore and fail-open actions preserve monitor order', { state: 'running', dns_tier: 'T1', xray_down_count: 1 },
+	test('combined restore and fail-open actions preserve monitor order', { state: 'running', dns_tier: 'T1', xray_down_count: 1, table_missing_count: 1 },
 		{ now: 1020, table_present: false, xray_listening: false, chinadns_listening: true }, CFG,
 		[ 'nft_reload', 'nft_flush_prerouting', 'set_tier:T2' ],
 		[ 'NFT_TABLE_RESTORED', 'DNS_TIER_CHANGED', 'XRAY_DOWN_FAILOPEN' ], { state: 'failsafe', dns_tier: 'T2' })

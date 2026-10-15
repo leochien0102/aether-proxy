@@ -135,6 +135,11 @@ else if (scenario == 'xray-failsafe') {
 	check(d.machine.state == 'failsafe', 'two missing-listener rounds enter failsafe');
 	check(index(calls, 'nft flush chain inet aetherproxy prerouting') >= 0, 'failsafe clears prerouting only');
 	check(d.machine.dns_tier == 'T2', 'failsafe selects T2');
+	let table_path = `${replace(opts.ctx.root, /\/$/, '')}/nft-table`;
+	if (fs.stat(table_path) != null && !fs.unlink(table_path))
+		bad('test removes nft table before recovery', fs.error());
+	write(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`,
+		sprintf('%.J\n', { gfw4: [ '198.51.100.10' ], udirect4: [], uproxy4: [] }));
 	let restored = `${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`;
 	let tcp = fs.readfile(restored) ?? '';
 	write(restored, tcp + '  1: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n');
@@ -144,6 +149,10 @@ else if (scenario == 'xray-failsafe') {
 	calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/calls.log`) ?? '';
 	check(d.machine.state == 'degraded', 'listener recovery returns to degraded');
 	check(count(calls, 'nft -f ') >= 1, 'listener recovery reloads the ruleset');
+	check(count(calls, 'nft -j list set') == 0, 'missing table avoids sets_export');
+	let nft_file = fs.readfile(`${opts.current}/${C.ARTIFACT_FILES.nft}`) ?? '';
+	check(index(nft_file, 'elements = { 198.51.100.10 }') >= 0, 'missing-table reload consumes sets.save');
+	check(fs.stat(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`) == null, 'sets.save is consumed');
 	no_external_children(d);
 }
 else {

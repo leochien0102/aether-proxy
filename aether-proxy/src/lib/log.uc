@@ -12,7 +12,7 @@ const EVENTS = {
 	CONFIG_INVALID: 'error',
 	PRECHECK_FAILED: 'error',
 	RENDER_INVALID: 'error',
-	START_FAILED: 'error',
+	START_FAILED: 'error', START_RETRY: 'warn',
 	NET_WAIT_TIMEOUT: 'warn',
 	COMPONENT_MISSING: 'error', COMPONENT_TOO_OLD: 'error',
 	NODE_RESOLVE_FALLBACK: 'warn', NODE_RESOLVE_FAILED: 'error',

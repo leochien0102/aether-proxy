@@ -117,6 +117,15 @@ function monotonic_ms() {
 	return now == null ? null : now[0] * 1000 + now[1] / 1000000;
 };
 
+function step_elapsed(started) {
+	let ended = monotonic_ms();
+	return started == null || ended == null ? 0 : max(int(ended - started + 0.5), 0);
+};
+
+function record_step(ctx, name, started) {
+	ctx.start_steps[name] = step_elapsed(started);
+};
+
 function split_hostport(value) {
 	let p = split(value, ':');
 	return length(p) == 2 ? { host: p[0], port: +p[1] } : null;
@@ -382,14 +391,21 @@ function read_lan_ifaces(opts, snapshot) {
 };
 
 function start_sequence(ctx, opts, signal_pending) {
+	let total_started = monotonic_ms();
+	ctx.start_started_ms = total_started;
+	ctx.start_steps = {};
+	let step_started = monotonic_ms();
 	let locked = sys.lock(root_path(opts, C.LOCK_FILE));
+	record_step(ctx, 'lock', step_started);
 	if (locked == null) {
 		setup_log(ctx);
 		log.event('warn', 'BUSY', { holder: 'daemon' });
 		return { ok: false, code: 3, step: 'lock', detail: sys.error(), lock_busy: true };
 	}
 
+	step_started = monotonic_ms();
 	let cfg = pipeline.build(opts);
+	record_step(ctx, 'config', step_started);
 	if (!cfg.ok) {
 		locked.close();
 		return { ok: false, code: cfg.exit ?? 2, step: 'config', detail: `${cfg.code}: ${cfg.detail}`, errors: cfg.errors, untouched: true };
@@ -407,11 +423,13 @@ function start_sequence(ctx, opts, signal_pending) {
 		locked.close();
 		return { ok: false, code: 1, step: 'precheck', detail: `cannot create ${staging}: ${sys.error()}`, untouched: true };
 	}
+	step_started = monotonic_ms();
 	let pre = check.precheck(snapshot, staging, { sys_root: ctx.root, bin_dir: ctx.bin_dir });
 	let failed_pre = filter(pre.items, item => !item.ok);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
 		if (!pre.components[name]?.found)
 			push(failed_pre, { item: `component:${name}`, ok: false, detail: `${name} missing` });
+	record_step(ctx, 'precheck', step_started);
 	if (length(failed_pre)) {
 		locked.close();
 		setup_log(ctx);
@@ -420,7 +438,9 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'precheck', detail: join(',', missing), missing, untouched: true };
 	}
 
+	step_started = monotonic_ms();
 	let conflicts = apply.conflicts(ctx);
+	record_step(ctx, 'conflicts', step_started);
 	if (!conflicts.ok || length(conflicts.conflicts)) {
 		locked.close();
 		let missing = map(conflicts.conflicts ?? [], name => `conflict:${name}`);
@@ -432,7 +452,9 @@ function start_sequence(ctx, opts, signal_pending) {
 	}
 
 	if (opts.boot) {
+		step_started = monotonic_ms();
 		let waiting = wait_network(ctx, opts, snapshot, signal_pending);
+		record_step(ctx, 'wait_network', step_started);
 		if (!waiting.ok) {
 			locked.close();
 			return waiting.interrupted
@@ -441,23 +463,28 @@ function start_sequence(ctx, opts, signal_pending) {
 		}
 	}
 
+	step_started = monotonic_ms();
 	let initial_runtime = { node_ip: null, dns_tier: 'T2', restored: {} };
 	let initial = pipeline.build({ ...opts, runtime: initial_runtime });
 	if (!initial.ok) {
+		record_step(ctx, 'render_validate', step_started);
 		locked.close();
 		return { ok: false, code: initial.exit ?? 1, step: 'render', detail: initial.detail };
 	}
 	let prepared = ensure_clean_dir(ctx, staging);
 	if (!prepared.ok) {
+		record_step(ctx, 'render_validate', step_started);
 		locked.close();
 		return { ok: false, code: 1, step: 'render', detail: prepared.detail };
 	}
 	let written = write_artifacts(staging, initial.artifacts);
 	if (!written.ok) {
+		record_step(ctx, 'render_validate', step_started);
 		locked.close();
 		return { ok: false, code: 1, step: 'render', detail: written.detail, artifact: written.artifact };
 	}
 	let valid = validate_render(ctx, snapshot, staging, pre.components);
+	record_step(ctx, 'render_validate', step_started);
 	if (!valid.ok) {
 		locked.close();
 		if (valid.code == 'PRECHECK_FAILED')
@@ -467,19 +494,25 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	// TODO(design): 04 says clean crash residue before startup, but also forbids system changes
 	// when render validation fails; clean after validation to preserve the no-change failure path.
+	step_started = monotonic_ms();
 	let cleanup_failures = apply_cleanup(ctx);
+	record_step(ctx, 'cleanup_previous', step_started);
 	if (length(cleanup_failures)) {
 		locked.close();
 		return { ok: false, code: 1, step: 'cleanup', detail: join('; ', cleanup_failures) };
 	}
 
 	let current = `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`;
+	step_started = monotonic_ms();
 	let published = publish_staging(ctx, staging, current);
+	record_step(ctx, 'publish', step_started);
 	if (!published.ok) {
 		locked.close();
 		return { ok: false, code: 1, step: 'publish', detail: published.detail };
 	}
+	step_started = monotonic_ms();
 	let hashed = hash_artifacts(ctx, current);
+	record_step(ctx, 'hash_initial', step_started);
 	if (!hashed.ok) {
 		locked.close();
 		return { ok: false, code: 1, step: 'hash', detail: hashed.detail };
@@ -487,14 +520,18 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	let children = { xray: null, dns: null };
 	let dns_path = pre.components[C.CHINADNS_COMPONENT].path;
+	step_started = monotonic_ms();
 	children.dns = child_options(ctx, C.CHINADNS_COMPONENT, [ dns_path, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
 	children.dns.start();
+	record_step(ctx, 'start_chinadns', step_started);
 	if (children.dns.pid() == null) {
 		locked.close();
 		return { ok: false, code: 1, step: 'chinadns_start', detail: 'chinadns-ng process could not be started', children };
 	}
 
+	step_started = monotonic_ms();
 	let dnsmasq = apply.dnsmasq_install(ctx, initial.artifacts.dnsmasq);
+	record_step(ctx, 'dnsmasq_install', step_started);
 	if (!dnsmasq.ok) {
 		locked.close();
 		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
@@ -504,81 +541,104 @@ function start_sequence(ctx, opts, signal_pending) {
 	for (let id, node in snapshot.nodes)
 		if (node.address && net.ipv4(node.address) == null)
 			push(domains, node.address);
+	step_started = monotonic_ms();
 	let boot_list = apply.write_boot_list(ctx, domains);
+	record_step(ctx, 'write_boot_list', step_started);
 	if (!boot_list.ok) {
 		locked.close();
 		return { ok: false, code: 1, step: 'write_boot_list', detail: boot_list.detail, children };
 	}
 	let node_id = snapshot.main.node;
 	let address = snapshot.nodes?.[node_id]?.address;
+	step_started = monotonic_ms();
 	let resolution = apply.resolve_node(ctx, address);
+	record_step(ctx, 'resolve_node', step_started);
 	let node_ip = resolution.ok ? resolution.ip : null;
 	let degraded = !resolution.ok;
 
 	if (!degraded) {
+		step_started = monotonic_ms();
 		let runtime = { node_ip, dns_tier: 'T2', restored: {} };
 		let resolved = pipeline.build({ ...opts, runtime });
 		if (!resolved.ok) {
+			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_render', detail: resolved.detail, children };
 		}
 		let xray_file = `${current}/${C.ARTIFACT_FILES.xray}`;
 		if (!sys.write_atomic(xray_file, resolved.artifacts.xray)) {
+			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_render', detail: sys.error(), children };
 		}
 		let test = sys.run([ pre.components[C.XRAY_COMPONENT].path, 'run', '-test', '-c', xray_file ], { timeout: 10, quiet: true });
 		if (test.code != 0) {
+			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_test', detail: `xray run -test failed (${test.code}): ${test.stderr}`, children };
 		}
+		record_step(ctx, 'xray_render_validate', step_started);
 	}
 
 	if (!degraded) {
+		step_started = monotonic_ms();
 		children.xray = child_options(ctx, C.XRAY_COMPONENT,
 			[ pre.components[C.XRAY_COMPONENT].path, 'run', '-c', `${current}/${C.ARTIFACT_FILES.xray}` ]);
 		children.xray.start();
 		if (children.xray.pid() == null) {
+			record_step(ctx, 'start_xray_listen', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_start', detail: 'xray process could not be started', children };
 		}
 		if (!wait_xray_port(ctx, opts, signal_pending)) {
+			record_step(ctx, 'start_xray_listen', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_listen', detail: 'xray did not listen on the TPROXY port within 5 seconds', children, interrupted: signal_pending() };
 		}
+		record_step(ctx, 'start_xray_listen', step_started);
 	}
 
 	if (!degraded) {
+		step_started = monotonic_ms();
 		let saved_sets = apply.sets_load(ctx);
 		if (!saved_sets.ok) {
+			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'sets_load', detail: saved_sets.detail, children };
 		}
 		let dataplane = pipeline.build({ ...opts, runtime: { node_ip, dns_tier: 'T2', restored: saved_sets.sets } });
 		if (!dataplane.ok) {
+			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'nft_render', detail: dataplane.detail, children };
 		}
 		let nft_file = `${current}/${C.ARTIFACT_FILES.nft}`;
 		if (!sys.write_atomic(nft_file, dataplane.artifacts.nft)) {
+			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'nft_render', detail: sys.error(), children };
 		}
 		let nft = apply.nft_load(ctx, nft_file);
 		if (!nft.ok) {
+			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'nft_load', detail: nft.detail, children };
 		}
 		let route = apply.route_add(ctx);
 		if (!route.ok) {
+			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'route_add', detail: route.detail, children };
 		}
+		record_step(ctx, 'restore_nft_route', step_started);
+		step_started = monotonic_ms();
 		hashed = hash_artifacts(ctx, current);
 		if (!hashed.ok) {
+			record_step(ctx, 'hash_final', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'hash', detail: hashed.detail, children };
 		}
+		record_step(ctx, 'hash_final', step_started);
 	}
 
 	let initial_state = {
@@ -591,11 +651,18 @@ function start_sequence(ctx, opts, signal_pending) {
 		},
 		render_hash: hashed.hashes
 	};
+	step_started = monotonic_ms();
 	let state_result = write_state(ctx, initial_state);
+	record_step(ctx, 'state_write', step_started);
 	if (!state_result.ok)
 		return { ok: false, code: 1, step: 'state', detail: state_result.detail, children };
 	setup_log(ctx);
-	log.event('notice', 'SERVICE_STARTED', { mode: snapshot.main.mode, node: node_id });
+	log.event('notice', 'SERVICE_STARTED', {
+		mode: snapshot.main.mode,
+		node: node_id,
+		elapsed_ms: step_elapsed(total_started),
+		steps: { ...ctx.start_steps }
+	});
 	// uloop.process children inherit open descriptors across exec; unlock explicitly so their
 	// inherited references cannot extend the startup flock into the monitor phase.
 	if (!locked.lock('u')) {
@@ -666,6 +733,14 @@ function shutdown(ctx, children, normal_stop) {
 	return failures;
 };
 
+function retry_delay(index) {
+	// This test-only environment override shortens integration tests without adding a CLI option.
+	let override = getenv('AETHER_PROXY_TEST_RETRY_DELAY');
+	if (match(override ?? '', /^[1-5]$/) != null)
+		return +override;
+	return C.START_RETRY_DELAYS[min(index, length(C.START_RETRY_DELAYS) - 1)];
+};
+
 function run(args) {
 	let parsed = parse_options(args, true);
 	if (parsed.error) {
@@ -693,52 +768,18 @@ function run(args) {
 		});
 	}
 
-	let result = start_sequence(ctx, opts, on_signal);
-	let exit_code = 0;
-	let current_children = result.children ?? { xray: null, dns: null };
-	if (!result.ok) {
-		if (result.lock_busy) {
-			exit_code = 3;
-		}
-		else if (result.interrupted) {
-			let rollback = shutdown(ctx, current_children, signal == 'stop');
-			if (length(rollback))
-				event_failure(ctx, 'stop', join('; ', rollback));
-			exit_code = 0;
-		}
-		else if (!result.untouched) {
-			let rollback = shutdown(ctx, current_children, false);
-			if (length(rollback))
-				result.detail += `; rollback: ${join('; ', rollback)}`;
-			let failed_state = write_state(ctx, {
-				state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
-				last_error: 'START_FAILED', failed_step: result.step
-			});
-			if (!failed_state.ok)
-				result.detail += `; ${failed_state.detail}`;
-			setup_log(ctx);
-			log.event('error', 'START_FAILED', { step: result.step, detail: result.detail });
-			exit_code = result.code ?? 1;
-		}
-		else {
-			if (result.step == 'config') {
-				setup_log(ctx);
-				let first = result.errors?.[0] ?? {};
-				log.event('error', 'CONFIG_INVALID', { field: first.field ?? '-', reason: first.code ?? result.detail });
-			}
-			exit_code = result.code ?? 1;
-		}
-	}
-	else {
+	let exit_code = 0, retry_index = 0, finished = false;
+
+	function run_monitor(result, children) {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
-		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children: current_children, state: result.state });
+		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children, state: result.state });
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
+
 		while (signal != 'stop') {
 			if (signal == 'tick') {
-				// T2.5 fills in the first observation pass.
 				tick();
 				signal = null;
 				continue;
@@ -747,21 +788,20 @@ function run(args) {
 				signal = null;
 				while (monitor_daemon?.busy)
 					uloop.run(C.DAEMON_POLL_MS);
-				// The monitor owns the live runtime (tier, node IP) and may have re-rendered current/
-				// since startup, so plan against what is on disk, not the startup render_hash.
+				// Use live runtime and output hashes; monitor actions may have changed current/.
 				let live = hash_artifacts(ctx, `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`);
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
 				if (live.ok)
 					base.render_hash = live.hashes;
-				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children: current_children });
+				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
 				if (changed.stop) {
 					stopping = true;
-					let stop_errors = shutdown(ctx, current_children, true);
+					let stop_errors = shutdown(ctx, children, true);
 					if (length(stop_errors))
 						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
 					exit_code = 0;
-					signal = 'stop';
+					finished = true;
 					break;
 				}
 				if (changed.ok) {
@@ -778,15 +818,136 @@ function run(args) {
 			signal = null;
 			uloop.run();
 		}
+
 		if (signal == 'stop' && !stopping) {
 			while (monitor_daemon?.busy)
 				uloop.run(C.DAEMON_POLL_MS);
 			stopping = true;
-			let stop_errors = shutdown(ctx, current_children, true);
+			let stop_errors = shutdown(ctx, children, true);
 			if (length(stop_errors))
 				event_failure(ctx, 'stop', join('; ', stop_errors));
+			finished = true;
 		}
+	};
+
+	function save_start_failure(result) {
+		if (!result.untouched) {
+			let rollback = shutdown(ctx, result.children ?? { xray: null, dns: null }, false);
+			if (length(rollback))
+				result.detail += `; rollback: ${join('; ', rollback)}`;
+		}
+		let configuration_error = result.step == 'config';
+		let saved = write_state(ctx, {
+			state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
+			last_error: configuration_error ? 'CONFIG_INVALID' : 'START_FAILED',
+			failed_step: result.step,
+			steps: { ...ctx.start_steps },
+			elapsed_ms: step_elapsed(ctx.start_started_ms)
+		});
+		if (!saved.ok)
+			result.detail += `; ${saved.detail}`;
+		setup_log(ctx);
+		if (configuration_error) {
+			let first = result.errors?.[0] ?? {};
+			log.event('error', 'CONFIG_INVALID', { field: first.field ?? '-', reason: first.code ?? result.detail });
+		}
+		else
+			log.event('error', 'START_FAILED', { step: result.step, detail: result.detail });
+	};
+
+	function wait_retry(delay) {
+		let due = false, timer = null;
+		timer = uloop.timer(delay * 1000, () => { due = true; timer = null; uloop.end(); });
+		while (!due && signal != 'stop' && signal != 'reload') {
+			if (signal == 'tick') {
+				signal = null;
+				continue;
+			}
+			signal = null;
+			uloop.run();
+		}
+		if (timer != null)
+			timer.cancel();
+		if (signal == 'stop')
+			return 'stop';
+		if (signal == 'reload')
+			return 'reload';
+		return due ? 'retry' : signal;
+	};
+
+	while (!finished) {
+		let result = start_sequence(ctx, opts, on_signal);
+		let children = result.children ?? { xray: null, dns: null };
+		if (result.ok) {
+			retry_index = 0;
+			run_monitor(result, children);
+			continue;
+		}
+		if (result.lock_busy) {
+			exit_code = 3;
+			finished = true;
+			continue;
+		}
+		if (result.interrupted && signal == 'stop') {
+			let errors = shutdown(ctx, children, true);
+			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
+			exit_code = 0;
+			finished = true;
+			continue;
+		}
+		if (signal == 'stop') {
+			let errors = shutdown(ctx, children, true);
+			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
+			exit_code = 0;
+			finished = true;
+			continue;
+		}
+		save_start_failure(result);
+		if (result.step == 'config') {
+			retry_index = 0;
+			if (signal == 'reload') {
+				signal = null;
+				continue;
+			}
+			while (signal != 'stop' && signal != 'reload') {
+				if (signal == 'tick') { signal = null; continue; }
+				signal = null;
+				uloop.run();
+			}
+			if (signal == 'stop') {
+				let errors = shutdown(ctx, { xray: null, dns: null }, true);
+				if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
+				exit_code = 0;
+				finished = true;
+			}
+			else {
+				signal = null;
+				retry_index = 0;
+			}
+			continue;
+		}
+		if (signal == 'reload') {
+			signal = null;
+			retry_index = 0;
+			continue;
+		}
+
+		let delay = retry_delay(retry_index);
+		let attempt = retry_index + 1;
+		retry_index = min(retry_index + 1, length(C.START_RETRY_DELAYS) - 1);
+		setup_log(ctx);
+		log.event('warn', 'START_RETRY', { attempt, in_secs: delay });
+		let wake = wait_retry(delay);
+		if (wake == 'stop') {
+			let errors = shutdown(ctx, { xray: null, dns: null }, true);
+			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
+			exit_code = 0;
+			finished = true;
+		}
+		else if (wake == 'reload')
+			retry_index = 0;
 	}
+
 	for (let key, handler in signals)
 		if (handler != null)
 			handler.delete();

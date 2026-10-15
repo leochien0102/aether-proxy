@@ -56,6 +56,16 @@ expect() { [ "$2" = "$3" ] && ok "$1" || bad "$1" "expected '$2', got '$3'"; }
 has_line() { grep -Fq -- "$2" "$1"; }
 line_no() { awk -v needle="$2" 'index($0, needle) { print NR; exit }' "$1"; }
 jget() { "$UCODE" "$JGET" -- "$1"; }
+count_calls() { awk -v needle="$2" 'index($0, needle) { n++ } END { print n+0 }' "$1"; }
+wait_count() {
+	local file="$1" needle="$2" wanted="$3"
+	for _ in {1..200}; do
+		[ "$(count_calls "$file" "$needle")" -ge "$wanted" ] && return 0
+		if [ -n "$DAEMON_PID" ] && ! kill -0 "$DAEMON_PID" 2>>"$QUIET"; then return 1; fi
+		sleep 0.05
+	done
+	return 1
+}
 
 mkdir -p "$T/data" "$T/base" "$T/custom" "$T/bin"
 for f in gfwlist chnlist apple; do printf 'example.com\n' > "$T/base/$f.txt"; done
@@ -104,6 +114,8 @@ start_daemon() {
 	: > "$log"
 	(
 		export STUB_LOG="$log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count" PATH="$T/bin:$PATH"
+		export STUB_NFT_FAIL_ONCE="${STUB_NFT_FAIL_ONCE:-0}"
+		export AETHER_PROXY_TEST_RETRY_DELAY="${AETHER_PROXY_TEST_RETRY_DELAY:-}"
 		exec "$UCODE" -S "$ENTRY" -- daemon $(args_for "$root") "$@"
 	) >"$root/daemon.stdout" 2>"$root/daemon.stderr" &
 	DAEMON_PID=$!
@@ -209,6 +221,14 @@ if [ -n "$dns_line$install_line$resolve_line$xray_line$nft_line$rule_line" ] && 
 else
 	bad "normal startup side effects are in required order" "${dns_line},${install_line},${resolve_line},${xray_line},${nft_line},${rule_line}"
 fi
+start_event=$(grep '"code": "SERVICE_STARTED"' "$R1/var/run/aether-proxy/events.jsonl" | head -n 1)
+elapsed_field=$(printf '%s\n' "$start_event" | jget args.elapsed_ms)
+dns_step_field=$(printf '%s\n' "$start_event" | jget args.steps.start_chinadns)
+dataplane_step_field=$(printf '%s\n' "$start_event" | jget args.steps.restore_nft_route)
+[ "$elapsed_field" != '<missing>' ] && [ "$elapsed_field" -ge 0 ] \
+	&& ok "SERVICE_STARTED includes elapsed_ms" || bad "SERVICE_STARTED includes elapsed_ms"
+[ "$dns_step_field" != '<missing>' ] && [ "$dataplane_step_field" != '<missing>' ] \
+	&& ok "SERVICE_STARTED includes step timings" || bad "SERVICE_STARTED includes step timings"
 cp "$L1" "$L1_START"
 
 # SIGUSR1 ticks immediately; SIGHUP with an unchanged config is an incremental no-op (T2.6).
@@ -268,23 +288,24 @@ after_first=$(awk '/^(nft delete table|ip rule del|ip route flush|dnsmasq restar
 after_second=$(awk '/^(nft delete table|ip rule del|ip route flush|dnsmasq restart)/ { n++ } END { print n+0 }' "$L3")
 expect "second cleanup adds no destructive calls" "$after_first" "$after_second"
 
-# 4. Runtime nft load failure rolls back children and records error.
+# 4. Runtime nft fails once: daemon remains in error, schedules a retry, then starts.
 R4="$T/sys4"; L4="$T/sys4/calls.log"; make_root "$R4"; : > "$L4"
-STUB_NFT_RC=1 start_daemon "$R4" "$L4"
-exited4=0
-for _ in {1..150}; do
-	if ! kill -0 "$DAEMON_PID" 2>>"$QUIET"; then exited4=1; break; fi
-	sleep 0.05
-done
-if [ "$exited4" -eq 1 ]; then
-	wait "$DAEMON_PID"; rc4=$?; DAEMON_PID=''
+STUB_NFT_FAIL_ONCE=1 AETHER_PROXY_TEST_RETRY_DELAY=1 start_daemon "$R4" "$L4"
+if wait_for "$R4/var/run/aether-proxy/state.json" '"state": "error"' 200; then
+	ok "failed startup records error state"
 else
-	bad "nft failure daemon exits before scenario timeout"
-	stop_daemon; rc4=124
+	bad "failed startup records error state" "$(cat "$R4/daemon.stderr")"
 fi
-[ "$rc4" -ne 0 ] && ok "nft load failure exits nonzero" || bad "nft load failure exits nonzero" "rc=$rc4"
-expect "nft failure records error state" error "$(jget state < "$R4/var/run/aether-proxy/state.json")"
-expect "nft failure records failed step" nft_load "$(jget failed_step < "$R4/var/run/aether-proxy/state.json")"
+expect "failed startup records failed step" nft_load "$(jget failed_step < "$R4/var/run/aether-proxy/state.json")"
+if kill -0 "$DAEMON_PID" 2>>"$QUIET"; then ok "daemon stays alive after startup failure"; else bad "daemon stays alive after startup failure"; fi
+has_line "$R4/var/run/aether-proxy/events.jsonl" '"code": "START_RETRY"' && ok "retry event is appended" || bad "retry event is appended"
+assert_no_children "$R4"
+if wait_count "$L4" 'nft -f ' 2 && wait_for "$R4/var/run/aether-proxy/events.jsonl" '"code": "SERVICE_STARTED"' 200; then
+	ok "retry succeeds and enters monitor"
+else
+	bad "retry succeeds and enters monitor" "$(cat "$R4/daemon.stderr")"
+fi
+stop_daemon; expect "retried daemon stops successfully" 0 "$?"
 assert_no_children "$R4"
 
 # 5. Node DNS failure enters degraded with DNS service retained and no proxy dataplane.
@@ -305,12 +326,18 @@ assert_no_children "$R5"
 # 6. Conflict is rejected before cleanup or any system-changing operation.
 R6="$T/sys6"; L6="$T/sys6/calls.log"; make_root "$R6"; : > "$L6"
 printf 'table inet ss_spec\n' > "$R6/conflicts"
-timeout 15s env STUB_LOG="$L6" SYSROOT="$R6" PATH="$T/bin:$PATH" \
-	"$UCODE" -S "$ENTRY" -- daemon $(args_for "$R6") >/dev/null 2>>"$QUIET"; rc6=$?
-[ "$rc6" -ne 0 ] && ok "conflict exits nonzero" || bad "conflict exits nonzero" "rc=$rc6"
+STUB_LOG="$L6" SYSROOT="$R6" AETHER_PROXY_TEST_RETRY_DELAY=30 PATH="$T/bin:$PATH" \
+	start_daemon "$R6" "$L6"
+if wait_for "$R6/var/run/aether-proxy/state.json" '"state": "error"'; then
+	ok "conflict records error state and waits to retry"
+else
+	bad "conflict records error state and waits to retry" "$(cat "$R6/daemon.stderr")"
+fi
+expect "conflict records precheck step" precheck "$(jget failed_step < "$R6/var/run/aether-proxy/state.json")"
 ! has_line "$L6" 'nft -f ' && ok "conflict does not load nft" || bad "conflict does not load nft"
 ! has_line "$L6" 'dnsmasq restart' && ok "conflict does not restart dnsmasq" || bad "conflict does not restart dnsmasq"
-[ ! -e "$R6/var/run/aether-proxy/state.json" ] && ok "conflict leaves state.json untouched" || bad "conflict leaves state.json untouched"
+kill -0 "$DAEMON_PID" 2>>"$QUIET" && ok "conflict leaves daemon waiting" || bad "conflict leaves daemon waiting"
+stop_daemon; expect "conflict daemon stops" 0 "$?"
 
 # 7. A second daemon sees BUSY while the first still holds its startup lock.
 R7="$T/sys7"; L7="$T/sys7/calls.log"; make_root "$R7"; : > "$L7"
@@ -359,6 +386,26 @@ if start_loopback_listener "$T/listener.port" "$T/listener.accepted"; then
 	kill -TERM "$NETWORK_PID" 2>>"$QUIET"; wait "$NETWORK_PID" 2>>"$QUIET"; NETWORK_PID=''
 else
 	bad "loopback listener starts" "$(cat "$T/network-listener.stderr")"
+fi
+
+# 9. SIGHUP cancels the long retry timer and triggers a prompt attempt.
+R9="$T/sys9"; L9="$T/sys9/calls.log"; make_root "$R9"; : > "$L9"
+STUB_NFT_FAIL_ONCE=1 start_daemon "$R9" "$L9"
+if wait_for "$R9/var/run/aether-proxy/events.jsonl" '"code": "START_RETRY"' 200; then
+	SECONDS_BEFORE_HUP=$SECONDS
+	kill -HUP "$DAEMON_PID"
+	if wait_for "$R9/var/run/aether-proxy/events.jsonl" '"code": "SERVICE_STARTED"' 100; then
+		elapsed=$((SECONDS - SECONDS_BEFORE_HUP))
+		[ "$elapsed" -lt 5 ] && ok "SIGHUP retries immediately" || bad "SIGHUP retries immediately" "elapsed=${elapsed}s"
+	else
+		bad "SIGHUP retries immediately" "$(cat "$R9/daemon.stderr")"
+	fi
+	wait_count "$L9" 'nft -f ' 2 && ok "SIGHUP retry loads nft" || bad "SIGHUP retry loads nft"
+	stop_daemon; expect "SIGHUP-retried daemon stops" 0 "$?"
+	assert_no_children "$R9"
+else
+	bad "SIGHUP scenario reaches retry wait" "$(cat "$R9/daemon.stderr")"
+	stop_daemon
 fi
 
 echo "daemon: $pass passed, $fail failed"
