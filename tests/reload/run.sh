@@ -139,6 +139,25 @@ done
 expect "node-only reload does not replace nft" "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
 expect "node-only reload does not restart chinadns" "$dns_before" "$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')"
 
+# Node address change: the bootstrap IP is re-resolved, so node_ip4 (nft) and Xray both change.
+nft_before=$(count_calls "$LOG" 'nft -f ')
+xray_before=$(cat "$SYSROOT/xray.pid")
+sed -i "s/option address 'node.example.com'/option address '198.51.100.7'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_count "$LOG" 'nft -f ' $((nft_before + 1))
+for _ in {1..200}; do
+	xray_after=''
+	if [ -f "$SYSROOT/xray.pid" ]; then read -r xray_after < "$SYSROOT/xray.pid"; fi
+	[ -n "$xray_after" ] && [ "$xray_after" != "$xray_before" ] && break
+	sleep 0.05
+done
+[ "$(count_calls "$LOG" 'nft -f ')" -gt "$nft_before" ] && ok "address reload replaces nft" || bad "address reload replaces nft"
+grep -q '198.51.100.7' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" \
+	&& ok "address reload puts the new IP in node_ip4" || bad "address reload puts the new IP in node_ip4"
+grep -q '203.0.113.20' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" \
+	&& bad "address reload drops the old node IP" || ok "address reload drops the old node IP"
+[ "$xray_after" != "$xray_before" ] && ok "address reload restarts xray" || bad "address reload restarts xray"
+
 # Disable: the pure plan returns stop alone and daemon follows the normal stop path.
 sed -i "s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"

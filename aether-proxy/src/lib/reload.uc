@@ -218,15 +218,12 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 	}
 };
 
-function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components, old_lan_ifaces, new_lan_ifaces) {
+function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components, old_lan_ifaces, new_lan_ifaces, new_node_id) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let previous = `${run_dir(daemon)}/${C.DAEMON_PREVIOUS_DIR}`;
-	// TODO(design): publish current before restarts so supervisor argv keeps its stable current/ path;
-	// docs/04 narrates executing actions before publishing staging. Failures below restore previous.
-	// TODO(design): publish the validated directory before actions so supervised children can keep
-	// their stable current/<config> argv. 04 lists action execution before staging publication;
-	// rollback below restores current and reverses completed actions if application fails.
+	// Publish before the actions (04, reload): supervised children keep a stable current/<config>
+	// argv. A failed action restores previous/ and reverses the completed actions.
 	let publication = publish_stage(daemon, stage, current, previous);
 	if (!publication.ok)
 		return publication;
@@ -243,7 +240,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	}
 	let updated = {
 		...daemon.state,
-		node_id: daemon.snapshot.main.node,
+		node_id: new_node_id,
 		components: {
 			[C.XRAY_COMPONENT]: { path: components[C.XRAY_COMPONENT].path },
 			[C.CHINADNS_COMPONENT]: { path: components[C.CHINADNS_COMPONENT].path }
@@ -276,6 +273,22 @@ function run(daemon) {
 			reason: built.errors?.[0]?.code ?? built.detail
 		}, 'CONFIG_INVALID');
 	let snapshot = built.snapshot;
+	// A different node (or a new address for the same node) needs its own bootstrap IP: the
+	// running one belongs to the old node and also feeds node_ip4 in the nft table.
+	let node_ip = daemon.state.node_ip ?? null;
+	let old_node = daemon.snapshot.nodes?.[daemon.snapshot.main.node];
+	let new_node = snapshot.nodes?.[snapshot.main.node];
+	if (snapshot.main.enabled == true && new_node != null &&
+	    (snapshot.main.node != daemon.snapshot.main.node || new_node.address != old_node?.address)) {
+		let resolved = apply.resolve_node(daemon.ctx, new_node.address);
+		if (!resolved.ok)
+			return failure(daemon, 'resolve_node', resolved.detail);
+		node_ip = resolved.ip;
+		built = pipeline.build({ ...daemon.opts, runtime: { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} } });
+		if (!built.ok)
+			return failure(daemon, 'render', built.detail);
+		snapshot = built.snapshot;
+	}
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let clean = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
 	if (clean.code != 0)
@@ -344,7 +357,7 @@ function run(daemon) {
 			return failure(daemon, 'sets_export', restored.detail);
 		}
 		let with_sets = pipeline.build({ ...daemon.opts, runtime: {
-			node_ip: daemon.state.node_ip ?? null,
+			node_ip,
 			dns_tier: daemon.state.dns_tier ?? 'T2',
 			restored: restored.sets
 		} });
@@ -382,10 +395,14 @@ function run(daemon) {
 		daemon.snapshot = snapshot;
 		return { ok: true, actions: [], snapshot, state: daemon.state };
 	}
+	let old_state = daemon.state;
+	daemon.state = { ...daemon.state, node_ip };
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
-		old_lan_ifaces, snapshot.main.lan_ifaces ?? []);
-	if (!applied.ok)
+		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node);
+	if (!applied.ok) {
+		daemon.state = old_state;
 		return failure(daemon, 'actions', applied.detail);
+	}
 	daemon.snapshot = snapshot;
 	return { ok: true, actions, snapshot, state: applied.state };
 };
