@@ -251,8 +251,13 @@ touch "$R3/nft-table" "$R3/tmp/dnsmasq.d/aether-proxy.conf"
 printf '900: from all fwmark 0x80000/0x80000 lookup 233\n' > "$R3/ip-rules"
 printf 'local default dev lo table 233\n' > "$R3/ip-routes"
 timeout 15s env STUB_LOG="$L3" SYSROOT="$R3" PATH="$T/bin:$PATH" \
+	STUB_GFW4_ELEM='["198.51.100.1",{"prefix":{"addr":"198.51.100.64","len":26}}]' \
 	"$UCODE" -S "$ENTRY" -- cleanup $(args_for "$R3") >/dev/null 2>>"$QUIET"; rc1=$?
 expect "first cleanup succeeds" 0 "$rc1"
+# Like the daemon's stop, cleanup saves the dynamic sets before deleting the table (04).
+saved="$R3/var/run/aether-proxy/sets.save"
+grep -q '198.51.100.1"' "$saved" 2>>"$QUIET" && grep -q '198.51.100.64/26' "$saved" 2>>"$QUIET" \
+	&& ok "cleanup saves the dynamic sets of a table it deletes" || bad "cleanup saves the dynamic sets of a table it deletes" "$(cat "$saved" 2>&1)"
 first_lines=$(wc -l < "$L3")
 timeout 15s env STUB_LOG="$L3" SYSROOT="$R3" PATH="$T/bin:$PATH" \
 	"$UCODE" -S "$ENTRY" -- cleanup $(args_for "$R3") >/dev/null 2>>"$QUIET"; rc2=$?

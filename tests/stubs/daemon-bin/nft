@@ -14,7 +14,9 @@ case " $* " in
 	*" list tables "*) [ -s "$SYSROOT/conflicts" ] && cat "$SYSROOT/conflicts"; exit 0 ;;
 	*" -j list set "*)
 		for name do :; done
-		printf '{"nftables":[{"set":{"name":"%s","elem":[]}}]}\n' "$name"
+		elem='[]'
+		[ "$name" = gfw4 ] && elem="${STUB_GFW4_ELEM:-[]}"	# bare values, as real nft -j prints them
+		printf '{"nftables":[{"set":{"name":"%s","elem":%s}}]}\n' "$name" "$elem"
 		exit 0
 		;;
 	*" delete table inet aetherproxy "*) rm -f "$SYSROOT/nft-table"; exit 0 ;;

@@ -312,22 +312,19 @@ function has_output(text) {
 	return value != '' && value != '__EMPTY__';
 };
 
-function apply_cleanup(ctx, export_sets) {
+// Same steps as the daemon's stop (04), for when the daemon could not run them itself.
+function apply_cleanup(ctx) {
 	let failures = [];
-	if (export_sets) {
-		let exported = apply.sets_export(ctx);
-		if (exported.ok) {
-			let saved = apply.sets_save(ctx, exported.sets);
-			if (!saved.ok)
-				push(failures, `sets_save: ${saved.detail}`);
-		}
-		else
-			push(failures, `sets_export: ${exported.detail}`);
-	}
 	let table = apply.nft_table_exists(ctx);
 	if (!table.ok)
 		push(failures, `nft_table_exists: ${table.detail}`);
 	else if (table.exists) {
+		// Save the dynamic sets before the table goes (stop step 2), so a crashed or
+		// SIGKILLed daemon's sets survive. A failed export is logged by apply but must not
+		// keep the rest of the cleanup from running.
+		let exported = apply.sets_export(ctx);
+		if (exported.ok)
+			apply.sets_save(ctx, exported.sets);
 		let r = apply.nft_delete(ctx);
 		if (!r.ok)
 			push(failures, `nft_delete: ${r.detail}`);
@@ -372,7 +369,7 @@ function cleanup_run(parsed_opts) {
 		log.event('warn', 'BUSY', { holder: 'daemon' });
 		return { ok: false, code: 3, detail: `BUSY: ${sys.error()}` };
 	}
-	let failures = apply_cleanup(ctx, false);
+	let failures = apply_cleanup(ctx);
 	let saved = write_state(ctx, { state: 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false });
 	if (!saved.ok)
 		push(failures, saved.detail);
@@ -470,7 +467,7 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	// TODO(design): 04 says clean crash residue before startup, but also forbids system changes
 	// when render validation fails; clean after validation to preserve the no-change failure path.
-	let cleanup_failures = apply_cleanup(ctx, false);
+	let cleanup_failures = apply_cleanup(ctx);
 	if (length(cleanup_failures)) {
 		locked.close();
 		return { ok: false, code: 1, step: 'cleanup', detail: join('; ', cleanup_failures) };
