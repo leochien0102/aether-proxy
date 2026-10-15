@@ -126,3 +126,12 @@ export const DAEMON_PREVIOUS_DIR = 'previous';
 export const DAEMON_PORT_WAIT_SECS = 5;
 export const DAEMON_POLL_MS = 100;
 export const DAEMON_MONITOR_MS = 30000;
+
+// T2.5 (monitor state machine and cadence)
+export const MONITOR_RUNNING_INTERVAL_MS = 30000;
+export const MONITOR_OTHER_INTERVAL_MS = 10000;
+export const MONITOR_FAILSAFE_ROUNDS = 2;
+export const MONITOR_DNS_FAILURES = 2;
+export const MONITOR_T3_RETRY_SECS = 300;
+export const MONITOR_NODE_REFRESH_SECS = 600;
+export const DEV_NULL = '/dev/null';

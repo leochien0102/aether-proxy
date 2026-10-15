@@ -1,0 +1,155 @@
+'use strict';
+
+import * as fs from 'fs';
+import * as uloop from 'uloop';
+import * as sys from 'aetherproxy.sys';
+import * as uci from 'uci';
+import * as config from 'aetherproxy.config';
+import * as pipeline from 'aetherproxy.pipeline';
+import * as monitor from 'aetherproxy.monitor';
+import * as C from 'aetherproxy.const';
+
+let pass = 0, fail = 0;
+function ok(name) { pass++; print(`PASS  ${name}\n`); }
+function bad(name, detail) { fail++; print(`FAIL  ${name}${detail ? ': ' + detail : ''}\n`); }
+function check(value, name, detail) { if (value) ok(name); else bad(name, detail); }
+
+function write(path, value) {
+	let parent = substr(path, 0, rindex(path, '/'));
+	return sys.mkdir_p(parent) && sys.write_atomic(path, value);
+};
+
+function state_write(ctx, value) {
+	return sys.write_atomic(`${replace(ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.STATE_FILE}`, sprintf('%.J\n', value));
+};
+
+function settings(root, confdir, data_dir, baseline_dir, custom_dir, bin_dir) {
+	let opts = { sys_root: root, confdir, data_dir, baseline_dir, custom_dir, bin_dir, run_dir: C.RUN_DIR };
+	let ctx = { root, bin_dir, run_dir: C.RUN_DIR, state_dir: C.STATE_DIR, lan_ifaces: [ 'br-lan' ] };
+	let cfg = config.load(uci.cursor(confdir));
+	if (!cfg.ok)
+		return { error: `config invalid: ${sprintf('%.J', cfg.errors)}` };
+	let built = pipeline.build({ ...opts, runtime: { node_ip: '203.0.113.20', dns_tier: 'T2', restored: {} } });
+	if (!built.ok)
+		return { error: `pipeline failed: ${built.detail}` };
+	let current = `${replace(root, /\/$/, '')}${C.RUN_DIR}/${C.DAEMON_CURRENT_DIR}`;
+	if (!sys.mkdir_p(current))
+		return { error: sys.error() };
+	for (let name, file in C.ARTIFACT_FILES)
+		if (!sys.write_atomic(`${current}/${file}`, built.artifacts[name]))
+			return { error: sys.error() };
+	if (!sys.mkdir_p(`${replace(root, /\/$/, '')}${C.STATE_DIR}`))
+		return { error: sys.error() };
+	let service = {
+		state: 'degraded', dns_tier: 'T2', dns_failsafe: false, node_ip: '203.0.113.20',
+		node_id: cfg.snapshot.main.node, since: time(),
+		components: {
+			[C.XRAY_COMPONENT]: { path: `${bin_dir}/${C.XRAY_COMPONENT}` },
+			[C.CHINADNS_COMPONENT]: { path: `${bin_dir}/${C.CHINADNS_COMPONENT}` }
+		}
+	};
+	state_write(ctx, service);
+	return { opts, ctx, snapshot: cfg.snapshot, state: service, current };
+};
+
+function count(text, needle) {
+	let found = 0;
+	for (let line in split(text ?? '', '\n'))
+		if (index(line, needle) >= 0)
+			found++;
+	return found;
+};
+
+function no_external_children(d) {
+	for (let key in [ 'dns', 'xray' ]) {
+		let child = d.children[key];
+		if (child == null)
+			continue;
+		let done = false;
+		child.stop(() => { done = true; uloop.end(); });
+		while (!done)
+			uloop.run(100);
+	}
+};
+
+function base_daemon(args, initial) {
+	let s = settings(args[1], args[2], args[3], args[4], args[5], args[6]);
+	if (s.error)
+		return s;
+	let d = monitor.create_daemon({
+		ctx: s.ctx, opts: s.opts, snapshot: s.snapshot,
+		children: { dns: null, xray: null }, state: s.state
+	});
+	d.machine = { ...d.machine, ...initial };
+	return { ...s, daemon: d };
+};
+
+let scenario = ARGV[0];
+let opts = base_daemon(ARGV, {});
+if (opts.error) {
+	bad('monitor integration setup', opts.error);
+	exit(1);
+}
+if (!uloop.init()) {
+	bad('uloop initializes');
+	exit(1);
+}
+
+if (scenario == 'proxy-tier') {
+	let d = opts.daemon;
+	let state = config.load(uci.cursor(opts.opts.confdir)).snapshot;
+	state.probe.fail_threshold = 3;
+	state.probe.recover_threshold = 1;
+	d.snapshot = state;
+	monitor.tick(d);
+	uloop.run(100);
+	check(!d.busy && d.machine.state == 'running' && d.machine.dns_tier == 'T1',
+		'healthy HTTP probe enters T1', sprintf('state=%s tier=%s probe=%s expected=%s', d.machine.state, d.machine.dns_tier,
+		sprintf('%.J', d.machine.last_probe), d.snapshot.probe.expect_code));
+	for (let i = 0; i < 3; i++) {
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		uloop.run(100);
+	}
+	check(d.machine.state == 'degraded' && d.machine.dns_tier == 'T2',
+		'three failed HTTP probes downgrade to T2', sprintf('state=%s tier=%s failures=%d', d.machine.state, d.machine.dns_tier, d.machine.proxy_fail_count));
+	let calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/calls.log`) ?? '';
+	let children_calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}/calls.log`) ?? '';
+	check(count(calls, 'curl ') == 4, 'proxy action sampled each health round');
+	check(count(children_calls, 'chinadns-ng ') >= 2 && count(calls, 'killall -HUP dnsmasq') >= 2,
+		'T1/T2 transitions restart chinadns and HUP dnsmasq',
+		sprintf('dns=%d hup=%d', count(children_calls, 'chinadns-ng '), count(calls, 'killall -HUP dnsmasq')));
+	let cd = fs.readfile(`${opts.current}/${C.ARTIFACT_FILES.chinadns}`) ?? '';
+	check(index(cd, 'trust-dns tcp://8.8.8.8,tcp://1.1.1.1') >= 0, 'T2 render has direct upstreams');
+	no_external_children(d);
+}
+else if (scenario == 'xray-failsafe') {
+	let d = opts.daemon;
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', xray_down_count: 1, xray_down_reported: false };
+	let before = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`) ?? '';
+	write(`${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`, replace(before, /.*7968.*\n/g, ''));
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	uloop.run(100);
+	let calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/calls.log`) ?? '';
+	check(d.machine.state == 'failsafe', 'two missing-listener rounds enter failsafe');
+	check(index(calls, 'nft flush chain inet aetherproxy prerouting') >= 0, 'failsafe clears prerouting only');
+	check(d.machine.dns_tier == 'T2', 'failsafe selects T2');
+	let restored = `${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`;
+	let tcp = fs.readfile(restored) ?? '';
+	write(restored, tcp + '  1: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n');
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	uloop.run(100);
+	calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/calls.log`) ?? '';
+	check(d.machine.state == 'degraded', 'listener recovery returns to degraded');
+	check(count(calls, 'nft -f ') >= 1, 'listener recovery reloads the ruleset');
+	no_external_children(d);
+}
+else {
+	bad('unknown monitor integration scenario', scenario);
+}
+
+uloop.done();
+print(`monitor-driver: ${pass} passed, ${fail} failed\n`);
+exit(fail ? 1 : 0);
