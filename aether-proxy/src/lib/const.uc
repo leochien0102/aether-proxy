@@ -151,3 +151,13 @@ export const SUB_RENDER_SUBDIR = 'render';
 export const RANDOM_DEVICE = '/dev/urandom';
 export const SUB_SNAPSHOT_PACKAGE = 'aetherproxy_sub_snapshot';
 export const SUB_SNAPSHOT_SUBDIR = 'snapshot';
+
+// T6.2 (background jobs)
+export const JOBS_SUBDIR = 'jobs';
+export const JOB_FILE_SUFFIX = '.json';
+export const JOB_RETENTION_SECS = 3600;
+export const JOB_TIMEOUT_SECS = 600;
+export const JOB_LOCK_PREFIX = '/var/lock/aether-proxy-job-';
+export const JOB_LOCK_SUFFIX = '.lock';
+export const JOB_ID_RE = /^j_[0-9]+_[0-9]+$/;
+export const PROG_EXEC = '/usr/bin/aether-proxy';

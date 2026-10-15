@@ -10,6 +10,7 @@ import * as probe from 'aetherproxy.cmd.probe';
 import * as daemon from 'aetherproxy.cmd.daemon';
 import * as cleanup from 'aetherproxy.cmd.cleanup';
 import * as sub from 'aetherproxy.cmd.sub';
+import * as job from 'aetherproxy.cmd.job';
 
 const USAGE = `Usage: aether-proxy <command> [options]
 
@@ -21,6 +22,8 @@ Commands:
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   sub update         download and atomically apply subscriptions
+  job start          start a long-running command as a background job
+  job status         print the state of a background job
   daemon [--boot]    start and supervise proxy components
   cleanup            remove runtime system state
   --help             show this help
@@ -73,6 +76,8 @@ function main(argv) {
 		return cleanup.run(slice(argv, 1));
 	if (cmd == 'sub')
 		return sub.run(slice(argv, 1));
+	if (cmd == 'job')
+		return job.run(slice(argv, 1));
 
 	warn(USAGE);
 	return 2;

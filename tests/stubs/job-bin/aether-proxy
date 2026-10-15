@@ -1,0 +1,23 @@
+#!/bin/sh
+
+if [ "$1" = job ] && [ "$2" = run ]; then
+	exec "$JOB_UCODE" -S "$JOB_ENTRY" -- "$@"
+fi
+
+for arg do
+	printf 'ARG=%s\n' "$arg" >> "$JOB_STUB_LOG"
+done
+
+case "${JOB_STUB_MODE:-json}" in
+sleep)
+	sleep "${JOB_STUB_SLEEP:-1}"
+	if [ -n "${JOB_STUB_JSON:-}" ]; then printf '%s\n' "$JOB_STUB_JSON"; else printf '%s\n' '{"ok":true}'; fi
+	;;
+invalid)
+	printf '%s\n' "${JOB_STUB_OUTPUT:-not-json output}"
+	;;
+json)
+	if [ -n "${JOB_STUB_JSON:-}" ]; then printf '%s\n' "$JOB_STUB_JSON"; else printf '%s\n' '{"ok":true}'; fi
+	;;
+esac
+exit "${JOB_STUB_EXIT:-0}"
