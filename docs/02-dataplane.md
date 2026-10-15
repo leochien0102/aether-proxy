@@ -78,9 +78,9 @@ table inet aetherproxy {
 	set gfw_static4 { type ipv4_addr; flags interval; auto-merge; {{elements gfw_static4}} }
 	set direct_ip4  { type ipv4_addr; flags interval; auto-merge; {{elements direct_ip4}} }
 	set proxy_ip4   { type ipv4_addr; flags interval; auto-merge; {{elements proxy_ip4}} }
-	set gfw4        { type ipv4_addr; {{restored gfw4}} }      # chinadns-ng add-taggfw-ip
-	set udirect4    { type ipv4_addr; {{restored udirect4}} }  # chinadns-ng group-ipset
-	set uproxy4     { type ipv4_addr; {{restored uproxy4}} }   # chinadns-ng group-ipset
+	set gfw4 { type ipv4_addr; flags interval; auto-merge; {{restored gfw4}} }      # chinadns-ng add-taggfw-ip
+	set udirect4 { type ipv4_addr; flags interval; auto-merge; {{restored udirect4}} }  # chinadns-ng group-ipset
+	set uproxy4 { type ipv4_addr; flags interval; auto-merge; {{restored uproxy4}} }   # chinadns-ng group-ipset
 
 	set host_direct4    { type ipv4_addr;  flags interval; auto-merge; ... }
 	set host_direct_mac { type ether_addr; ... }
@@ -179,6 +179,7 @@ table inet aetherproxy {
   只有直接连路由器内部端口的包才会被丢弃。Xray 的 tunnel 入站因此可以按官方透明代理教程监听 `0.0.0.0`。
 - QUIC 拒绝用第二个标记位 `QUIC_MARK=0x00100000`（加入 [01](01-architecture.md) 常量表）。
   `reject` 用于 UDP 时默认回 ICMP port-unreachable，正好是 QUIC 回落需要的信号。
+- **chinadns-ng 写入的三个动态集合（`gfw4`、`udirect4`、`uproxy4`）必须带 `flags interval`**：chinadns-ng 总是把每个 IP 作为区间（起点 + `NFT_SET_ELEM_INTERVAL_END` 终点）写入（源码 `src/ipset.c` 的 `add_ip_nftset()`），写进普通集合会被内核以 EINVAL 拒绝。2026-10-15 真机窗口中 `gfw` 模式因此完全失效（`gfw4` 始终为空），CI 的 chinadns-ng 校验只启动进程、不写集合，没能发现。
 - 动态集合（`gfw4`、`udirect4`、`uproxy4`）在整表替换前先导出，替换时写回（`{{restored …}}`），
   详见 [04](04-lifecycle.md)。
 
@@ -210,7 +211,9 @@ aether-proxy 未运行时没有包带这个标记，这条规则不起作用。*
 
 **加载后的行为（2026-10-15 同一设备的维护窗口，绕过大陆模式）**：整表加载与 `ip rule`/`ip route` 成功；`fw4 reload` 之后 `inet aetherproxy` 仍在；
 LAN 客户端访问境外站点经节点（出口为节点 IP），访问国内站点直连（出口为本地运营商），视频站点正常。
-尚未覆盖：游戏模式 UDP、QUIC 拒绝、`input_guard`、`ether saddr`（MAC 主机）、动态集合导出后恢复。
+第二次窗口（同日）：按 **MAC** 匹配的主机（`policy=proxy`、`udp=1`）全部流量经节点，**WebRTC/STUN 查到的公网 IP 为节点 IP**（游戏模式 UDP 经节点生效）；
+从 LAN 访问路由器的 `31080` 端口超时（`input_guard` 丢弃生效）；整表原子替换成功。`gfw` 模式失败，原因见下方「动态集合必须带 `flags interval`」。
+尚未覆盖：QUIC 拒绝、动态集合导出后恢复、修正后的 `gfw` 模式。
 
 ## 已知限制（写进用户文档）
 
