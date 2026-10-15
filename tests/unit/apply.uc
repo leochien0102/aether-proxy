@@ -150,6 +150,10 @@ function run_routes() {
 	let del = apply.route_del(c), again_del = apply.route_del(c);
 	if (!del.ok || !again_del.ok)
 		return fail('route_del failed or was not idempotent');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=1\n');
+	if (!apply.route_del(c).ok)
+		return fail('route_del treated an already empty table (ESRCH) as a failure');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=0\n');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_RC=1\n');
 	return !apply.route_add(c).ok && !apply.route_del(c).ok ? 'PASS' : fail('ip rule query/deletion failure accepted');
 };

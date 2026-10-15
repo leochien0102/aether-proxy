@@ -267,6 +267,10 @@ function route_del(ctx) {
 	if (found)
 		return failed(ctx, 'route_del', 'more than 16 duplicate policy rules remain');
 	let flush = exec(ctx, 'ip', [ 'route', 'flush', 'table', `${C.ROUTE_TABLE}` ], true);
+	// An already empty table makes ip(8) fail with "No such process" (ESRCH, seen on a device):
+	// nothing to remove is success for an idempotent cleanup.
+	if (flush.code != 0 && index(flush.stderr ?? '', 'No such process') >= 0)
+		return result('policy rules and routes removed');
 	return flush.code == 0 ? result('policy rules and routes removed') : failed(ctx, 'route_del', `ip route flush failed (${flush.code}): ${flush.stderr}`);
 };
 

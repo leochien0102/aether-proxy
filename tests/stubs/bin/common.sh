@@ -24,5 +24,9 @@ if [ "$name" = ip ] && [ -n "${STUB_IP_RULES_FILE:-}" ]; then
 		*" rule del "*) sed '1d' "$STUB_IP_RULES_FILE" >"$STUB_IP_RULES_FILE.tmp"; mv "$STUB_IP_RULES_FILE.tmp" "$STUB_IP_RULES_FILE" ;;
 	esac
 fi
+# ip(8) on a device: flushing an already empty table fails with ESRCH.
+if [ "$name" = ip ] && [ "${STUB_IP_FLUSH_ESRCH:-0}" = 1 ]; then
+	case " $* " in *" route flush "*) echo 'Failed to send flush request: No such process' >&2; exit 2 ;; esac
+fi
 if [ -n "$out" ]; then cat "$out"; fi
 exit "$rc"
