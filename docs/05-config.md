@@ -98,7 +98,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `channel_urls` | list URL | 项目发布地址 + 可选镜像 | 清单下载地址，按顺序尝试（[08](08-updates.md)） |
+| `channel_urls` | list URL | `https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/` + 可选镜像 | 清单下载地址，按顺序尝试（[08](08-updates.md)「发布仓库」） |
 | `data_auto` | bool | `1` | 自动更新规则数据 |
 | `data_hour` | 0–23 | `4` | 每天几点检查 |
 | `data_minute` | 0–59 | 空 | 安装时由 uci-defaults 随机生成并写入，用于把各设备的请求错开；为空时按 `30` 处理 |

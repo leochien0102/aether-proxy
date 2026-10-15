@@ -14,7 +14,7 @@
 **规则转换、上游校验、架构映射都在 CI 中完成**，设备只负责下载、验签、校验哈希。
 这样设备侧的逻辑最简单，转换规则也可以在不升级 aether-proxy 的情况下修正。
 
-CI（aether-proxy 仓库中的 `.github/workflows/channel.yml`）每天运行一次，外加手动触发：
+CI（**单独的发布仓库** `leochien0102/aether-proxy-channel` 中的 `.github/workflows/channel.yml`，见下方「发布仓库」）每天运行一次，外加手动触发：
 
 1. **数据**：拉取上游 → 转换为统一格式 → 合理性检查 → 与上一版比较，没有变化就不发布。
 2. **组件**：跟踪 Xray-core、chinadns-ng 的上游 release。用上游提供的摘要（Xray 的 `.dgst`）校验下载内容，
@@ -74,8 +74,24 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 - 使用 OpenWrt 自带的 `usign`（Ed25519）。公钥随 `aether-proxy` 包安装在 `/etc/aether-proxy/keys/`，文件名为密钥指纹。
 - 允许同时存在多个公钥（用于轮换），任一公钥验签通过即可。
-- 私钥保存在 GitHub Actions Secrets 中（持有人见 README 待定项 D3）。
+- 私钥只由仓库所有者持有（D3，2026-10-15 定）：在所有者本机用 `usign -G` 生成；私钥放进发布仓库的 Actions Secret `USIGN_SECRET_KEY`，离线备份放在所有者的密码管理器中；
+  **不进任何仓库，也不进笔记库**。公钥提交到 aether-proxy 仓库 `aether-proxy/files/keys/<指纹>`，随包安装。
+- 轮换：先发布同时带新旧两个公钥的包，等用户升级后再改用新私钥签名。私钥丢失时同样走这条路（新公钥随包发出）；私钥泄露时还要尽快发布去掉旧公钥的包。
 - **验签不通过的清单一律丢弃**，即使是从主地址下载的也一样。正因为有签名，镜像地址才可以不受信任。
+
+### 发布仓库（D3）
+
+发布 CI 与 Release 放在单独的仓库 `leochien0102/aether-proxy-channel`，不放在代码仓库里。理由：
+
+- 设备写死的默认下载地址指向 Release 所在的仓库。代码仓库以后会新开、旧仓库改名归档（仓库规划），发布仓库独立，已装好的设备不受影响；
+  Secrets 与 Release 也不必随代码仓库迁移。
+- 发布仓库只有 CI 与产物，提交记录干净，Secret 的暴露面小（只有它的 workflow 能读）。
+
+约定：
+
+- 默认 `channel_urls` 为 `https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/`（[05](05-config.md)），镜像地址追加在其后。
+- 数据生成器（`tools/data/`）与 `gfw_static4.txt` 仍在 aether-proxy 仓库：发布 CI 每次 checkout aether-proxy 的 `main` 来运行生成器，生成器改动不需要同步两个仓库。
+- 发布仓库是公开仓库，只有仓库所有者可以写入；workflow 只在定时、手动触发与仓库所有者的推送上运行，不在 PR 上运行（PR 拿不到 Secret，也不应发布）。
 
 ## 设备端流程
 

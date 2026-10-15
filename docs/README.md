@@ -52,7 +52,7 @@
 |---|---|---|---|
 | D1 | 后端实现语言 | — | **已定**：ucode，见 [ADR-0002](adr/0002-backend-language.md)、[12-ucode.md](12-ucode.md) |
 | D2 | 正式名称 | — | **已定**：`aether-proxy` / `aetherproxy`，见上方「命名」 |
-| D3 | 更新通道签名密钥由谁持有、放在哪个仓库的 Secrets | M7 | 待定（M7 之前定下即可，不阻塞开工） |
+| D3 | 更新通道签名密钥由谁持有、放在哪个仓库的 Secrets | M7 | **已定**（2026-10-15）：仓库所有者持有私钥；发布 CI 与私钥放在**单独的发布仓库** `aether-proxy-channel`；离线备份在所有者的密码管理器中。见 [08](08-updates.md)「签名」「发布仓库」 |
 | D4 | 许可证与维护者（LICENSE、Makefile 中的 `PKG_LICENSE` / `PKG_MAINTAINER`） | 发布、复制第三方代码、接受外部贡献 | 暂缓。触发条件见下方规则 8 |
 
 ## 给实现者的规则
