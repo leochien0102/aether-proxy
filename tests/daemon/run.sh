@@ -211,18 +211,13 @@ else
 fi
 cp "$L1" "$L1_START"
 
-# SIGUSR1 ticks immediately; SIGHUP performs a full stop/start (T2.6 will make it incremental).
+# SIGUSR1 ticks immediately; SIGHUP with an unchanged config is an incremental no-op (T2.6).
 kill -USR1 "$DAEMON_PID"
 sleep 0.1
 kill -HUP "$DAEMON_PID"
-restarts=0
-for _ in {1..150}; do
-	restarts=$(awk '/^xray run -c / { n++ } END { print n+0 }' "$L1")
-	[ "$restarts" -ge 2 ] && break
-	if ! kill -0 "$DAEMON_PID" 2>>"$QUIET"; then break; fi
-	sleep 0.05
-done
-[ "$restarts" -ge 2 ] && ok "SIGHUP performs a full restart" || bad "SIGHUP performs a full restart" "xray launches=$restarts"
+sleep 1
+restarts=$(awk '/^xray run -c / { n++ } END { print n+0 }' "$L1")
+expect "SIGHUP with unchanged config keeps xray" 1 "$restarts"
 [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>>"$QUIET" \
 	&& ok "daemon survives SIGHUP and USR1" || bad "daemon survives SIGHUP and USR1"
 

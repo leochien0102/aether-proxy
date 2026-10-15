@@ -14,6 +14,7 @@ import * as supervise from 'aetherproxy.supervise';
 import * as config from 'aetherproxy.config';
 import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
+import * as reload from 'aetherproxy.reload';
 import * as uci from 'uci';
 
 const BOOT_OPTS = {
@@ -766,31 +767,35 @@ function run(args) {
 				continue;
 			}
 			if (signal == 'reload') {
-				// TODO(T2.6): replace this full restart with a render-output hash based delta reload.
 				signal = null;
 				while (monitor_daemon?.busy)
 					uloop.run(C.DAEMON_POLL_MS);
-				stopping = true;
-				let stop_errors = shutdown(ctx, current_children, true);
-				if (length(stop_errors))
-					event_failure(ctx, 'reload_stop', join('; ', stop_errors));
-				stopping = false;
-				result = start_sequence(ctx, opts, on_signal);
-				current_children = result.children ?? { xray: null, dns: null };
-				if (!result.ok) {
-					if (!result.untouched && !result.interrupted)
-						shutdown(ctx, current_children, false);
-					write_state(ctx, { state: 'error', last_error: 'START_FAILED', failed_step: result.step, since: time() });
-					event_failure(ctx, result.step, result.detail);
-					exit_code = result.code ?? 1;
+				// The monitor owns the live runtime (tier, node IP) and may have re-rendered current/
+				// since startup, so plan against what is on disk, not the startup render_hash.
+				let live = hash_artifacts(ctx, `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`);
+				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
+					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
+				if (live.ok)
+					base.render_hash = live.hashes;
+				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children: current_children });
+				if (changed.stop) {
+					stopping = true;
+					let stop_errors = shutdown(ctx, current_children, true);
+					if (length(stop_errors))
+						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
+					exit_code = 0;
+					signal = 'stop';
 					break;
 				}
-				ctx.service_mode = result.snapshot.main.mode;
-				ctx.service_node = result.snapshot.main.node;
-				monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children: current_children, state: result.state });
-				tick = () => monitor.tick(monitor_daemon);
-				ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
-				monitor_daemon.interval = ctx.monitor;
+				if (changed.ok) {
+					result.snapshot = changed.snapshot;
+					result.state = changed.state;
+					ctx.service_mode = result.snapshot.main.mode;
+					ctx.service_node = result.snapshot.main.node;
+					monitor_daemon.snapshot = changed.snapshot;
+					monitor_daemon.state = changed.state;
+					monitor_daemon.machine.node_ip = changed.state.node_ip;
+				}
 				continue;
 			}
 			signal = null;
