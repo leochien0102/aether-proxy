@@ -13,6 +13,7 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as config from 'aetherproxy.config';
 import * as net from 'aetherproxy.net';
+import * as reload from 'aetherproxy.reload';
 import * as uci from 'uci';
 
 const BOOT_OPTS = {
@@ -761,26 +762,23 @@ function run(args) {
 				continue;
 			}
 			if (signal == 'reload') {
-				// TODO(T2.6): replace this full restart with a render-output hash based delta reload.
 				signal = null;
-				stopping = true;
-				let stop_errors = shutdown(ctx, current_children, true);
-				if (length(stop_errors))
-					event_failure(ctx, 'reload_stop', join('; ', stop_errors));
-				stopping = false;
-				result = start_sequence(ctx, opts, on_signal);
-				current_children = result.children ?? { xray: null, dns: null };
-				if (!result.ok) {
-					if (!result.untouched && !result.interrupted)
-						shutdown(ctx, current_children, false);
-					write_state(ctx, { state: 'error', last_error: 'START_FAILED', failed_step: result.step, since: time() });
-					event_failure(ctx, result.step, result.detail);
-					exit_code = result.code ?? 1;
+				let changed = reload.run({ ctx, opts, snapshot: result.snapshot, state: result.state, children: current_children });
+				if (changed.stop) {
+					stopping = true;
+					let stop_errors = shutdown(ctx, current_children, true);
+					if (length(stop_errors))
+						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
+					exit_code = 0;
+					signal = 'stop';
 					break;
 				}
-				ctx.service_mode = result.snapshot.main.mode;
-				ctx.service_node = result.snapshot.main.node;
-				ctx.monitor = uloop.interval(C.DAEMON_MONITOR_MS, tick);
+				if (changed.ok) {
+					result.snapshot = changed.snapshot;
+					result.state = changed.state;
+					ctx.service_mode = result.snapshot.main.mode;
+					ctx.service_node = result.snapshot.main.node;
+				}
 				continue;
 			}
 			signal = null;
