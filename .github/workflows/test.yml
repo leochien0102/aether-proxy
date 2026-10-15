@@ -38,6 +38,9 @@ jobs:
       - name: Run daemon lifecycle tests
         run: bash tests/daemon/run.sh
 
+      - name: Run monitor integration tests
+        run: bash tests/monitor/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
