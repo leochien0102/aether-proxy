@@ -56,6 +56,9 @@ jobs:
       - name: Run subscription schedule tests
         run: bash tests/schedule/run.sh
 
+      - name: Run update check tests
+        run: bash tests/update/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
