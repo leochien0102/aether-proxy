@@ -41,6 +41,9 @@ jobs:
       - name: Run monitor integration tests
         run: bash tests/monitor/run.sh
 
+      - name: Run reload integration tests
+        run: bash tests/reload/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
