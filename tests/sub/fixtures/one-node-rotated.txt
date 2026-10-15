@@ -1,0 +1,1 @@
+vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee@edge.example.com:443?type=ws&security=tls&sni=edge.example.com&path=%2Fws&host=cdn.example.com#Edge%20One
