@@ -161,3 +161,11 @@ export const JOB_LOCK_PREFIX = '/var/lock/aether-proxy-job-';
 export const JOB_LOCK_SUFFIX = '.lock';
 export const JOB_ID_RE = /^j_[0-9]+_[0-9]+$/;
 export const PROG_EXEC = '/usr/bin/aether-proxy';
+
+// T6.3 (daemon subscription scheduler)
+export const SCHEDULE_INTERVAL_MS = 60000;
+export const SCHEDULE_HOUR_SECS = 3600;
+export const SCHEDULE_MAX_JITTER = 0.1;
+export const SCHEDULE_RANDOM_RANGE = 4294967296;
+export const SCHEDULE_TEST_INTERVAL_ENV = 'AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS';
+export const SCHEDULE_TEST_HOUR_ENV = 'AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS';
