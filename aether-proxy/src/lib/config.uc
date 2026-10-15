@@ -319,6 +319,19 @@ function check_node(n, at, errors) {
 			detail: `${n.protocol} without TLS/REALITY is only allowed to a private IPv4 address` });
 }
 
+// Validates one already-decoded node without reading UCI or mutating the input.
+export function validate_node(node) {
+	let errors = [];
+
+	if (type(node) != 'object')
+		return [ { field: 'node', code: 'invalid_value', detail: 'node must be an object' } ];
+
+	let normalized = normalize_section(SCHEMA.node, node, 'node', errors);
+	check_node(normalized, 'node', errors);
+
+	return errors;
+};
+
 function check_main(snap, errors, warnings) {
 	let m = snap.main;
 
