@@ -34,6 +34,10 @@ LuCI 中节点检测的列名叫「**TCP 可达**／延迟」，不要写成「�
 
 `error` 枚举：`resolve_failed`、`timeout`、`refused`、`unreachable`、`other`。
 
+**逐个出结果**（2026-10-15 定，M8 节点页面需要；以后单独拆卡，不在 T6.1/T6.2 范围内）：检测仍然并发进行，但**每完成一个节点就写一次** `probe.json`（经 `sys.write_atomic`），
+顶层增加 `"done": <已完成数>, "total": <总数>, "finished": false|true`，最后一次写入时 `finished: true`。前端经作业轮询（1–2 秒一次）读取，结果陆续填进列表并显示进度。
+理由：从前端逐个或分批发请求，要么慢（串行累加），要么观感是一批一批跳出来；后端并发加增量写入，速度和观感兼得。未完成的节点保持上一次的结果，标记为检测中。
+
 实现：ucode `socket` 模块，非阻塞 connect 加 poll，用单调时钟计时。不准用 `curl telnet://` 之类的替代品，它们的计时含义不准确。
 
 ## 代理健康检测（daemon 内部）
