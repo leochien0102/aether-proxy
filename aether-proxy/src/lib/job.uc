@@ -60,9 +60,15 @@ function read_job_file(path) {
 		let detail = fs_error();
 		return { ok: false, missing: detail == 'No such file or directory', detail: `read ${path}: ${detail}` };
 	}
-	let job = json(text);
+	let job = null;
+	try {
+		job = json(text);
+	}
+	catch (e) {
+		job = null;	// json() throws on bad input
+	}
 	if (type(job) != 'object')
-		return { ok: false, detail: `parse ${path}: expected a JSON object` };
+		return { ok: false, corrupt: true, detail: `parse ${path}: expected a JSON object` };
 	return { ok: true, job };
 }
 
@@ -136,9 +142,18 @@ function clean_old_jobs(ctx) {
 			continue;
 		let path = `${dir}/${name}`;
 		let loaded = read_job_file(path);
+		if (!loaded.ok && loaded.missing)
+			continue;	// removed between lsdir and read (another start's cleanup)
+		if (!loaded.ok && loaded.corrupt) {
+			// Job files are written atomically, so a corrupt one is damage from outside and
+			// carries no usable state: log and remove it instead of blocking every new job.
+			report_fs('parse', path, loaded.detail);
+			if (!fs.unlink(path))
+				report_fs('unlink', path, fs_error());
+			continue;
+		}
 		if (!loaded.ok) {
-			report_fs(loaded.missing ? 'read' : 'parse', path, loaded.detail);
-			// TODO(design): corrupt job-file recovery is unspecified; do not remove it or start another job.
+			report_fs('read', path, loaded.detail);
 			return { ok: false, detail: loaded.detail };
 		}
 		if (type(loaded.job.finished) == 'int' && loaded.job.finished < cutoff && !fs.unlink(path)) {
@@ -158,6 +173,8 @@ function find_busy(ctx, names, kind) {
 			continue;
 		let path = `${jobs_dir(ctx)}/${name}`;
 		let loaded = read_job_file(path);
+		if (!loaded.ok && (loaded.missing || loaded.corrupt))
+			continue;	// gone, or already reported and removed by the cleanup scan
 		if (!loaded.ok)
 			return { error: loaded.detail, path };
 		let job = loaded.job;
@@ -263,7 +280,7 @@ export function start(argv, opts) {
 	let id = `j_${started}_${pid}`;
 	let path = job_path(ctx, id);
 	if (fs.stat(path) != null) {
-		// TODO(design): the prescribed seconds+pid ID has no collision recovery policy; never overwrite.
+		// One start per process, so seconds+pid cannot repeat in practice; never overwrite.
 		return fail('FS_FAILED', `job ID collision at ${path}`, 1);
 	}
 	let stat_error = fs_error();

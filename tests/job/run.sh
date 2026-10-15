@@ -220,6 +220,18 @@ id=$(get_json "$out" job)
 [ -e "$RUN/jobs/$recent_id.json" ] && ok "recent finished job is retained" || bad "recent finished job is retained"
 if wait_terminal "$id" ok >/dev/null; then ok "cleanup-test job completes"; else bad "cleanup-test job completes"; fi
 
+# A corrupt job file (damage from outside) is logged and removed; it must not block new jobs
+# or crash status.
+make_root "$T/root-corrupt"
+printf '{broken' > "$RUN/jobs/j_200_201.json"
+out=$(ap job status j_200_201 --json --run-dir "$RUN" --sys-root "$R" 2>/dev/null); rc=$?
+[ "$rc" -ne 0 ] && [ "$rc" -lt 128 ] && ok "status of a corrupt job file fails cleanly (rc=$rc)" || bad "status of a corrupt job file fails cleanly" "rc=$rc"
+out=$(start_probe); rc=$?
+expect "a corrupt job file does not block job start" 0 "$rc"
+[ ! -e "$RUN/jobs/j_200_201.json" ] && ok "the corrupt job file is removed" || bad "the corrupt job file is removed"
+id=$(get_json "$out" job)
+if wait_terminal "$id" ok >/dev/null; then ok "job after corrupt-file cleanup completes"; else bad "job after corrupt-file cleanup completes"; fi
+
 # Test-only options are saved in argv and passed to the child together with --json.
 make_root "$T/root4"
 ALT_RUN="$R/var/run/custom-jobs"
