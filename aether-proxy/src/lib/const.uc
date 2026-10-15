@@ -104,3 +104,15 @@ export const PRECHECK_NFT_FILE = 'precheck.nft';
 // T2.2 (child process supervision)
 export const PROC_DIR = '/proc';
 export const SUPERVISE_TERM_GRACE_MS = 1000;
+
+// T2.3 (system apply primitives)
+export const DNSMASQ_CONFIG_DIR = '/var/etc';
+export const DNSMASQ_TEMP_DIR = '/tmp/dnsmasq.d';
+export const DNSMASQ_INIT = '/etc/init.d/dnsmasq';
+export const DNSMASQ_FRAGMENT = 'aether-proxy.conf';
+export const SETS_SAVE_FILE = 'sets.save';
+export const NODE_IP_FILE = 'node-ip.json';
+export const NFT_DYNAMIC_SETS = [ 'gfw4', 'udirect4', 'uproxy4' ];
+export const CONFLICT_NFT_SSR = 'ss_spec';
+export const CONFLICT_NFT_PASSWALL_PREFIX = 'passwall';
+export const CONFLICT_PROCESSES = [ 'clash', 'mihomo' ];
