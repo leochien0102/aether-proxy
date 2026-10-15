@@ -23,14 +23,14 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `log_level` | enum(`error`\|`warn`\|`notice`\|`info`\|`debug`) | `notice` | aether-proxy 自身的日志等级（[09](09-logging.md)） |
 | `xray_log_level` | enum(`error`\|`warning`\|`info`\|`debug`) | `warning` | |
 | `boot_wait_timeout` | int 秒，0–600 | `120` | 0 = 开机不等待 |
-| `boot_check_targets` | list `ip:port` | `223.5.5.5:53` `119.29.29.29:53` | |
+| `boot_check_targets` | list `ip:port` | `223.5.5.5:53` `114.114.114.114:53` | |
 | `xray_bin` / `chinadns_bin` | 路径 | 空 | 高级选项：显式指定二进制 |
 
 ## `config dns 'dns'`
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `china_dns` | list chinadns-ng 上游写法 | `223.5.5.5` `119.29.29.29` | |
+| `china_dns` | list chinadns-ng 上游写法 | `223.5.5.5` `114.114.114.114` | 2026-10-15 起不再默认使用 `119.29.29.29`：真机上 chinadns-ng 走 TCP 访问它时被反复重置（[03](03-dns.md)「真机验证」） |
 | `trust_dns` | list IPv4，**最多 2 个** | `8.8.8.8` `1.1.1.1` | T1：经节点访问，固定 53/TCP |
 | `direct_dns` | list chinadns-ng 上游写法 | `tcp://8.8.8.8` `tcp://1.1.1.1` | T2 与节点引导解析；可写 `tls://dns.google@8.8.8.8` |
 | `allow_china_fallback` | bool | `1` | 是否允许降到 T3 |
@@ -163,7 +163,7 @@ config global 'main'
 
 config dns 'dns'
 	list china_dns '223.5.5.5'
-	list china_dns '119.29.29.29'
+	list china_dns '114.114.114.114'
 	list trust_dns '8.8.8.8'
 	list trust_dns '1.1.1.1'
 	list direct_dns 'tcp://8.8.8.8'

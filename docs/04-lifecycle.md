@@ -96,7 +96,7 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 
 用于 PPPoE、静态地址场景下，WAN 还没真正可用、代理进程却已经先启动的问题。
 
-- 判定「网络可用」：存在 IPv4 默认路由，**并且**对 `boot_check_targets`（默认 `223.5.5.5:53`、`119.29.29.29:53`）
+- 判定「网络可用」：存在 IPv4 默认路由，**并且**对 `boot_check_targets`（默认 `223.5.5.5:53`、`114.114.114.114:53`）
   中任一目标的 TCP 连接在 3 秒内成功。不用 ICMP，有的网络会屏蔽 ICMP。
 - 每 5 秒重试一次，总时长 `boot_wait_timeout`（默认 120 秒）。
 - 超时：记 WARN `NET_WAIT_TIMEOUT`，**继续启动**。DNS 会停留在 T2，monitor 会持续重试。
