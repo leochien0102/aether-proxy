@@ -272,6 +272,12 @@ function list_files(path) {
 	return entries == null ? null : sort(entries);
 };
 
+// dnsmasq.conf.<uci section>. The init script writes <file>.<pid> first and renames it;
+// a killed init leaves that temp file behind, which is not an instance.
+function instance_conf(name) {
+	return match(name, /^dnsmasq\.conf\.[^.]+$/) != null;
+};
+
 function parse_conf_file(path) {
 	let text = fs.readfile(path);
 	if (text == null)
@@ -298,7 +304,7 @@ function dnsmasq_confdir(ctx) {
 		return failed(ctx, 'dnsmasq_confdir', `cannot list ${dir}: ${fs.error() ?? 'unknown error'}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
 	let candidates = [];
 	for (let name in names) {
-		if (!match(name, /^dnsmasq\.conf\./))
+		if (!instance_conf(name))
 			continue;
 		let config = parse_conf_file(`${dir}/${name}`);
 		if (config != null)
@@ -312,8 +318,12 @@ function dnsmasq_confdir(ctx) {
 					push(selected, config.confdir);
 				break;
 			}
-	if (length(selected) == 0 && length(candidates) == 1 && length(candidates[0].interfaces) == 0)
-		push(selected, candidates[0].confdir);
+	// No LAN match: instances without interface= serve every interface. Count distinct
+	// conf-dirs, not files, so two configs pointing at one directory are not ambiguous.
+	if (length(selected) == 0)
+		for (let config in candidates)
+			if (length(config.interfaces) == 0 && !array_has(selected, config.confdir))
+				push(selected, config.confdir);
 	selected = sort(selected);
 	if (length(selected) != 1)
 		return failed(ctx, 'dnsmasq_confdir', `no unique conf-dir for LAN interfaces ${join(',', ctx.lan_ifaces ?? [])}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
@@ -362,7 +372,7 @@ function dnsmasq_remove(ctx) {
 		return failed(ctx, 'dnsmasq_remove', `cannot list ${dir}: ${fs.error() ?? 'unknown error'}`);
 	let confdirs = [];
 	for (let name in names) {
-		if (!match(name, /^dnsmasq\.conf\./))
+		if (!instance_conf(name))
 			continue;
 		let config = parse_conf_file(`${dir}/${name}`);
 		if (config != null && !array_has(confdirs, config.confdir))

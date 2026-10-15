@@ -189,6 +189,14 @@ function run_dnsmasq() {
 		return fail('restart failure accepted');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_KILLALL_RC=1\n');
 	let hup_failed = apply.dnsmasq_hup(c);
+	// Seen on a device: the only instance has no interface= line, plus a temp file
+	// (<file>.<pid>) left by an interrupted dnsmasq init with the same conf-dir.
+	let lone = `${t.base}/lone`;
+	write(`${lone}/var/etc/dnsmasq.conf.cfg01411c`, 'conf-dir=/tmp/dnsmasq.d\n');
+	write(`${lone}/var/etc/dnsmasq.conf.cfg01411c.2670`, 'conf-dir=/tmp/dnsmasq.d\n');
+	let lone_found = apply.dnsmasq_confdir({ ...c, root: lone });
+	if (!lone_found.ok || lone_found.confdir != `${lone}/tmp/dnsmasq.d`)
+		return fail(`all-interfaces instance with a leftover temp file: ${sprintf('%.J', lone_found)}`);
 	let absent = { ...c, root: `${t.base}/empty-root` };
 	return !hup_failed.ok && !apply.dnsmasq_confdir(absent).ok ? 'PASS' : fail('HUP/conf-dir failure accepted');
 };
