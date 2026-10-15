@@ -493,7 +493,7 @@ function conflicts(ctx) {
 		if (name == C.CONFLICT_NFT_SSR || substr(name, 0, length(C.CONFLICT_NFT_PASSWALL_PREFIX)) == C.CONFLICT_NFT_PASSWALL_PREFIX)
 			push(active, name);
 	for (let process in C.CONFLICT_PROCESSES) {
-		// TODO(design): confirm killall -0 is reliable across supported BusyBox builds.
+		// killall -0 verified on the lede busybox (2026-10-15): rc 0 when the process exists, 1 when it does not.
 		let check = exec(ctx, 'killall', [ '-0', process ], true);
 		if (check.code == 0)
 			push(active, process);
