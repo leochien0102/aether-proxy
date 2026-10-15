@@ -1,0 +1,25 @@
+#!/bin/sh
+if [ "$1" = run ] && [ "$2" = -test ]; then
+	printf 'xray %s\n' "$*" >> "$STUB_LOG"
+	exit "${STUB_XRAY_TEST_RC:-0}"
+fi
+if [ "$1" = run ] && [ "$2" = -c ]; then
+	SYSROOT=${3%/var/run/aether-proxy/current/*}
+	STUB_LOG="$SYSROOT/calls.log"
+	printf 'xray %s\n' "$*" >> "$STUB_LOG"
+	echo "$$" > "$SYSROOT/xray.pid"
+	printf '  0: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"
+	cleanup() {
+		tmp="$SYSROOT/proc/net/tcp.tmp"
+		if ! grep -v '0100007F:7968' "$SYSROOT/proc/net/tcp" > "$tmp"; then
+			printf 'xray stub failed to remove its TCP entry\n' >> "$STUB_LOG"
+		fi
+		mv "$tmp" "$SYSROOT/proc/net/tcp"
+		rm -f "$SYSROOT/xray.pid"
+		exit 0
+	}
+	trap cleanup TERM INT
+	while :; do sleep 1 & wait $!; done
+fi
+printf 'xray %s\n' "$*" >> "$STUB_LOG"
+exit 64

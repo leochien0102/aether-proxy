@@ -12,7 +12,13 @@ import * as pipeline from 'aetherproxy.pipeline';
 
 // Locates a component binary in the order of docs/01 "组件二进制的查找顺序".
 // Returns { path, source } or null.
-function find_component(name, configured) {
+function find_component(name, configured, options) {
+	if (options?.bin_dir) {
+		let from_bin_dir = `${options.bin_dir}/${name}`;
+		if (fs.access(from_bin_dir, 'x'))
+			return { path: from_bin_dir, source: 'bin-dir' };
+	}
+
 	if (configured != null && configured != '')
 		return fs.access(configured, 'x') ? { path: configured, source: 'uci' } : null;
 
@@ -47,8 +53,13 @@ function precheck_ruleset() {
 // Everything that talks to the live system lives here so that --no-precheck can skip it.
 // Returns { items: [ { item, ok, detail? } ], components: { <name>: { found, path?, source? } } }.
 // Read-only apart from a scratch file inside the staging directory.
-function precheck(snapshot, staging) {
+function precheck(snapshot, staging, options) {
+	options ??= {};
 	let items = [];
+	let root = options.sys_root ?? '';
+	let prefix = root == '' ? '' : replace(root, /\/$/, '');
+	let nft_bin = options.bin_dir ? `${options.bin_dir}/nft` : 'nft';
+	let ip_bin = options.bin_dir ? `${options.bin_dir}/ip` : 'ip';
 
 	function add(item, ok, detail) {
 		push(items, ok ? { item, ok } : { item, ok, detail });
@@ -61,7 +72,7 @@ function precheck(snapshot, staging) {
 		add('nft', false, sys.error());
 	}
 	else {
-		let r = sys.run([ 'nft', '-c', '-f', probe ], { timeout: 10, quiet: true });
+		let r = sys.run([ nft_bin, '-c', '-f', probe ], { timeout: 10, quiet: true });
 
 		add('nft', r.code == 0, r.code == 0 ? null : trim(r.stderr) || `nft exited ${r.code} (is nft installed, are kmod-nft-tproxy and kmod-nft-socket loaded?)`);
 
@@ -73,7 +84,7 @@ function precheck(snapshot, staging) {
 	// has no "FWMARK[/MASK]" selector in it.
 	// TODO(design): the "fwmark FWMARK[/MASK]" help text is assumed from iproute2 and was not
 	// verified against busybox ip on 24.10.8.
-	let ip = sys.run([ 'ip', 'rule', 'help' ], { timeout: 5, quiet: true });
+	let ip = sys.run([ ip_bin, 'rule', 'help' ], { timeout: 5, quiet: true });
 	let help = ip.stdout + '\n' + ip.stderr;
 
 	add('ip_rule_fwmark', index(help, 'FWMARK') >= 0 && index(help, '/MASK') >= 0,
@@ -81,7 +92,7 @@ function precheck(snapshot, staging) {
 
 	// lan_ifaces must exist.
 	for (let ifname in (snapshot.main.lan_ifaces ?? [])) {
-		let ok = index(ifname, '/') < 0 && fs.stat('/sys/class/net/' + ifname) != null;
+		let ok = index(ifname, '/') < 0 && fs.stat(prefix + C.SYS_CLASS_NET + '/' + ifname) != null;
 
 		add('lan_iface:' + ifname, ok, `interface ${ifname} does not exist`);
 	}
@@ -89,13 +100,15 @@ function precheck(snapshot, staging) {
 	let components = {};
 
 	for (let name, key in { [C.XRAY_COMPONENT]: 'xray_bin', [C.CHINADNS_COMPONENT]: 'chinadns_bin' }) {
-		let found = find_component(name, snapshot.main[key]);
+		let found = find_component(name, snapshot.main[key], options);
 
 		components[name] = found ? { found: true, ...found } : { found: false };
 	}
 
 	return { items, components };
 }
+
+export { precheck };
 
 export function run(args) {
 	let p = pipeline.parse_args(args);

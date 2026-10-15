@@ -1,0 +1,5 @@
+#!/bin/sh
+printf 'resolveip %s\n' "$*" >> "$STUB_LOG"
+if [ -n "${STUB_RESOLVE_DELAY:-}" ]; then sleep "$STUB_RESOLVE_DELAY"; fi
+[ "${STUB_RESOLVE_FAIL:-0}" = 1 ] && exit 1
+echo '203.0.113.20'

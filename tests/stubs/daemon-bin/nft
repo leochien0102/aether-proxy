@@ -1,0 +1,22 @@
+#!/bin/sh
+printf 'nft %s\n' "$*" >> "$STUB_LOG"
+case " $* " in
+	*" -c -f "*) exit "${STUB_NFT_CHECK_RC:-0}" ;;
+	*" -f "*)
+		if [ "${STUB_NFT_RC:-0}" -ne 0 ]; then echo 'stub nft load failure' >&2; exit "$STUB_NFT_RC"; fi
+		touch "$SYSROOT/nft-table"
+		exit 0
+		;;
+	*" list table inet aetherproxy "*)
+		[ -e "$SYSROOT/nft-table" ] && { echo 'table inet aetherproxy'; exit 0; }
+		echo 'Error: No such file or directory' >&2; exit 1
+		;;
+	*" list tables "*) [ -s "$SYSROOT/conflicts" ] && cat "$SYSROOT/conflicts"; exit 0 ;;
+	*" -j list set "*)
+		for name do :; done
+		printf '{"nftables":[{"set":{"name":"%s","elem":[]}}]}\n' "$name"
+		exit 0
+		;;
+	*" delete table inet aetherproxy "*) rm -f "$SYSROOT/nft-table"; exit 0 ;;
+esac
+exit 0
