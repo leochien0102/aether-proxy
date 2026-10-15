@@ -66,7 +66,10 @@
     LuCI 能立即看到错误），然后注册 `aether-proxy daemon` 实例（开机时 `boot()` 带 `--boot`）。
   - `service_stopped`：执行 `aether-proxy cleanup`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、
     杀掉残留子进程），兜底 daemon 被 SIGKILL 时来不及清理的情况。
-- daemon 每次启动时先执行一次 `cleanup`，清掉上一轮崩溃留下的残留，再开始启动流程。
+- daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
+  第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
+- 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。
+  理由是停止的优先级高于任何一次性动作；被打断的命令看到的是表或子进程消失，按失败处理即可。
 - 子进程的 pid 写入 `/var/run/aether-proxy/<name>.pid`，`cleanup` 依据它杀进程，**只杀命令行确实匹配的进程**
   （读取 `/proc/<pid>/cmdline` 核对），避免误杀复用了该 pid 的其他进程。
 
