@@ -54,7 +54,7 @@ init.d / hotplug / daemon ──────────────────
 
 LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 
-- uhttpd 默认 `network_timeout` 为 30 秒，`max_requests` 为 3。长请求会被掐断，并发请求会排队。
+- uhttpd 默认 `network_timeout` 为 30 秒，长请求会被掐断；`max_requests 3` 只限制 cgi/ucode/lua 脚本请求（超出的排队），经 `/ubus` 的 rpcd 调用不计入，但 rpcd 串行处理调用，长调用会挡住其他调用。
 - LuCI 25.12 起 `XHR.get/post` 落到 `LuCI.prototype.poll()`，该 promise 链没有 `.catch()`：请求失败（超时、连接中断）时回调永远不会执行，长请求一断，界面就会永久卡住。
 
 作业状态文件 `/var/run/aether-proxy/jobs/<id>.json`：
