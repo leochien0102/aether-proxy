@@ -65,6 +65,7 @@ cp "$STUB_SRC/nft" "$T/bin/nft"
 cp "$STUB_SRC/ip" "$T/bin/ip"
 cp "$STUB_SRC/resolveip" "$T/bin/resolveip"
 cp "$STUB_SRC/killall" "$T/bin/killall"
+cp "$STUB_SRC/curl" "$T/bin/curl"
 cp "$STUB_SRC/xray" "$T/bin/xray"
 cp "$STUB_SRC/chinadns-ng" "$T/bin/chinadns-ng"
 cp "$STUB_SRC/kill" "$T/bin/kill"
@@ -89,6 +90,7 @@ EOF
 	: > "$root/ip-rules"
 	: > "$root/ip-routes"
 	: > "$root/conflicts"
+	: > "$root/curl-count"
 }
 
 ap() { "$UCODE" -S "$ENTRY" -- "$@"; }
@@ -101,7 +103,7 @@ start_daemon() {
 	local root="$1" log="$2"; shift 2
 	: > "$log"
 	(
-		export STUB_LOG="$log" SYSROOT="$root" PATH="$T/bin:$PATH"
+		export STUB_LOG="$log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count" PATH="$T/bin:$PATH"
 		exec "$UCODE" -S "$ENTRY" -- daemon $(args_for "$root") "$@"
 	) >"$root/daemon.stdout" 2>"$root/daemon.stderr" &
 	DAEMON_PID=$!

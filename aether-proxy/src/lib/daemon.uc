@@ -13,6 +13,7 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as config from 'aetherproxy.config';
 import * as net from 'aetherproxy.net';
+import * as monitor from 'aetherproxy.monitor';
 import * as uci from 'uci';
 
 const BOOT_OPTS = {
@@ -702,7 +703,8 @@ function run(args) {
 	}
 	let signal = null, stopping = false;
 	let signals = {};
-	let tick = () => {};
+	let monitor_daemon = null;
+	let tick = () => monitor_daemon == null ? null : monitor.tick(monitor_daemon);
 	let on_signal = () => signal == 'stop';
 	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ] ]) {
 		let name = item[0], kind = item[1];
@@ -752,7 +754,10 @@ function run(args) {
 	else {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
-		ctx.monitor = uloop.interval(C.DAEMON_MONITOR_MS, tick);
+		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children: current_children, state: result.state });
+		tick = () => monitor.tick(monitor_daemon);
+		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
+		monitor_daemon.interval = ctx.monitor;
 		while (signal != 'stop') {
 			if (signal == 'tick') {
 				// T2.5 fills in the first observation pass.
@@ -763,6 +768,8 @@ function run(args) {
 			if (signal == 'reload') {
 				// TODO(T2.6): replace this full restart with a render-output hash based delta reload.
 				signal = null;
+				while (monitor_daemon?.busy)
+					uloop.run(C.DAEMON_POLL_MS);
 				stopping = true;
 				let stop_errors = shutdown(ctx, current_children, true);
 				if (length(stop_errors))
@@ -780,13 +787,18 @@ function run(args) {
 				}
 				ctx.service_mode = result.snapshot.main.mode;
 				ctx.service_node = result.snapshot.main.node;
-				ctx.monitor = uloop.interval(C.DAEMON_MONITOR_MS, tick);
+				monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children: current_children, state: result.state });
+				tick = () => monitor.tick(monitor_daemon);
+				ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
+				monitor_daemon.interval = ctx.monitor;
 				continue;
 			}
 			signal = null;
 			uloop.run();
 		}
 		if (signal == 'stop' && !stopping) {
+			while (monitor_daemon?.busy)
+				uloop.run(C.DAEMON_POLL_MS);
 			stopping = true;
 			let stop_errors = shutdown(ctx, current_children, true);
 			if (length(stop_errors))

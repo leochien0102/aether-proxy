@@ -1,0 +1,11 @@
+#!/bin/sh
+printf 'curl %s\n' "$*" >> "$STUB_LOG"
+count=$(cat "$STUB_CURL_COUNT_FILE")
+count=$((count + 1))
+printf '%s\n' "$count" > "$STUB_CURL_COUNT_FILE"
+if [ "$count" -ge "${STUB_CURL_FAIL_FROM:-999999}" ]; then
+	printf '500 0.025\n'
+else
+	printf '204 0.012\n'
+fi
+exit 0
