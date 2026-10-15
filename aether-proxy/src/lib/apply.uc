@@ -148,10 +148,13 @@ function decode_set(text, name) {
 		return { error: `nft JSON contains no set named ${name}` };
 
 	let values = [];
+	// libnftables JSON lists plain elements as bare values ("1.2.3.4", {"prefix":...},
+	// {"range":[...]}); only elements carrying timeout/counter/comment are wrapped as
+	// {"elem":{"val":...}}.
 	for (let item in found.elem ?? []) {
-		let value = item?.elem?.val;
-		if (value == null && item?.elem != null)
-			value = item.elem;
+		let value = item;
+		if (type(item) == 'object' && item.elem != null)
+			value = item.elem?.val ?? item.elem;
 		let cidrs = elem_to_cidrs(value);
 		if (cidrs == null)
 			return { error: `unsupported ${name} element ${sprintf('%.J', value)}` };

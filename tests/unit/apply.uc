@@ -55,10 +55,13 @@ function prepare() {
 };
 
 function setup_nft_json(base, name) {
+	// Shapes as `nft -j list set` prints them on a device (T2.8): bare values, and the
+	// {"elem":{"val":...}} wrapper only for elements with extra attributes.
 	let elements = [
-		{ elem: { val: '1.2.3.4' } },
-		{ elem: { val: '2.0.0.0/24' } },
-		{ elem: { val: { range: [ '10.0.0.0', '10.0.0.255' ] } } }
+		'1.2.3.4',
+		{ prefix: { addr: '2.0.0.0', len: 24 } },
+		{ range: [ '10.0.0.0', '10.0.0.255' ] },
+		{ elem: { val: '3.3.3.3', timeout: 3600, expires: 3500 } }
 	];
 	return write(`${base}/${name}.json`, sprintf('%.J\n', { nftables: [ { set: { name, elem: elements } } ] }));
 };
@@ -111,7 +114,7 @@ function run_sets() {
 	}
 	write(`${t.base}/stubs/stub.env`, env);
 	let exported = apply.sets_export(c);
-	if (!exported.ok || sprintf('%.J', exported.sets.gfw4) != sprintf('%.J', [ '1.2.3.4', '2.0.0.0/24', '10.0.0.0/24' ]))
+	if (!exported.ok || sprintf('%.J', exported.sets.gfw4) != sprintf('%.J', [ '1.2.3.4', '2.0.0.0/24', '3.3.3.3', '10.0.0.0/24' ]))
 		return fail(`export result ${sprintf('%.J', exported)}`);
 	if (!apply.sets_save(c, exported.sets).ok)
 		return fail('sets_save failed');
