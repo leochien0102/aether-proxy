@@ -1,0 +1,36 @@
+#!/bin/sh
+
+[ "${ACTION:-}" = ifup ] || exit 0
+[ -n "${INTERFACE:-}" ] || exit 0
+
+. /lib/functions.sh
+. /lib/functions/procd.sh
+
+config_load aetherproxy
+config_get_bool enabled main enabled 0
+[ "$enabled" = 1 ] || exit 0
+
+AETHER_PROXY_IS_LAN=0
+_aether_proxy_check_iface() {
+	[ "$1" = "$INTERFACE" ] && AETHER_PROXY_IS_LAN=1
+}
+config_list_foreach main lan_ifaces _aether_proxy_check_iface
+[ "$AETHER_PROXY_IS_LAN" = 0 ] || exit 0
+
+service_list=$(ubus call service list '{"name":"aether-proxy"}')
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	logger -t aether-proxy "ubus call service list failed (rc=$rc)"
+	exit "$rc"
+fi
+if ! printf '%s\n' "$service_list" | grep -q '"running"[[:space:]]*:[[:space:]]*true'; then
+	exit 0
+fi
+
+procd_send_signal aether-proxy '*' USR1
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	logger -t aether-proxy "procd_send_signal USR1 failed (rc=$rc)"
+	exit "$rc"
+fi
+exit 0

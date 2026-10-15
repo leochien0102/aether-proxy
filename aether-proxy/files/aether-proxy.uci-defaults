@@ -1,0 +1,45 @@
+#!/bin/sh
+
+log_failure() {
+	logger -t aether-proxy-uci-defaults "$1 failed (rc=$2)"
+}
+
+current=$(uci -q get aetherproxy.update.data_minute)
+rc=$?
+if [ "$rc" -eq 0 ] && [ -n "$current" ]; then
+	exit 0
+fi
+if [ "$rc" -ne 1 ] && [ "$rc" -ne 0 ]; then
+	log_failure 'uci -q get aetherproxy.update.data_minute' "$rc"
+	exit 1
+fi
+
+random=$(od -An -N2 -tu2 /dev/urandom)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	log_failure 'od -An -N2 -tu2 /dev/urandom' "$rc"
+	exit 1
+fi
+set -- $random
+random=${1:-}
+case "$random" in
+	''|*[!0-9]*)
+		logger -t aether-proxy-uci-defaults 'od returned invalid unsigned integer'
+		exit 1
+		;;
+esac
+minute=$((random % 60))
+
+uci set "aetherproxy.update.data_minute=$minute"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	log_failure 'uci set aetherproxy.update.data_minute' "$rc"
+	exit 1
+fi
+uci commit aetherproxy
+rc=$?
+if [ "$rc" -ne 0 ]; then
+	log_failure 'uci commit aetherproxy' "$rc"
+	exit 1
+fi
+exit 0

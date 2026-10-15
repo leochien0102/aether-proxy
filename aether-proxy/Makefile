@@ -38,7 +38,7 @@ define Build/Compile
 endef
 
 # The placeholder in const.uc becomes "<PKG_VERSION>-<PKG_RELEASE>".
-# TODO(design): init script, hotplug (M2), keys/ and data/ contents are installed once they exist.
+# TODO(design): keys/ and data/ contents are installed once they exist.
 define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aether-proxy $(1)/usr/bin/aether-proxy
@@ -47,6 +47,12 @@ define Package/aether-proxy/install
 	sed -i 's|@@VERSION@@|$(PKG_VERSION)-r$(PKG_RELEASE)|' $(1)/usr/share/ucode/aetherproxy/const.uc
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./files/aether-proxy.config $(1)/etc/config/aetherproxy
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/aether-proxy.init $(1)/etc/init.d/aether-proxy
+	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
+	$(INSTALL_BIN) ./files/aether-proxy.hotplug $(1)/etc/hotplug.d/iface/90-aether-proxy
+	$(INSTALL_DIR) $(1)/etc/uci-defaults
+	$(INSTALL_BIN) ./files/aether-proxy.uci-defaults $(1)/etc/uci-defaults/99-aether-proxy
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/custom
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/keys
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
