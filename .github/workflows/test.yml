@@ -35,6 +35,9 @@ jobs:
       - name: Run CLI scenario tests
         run: bash tests/cli/run.sh
 
+      - name: Run daemon lifecycle tests
+        run: bash tests/daemon/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
