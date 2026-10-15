@@ -21,6 +21,10 @@
 
 **每一步失败都按相反顺序回滚已完成的步骤**，最终状态为 `error`，事件里带上失败的步骤名。
 
+**启动失败后 daemon 不退出**（2026-10-15 真机验收后定）：停在 `error` 状态，按 30 s → 60 s → 5 min（封顶）的间隔重新执行第 2–11 步；
+收到 SIGHUP 立即重试一次并把间隔归零，SIGTERM 照常停止。第 2 步（配置无效）失败不重试，只等 SIGHUP。
+理由：退出会让 procd 立即拉起，而每轮都超过 procd 的 5 秒崩溃判定，于是无限快速循环，每轮还要重启两次 dnsmasq；在 daemon 内退避既省资源，状态也对 LuCI 可见。
+
 | # | 步骤 | 失败处理 |
 |---|---|---|
 | 1 | 取锁 `/var/lock/aether-proxy.lock`（非阻塞） | 退出码 3，`BUSY` |
@@ -122,7 +126,9 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 在 daemon 内运行，正常每 30 秒一轮，非 `running` 状态下每 10 秒一轮；收到 SIGUSR1 立即执行一轮。
 每轮按顺序执行：
 
-1. **规则表自检**：`inet aetherproxy` 不存在（被 `fw4 flush` 或第三方工具删除）且当前不是 `failsafe` → 重新加载，记 WARN `NFT_TABLE_RESTORED`。
+1. **规则表自检**：`inet aetherproxy` **连续 2 轮**不存在（被 `fw4 flush` 或第三方工具删除）且当前不是 `failsafe` → 重新加载，记 WARN `NFT_TABLE_RESTORED`。
+   只看一轮不够：真机上 WAN 重拨触发的 `fw4 reload` 期间，`nft list` 会短暂报「No such file or directory」，而表其实还在；
+   此时重建会用空集合替换一张仍有内容的表。重新加载时表已不存在，集合从 `sets.save` 恢复（没有就为空），不再要求导出成功。
 2. **Xray 进程**：TPROXY 端口没有监听，持续 2 轮 →
    - `fail_open=1`（默认）：进入 `failsafe`。摘除拦截的方法是 `nft flush chain inet aetherproxy prerouting`
      （集合保留），然后切到 DNS T2。记 ERR `XRAY_DOWN_FAILOPEN`。
@@ -143,8 +149,9 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 
 - 导出：`nft -j list set inet aetherproxy <set>`，把元素写入 `/var/run/aether-proxy/sets.save`（tmpfs，整机重启会丢失）。
   文件格式：`{ "gfw4": ["1.2.3.4", …], "udirect4": […], "uproxy4": […] }`，元素为裸 IPv4 字符串（不带超时等属性），即渲染上下文 `ctx.runtime.restored` 的格式。
-- 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去；加载完成后删除该文件。
-- 只有 stop、reload（整表替换）、failsafe 恢复这三处会导出。
+- `nft -j` 的元素格式：普通元素是裸值（`"1.2.3.4"`、`{"prefix":…}`、`{"range":[…]}`），只有带超时、计数器、注释的元素才包成 `{"elem":{"val":…}}`。两种都要解析（真机验收时发现只认包装格式导致导出全部失败）。
+- 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去。
+- 会导出的地方：stop、`cleanup`（表还在时，兜底 daemon 被 SIGKILL 的情况；导出失败只记日志，不阻断清理）、reload（整表替换）、failsafe 恢复。
 
 ## 故障语义汇总
 
@@ -157,3 +164,20 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 | 整机断电 | tmpfs 清空；aether-proxy 开机重新完整启动；未启用时不留任何痕迹 |
 | `fw4 flush` | 下一轮 monitor 重建规则表（最长约 30 秒的直连窗口） |
 | monitor 查询规则表本身出错（`nft list` 失败） | 本轮按「表存在」处理，不重建，记 ERR；下一轮再查。理由：查询失败多半是 nft 暂时不可用，此时重建同样会失败，还可能把集合导出成空的 |
+
+## 真机验证（M2 验收，2026-10-15）
+
+在一台 lede 固件（fw4、busybox、aarch64）的测试路由器上，用 init 脚本走完整流程，以下各项通过：
+启动到 `running`（约 65 秒，含 init 的 `check`）；QUIC 拒绝（YouTube 播放时计数器有命中）；`kill -9` Xray / chinadns-ng 后约 5–7 秒被拉起；
+reload 改模式只替换 nft、Xray 不重启、动态集合保留；配置不变的 reload 不做任何动作；`ifup wan` 触发 USR1，2 秒内多出一轮检测，
+且 `fw4 reload` 后表与 ip rule 仍在；阻断节点 90 秒降到 T2 / `degraded`，恢复后 34 秒回到 T1 / `running`；
+stop 清理干净并保存集合，boot 后集合恢复；`kill -9` daemon 后 procd 拉起、孤儿子进程被清理；`kill -9` 后立即 stop 由 `cleanup` 兜底并保存集合。
+
+验收中发现、已修正的实现问题（宿主机测试都没能暴露，记在这里供以后参考）：
+
+- Go（Xray）把 `0.0.0.0` 监听开成一个 IPv6 双栈 socket，只出现在 `/proc/net/tcp6`；端口检查必须同时读 `tcp` 和 `tcp6`。
+- uloop 的 SIGCHLD 处理没有 `SA_RESTART`，子进程退出会打断 `popen()` 的读取（EINTR），命令结果丢失；`sys.run` 改为 `system()` 加结果文件。
+- 持锁期间拉起的子进程会继承锁的 fd，daemon 被 SIGKILL 后孤儿一直占着锁；锁文件以 `O_CLOEXEC` 打开。
+- dnsmasq init 被打断时会留下 `dnsmasq.conf.<section>.<pid>` 临时文件；conf-dir 发现要忽略它，并按目录而不是文件计数。
+- busybox 可能没有 `od`；uci-defaults 改用 ucode 读 `/dev/urandom`。
+- pid 文件指向的进程已不存在或被复用时，`cleanup` 只删 pid 文件，不算失败。
