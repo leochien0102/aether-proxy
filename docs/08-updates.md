@@ -18,7 +18,7 @@
 发布 CI 在**单独的发布仓库** `leochien0102/aether-proxy-channel`（见下方「发布仓库」）。生成发布目录与清单的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 负责编译、运行它、签名、发布：
 
 1. **软件包**：用 OpenWrt 官方 SDK 编译，矩阵为「SDK 版本 × 目标」——24.10（ipk）与 25.12（apk）各编 `aarch64_generic`、`x86_64`（首版范围，以后按需增加）。
-   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`aether-proxy`、`luci-app-aether-proxy`（取 aether-proxy 仓库的指定提交）。
+   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（取 aether-proxy 仓库的指定提交）。
 2. **Xray 版本闸门**：定时任务发现上游有新版本（含 prerelease）时，在发布仓库开一个改 Makefile 版本与 `PKG_HASH` 的 PR；PR 的检查用新版本对 aether-proxy 仓库全部 golden 配置跑 `xray run -test`（用官方 linux-64 二进制或本次编译出的 x86_64 包中的二进制）。
    **检查通过、仓库所有者合并后**才进入发布。PR 上的检查拿不到签名私钥，也不发布。
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
@@ -64,11 +64,15 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
     "aether-proxy": { "current": { "version": "0.2.0-r1", "assets": { "all": { "ipk": { }, "apk": { } } } }, "previous": null }
   },
   "data": {
-    "chnroute4": { "version": "20261014", "url": "chnroute4-20261014.txt.gz", "sha256": "…", "size": 0, "lines": 0 }
+    "chnroute4": { "version": "3f2a…", "url": "chnroute4-3f2a….txt.gz", "sha256": "<gz 文件>", "size": 0, "content_sha256": "<解压后内容>", "lines": 0 }
   }
 }
 ```
 
+- 数据项的 `size`、`sha256` 描述**下载的 .gz 文件**（与其他资产一样在下载时校验）；`content_sha256` 是解压后列表的哈希，用来和本机的数据比较是否变化。
+- 软件包：`xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。
+- 资产文件名：ipk 原样（`<名>_<版本>_<架构>.ipk`）；25.12 SDK 输出的 apk 文件名**不带架构**（`<名>-<版本>.apk`），架构相关的 apk 发布时改名为 `<名>-<版本>_<架构>.apk`，否则各目标的同名文件在 Release 里互相覆盖。
+  `tools/channel/build.py` 按 SDK 的输出布局 `<目标架构>/<feed>/<文件>` 取架构；架构无关的包每个 SDK 都会再编一份，只取第一份。
 - `assets` 的键直接是 OpenWrt 的包架构（设备 `/etc/openwrt_release` 的 `DISTRIB_ARCH`，与 `opkg print-architecture` 一致），`all` 用于架构无关的包。不再需要额外的架构映射表。
 - 每个包保留 `current` 与 `previous` 两个版本的资产：回滚时安装 `previous`（opkg/apk 本身不保留旧包）。
 - `url` 是相对路径，相对于下载清单所用的那个 `channel_urls` 地址，镜像只需整体镜像目录。
