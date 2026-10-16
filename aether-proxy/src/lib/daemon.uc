@@ -848,6 +848,115 @@ function read_subscription_status(ctx) {
 	return status;
 };
 
+function read_update_schedule(ctx) {
+	let path = `${state_dir(ctx)}/${C.UPDATE_SCHEDULE_FILE}`;
+	let text = fs.readfile(path);
+	if (text == null) {
+		let detail = fs.error() ?? 'unknown error';
+		if (detail == 'No such file or directory')
+			return {};
+		log.event('error', 'FS_FAILED', { op: 'read', path, detail });
+		return null;
+	}
+	let record = null, parse_error = null;
+	try { record = json(text); }
+	catch (e) { parse_error = e.message ?? `${e}`; }
+	let valid = type(record) == 'object';
+	if (valid) {
+		for (let name in [ 'data', 'check' ])
+			if (record[name] != null && (type(record[name]) != 'object' || !numeric(record[name].last_attempt)))
+				valid = false;
+		if (record.auto_install != null && (type(record.auto_install) != 'object' ||
+		    type(record.auto_install.version) != 'string' || !numeric(record.auto_install.at)))
+			valid = false;
+	}
+	if (!valid) {
+		if (ctx.update_schedule_corrupt != text) {
+			ctx.update_schedule_corrupt = text;
+			log.event('error', 'FS_FAILED', { op: 'parse', path, detail: `invalid ${path}: ${parse_error ?? 'expected a JSON object'}; treated as empty` });
+		}
+		return {};
+	}
+	ctx.update_schedule_corrupt = null;
+	return record;
+};
+
+function write_update_schedule(ctx, record) {
+	let path = `${state_dir(ctx)}/${C.UPDATE_SCHEDULE_FILE}`;
+	if (!sys.write_atomic(path, sprintf('%.J', record))) {
+		log.event('error', 'FS_FAILED', { op: 'write', path, detail: sys.error() });
+		return false;
+	}
+	return true;
+};
+
+function update_job(ctx, opts, argv) {
+	let args = [ cmd(ctx, C.PROG), 'job', 'start', ...argv,
+		'--confdir', opts.confdir, '--run-dir', run_dir(ctx) ];
+	if (ctx.root != '')
+		push(args, '--sys-root', ctx.root);
+	if (ctx.bin_dir != null)
+		push(args, '--bin-dir', ctx.bin_dir);
+	return sys.run(args, { timeout: 10, quiet: true });
+};
+
+function schedule_update_jobs(ctx, opts, started_at, daemon) {
+	let service_state = daemon.machine.state;
+	if (index([ 'running', 'degraded' ], service_state) < 0)
+		return;
+	let cfg = daemon.snapshot.update ?? {};
+	let record = read_update_schedule(ctx);
+	if (record == null)
+		return;
+	let now = time();
+	let slot = schedule.last_slot(now, cfg.data_hour, cfg.data_minute, localtime(now));
+	let due = schedule.update_due(cfg, record, slot, started_at);
+	if (due != null) {
+		let result = update_job(ctx, opts, [ 'update', due ]);
+		if (result.code == 3)
+			return;
+		if (result.code != 0) {
+			let args = { cmd: `job start update ${due}`, rc: result.code, stderr: trim(result.stderr) };
+			if (result.timed_out) args.timed_out = true;
+			log.event('error', 'CMD_FAILED', args);
+		}
+		if (now != 0) {
+			record[due] = { last_attempt: now };
+			write_update_schedule(ctx, record);
+		}
+		else
+			log.event('error', 'CMD_FAILED', { cmd: `job start update ${due}`, rc: result.code, stderr: 'time() returned zero; attempt not recorded' });
+		return;
+	}
+	if (service_state != 'running')
+		return;
+	let updates_path = `${run_dir(ctx)}/${C.UPDATE_FILE}`;
+	let text = fs.readfile(updates_path);
+	if (text == null)
+		return;
+	let updates = null;
+	try { updates = json(text); }
+	catch (e) { return; }
+	let version = schedule.auto_install_due(cfg, updates, record);
+	if (version == null)
+		return;
+	let result = update_job(ctx, opts, [ 'update', 'package', 'xray-core' ]);
+	if (result.code == 3)
+		return;
+	if (result.code != 0) {
+		let args = { cmd: 'job start update package xray-core', rc: result.code, stderr: trim(result.stderr) };
+		if (result.timed_out) args.timed_out = true;
+		log.event('error', 'CMD_FAILED', args);
+	}
+	let at = time();
+	if (at != 0) {
+		record.auto_install = { version, at };
+		write_update_schedule(ctx, record);
+	}
+	else
+		log.event('error', 'CMD_FAILED', { cmd: 'job start update package xray-core', rc: result.code, stderr: 'time() returned zero; attempt not recorded' });
+};
+
 function schedule_subscription_job(ctx, opts, name) {
 	let argv = [ cmd(ctx, C.PROG), 'job', 'start', 'sub', 'update', name,
 		'--confdir', opts.confdir, '--run-dir', run_dir(ctx) ];
@@ -918,12 +1027,13 @@ function run(args) {
 			if (index([ 'running', 'degraded' ], monitor_daemon.machine.state) < 0)
 				return;
 			let status = read_subscription_status(ctx);
-			if (status == null)
-				return;
-			let name = schedule.due(schedule_subs(monitor_daemon.snapshot.subscriptions), status,
-				subscription_jitter, time(), schedule_started_at);
-			if (name != null)
-				schedule_subscription_job(ctx, opts, name);
+			if (status != null) {
+				let name = schedule.due(schedule_subs(monitor_daemon.snapshot.subscriptions), status,
+					subscription_jitter, time(), schedule_started_at);
+				if (name != null)
+					schedule_subscription_job(ctx, opts, name);
+			}
+			schedule_update_jobs(ctx, opts, schedule_started_at, monitor_daemon);
 		};
 
 		subscription_timer = uloop.interval(schedule_interval_ms(), schedule_tick);
