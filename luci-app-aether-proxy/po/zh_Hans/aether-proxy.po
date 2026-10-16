@@ -410,3 +410,66 @@ msgstr "添加"
 
 msgid "Update all"
 msgstr "全部更新"
+
+msgid "Set the policy for each LAN host and for hosts that are not listed."
+msgstr "为每台 LAN 主机设置策略，并设置未列出主机采用的策略。"
+
+msgid "Policy for unlisted hosts"
+msgstr "未列出主机的策略"
+
+msgid "This corresponds to the three helloworld approaches as follows:"
+msgstr "与 helloworld 三种方式的对应关系："
+
+msgid "Disabled: unlisted_policy=follow, no host sections."
+msgstr "停用：unlisted_policy=follow，不建 host 段。"
+
+msgid "Only allow listed hosts: unlisted_policy=direct, listed hosts use policy=follow."
+msgstr "仅允许列表内主机：unlisted_policy=direct，列表内主机 policy=follow。"
+
+msgid "Also allow unlisted hosts: unlisted_policy=follow, listed hosts use policy=direct."
+msgstr "列表外也允许：unlisted_policy=follow，列表内主机 policy=direct。"
+
+msgid "Follow global mode"
+msgstr "跟随全局模式"
+
+msgid "Follow"
+msgstr "跟随"
+
+msgid "Policy"
+msgstr "策略"
+
+msgid "IP"
+msgstr "IP"
+
+msgid "MAC"
+msgstr "MAC"
+
+msgid "Game mode"
+msgstr "游戏模式"
+
+msgid "The host configuration has %s error(s); nothing was saved."
+msgstr "主机配置有 %s 处错误，未保存。"
+
+msgid "Host %s: fill in at least one of IP and MAC."
+msgstr "主机 %s：IP 与 MAC 至少填一个。"
+
+msgid "Host %s: game mode (UDP) cannot be enabled when the policy is direct."
+msgstr "主机 %s：策略为直连时不能开启游戏模式（UDP）。"
+
+msgid "Host %s: %s is also used by host %s."
+msgstr "主机 %s：%s 与主机 %s 重复。"
+
+msgid "Host %s: %s is not a valid IPv4 address or CIDR."
+msgstr "主机 %s：%s 不是合法的 IPv4 地址或 CIDR。"
+
+msgid "Host %s: %s is not a valid MAC address."
+msgstr "主机 %s：%s 不是合法的 MAC 地址。"
+
+msgid "Hosts %s and %s overlap; direct → proxy → follow applies in this order."
+msgstr "主机 %s 与 %s 重叠，按 直连 → 代理 → 跟随 的顺序生效。"
+
+msgid "%s (%s)"
+msgstr "%s（%s）"
+
+msgid ", "
+msgstr "，"
