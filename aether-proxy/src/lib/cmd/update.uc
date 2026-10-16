@@ -31,19 +31,22 @@ function parse_args(args) {
 
 function usage(opts, detail) {
 	return pipeline.finish(opts, { ok: false, code: 'USAGE', detail }, 2,
-		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update package|data (not implemented yet)`);
+		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update data [options]\n       aether-proxy update package (not implemented yet)`);
 }
 
 export function run(args) {
 	let parsed = parse_args(args);
 	if (parsed.error)
 		return usage({ json: index(args, '--json') >= 0 }, parsed.error);
-	if (parsed.positional[0] != 'check' || length(parsed.positional) != 1)
-		return usage(parsed.opts, parsed.positional[0] == 'package' || parsed.positional[0] == 'data'
-			? '尚未实现' : 'expected `update check`');
-	let result = update.check(parsed.opts);
+	if (length(parsed.positional) != 1 || index([ 'check', 'data' ], parsed.positional[0]) < 0)
+		return usage(parsed.opts, parsed.positional[0] == 'package' ? '尚未实现' : 'expected `update check` or `update data`');
+	let result = parsed.positional[0] == 'data' ? update.data_update(parsed.opts) : update.check(parsed.opts);
 	if (!result.ok)
-		return pipeline.finish(parsed.opts,
-			{ ok: false, code: result.code, detail: result.detail }, result.exit, `${result.code}: ${result.detail}`);
+		return pipeline.finish(parsed.opts, parsed.positional[0] == 'data'
+			? { ok: false, updated: result.updated, unchanged: result.unchanged, failed: result.failed }
+			: { ok: false, code: result.code, detail: result.detail }, result.exit,
+			parsed.positional[0] == 'data' ? 'update data completed with failures' : `${result.code}: ${result.detail}`);
+	if (parsed.positional[0] == 'data')
+		return pipeline.finish(parsed.opts, { ok: true, updated: result.updated, unchanged: result.unchanged, failed: result.failed }, 0, 'update data completed');
 	return pipeline.finish(parsed.opts, result.value, 0, 'update check completed');
 };
