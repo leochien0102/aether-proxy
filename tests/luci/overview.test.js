@@ -80,7 +80,12 @@ function loadView(overrides = {}) {
 		save: () => Promise.resolve()
 	}, overrides.uci ?? {});
 	const uiDouble = Object.assign({
-		createHandlerFn: (self, fn) => (typeof fn == 'function' ? fn.bind(self) : fn),
+		// Same contract as LuCI's ui.createHandlerFn(ctx, fn, ...args): a missing fn yields null.
+		createHandlerFn: (ctx, fn, ...args) => {
+			if (typeof fn == 'string')
+				fn = ctx[fn];
+			return typeof fn == 'function' ? (...rest) => fn.call(ctx, ...args, ...rest) : null;
+		},
 		changes: { apply: () => {} },
 		addNotification: () => {}
 	}, overrides.ui ?? {});
@@ -380,4 +385,47 @@ test('scenario 9: static view checks — model only, stop button negative and co
 	assert.match(src, /}, 5000\)/);
 	assert.match(src, /ap\.call\('service', \{ action: action \}\)/);
 	assert.match(src, /ui\.addNotification\(/);
+});
+
+function findAll(node, tag, out = []) {
+	if (!node || typeof node != 'object')
+		return out;
+	if (node.tag == tag)
+		out.push(node);
+	for (const child of node.children ?? [])
+		findAll(child, tag, out);
+	return out;
+}
+
+test('T8.11a review: service buttons are clickable and stop asks with the model text first', async () => {
+	const rpcCalls = [];
+	const asked = [];
+	let answer = false;
+	const saved = globalThis.confirm;
+	globalThis.confirm = (text) => { asked.push(text); return answer; };
+	try {
+		const page = loadView({ rpcCalls });
+		page.content = E('div', {}, []);
+		page.labels = {};
+		page.enabled = true;
+		page.refresh({ ok: true, state: 'running' });
+		const buttons = findAll(page.buttonBar(page.vm.buttons), 'button');
+		// Order and classes from buttonBar: start, restart (cbi-button-apply), stop (cbi-button-negative).
+		assert.equal(buttons.length, 3);
+		const restart = buttons[1];
+		const stop = buttons.find(b => b.attrs.class.includes('cbi-button-negative'));
+		assert.equal(typeof restart.attrs.click, 'function', 'restart has a click handler');
+		assert.equal(typeof stop.attrs.click, 'function', 'stop has a click handler');
+
+		await stop.attrs.click();
+		assert.deepEqual(asked, [ page.vm.stop_confirmation ]);
+		assert.ok(!rpcCalls.includes('service'), 'cancelled stop calls nothing');
+
+		answer = true;
+		await stop.attrs.click();
+		assert.ok(rpcCalls.includes('service'), 'confirmed stop calls service');
+	}
+	finally {
+		globalThis.confirm = saved;
+	}
 });
