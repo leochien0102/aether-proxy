@@ -164,7 +164,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 3. 安装：opkg 用 `opkg install <文件>`；apk 用 `apk add --allow-untrusted <文件>`。**只在第 1 步的验签与哈希都通过之后**才这样调用——
    完整性由我们的签名清单保证，`--allow-untrusted` 只是跳过 apk 对 SDK 临时构建密钥的签名检查。
 4. 安装后检查（失败 → 安装清单中的 `previous` 资产回滚，记 ERR `UPDATE_ROLLED_BACK`）：
-   - `xray-core`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `xray version` 输出的版本等于清单版本的上游部分。
+   - `xray-core`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」；经 procd：`ubus call service signal '{"name":"aether-proxy","signal":12}'`，`signal` 必须是整数，不带 `instance`），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `xray version` 输出的版本等于清单版本的上游部分。
    - `aether-proxy`（及 luci 包）：`/etc/init.d/aether-proxy restart` 后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时只检查 `aether-proxy check` 通过。
 5. 成功记 `UPDATE_INSTALLED`。
 

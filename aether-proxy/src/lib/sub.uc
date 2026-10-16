@@ -472,8 +472,7 @@ function render_current_node(ctx, content) {
 	if (!rendered.ok)
 		return { ok: false, detail: `render current node failed (${rendered.code}): ${rendered.detail}` };
 
-	let xray = ctx.opts.bin_dir ? `${ctx.opts.bin_dir}/xray` :
-		(rendered.snapshot.main.xray_bin ?? `${system_path(ctx.root, C.BIN_DIR)}/xray/current/xray`);
+	let xray = ctx.opts.bin_dir ? `${ctx.opts.bin_dir}/xray` : (rendered.snapshot.main.xray_bin ?? C.XRAY_COMPONENT);
 	if (!fs.access(xray, 'x'))
 		return { ok: false, detail: `xray run -test unavailable: ${xray} is not executable` };
 

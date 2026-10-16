@@ -1,7 +1,17 @@
 #!/bin/sh
 if [ "$1" = list ] && [ "$2" = -I ]; then
+	if [ -n "${UPDATE_PACKAGE_STATE_FILE:-}" ] && [ -f "$UPDATE_PACKAGE_STATE_FILE" ]; then
+		printf '%s-%s noarch {installed}\n' "$3" "$(cat "$UPDATE_PACKAGE_STATE_FILE")"; exit 0
+	fi
 	[ "$UPDATE_INSTALLED_MODE" = missing ] && exit 0
 	printf '%s-%s noarch {installed}\n' "$3" "${UPDATE_APK_VERSION:-26.9.30-r5}"
+	exit 0
+fi
+if [ "$1" = add ] && [ "$2" = --allow-untrusted ]; then
+	printf '%s\n' "$*" >> "${UPDATE_PACKAGE_CALLS:?}"
+	[ "${UPDATE_INSTALL_EXIT:-0}" = 0 ] || exit "$UPDATE_INSTALL_EXIT"
+	file=${3##*/}; version=$(printf '%s\n' "$file" | sed -E 's/.*-([0-9][0-9.]*-r[0-9]+)_.*/\1/')
+	[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
 	exit 0
 fi
 exit 2

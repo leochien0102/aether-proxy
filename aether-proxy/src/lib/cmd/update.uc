@@ -11,6 +11,10 @@ function parse_args(args) {
 	let opts = {}, positional = [];
 	for (let i = 0; i < length(args); i++) {
 		let arg = args[i];
+		if (arg == '--previous') {
+			opts.previous = true;
+			continue;
+		}
 		if (arg == '--json') {
 			opts.json = true;
 			continue;
@@ -31,15 +35,24 @@ function parse_args(args) {
 
 function usage(opts, detail) {
 	return pipeline.finish(opts, { ok: false, code: 'USAGE', detail }, 2,
-		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update data [options]\n       aether-proxy update package (not implemented yet)`);
+		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update data [options]\n       aether-proxy update package <package> [--previous] [options]`);
 }
 
 export function run(args) {
 	let parsed = parse_args(args);
 	if (parsed.error)
 		return usage({ json: index(args, '--json') >= 0 }, parsed.error);
-	if (length(parsed.positional) != 1 || index([ 'check', 'data' ], parsed.positional[0]) < 0)
-		return usage(parsed.opts, parsed.positional[0] == 'package' ? '尚未实现' : 'expected `update check` or `update data`');
+	if (parsed.positional[0] == 'package' && length(parsed.positional) == 2) {
+		let result = update.package_update(parsed.opts, parsed.positional[1], parsed.opts.previous);
+		if (!result.ok)
+			return pipeline.finish(parsed.opts,
+				result.value ?? { ok: false, package: parsed.positional[1], from: null, to: null,
+					rolled_back: false, code: result.code, detail: result.detail },
+				result.exit, `${result.code}: ${result.detail}`);
+		return pipeline.finish(parsed.opts, result.value, 0, 'update package completed');
+	}
+	if (parsed.opts.previous || length(parsed.positional) != 1 || index([ 'check', 'data' ], parsed.positional[0]) < 0)
+		return usage(parsed.opts, 'expected `update check`, `update data` or `update package <package>`');
 	let result = parsed.positional[0] == 'data' ? update.data_update(parsed.opts) : update.check(parsed.opts);
 	if (!result.ok)
 		return pipeline.finish(parsed.opts, parsed.positional[0] == 'data'

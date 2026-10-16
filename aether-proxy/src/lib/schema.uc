@@ -126,7 +126,6 @@ const update = [
 	// Randomized by uci-defaults at install time; consumers treat null as 30 (docs/05).
 	{ name: 'data_minute', type: 'int', min: 0, max: 59, default: null },
 	{ name: 'xray_auto', type: 'enum', enum: [ 'off', 'notify', 'auto' ], default: 'notify' },
-	{ name: 'chinadns_auto', type: 'enum', enum: [ 'off', 'notify' ], default: 'notify' }
 ];
 
 // TODO(design): 05 gives no ranges for the probe numbers; all must be >= 1, with no upper

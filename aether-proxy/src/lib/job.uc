@@ -193,8 +193,12 @@ function kind_for(argv) {
 		return 'probe_nodes';
 	if (length(argv) >= 2 && argv[0] == 'sub' && argv[1] == 'update')
 		return 'sub_update';
-	if (length(argv) >= 2 && argv[0] == 'update' && index([ 'check', 'data' ], argv[1]) >= 0)
-		return argv[1] == 'data' ? 'update_data' : 'update_check';
+	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'check')
+		return 'update_check';
+	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'data')
+		return 'update_data';
+	if (length(argv) >= 3 && argv[0] == 'update' && argv[1] == 'package')
+		return 'update_package';
 	return null;
 }
 
