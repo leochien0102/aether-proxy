@@ -233,6 +233,14 @@ dataplane_step_field=$(printf '%s\n' "$start_event" | jget args.steps.restore_nf
 	&& ok "SERVICE_STARTED includes step timings" || bad "SERVICE_STARTED includes step timings"
 cp "$L1" "$L1_START"
 
+# T8.9a: inspect persisted component metadata, not only banner command calls.
+expect 'component xray path' "$T/bin/xray" "$(jget components.xray.path < "$R1/var/run/aether-proxy/state.json")"
+expect 'component xray version' '26.9.30' "$(jget components.xray.version < "$R1/var/run/aether-proxy/state.json")"
+expect 'component chinadns path' "$T/bin/chinadns-ng" \
+	"$(jget components.chinadns-ng.path < "$R1/var/run/aether-proxy/state.json")"
+expect 'component chinadns version' '2025.06.20' \
+	"$(jget components.chinadns-ng.version < "$R1/var/run/aether-proxy/state.json")"
+
 # SIGUSR1 ticks immediately; SIGHUP with an unchanged config is an incremental no-op (T2.6).
 kill -USR1 "$DAEMON_PID"
 sleep 0.1
@@ -273,6 +281,9 @@ start_daemon "$R2U" "$L2U"
 if wait_for "$R2U/var/run/aether-proxy/state.json" 'starting'; then
 	old_xray=$(cat "$R2U/xray.pid"); old_dns=$(cat "$R2U/chinadns-ng.pid" 2>/dev/null || cat "$R2U/chinadns.pid")
 	old_curl=$(count_calls "$L2U" 'curl ')
+	printf 'Xray 26.10.10 (replacement)\n' > "$R2U/xray-version"
+	# Changing the DNS banner too proves SIGUSR2 does not query DNS again.
+	printf 'ChinaDNS-NG SHOULD-NOT-REFRESH\n' > "$R2U/chinadns-version"
 	kill -USR2 "$DAEMON_PID"
 	for _ in {1..200}; do
 		new_xray=$(cat "$R2U/xray.pid" 2>/dev/null || :)
@@ -282,6 +293,11 @@ if wait_for "$R2U/var/run/aether-proxy/state.json" 'starting'; then
 	new_dns=$(cat "$R2U/chinadns-ng.pid" 2>/dev/null || cat "$R2U/chinadns.pid" 2>/dev/null || :)
 	[ -n "$new_xray" ] && [ "$new_xray" != "$old_xray" ] && ok 'SIGUSR2 changes Xray pid' || bad 'SIGUSR2 changes Xray pid'
 	expect 'SIGUSR2 keeps chinadns pid' "$old_dns" "$new_dns"
+	wait_for "$R2U/var/run/aether-proxy/state.json" '26.10.10' 200 \
+		&& ok 'SIGUSR2 refreshes xray version' || bad 'SIGUSR2 refreshes xray version'
+	expect 'SIGUSR2 preserves chinadns version' '2025.06.20' \
+		"$(jget components.chinadns-ng.version < "$R2U/var/run/aether-proxy/state.json")"
+	expect 'SIGUSR2 does not query chinadns again' 1 "$(count_calls "$L2U" 'chinadns-ng -V')"
 	wait_count "$L2U" 'curl ' "$((old_curl + 1))" && ok 'SIGUSR2 immediately runs monitor' || bad 'SIGUSR2 immediately runs monitor'
 else
 	bad 'SIGUSR2 test daemon starts' "$(cat "$R2U/daemon.stderr")"
@@ -447,6 +463,52 @@ else
 	bad "SIGHUP scenario reaches retry wait" "$(cat "$R9/daemon.stderr")"
 	stop_daemon
 fi
+
+# T8.9a: failure and timeout are informational; use degraded startup to avoid monitor timing races.
+for mode in fail malformed delay; do
+	RV="$T/sys-version-$mode"; LV="$RV/calls.log"
+	make_root "$RV"; : > "$LV"
+	case "$mode" in
+		fail) touch "$RV/xray-version-fail" ;;
+		malformed) printf 'Xray\n' > "$RV/xray-version" ;;
+		delay) touch "$RV/xray-version-delay" ;;
+	esac
+	version_start=$SECONDS
+	STUB_RESOLVE_FAIL=1 start_daemon "$RV" "$LV"
+	if wait_for "$RV/var/run/aether-proxy/state.json" 'degraded' 240; then
+		ok "version $mode still reaches degraded"
+	else
+		bad "version $mode still reaches degraded" "$(cat "$RV/daemon.stderr")"
+	fi
+	version_elapsed=$((SECONDS - version_start))
+	# jget treats missing and null alike; explicitly require the version key as well as JSON null.
+	if "$UCODE" -e '
+		import * as fs from "fs";
+		let component = json(fs.stdin.read("all"))?.components?.xray;
+		exit(type(component) == "object" && index(keys(component), "version") >= 0 &&
+			component.version == null ? 0 : 1);
+	' < "$RV/var/run/aether-proxy/state.json"; then
+		ok "version $mode persists null"
+	else
+		bad "version $mode persists null"
+	fi
+	expect "version $mode keeps DNS version" '2025.06.20' \
+		"$(jget components.chinadns-ng.version < "$RV/var/run/aether-proxy/state.json")"
+	# A missing quiet:true would add CMD_FAILED containing the failing banner invocation.
+	if grep -Eq 'CMD_FAILED|version query|xray.*version' "$RV/var/run/aether-proxy/events.jsonl"; then
+		bad "version $mode emits no query events"
+	else
+		ok "version $mode emits no query events"
+	fi
+	if [ "$mode" = delay ]; then
+		[ "$version_elapsed" -ge 5 ] && [ "$version_elapsed" -lt 12 ] \
+			&& ok 'version timeout bounds startup to 5-12 seconds' \
+			|| bad 'version timeout bounds startup to 5-12 seconds' "elapsed=${version_elapsed}s"
+	fi
+	stop_daemon
+	expect "version $mode daemon stops" 0 "$?"
+	assert_no_children "$RV"
+done
 
 echo "daemon: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
