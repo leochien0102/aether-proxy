@@ -277,25 +277,28 @@ return view.extend({
 
 		o = s.option(form.Value, 'uuid', _('UUID'));
 		o.modalonly = true;
-		o.depends = { protocol: [ 'vless', 'vmess' ] };
+		o.depends('protocol', 'vless');
+		o.depends('protocol', 'vmess');
 
 		o = s.option(form.Value, 'password', _('Password'));
 		o.modalonly = true;
-		o.depends = { protocol: [ 'trojan', 'shadowsocks' ] };
+		o.depends('protocol', 'trojan');
+		o.depends('protocol', 'shadowsocks');
 
 		o = s.option(form.Value, 'method', _('Encryption method'));
 		o.modalonly = true;
-		o.depends = { protocol: [ 'shadowsocks', 'vmess' ] };
+		o.depends('protocol', 'shadowsocks');
+		o.depends('protocol', 'vmess');
 
 		o = s.option(form.Value, 'encryption', _('Encryption'));
 		o.modalonly = true;
 		o.optional = true;
 		o.placeholder = 'none';
-		o.depends = { protocol: 'vless' };
+		o.depends('protocol', 'vless');
 
 		o = s.option(form.Value, 'flow', _('Flow'));
 		o.modalonly = true;
-		o.depends = { protocol: 'vless' };
+		o.depends('protocol', 'vless');
 
 		o = s.option(form.ListValue, 'security', _('Security layer'));
 		o.modalonly = true;
@@ -307,58 +310,65 @@ return view.extend({
 
 		o = s.option(form.Value, 'host', _('Host'));
 		o.modalonly = true;
-		o.depends = { transport: [ 'ws', 'httpupgrade', 'xhttp' ] };
+		o.depends('transport', 'ws');
+		o.depends('transport', 'httpupgrade');
+		o.depends('transport', 'xhttp');
 
 		o = s.option(form.Value, 'path', _('Path'));
 		o.modalonly = true;
-		o.depends = { transport: [ 'ws', 'httpupgrade', 'xhttp' ] };
+		o.depends('transport', 'ws');
+		o.depends('transport', 'httpupgrade');
+		o.depends('transport', 'xhttp');
 
 		o = s.option(form.Value, 'service_name', _('gRPC service name'));
 		o.modalonly = true;
-		o.depends = { transport: 'grpc' };
+		o.depends('transport', 'grpc');
 
 		o = s.option(form.Value, 'xhttp_mode', _('XHTTP mode'));
 		o.modalonly = true;
-		o.depends = { transport: 'xhttp' };
+		o.depends('transport', 'xhttp');
 
 		o = s.option(form.ListValue, 'header_type', _('Header type'));
 		o.modalonly = true;
 		o.value('none', 'none');
 		o.value('http', 'http');
 		o.optional = true;
-		o.depends = { transport: 'raw' };
+		o.depends('transport', 'raw');
 
 		o = s.option(form.Value, 'sni', _('SNI'));
 		o.modalonly = true;
-		o.depends = { security: [ 'tls', 'reality' ] };
+		o.depends('security', 'tls');
+		o.depends('security', 'reality');
 
 		o = s.option(form.DynamicList, 'alpn', _('ALPN'));
 		o.modalonly = true;
-		o.depends = { security: [ 'tls', 'reality' ] };
+		o.depends('security', 'tls');
+		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'fingerprint', _('TLS fingerprint'));
 		o.modalonly = true;
-		o.depends = { security: [ 'tls', 'reality' ] };
+		o.depends('security', 'tls');
+		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'pinned_cert_sha256', _('Pinned certificate SHA-256'));
 		o.modalonly = true;
-		o.depends = { security: 'tls' };
+		o.depends('security', 'tls');
 
 		o = s.option(form.Value, 'verify_name', _('Verify certificate by name'));
 		o.modalonly = true;
-		o.depends = { security: 'tls' };
+		o.depends('security', 'tls');
 
 		o = s.option(form.Value, 'reality_pbk', _('REALITY public key'));
 		o.modalonly = true;
-		o.depends = { security: 'reality' };
+		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'reality_sid', _('REALITY short ID'));
 		o.modalonly = true;
-		o.depends = { security: 'reality' };
+		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX'));
 		o.modalonly = true;
-		o.depends = { security: 'reality' };
+		o.depends('security', 'reality');
 
 		return m;
 	},

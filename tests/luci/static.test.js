@@ -142,3 +142,19 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 		assert.ok(po[id].length > 0, `po translation for "${id}" is non-empty`);
 	}
 });
+
+/* LuCI form options: `depends` is a method. Assigning to it (`o.depends = {…}`)
+   replaces the method and registers no condition, so the option always shows;
+   an array value (`{ key: [a, b] }`) never matches, because form.js isEqual()
+   compares a string form value with the array and fails on the type. Use one
+   call per accepted value: o.depends('key', 'a'); o.depends('key', 'b'). Found
+   in the T8.7 review (the T8.5 nodes page had both forms). */
+test('views call depends() with scalar values only', () => {
+	for (const name of fs.readdirSync(VIEWS).filter((f) => f.endsWith('.js'))) {
+		const src = read(path.join(VIEWS, name));
+
+		assert.doesNotMatch(src, /\.depends\s*=/, `${name}: depends is assigned instead of called`);
+		assert.doesNotMatch(src, /\.depends\(\s*\{[^}]*\[/, `${name}: depends() with an array value never matches`);
+		assert.doesNotMatch(src, /\.depends\(\s*'[^']*'\s*,\s*\[/, `${name}: depends() with an array value never matches`);
+	}
+});
