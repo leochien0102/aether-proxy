@@ -719,3 +719,186 @@ msgstr "通道地址"
 
 msgid "Leave empty to use the default release channel."
 msgstr "留空则使用默认的发布通道。"
+
+msgid "Error"
+msgstr "错误"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "Notice"
+msgstr "通知"
+
+msgid "Info"
+msgstr "信息"
+
+msgid "Debug"
+msgstr "调试"
+
+msgid "Which inbound interfaces to intercept; usually br-lan."
+msgstr "拦截哪些入接口，通常是 br-lan。"
+
+msgid "Reject UDP 443 to proxied destinations (except game-mode hosts)."
+msgstr "对代理目标的 UDP 443 直接拒绝（游戏模式主机除外）。"
+
+msgid "Hijack LAN port 53 to the router (direct hosts are excepted). When disabled, devices with their own DNS servers bypass the routing rules."
+msgstr "把 LAN 的 53 端口劫持到路由器（策略为直连的主机除外）。关闭后，自己指定了 DNS 的设备会绕过分流。"
+
+msgid "All AAAA queries return an empty answer so devices use IPv4 only. IPv6 address assignment on the LAN is not affected."
+msgstr "所有 AAAA 查询返回空结果，让设备只用 IPv4 访问；LAN 侧的 IPv6 地址分配不受影响。"
+
+msgid "Filter HTTPS RR records (qtype 65)."
+msgstr "过滤 HTTPS RR 记录（qtype 65）。"
+
+msgid "Remove the interception rules while Xray is down so traffic goes direct. When disabled, proxied traffic is interrupted while Xray is unavailable instead of falling back to direct."
+msgstr "Xray 不可用时摘除拦截规则、让流量直连。关闭后，Xray 不可用时被代理的流量会中断，而不是改为直连。"
+
+msgid "Xray inbound sniffing for http/tls/quic with routeOnly=false (the node connects by domain)."
+msgstr "Xray 入站嗅探 http/tls/quic，routeOnly=false（由节点按域名连接）。"
+
+msgid "URL polled by the health check; must start with http:// or https:// and contain no whitespace."
+msgstr "健康检测轮询的地址；必须以 http:// 或 https:// 开头且不含空白。"
+
+msgid "Seconds to wait for the network at boot; 0 disables the wait."
+msgstr "开机等待网络的时间（秒）；0 表示不等待。"
+
+msgid "IPv4 address and port probed while waiting for the network, written as address:port."
+msgstr "等待网络期间探测的 IPv4 地址和端口，写作 地址:端口。"
+
+msgid "HTTP status code the health check expects."
+msgstr "健康检测期望的 HTTP 状态码。"
+
+msgid "Health check timeout in seconds."
+msgstr "健康检测超时（秒）。"
+
+msgid "Consecutive failures before the node is marked unhealthy."
+msgstr "连续失败几次判为不健康。"
+
+msgid "Consecutive successes before the node is marked healthy again."
+msgstr "连续成功几次判为恢复健康。"
+
+msgid "TCP reachability probe timeout per node, in seconds."
+msgstr "单个节点 TCP 可达性检测超时（秒）。"
+
+msgid "How many nodes to probe at the same time."
+msgstr "同时检测多少个节点。"
+
+msgid "Absolute path to the Xray binary without whitespace; leave empty to search the standard locations."
+msgstr "Xray 可执行文件的绝对路径，不含空白；留空则按默认顺序查找。"
+
+msgid "Absolute path to the chinadns-ng binary without whitespace; leave empty to search the standard locations."
+msgstr "chinadns-ng 可执行文件的绝对路径，不含空白；留空则按默认顺序查找。"
+
+msgid "Name of the dnsmasq instance to use; leave empty to detect it automatically."
+msgstr "要使用的 dnsmasq 实例名；留空则自动检测。"
+
+msgid "Debug logs fill the 64 KB logd buffer quickly; increase the buffer under System → Logs and switch back to notice when done."
+msgstr "debug 等级会很快写满 64KB 的 logd 缓冲区；建议在 系统 → 日志 中调大缓冲区，排查完成后调回 notice。"
+
+msgid "Enter an integer."
+msgstr "请输入整数。"
+
+msgid "Enter a value between %s and %s."
+msgstr "请输入 %s 到 %s 之间的数值。"
+
+msgid "Enter a value of at least %s."
+msgstr "请输入不小于 %s 的数值。"
+
+msgid "Enter 0 or 1."
+msgstr "请输入 0 或 1。"
+
+msgid "Select at least one interface."
+msgstr "请至少选择一个接口。"
+
+msgid "Every entry must be an IPv4 address and a port (1-65535), like 223.5.5.5:53."
+msgstr "每项必须是 IPv4 地址加端口（1-65535），例如 223.5.5.5:53。"
+
+msgid "Enter an absolute path without whitespace."
+msgstr "请输入不含空白的绝对路径。"
+
+msgid "Enter a non-empty instance name."
+msgstr "请输入非空的实例名。"
+
+msgid "Enter an HTTP or HTTPS URL without whitespace."
+msgstr "请输入不含空白的 HTTP 或 HTTPS 地址。"
+
+msgid "Select a log level."
+msgstr "请选择日志等级。"
+
+msgid "Interception, logging, boot and health-check settings."
+msgstr "拦截、日志、开机等待与健康检测设置。"
+
+msgid "Interception"
+msgstr "拦截"
+
+msgid "Logging"
+msgstr "日志"
+
+msgid "Boot and health checks"
+msgstr "开机与检测"
+
+msgid "Components and DNS instance"
+msgstr "组件与 DNS 实例"
+
+msgid "Interfaces"
+msgstr "入接口"
+
+msgid "Block QUIC"
+msgstr "阻断 QUIC"
+
+msgid "Hijack DNS"
+msgstr "劫持 DNS"
+
+msgid "Filter IPv6"
+msgstr "过滤 IPv6"
+
+msgid "Filter HTTPS RR"
+msgstr "过滤 HTTPS RR"
+
+msgid "Fail open"
+msgstr "故障放行"
+
+msgid "Sniffing"
+msgstr "入站嗅探"
+
+msgid "Log level"
+msgstr "日志等级"
+
+msgid "Xray log level"
+msgstr "Xray 日志等级"
+
+msgid "Boot wait timeout"
+msgstr "开机等待时间"
+
+msgid "Boot check targets"
+msgstr "开机检测目标"
+
+msgid "Health check URL"
+msgstr "健康检测地址"
+
+msgid "Expected status code"
+msgstr "期望状态码"
+
+msgid "Health check timeout"
+msgstr "健康检测超时"
+
+msgid "Fail threshold"
+msgstr "失败阈值"
+
+msgid "Recover threshold"
+msgstr "恢复阈值"
+
+msgid "Node probe timeout"
+msgstr "节点检测超时"
+
+msgid "Node probe concurrency"
+msgstr "节点检测并发数"
+
+msgid "Xray binary"
+msgstr "Xray 可执行文件"
+
+msgid "chinadns-ng binary"
+msgstr "chinadns-ng 可执行文件"
+
+msgid "dnsmasq instance"
+msgstr "dnsmasq 实例"
