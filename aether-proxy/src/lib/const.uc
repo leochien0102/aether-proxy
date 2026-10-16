@@ -179,5 +179,10 @@ export const UPDATE_COMMAND_TIMEOUT_SECS = 35;
 export const UPDATE_SPACE_RESERVE = 1048576;
 export const UPDATE_RELEASE_FILE = '/etc/openwrt_release';
 
+// T7.5 (signed rule-data updates).
+export const DATA_UPDATE_ITEMS = [ 'gfwlist', 'chnlist', 'apple', 'chnroute4', 'gfw_static4' ];
+export const UPDATE_DATA_MIN_PERCENT = 90;
+export const UPDATE_INIT = '/etc/init.d/aether-proxy';
+
 // Default update channel (05 `channel_urls`, 08 "发布仓库").
 export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';

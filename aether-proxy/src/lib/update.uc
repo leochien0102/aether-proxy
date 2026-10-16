@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
 import * as config from 'aetherproxy.config';
+import * as data from 'aetherproxy.data';
 import * as log from 'aetherproxy.log';
 import * as net from 'aetherproxy.net';
 import * as sys from 'aetherproxy.sys';
@@ -357,4 +358,200 @@ export function check(opts) {
 		return { ok: false, code: 'FS_FAILED', exit: 1, detail };
 	}
 	return { ok: true, value: built.value, exit: 0 };
+};
+
+function read_signed_manifest(opts) {
+	let root = opts.sys_root ?? '';
+	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
+	let ctx = {
+		root,
+		bin_dir: opts.bin_dir ?? null,
+		run_dir,
+		tmp_dir: system_path(root, C.TMP_DIR),
+		download_dir: system_path(root, C.DOWNLOAD_DIR),
+		keys_dir: system_path(root, C.KEYS_DIR)
+	};
+	log.set_run_dir(run_dir);
+	let loaded = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
+	if (!loaded.ok)
+		return { ok: false, detail: loaded.detail };
+	if (!length(loaded.urls))
+		return { ok: false, detail: 'no update channel URLs are configured' };
+	if (!sys.mkdir_p(ctx.download_dir))
+		return { ok: false, detail: `cannot create ${ctx.download_dir}: ${sys.error() ?? 'unknown error'}` };
+	let proxied = proxy_running(ctx), selected = null, reached = false;
+	for (let i = 0; i < length(loaded.urls); i++) {
+		let candidate = download_manifest(ctx, loaded.urls[i], proxied, i);
+		if (candidate.manifest != null) {
+			selected = { manifest: candidate.manifest, base: loaded.urls[i] };
+			break;
+		}
+		reached ||= candidate.reached;
+	}
+	let names = fs.lsdir(ctx.download_dir);
+	if (names == null)
+		return { ok: false, detail: `cannot list ${ctx.download_dir}: ${fs_error()}` };
+	for (let name in names)
+		if (match(name, /^manifest-[0-9]+\.json(\.sig)?$/) != null && unlink_file(`${ctx.download_dir}/${name}`) == null)
+			return { ok: false, detail: `cannot remove ${ctx.download_dir}/${name}: ${fs_error()}` };
+	if (selected == null)
+		return { ok: false, detail: reached ? 'no channel provided a valid signed schema 2 manifest' : 'no update channel could be reached' };
+	return { ok: true, ...selected, bases: loaded.urls, ctx };
+}
+
+function path_sha256(path) {
+	return file_sha256(path);
+}
+
+function line_count(text) {
+	let count = 0;
+	for (let line in split(text, '\n')) {
+		let value = trim(line);
+		if (value != '' && substr(value, 0, 1) != '#')
+			count++;
+	}
+	return count;
+}
+
+function data_parser(name, text) {
+	if (C.DATA_DOMAIN_FILES[name] != null)
+		return data.parse_domains(text);
+	if (C.DATA_IP_FILES[name] != null)
+		return data.parse_cidrs(text);
+	return null;
+}
+
+function set_data_failure(result, name, detail) {
+	result.failed[name] = detail;
+	log.event('error', 'UPDATE_VERIFY_FAILED', { item: name });
+}
+
+function file_sha256_from_text(text, dir, name) {
+	let path = `${dir}/data-${name}.plain`;
+	if (!sys.write_atomic(path, text))
+		return null;
+	let hash = file_sha256(path);
+	if (!fs.unlink(path)) {
+		let detail = fs_error();
+		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail });
+	}
+	return hash;
+}
+
+function update_data_item(opts, ctx, base_urls, name, item) {
+	if (index(C.DATA_UPDATE_ITEMS, name) < 0 || type(item) != 'object' ||
+		type(item.url) != 'string' || match(item.url, /^[A-Za-z0-9._-]+\.txt\.gz$/) == null ||
+		type(item.sha256) != 'string' || match(item.sha256, /^[0-9a-fA-F]{64}$/) == null ||
+		type(item.content_sha256) != 'string' || match(item.content_sha256, /^[0-9a-fA-F]{64}$/) == null ||
+		type(item.size) != 'int' || item.size < 0 || type(item.lines) != 'int' || item.lines < 0)
+		return { ok: false, detail: 'invalid data manifest entry' };
+	let filename = C.DATA_DOMAIN_FILES[name] ?? C.DATA_IP_FILES[name];
+	let current_path = system_path(ctx.root, `${C.DATA_DIR}/${filename}`);
+	let hash_path = system_path(ctx.root, `${C.DATA_DIR}/${name}.sha256`);
+	let local_hash = fs.readfile(hash_path);
+	if (local_hash != null) {
+		local_hash = trim(local_hash);
+		if (match(local_hash, /^[0-9a-fA-F]{64}$/) == null)
+			return { ok: false, detail: 'invalid local content hash' };
+	}
+	else {
+		let err = fs_error();
+		if (err != 'No such file or directory')
+			return { ok: false, detail: `cannot read ${hash_path}: ${err}` };
+		let baseline = system_path(ctx.root, `${C.BASELINE_DATA_DIR}/${filename}`);
+		local_hash = path_sha256(baseline);
+		if (local_hash == null)
+			return { ok: false, detail: `cannot hash baseline ${baseline}` };
+	}
+	if (lc(local_hash) == lc(item.content_sha256))
+		return { ok: true, unchanged: true };
+
+	let downloaded = download_asset(opts, base_urls, item, `data-${name}.txt.gz`);
+	if (!downloaded.ok)
+		return { ok: false, detail: downloaded.detail ?? downloaded.code ?? 'asset download failed' };
+	let gunzip = sys.run([ 'gunzip', '-c', downloaded.path ], { timeout: C.UPDATE_COMMAND_TIMEOUT_SECS });
+	if (gunzip.code != 0) {
+		if (unlink_file(downloaded.path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
+		return { ok: false, detail: `gunzip exited ${gunzip.code}: ${trim(gunzip.stderr)}` };
+	}
+	if (unlink_file(downloaded.path) == null)
+		return { ok: false, detail: `cannot remove downloaded data asset ${downloaded.path}: ${fs_error()}` };
+	let content = gunzip.stdout;
+	let actual_hash = file_sha256_from_text(content, ctx.download_dir, name);
+	if (actual_hash == null || actual_hash != lc(item.content_sha256))
+		return { ok: false, detail: 'decompressed content sha256 mismatch' };
+	let count = line_count(content);
+	if (count * 100 < item.lines * C.UPDATE_DATA_MIN_PERCENT)
+		return { ok: false, detail: `line count ${count} is below ${C.UPDATE_DATA_MIN_PERCENT}% of ${item.lines}` };
+	let parsed = data_parser(name, content);
+	if (parsed == null || length(parsed.errors))
+		return { ok: false, detail: parsed == null ? 'unknown data item' : `invalid list line ${parsed.errors[0].line}` };
+	let data_dir = system_path(ctx.root, C.DATA_DIR);
+	if (!sys.mkdir_p(data_dir))
+		return { ok: false, detail: `cannot create ${data_dir}: ${sys.error() ?? 'unknown error'}` };
+	let temp_path = `${current_path}.tmp`;
+	let previous = fs.readfile(current_path);
+	let previous_missing = previous == null && fs_error() == 'No such file or directory';
+	if (previous == null && !previous_missing)
+		return { ok: false, detail: `cannot read ${current_path}: ${fs_error()}` };
+	if (!sys.write_atomic(temp_path, content))
+		return { ok: false, detail: `cannot stage ${temp_path}: ${sys.error() ?? 'unknown error'}` };
+	let moved = sys.run([ 'mv', temp_path, current_path ]);
+	if (moved.code != 0) {
+		unlink_file(temp_path);
+		return { ok: false, detail: `mv ${temp_path} exited ${moved.code}: ${trim(moved.stderr)}` };
+	}
+	if (!sys.write_atomic(hash_path, `${lc(item.content_sha256)}\n`)) {
+		let detail = sys.error() ?? 'unknown error';
+		if (previous_missing) {
+			if (!fs.unlink(current_path))
+				log.event('error', 'FS_FAILED', { op: 'unlink', path: current_path, detail: fs_error() });
+		}
+		else if (!sys.write_atomic(current_path, previous))
+			log.event('error', 'FS_FAILED', { op: 'restore', path: current_path, detail: sys.error() ?? 'unknown error' });
+		return { ok: false, detail: `cannot write ${hash_path}: ${detail}` };
+	}
+	return { ok: true, updated: true };
+}
+
+export function data_update(opts) {
+	opts ??= {};
+	let loaded = read_signed_manifest(opts);
+	let result = { ok: false, updated: [], unchanged: [], failed: {} };
+	if (!loaded.ok) {
+		result.failed.manifest = loaded.detail;
+		log.event('error', 'UPDATE_VERIFY_FAILED', { item: 'manifest' });
+		return { ...result, detail: loaded.detail, exit: 1 };
+	}
+	let entries = loaded.manifest.data;
+	if (type(entries) != 'object') {
+		set_data_failure(result, 'manifest', 'manifest data section is missing');
+		return { ...result, exit: 1 };
+	}
+	for (let name in sort(keys(entries))) {
+		let outcome = update_data_item(opts, loaded.ctx, loaded.bases, name, entries[name]);
+		if (!outcome.ok)
+			set_data_failure(result, name, outcome.detail);
+		else if (outcome.unchanged)
+			push(result.unchanged, name);
+		else
+			push(result.updated, name);
+	}
+	if (length(result.updated)) {
+		let state = read_object(`${loaded.ctx.run_dir}/${C.STATE_FILE}`);
+		if (state != null && index([ 'starting', 'running', 'degraded' ], state.state) >= 0) {
+			let init = system_path(loaded.ctx.root, C.UPDATE_INIT);
+			let reload = sys.run([ init, 'reload' ], { timeout: 120 });
+			if (reload.code != 0) {
+				// TODO(design): 08 specifies reload after a successful data write, but not rollback
+				// semantics when init reload itself fails. Keep the verified data and report failure.
+				result.failed.reload = `init reload exited ${reload.code}: ${trim(reload.stderr)}`;
+				log.event('error', 'UPDATE_VERIFY_FAILED', { item: 'reload' });
+			}
+		}
+		log.event('notice', 'DATA_UPDATED', { items: result.updated });
+	}
+	result.ok = !length(keys(result.failed));
+	return { ...result, exit: result.ok ? 0 : 1 };
 };
