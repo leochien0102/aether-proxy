@@ -119,4 +119,5 @@ OpenWrt 默认的 logd 缓冲区只有 64KB，在 `debug` 等级下很快就会�
 ## LuCI 展示
 
 - 「事件」页：读取 `events.jsonl`，按等级着色，支持按等级、事件码过滤。默认打开这一页。
-- 「原始日志」页：`logread -e '^aether-proxy'` 的输出（需在 rpcd 中实现，不能让前端执行任意命令），可按 `aether-proxy` / `aether-proxy-xray` / `aether-proxy-dns` 过滤。
+- 「原始日志」页：经 rpcd 的 `log` 方法（命令行 `log`，不能让前端执行任意命令），可按来源（aether-proxy / Xray / DNS）过滤。
+- 页面细节见 [10](10-cli-luci.md)「日志页」与「`log`、`node import`、`custom`」（2026-10-16 改：原来写的 `logread -e` 与 `aether-proxy-xray` 等标签已被 T8.2 的实现取代，子进程共用 `aether-proxy` 标签）。

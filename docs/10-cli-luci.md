@@ -331,6 +331,28 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   `channel_urls` 每项用模型做与命令行**相同规则**的校验（`lib/config.uc` 的 `url`：`http://` 或 `https://` 开头、主机部分非空、不含空白），作为 `validate`。列表删空时 LuCI 会删除该选项，命令行回到默认通道（05「`config update`」），所以不阻止保存，只在说明中写「留空则使用默认的发布通道」。
   保存走 `form.Map` 的标准流程。
 
+### 日志页（2026-10-16 定，T8.10）
+
+只用已有的 `events`、`log` 方法，不改命令行与 rpcd。页面分两个标签：「事件」（默认）与「原始日志」（`ui.Tabs` 或两个按钮切换均可）。模型 `model/logs.js`。
+
+**事件**：
+- 取数：`ap.call('events', {})` 取全部（`events.jsonl` 最多 500 行，只含 notice 及以上），由模型在前端过滤，不按等级重复请求。
+  勾选「自动刷新」（默认勾选）时经 `ap.poll` 每 5 秒重取一次；切到「原始日志」标签时停止轮询，切回再开始。
+- 显示：**新的在上**。每行：时间（本地 `YYYY-MM-DD HH:MM:SS`）、等级（`error` 错误、`warn` 警告、`notice` 通知，三种颜色用 LuCI 现有的 `label` 样式区分）、事件码、中文说明。
+  原始 `args` 不直接显示，放在该行的 `title`（悬停可见），便于排查。
+- 过滤：等级（全部 / 错误 / 警告及以上 / 通知及以上，语义与命令行 `--level` 相同：该等级及以上）；事件码（下拉，选项为当前数据中出现过的事件码，按字母排序，外加「全部」）。两个过滤同时生效。
+- `skipped` 大于 0 时在列表上方提示「有 <n> 行记录损坏，已跳过」。返回 `ok: false` 时显示 `code` 与 `detail`，列表保持上一次的内容。
+- **中文说明**：每个事件码一个模板，`{参数名}` 换成 `args` 中的值。模板覆盖 [09](09-logging.md)「事件码目录」中等级为 notice、warn、error 的**全部**事件码（`CHILD_STARTED`、`CMD_RUN` 只在 syslog 出现，不需要）。
+  参数值的显示：缺失 → `?`；数组 → 用「、」连接；对象 → `键 值` 用「、」连接（例如 `skipped` 的按原因计数、`steps`）；其他 → 原样。
+  模板只用参数，不另外翻译参数的值（例如 `reason`、`mode` 原样显示）。未知事件码 → 「<事件码> <args 的 JSON>」。
+  `SERVICE_STARTED` 只显示耗时，不展开 `steps`（`steps` 仍在悬停的 `args` 里）。
+
+**原始日志**：
+- 来源下拉（全部 / aether-proxy / Xray / DNS，对应 `source` 的 `all`、`aether-proxy`、`xray`、`dns`）、行数下拉（100、200、500、1000、2000，默认 200）、「刷新」按钮。
+  打开标签与点「刷新」时 `ap.call('log', { source, lines })`；不自动刷新（日志多时一次可能有几百 KB）。
+- 内容用 `<pre>` 按原样显示 `text`，不做着色；失败显示 `code` 与 `detail`。
+- UCI `main.log_level` 为 `debug` 时，在标签顶部显示 [09](09-logging.md)「logd 容量」的提示。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
