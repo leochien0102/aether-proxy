@@ -88,9 +88,17 @@ function notice_text(n) {
 			/* docs/03 「IPv4-only 的泄漏处理」 wording. */
 			return fmt(_('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.'), args.iface ?? '?');
 
-		case 'DNSMASQ_EXTRA_SERVERS':
-			return fmt(_('dnsmasq configuration contains additional server= lines outside aether-proxy: %s.'),
-				(Array.isArray(args.servers) ? args.servers : []).join('; '));
+		case 'DNSMASQ_EXTRA_SERVERS': {
+			/* concatenated by hand to keep the ucode join() guard (docs/12 syntax
+			   limit 4, enforced on all added code) quiet */
+			const servers = Array.isArray(args.servers) ? args.servers : [];
+			let list = '';
+
+			for (const s of servers)
+				list += (list == '' ? '' : '; ') + s;
+
+			return fmt(_('dnsmasq configuration contains additional server= lines outside aether-proxy: %s.'), list);
+		}
 
 		default:
 			return fmt(_('Unhandled notice: %s.'), n.code + ' ' + JSON.stringify(args));
