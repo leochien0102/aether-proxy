@@ -62,8 +62,15 @@ check_version() {
 	[ "$fail" -eq 0 ]
 }
 
-min=$(const_value XRAY_MIN_VERSION) || exit 2
+# XRAY_CHECK_VERSIONS (space-separated) replaces the default pair: the update channel's
+# version-bump PRs run this script against the candidate release only.
+if [ -n "${XRAY_CHECK_VERSIONS:-}" ]; then
+	versions=$XRAY_CHECK_VERSIONS
+else
+	versions="$(const_value XRAY_MIN_VERSION) $XRAY_LATEST_TESTED" || exit 2
+fi
 status=0
-check_version "$min" || status=1
-check_version "$XRAY_LATEST_TESTED" || status=1
+for ver in $versions; do
+	check_version "$ver" || status=1
+done
 exit "$status"

@@ -124,6 +124,39 @@ class ChannelBuilderTests(unittest.TestCase):
         manifest = json.loads((self.out / "manifest.json").read_text())
         self.assertEqual(manifest["data"], old_data)
 
+    def test_data_only_release_keeps_previous_packages(self):
+        old_packages = {"xray-core": {"current": {"version": "1.0-r1", "assets": {}}, "previous": None}}
+        self.add_data()
+        self.previous(packages=old_packages)
+        build.build_to_dir(self.out, None, self.data, self.previous_path)
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertEqual(manifest["packages"], old_packages)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir() if p.suffix in (".ipk", ".apk")), [])
+
+    def test_data_only_release_without_previous_fails(self):
+        self.add_data()
+        with self.assertRaises(ValueError):
+            build.build_to_dir(self.out, None, self.data, None)
+
+    def test_asset_names_are_github_safe(self):
+        # luci.mk versions translations as <date>~<hash>; GitHub would rename "~" on upload.
+        feed = self.packages / "x86_64" / "aetherproxy"
+        self.add_packages(packages=("aether-proxy", "luci-app-aether-proxy"))
+        name = "luci-i18n-aether-proxy-zh-cn"
+        for arch in ("aarch64_generic", "x86_64"):
+            d = self.packages / arch / "aetherproxy"
+            (d / f"{name}_26.287.20981~ba764d5_all.ipk").write_bytes(b"ipk")
+            (d / f"{name}-26.287.20981~ba764d5.apk").write_bytes(b"apk")
+        self.run_build()
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        current = manifest["packages"][name]["current"]
+        self.assertEqual(current["version"], "26.287.20981~ba764d5")
+        urls = [asset["url"] for asset in current["assets"]["all"].values()]
+        self.assertEqual(sorted(urls), [f"{name}-26.287.20981.ba764d5.apk", f"{name}_26.287.20981.ba764d5_all.ipk"])
+        for url in urls:
+            self.assertTrue((self.out / url).is_file())
+        self.assertTrue(feed.is_dir())
+
     def test_identical_content_writes_unchanged_marker(self):
         self.add_packages()
         self.add_data()

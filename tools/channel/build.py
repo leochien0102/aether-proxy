@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,13 @@ PACKAGE_NAMES = ("xray-core", "aether-proxy", "luci-app-aether-proxy", "luci-i18
 # Architecture-independent packages: their apk file names carry no architecture at all.
 ARCH_ALL = ("aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 DATA_NAMES = ("gfwlist", "chnlist", "apple", "chnroute4", "gfw_static4")
+
+
+def asset_name(filename: str) -> str:
+    # GitHub renames release assets with characters outside this set (the luci-i18n version
+    # carries a "~"), so the manifest url would no longer match. opkg/apk read the package
+    # metadata, not the file name, so renaming is safe.
+    return re.sub(r"[^A-Za-z0-9._-]", ".", filename)
 
 
 def sha256(content: bytes) -> str:
@@ -109,7 +117,7 @@ def collect_packages(directory: Path) -> tuple[dict[str, Any], dict[str, bytes],
                 path, content = formats[kind]
                 # Release assets are flat: give arch-specific apks the architecture in the name,
                 # otherwise every target's xray-core-<version>.apk would collide.
-                filename = path.name if kind == "ipk" or arch == "all" else f"{name}-{version}_{arch}.apk"
+                filename = asset_name(path.name if kind == "ipk" or arch == "all" else f"{name}-{version}_{arch}.apk")
                 if filename in copied and copied[filename] != content:
                     raise ValueError(f"conflicting package asset filename: {filename}")
                 copied[filename] = content
@@ -173,10 +181,17 @@ def package_manifest(
 
 
 def build_manifest(
-    package_dir: Path, data_dir: Path | None, previous: dict[str, Any] | None,
+    package_dir: Path | None, data_dir: Path | None, previous: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], dict[str, bytes], list[str]]:
-    built_packages, copied, ignored = collect_packages(package_dir)
-    packages = package_manifest(built_packages, previous)
+    if package_dir is not None:
+        built_packages, copied, ignored = collect_packages(package_dir)
+        packages = package_manifest(built_packages, previous)
+    else:
+        # Data-only release (the daily data job builds no packages): keep the package entries,
+        # whose assets are already in the release.
+        if previous is None:
+            raise ValueError("a release without --packages needs --previous")
+        packages, copied, ignored = previous["packages"], {}, []
     if data_dir is not None:
         data, data_files = collect_data(data_dir)
         copied.update(data_files)
@@ -195,7 +210,7 @@ def canonical_manifest(manifest: dict[str, Any]) -> bytes:
     return (json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def build_to_dir(out: Path, packages: Path, data: Path | None, previous_path: Path | None) -> list[str]:
+def build_to_dir(out: Path, packages: Path | None, data: Path | None, previous_path: Path | None) -> list[str]:
     previous = read_previous(previous_path)
     manifest, copied, ignored = build_manifest(packages, data, previous)
     manifest_path = out / "manifest.json"
@@ -221,10 +236,12 @@ def build_to_dir(out: Path, packages: Path, data: Path | None, previous_path: Pa
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--packages", required=True, type=Path)
+    parser.add_argument("--packages", type=Path)
     parser.add_argument("--data", type=Path)
     parser.add_argument("--previous", type=Path)
     args = parser.parse_args(argv)
+    if args.packages is None and args.data is None:
+        parser.error("nothing to build: give --packages and/or --data")
     try:
         ignored = build_to_dir(args.out, args.packages, args.data, args.previous)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
