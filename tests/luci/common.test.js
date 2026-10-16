@@ -187,6 +187,66 @@ test('scenario 3: at most 2 calls in flight; FIFO order; the queued next call go
 	assert.deepEqual(results.slice(2), [ { ok: true }, { ok: true, events: [] }, { ok: true, lines: [] } ]);
 });
 
+test('settle-once frees a request slot only once: a reply arriving after the hard timeout', async (t) => {
+	const { ap, rpc } = setup(t);
+	const late = deferred();
+	const order = [];
+	const pending = {};
+
+	rpc.setHandler((method) => {
+		order.push(method);
+		if (method == 'version')
+			return late.promise;
+		pending[method] = deferred();
+		return pending[method].promise;
+	});
+
+	const first = ap.call('version');
+	await flush();
+	t.mock.timers.tick(15000);
+	assert.equal((await first).code, 'TIMEOUT');
+
+	/* the late reply must not release the slot a second time */
+	late.resolve({ ok: true, version: 'late' });
+	await flush();
+
+	ap.call('status'); ap.call('check'); ap.call('events');
+	await flush();
+	assert.deepEqual(order, [ 'version', 'status', 'check' ],
+		'a double release would let a third call out (in flight count driven below zero)');
+});
+
+test('run_job polls one job_status at a time: the next poll waits for the previous reply', async (t) => {
+	const { ap, rpc } = setup(t);
+	let statusCalls = 0;
+	const slow = deferred();
+
+	rpc.setHandler((method) => {
+		if (method == 'job_start')
+			return { job: 'j_3_3' };
+		statusCalls++;
+		return statusCalls == 1 ? slow.promise : { id: 'j_3_3', state: 'ok' };
+	});
+
+	const updates = [];
+	const p = ap.run_job('update_check', [], (job) => updates.push(job.state));
+	await flush();
+	assert.equal(statusCalls, 1);
+
+	/* the first reply is slow: 6 seconds pass, no second poll may go out */
+	t.mock.timers.tick(6000);
+	await flush();
+	assert.equal(statusCalls, 1, 'polls must not stack while a job_status is unanswered');
+
+	slow.resolve({ id: 'j_3_3', state: 'running' });
+	await flush();
+	t.mock.timers.tick(2000);
+	await flush();
+	assert.equal(statusCalls, 2, 'next poll 2 seconds after the reply');
+	assert.deepEqual((await p).state, 'ok');
+	assert.deepEqual(updates, [ 'running', 'ok' ]);
+});
+
 test('scenario 4: poll — 2000ms floor, skip while unsettled, pause while hidden with immediate resume, stop()', async (t) => {
 	const { ap, document } = setup(t);
 

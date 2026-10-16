@@ -199,51 +199,39 @@ var ap = baseclass.extend({
 	run_job: function(kind, args, on_update) {
 		var started_at = Date.now();
 
+		/* One job_status at a time: the next poll is scheduled only after the
+		   previous reply, so a slow reply (up to the 15s call timeout) never
+		   stacks polls, never takes both request slots and never reports a
+		   status after the job already resolved. */
 		var track = function(id, attached) {
-			var resolve;
-			var running = true;
-
-			var stop = function() {
-				if (running) {
-					running = false;
-					clearInterval(timer);
-				}
-			};
-
-			var poll_once = function() {
-				if (Date.now() - started_at > ap.TIMEOUTS.job * 1000) {
-					stop();
-					resolve({ ok: false, code: 'TIMEOUT' });
-					return;
-				}
-
-				ap.call('job_status', { id: id }).then(function(st) {
-					if (!st || st.ok === false) {
-						stop();
-						resolve(st ?? { ok: false, code: 'RPC_FAILED', detail: 'job_status returned nothing' });
+			return new Promise(function(resolve) {
+				var poll_once = function() {
+					if (Date.now() - started_at > ap.TIMEOUTS.job * 1000) {
+						resolve({ ok: false, code: 'TIMEOUT' });
 						return;
 					}
 
-					var job = attached ? Object.assign({}, st, { attached: true }) : st;
+					ap.call('job_status', { id: id }).then(function(st) {
+						if (!st || st.ok === false) {
+							resolve(st ?? { ok: false, code: 'RPC_FAILED', detail: 'job_status returned nothing' });
+							return;
+						}
 
-					if (typeof on_update == 'function')
-						on_update(job);
+						var job = attached ? Object.assign({}, st, { attached: true }) : st;
 
-					if (st.state == 'ok' || st.state == 'failed') {
-						stop();
-						resolve(job);
-					}
-				});
-			};
+						if (typeof on_update == 'function')
+							on_update(job);
 
-			var timer = setInterval(poll_once, ap.TIMEOUTS.job_poll * 1000);
+						if (st.state == 'ok' || st.state == 'failed') {
+							resolve(job);
+							return;
+						}
 
-			/* First status right away, then every job_poll seconds. docs/10
-			   fixes only the 2s cadence, not the phase of the first poll.
-			   TODO(design): confirm whether the first poll should wait one
-			   full interval instead. */
-			return new Promise(function(res) {
-				resolve = res;
+						setTimeout(poll_once, ap.TIMEOUTS.job_poll * 1000);
+					});
+				};
+
+				/* First status right away, then job_poll seconds after each reply. */
 				poll_once();
 			});
 		};
