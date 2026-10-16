@@ -24,6 +24,7 @@ var METHODS = {
 	job_status: [ 'id' ],
 	events: [ 'since', 'level' ],
 	probe_results: [],
+	sub_status: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],

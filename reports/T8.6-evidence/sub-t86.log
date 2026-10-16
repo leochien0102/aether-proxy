@@ -1,0 +1,68 @@
+PASS  initial import exits successfully
+PASS  initial import reports one added node
+PASS  new section name is UUID v4 format
+PASS  new node records source
+PASS  new node stores direct strong identity key
+PASS  staging uses the synthetic package name
+PASS  staging never commits under the live package name
+PASS  JSON mode leaves stderr empty
+PASS  unchanged subscription exits successfully
+PASS  unchanged subscription preserves exact UCI bytes
+PASS  unchanged subscription does not reload
+PASS  current-node update exits successfully
+PASS  current-node update runs xray validation
+PASS  active current-node update reloads exactly once
+PASS  current node credential is replaced
+PASS  current-node update reports one updated node
+PASS  stopped current-node update exits successfully
+PASS  stopped service is not reloaded
+PASS  xray rejection exits nonzero
+PASS  xray rejection reports SUB_APPLY_INVALID
+PASS  xray rejection preserves original config
+PASS  curl failure exits nonzero
+PASS  curl failure reports SUB_FETCH_FAILED
+PASS  curl failure preserves UCI file
+PASS  empty response exits nonzero
+PASS  empty response reports SUB_FETCH_FAILED
+PASS  all-invalid response exits nonzero
+PASS  all-invalid response reports SUB_NO_VALID_NODES
+PASS  invalid responses preserve UCI file
+PASS  proxy-only unavailable exits nonzero
+PASS  proxy-only unavailable reports SUB_PROXY_UNAVAILABLE
+PASS  unavailable proxy does not invoke curl
+PASS  auto proxy fallback succeeds
+PASS  auto fallback retries with proxy argument
+PASS  shrunk subscription is applied
+PASS  shrunk subscription emits SUB_SHRANK
+PASS  partial multi-subscription update exits nonzero
+PASS  first subscription succeeds independently
+PASS  second subscription failure is isolated
+PASS  successful subscription persists despite peer failure
+PASS  unknown subscription exits with usage status
+PASS  unknown subscription reports USAGE
+PASS  held lock exits with busy status
+PASS  held lock reports BUSY
+PASS  busy lock prevents download
+PASS  lock holder exits cleanly
+PASS  uncommitted package delta is staged in isolated savedir
+PASS  isolated delta scenario exits successfully
+PASS  live package delta is not committed
+PASS  uncommitted delta remains available
+PASS  concurrent config edit exits nonzero
+PASS  concurrent config edit reports SUB_APPLY_INVALID
+PASS  concurrent writer content is preserved
+PASS  real LuCI delta scenario exits successfully
+PASS  real LuCI delta is not committed
+PASS  real LuCI delta stays pending
+PASS  corrupt sub.json does not block the update
+PASS  corrupt sub.json is rewritten as a valid record
+PASS  disabled subscription is left out of the result
+PASS  named disabled subscription exits successfully
+PASS  named disabled subscription is reported as disabled
+PASS  named disabled subscription is not downloaded
+PASS  sub.json is written
+PASS  sub.json stores last_attempt
+PASS  sub.json stores last_ok
+PASS  sub.json stores node count
+PASS  successful update emits SUB_UPDATED
+sub: 67 passed, 0 failed
