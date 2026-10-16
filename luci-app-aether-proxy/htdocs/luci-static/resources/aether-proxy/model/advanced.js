@@ -22,7 +22,7 @@
    "no upper bound"; the CLI still caps the digit count at 9 (see int_error). */
 const INT_BOUNDS = {
 	boot_wait_timeout: { min: 0, max: 600 },
-	expect_code: { min: 100, max: 599 },
+	expect_code: { min: 99, max: 599 },
 	timeout: { min: 1 },
 	fail_threshold: { min: 1 },
 	recover_threshold: { min: 1 },

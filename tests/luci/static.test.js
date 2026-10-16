@@ -159,3 +159,11 @@ test('views call depends() with scalar values only', () => {
 		assert.doesNotMatch(src, /\.depends\(\s*'[^']*'\s*,\s*\[/, `${name}: depends() with an array value never matches`);
 	}
 });
+
+// msgfmt rejects a catalog with a repeated msgid; parallel page cards each append to the po.
+test('po has no duplicate msgid', () => {
+	const ids = [ ...fs.readFileSync(path.join(APP, 'po', 'zh_Hans', 'aether-proxy.po'), 'utf8')
+		.matchAll(/^msgid "((?:[^"\\]|\\.)*)"$/gm) ].map(m => m[1]).filter(id => id != '');
+	const repeated = ids.filter((id, i) => ids.indexOf(id) != i);
+	assert.deepEqual(repeated, []);
+});
