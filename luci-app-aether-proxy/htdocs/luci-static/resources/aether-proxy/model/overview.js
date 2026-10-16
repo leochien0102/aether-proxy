@@ -50,17 +50,22 @@ function rel_time(now, ts) {
 	return fmt(_('%s days ago'), Math.floor(d / 86400));
 }
 
-/* docs/10 「概览页」: only start is usable in stopped/error; in every other
-   documented state start is disabled and restart/stop are usable. */
-function buttons_for(ok, state) {
+/* docs/10 「概览页」「启用开关」: only start is usable in stopped/error; in every
+   other documented state start is disabled and restart/stop are usable. With
+   main.enabled=0 the init script refuses to start at all, so start and restart
+   are disabled in every state; stop still follows the state, because the
+   service may have been started before the switch was turned off. `enabled`
+   defaults to true so callers that predate the switch keep the old rules. */
+function buttons_for(ok, state, enabled) {
 	if (!ok)
 		return { start: false, restart: false, stop: false };
 
+	const on = (enabled !== false);
 	const active = (state == 'starting' || state == 'running' || state == 'degraded' || state == 'failsafe');
 
 	return {
-		start: (state == 'stopped' || state == 'error'),
-		restart: active,
+		start: on && (state == 'stopped' || state == 'error'),
+		restart: on && active,
 		stop: active
 	};
 }
@@ -101,9 +106,23 @@ return baseclass.extend({
 	/* status: the object resolved by ap.call('status'), version: the object
 	   resolved by ap.call('version'), labels: node section name -> label from
 	   UCI, now: current unix time in seconds. Returns the view model. */
-	build: function(status, version, labels, now) {
+	build: function(status, version, labels, now, enabled) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
+
+		/* docs/10 「启用开关」: the page reads main.enabled once and passes it in;
+		   an undefined argument keeps the pre-switch behaviour (enabled) so the
+		   model stays usable without the switch. */
+		const is_enabled = (enabled === undefined || enabled === null)
+			? true
+			: (enabled === true || enabled === '1' || enabled === 1);
+		const enabled_note = _('Once enabled the service starts at boot; turning it off stops the service '
+			+ 'immediately and all traffic goes out directly.');
+		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the switch above '
+			+ 'and it will start automatically.');
+		const stop_confirmation = _('Stopping aether-proxy leaves all traffic going out directly. '
+			+ 'This is only temporary: restarting the router or saving the settings of this '
+			+ 'service again starts it; to disable it for good, turn off Enable above.');
 
 		const own_version = (version && version.ok && typeof version.version == 'string') ? version.version : null;
 
@@ -126,6 +145,10 @@ return baseclass.extend({
 				components: [],
 				own_version,
 				notices: [],
+				enabled: is_enabled,
+				enabled_note,
+				disabled_notice,
+				stop_confirmation,
 				buttons: { start: false, restart: false, stop: false }
 			};
 		}
@@ -173,7 +196,11 @@ return baseclass.extend({
 			components,
 			own_version,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),
-			buttons: buttons_for(true, state)
+			enabled: is_enabled,
+			enabled_note,
+			disabled_notice,
+			stop_confirmation,
+			buttons: buttons_for(true, state, is_enabled)
 		};
 	}
 });
