@@ -12,6 +12,9 @@ import * as cleanup from 'aetherproxy.cmd.cleanup';
 import * as sub from 'aetherproxy.cmd.sub';
 import * as job from 'aetherproxy.cmd.job';
 import * as update from 'aetherproxy.cmd.update';
+import * as log from 'aetherproxy.cmd.log';
+import * as node from 'aetherproxy.cmd.node';
+import * as custom from 'aetherproxy.cmd.custom';
 
 const USAGE = `Usage: aether-proxy <command> [options]
 
@@ -23,6 +26,9 @@ Commands:
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   sub update         download and atomically apply subscriptions
+  node import <uri>  import a share-link URI as a manual node
+  custom get|set     read or validate-and-save a custom list file
+  log [options]      read recent tagged lines from logd
   update check       check signed package and data updates
   job start          start a long-running command as a background job
   job status         print the state of a background job
@@ -82,6 +88,12 @@ function main(argv) {
 		return job.run(slice(argv, 1));
 	if (cmd == 'update')
 		return update.run(slice(argv, 1));
+	if (cmd == 'log')
+		return log.run(slice(argv, 1));
+	if (cmd == 'node')
+		return node.run(slice(argv, 1));
+	if (cmd == 'custom')
+		return custom.run(slice(argv, 1));
 
 	warn(USAGE);
 	return 2;

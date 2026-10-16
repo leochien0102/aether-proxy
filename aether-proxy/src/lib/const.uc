@@ -203,3 +203,14 @@ export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy
 
 // Event levels, most severe first (docs/09); `events --level` and the rpcd plugin validate against it.
 export const EVENT_LEVELS = [ 'error', 'warn', 'notice', 'info', 'debug' ];
+
+// T8.2 (`log`, `node import`, `custom`; docs/10 "`log`、`node import`、`custom`", 2026-10-16).
+export const LOGREAD_TIMEOUT_SECS = 10;
+export const LOG_SOURCES = [ 'all', 'aether-proxy', 'xray', 'dns' ];
+export const LOG_LINES_DEFAULT = 200;
+export const LOG_LINES_MAX = 2000;
+export const CUSTOM_MAX_BYTES = 65536;
+export const CUSTOM_INVALID_MAX = 20;
+export const CUSTOM_RELOAD_TIMEOUT_SECS = 30;
+// Custom list names as used by `custom get|set` and the rpcd `list_file`/`save_file` methods.
+export const CUSTOM_LIST_NAMES = [ 'direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip' ];
