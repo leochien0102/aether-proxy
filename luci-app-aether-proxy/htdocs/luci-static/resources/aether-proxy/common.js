@@ -13,7 +13,7 @@
  * max_requests 3 留出余量).
  */
 
-/* docs/10 「rpcd 插件」: all 11 ubus methods of the aetherproxy object with
+/* docs/10 「rpcd 插件」: all 12 ubus methods of the aetherproxy object with
    their named parameters, in declaration order. */
 var METHODS = {
 	version: [],
@@ -23,6 +23,7 @@ var METHODS = {
 	job_start: [ 'kind', 'args' ],
 	job_status: [ 'id' ],
 	events: [ 'since', 'level' ],
+	probe_results: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],

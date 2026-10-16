@@ -141,3 +141,168 @@ msgstr "dnsmasq 配置中存在 aether-proxy 之外的 server= 行：%s。"
 
 msgid "Unhandled notice: %s."
 msgstr "未处理的提示：%s。"
+
+msgid "Manage the proxy nodes, probe their TCP reachability and import node share links."
+msgstr "管理代理节点，检测它们的 TCP 可达性，并导入节点分享链接。"
+
+msgid "Import URIs"
+msgstr "导入 URI"
+
+msgid "One node share URI per line."
+msgstr "每行一个节点分享链接（URI）。"
+
+msgid "Import"
+msgstr "导入"
+
+msgid "Nothing to import."
+msgstr "没有可导入的内容。"
+
+msgid "Probe all"
+msgstr "检测全部"
+
+msgid "Probe"
+msgstr "检测"
+
+msgid "Set as current"
+msgstr "设为当前"
+
+msgid "Set this node as the current node"
+msgstr "将此节点设为当前节点"
+
+msgid "Probe the TCP reachability of this node"
+msgstr "检测此节点的 TCP 可达性"
+
+msgid "Really delete this node?"
+msgstr "确定要删除这个节点吗？"
+
+msgid "The current node cannot be deleted."
+msgstr "当前节点不能删除。"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "Address"
+msgstr "地址"
+
+msgid "Protocol / Transport / Security"
+msgstr "协议 / 传输 / 安全层"
+
+msgid "Source"
+msgstr "来源"
+
+msgid "Marks"
+msgstr "标记"
+
+msgid "TCP reachability / latency"
+msgstr "TCP 可达／延迟"
+
+msgid "Manual"
+msgstr "手动"
+
+msgid "Stale"
+msgstr "已过期"
+
+msgid "Probing…"
+msgstr "检测中"
+
+msgid "Not probed"
+msgstr "未检测"
+
+msgid "%s ms (%s/3)"
+msgstr "%s ms（%s/3）"
+
+msgid "Resolve failed"
+msgstr "解析失败"
+
+msgid "Timed out"
+msgstr "超时"
+
+msgid "Connection refused"
+msgstr "拒绝连接"
+
+msgid "Unreachable"
+msgstr "不可达"
+
+msgid "Other error"
+msgstr "其他错误"
+
+msgid "Probing %s/%s"
+msgstr "检测中 %s/%s"
+
+msgid "The probe job failed: %s (%s)."
+msgstr "检测作业失败：%s（%s）。"
+
+msgid "This node comes from a subscription; edits will be overwritten at the next subscription update."
+msgstr "此节点来自订阅，下次更新订阅时修改会被覆盖"
+
+msgid "Imported: %s new, %s already present, %s failed."
+msgstr "新增 %s 个，已存在 %s 个，失败 %s 个"
+
+msgid "Display name"
+msgstr "显示名称"
+
+msgid "Protocol"
+msgstr "协议"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Transport"
+msgstr "传输"
+
+msgid "UUID"
+msgstr "UUID"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "Encryption method"
+msgstr "加密方式"
+
+msgid "Encryption"
+msgstr "加密"
+
+msgid "Flow"
+msgstr "Flow"
+
+msgid "Security layer"
+msgstr "安全层"
+
+msgid "Host"
+msgstr "Host"
+
+msgid "Path"
+msgstr "路径"
+
+msgid "gRPC service name"
+msgstr "gRPC 服务名"
+
+msgid "XHTTP mode"
+msgstr "XHTTP 模式"
+
+msgid "Header type"
+msgstr "伪装头部类型"
+
+msgid "SNI"
+msgstr "SNI"
+
+msgid "ALPN"
+msgstr "ALPN"
+
+msgid "TLS fingerprint"
+msgstr "TLS 指纹"
+
+msgid "Pinned certificate SHA-256"
+msgstr "固定证书 SHA-256"
+
+msgid "Verify certificate by name"
+msgstr "按指定名称校验证书"
+
+msgid "REALITY public key"
+msgstr "REALITY 公钥"
+
+msgid "REALITY short ID"
+msgstr "REALITY 短 ID"
+
+msgid "REALITY spiderX"
+msgstr "REALITY spiderX"

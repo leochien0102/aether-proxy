@@ -1,15 +1,487 @@
 'use strict';
 'require view';
+'require form';
+'require uci';
+'require ui';
+'require dom';
+'require aether-proxy.common as ap';
+'require aether-proxy.model.nodes as model';
+
+/*
+ * Nodes page (docs/10 「节点页」, docs/tasks/m8.md T8.5).
+ *
+ * The view only fetches data (uci + ap.call('probe_results')), hands it to the
+ * pure model and renders what the model returns: row texts, the TCP
+ * reachability column wording, the progress line and the allowed per-row
+ * operations are all decided in the model. Probing runs through ap.run_job()
+ * (docs/10 「作业机制」); after every job status update the probe results are
+ * fetched once and the probe column and progress line are refreshed. Setting a
+ * node as current stages the UCI change and goes through LuCI's standard
+ * save & apply with rollback confirmation; node edits use the GridSection
+ * modal and form.Map's standard save flow.
+ */
 
 return view.extend({
-	render: function() {
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Nodes')),
-			E('p', {}, _('This page has not been implemented yet.'))
+	load: function() {
+		return Promise.all([
+			uci.load('aetherproxy'),
+			ap.call('probe_results')
 		]);
 	},
 
-	handleSave: null,
-	handleSaveApply: null,
-	handleReset: null
+	render: function(data) {
+		this.results = data[1];
+		this.probing = false;
+
+		const root = E('div', { 'class': 'cbi-map' });
+		this.root = root;
+		const self = this;
+
+		return this.buildPage().then(function(content) {
+			dom.content(root, content);
+			self.updateProbeColumns();
+			return root;
+		});
+	},
+
+	/* Re-fetches the page data (used after imports added nodes) and rebuilds
+	   the whole page in place. */
+	rebuild: function() {
+		const self = this;
+
+		return Promise.all([
+			uci.unload('aetherproxy').then(function() { return uci.load('aetherproxy'); }),
+			ap.call('probe_results')
+		]).then(function(res) {
+			if (res[1] && res[1].ok !== false)
+				self.results = res[1];
+
+			return self.buildPage().then(function(content) {
+				dom.content(self.root, content);
+				self.updateProbeColumns();
+			});
+		});
+	},
+
+	buildPage: function() {
+		const self = this;
+		const vm = model.build(
+			uci.sections('aetherproxy', 'node'),
+			uci.get('aetherproxy', 'main', 'node'),
+			uci.sections('aetherproxy', 'subscription'),
+			this.results
+		);
+
+		this.rowMap = {};
+		for (const row of vm.rows)
+			this.rowMap[row.id] = row;
+
+		this.probeCells = {};
+		this.probeButtons = [];
+
+		this.progressEl = E('div', { 'class': 'cbi-map-descr' });
+
+		this.importText = E('textarea', {
+			'class': 'cbi-input-textarea',
+			'rows': 4,
+			'placeholder': _('One node share URI per line.')
+		});
+
+		const importBox = E('div', { 'class': 'cbi-map-descr' }, [
+			E('h3', {}, _('Import URIs')),
+			this.importText,
+			' ',
+			E('button', {
+				'class': 'btn cbi-button cbi-button-action',
+				'click': ui.createHandlerFn(self, 'handleImport')
+			}, [ _('Import') ])
+		]);
+
+		const probeAll = E('button', {
+			'class': 'btn cbi-button cbi-button-action',
+			'click': ui.createHandlerFn(self, 'handleProbeAll'),
+			'disabled': this.probing || null
+		}, [ _('Probe all') ]);
+		this.probeButtons.push(probeAll);
+
+		const controls = E('div', { 'class': 'cbi-map-descr' }, [ probeAll, ' ', importBox ]);
+
+		const mapNodePromise = this.buildMap().render();
+
+		return mapNodePromise.then(function(mapNode) {
+			return E('div', {}, [
+				E('h2', {}, _('Nodes')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.')),
+				self.progressEl,
+				controls,
+				mapNode
+			]);
+		});
+	},
+
+	buildMap: function() {
+		const self = this;
+		const rowMap = this.rowMap;
+		let m, s, o;
+
+		m = new form.Map('aetherproxy');
+
+		s = m.section(form.GridSection, 'node');
+		s.addremove = true;
+
+		/* Nodes are named sections (n_<32 hex digits>, docs/05 「config node」)
+		   and are added via the URI import, so the grid's generic add button
+		   (which would create an anonymous section) is not rendered. */
+		s.renderSectionAdd = function() {
+			return E([]);
+		};
+
+		/* The per-row operations: 设为当前 / 检测 come first, then the built-in
+		   Edit and Delete buttons of the grid section. */
+		s.renderRowActions = function(section_id) {
+			const tdEl = this.super('renderRowActions', [ section_id ]);
+			const row = rowMap[section_id];
+			const extra = [];
+
+			if (row && row.can_set_current) {
+				extra.push(E('button', {
+					'class': 'btn cbi-button cbi-button-positive',
+					'title': _('Set this node as the current node'),
+					'click': ui.createHandlerFn(self, 'handleSetCurrent', section_id)
+				}, [ _('Set as current') ]));
+			}
+
+			const probeBtn = E('button', {
+				'class': 'btn cbi-button cbi-button-neutral',
+				'title': _('Probe the TCP reachability of this node'),
+				'click': ui.createHandlerFn(self, 'handleProbeOne', section_id),
+				'disabled': self.probing || null
+			}, [ _('Probe') ]);
+			self.probeButtons.push(probeBtn);
+			extra.push(probeBtn);
+
+			/* builtins: [0] is Edit, [1] the Delete button (cbi-button-remove).
+			   The current node cannot be deleted (docs/10 「节点页」), so its
+			   delete button is not rendered at all. */
+			const builtins = tdEl.lastChild.childNodes;
+			const keep = row && !row.can_delete ? [ builtins[0] ] : [ builtins[0], builtins[1] ];
+
+			dom.content(tdEl.lastChild, [ ...extra, ...keep ]);
+
+			return tdEl;
+		};
+
+		/* Delete requires a confirmation (docs/10 「UI 规则」); the built-in
+		   handler removes silently, so it is wrapped here. The model decides
+		   whether the row may be deleted at all. */
+		s.handleRemove = function(section_id, ev) {
+			const row = rowMap[section_id];
+
+			if (row && !row.can_delete) {
+				ui.addNotification(null, E('p', _('The current node cannot be deleted.')));
+				return;
+			}
+
+			if (!confirm(_('Really delete this node?')))
+				return;
+
+			return this.super('handleRemove', [ section_id, ev ]);
+		};
+
+		/* Subscription nodes warn about being overwritten before the modal is
+		   entered (docs/10 「节点页」). */
+		s.addModalOptions = function(modalSection, section_id) {
+			const row = rowMap[section_id];
+
+			if (row && row.modal_hint)
+				modalSection.description = row.modal_hint;
+		};
+
+		/* Table columns; all computed by the model, none editable in the table. */
+		o = s.option(form.DummyValue, '_label', _('Name'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			return row ? row.name : section_id;
+		};
+
+		o = s.option(form.DummyValue, '_address', _('Address'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			return row ? row.address : '–';
+		};
+
+		o = s.option(form.DummyValue, '_summary', _('Protocol / Transport / Security'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			return row ? row.summary : '–';
+		};
+
+		o = s.option(form.DummyValue, '_source', _('Source'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			return row ? row.source : '–';
+		};
+
+		o = s.option(form.DummyValue, '_marks', _('Marks'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			return (row && row.marks.length) ? row.marks.join(', ') : '–';
+		};
+
+		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			/* The span is kept so the probe column can be refreshed in place
+			   while a probe job is running. */
+			const span = E('span', {});
+			self.probeCells[section_id] = span;
+			const row = rowMap[section_id];
+			dom.content(span, [ row ? row.probe : '–' ]);
+			return span;
+		};
+
+		/* Modal edit fields (docs/05 「config node」); source, stale and the
+		   match_* keys are deliberately not editable. */
+		o = s.option(form.Value, 'label', _('Display name'));
+		o.modalonly = true;
+
+		o = s.option(form.ListValue, 'protocol', _('Protocol'));
+		o.modalonly = true;
+		o.value('vless', 'VLESS');
+		o.value('vmess', 'VMess');
+		o.value('trojan', 'Trojan');
+		o.value('shadowsocks', 'Shadowsocks');
+
+		o = s.option(form.Value, 'address', _('Address'));
+		o.modalonly = true;
+		o.datatype = 'host';
+
+		o = s.option(form.Value, 'port', _('Port'));
+		o.modalonly = true;
+		o.datatype = 'port';
+
+		o = s.option(form.ListValue, 'transport', _('Transport'));
+		o.modalonly = true;
+		o.value('raw', 'raw');
+		o.value('ws', 'WebSocket');
+		o.value('grpc', 'gRPC');
+		o.value('httpupgrade', 'HTTPUpgrade');
+		o.value('xhttp', 'XHTTP');
+		o.optional = true;
+		o.default = 'raw';
+
+		o = s.option(form.Value, 'uuid', _('UUID'));
+		o.modalonly = true;
+		o.depends = { protocol: [ 'vless', 'vmess' ] };
+
+		o = s.option(form.Value, 'password', _('Password'));
+		o.modalonly = true;
+		o.depends = { protocol: [ 'trojan', 'shadowsocks' ] };
+
+		o = s.option(form.Value, 'method', _('Encryption method'));
+		o.modalonly = true;
+		o.depends = { protocol: [ 'shadowsocks', 'vmess' ] };
+
+		o = s.option(form.Value, 'encryption', _('Encryption'));
+		o.modalonly = true;
+		o.optional = true;
+		o.placeholder = 'none';
+		o.depends = { protocol: 'vless' };
+
+		o = s.option(form.Value, 'flow', _('Flow'));
+		o.modalonly = true;
+		o.depends = { protocol: 'vless' };
+
+		o = s.option(form.ListValue, 'security', _('Security layer'));
+		o.modalonly = true;
+		o.value('none', 'none');
+		o.value('tls', 'TLS');
+		o.value('reality', 'REALITY');
+		o.optional = true;
+		o.default = 'none';
+
+		o = s.option(form.Value, 'host', _('Host'));
+		o.modalonly = true;
+		o.depends = { transport: [ 'ws', 'httpupgrade', 'xhttp' ] };
+
+		o = s.option(form.Value, 'path', _('Path'));
+		o.modalonly = true;
+		o.depends = { transport: [ 'ws', 'httpupgrade', 'xhttp' ] };
+
+		o = s.option(form.Value, 'service_name', _('gRPC service name'));
+		o.modalonly = true;
+		o.depends = { transport: 'grpc' };
+
+		o = s.option(form.Value, 'xhttp_mode', _('XHTTP mode'));
+		o.modalonly = true;
+		o.depends = { transport: 'xhttp' };
+
+		o = s.option(form.ListValue, 'header_type', _('Header type'));
+		o.modalonly = true;
+		o.value('none', 'none');
+		o.value('http', 'http');
+		o.optional = true;
+		o.depends = { transport: 'raw' };
+
+		o = s.option(form.Value, 'sni', _('SNI'));
+		o.modalonly = true;
+		o.depends = { security: [ 'tls', 'reality' ] };
+
+		o = s.option(form.DynamicList, 'alpn', _('ALPN'));
+		o.modalonly = true;
+		o.depends = { security: [ 'tls', 'reality' ] };
+
+		o = s.option(form.Value, 'fingerprint', _('TLS fingerprint'));
+		o.modalonly = true;
+		o.depends = { security: [ 'tls', 'reality' ] };
+
+		o = s.option(form.Value, 'pinned_cert_sha256', _('Pinned certificate SHA-256'));
+		o.modalonly = true;
+		o.depends = { security: 'tls' };
+
+		o = s.option(form.Value, 'verify_name', _('Verify certificate by name'));
+		o.modalonly = true;
+		o.depends = { security: 'tls' };
+
+		o = s.option(form.Value, 'reality_pbk', _('REALITY public key'));
+		o.modalonly = true;
+		o.depends = { security: 'reality' };
+
+		o = s.option(form.Value, 'reality_sid', _('REALITY short ID'));
+		o.modalonly = true;
+		o.depends = { security: 'reality' };
+
+		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX'));
+		o.modalonly = true;
+		o.depends = { security: 'reality' };
+
+		return m;
+	},
+
+	/* 「检测全部」 / per-row 「检测」: run the probe as a background job and
+	   refresh the results and the progress line after every status update
+	   (docs/10 「节点页」). Both probe buttons are unavailable while the job
+	   is running. */
+	handleProbe: function(ev, ids) {
+		const self = this;
+
+		if (this.probing)
+			return;
+
+		this.setProbing(true);
+
+		return ap.run_job('probe_nodes', ids ?? [], function() {
+			self.refreshResults();
+		}).then(function(job) {
+			return self.refreshResults().then(function() {
+				self.setProbing(false);
+
+				const text = model.job_failure_text(job);
+
+				if (text)
+					ui.addNotification(null, E('p', text));
+			});
+		});
+	},
+
+	handleProbeAll: function(ev) {
+		return this.handleProbe(ev, []);
+	},
+
+	handleProbeOne: function(ev, section_id) {
+		return this.handleProbe(ev, [ section_id ]);
+	},
+
+	setProbing: function(probing) {
+		this.probing = probing;
+
+		for (const btn of this.probeButtons)
+			btn.disabled = probing;
+
+		this.updateProbeColumns();
+	},
+
+	refreshResults: function() {
+		const self = this;
+
+		return ap.call('probe_results').then(function(res) {
+			/* ok is the reply envelope, not a business field: a failed call
+			   must not clobber the results already on display. */
+			if (res && res.ok !== false)
+				self.results = res;
+
+			self.updateProbeColumns();
+		});
+	},
+
+	updateProbeColumns: function() {
+		const vm = model.build(
+			uci.sections('aetherproxy', 'node'),
+			uci.get('aetherproxy', 'main', 'node'),
+			uci.sections('aetherproxy', 'subscription'),
+			this.results
+		);
+		const rows = {};
+
+		for (const row of vm.rows)
+			rows[row.id] = row;
+
+		for (const [sid, span] of Object.entries(this.probeCells)) {
+			const row = rows[sid];
+			dom.content(span, [ row ? row.probe : '–' ]);
+		}
+
+		dom.content(this.progressEl, [ vm.progress ]);
+	},
+
+	/* 设为当前: stage the UCI change and go through LuCI's standard save &
+	   apply with rollback confirmation (docs/10 「节点页」). */
+	handleSetCurrent: function(ev, section_id) {
+		uci.set('aetherproxy', 'main', 'node', section_id);
+
+		return uci.save().then(function() {
+			return ui.changes.apply(true);
+		});
+	},
+
+	handleImport: function(ev) {
+		const self = this;
+		const lines = model.split_import(this.importText.value);
+
+		if (!lines.length) {
+			ui.addNotification(null, E('p', _('Nothing to import.')));
+			return;
+		}
+
+		/* One node_import per line, strictly in order (docs/10 「节点页」). */
+		const replies = [];
+		let chain = Promise.resolve();
+
+		for (const l of lines)
+			chain = chain.then(function() {
+				return ap.call('node_import', { uri: l.uri }).then(function(reply) {
+					replies.push(reply);
+				});
+			});
+
+		return chain.then(function() {
+			const sum = model.summarize_import(lines, replies);
+			const items = sum.failed.map(function(f) {
+				return E('li', {}, `#${f.line} ${f.code}` + (f.detail !== '' ? `: ${f.detail}` : ''));
+			});
+
+			ui.addNotification(null, E('div', {}, [
+				E('p', {}, sum.text),
+				items.length ? E('ul', {}, items) : E([])
+			]));
+
+			if (sum.added > 0)
+				return self.rebuild();
+		});
+	}
 });
