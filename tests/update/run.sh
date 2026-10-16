@@ -148,7 +148,7 @@ printf '%s\n' "$*" >> "$UPDATE_INIT_CALLS"
 if [ "$1" = restart ]; then printf '{"state":"running"}\n' > "$UPDATE_INIT_STATE_FILE"; fi
 exit 0
 INIT
-cat > "$T/bin/killall" <<'KILLALL'
+cat > "$T/bin/ubus" <<'UBUS'
 #!/bin/sh
 printf '%s\n' "$*" >> "$UPDATE_SIGNAL_CALLS"
 if [ "${UPDATE_SIGNAL_NO_PROBE:-0}" != 1 ]; then
@@ -158,8 +158,8 @@ p=sys.argv[1]; x=json.load(open(p)); x['last_probe']={'ok':True,'at':int(time.ti
 PY
 fi
 exit 0
-KILLALL
-chmod +x "$T/root/etc/init.d/aether-proxy" "$T/bin/killall"
+UBUS
+chmod +x "$T/root/etc/init.d/aether-proxy" "$T/bin/ubus"
 export PATH="$T/bin:$PATH"
 export UPDATE_PACKAGE_CALLS="$T/package-calls" UPDATE_SIGNAL_CALLS="$T/signals" UPDATE_INIT_CALLS="$T/init-calls"
 export UPDATE_PACKAGE_STATE_FILE="$T/installed-version" UPDATE_STATE_FILE="$T/run/state.json" UPDATE_INIT_STATE_FILE="$T/run/state.json"

@@ -478,9 +478,11 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 		return true;
 	if (name == 'xray-core') {
 		if (before_state?.state == 'running') {
-			let signal = sys.run([ 'killall', '-USR2', C.UPDATE_DAEMON_PROCESS ], { timeout: 5 });
+			let ubus = ctx.bin_dir ? `${ctx.bin_dir}/ubus` : 'ubus';
+			let request = sprintf('%.J', { name: C.UPDATE_DAEMON_PROCESS, instance: '*', signal: 'USR2' });
+			let signal = sys.run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
 			if (signal.code != 0) {
-				log.event('error', 'CMD_FAILED', { cmd: 'killall -USR2 aether-proxy', rc: signal.code, stderr: trim(signal.stderr) });
+				log.event('error', 'CMD_FAILED', { cmd: `ubus call service signal ${request}`, rc: signal.code, stderr: trim(signal.stderr) });
 				return false;
 			}
 			let wait = wait_limit(C.UPDATE_XRAY_WAIT_SECS);
