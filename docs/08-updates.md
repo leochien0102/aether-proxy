@@ -102,6 +102,24 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 发布仓库是公开仓库，只有仓库所有者可以写入。发布（读私钥、签名、上传）只在定时、手动触发与 `main` 上的推送运行；PR 上只跑编译与 golden 检查（拿不到 Secret，也不发布）。
 - 发布仓库维护 `xray-core` 的 Makefile（自己编写，不复制 helloworld 或 openwrt/packages 的文件，README 规则 8），以及要打包的 aether-proxy 提交（一个版本文件）。
 
+### 发布仓库的实现（T7.2，2026-10-16）
+
+- **`xray-core` 不用 feeds 里的 golang**：OpenWrt 24.10 packages feed 的 Go 是 1.23，Xray 26.x 的 `go.mod` 要求 1.27。
+  Makefile 像源码包一样固定一个官方 Go 工具链（`GO_TOOLCHAIN_VERSION` + sha256，linux-amd64），用它交叉编译静态二进制（`CGO_ENABLED=0`、`-trimpath -ldflags "-s -w -buildid="`），
+  两个 SDK、所有目标用同一个工具链。目前只支持 `aarch64`、`x86_64`（ARCH→GOARCH 映射写在 Makefile，其他架构直接失败）。本地 24.10.8 SDK 实测：ipk 约 12.8MB，`xray version` 输出正确。
+- 仓库内容：`xray-core/Makefile`、`AETHER_PROXY_REF`（要打包的 aether-proxy 完整提交哈希）、`keys/<指纹>`（与 aether-proxy 中相同的公钥，发布前验签用）、
+  `scripts/usign.sh`（从固定提交编译 usign）、`scripts/publish.sh`、三个 workflow：
+  - `packages`：`gate`（Makefile 的 Go 版本 ≥ Xray `go.mod` 要求；用该 Xray 版本对 `AETHER_PROXY_REF` 的全部 golden 跑 `xray run -test`，即 `XRAY_CHECK_VERSIONS=<版本> tests/ci/xray.sh`）
+    → `build`（`openwrt/gh-action-sdk` 固定提交，2 个 SDK × 2 个目标；检查 4 个包都产出；x86_64 的 xray 实际运行并核对版本）→ `publish`（只在 `main`）。
+  - `data`：每天 04:00（北京时间）只发布数据，不编译包；`build.py` 不带 `--packages` 时沿用已发布清单的软件包条目。
+  - `xray-bump`：每天检查上游最新版本（含 prerelease），有更新就改 `PKG_VERSION`/`PKG_HASH`（`go.mod` 要求更高时同时改 Go 工具链）并开 PR。
+    用 `GITHUB_TOKEN` 开的 PR 不会触发 workflow，所以接着在该分支上 `workflow_dispatch` 一次 `packages`（非 `main` 分支不发布）。
+- **`publish.sh` 的资产规则**：Release 中已有的文件**一律不覆盖**。版本不变时 `build.py` 沿用旧条目（旧的 sha256），而重新编译出的包字节不同，覆盖就会让所有设备校验失败。
+  顺序：下载并验签已发布的清单 → 生成数据与清单（`unchanged` 则结束）→ 签名并用 `keys/` 验签 → 上传清单引用而 Release 缺少的文件 → 核对引用的文件都在（GitHub 会改名含特殊字符的文件）
+  → 上传 `manifest.json.sig`、`manifest.json` → 删除不再被引用的旧资产。
+- **资产文件名**只用 `[A-Za-z0-9._-]`，其他字符换成 `.`（`build.py`）：LuCI 翻译包的版本带 `~`（`26.287.20981~ba764d5`），上传后会被 GitHub 改名。包管理器读包内元数据，文件名不影响安装。
+- 清单中资产按**包格式**取键（`ipk`/`apk`）。设备端按包管理器选格式：opkg → `ipk`，apk → `apk`。
+
 ### S7 探针结论（2026-10-15）
 
 **usign**
