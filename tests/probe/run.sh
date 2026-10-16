@@ -262,12 +262,13 @@ expect "results damaged file: exit code 0" 0 "$rc"
 echo "$out" | grep -q '"at": null' && ok "results damaged file: default object" || bad "results damaged file: default object" "$out"
 [ ! -e "$T/res-run/events.jsonl" ] && ok "results damaged file: no events written" || bad "results damaged file: no events written"
 
-# file exists: the content is returned as-is
+# file exists: the content is returned with ok: true added (docs/07: same shape as the default)
 out="$(ap probe results --json --run-dir "$T/run2" 2>"$T/res3.stderr")"; rc=$?
 expect "results existing file: exit code 0" 0 "$rc"
 printf '%s\n' "$out" > "$T/stdout.json"
-r="$(jdeq "$T/stdout.json" "$T/run2/probe.json")"
-expect "results existing file: content returned as-is" "same" "$r"
+python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));d["ok"]=True;json.dump(d,open(sys.argv[2],"w"))' "$T/run2/probe.json" "$T/expected-res.json"
+r="$(jdeq "$T/stdout.json" "$T/expected-res.json")"
+expect "results existing file: file content plus ok: true" "same" "$r"
 [ ! -e "$T/run2/events.jsonl" ] && ok "results existing file: no events written" || bad "results existing file: no events written"
 
 # no --json: human text, exit 0

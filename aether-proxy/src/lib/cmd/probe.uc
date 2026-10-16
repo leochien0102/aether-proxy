@@ -186,7 +186,9 @@ function probe_results_cmd(opts, parsed, json) {
 	// --sys-root moves the default run dir like everywhere else (10, test-only options).
 	let run_dir = opts.run_dir ?? (opts.sys_root ? replace(opts.sys_root, /\/$/, '') + C.RUN_DIR : C.RUN_DIR);
 	let path = run_dir + '/' + C.PROBE_FILE;
-	let result = read_results(path) ?? empty_results();
+	// Same shape either way: the file content plus ok: true (the default already has it).
+	let stored = read_results(path);
+	let result = stored == null ? empty_results() : { ...stored, ok: true };
 
 	// Read-only: no events, exit 0, the file content as-is (docs/07 「实现细节」).
 	return pipeline.finish(opts, result, 0, human_result(result));

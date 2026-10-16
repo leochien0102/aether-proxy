@@ -62,6 +62,9 @@ jobs:
       - name: Run rpcd plugin tests
         run: bash tests/rpcd/run.sh
 
+      - name: Run node probe tests
+        run: bash tests/probe/run.sh
+
       - name: Run LuCI JS tests
         run: bash tests/luci/run.sh
 

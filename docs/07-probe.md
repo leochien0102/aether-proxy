@@ -45,7 +45,7 @@ LuCI 中节点检测的列名叫「**TCP 可达**／延迟」，不要写成「�
   `lib/probe.uc` 的 `probe_nodes` 增加一个回调参数，在每个节点完成时调用，写文件由 `cmd/probe.uc` 负责。
 - 只检测部分节点时，其他节点的旧结果原样保留（之前的实现会整体覆盖，属于缺陷）。
 - `probe nodes --json` 的输出为最后一次写入的完整内容。
-- **`probe results`**：只读，输出 `probe.json` 的内容；文件不存在或损坏 → `{ "ok": true, "at": null, "nodes": {}, "done": 0, "total": 0, "finished": true, "pending": [] }`，不记事件（前端会频繁轮询）。
+- **`probe results`**：只读，输出 `probe.json` 的内容并加上 `"ok": true`（两种情况返回形状一致）；文件不存在或损坏 → `{ "ok": true, "at": null, "nodes": {}, "done": 0, "total": 0, "finished": true, "pending": [] }`，不记事件（前端会频繁轮询）。
 
 实现：ucode `socket` 模块，非阻塞 connect 加 poll，用单调时钟计时。不准用 `curl telnet://` 之类的替代品，它们的计时含义不准确。
 
