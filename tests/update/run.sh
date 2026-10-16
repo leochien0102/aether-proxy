@@ -161,7 +161,9 @@ printf '%s\n' "$*" >> "$UPDATE_SIGNAL_CALLS"
 if [ "${UPDATE_SIGNAL_NO_PROBE:-0}" != 1 ]; then
  python3 - "$UPDATE_STATE_FILE" <<'PY'
 import json,sys,time
-p=sys.argv[1]; x=json.load(open(p)); x['last_probe']={'ok':True,'at':int(time.time())+2}; json.dump(x,open(p,'w'))
+# Strictly later than any probe already recorded, even within the same second.
+p=sys.argv[1]; x=json.load(open(p)); last=(x.get('last_probe') or {}).get('at') or 0
+x['last_probe']={'ok':True,'at':max(int(time.time()),last)+1}; json.dump(x,open(p,'w'))
 PY
 fi
 exit 0
@@ -247,10 +249,15 @@ expect 'update_check job completes' ok "$(get "$js" state)"; expect 'job result 
 out=$(ap job start update package luci-i18n-aether-proxy-zh-cn --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_package job starts' 0 "$?"; package_job=$(get "$out" job)
 for _ in {1..300}; do js=$(ap job status "$package_job" --json --sys-root "$T/root" --run-dir "$T/run"); state=$(get "$js" state); [ "$state" = ok ] || [ "$state" = failed ] && break; sleep .05; done
 expect 'update_package job completes' ok "$(get "$js" state)"
-UPDATE_INSTALLED_SLEEP=2 out=$(ap job start update check --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'second update_check job starts' 0 "$?"
-sleep .1
+UPDATE_INSTALLED_SLEEP=2 out=$(ap job start update check --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'second update_check job starts' 0 "$?"; check_job=$(get "$out" job)
+# BUSY needs the worker to have exec'd (job.uc matches its cmdline); wait for that, not a fixed sleep.
+check_pid=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$T/run/jobs/$check_job.json")
+for _ in {1..100}; do tr '\0' ' ' < "/proc/$check_pid/cmdline" 2>/dev/null | grep -q "job run $check_job" && break; sleep .05; done
 out=$(ap job start update package xray-core --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_package is excluded by shared update lock' 3 "$?"
 unset UPDATE_INSTALLED_SLEEP
+# Let the slow check finish: later scenarios run `update check` directly and need the lock.
+for _ in {1..200}; do js=$(ap job status "$check_job" --json --sys-root "$T/root" --run-dir "$T/run"); state=$(get "$js" state); [ "$state" = ok ] || [ "$state" = failed ] && break; sleep .05; done
+expect 'second update_check job completes' ok "$state"
 # 11 data change is judged by content_sha256 (the local .sha256 holds the plain list's hash)
 printf '%s\n' "$(printf 'b%.0s' $(seq 64))" > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
 out=$(run_check); expect 'same content hash means unchanged data' false "$(get "$out" data.chnroute4.changed)"
