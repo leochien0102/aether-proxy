@@ -79,6 +79,8 @@ const other_fixtures = [
 	fixture('main', 'boot_check_targets', [ '1.2.3.4' ], false),
 	fixture('main', 'boot_check_targets', [ '1.2.3.4:0' ], false),
 	fixture('main', 'boot_check_targets', [ '1.2.3.4:65536' ], false),
+	// net.uc valid_octet: an octet with a leading zero is not an IPv4 address.
+	fixture('main', 'boot_check_targets', [ '01.2.3.4:53' ], false),
 	fixture('main', 'boot_check_targets', [ 'example.com:53' ], false),
 	fixture('main', 'boot_check_targets', [ '1.2.3.4:53', '5.6.7.8:5353' ], true),
 	fixture('main', 'xray_bin', '/usr/bin/xray', true),
