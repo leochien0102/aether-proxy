@@ -3,7 +3,7 @@
 		"description": "Grant access to aether-proxy",
 		"read": {
 			"ubus": {
-				"aetherproxy": [ "version", "status", "events", "job_status", "log", "list_file", "probe_results", "sub_status" ],
+				"aetherproxy": [ "version", "status", "events", "job_status", "log", "list_file", "probe_results", "sub_status", "data_status" ],
 				"luci-rpc": [ "getHostHints" ]
 			},
 			"uci": [ "aetherproxy" ]

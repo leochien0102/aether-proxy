@@ -221,3 +221,6 @@ export const XRAY_CORE_PACKAGE = 'xray-core';
 // Global-scope IPv6 detection for the IPV6_PRESENT notice (docs/03 「IPv4-only 的泄漏处理」).
 export const IF_INET6_PATH = '/proc/net/if_inet6';
 export const IPV6_SCOPE_GLOBAL = '00';
+
+// T8.8 (docs/10 "规则与 DNS 页"): inventory covers the same five supported update items.
+export const DATA_STATUS_NAMES = DATA_UPDATE_ITEMS;

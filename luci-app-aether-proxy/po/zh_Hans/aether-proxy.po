@@ -4,6 +4,135 @@ msgstr ""
 "Language: zh_Hans\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Invalid DNS probe domain."
+msgstr "DNS 探测域名无效。"
+
+msgid "Invalid fallback flag."
+msgstr "回退开关无效。"
+
+msgid "Trust DNS requires one or two IPv4 addresses."
+msgstr "可信 DNS 需要 1–2 个 IPv4 地址。"
+
+msgid "Invalid IPv4 address."
+msgstr "IPv4 地址无效。"
+
+msgid "Invalid DNS upstream."
+msgstr "DNS 上游格式无效。"
+
+msgid "Blocked domains"
+msgstr "被墙域名"
+
+msgid "China domains"
+msgstr "大陆域名"
+
+msgid "Apple China domains"
+msgstr "苹果大陆域名"
+
+msgid "China IPv4 routes"
+msgstr "大陆 IPv4 路由"
+
+msgid "Static proxy IPv4 routes"
+msgstr "静态代理 IPv4 路由"
+
+msgid "Never"
+msgstr "从未"
+
+msgid "Saved, but reload failed."
+msgstr "已保存，但重载失败。"
+
+msgid "Saved."
+msgstr "已保存。"
+
+msgid "Content unchanged."
+msgstr "内容未变化。"
+
+msgid "Line %s: %s"
+msgstr "第 %s 行：%s"
+
+msgid "Downloaded"
+msgstr "下载"
+
+msgid "Packaged"
+msgstr "包内"
+
+msgid "Update available"
+msgstr "有更新"
+
+msgid "Latest"
+msgstr "最新"
+
+msgid "Not checked"
+msgstr "未检查"
+
+msgid "Updated: %s"
+msgstr "已更新：%s"
+
+msgid "Unchanged: %s"
+msgstr "未变化：%s"
+
+msgid "Failed: %s"
+msgstr "失败：%s"
+
+msgid "Bypass China — proxy destinations outside China."
+msgstr "绕过大陆——代理大陆以外的目标。"
+
+msgid "Blocked sites — proxy only blocked domains."
+msgstr "仅代理被墙网站——只代理被墙域名。"
+
+msgid "Global — proxy all follow-policy traffic."
+msgstr "全局代理——代理所有跟随策略的流量。"
+
+msgid "Direct domains"
+msgstr "直连域名"
+
+msgid "Proxy domains"
+msgstr "代理域名"
+
+msgid "Direct IPv4 addresses"
+msgstr "直连 IP"
+
+msgid "Proxy IPv4 addresses"
+msgstr "代理 IP"
+
+msgid "Save list"
+msgstr "保存名单"
+
+msgid "Last checked"
+msgstr "上次检查"
+
+msgid "Lines"
+msgstr "行数"
+
+msgid "Updated"
+msgstr "更新时间"
+
+msgid "Rules and DNS"
+msgstr "规则与 DNS"
+
+msgid "Mode"
+msgstr "模式"
+
+msgid "DNS settings"
+msgstr "DNS 设置"
+
+msgid "China DNS"
+msgstr "国内 DNS"
+
+msgid "Trust DNS"
+msgstr "可信 DNS"
+
+msgid "Direct DNS"
+msgstr "直连 DNS"
+
+msgid "Allow China fallback"
+msgstr "允许国内兜底"
+
+msgid "DNS probe domain"
+msgstr "DNS 探测域名"
+
+msgid "Rule data"
+msgstr "规则数据"
+
 msgid "Unable to read the version."
 msgstr "无法读取版本号。"
 

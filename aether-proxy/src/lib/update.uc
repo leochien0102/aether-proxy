@@ -1,6 +1,7 @@
 'use strict';
 
-// Device-side update discovery. Downloaded metadata is never trusted before usign succeeds.
+// Device-side update discovery and shared local-data hashes (docs/08 "本机数据的哈希").
+// Downloaded metadata is never trusted before usign succeeds.
 
 import * as fs from 'fs';
 import * as uci from 'uci';
@@ -173,29 +174,60 @@ function version_newer(available, installed) {
 	return a.release > b.release;
 }
 
-function file_sha256(path) {
+function file_sha256(path, quiet) {
 	let argv = [ 'sha256sum', path ];
 	let hash = sys.run(argv, { timeout: 10, quiet: true });
 	if (hash.code != 0) {
-		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: hash.code, stderr: trim(hash.stderr) });
+		if (!quiet)
+			log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: hash.code, stderr: trim(hash.stderr) });
 		return null;
 	}
 	let m = match(hash.stdout, /^([0-9a-fA-F]{64})[ \t]/);
 	return m ? lc(m[1]) : null;
 }
 
+// The one local-data hash of 08 "本机数据的哈希": the downloaded .sha256 if present,
+// otherwise the packaged baseline file's sha256. `update check` (changed), `update data`
+// (download decision) and `data status` (version) must all compare through this function,
+// so a freshly installed device without .sha256 files does not report its baseline data
+// as changed forever. Returns { ok, hash } or { ok: false, kind, detail } with kind
+// 'read' (unexpected I/O error), 'invalid' (garbage in .sha256) or 'baseline' (baseline
+// could not be hashed). Read-only status passes quiet=true and reports errors in
+// its reply; update callers retain the existing command-failure event behavior.
+export function local_data_hash(root, name, filename, quiet) {
+	let hash_path = system_path(root, `${C.DATA_DIR}/${name}.sha256`);
+	let local_hash = fs.readfile(hash_path);
+
+	if (local_hash != null) {
+		local_hash = trim(local_hash);
+		if (match(local_hash, /^[0-9a-fA-F]{64}$/) == null)
+			return { ok: false, kind: 'invalid', path: hash_path, detail: 'invalid local content hash' };
+		return { ok: true, hash: local_hash };
+	}
+
+	let err = fs_error();
+	if (err != 'No such file or directory')
+		return { ok: false, kind: 'read', path: hash_path, detail: `cannot read ${hash_path}: ${err}` };
+
+	let baseline = system_path(root, `${C.BASELINE_DATA_DIR}/${filename}`);
+	let baseline_hash = file_sha256(baseline, quiet);
+	if (baseline_hash == null)
+		return { ok: false, kind: 'baseline', path: baseline, detail: `cannot hash baseline ${baseline}` };
+
+	return { ok: true, hash: baseline_hash };
+};
+
 function data_status(ctx, manifest) {
 	let result = {};
 	for (let name in sort(keys(manifest.data ?? {}))) {
-		let local_path = system_path(ctx.root, `${C.DATA_DIR}/${name}.sha256`);
-		let local = fs.readfile(local_path);
-		if (local == null) {
-			let detail = fs_error();
-			if (detail != 'No such file or directory')
-				log.event('error', 'FS_FAILED', { op: 'read', path: local_path, detail });
-		}
-		// .sha256 holds the plain list's hash, so compare content_sha256, not the .gz sha256 (08).
-		result[name] = { changed: local == null || trim(local) != manifest.data[name].content_sha256 };
+		let filename = C.DATA_DOMAIN_FILES[name] ?? C.DATA_IP_FILES[name];
+		let local = local_data_hash(ctx.root, name, filename);
+		if (!local.ok && local.kind == 'read')
+			log.event('error', 'FS_FAILED', { op: 'read', path: local.path, detail: local.detail });
+		// An undeterminable local hash keeps reporting changed (the previous behavior
+		// whenever no comparison was possible); only the missing-.sha256 case was fixed
+		// to consult the baseline (08 "本机数据的哈希").
+		result[name] = { changed: !local.ok || local.hash != manifest.data[name].content_sha256 };
 	}
 	return result;
 }
@@ -389,10 +421,6 @@ export function check(opts) {
 	return write_updates(fetched.ctx, fetched, plat);
 };
 
-function path_sha256(path) {
-	return file_sha256(path);
-}
-
 function line_count(text) {
 	let count = 0;
 	for (let line in split(text, '\n')) {
@@ -438,21 +466,10 @@ function update_data_item(opts, ctx, base_urls, name, item) {
 	let filename = C.DATA_DOMAIN_FILES[name] ?? C.DATA_IP_FILES[name];
 	let current_path = system_path(ctx.root, `${C.DATA_DIR}/${filename}`);
 	let hash_path = system_path(ctx.root, `${C.DATA_DIR}/${name}.sha256`);
-	let local_hash = fs.readfile(hash_path);
-	if (local_hash != null) {
-		local_hash = trim(local_hash);
-		if (match(local_hash, /^[0-9a-fA-F]{64}$/) == null)
-			return { ok: false, detail: 'invalid local content hash' };
-	}
-	else {
-		let err = fs_error();
-		if (err != 'No such file or directory')
-			return { ok: false, detail: `cannot read ${hash_path}: ${err}` };
-		let baseline = system_path(ctx.root, `${C.BASELINE_DATA_DIR}/${filename}`);
-		local_hash = path_sha256(baseline);
-		if (local_hash == null)
-			return { ok: false, detail: `cannot hash baseline ${baseline}` };
-	}
+	let local = local_data_hash(ctx.root, name, filename);
+	if (!local.ok)
+		return { ok: false, detail: local.detail };
+	let local_hash = local.hash;
 	if (lc(local_hash) == lc(item.content_sha256))
 		return { ok: true, unchanged: true };
 

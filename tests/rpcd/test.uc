@@ -461,8 +461,8 @@ function scenario_10() {
 	let acl = json(fs.readfile(ACL_PATH));
 	let app = acl?.['luci-app-aether-proxy'];
 
-	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file/probe_results/sub_status',
-		show([ 'events', 'job_status', 'list_file', 'log', 'probe_results', 'status', 'sub_status', 'version' ]),
+	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file/probe_results/sub_status/data_status',
+		show([ 'data_status', 'events', 'job_status', 'list_file', 'log', 'probe_results', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file',
 		show([ 'check', 'job_start', 'node_import', 'save_file', 'service' ]),
@@ -474,7 +474,7 @@ function scenario_10() {
 
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
-		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'probe_results', 'save_file', 'service', 'status', 'sub_status', 'version' ]),
+		show([ 'check', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'probe_results', 'save_file', 'service', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
@@ -511,7 +511,7 @@ function scenario_10() {
 
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
-		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
+		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read', data_status: 'read',
 		service: 'write', check: 'write', job_start: 'write',
 		node_import: 'write', save_file: 'write'
 	};
@@ -702,6 +702,20 @@ function scenario_15() {
 	check('15. sub_status preserves records and declares empty args', deep_eq(r, data) && deep_eq(methods.sub_status.args, {}), show(r));
 }
 
+function scenario_16() {
+	let data = { ok: true, checked: 123, items: { gfwlist: { changed: false } } };
+	stub_ctrl({ exit: 0, stdout: sprintf('%J', data) });
+	let argv_of = watch_cli();
+	let r = methods.data_status.call({ args: {} });
+	expect_eq('16. data_status forwards exactly data status --json',
+		show([ 'data', 'status', '--json' ]), show(argv_of()));
+	check('16. data_status preserves inventory and declares empty args',
+		deep_eq(r, data) && deep_eq(methods.data_status.args, {}), show(r));
+	check('16. data_status uses default 10-second timeout',
+		match(plugin_src, /call_cli\(\[ 'data', 'status' \], DEFAULT_TIMEOUT_SECS\)/) != null &&
+		match(plugin_src, /const DEFAULT_TIMEOUT_SECS = 10;/) != null, 'timeout policy');
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -719,6 +733,7 @@ scenario_12();
 scenario_13();
 scenario_14();
 scenario_15();
+scenario_16();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);
