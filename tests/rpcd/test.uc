@@ -461,8 +461,8 @@ function scenario_10() {
 	let acl = json(fs.readfile(ACL_PATH));
 	let app = acl?.['luci-app-aether-proxy'];
 
-	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file',
-		show([ 'events', 'job_status', 'list_file', 'log', 'status', 'version' ]),
+	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file/probe_results',
+		show([ 'events', 'job_status', 'list_file', 'log', 'probe_results', 'status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file',
 		show([ 'check', 'job_start', 'node_import', 'save_file', 'service' ]),
@@ -473,13 +473,14 @@ function scenario_10() {
 		deep_eq(app?.write?.uci, [ 'aetherproxy' ]), show(app?.write?.uci));
 
 	let names = sort(keys(methods));
-	expect_eq('10. plugin exposes exactly the T8.1+T8.2 methods',
-		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'save_file', 'service', 'status', 'version' ]),
+	expect_eq('10. plugin exposes exactly the T8.1+T8.2+T8.5 methods',
+		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'probe_results', 'save_file', 'service', 'status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
 	check('10. status declares empty args', deep_eq(methods.status.args, {}), show(methods.status.args));
 	check('10. check declares empty args', deep_eq(methods.check.args, {}), show(methods.check.args));
+	check('10. probe_results declares empty args (T8.5)', deep_eq(methods.probe_results.args, {}), show(methods.probe_results.args));
 	// rpcd builds the ubus policy from the *type* of each example value (rpcd ucode.c: boolean ->
 	// int8, integer -> int32 (8/16/64 select other widths), double, array, object -> table,
 	// anything else -> string) and rejects a call whose argument has another type. So
@@ -510,7 +511,7 @@ function scenario_10() {
 
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
-		log: 'read', list_file: 'read',
+		log: 'read', list_file: 'read', probe_results: 'read',
 		service: 'write', check: 'write', job_start: 'write',
 		node_import: 'write', save_file: 'write'
 	};
@@ -669,6 +670,29 @@ function scenario_13() {
 		deep_eq(argv_of3(), [ 'custom', 'set', 'direct_ip', '--content', repeat_str('y', 65536), '--json' ]), 'argv mismatch');
 }
 
+// --- 14: probe_results forwards `probe results --json` and takes no arguments (T8.5) ---
+function scenario_14() {
+	let data = { ok: true, at: 1760400000, nodes: {}, done: 1, total: 1, finished: true, pending: [] };
+	data.nodes[node_id(1)] = { ip: '203.0.113.10', ok: 3, fail: 0, min_ms: 41, median_ms: 44, error: null };
+	stub_ctrl({ exit: 0, stdout: sprintf('%J', data) });
+
+	let argv_of = watch_cli();
+	let r = methods.probe_results.call({ args: {} });
+	expect_eq('14. probe_results: stub received exactly [probe, results, --json]',
+		show([ 'probe', 'results', '--json' ]), show(argv_of()));
+	check('14. probe_results: reply deep-equals the CLI object (file content as-is)', deep_eq(r, data), show(r));
+
+	// The default object for a missing or damaged probe.json is produced by the CLI;
+	// the plugin returns it unchanged like any other reply.
+	let empty = { ok: true, at: null, nodes: {}, done: 0, total: 0, finished: true, pending: [] };
+	stub_ctrl({ exit: 0, stdout: sprintf('%J', empty) });
+	argv_of = watch_cli();
+	r = methods.probe_results.call({ args: {} });
+	check('14. probe_results: CLI default object returned unchanged', deep_eq(r, empty), show(r));
+	expect_eq('14. probe_results: stub still received exactly [probe, results, --json]',
+		show([ 'probe', 'results', '--json' ]), show(argv_of()));
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -684,6 +708,7 @@ scenario_10();
 scenario_11();
 scenario_12();
 scenario_13();
+scenario_14();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

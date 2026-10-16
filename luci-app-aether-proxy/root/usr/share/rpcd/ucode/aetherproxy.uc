@@ -250,6 +250,15 @@ const methods = {
 		args: { since: 0, level: '' }
 	},
 
+	// T8.5 (docs/10 「rpcd 插件」): read-only forwarding of the latest node probe
+	// results; the LuCI nodes page polls this while a probe job is running.
+	probe_results: {
+		call: function(req) {
+			return call_cli([ 'probe', 'results' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
 	// T8.2 (docs/10 "rpcd 插件"): log / node_import / list_file / save_file. All
 	// validation beyond the whitelist (line counts, sizes) happens in the CLI.
 	log: {
