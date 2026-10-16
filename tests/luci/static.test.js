@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { createRpc, loadModule } = require('./loader.js');
+const { createRpc, loadModule, parsePo } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const HTDOCS = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -32,6 +32,22 @@ function viewSources() {
 	return map;
 }
 
+/* The pure view-model modules next to common.js; their _() strings must be
+   translated just like the views' ones (docs/10 「页面卡的写法」). */
+function modelSources() {
+	const dir = path.join(HTDOCS, 'aether-proxy', 'model');
+	const map = new Map();
+
+	if (!fs.existsSync(dir))
+		return map;
+
+	for (const f of fs.readdirSync(dir).sort())
+		if (f.endsWith('.js'))
+			map.set(path.join('aether-proxy', 'model', f), read(path.join(dir, f)));
+
+	return map;
+}
+
 /* docs/10 「rpcd 插件」: the 11 ubus methods with their declared params. */
 const PLUGIN_METHODS = {
 	version: [],
@@ -46,22 +62,6 @@ const PLUGIN_METHODS = {
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
 };
-
-/* po entries as msgid → msgstr; msgid and msgstr must sit on adjacent lines. */
-function parsePo(text) {
-	const entries = {};
-	const lines = text.split('\n');
-
-	for (let i = 0; i < lines.length - 1; i++) {
-		const id = /^msgid "(.+)"$/.exec(lines[i]);
-		const str = /^msgstr "(.*)"$/.exec(lines[i + 1]);
-
-		if (id && str)
-			entries[id[1]] = str[1];
-	}
-
-	return entries;
-}
 
 test('scenario 9: static checks — page requires, rpc.declare only in common.js with the 11 plugin methods, no cbi-button-reset, po complete', async (t) => {
 	const common = read(COMMON);
@@ -123,15 +123,15 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 			assert.match(src, new RegExp(`\\b${handler}:\\s*null\\b`), `${name}: ${handler} is null`);
 	}
 
-	/* po: every menu title and every _() string of the sources has a non-empty
-	   Chinese translation */
+	/* po: every menu title and every _() string of the sources (views, common
+	   and the model modules) has a non-empty Chinese translation */
 	const po = parsePo(read(PO));
 	const msgids = new Set();
 
 	for (const node of Object.values(JSON.parse(read(MENU))))
 		msgids.add(node.title);
 
-	for (const src of [ common, ...views.values() ])
+	for (const src of [ common, ...views.values(), ...modelSources().values() ])
 		for (const m of src.matchAll(/_\('([^']*)'\)/g))
 			msgids.add(m[1]);
 

@@ -36,3 +36,108 @@ msgstr "高级"
 
 msgid "This page has not been implemented yet."
 msgstr "此页面尚未实现"
+
+msgid "Service status, pending notices and start/stop controls."
+msgstr "服务状态、待处理提示与启停控制。"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "DNS level"
+msgstr "DNS 级别"
+
+msgid "Current node"
+msgstr "当前节点"
+
+msgid "Last health probe"
+msgstr "最近一次健康检测"
+
+msgid "aether-proxy version"
+msgstr "aether-proxy 版本"
+
+msgid "DNS has fallen back to the original upstream configuration."
+msgstr "DNS 已回退到原配置"
+
+msgid "Component"
+msgstr "组件"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "Path"
+msgstr "路径"
+
+msgid "Start"
+msgstr "启动"
+
+msgid "Restart"
+msgstr "重启"
+
+msgid "Stop"
+msgstr "停止"
+
+msgid "Stopping aether-proxy leaves all traffic going out directly. Really stop the service?"
+msgstr "停止后所有流量直连。确定要停止服务吗？"
+
+msgid "The service action failed: %s (%s)."
+msgstr "服务操作失败：%s（%s）。"
+
+msgid "Stopped"
+msgstr "已停止"
+
+msgid "Starting"
+msgstr "启动中"
+
+msgid "Waiting for network"
+msgstr "等待网络"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Degraded"
+msgstr "降级"
+
+msgid "Failsafe"
+msgstr "故障放行"
+
+msgid "Start failed"
+msgstr "启动失败"
+
+msgid "%s seconds ago"
+msgstr "%s 秒前"
+
+msgid "%s minutes ago"
+msgstr "%s 分钟前"
+
+msgid "%s hours ago"
+msgstr "%s 小时前"
+
+msgid "%s days ago"
+msgstr "%s 天前"
+
+msgid "Healthy, %s ms."
+msgstr "正常，%s ms。"
+
+msgid "Probe failed."
+msgstr "检测失败。"
+
+msgid "Not probed yet."
+msgstr "尚未检测。"
+
+msgid "Reading the status failed: %s."
+msgstr "读取状态失败：%s。"
+
+msgid "The component %s is missing; install it before starting the service."
+msgstr "缺少组件 %s，请先安装再启动服务。"
+
+msgid "An update for %s is available (%s)."
+msgstr "%s 有可用更新（%s）。"
+
+msgid "A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment."
+msgstr "在 %s 上检测到全局 IPv6 地址：客户端仍可能通过 IPv6 直连，建议关闭 LAN 的 IPv6 分配。"
+
+msgid "dnsmasq configuration contains additional server= lines outside aether-proxy: %s."
+msgstr "dnsmasq 配置中存在 aether-proxy 之外的 server= 行：%s。"
+
+msgid "Unhandled notice: %s."
+msgstr "未处理的提示：%s。"

@@ -147,4 +147,21 @@ function loadModule(file, modules, env) {
 	return factory.apply(null, [ env.window, env.document, env.L ?? {} ].concat(instances));
 }
 
-module.exports = { scanRequires, createDocument, createRpc, loadModule };
+/* po entries as msgid → msgstr; msgid and msgstr must sit on adjacent lines.
+ * Shared by the tests that use the po as the _() translation double. */
+function parsePo(text) {
+	const entries = {};
+	const lines = text.split('\n');
+
+	for (let i = 0; i < lines.length - 1; i++) {
+		const id = /^msgid "(.+)"$/.exec(lines[i]);
+		const str = /^msgstr "(.*)"$/.exec(lines[i + 1]);
+
+		if (id && str)
+			entries[id[1]] = str[1];
+	}
+
+	return entries;
+}
+
+module.exports = { scanRequires, createDocument, createRpc, loadModule, parsePo };

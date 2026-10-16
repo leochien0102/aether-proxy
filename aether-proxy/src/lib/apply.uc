@@ -303,18 +303,21 @@ function parse_conf_file(path) {
 	return confdir == null ? null : { confdir, interfaces };
 };
 
-function dnsmasq_confdir(ctx) {
-	setup_log(ctx);
+// Locates the conf-dir dnsmasq generates its instance configuration into. This is the
+// detection half of dnsmasq_confdir, kept free of event logging so that `status` notices
+// can reuse it read-only (docs/10 「概览页」); apply wraps it with the reporting below.
+// Returns { ok, confdir } or { ok: false, code, detail }.
+function find_dnsmasq_confdir(ctx) {
 	let dir = system_path(ctx, C.DNSMASQ_CONFIG_DIR);
 	let names = list_files(dir);
 	if (names == null)
-		return failed(ctx, 'dnsmasq_confdir', `cannot list ${dir}: ${fs.error() ?? 'unknown error'}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
+		return { ok: false, code: 'DNSMASQ_CONFDIR_NOT_FOUND', detail: `cannot list ${dir}: ${fs.error() ?? 'unknown error'}` };
 	// dns.dnsmasq_instance pins one instance by its UCI section name (03).
 	if (ctx.dnsmasq_instance) {
 		let config = parse_conf_file(`${dir}/dnsmasq.conf.${ctx.dnsmasq_instance}`);
 		if (config == null)
-			return failed(ctx, 'dnsmasq_confdir', `dnsmasq instance '${ctx.dnsmasq_instance}' has no conf-dir in ${dir}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
-		return result('dnsmasq conf-dir found', { confdir: system_path(ctx, config.confdir) });
+			return { ok: false, code: 'DNSMASQ_CONFDIR_NOT_FOUND', detail: `dnsmasq instance '${ctx.dnsmasq_instance}' has no conf-dir in ${dir}` };
+		return { ok: true, confdir: system_path(ctx, config.confdir) };
 	}
 	let candidates = [];
 	for (let name in names) {
@@ -340,8 +343,16 @@ function dnsmasq_confdir(ctx) {
 				push(selected, config.confdir);
 	selected = sort(selected);
 	if (length(selected) != 1)
-		return failed(ctx, 'dnsmasq_confdir', `no unique conf-dir for LAN interfaces ${join(',', ctx.lan_ifaces ?? [])}`, 'DNSMASQ_CONFDIR_NOT_FOUND');
-	return result('dnsmasq conf-dir found', { confdir: system_path(ctx, selected[0]) });
+		return { ok: false, code: 'DNSMASQ_CONFDIR_NOT_FOUND', detail: `no unique conf-dir for LAN interfaces ${join(',', ctx.lan_ifaces ?? [])}` };
+	return { ok: true, confdir: system_path(ctx, selected[0]) };
+};
+
+function dnsmasq_confdir(ctx) {
+	setup_log(ctx);
+	let found = find_dnsmasq_confdir(ctx);
+	if (!found.ok)
+		return failed(ctx, 'dnsmasq_confdir', found.detail, found.code);
+	return result('dnsmasq conf-dir found', { confdir: found.confdir });
 };
 
 function dnsmasq_restart(ctx) {
@@ -422,15 +433,18 @@ function dnsmasq_hup(ctx) {
 	return r.code == 0 ? result('dnsmasq received HUP') : failed(ctx, 'dnsmasq_hup', `killall -HUP dnsmasq failed (${r.code}): ${r.stderr}`);
 };
 
-function dnsmasq_extra_servers(ctx) {
-	setup_log(ctx);
-	let found = dnsmasq_confdir(ctx);
+// Scans the generated dnsmasq configuration and every fragment except our own for
+// `server=` lines — the detection half of dnsmasq_extra_servers, shared with the `status`
+// notices (docs/10 「概览页」). Read-only and event-free; apply wraps it with the
+// DNSMASQ_EXTRA_SERVERS reporting below. Returns { ok, servers } or { ok: false, code, detail }.
+function scan_extra_servers(ctx) {
+	let found = find_dnsmasq_confdir(ctx);
 	if (!found.ok)
-		return found;
+		return { ok: false, code: found.code, detail: found.detail };
 	let config_dir = system_path(ctx, C.DNSMASQ_CONFIG_DIR);
 	let generated = list_files(config_dir), fragments = list_files(found.confdir);
 	if (generated == null || fragments == null)
-		return failed(ctx, 'dnsmasq_extra_servers', `cannot list generated dnsmasq configuration: ${fs.error() ?? 'unknown error'}`);
+		return { ok: false, code: 'START_FAILED', detail: `cannot list generated dnsmasq configuration: ${fs.error() ?? 'unknown error'}` };
 	let own = `${found.confdir}/${C.DNSMASQ_FRAGMENT}`;
 	let servers = [], paths = map(generated, n => `${config_dir}/${n}`);
 	for (let name in fragments)
@@ -439,17 +453,24 @@ function dnsmasq_extra_servers(ctx) {
 	for (let path in paths) {
 		let text = fs.readfile(path);
 		if (text == null)
-			return failed(ctx, 'dnsmasq_extra_servers', `cannot read ${path}: ${fs.error() ?? 'unknown error'}`);
+			return { ok: false, code: 'START_FAILED', detail: `cannot read ${path}: ${fs.error() ?? 'unknown error'}` };
 		for (let line in split(text, '\n')) {
 			line = trim(line);
 			if (match(line, /^server=/) && !array_has(servers, line))
 				push(servers, line);
 		}
 	}
-	servers = sort(servers);
-	if (length(servers))
-		log.event('warn', 'DNSMASQ_EXTRA_SERVERS', { servers: join(';', servers) });
-	return result('external dnsmasq servers collected', { servers });
+	return { ok: true, servers: sort(servers) };
+};
+
+function dnsmasq_extra_servers(ctx) {
+	setup_log(ctx);
+	let scan = scan_extra_servers(ctx);
+	if (!scan.ok)
+		return failed(ctx, 'dnsmasq_extra_servers', scan.detail, scan.code);
+	if (length(scan.servers))
+		log.event('warn', 'DNSMASQ_EXTRA_SERVERS', { servers: join(';', scan.servers) });
+	return result('external dnsmasq servers collected', { servers: scan.servers });
 };
 
 function read_lkg(ctx, address) {
@@ -604,6 +625,7 @@ export {
 	sets_export, sets_save, sets_load,
 	route_add, route_del,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
+	scan_extra_servers,
 	resolve_node, write_boot_list, conflicts,
 	artifact_hashes
 };
