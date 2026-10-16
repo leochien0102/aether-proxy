@@ -2,14 +2,14 @@
 'require view';
 'require rpc';
 
-var callStatus = rpc.declare({
+var callVersion = rpc.declare({
 	object: 'aetherproxy',
-	method: 'status'
+	method: 'version'
 });
 
 return view.extend({
 	load: function() {
-		return callStatus();
+		return callVersion();
 	},
 
 	render: function(res) {
