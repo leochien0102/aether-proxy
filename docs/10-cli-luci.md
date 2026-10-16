@@ -35,6 +35,7 @@ init.d / hotplug / daemon ──────────────────
 | `job status <id>` | 输出作业状态 | 否 |
 | `events [--since ts] [--level l]` | 读取结构化事件。`--since` 包含边界（`ts >= since`）；`--level` 表示**该等级及以上**（例如 `warn` 返回 warn 与 error） | 否 |
 | `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取 logd 中的相关行 | 否 |
+| `custom get <名称>` / `custom set <名称> --content <文本>` | 读取 / 校验并保存自定义列表（`direct_domain`、`proxy_domain`、`direct_ip`、`proxy_ip`） | 否 |
 
 ### 仅供测试的选项
 
@@ -51,6 +52,35 @@ init.d / hotplug / daemon ──────────────────
 
 `job start` 把这些选项原样转给子命令，同时经环境变量 `AETHER_PROXY_JOB_RUN_DIR`、`AETHER_PROXY_JOB_SYS_ROOT`、`AETHER_PROXY_JOB_BIN_DIR` 交给后台的 `job run`（它自己的作业文件位置要跟着变）。
 若干测试专用的环境变量只用于缩短集成测试中的等待：`AETHER_PROXY_TEST_RETRY_DELAY`（启动重试间隔）、`AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS`、`AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS`（订阅调度）；正式环境不设置。
+
+### `log`、`node import`、`custom`（2026-10-16 定，T8.2）
+
+**`log [--source all|aether-proxy|xray|dns] [--lines n]`**
+- 执行 `logread`（`sys.run`，10 秒），只保留标签为 `aether-proxy` 的行（`<日期> <设施>.<等级> aether-proxy[<pid>]: <消息>`）。
+  Xray 与 chinadns-ng 继承 daemon 的输出、共用这个标签（[09](09-logging.md)「子进程日志」），按消息内容区分来源：
+  消息匹配 `^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]` → `xray`；匹配 `\[[A-Za-z0-9_]+\.zig:[0-9]+` → `dns`；其余 → `aether-proxy`。
+  两个格式按上游源码推定，**真机验收（T8.13）时核对**，不符就改这两条规则。
+- `--source` 默认 `all`；`--lines` 为 1–2000，默认 200，取过滤后的**最后** n 行，按时间先后排列。
+- 输出：`{ "ok": true, "source": "<来源>", "lines": [ { "source": "xray", "text": "<原始整行>" }, … ] }`。没有 `logread` 或它失败 → `CMD_FAILED`，退出码 1。
+
+**`node import <uri>`**（手动添加一个节点）
+- 用订阅同一套解析（`lib/uri.uc` 的 `parse_line`）。解析不了或协议不支持 → `{"ok": false, "code": "CONFIG_INVALID", "detail": "<原因：malformed、unsupported_scheme 等>"}`，退出码 2，不写任何东西。
+- 已有节点（不论来源）用 `identity.keys()` 现算的 strong 键与它相同（不读存储的 `match_strong`：手填的节点可能没有）→ 不重复添加：`{"ok": true, "node": "<已有段名>", "duplicate": true}`。
+- 否则新建段 `n_<32 位十六进制>`（与订阅相同的生成方式），`source manual`，字段取解析结果，`match_strong`/`match_weak` 由 `lib/identity.uc` 计算；
+  `label` 取 URI 的 `#名称`，没有就用 `<地址>:<端口>`。写入方式与订阅相同（在工作目录里用改名的包修改，提交后**仅当原文件期间未变**时整体替换，见 [06](06-nodes-subscription.md)），
+  原文件期间被改过 → `CONFIG_INVALID`（detail 说明「配置被同时修改，请重试」），退出码 2。
+  成功：`{"ok": true, "node": "<新段名>", "duplicate": false}`。解析时的警告（例如 `NODE_INSECURE_IGNORED`）照常记事件。
+- 不 reload：新节点不是当前节点，运行中的配置不受影响。设为当前节点由 LuCI 改 `main.node` 后走正常的保存并应用。
+
+**`custom get <名称>` / `custom set <名称> --content <文本>`**
+- 名称与文件：`direct_domain` → `direct_domain.txt`、`proxy_domain` → `proxy_domain.txt`、`direct_ip` → `direct_ip.txt`、`proxy_ip` → `proxy_ip.txt`，目录 `/etc/aether-proxy/custom/`（`--custom-dir` 可替换）。
+- `get`：`{"ok": true, "name": "<名称>", "content": "<文件内容>"}`；文件不存在时 `content` 为空字符串。
+- `set`：内容不超过 65536 字节（超过 → `USAGE`）。按 [05](05-config.md)「列表文件的解析规则」逐行校验（域名类 `data.parse_domains`，IP 类 `data.parse_cidrs`）。
+  有非法行 → `{"ok": false, "code": "CONFIG_INVALID", "detail": "…", "errors": [ { "line": <行号>, "text": "<原文>" }, … ]}`（最多 20 条），退出码 2，文件不变。
+  合法：内容与现有文件相同 → 不写（不写 flash）；否则 `sys.write_atomic` 写入（内容末尾补一个换行）。
+  写入后服务在运行（`state` 为 `starting`/`running`/`degraded`）→ 执行一次 `/etc/init.d/aether-proxy reload`（失败不回滚文件，`reload` 字段报告）。
+  输出 `{"ok": true, "name": "<名称>", "changed": <bool>, "reload": <true|false|"failed">}`。
+- 内容经命令行参数传递（rpcd 不写临时文件）：65536 字节远小于 Linux 单个参数的上限（131072）。
 
 ## 作业机制
 
@@ -100,9 +130,9 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data`，`args`（按 kind 校验） | `job start …` |
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
-| `log` | `source`、`lines`（1–2000） | `log` |
-| `node_import` | `uri`（≤ 4096 字节） | `node import` |
-| `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`，`content` | 读写 `/etc/aether-proxy/custom/<name>.txt`（保存前逐行校验） |
+| `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |
+| `node_import` | `uri`（≤ 4096 字节，须以 `<协议>://` 开头，防止被当作命令行选项） | `node import <uri>` |
+| `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`；`save_file` 另有 `content`（≤ 65536 字节） | `custom get <name>` / `custom set <name> --content <content>`（校验与保存都在命令行） |
 
 ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`、`events`、`log`、`job_status`、`list_file`）归 read，
 其余归 write；同时授予 UCI `aetherproxy` 配置的读写权限。
@@ -115,7 +145,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   （命令行的 JSON 已带 `ok`/`code`，例如 `job start` 忙时的 `{"ok": false, "code": "BUSY", "job": …}`）；
   否则返回 `{"ok": false, "code": "CMD_FAILED", "detail": "exit <退出码>: <stderr 前 512 字节>"}`，超时的 `detail` 为 `timeout after <秒>s`。
 - **参数错误**：不执行任何命令，返回 `{"ok": false, "code": "USAGE", "detail": "…"}`。缺省的可选参数等同于不传。
-- **超时**：`check` 30 秒，其余 10 秒（rpcd 串行处理调用，每个调用必须很快；长任务一律走 `job_start`）。
+- **超时**：`check`、`save_file` 30 秒（`save_file` 可能触发 reload），其余 10 秒（rpcd 串行处理调用，每个调用必须很快；长任务一律走 `job_start`）。
 - **`service`**：重启可能超过 30 秒（停止要等子进程退出），所以放到后台执行后立即返回 `{"ok": true, "action": "<action>"}`：
   `sh -c '"$0" "$1" </dev/null >/dev/null 2>&1 &' /etc/init.d/aether-proxy <action>`。结果由前端轮询 `status` 得知。
 - **`job_start` 的参数**（`args` 为字符串数组，缺省为空数组）：
@@ -132,7 +162,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   写成 `'int'`、`'array'` 这样的字符串会被当作字符串类型。类型不符或参数名不在声明中 → rpcd 直接返回 `INVALID_ARGUMENT`，不进插件（T8.1 复审时核对源码，2026-10-16）。
   插件里仍按上面的规则再校验一遍。
 - **仅供测试**：环境变量 `AETHER_PROXY_TEST_RPCD_CLI`、`AETHER_PROXY_TEST_RPCD_INIT` 分别替换命令行与 init 脚本的路径（与其他 `AETHER_PROXY_TEST_*` 一样，生产环境不设置）。
-- `log`、`node_import`、`list_file`/`save_file` 要等命令行实现对应子命令（T8.2）后再加，T8.1 不提供。
+- `log`、`node_import`、`list_file`/`save_file` 在 T8.2 加入（命令行先实现 `log`、`node import`、`custom`，见上方「`log`、`node import`、`custom`」）；ACL：`log`、`list_file` 归 read，`node_import`、`save_file` 归 write。
 
 ## LuCI 页面
 
