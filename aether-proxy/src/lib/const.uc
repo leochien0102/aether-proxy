@@ -169,6 +169,9 @@ export const SCHEDULE_RANDOM_RANGE = 4294967296;
 export const SCHEDULE_TEST_INTERVAL_ENV = 'AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS';
 export const SCHEDULE_TEST_HOUR_ENV = 'AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS';
 
+// T7.6 (daemon update scheduler)
+export const UPDATE_SCHEDULE_FILE = 'update-schedule.json';
+
 // T7.3 (signed update checks)
 export const UPDATE_FILE = 'updates.json';
 export const UPDATE_PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];

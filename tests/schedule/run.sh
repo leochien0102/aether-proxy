@@ -59,7 +59,21 @@ setup_tools() {
 	cat > "$T/bin/aether-proxy" <<'EOF'
 #!/bin/sh
 printf 'aether-proxy %s\n' "$*" >> "$SCHEDULE_LOG"
-[ "$1" = job ] && [ "$2" = start ] && [ "$3" = sub ] && [ "$4" = update ] || exit 64
+[ "$1" = job ] && [ "$2" = start ] || exit 64
+if [ "$3" = update ]; then
+	case "$4" in
+		data) exit "${SCHEDULE_DATA_RC:-0}" ;;
+		check)
+			count_file="$SYSROOT/update-check-count"
+			count=0; [ -f "$count_file" ] && read -r count < "$count_file"
+			count=$((count + 1)); echo "$count" > "$count_file"
+			[ "$count" -eq 1 ] && exit "${SCHEDULE_CHECK_FIRST_RC:-0}"
+			exit "${SCHEDULE_CHECK_RC:-0}" ;;
+		package) exit "${SCHEDULE_PACKAGE_RC:-0}" ;;
+		*) exit 64 ;;
+	esac
+fi
+[ "$3" = sub ] && [ "$4" = update ] || exit 64
 if [ "${SCHEDULE_JOB_RC:-0}" -eq 3 ]; then exit 3; fi
 name="$5"
 state_dir="$SYSROOT/etc/aether-proxy/state"
@@ -102,6 +116,11 @@ config global 'main'
 	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 	option fail_open '1'
 
+config update 'update'
+	option data_auto '1'
+	option data_hour '4'
+	option xray_auto 'notify'
+
 config subscription 's_00000001'
 	option enabled '1'
 	option name 'scheduled test'
@@ -133,7 +152,7 @@ start_daemon() {
 	(
 		export STUB_LOG="$root/calls.log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count"
 		export SCHEDULE_LOG="$root/schedule-calls.log" SCHEDULE_UCODE="$UCODE" PATH="$T/bin:$PATH"
-		export STUB_RESOLVE_FAIL=1 AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS=20
+		export STUB_RESOLVE_FAIL="${SCHEDULE_RESOLVE_FAIL:-1}" AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS=20
 		export AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS="${SCHEDULE_HOURS:-0.1}"
 		exec "$UCODE" -S "$ENTRY" -- daemon $(args_for "$root") "$@"
 	) > "$root/daemon.stdout" 2> "$root/daemon.stderr" &
@@ -178,12 +197,20 @@ stop_daemon() {
 
 setup_tools
 
+if tests/host/ucode tests/schedule/update_test.uc; then
+	ok "update schedule pure-function cases"
+else
+	bad "update schedule pure-function cases"
+fi
+
 # Due subscription scheduling runs independently of the monitor interval.
 make_root "$T/root1"
 R="$T/root1"
 start_daemon "$R"
 if wait_for_text "$R/schedule-calls.log" 'job start sub update s_00000001' 400; then
 	ok "due subscription starts a job"
+	sleep 0.2
+	if grep -Fq 'job start update ' "$R/schedule-calls.log"; then bad "missing update record does not schedule at daemon start"; else ok "missing update record does not schedule at daemon start"; fi
 	grep -Fq -- "--confdir $R/etc/config" "$R/schedule-calls.log" \
 		&& grep -Fq -- "--run-dir $R/var/run/aether-proxy" "$R/schedule-calls.log" \
 		&& ok "scheduler passes config and run directories" || bad "scheduler passes config and run directories"
@@ -192,6 +219,114 @@ if wait_for_text "$R/schedule-calls.log" 'job start sub update s_00000001' 400; 
 		&& ok "scheduler passes system and binary roots" || bad "scheduler passes system and binary roots"
 else
 	bad "due subscription starts a job" "$(cat "$R/daemon.stderr")"
+fi
+stop_daemon
+
+# Daily data scheduling precedes package checks; BUSY (3) is retried without recording.
+make_root "$T/root-update-order"
+R="$T/root-update-order"
+printf '{"data":{"last_attempt":0},"check":{"last_attempt":0}}\n' > "$R/etc/aether-proxy/state/update-schedule.json"
+export SCHEDULE_CHECK_FIRST_RC=3
+start_daemon "$R"
+if wait_for_text "$R/schedule-calls.log" 'job start update check' 400; then
+	ok "update scheduler starts due data before check"
+	first_data=$(grep -n 'job start update data' "$R/schedule-calls.log" | head -n 1 | cut -d: -f1)
+	first_check=$(grep -n 'job start update check' "$R/schedule-calls.log" | head -n 1 | cut -d: -f1)
+	[ -n "$first_data" ] && [ -n "$first_check" ] && [ "$first_data" -lt "$first_check" ] \
+		&& ok "data is scheduled before package check" || bad "data is scheduled before package check"
+	for _ in {1..200}; do
+		count=$(cat "$R/update-check-count")
+		[ "$count" -ge 2 ] && break
+		sleep 0.02
+	done
+	[ "$count" -ge 2 ] && ok "check exit 3 is retried without recording" || bad "check exit 3 is retried without recording" "calls=$count"
+	last_data=$(jget data.last_attempt < "$R/etc/aether-proxy/state/update-schedule.json")
+	last_check=$(jget check.last_attempt < "$R/etc/aether-proxy/state/update-schedule.json")
+	[ "$last_data" -gt 0 ] && ok "data attempt timestamp recorded" || bad "data attempt timestamp recorded" "$last_data"
+	[ "$last_check" -gt 0 ] && ok "successful check attempt timestamp recorded" || bad "successful check attempt timestamp recorded" "$last_check"
+else
+	bad "update scheduler starts due data before check" "$(cat "$R/daemon.stderr") $(cat "$R/schedule-calls.log")"
+fi
+stop_daemon
+unset SCHEDULE_CHECK_FIRST_RC
+
+# data_auto=0 suppresses only the data job.
+make_root "$T/root-data-disabled"
+R="$T/root-data-disabled"
+sed -i "s/option data_auto '1'/option data_auto '0'/" "$R/etc/config/aetherproxy"
+printf '{"data":{"last_attempt":0},"check":{"last_attempt":0}}\n' > "$R/etc/aether-proxy/state/update-schedule.json"
+start_daemon "$R"
+if wait_for_text "$R/schedule-calls.log" 'job start update check' 400; then
+	if grep -Fq 'job start update data' "$R/schedule-calls.log"; then bad "data_auto=0 suppresses data job"; else ok "data_auto=0 suppresses data and schedules check"; fi
+else
+	bad "data_auto=0 schedules package check" "$(cat "$R/daemon.stderr")"
+fi
+stop_daemon
+
+# Auto installation runs only while running, records a version once, then accepts a newer one.
+make_root "$T/root-auto-install"
+R="$T/root-auto-install"
+sed -i "s/option xray_auto 'notify'/option xray_auto 'auto'/" "$R/etc/config/aetherproxy"
+now=$(date +%s)
+printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
+printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+SCHEDULE_RESOLVE_FAIL=0 start_daemon "$R"
+wait_for_text "$R/var/run/aether-proxy/state.json" '"state"' 400
+for _ in {1..40}; do
+	[ "$(jget state < "$R/var/run/aether-proxy/state.json" 2>/dev/null)" = running ] && break
+	kill -USR1 "$DAEMON_PID" 2>>"$QUIET" || break
+	sleep 0.05
+done
+if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 400; then
+	ok "auto policy starts xray package job while running"
+	version=$(jget auto_install.version < "$R/etc/aether-proxy/state/update-schedule.json")
+	[ "$version" = '26.10-r1' ] && ok "auto install version is recorded" || bad "auto install version is recorded" "$version"
+	count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
+	printf '{"packages":{"xray-core":{"newer":true,"available":"26.11-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+	for _ in {1..200}; do
+		count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
+		[ "$count" -ge 2 ] && break
+		sleep 0.02
+	done
+	[ "$count" -ge 2 ] && ok "new available version triggers another auto install" || bad "new available version triggers another auto install" "calls=$count"
+else
+	bad "auto policy starts xray package job while running" "$(cat "$R/daemon.stderr") $(cat "$R/var/run/aether-proxy/state.json" 2>/dev/null)"
+fi
+stop_daemon
+
+# Degraded and failsafe states must not auto-install; notify never installs either.
+for policy in auto notify; do
+	make_root "$T/root-policy-$policy"
+	R="$T/root-policy-$policy"
+	sed -i "s/option xray_auto 'notify'/option xray_auto '$policy'/" "$R/etc/config/aetherproxy"
+	now=$(date +%s)
+	printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
+	printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+	start_daemon "$R"
+	if wait_monitor_state degraded; then
+		sleep 0.4
+		if grep -Fq 'job start update package xray-core' "$R/schedule-calls.log"; then
+			bad "$policy policy suppresses package installation while degraded"
+		else
+			ok "$policy policy does not auto-install while degraded"
+		fi
+	else
+		bad "$policy degraded scheduler setup" "$(cat "$R/daemon.stderr")"
+	fi
+	stop_daemon
+done
+
+# Corrupt update records are treated as empty and reported once, not every timer tick.
+make_root "$T/root-corrupt-update-record"
+R="$T/root-corrupt-update-record"
+printf '{broken\n' > "$R/etc/aether-proxy/state/update-schedule.json"
+start_daemon "$R"
+if wait_for_text "$R/var/run/aether-proxy/events.jsonl" 'invalid ' 400; then
+	sleep 0.4
+	count=$(grep -c 'FS_FAILED' "$R/var/run/aether-proxy/events.jsonl")
+	[ "$count" -eq 1 ] && ok "corrupt update schedule record logs FS_FAILED once" || bad "corrupt update schedule record logs FS_FAILED once" "count=$count"
+else
+	bad "corrupt update schedule record is diagnosed" "$(cat "$R/daemon.stderr")"
 fi
 stop_daemon
 
