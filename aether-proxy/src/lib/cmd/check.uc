@@ -11,8 +11,8 @@ import * as sys from 'aetherproxy.sys';
 import * as pipeline from 'aetherproxy.pipeline';
 
 // Locates a component binary in the order of docs/01 "组件二进制的查找顺序".
-// Returns { path, source } or null.
-function find_component(name, configured, options) {
+// Shared with the `status` notices (docs/10 「概览页」). Returns { path, source } or null.
+export function find_component(name, configured, options) {
 	if (options?.bin_dir) {
 		let from_bin_dir = `${options.bin_dir}/${name}`;
 		if (fs.access(from_bin_dir, 'x'))
@@ -28,7 +28,7 @@ function find_component(name, configured, options) {
 	}
 
 	return null;
-}
+};
 
 // A table that exercises the tproxy and socket expressions, so `nft -c` fails when
 // kmod-nft-tproxy / kmod-nft-socket are missing (docs/02 "内核与模块前提").
