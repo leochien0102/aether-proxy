@@ -199,6 +199,9 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 4. 应用：服务在运行时执行一次 reload（`/etc/init.d/aether-proxy reload`），**不另写一套应用逻辑**（2026-10-15 改）。
    增量重载会按产物哈希判断（04「重载」）：`chnroute4`、`gfw_static4` 写在 nft 产物里 → 整表原子替换（先导出动态集合，不中断流量）；
    `gfwlist`、`chnlist`、`apple` 由 `chinadns.conf` 按路径引用、其内容已计入哈希 → 重启 chinadns-ng 并 HUP dnsmasq。
+**本机数据的哈希**（2026-10-16 定，T8.8）：`/etc/aether-proxy/data/<名称>.sha256` 存在就用它，否则用包内基线文件的 sha256。`update check` 判断 `changed`、
+`update data` 判断是否要下载、`data status` 显示版本，**三处用同一个函数**（之前 `update check` 在没有 `.sha256` 时一律判为有变化，刚装好的设备会永远提示数据可更新）。
+
 5. 读取数据的顺序：`/etc/aether-proxy/data/` 中存在就用它，否则使用包内的 `/usr/share/aether-proxy/data/` 基线。
 
 清单本身取不到或验签失败时，`update data` 与 `update check` 用同样的结果码和退出码（`UPDATE_FETCH_FAILED` 退出 1、`MANIFEST_BAD_SIGNATURE` 退出 4）。清单中本版本不认识的数据项（以后的通道新增的）直接忽略，不算失败。

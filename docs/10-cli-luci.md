@@ -33,6 +33,7 @@ init.d / hotplug / daemon ──────────────────
 | `update check` | 检查新版本 | 是 |
 | `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本（[08](08-updates.md)） | 是 |
 | `update data` | 更新规则数据 | 是 |
+| `data status` | 各规则数据的来源、版本、行数与可用更新（见「规则与 DNS 页」） | 否 |
 | `job start <子命令...>` | 以后台作业方式运行一个长任务，立即返回 `{"job": "<id>"}` | 否 |
 | `job status <id>` | 输出作业状态 | 否 |
 | `events [--since ts] [--level l]` | 读取结构化事件。`--since` 包含边界（`ts >= since`）；`--level` 表示**该等级及以上**（例如 `warn` 返回 warn 与 error） | 否 |
@@ -135,6 +136,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
 | `sub_status` | — | `sub status`（read） |
+| `data_status` | — | `data status`（read） |
 | `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |
 | `node_import` | `uri`（≤ 4096 字节，须以 `<协议>://` 开头，防止被当作命令行选项） | `node import <uri>` |
 | `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`；`save_file` 另有 `content`（≤ 65536 字节） | `custom get <name>` / `custom set <name> --content <content>`（校验与保存都在命令行） |
@@ -284,6 +286,21 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   4. 格式：IP 为 IPv4 或 CIDR（前缀 0–32），MAC 为 6 组十六进制。
 - **重叠提示**（不阻止保存）：不同主机的 CIDR 互相包含、且策略不同 → 提示「<A> 与 <B> 重叠，按 直连 → 代理 → 跟随 的顺序生效」（02「冲突校验」）。
 - 模型 `model/access.js` 负责：规则 1–4 的校验（返回带主机名称或序号、字段的错误列表）、重叠提示、MAC 候选的显示文字与去重、策略与 `unlisted_policy` 的中文。
+
+### 规则与 DNS 页（2026-10-16 定，T8.8）
+
+**`data status`**：只读，不记事件。输出 `{ "ok": true, "checked": <updates.json 的 checked，没有为 null>, "items": { "<名称>": { … } } }`，五个数据项（[08](08-updates.md)「数据格式」）各一项：
+`source`（`downloaded`：`/etc/aether-proxy/data/<名称>.txt` 存在；否则 `baseline`）、`version`（本机内容哈希的前 12 位，哈希按 08「本机数据的哈希」）、`lines`（非空、非注释行数）、
+`updated_at`（`downloaded` 时为数据文件的修改时间，`baseline` 时为 `null`）、`changed`（`updates.json` 中该项的 `changed`，没有检查过为 `null`）。
+
+**页面**（`form.Map('aetherproxy')`，模型 `model/rules.js`）：
+- **模式**：`main.mode`（`bypass_cn` 绕过大陆、`gfw` 仅代理被墙网站、`global` 全局代理），各附一句说明。
+- **自定义名单**：四个文本框——直连域名、代理域名、直连 IP、代理 IP（`list_file` 读取）。每个文本框下有自己的「保存名单」按钮（`save_file`；与表单的保存分开，名单不进 UCI）。
+  保存返回 `CONFIG_INVALID` 时，在该文本框下列出 `errors` 的行号与原文；成功时显示「已保存」或「内容未变化」，`reload` 为 `failed` 时提示「已保存，但重载失败」。
+- **DNS**：`dns` 段的 `china_dns`、`trust_dns`（1–2 个）、`direct_dns`、`allow_china_fallback`、`dns_probe_domain`（`dnsmasq_instance` 放在高级页）。
+  这几个字段用模型做与命令行**相同规则**的格式校验（`lib/config.uc` 的 `upstream`、`lib/net.uc` 的 `ipv4`、`domain`），作为 LuCI 选项的 `validate`；理由同访问控制页。
+- **规则数据**：表格列出五项的名称（中文）、来源（「下载」/「包内」）、版本、行数、更新时间（相对时间）、状态（`changed` 为真 →「有更新」，假 →「最新」，`null` →「未检查」），以及上次检查时间；
+  「立即更新」按钮 → `ap.run_job('update_data', [])`，结束后显示作业结果（`updated`/`unchanged`/`failed` 各项）并重新读取 `data_status`。
 
 UI 规则：
 
