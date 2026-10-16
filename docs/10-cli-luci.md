@@ -273,6 +273,18 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - **删除**（`cbi-button-remove`，要确认，确认框写明会一并删除多少个节点）：同时删除 `source` 为该订阅的节点；其中被 `main.node` 引用的那个**不删**，改为 `source manual`、`stale 0`，
   并在确认框中说明。删除计划（要删的节点、要改为手动的节点）由模型计算，视图按计划调用 `uci.remove`/`uci.set`，之后由用户「保存并应用」。
 
+### 访问控制页（2026-10-16 定，T8.7）
+
+- 页面是一个 `form.Map('aetherproxy')`：上方 `main` 段的 `unlisted_policy`（「跟随全局模式」/「直连」），附 [02](02-dataplane.md)「主机策略模型」中与 helloworld 三种方式的对照说明；
+  下方 `form.GridSection('host')`（匿名段，可增删），列：启用、名称、IP（`DynamicList`，IPv4 或 CIDR）、MAC（`DynamicList`）、策略（`follow` 跟随 / `direct` 直连 / `proxy` 代理）、游戏模式（`udp`，`policy` 为 `direct` 时不显示）。
+- **MAC 下拉**：用 LuCI 的 `network.getHostHints()`（`'require network'`）取 DHCP 租约与邻居表，作为 MAC 输入框的候选（显示「MAC（主机名，IP）」）。ACL 的 read 增加 `luci-rpc` 的 `getHostHints`。
+- **保存前校验**：LuCI 未应用的修改保存在 rpcd 的会话目录里，命令行看不到，所以页面自己做一次与命令行**相同规则**的预检；最终仍以命令行（daemon 启动、`check`）的校验为准。
+  在「保存」「保存并应用」时先 `map.parse()`，再用 `uci.sections('aetherproxy', 'host')` 取全部主机交给模型；有错误就用 `ui.addNotification` 列出并**中止保存**。规则与 `lib/config.uc` 的 `check_hosts` 一致：
+  1. `ip` 与 `mac` 至少填一个；2. `policy=direct` 时 `udp` 必须为 0；3. 不同主机之间出现完全相同的 IP/CIDR（`x` 与 `x/32` 视为相同）或 MAC（不区分大小写，`-` 与 `:` 视为相同）→ 错误；**停用的主机也参与**；
+  4. 格式：IP 为 IPv4 或 CIDR（前缀 0–32），MAC 为 6 组十六进制。
+- **重叠提示**（不阻止保存）：不同主机的 CIDR 互相包含、且策略不同 → 提示「<A> 与 <B> 重叠，按 直连 → 代理 → 跟随 的顺序生效」（02「冲突校验」）。
+- 模型 `model/access.js` 负责：规则 1–4 的校验（返回带主机名称或序号、字段的错误列表）、重叠提示、MAC 候选的显示文字与去重、策略与 `unlisted_policy` 的中文。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
