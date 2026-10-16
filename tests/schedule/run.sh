@@ -281,7 +281,9 @@ if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 40
 	ok "auto policy starts xray package job while running"
 	version=$(jget auto_install.version < "$R/etc/aether-proxy/state/update-schedule.json")
 	[ "$version" = '26.10-r1' ] && ok "auto install version is recorded" || bad "auto install version is recorded" "$version"
+	sleep 0.4
 	count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
+	[ "$count" -eq 1 ] && ok "same version is not auto-installed again" || bad "same version is not auto-installed again" "calls=$count"
 	printf '{"packages":{"xray-core":{"newer":true,"available":"26.11-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
 	for _ in {1..200}; do
 		count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
@@ -291,6 +293,28 @@ if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 40
 	[ "$count" -ge 2 ] && ok "new available version triggers another auto install" || bad "new available version triggers another auto install" "calls=$count"
 else
 	bad "auto policy starts xray package job while running" "$(cat "$R/daemon.stderr") $(cat "$R/var/run/aether-proxy/state.json" 2>/dev/null)"
+fi
+stop_daemon
+
+# notify never installs, also while running (the degraded loop below cannot show that).
+make_root "$T/root-notify-running"
+R="$T/root-notify-running"
+now=$(date +%s)
+printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
+printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+SCHEDULE_RESOLVE_FAIL=0 start_daemon "$R"
+wait_for_text "$R/var/run/aether-proxy/state.json" '"state"' 400
+for _ in {1..40}; do
+	[ "$(jget state < "$R/var/run/aether-proxy/state.json" 2>/dev/null)" = running ] && break
+	kill -USR1 "$DAEMON_PID" 2>>"$QUIET" || break
+	sleep 0.05
+done
+if [ "$(jget state < "$R/var/run/aether-proxy/state.json" 2>/dev/null)" = running ]; then
+	sleep 0.4
+	grep -Fq 'job start update package' "$R/schedule-calls.log" \
+		&& bad "notify policy does not install while running" || ok "notify policy does not install while running"
+else
+	bad "notify-running scheduler setup reaches running" "$(cat "$R/daemon.stderr")"
 fi
 stop_daemon
 
@@ -310,6 +334,10 @@ for policy in auto notify; do
 		else
 			ok "$policy policy does not auto-install while degraded"
 		fi
+		# degraded still runs the daily data/check jobs (08 "调度"); only installation waits.
+		printf '{"data":{"last_attempt":0},"check":{"last_attempt":%s}}\n' "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
+		wait_for_text "$R/schedule-calls.log" 'job start update data' 400 \
+			&& ok "$policy: degraded still schedules due data" || bad "$policy: degraded still schedules due data"
 	else
 		bad "$policy degraded scheduler setup" "$(cat "$R/daemon.stderr")"
 	fi
@@ -387,8 +415,9 @@ if wait_monitor_state degraded; then
 	now=$(date +%s)
 	printf '{ "s_00000001": { "last_attempt": %s, "last_ok": null, "nodes": 0, "skipped": {}, "error": null } }\n' "$((now - 1000))" \
 		> "$R/etc/aether-proxy/state/sub.json"
+	printf '{"data":{"last_attempt":0},"check":{"last_attempt":0}}\n' > "$R/etc/aether-proxy/state/update-schedule.json"
 	sleep 1.3
-	[ ! -s "$R/schedule-calls.log" ] && ok "failsafe suppresses due subscription jobs" || bad "failsafe suppresses due subscription jobs" "$(cat "$R/schedule-calls.log")"
+	[ ! -s "$R/schedule-calls.log" ] && ok "failsafe suppresses due subscription and update jobs" || bad "failsafe suppresses due subscription and update jobs" "$(cat "$R/schedule-calls.log")"
 else
 	bad "unresolved current node enters degraded for failsafe test" "$(cat "$R/daemon.stderr")"
 fi
