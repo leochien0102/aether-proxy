@@ -1,5 +1,7 @@
 'use strict';
 
+// Own startup, supervision and signal-driven lifecycle transitions (docs/04).
+
 import * as fs from 'fs';
 import * as uloop from 'uloop';
 import * as socket from 'socket';
@@ -17,6 +19,7 @@ import * as monitor from 'aetherproxy.monitor';
 import * as reload from 'aetherproxy.reload';
 import * as schedule from 'aetherproxy.schedule';
 import * as uci from 'uci';
+import * as component_version from 'aetherproxy.component_version';
 
 const BOOT_OPTS = {
 	'--confdir': 'confdir', '--data-dir': 'data_dir', '--baseline-dir': 'baseline_dir',
@@ -295,6 +298,12 @@ function child_options(ctx, name, argv) {
 	return supervise.create({ name, argv, run_dir: run_dir(ctx), backoff: [ 5, 10, 30, 60 ], stable_secs: 300 });
 };
 
+// Version discovery is informational: failed commands must not emit CMD_FAILED or block startup.
+function read_component_version(binary, arg) {
+	let result = sys.run([ binary, arg ], { timeout: C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true });
+	return result.code == 0 ? component_version.parse_version(result.stdout) : null;
+};
+
 function restart_xray(ctx, children, service_state, done) {
 	let binary = service_state.components?.[C.XRAY_COMPONENT]?.path ??
 		(ctx.bin_dir ? `${ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
@@ -302,6 +311,10 @@ function restart_xray(ctx, children, service_state, done) {
 	let start_again = () => {
 		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
 		children.xray.start();
+		service_state.components[C.XRAY_COMPONENT] = {
+			path: binary, version: read_component_version(binary, 'version')
+		};
+		write_state(ctx, service_state);
 		done(children.xray.pid() == null ? `cannot restart ${C.XRAY_COMPONENT}` : null);
 	};
 	if (children.xray != null)
@@ -456,6 +469,12 @@ function start_sequence(ctx, opts, signal_pending) {
 		setup_log(ctx);
 		log.event('error', 'PRECHECK_FAILED', { missing });
 		return { ok: false, code: 1, step: 'precheck', detail: join(',', missing), missing, untouched: true };
+	}
+
+	let components = {};
+	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+		let path = pre.components[name].path;
+		components[name] = { path, version: read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V') };
 	}
 
 	if (opts.boot) {
@@ -654,10 +673,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		state: degraded ? 'degraded' : 'starting', dns_tier: 'T2', dns_failsafe: false,
 		node_id, node_ip, since: time(), waiting_network: false,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
-		components: {
-			[C.XRAY_COMPONENT]: { path: pre.components[C.XRAY_COMPONENT].path },
-			[C.CHINADNS_COMPONENT]: { path: pre.components[C.CHINADNS_COMPONENT].path }
-		},
+		components,
 		render_hash: hashed.hashes
 	};
 	step_started = monotonic_ms();

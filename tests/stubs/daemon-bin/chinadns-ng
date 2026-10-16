@@ -1,4 +1,14 @@
 #!/bin/sh
+# Version queries must not enter the long-lived DNS service loop.
+if [ "$1" = -V ]; then
+	printf 'chinadns-ng -V\n' >> "$STUB_LOG"
+	if [ -f "$SYSROOT/chinadns-version" ]; then
+		cat "$SYSROOT/chinadns-version"
+	else
+		printf 'ChinaDNS-NG 2025.06.20 be347b5 | fixture\nAdditional banner line\n'
+	fi
+	exit 0
+fi
 argv=$*
 config=''
 while [ $# -gt 0 ]; do

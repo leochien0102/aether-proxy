@@ -1,4 +1,19 @@
 #!/bin/sh
+# Component banner controls stay inside the daemon fixture root (docs/04 versions).
+if [ "$1" = version ]; then
+	printf 'xray version\n' >> "$STUB_LOG"
+	if [ -f "$SYSROOT/xray-version-delay" ]; then sleep 30; fi
+	if [ -f "$SYSROOT/xray-version-fail" ]; then
+		printf 'version query failed\n' >&2
+		exit 7
+	fi
+	if [ -f "$SYSROOT/xray-version" ]; then
+		cat "$SYSROOT/xray-version"
+	else
+		printf 'Xray 26.9.30 (Xray, Penetrates Everything.)\nAdditional banner line\n'
+	fi
+	exit 0
+fi
 if [ "$1" = run ] && [ "$2" = -test ]; then
 	printf 'xray %s\n' "$*" >> "$STUB_LOG"
 	exit "${STUB_XRAY_TEST_RC:-0}"
