@@ -213,6 +213,22 @@ daemon 内部计时，不修改 crontab：
 - 软件包：每天检查一次新版本（`update check`），结果写 `updates.json`，由 LuCI 显示；`xray_auto=auto` 时对 `xray-core` 直接发起安装作业。`aether-proxy` 自身只提示。
 - 所有更新都以作业方式执行（[10](10-cli-luci.md)），同一时间只运行一个更新作业。
 
+细节（2026-10-16 定，T7.6）：
+
+- **时间点**：每天本地时间 `data_hour:data_minute`（`data_minute` 为空按 30；本地时间取 ucode `localtime()`，即设备的 `/etc/TZ`）。
+  「最近一次时间点」= 不晚于现在的最近一个 `hh:mm`。数据更新与软件包检查用同一个时间点（`data_minute` 已在安装时随机，各设备的请求本来就错开）。
+- **到期**：某项（`data`、`check`）的 `last_attempt` 早于最近一次时间点 → 到期。没有记录时以 daemon 启动时刻代替 `last_attempt`（与订阅一致）：
+  刚安装或记录丢失时不会在启动时立即执行，等下一个时间点。关机错过时间点的设备，开机后（daemon 进入 `running`/`degraded`）补做一次，每天最多一次。
+- **顺序**：同一分钟只发起一个更新作业；`data` 先于 `check`（`data_auto=0` 时跳过 `data`）。两者共用更新锁，`data` 作业未结束时发起 `check` 得到退出码 3，下一分钟再试，自然先后执行。
+- **记录**：`/etc/aether-proxy/state/update-schedule.json`：`{ "data": { "last_attempt": <秒> }, "check": { "last_attempt": <秒> }, "auto_install": { "version": "<版本>", "at": <秒> } }`。
+  `job start` 退出码 3 时不记录（下一分钟再试）；其他结果（含失败）都记录 `last_attempt`，避免每分钟重试。每天最多写几次 flash。文件损坏或字段格式不对按「没有记录」处理，损坏只记一次 `FS_FAILED`。
+- **`xray_auto=auto`**：每分钟检查 `updates.json`：`packages["xray-core"].newer == true` 且 `asset` 不为空，且 `auto_install.version` 不等于该 `available` 版本 →
+  发起 `job start update package xray-core`，成功发起后记录 `auto_install`。**同一个版本只自动安装一次**：安装后检查失败会回滚（T7.4），不会每分钟重装；下一个新版本再试。
+  只在状态为 `running` 时发起（`degraded` 时健康检测本身不可信，不做无人值守的升级）。
+- `xray_auto` 为 `off`/`notify` 时设备端行为相同：照常每天 `check`、写 `updates.json`；`off` 只影响 LuCI 是否提示 `xray-core` 的新版本。`aether-proxy` 自身永远只提示。
+- daemon 不在 `running`/`degraded` 时不发起任何更新作业；reload 后按新的配置快照计算（改了 `data_hour` 等立即生效）。
+- 与订阅调度共用同一个 60 秒定时器（[06](06-nodes-subscription.md)「调度」）：订阅锁与更新锁互不影响，同一分钟可以各发起一个。
+
 ## 首次安装引导
 
 官方 OpenWrt 上安装 aether-proxy 后可能没有 Xray 或 chinadns-ng（`COMPONENT_MISSING`）。LuCI 首页提示：

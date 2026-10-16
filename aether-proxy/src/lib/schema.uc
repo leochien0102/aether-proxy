@@ -118,8 +118,7 @@ const node = [
 ];
 
 const update = [
-	// TODO(design): 05 says "project release URL + optional mirrors" without giving the URL
-	// (D3/D4 undecided), so the default is an empty list.
+	// Default channel first, mirrors appended by the user (05, 08 "发布仓库").
 	{ name: 'channel_urls', type: 'list', item: 'url', default: [ C.CHANNEL_DEFAULT_URL ] },
 	{ name: 'data_auto', type: 'bool', default: true },
 	{ name: 'data_hour', type: 'int', min: 0, max: 23, default: 4 },
