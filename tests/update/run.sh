@@ -46,10 +46,10 @@ for name,version,old in [('xray-core','26.10.10-r1','26.7.28-r1'),('aether-proxy
    a={}
    for arch in ('aarch64_generic','all'):
     a[arch]={}
-    for pm,ext in [('opkg','ipk'),('apk','apk')]:
+    for ext in ('ipk','apk'):
      fn=f'{name}_{ver}_{arch}.{ext}' if ext=='ipk' else f'{name}-{ver}_{arch}.apk'
      for d in ('ch1','ch2'): open(os.path.join(t,d,fn),'wb').write(content)
-     a[arch][pm]={'url':fn,'sha256':hashlib.sha256(content).hexdigest(),'size':len(content)}
+     a[arch][ext]={'url':fn,'sha256':hashlib.sha256(content).hexdigest(),'size':len(content)}
    releases.append({'version':ver,'assets':a})
   m['packages'][name]={'current':releases[0],'previous':releases[1]}
 for d in ('ch1','ch2'): json.dump(m,open(os.path.join(t,d,'manifest.json'),'w'))
@@ -198,7 +198,7 @@ rm "$T/bin/apk"
 : > "$UPDATE_PACKAGE_CALLS"
 python3 - "$T/ch1/manifest.json" <<'PY'
 import json,sys
-p=sys.argv[1];m=json.load(open(p));m['packages']['xray-core']['current']['assets']['aarch64_generic']['opkg']['sha256']='0'*64;json.dump(m,open(p,'w'))
+p=sys.argv[1];m=json.load(open(p));m['packages']['xray-core']['current']['assets']['aarch64_generic']['ipk']['sha256']='0'*64;json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
 out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'bad package hash fails' UPDATE_VERIFY_FAILED "$(get "$out" code)"

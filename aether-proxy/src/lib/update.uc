@@ -114,6 +114,12 @@ function load_channel_urls(confdir) {
 	return { ok: true, urls: loaded.snapshot.update.channel_urls };
 }
 
+// Manifest assets are keyed by package format (08 `manifest.json`: "ipk"/"apk"), not by the
+// package manager's name.
+function asset_format(pm) {
+	return pm == 'opkg' ? 'ipk' : pm;
+}
+
 function package_manager(bin_dir) {
 	let apk = bin_dir ? `${bin_dir}/apk` : 'apk';
 	if (fs.access(apk, 'x'))
@@ -201,7 +207,7 @@ function build_result(ctx, manifest, base, arch, pm) {
 			continue;
 		let current = entry.current;
 		let asset_set = current.assets?.[arch] ?? current.assets?.all;
-		let asset = asset_set?.[pm] ?? null;
+		let asset = asset_set?.[asset_format(pm)] ?? null;
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
@@ -561,7 +567,7 @@ function package_asset(manifest, name, arch, pm, previous) {
 	if (type(release) != 'object' || type(release.assets) != 'object')
 		return null;
 	let asset_set = release.assets[arch] ?? release.assets.all;
-	let asset = asset_set?.[pm] ?? null;
+	let asset = asset_set?.[asset_format(pm)] ?? null;
 	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
 		? { ...asset, version } : null;
 }
