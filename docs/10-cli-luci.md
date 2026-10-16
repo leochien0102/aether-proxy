@@ -239,6 +239,16 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - 每 5 秒经 `ap.poll` 刷新 `status`；`version` 与 UCI 只在页面加载时取一次。
 - 本页之后会被 Dashboard（B2）取代为首页，所以不做历史曲线、流量统计。
 
+**启用开关**（2026-10-16 补，T8.11a）：T8.4 漏了 `main.enabled`（默认 `0`）。init 的 `start_service` 在它为 `0` 时直接返回成功，所以全新安装后点「启动」没有任何效果，页面也没有提示。
+- 状态区上方加「启用」开关（复选框或 `ui.Checkbox`），值取页面加载时读到的 UCI `main.enabled`。切换后 `uci.set('aetherproxy', 'main', 'enabled', '1'|'0')`、`uci.save()`、
+  `ui.changes.apply(true)`（与节点页「设为当前」相同，带回滚确认）。init 已注册 reload 触发器：打开即启动、关闭即停止（04「重载」），页面不另调 `service`。
+  开关下方一句说明：「启用后开机自动启动；关闭会立即停止服务，所有流量直连」。
+- `enabled` 为 `0` 时「启动」「重启」不可用，状态区显示「服务未启用：打开上方的『启用』后会自动启动」；「停止」仍按状态决定（服务可能是在关闭开关前就在运行的）。
+  `enabled` 为 `1` 时按钮规则与原来相同。
+- 「停止」的确认文字改为：「停止后所有流量直连。这只是暂时停止：重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。」
+  （服务没在运行时，reload 触发器会执行 `start`，见 04「重载」。）
+- 模型的按钮函数增加 `enabled` 参数；提示文字与确认文字也由模型给出。
+
 ### 节点页（2026-10-16 定，T8.5）
 
 - 列表用 LuCI 的 `form.GridSection`（`aetherproxy` 的 `node` 段），一行一个节点，列：名称（`label`）、地址（`address:port`）、协议/传输/安全层（如 `vless / ws / tls`）、
@@ -352,6 +362,24 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   打开标签与点「刷新」时 `ap.call('log', { source, lines })`；不自动刷新（日志多时一次可能有几百 KB）。
 - 内容用 `<pre>` 按原样显示 `text`，不做着色；失败显示 `code` 与 `detail`。
 - UCI `main.log_level` 为 `debug` 时，在标签顶部显示 [09](09-logging.md)「logd 容量」的提示。
+
+### 高级页（2026-10-16 定，T8.11b）
+
+`form.Map('aetherproxy')`，模型 `model/advanced.js`。字段以 [05](05-config.md) 为准，校验规则以 `lib/schema.uc` 与 `lib/config.uc` 为准（页面做与命令行**相同规则**的预检，理由同访问控制页；
+测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分四个标签（`s.tab`）：
+
+- **拦截**（`main` 段）：`lan_ifaces`（LuCI `tools.widgets` 的 `DeviceSelect`，`multiple`，至少一个；说明「拦截哪些入接口，通常是 br-lan」）、
+  `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
+  - `fail_open`：「关闭后，Xray 不可用时被代理的流量会中断，而不是改为直连」；
+  - `dns_hijack`：「关闭后，自己指定了 DNS 的设备会绕过分流」；
+  - `ipv6_filter`：「所有 AAAA 查询返回空结果，让设备只用 IPv4 访问；LAN 侧的 IPv6 地址分配不受影响」（03「IPv6」）。
+- **日志**：`log_level`（`error` 错误、`warn` 警告、`notice` 通知（默认）、`info` 信息、`debug` 调试；选 `debug` 时说明中带上 09「logd 容量」的提示）、`xray_log_level`（`error`、`warning`（默认）、`info`、`debug`）。
+- **开机与检测**：`boot_wait_timeout`（0–600 秒，0 = 不等待）、`boot_check_targets`（`DynamicList`，`IPv4:端口`）；`probe` 段的 `url`（与更新页 `channel_urls` 相同的 URL 规则）、
+  `expect_code`（100–599）、`timeout`、`fail_threshold`、`recover_threshold`、`node_timeout`、`node_concurrency`（都是不小于 1 的整数，与命令行一致，不另加上限）。
+- **组件与 DNS 实例**：`xray_bin`、`chinadns_bin`（绝对路径、不含空白，留空 = 按 01「组件二进制的查找顺序」自动查找）、`dns` 段的 `dnsmasq_instance`（非空字符串，留空 = 自动）。
+
+数值与列表项的校验由模型给出（作为各选项的 `validate`）：整数按命令行的规则（`lib/config.uc`：`^-?[0-9]{1,9}$`，前导零允许，空白与小数不允许）与上下限；`hostport`、`url`、`path`、非空字符串同命令行。
+留空的可选字段（删掉选项 = 用默认值）不报错。
 
 UI 规则：
 
