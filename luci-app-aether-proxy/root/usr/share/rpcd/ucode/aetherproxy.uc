@@ -16,7 +16,15 @@ import * as sys from 'aetherproxy.sys';
 // and long tasks must go through job_start instead.
 const CHECK_TIMEOUT_SECS = 30;
 const DEFAULT_TIMEOUT_SECS = 10;
+// save_file may trigger a service reload on the CLI side (docs/10 "实现约定").
+const SAVE_TIMEOUT_SECS = 30;
 const STDERR_FORWARD_BYTES = 512;
+
+// docs/10 "node_import": the value must look like `<scheme>://` so it can never be
+// mistaken for a command-line option; it is forwarded as a single argv element regardless.
+const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
+const URI_MAX_BYTES = 4096;
+const LOG_LINES_MIN = 1;
 
 
 const SERVICE_ACTIONS = [ 'start', 'stop', 'restart' ];
@@ -240,6 +248,74 @@ const methods = {
 			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
 		},
 		args: { since: 0, level: '' }
+	},
+
+	// T8.2 (docs/10 "rpcd 插件"): log / node_import / list_file / save_file. All
+	// validation beyond the whitelist (line counts, sizes) happens in the CLI.
+	log: {
+		call: function(req) {
+			let a = req?.args ?? {};
+			let source = a.source;
+			let lines = a.lines;
+			let argv = [ 'log' ];
+
+			if (source != null) {
+				if (type(source) != 'string' || index(C.LOG_SOURCES, source) < 0)
+					return usage(`source must be one of ${join('|', C.LOG_SOURCES)}`);
+				push(argv, '--source', source);
+			}
+
+			if (lines != null) {
+				if (type(lines) != 'int' || lines < LOG_LINES_MIN || lines > C.LOG_LINES_MAX)
+					return usage(`lines must be an integer between ${LOG_LINES_MIN} and ${C.LOG_LINES_MAX}`);
+				push(argv, '--lines', `${lines}`);
+			}
+
+			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
+		},
+		args: { source: '', lines: 0 }
+	},
+
+	node_import: {
+		call: function(req) {
+			let uri = req?.args?.uri;
+
+			if (type(uri) != 'string' || length(uri) > URI_MAX_BYTES || match(uri, URI_SCHEME_RE) == null)
+				return usage(`uri must be a node share URI (at most ${URI_MAX_BYTES} bytes)`);
+
+			return call_cli([ 'node', 'import', uri ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: { uri: '' }
+	},
+
+	list_file: {
+		call: function(req) {
+			let name = req?.args?.name;
+
+			if (type(name) != 'string' || index(C.CUSTOM_LIST_NAMES, name) < 0)
+				return usage(`name must be one of ${join('|', C.CUSTOM_LIST_NAMES)}`);
+
+			return call_cli([ 'custom', 'get', name ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: { name: '' }
+	},
+
+	save_file: {
+		call: function(req) {
+			let a = req?.args ?? {};
+			let name = a.name;
+			let content = a.content;
+
+			if (type(name) != 'string' || index(C.CUSTOM_LIST_NAMES, name) < 0)
+				return usage(`name must be one of ${join('|', C.CUSTOM_LIST_NAMES)}`);
+
+			if (type(content) != 'string' || length(content) > C.CUSTOM_MAX_BYTES)
+				return usage(`content must be a string of at most ${C.CUSTOM_MAX_BYTES} bytes`);
+
+			// The CLI validates and saves; it may reload the service, hence the longer budget.
+			return call_cli([ 'custom', 'set', name, '--content', content ], SAVE_TIMEOUT_SECS);
+		},
+		args: { name: '', content: '' }
 	}
 };
 

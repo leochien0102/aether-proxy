@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rpcd plugin scenario tests for luci-app-aether-proxy (docs/tasks/m8.md T8.1).
+# rpcd plugin scenario tests for luci-app-aether-proxy (docs/tasks/m8.md T8.1 and T8.2).
 # Loads the plugin file the way rpcd does and calls its methods directly; the
 # aether-proxy CLI and the init script are replaced by the stubs in this
 # directory, so nothing outside a mktemp directory is touched.
@@ -28,7 +28,7 @@ export RPCD_TEST_INIT_SLEEP=5
 export AETHER_PROXY_TEST_RPCD_CLI="$ROOT/tests/rpcd/stub-cli.sh"
 export AETHER_PROXY_TEST_RPCD_INIT="$ROOT/tests/rpcd/stub-init.sh"
 
-# --- scenarios 1-10 -----------------------------------------------------------
+# --- scenarios 1-13 ------------------------------------------------------------
 out="$("$UCODE" "$ROOT/tests/rpcd/test.uc" 2>&1)"; rc=$?
 printf '%s\n' "$out"
 pass=$((pass + "$(printf '%s\n' "$out" | grep -c '^PASS  ')"))
