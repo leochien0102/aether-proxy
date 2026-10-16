@@ -43,9 +43,9 @@ export function run(args) {
 	let result = parsed.positional[0] == 'data' ? update.data_update(parsed.opts) : update.check(parsed.opts);
 	if (!result.ok)
 		return pipeline.finish(parsed.opts, parsed.positional[0] == 'data'
-			? { ok: false, updated: result.updated, unchanged: result.unchanged, failed: result.failed }
+			? { ok: false, code: result.code, updated: result.updated, unchanged: result.unchanged, failed: result.failed }
 			: { ok: false, code: result.code, detail: result.detail }, result.exit,
-			parsed.positional[0] == 'data' ? 'update data completed with failures' : `${result.code}: ${result.detail}`);
+			parsed.positional[0] == 'data' && result.code == null ? 'update data completed with failures' : `${result.code}: ${result.detail}`);
 	if (parsed.positional[0] == 'data')
 		return pipeline.finish(parsed.opts, { ok: true, updated: result.updated, unchanged: result.unchanged, failed: result.failed }, 0, 'update data completed');
 	return pipeline.finish(parsed.opts, result.value, 0, 'update check completed');

@@ -279,8 +279,9 @@ export function download_asset(opts, base, asset, name) {
 	return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset size or sha256 mismatch, or download failed' };
 };
 
-export function check(opts) {
-	opts ??= {};
+// Shared by `update check` and `update data`: download and verify the first valid manifest.
+// Failure codes follow 08 "检查": unreachable -> UPDATE_FETCH_FAILED (1), bad signature -> 4.
+function fetch_manifest(opts) {
 	let root = opts.sys_root ?? '';
 	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
 	let ctx = {
@@ -335,6 +336,15 @@ export function check(opts) {
 		log.event('error', 'UPDATE_FETCH_FAILED', { urls: loaded.urls });
 		return { ok: false, code: 'UPDATE_FETCH_FAILED', exit: 1, detail: 'no update channel could be reached' };
 	}
+	return { ok: true, ctx, manifest: selected.manifest, base: selected.base, urls: loaded.urls };
+}
+
+export function check(opts) {
+	opts ??= {};
+	let fetched = fetch_manifest(opts);
+	if (!fetched.ok)
+		return fetched;
+	let ctx = fetched.ctx, root = ctx.root, run_dir = ctx.run_dir, selected = fetched;
 	let release_path = system_path(root, C.UPDATE_RELEASE_FILE);
 	let release = fs.readfile(release_path);
 	if (release == null) {
@@ -359,45 +369,6 @@ export function check(opts) {
 	}
 	return { ok: true, value: built.value, exit: 0 };
 };
-
-function read_signed_manifest(opts) {
-	let root = opts.sys_root ?? '';
-	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
-	let ctx = {
-		root,
-		bin_dir: opts.bin_dir ?? null,
-		run_dir,
-		tmp_dir: system_path(root, C.TMP_DIR),
-		download_dir: system_path(root, C.DOWNLOAD_DIR),
-		keys_dir: system_path(root, C.KEYS_DIR)
-	};
-	log.set_run_dir(run_dir);
-	let loaded = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
-	if (!loaded.ok)
-		return { ok: false, detail: loaded.detail };
-	if (!length(loaded.urls))
-		return { ok: false, detail: 'no update channel URLs are configured' };
-	if (!sys.mkdir_p(ctx.download_dir))
-		return { ok: false, detail: `cannot create ${ctx.download_dir}: ${sys.error() ?? 'unknown error'}` };
-	let proxied = proxy_running(ctx), selected = null, reached = false;
-	for (let i = 0; i < length(loaded.urls); i++) {
-		let candidate = download_manifest(ctx, loaded.urls[i], proxied, i);
-		if (candidate.manifest != null) {
-			selected = { manifest: candidate.manifest, base: loaded.urls[i] };
-			break;
-		}
-		reached ||= candidate.reached;
-	}
-	let names = fs.lsdir(ctx.download_dir);
-	if (names == null)
-		return { ok: false, detail: `cannot list ${ctx.download_dir}: ${fs_error()}` };
-	for (let name in names)
-		if (match(name, /^manifest-[0-9]+\.json(\.sig)?$/) != null && unlink_file(`${ctx.download_dir}/${name}`) == null)
-			return { ok: false, detail: `cannot remove ${ctx.download_dir}/${name}: ${fs_error()}` };
-	if (selected == null)
-		return { ok: false, detail: reached ? 'no channel provided a valid signed schema 2 manifest' : 'no update channel could be reached' };
-	return { ok: true, ...selected, bases: loaded.urls, ctx };
-}
 
 function path_sha256(path) {
 	return file_sha256(path);
@@ -439,7 +410,7 @@ function file_sha256_from_text(text, dir, name) {
 }
 
 function update_data_item(opts, ctx, base_urls, name, item) {
-	if (index(C.DATA_UPDATE_ITEMS, name) < 0 || type(item) != 'object' ||
+	if (type(item) != 'object' ||
 		type(item.url) != 'string' || match(item.url, /^[A-Za-z0-9._-]+\.txt\.gz$/) == null ||
 		type(item.sha256) != 'string' || match(item.sha256, /^[0-9a-fA-F]{64}$/) == null ||
 		type(item.content_sha256) != 'string' || match(item.content_sha256, /^[0-9a-fA-F]{64}$/) == null ||
@@ -517,20 +488,21 @@ function update_data_item(opts, ctx, base_urls, name, item) {
 
 export function data_update(opts) {
 	opts ??= {};
-	let loaded = read_signed_manifest(opts);
+	let loaded = fetch_manifest(opts);
 	let result = { ok: false, updated: [], unchanged: [], failed: {} };
-	if (!loaded.ok) {
-		result.failed.manifest = loaded.detail;
-		log.event('error', 'UPDATE_VERIFY_FAILED', { item: 'manifest' });
-		return { ...result, detail: loaded.detail, exit: 1 };
-	}
+	// Manifest-level failures keep the `update check` codes and exit statuses (08 "检查").
+	if (!loaded.ok)
+		return { ...result, code: loaded.code, detail: loaded.detail, exit: loaded.exit };
 	let entries = loaded.manifest.data;
 	if (type(entries) != 'object') {
 		set_data_failure(result, 'manifest', 'manifest data section is missing');
 		return { ...result, exit: 1 };
 	}
 	for (let name in sort(keys(entries))) {
-		let outcome = update_data_item(opts, loaded.ctx, loaded.bases, name, entries[name]);
+		// Items this version does not know (added by a later channel) are ignored, not failures.
+		if (index(C.DATA_UPDATE_ITEMS, name) < 0)
+			continue;
+		let outcome = update_data_item(opts, loaded.ctx, loaded.urls, name, entries[name]);
 		if (!outcome.ok)
 			set_data_failure(result, name, outcome.detail);
 		else if (outcome.unchanged)

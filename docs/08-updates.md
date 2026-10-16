@@ -183,6 +183,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
    `gfwlist`、`chnlist`、`apple` 由 `chinadns.conf` 按路径引用、其内容已计入哈希 → 重启 chinadns-ng 并 HUP dnsmasq。
 5. 读取数据的顺序：`/etc/aether-proxy/data/` 中存在就用它，否则使用包内的 `/usr/share/aether-proxy/data/` 基线。
 
+清单本身取不到或验签失败时，`update data` 与 `update check` 用同样的结果码和退出码（`UPDATE_FETCH_FAILED` 退出 1、`MANIFEST_BAD_SIGNATURE` 退出 4）。清单中本版本不认识的数据项（以后的通道新增的）直接忽略，不算失败。
+
 flash 写入量：数据只在内容变化时写，按每天最多一次计，每次约 1–2MB，可以接受。
 
 ### 调度

@@ -172,9 +172,11 @@ for name,plain in contents.items():
                 'size':len(compressed),'content_sha256':bad if name=='chnroute4' and bad else content_hash,'lines':lines}
 m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':entries}
 for d in ('ch1','ch2'): json.dump(m,open(os.path.join(t,d,'manifest.json'),'w'))
-if mode=='single':
+if mode=='future':
+ entries['chnroute6']=dict(entries['chnroute4'])
+if mode in ('single','future'):
  for d in ('ch1','ch2'):
-  m2=dict(m);m2['data']={'chnroute4':entries['chnroute4']};json.dump(m2,open(os.path.join(t,d,'manifest.json'),'w'))
+  m2=dict(m);m2['data']={k:v for k,v in entries.items() if k in ('chnroute4','chnroute6')};json.dump(m2,open(os.path.join(t,d,'manifest.json'),'w'))
 PY
  "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
  "$USIGN" -S -m "$T/ch2/manifest.json" -s "$T/sec" >/dev/null 2>&1
@@ -260,4 +262,15 @@ UCI
 out=$(ap update check --json --confdir "$T/conf-down" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
 expect 'unreachable channels exit 1' 1 "$rc"; expect 'unreachable channels report UPDATE_FETCH_FAILED' UPDATE_FETCH_FAILED "$(get "$out" code)"
 grep -q '"code": "UPDATE_FETCH_FAILED"' "$T/run/events.jsonl" && ok 'UPDATE_FETCH_FAILED event logged' || bad 'UPDATE_FETCH_FAILED event logged'
+# manifest-level failures keep the `update check` codes; unknown future items are ignored
+out=$(ap update data --json --confdir "$T/conf-down" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
+expect 'data: unreachable channels exit 1' 1 "$rc"; expect 'data: unreachable reports UPDATE_FETCH_FAILED' UPDATE_FETCH_FAILED "$(get "$out" code)"
+make_data_manifest single
+for d in ch1 ch2; do printf ' ' >> "$T/$d/manifest.json"; done
+out=$(data_update); rc=$?
+expect 'data: bad signature exits 4' 4 "$rc"; expect 'data: bad signature code' MANIFEST_BAD_SIGNATURE "$(get "$out" code)"
+make_data_manifest future; out=$(data_update); rc=$?
+expect 'data: unknown future item is not a failure' 0 "$rc"
+expect 'data: unknown future item not reported' '{}' "$(get "$out" failed)"
+[ ! -e "$T/root/etc/aether-proxy/data/chnroute6.sha256" ] && ok 'data: unknown future item not written' || bad 'data: unknown future item not written'
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]
