@@ -7,12 +7,19 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview page (docs/10 「概览页」).
+ * Overview page (docs/10 「概览页」, including the 「启用开关」 section added for
+ * T8.11a).
  *
  * The view only fetches data through ap, hands it to the pure model and renders
- * the view model the model returns: state wording, notice texts and button
- * availability are all decided there. status is refreshed every 5 seconds via
- * ap.poll; version and the UCI node labels are read once per page load.
+ * the view model the model returns: state wording, notice texts, button
+ * availability and the stop confirmation are all decided there. status is
+ * refreshed every 5 seconds via ap.poll; version and the UCI node labels plus
+ * main.enabled are read once per page load.
+ *
+ * The 「启用」 switch never calls the `service` rpcd method: the init script
+ * registers a reload trigger for the aetherproxy config, so saving the UCI
+ * change starts the service when the switch is turned on and stops it when the
+ * switch is turned off (docs/04 「重载」).
  */
 
 return view.extend({
@@ -27,15 +34,55 @@ return view.extend({
 					labels[s['.name']] = s.label || s['.name'];
 				});
 
-				return labels;
+				/* docs/10 「启用开关」: the switch reflects main.enabled at page
+				   load; an unset option means 0, the schema default. */
+				return {
+					labels: labels,
+					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
+				};
 			})
+		]);
+	},
+
+	/* Toggle handler for the enable switch: stage the UCI value and go through
+	   LuCI's standard save & apply with rollback confirmation, exactly like the
+	   node page's 「设为当前」 (docs/10 「节点页」). No `service` call is made:
+	   the reload trigger starts or stops the service. */
+	handleEnable: function(checked) {
+		this.enabled = (checked === true);
+
+		uci.set('aetherproxy', 'main', 'enabled', this.enabled ? '1' : '0');
+
+		return uci.save().then(function() {
+			return ui.changes.apply(true);
+		});
+	},
+
+	enableSwitch: function(note) {
+		const self = this;
+
+		return E('div', { 'class': 'cbi-value' }, [
+			E('label', { 'class': 'cbi-value-title' }, _('Enable')),
+			E('div', { 'class': 'cbi-value-field' }, [
+				E('input', {
+					'type': 'checkbox',
+					'id': 'aetherproxy-enabled',
+					'checked': this.enabled ? 'checked' : null,
+					'change': ui.createHandlerFn(this, function(ev) {
+						return self.handleEnable(ev.target.checked);
+					})
+				}),
+				E('div', { 'class': 'cbi-value-description' }, [ note ?? '' ])
+			])
 		]);
 	},
 
 	handleService: function(action) {
 		const self = this;
 
-		if (action == 'stop' && !confirm(_('Stopping aether-proxy leaves all traffic going out directly. Really stop the service?')))
+		/* The wording comes from the model so it stays in one place (docs/10
+		   「启用开关」). */
+		if (action == 'stop' && !confirm(this.vm.stop_confirmation))
 			return;
 
 		return ap.call('service', { action: action }).then(function(res) {
@@ -60,7 +107,7 @@ return view.extend({
 			const attrs = { 'class': 'cbi-button ' + cls };
 
 			if (enabled)
-				attrs.click = ui.createHandlerFn(fn);
+				attrs.click = ui.createHandlerFn(this, fn);
 			else
 				attrs.disabled = 'disabled';
 
@@ -110,17 +157,22 @@ return view.extend({
 		const self = this;
 
 		this.version = data[1];
-		this.labels = data[2];
+		this.labels = data[2].labels;
+		this.enabled = data[2].enabled;
+
+		this.content = E('div', {});
+
+		/* Build the view model once here so the switch description also comes
+		   from the model; later refreshes replace only this.content, never the
+		   switch, so the 5s poll cannot fight with the user's checkbox. */
+		const vm = this.refresh(data[0]);
 
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('aether-proxy')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.'))
+			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.')),
+			this.enableSwitch(vm.enabled_note),
+			this.content
 		]);
-
-		this.content = E('div', {});
-		root.appendChild(this.content);
-
-		this.refresh(data[0]);
 
 		this.poller = ap.poll(function() {
 			return ap.call('status').then(function(status) {
@@ -132,7 +184,12 @@ return view.extend({
 	},
 
 	refresh: function(status) {
-		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000));
+		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000), this.enabled);
+
+		/* Keep the latest model output so handleService can use its
+		   stop_confirmation without rebuilding the model. */
+		this.vm = vm;
+
 		const parts = [];
 
 		if (!vm.ok) {
@@ -161,7 +218,14 @@ return view.extend({
 			parts.push(this.buttonBar(vm.buttons));
 		}
 
+		/* docs/10 「启用开关」: with the switch off, the status area says the
+		   service is not enabled instead of pretending the buttons failed. */
+		if (vm.disabled_notice)
+			parts.unshift(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
+
 		dom.content(this.content, E('div', {}, parts));
+
+		return vm;
 	},
 
 	handleSave: null,

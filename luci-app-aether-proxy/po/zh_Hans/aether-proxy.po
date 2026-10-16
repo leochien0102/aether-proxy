@@ -205,8 +205,17 @@ msgstr "重启"
 msgid "Stop"
 msgstr "停止"
 
-msgid "Stopping aether-proxy leaves all traffic going out directly. Really stop the service?"
-msgstr "停止后所有流量直连。确定要停止服务吗？"
+msgid "Enable"
+msgstr "启用"
+
+msgid "Once enabled the service starts at boot; turning it off stops the service immediately and all traffic goes out directly."
+msgstr "启用后开机自动启动；关闭会立即停止服务，所有流量直连"
+
+msgid "The service is not enabled: turn on the switch above and it will start automatically."
+msgstr "服务未启用：打开上方的『启用』后会自动启动"
+
+msgid "Stopping aether-proxy leaves all traffic going out directly. This is only temporary: restarting the router or saving the settings of this service again starts it; to disable it for good, turn off Enable above."
+msgstr "停止后所有流量直连。这只是暂时停止：重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。"
 
 msgid "The service action failed: %s (%s)."
 msgstr "服务操作失败：%s（%s）。"
