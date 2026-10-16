@@ -176,11 +176,11 @@ function fs_error() {
 	return fs.error() ?? 'unknown error';
 }
 
-function system_path(root, path) {
+export function system_path(root, path) {  // T8.2: reused by node import and custom
 	return root == '' ? path : replace(root, /\/$/, '') + path;
-}
+};
 
-function absolute_options(opts) {
+export function absolute_options(opts) {  // T8.2: reused by node import
 	let root = opts.sys_root ?? '';
 	return {
 		...opts,
@@ -190,7 +190,7 @@ function absolute_options(opts) {
 		baseline_dir: system_path(root, C.BASELINE_DATA_DIR),
 		custom_dir: system_path(root, C.CUSTOM_DIR)
 	};
-}
+};
 
 function uci_error(cursor) {
 	return cursor.error() ?? 'unknown UCI error';
@@ -211,7 +211,7 @@ function strip_section(section) {
 	return out;
 }
 
-function load_committed_config(ctx, text) {
+export function load_committed_config(ctx, text) {  // T8.2: reused by node import
 	let dirs = temp_dirs(ctx);
 	let dir = `${dirs.base}/${C.SUB_SNAPSHOT_SUBDIR}`;
 	let delta = `${dir}/${C.SUB_DELTA_SUBDIR}`;
@@ -242,7 +242,7 @@ function load_committed_config(ctx, text) {
 		for (let warning in (loaded.warnings ?? []))
 			log.event(null, warning.code, warning.args);
 	return loaded;
-}
+};
 
 function count_subscription_nodes(snapshot, name) {
 	let count = 0;
@@ -351,7 +351,7 @@ function fetch_body(ctx, name, sub) {
 	return { ok: true, body };
 }
 
-function new_node_id(used) {
+export function new_node_id(used) {  // T8.2: reused by node import
 	let fp = fs.open(C.RANDOM_DEVICE, 'r');
 	if (fp == null)
 		return null;
@@ -374,7 +374,7 @@ function new_node_id(used) {
 		return new_node_id(used);
 	used[id] = true;
 	return id;
-}
+};
 
 function apply_changes(cursor, package_name, changes) {
 	for (let change in changes) {
@@ -434,7 +434,7 @@ function copy_file_atomic(source_text, path) {
 	return { ok: true };
 }
 
-function stage_package(ctx, original_text, package_name, plan_result) {
+export function stage_package(ctx, original_text, package_name, plan_result) {  // T8.2: reused by node import
 	let dirs = temp_dirs(ctx);
 	if (!sys.mkdir_p(dirs.base) || !sys.mkdir_p(dirs.delta))
 		return { ok: false, detail: `cannot create subscription work directory: ${sys.error()}` };
@@ -456,7 +456,7 @@ function stage_package(ctx, original_text, package_name, plan_result) {
 	if (content == null)
 		return { ok: false, detail: `read ${synthetic_path}: ${fs_error()}` };
 	return { ok: true, content, dirs };
-}
+};
 
 function render_current_node(ctx, content) {
 	let dirs = temp_dirs(ctx);

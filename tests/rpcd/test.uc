@@ -1,5 +1,5 @@
 'use strict';
-// rpcd plugin scenarios for docs/tasks/m8.md T8.1, numbered like the card.
+// rpcd plugin scenarios for docs/tasks/m8.md T8.1 and T8.2, numbered like the cards.
 //
 // The plugin file is loaded exactly the way rpcd loads it: compile the source
 // and take the returned object (the file has no exports, so `import` would see
@@ -95,7 +95,8 @@ function stub_ctrl(values) {
 }
 
 // Drops the CLI stub log; the returned function yields the argv of the stub's
-// next invocation, or null while the stub has not been called at all.
+// next invocation, or null while the stub has not been called at all. Arguments
+// are logged base64-encoded (ARG64=) so multi-line content stays one argument.
 function watch_cli() {
 	fs.unlink(CLI_LOG);
 	return function() {
@@ -107,8 +108,8 @@ function watch_cli() {
 		for (let line in split(text, '\n')) {
 			if (line == '---')
 				break;
-			if (substr(line, 0, 4) == 'ARG=')
-				push(argv, substr(line, 4));
+			if (substr(line, 0, 6) == 'ARG64=')
+				push(argv, b64dec(substr(line, 6)));
 		}
 		return argv;
 	};
@@ -153,6 +154,14 @@ function wait_for(read, timeout_s) {
 
 function node_id(i) {
 	return 'n_' + sprintf('%032x', i);
+}
+
+// ucode strings have no .repeat(); used for the size-limit cases below.
+function repeat_str(s, n) {
+	let out = '';
+	for (let i = 0; i < n; i++)
+		out += s;
+	return out;
 }
 
 function sub_id(i) {
@@ -452,11 +461,11 @@ function scenario_10() {
 	let acl = json(fs.readfile(ACL_PATH));
 	let app = acl?.['luci-app-aether-proxy'];
 
-	expect_eq('10. ACL read methods are exactly version/status/events/job_status',
-		show([ 'events', 'job_status', 'status', 'version' ]),
+	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file',
+		show([ 'events', 'job_status', 'list_file', 'log', 'status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
-	expect_eq('10. ACL write methods are exactly service/check/job_start',
-		show([ 'check', 'job_start', 'service' ]),
+	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file',
+		show([ 'check', 'job_start', 'node_import', 'save_file', 'service' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -464,9 +473,9 @@ function scenario_10() {
 		deep_eq(app?.write?.uci, [ 'aetherproxy' ]), show(app?.write?.uci));
 
 	let names = sort(keys(methods));
-	expect_eq('10. plugin exposes exactly the T8.1 methods',
-		show([ 'check', 'events', 'job_start', 'job_status', 'service', 'status', 'version' ]),
-		show(names));
+	expect_eq('10. plugin exposes exactly the T8.1+T8.2 methods',
+		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'save_file', 'service', 'status', 'version' ]),
+		names != null ? show(names) : null);
 
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
 	check('10. status declares empty args', deep_eq(methods.status.args, {}), show(methods.status.args));
@@ -490,10 +499,20 @@ function scenario_10() {
 	check('10. job_status policy: id string', deep_eq(rpcd_policy(methods.job_status.args), { id: 'string' }), show(methods.job_status.args));
 	check('10. events policy: since int32, level string',
 		deep_eq(rpcd_policy(methods.events.args), { since: 'int32', level: 'string' }), show(methods.events.args));
+	check('10. log policy: source string, lines int32',
+		deep_eq(rpcd_policy(methods.log.args), { source: 'string', lines: 'int32' }), show(methods.log.args));
+	check('10. node_import policy: uri string',
+		deep_eq(rpcd_policy(methods.node_import.args), { uri: 'string' }), show(methods.node_import.args));
+	check('10. list_file policy: name string',
+		deep_eq(rpcd_policy(methods.list_file.args), { name: 'string' }), show(methods.list_file.args));
+	check('10. save_file policy: name string, content string',
+		deep_eq(rpcd_policy(methods.save_file.args), { name: 'string', content: 'string' }), show(methods.save_file.args));
 
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
-		service: 'write', check: 'write', job_start: 'write'
+		log: 'read', list_file: 'read',
+		service: 'write', check: 'write', job_start: 'write',
+		node_import: 'write', save_file: 'write'
 	};
 
 	for (let name in names) {
@@ -503,9 +522,151 @@ function scenario_10() {
 			side_of[name] == 'read' ? (in_read && !in_write) : (!in_read && in_write),
 			`read=${in_read}, write=${in_write}`);
 	}
+}
 
-	for (let name in [ 'log', 'node_import', 'list_file', 'save_file' ])
-		check(`10. ${name}: not offered before the CLI exists (T8.2)`, methods[name] == null, 'the method exists');
+// --- 11: log maps source/lines to CLI options and validates them ---
+function scenario_11() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"source":"all","lines":[]}' });
+
+	let cases = [
+		{ name: 'no arguments', args: {}, want: [ 'log', '--json' ] },
+		{ name: 'source only', args: { source: 'xray' }, want: [ 'log', '--source', 'xray', '--json' ] },
+		{ name: 'source aether-proxy', args: { source: 'aether-proxy' },
+		  want: [ 'log', '--source', 'aether-proxy', '--json' ] },
+		{ name: 'source dns', args: { source: 'dns' }, want: [ 'log', '--source', 'dns', '--json' ] },
+		{ name: 'source all', args: { source: 'all' }, want: [ 'log', '--source', 'all', '--json' ] },
+		{ name: 'lines only', args: { lines: 50 }, want: [ 'log', '--lines', '50', '--json' ] },
+		{ name: 'lines lower bound', args: { lines: 1 }, want: [ 'log', '--lines', '1', '--json' ] },
+		{ name: 'lines upper bound', args: { lines: 2000 }, want: [ 'log', '--lines', '2000', '--json' ] },
+		{ name: 'source and lines', args: { source: 'dns', lines: 2 },
+		  want: [ 'log', '--source', 'dns', '--lines', '2', '--json' ] }
+	];
+
+	for (let c in cases) {
+		let argv_of = watch_cli();
+		let r = methods.log.call({ args: c.args });
+		check(`11. log ${c.name}: stub received exactly the mapped options`,
+			deep_eq(argv_of(), c.want), show(argv_of()));
+		check(`11. log ${c.name}: reply is the CLI JSON object`,
+			deep_eq(r, { ok: true, source: 'all', lines: [] }), show(r));
+	}
+
+	let rejects = [
+		{ name: 'unknown source', args: { source: 'dnsmasq' } },
+		{ name: 'source not a string', args: { source: 7 } },
+		{ name: 'lines 0', args: { lines: 0 } },
+		{ name: 'lines above the bound', args: { lines: 2001 } },
+		{ name: 'negative lines', args: { lines: -1 } },
+		{ name: 'lines as string', args: { lines: '50' } },
+		{ name: 'fractional lines', args: { lines: 1.5 } }
+	];
+
+	for (let c in rejects) {
+		let argv_of = watch_cli();
+		let r = methods.log.call({ args: c.args });
+		check(`11. log ${c.name}: USAGE`, r?.ok === false && r?.code == 'USAGE', show(r));
+		check(`11. log ${c.name}: stub not called`, argv_of() == null, show(argv_of()));
+	}
+}
+
+// --- 12: node_import forwards the URI as one argument and rejects malformed values ---
+function scenario_12() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"node":"n_a","duplicate":false}' });
+
+	let ok_cases = [
+		{ name: 'vless uri', uri: 'vless://uuid@h.example:443?security=tls#Edge' },
+		{ name: 'ss uri', uri: 'ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@h.example:8388' },
+		// A URI carrying shell metacharacters must arrive as one argv element (sys.run,
+		// no shell), never interpreted by a shell.
+		{ name: 'uri with shell metacharacters', uri: 'trojan://pw@h.example:443?sni=x#n;reboot $(id) `id`' }
+	];
+
+	for (let c in ok_cases) {
+		let argv_of = watch_cli();
+		let r = methods.node_import.call({ args: { uri: c.uri } });
+		check(`12. node_import ${c.name}: forwarded as [node, import, <uri>, --json]`,
+			deep_eq(argv_of(), [ 'node', 'import', c.uri, '--json' ]), show(argv_of()));
+		check(`12. node_import ${c.name}: reply is the CLI JSON object`,
+			deep_eq(r, { ok: true, node: 'n_a', duplicate: false }), show(r));
+	}
+
+	let rejects = [
+		{ name: 'uri missing', args: {} },
+		{ name: 'uri not a string', args: { uri: 17 } },
+		{ name: 'uri without scheme', args: { uri: 'foo' } },
+		{ name: 'uri starting with a dash', args: { uri: '-vless://x@h:1' } },
+		{ name: 'uri too long', args: { uri: 'vless://' + repeat_str('a', 4096) + '@h:1' } },
+		{ name: 'bare scheme without //', args: { uri: 'vless:' } }
+	];
+
+	for (let c in rejects) {
+		let argv_of = watch_cli();
+		let r = methods.node_import.call({ args: c.args });
+		check(`12. node_import ${c.name}: USAGE`, r?.ok === false && r?.code == 'USAGE', show(r));
+		check(`12. node_import ${c.name}: stub not called`, argv_of() == null, show(argv_of()));
+	}
+}
+
+// --- 13: list_file forwards get, save_file forwards set with the full content ---
+function scenario_13() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"name":"direct_domain","content":""}' });
+
+	for (let name in [ 'direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip' ]) {
+		let argv_of = watch_cli();
+		let r = methods.list_file.call({ args: { name: name } });
+		check(`13. list_file ${name}: stub received [custom, get, <name>, --json]`,
+			deep_eq(argv_of(), [ 'custom', 'get', name, '--json' ]), show(argv_of()));
+		check(`13. list_file ${name}: reply is the CLI JSON object`,
+			deep_eq(r, { ok: true, name: 'direct_domain', content: '' }), show(r));
+	}
+
+	// Multi-line content must reach the CLI byte for byte (it is passed as one argv
+	// element, never through a shell or a temp file).
+	let content = '# custom list\nexample.com\n\n1.2.3.4/24\nlast line without newline';
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"name":"proxy_domain","changed":true,"reload":false}' });
+	let argv_of = watch_cli();
+	let r = methods.save_file.call({ args: { name: 'proxy_domain', content: content } });
+	check('13. save_file: stub received [custom, set, <name>, --content, <content>, --json]',
+		deep_eq(argv_of(), [ 'custom', 'set', 'proxy_domain', '--content', content, '--json' ]), show(argv_of()));
+	check('13. save_file: reply is the CLI JSON object',
+		deep_eq(r, { ok: true, name: 'proxy_domain', changed: true, reload: false }), show(r));
+
+	// save_file has a 30s budget (a save may reload the service): an 11s CLI is answered,
+	// not killed at the 10s default.
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"name":"proxy_ip","changed":true,"reload":true}', sleep: 11 });
+	let t0 = clock();
+	r = methods.save_file.call({ args: { name: 'proxy_ip', content: '10.0.0.0/8' } });
+	let dt = elapsed(t0);
+	check('13. save_file sleeping 11s: answered by the 30s budget',
+		deep_eq(r, { ok: true, name: 'proxy_ip', changed: true, reload: true }), show(r));
+	check('13. save_file sleeping 11s: the call took over 10s (10 < t < 29)', dt > 10 && dt < 29, sprintf('%.1fs', dt));
+
+	let rejects = [
+		{ name: 'list_file unknown name', call: 'list_file', args: { name: 'hosts' } },
+		{ name: 'list_file name not a string', call: 'list_file', args: { name: 3 } },
+		{ name: 'list_file name missing', call: 'list_file', args: {} },
+		{ name: 'save_file unknown name', call: 'save_file', args: { name: 'gfwlist', content: 'x' } },
+		{ name: 'save_file name missing', call: 'save_file', args: { content: 'x' } },
+		{ name: 'save_file content missing', call: 'save_file', args: { name: 'direct_ip' } },
+		{ name: 'save_file content not a string', call: 'save_file', args: { name: 'direct_ip', content: [] } },
+		{ name: 'save_file content too long', call: 'save_file',
+		  args: { name: 'direct_ip', content: repeat_str('x', 65537) } }
+	];
+
+	for (let c in rejects) {
+		let argv_of2 = watch_cli();
+		let r2 = methods[c.call].call({ args: c.args });
+		check(`13. ${c.name}: USAGE`, r2?.ok === false && r2?.code == 'USAGE', show(r2));
+		check(`13. ${c.name}: stub not called`, argv_of2() == null, show(argv_of2()));
+	}
+
+	// Exactly at the size limit is still accepted.
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"name":"direct_ip","changed":false,"reload":false}' });
+	let argv_of3 = watch_cli();
+	let r3 = methods.save_file.call({ args: { name: 'direct_ip', content: repeat_str('y', 65536) } });
+	check('13. save_file 65536 bytes: forwarded', deep_eq(r3, { ok: true, name: 'direct_ip', changed: false, reload: false }), show(r3));
+	check('13. save_file 65536 bytes: stub called with the full content',
+		deep_eq(argv_of3(), [ 'custom', 'set', 'direct_ip', '--content', repeat_str('y', 65536), '--json' ]), 'argv mismatch');
 }
 
 // ---------------------------------------------------------------- scenarios
@@ -520,6 +681,9 @@ scenario_7();
 scenario_8();
 scenario_9();
 scenario_10();
+scenario_11();
+scenario_12();
+scenario_13();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

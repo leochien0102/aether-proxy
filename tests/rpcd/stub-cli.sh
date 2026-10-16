@@ -24,7 +24,9 @@ value() {
 }
 
 for arg do
-	printf 'ARG=%s\n' "$arg" >> "$LOG"
+	# base64 keeps multi-line arguments (save_file content) intact in the log;
+	# the test decodes ARG64 lines back to the original argument.
+	printf 'ARG64=%s\n' "$(printf '%s' "$arg" | base64 -w0)" >> "$LOG"
 done
 printf -- '---\n' >> "$LOG"
 

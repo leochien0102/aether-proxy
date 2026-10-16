@@ -3,13 +3,13 @@
 		"description": "Grant access to aether-proxy",
 		"read": {
 			"ubus": {
-				"aetherproxy": [ "version", "status", "events", "job_status" ]
+				"aetherproxy": [ "version", "status", "events", "job_status", "log", "list_file" ]
 			},
 			"uci": [ "aetherproxy" ]
 		},
 		"write": {
 			"ubus": {
-				"aetherproxy": [ "service", "check", "job_start" ]
+				"aetherproxy": [ "service", "check", "job_start", "node_import", "save_file" ]
 			},
 			"uci": [ "aetherproxy" ]
 		}

@@ -35,6 +35,9 @@ jobs:
       - name: Run CLI scenario tests
         run: bash tests/cli/run.sh
 
+      - name: Run log / node import / custom tests
+        run: bash tests/node/run.sh
+
       - name: Run daemon lifecycle tests
         run: bash tests/daemon/run.sh
 
