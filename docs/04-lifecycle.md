@@ -125,6 +125,15 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 `/etc/hotplug.d/iface/90-aether-proxy`：`ACTION=ifup` 且接口不在 `lan_ifaces` 中时，如果 aether-proxy 正在运行，向 daemon
 发 `SIGUSR1`，触发**立即执行一轮检测**。**不重启任何东西。** PPPoE 重拨不影响 TPROXY，节点 IP 的变化由检测发现。
 
+## 信号一览
+
+| 信号 | 作用 |
+|---|---|
+| SIGTERM / SIGINT | 按「停止」清理后退出 |
+| SIGHUP | 增量重载（「重载」）；启动失败的退避期间则立即重试 |
+| SIGUSR1 | 立即执行一轮 monitor 检测，不重启任何东西（热插拔、首页「测延迟」用） |
+| SIGUSR2 | **只重启 Xray 子进程**（停止 → 按当前 `xray.json` 再拉起，退避计数归零），随后立即执行一轮检测。`xray-core` 软件包更新后用（[08](08-updates.md)「软件包安装」）：换了二进制而配置没变，SIGHUP 不会重启它，完整重启服务又要重启 dnsmasq（2026-10-16 定） |
+
 ## monitor 循环
 
 在 daemon 内运行，正常每 30 秒一轮，非 `running` 状态下每 10 秒一轮；收到 SIGUSR1 立即执行一轮。
