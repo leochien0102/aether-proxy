@@ -48,7 +48,7 @@ function modelSources() {
 	return map;
 }
 
-/* docs/10 「rpcd 插件」: the 13 ubus methods with their declared params. */
+/* docs/10 「rpcd 插件」: the current ubus methods with their declared params. */
 const PLUGIN_METHODS = {
 	version: [],
 	status: [],
@@ -59,13 +59,14 @@ const PLUGIN_METHODS = {
 	events: [ 'since', 'level' ],
 	probe_results: [],
 	sub_status: [],
+	data_status: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
 };
 
-test('scenario 9: static checks — page requires, rpc.declare only in common.js with the 13 plugin methods, no cbi-button-reset, po complete', async (t) => {
+test('scenario 9: static checks — page requires, rpc.declare only in common.js with the 14 plugin methods, no cbi-button-reset, po complete', async (t) => {
 	const common = read(COMMON);
 	const views = viewSources();
 
@@ -81,7 +82,7 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 
 	assert.match(common, /rpc\s*\.\s*declare/, 'common.js declares the rpc methods');
 
-	/* common.js declares exactly the 13 plugin methods with the documented
+	/* common.js declares exactly the 14 plugin methods with the documented
 	   params — cross-checked against the ACL and the plugin source */
 	const acl = JSON.parse(read(ACL));
 	const aclMethods = [
@@ -89,7 +90,7 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 		...acl['luci-app-aether-proxy'].write.ubus.aetherproxy
 	].sort();
 
-	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(), 'ACL sanity: exactly the 13 methods');
+	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(), 'ACL sanity: exactly the 14 methods');
 
 	const rpc = createRpc();
 	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o } }, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
@@ -99,7 +100,7 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 		declared[d.method] = d;
 
 	assert.deepEqual(Object.keys(declared).sort(), Object.keys(PLUGIN_METHODS).sort(),
-		'common.js declares exactly the 13 plugin methods');
+		'common.js declares exactly the 14 plugin methods');
 	assert.deepEqual(rpc.declared.filter((d) => d.object != 'aetherproxy'), [],
 		'all declarations target the aetherproxy object');
 

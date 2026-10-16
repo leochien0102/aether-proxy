@@ -25,6 +25,7 @@ var METHODS = {
 	events: [ 'since', 'level' ],
 	probe_results: [],
 	sub_status: [],
+	data_status: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],

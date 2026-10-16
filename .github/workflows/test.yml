@@ -74,6 +74,9 @@ jobs:
       - name: Run subscription schedule tests
         run: bash tests/schedule/run.sh
 
+      - name: Run rules and DNS tests
+        run: bash tests/rules/run.sh
+
       - name: Run update check tests
         run: bash tests/update/run.sh
 

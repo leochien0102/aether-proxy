@@ -252,6 +252,14 @@ const methods = {
 
 	// T8.5 (docs/10 「rpcd 插件」): read-only forwarding of the latest node probe
 	// results; the LuCI nodes page polls this while a probe job is running.
+	// T8.8: read-only inventory, with the ordinary 10-second forwarding timeout.
+	data_status: {
+		call: function(req) {
+			return call_cli([ 'data', 'status' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
 	sub_status: {
 		call: function(req) {
 			return call_cli([ 'sub', 'status' ], DEFAULT_TIMEOUT_SECS);

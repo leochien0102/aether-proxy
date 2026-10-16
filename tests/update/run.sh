@@ -85,6 +85,30 @@ expect 'architecture is stored' aarch64_generic "$(get "$out" arch)"; expect 'op
 expect 'installed package version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'available package version' 26.10.10-r1 "$(get "$out" packages.xray-core.available)"
 expect 'newer version detected' true "$(get "$out" packages.xray-core.newer)"; expect 'opkg asset key' xray-core_26.10.10-r1_aarch64_generic.ipk "$(get "$out" packages.xray-core.asset)"
 status=$(ap status --json --run-dir "$T/run"); expect 'status reads updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["updates_available"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$status")"
+# T8.8 scenario 1: baseline equality must work without a downloaded hash.
+printf '192.0.2.0/24\n' > "$T/root/usr/share/aether-proxy/data/chnroute4.txt"
+base_hash=$(sha256sum "$T/root/usr/share/aether-proxy/data/chnroute4.txt" | cut -d' ' -f1)
+python3 - "$T/ch1/manifest.json" "$base_hash" <<'PY'
+import json,sys
+p=sys.argv[1]
+m=json.load(open(p))
+m['data']['chnroute4']['content_sha256']=sys.argv[2]
+json.dump(m,open(p,'w'))
+PY
+"$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
+out=$(run_check)
+expect 'T8.8 baseline equal without sha256 is unchanged' false "$(get "$out" data.chnroute4.changed)"
+printf '198.51.100.0/24\n' > "$T/root/usr/share/aether-proxy/data/chnroute4.txt"
+out=$(run_check)
+expect 'T8.8 baseline different without sha256 is changed' true "$(get "$out" data.chnroute4.changed)"
+printf '%s\n' "$base_hash" > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(run_check)
+expect 'T8.8 downloaded sha256 overrides different baseline' false "$(get "$out" data.chnroute4.changed)"
+printf '%064d\n' 0 > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(run_check)
+expect 'T8.8 different downloaded sha256 reports changed' true "$(get "$out" data.chnroute4.changed)"
+rm "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+make_manifest
 # 2 apk precedence and apk version/asset parsing
 cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin/apk"
 export UPDATE_APK_VERSION=26.9.30-r5; out=$(run_check); expect 'apk check succeeds' 0 "$?"; expect 'apk preferred' apk "$(get "$out" pm)"
