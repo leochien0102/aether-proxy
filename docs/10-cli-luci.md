@@ -182,7 +182,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 | 订阅 | 订阅列表与编辑；「立即更新」；最近一次结果（时间、节点数、按原因统计的跳过数） |
 | 访问控制 | `unlisted_policy`；主机表（名称、IP、MAC、策略、游戏模式）。MAC 输入框提供 DHCP 租约下拉。冲突在保存前校验 |
 | 规则与 DNS | 模式；自定义直连/代理的域名与 IP（四个 textarea）；DNS 设置；数据版本与「立即更新」 |
-| 更新 | 组件版本（当前、previous、最新）、安装/回滚按钮、手动上传、更新策略 |
+| 更新 | 组件版本（当前、previous、最新）、安装/回滚按钮、更新策略（不提供手动上传，见 [08](08-updates.md)「软件包安装」） |
 | 日志 | 事件页（默认）+ 原始日志页（[09](09-logging.md)） |
 | 高级 | `lan_ifaces`、`quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`、日志等级、开机等待、健康检测参数、二进制路径 |
 
@@ -301,6 +301,35 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   这几个字段用模型做与命令行**相同规则**的格式校验（`lib/config.uc` 的 `upstream`、`lib/net.uc` 的 `ipv4`、`domain`），作为 LuCI 选项的 `validate`；理由同访问控制页。
 - **规则数据**：表格列出五项的名称（中文）、来源（「下载」/「包内」）、版本、行数、更新时间（相对时间）、状态（`changed` 为真 →「有更新」，假 →「最新」，`null` →「未检查」），以及上次检查时间；
   「立即更新」按钮 → `ap.run_job('update_data', [])`，结束后显示作业结果（`updated`/`unchanged`/`failed` 各项）并重新读取 `data_status`。
+
+### 更新页（2026-10-16 定，T8.9b）
+
+**`update check` 新增 `packages.<包>.previous`**：清单中该包 `previous` 对本机架构与包管理器有资产时为它的版本字符串，否则（`previous` 为 `null`、没有本机资产）为 `null`。
+取法与 `update package --previous` 选资产相同（共用 `lib/update.uc` 已有的选资产函数），页面据此决定回滚按钮是否可用、显示回滚到哪个版本。
+
+**数据来源**：只用已有接口，不加 rpcd 方法。页面加载时取一次 `status`（`updates_available` 即 `updates.json`，`components` 为运行中组件的版本）与 UCI；
+每个作业结束后再取一次 `status`。不定时刷新。
+
+**页面**（`form.Map('aetherproxy')`，模型 `model/updates.js`）：
+- **软件包表**：`xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 四行，列：名称、已安装（`installed`，`null` 显示「未安装」）、最新（`available`）、上一版（`previous`，`null` 显示「–」）、状态、操作。
+  - 状态：`updates_available` 为 `null` →「未检查」（其余列显示「–」）；该包不在 `packages` 中 →「通道中没有」；`asset` 为 `null` →「本机不可用」（附 `arch`）；
+    `installed` 为 `null` →「未安装」；`newer` 为真 →「有更新」；否则「最新」（按这个顺序判断，第一个成立的生效）。
+  - 操作：「安装」（`installed` 为 `null` 且 `asset` 不为空）或「更新」（`installed` 不为空且 `newer` 为真）→ `ap.run_job('update_package', [<包>])`；
+    「回滚到 <previous>」（`previous` 不为空且 `installed` 不为空且 `installed` 不等于 `previous`）→ 确认后 `ap.run_job('update_package', [<包>, '--previous'])`，按钮用 `cbi-button-remove`。
+    确认框写明「将安装 <previous>，替换当前的 <installed>」；`aether-proxy` 与两个 luci 包另加一句「服务会重启」。
+  - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。
+  - 表下一行：上次检查时间（相对时间）与清单地址（`url`）；`updates_available` 为 `null` 时显示「尚未检查」。
+- **运行中的组件**：`status.components` 中 `xray`、`chinadns-ng` 的版本（`null` 显示「未知」）与路径。chinadns-ng 另注「不进发布通道，请在软件包页面从软件源安装或更新」，附 `arch`（没有 `updates_available` 时不显示 arch）。
+- **「检查更新」按钮** → `ap.run_job('update_check', [])`，结束后重新取 `status`。
+- **作业期间**所有安装、更新、回滚、检查按钮都不可用（共用一把更新锁，[08](08-updates.md)「调度」）。
+- **作业结果的文字**（模型计算）：
+  - 检查：成功 →「检查完成」，附有更新的包数；失败按 `code`：`UPDATE_FETCH_FAILED` 连不上发布通道、`MANIFEST_BAD_SIGNATURE` 签名校验失败、`CONFIG_INVALID` 没有可用的通道地址；`BUSY` 另一个更新作业正在运行；`JOB_LOST` 作业进程意外退出；其他码原样显示并附 `detail`。
+  - 安装/回滚（`update package` 的结果 `{ ok, package, from, to, rolled_back, code, detail }`）：`ok` 为真 →「<包> 已从 <from> 更新到 <to>」（`from` 为 `null` 时「已安装 <to>」）；
+    `rolled_back` 为真 →「安装后检查失败，已回滚到 <from>」；`ok` 为假且未回滚 → 按 `code` 显示（`UPDATE_VERIFY_FAILED` 校验失败——有 `detail` 时附上、`NO_SPACE` 空间不足、`ARCH_UNSUPPORTED` 本机不可用，以及上面检查用的几个码），其他码原样显示。
+- **更新策略**（`update` 段）：`xray_auto`（`off` 不提示、`notify` 只提示、`auto` 自动安装，各附一句说明；`auto` 的说明写明「只在运行正常时安装，同一版本只尝试一次，检查失败自动回滚」）、
+  `data_auto`、`data_hour`（0–23）、`data_minute`（0–59，空表示 30，占位文字写「30」）、`channel_urls`（`DynamicList`）。
+  `channel_urls` 每项用模型做与命令行**相同规则**的校验（`lib/config.uc` 的 `url`：`http://` 或 `https://` 开头、主机部分非空、不含空白），作为 `validate`。列表删空时 LuCI 会删除该选项，命令行回到默认通道（05「`config update`」），所以不阻止保存，只在说明中写「留空则使用默认的发布通道」。
+  保存走 `form.Map` 的标准流程。
 
 UI 规则：
 

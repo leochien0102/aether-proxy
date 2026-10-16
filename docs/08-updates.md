@@ -168,6 +168,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 ```
 
 - `packages.<包>.asset`：本机架构与包管理器对应的资产文件名，包对本机不可用时为 `null`。
+- `packages.<包>.previous`：清单中 `previous` 对本机可用时为它的版本，否则为 `null`（2026-10-16 加，T8.9b；更新页据此显示回滚按钮）。
 - `channel_urls` 为空 → `CONFIG_INVALID`（退出码 2）。至少一个地址返回了清单但都没通过验签 → `MANIFEST_BAD_SIGNATURE`（退出码 4）；所有地址都连不上 → `UPDATE_FETCH_FAILED`（退出码 1）。
   两种失败分开报，LuCI 才能分别提示「连不上发布通道」与「签名校验失败」。
 - `pm`：有 `apk` 命令为 `apk`，否则有 `opkg` 为 `opkg`。`installed` 取自包管理器（`opkg status <包>` 的 `Version:`、`apk list -I <包>`）；没装为 `null`。
