@@ -346,20 +346,10 @@ msgstr "带插件的 SS"
 msgid "VMess alterId is not zero"
 msgstr "VMess alterId 非 0"
 
-msgid "IPv6 address"
-msgstr "IPv6 地址"
 
-msgid "Missing field"
-msgstr "缺少字段"
 
-msgid "Duplicate"
-msgstr "重复"
 
-msgid "Insecure transport"
-msgstr "不安全的传输"
 
-msgid "Invalid value"
-msgstr "无效的值"
 
 msgid "Not updated yet"
 msgstr "尚未更新"

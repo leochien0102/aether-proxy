@@ -17,9 +17,7 @@ const errors = {
 const reasons = {
 	malformed: _('Malformed'), unsupported_scheme: _('Unsupported protocol'),
 	unsupported_transport: _('Unsupported transport'), unsupported_security: _('Unsupported security'),
-	ss_plugin: _('SS with plugin'), vmess_alterid: _('VMess alterId is not zero'),
-	ipv6_address: _('IPv6 address'), missing_field: _('Missing field'), duplicate: _('Duplicate'),
-	insecure_transport: _('Insecure transport'), invalid_value: _('Invalid value')
+	ss_plugin: _('SS with plugin'), vmess_alterid: _('VMess alterId is not zero')
 };
 function relative(now, at) {
 	if (at == null) return '–';

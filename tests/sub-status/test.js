@@ -56,6 +56,9 @@ try {
   assert.equal(r.name, 's_00000001'); assert.equal(r.address, 'https://example.com/…');
   assert.doesNotMatch(JSON.stringify(r), /token|SECRET/); assert.equal(r.interval, '仅手动');
   for (const url of ['broken', 'https://', 'https://bad host/path', 'javascript:alert(1)']) assert.equal(row({url}).address, '…');
+  // userinfo (user:password@) must never reach the list either
+  const withAuth = row({ url: 'https://alice:HUNTER2@example.com/sub?token=SECRET' });
+  assert.equal(withAuth.address, 'https://example.com/…'); assert.doesNotMatch(JSON.stringify(withAuth), /alice|HUNTER2|SECRET/);
   assert.equal(row({name: 'Test', enabled: '0', fetch_via: 'proxy'}).name, 'Test');
   assert.equal(row({enabled: '0'}).enabled, '禁用');
   assert.equal(model.build([], {}, 0, true).can_update, false);
@@ -66,10 +69,10 @@ try {
   assert.equal(row({}, {nodes: 12, error: null}).result.text, '成功，12 个节点');
   const errors = {SUB_FETCH_FAILED:'下载失败',SUB_DECODE_FAILED:'解码失败',SUB_FORMAT_UNSUPPORTED:'格式不支持',SUB_NO_VALID_NODES:'没有可用节点',SUB_APPLY_INVALID:'应用后配置无效',SUB_PROXY_UNAVAILABLE:'代理不可用',SUB_SHRANK:'节点数骤减',UNKNOWN:'UNKNOWN'};
   for (const [error, text] of Object.entries(errors)) assert.equal(row({}, {error}).result.text, text);
-  const reasons = {malformed:'格式错误',unsupported_scheme:'不支持的协议',unsupported_transport:'不支持的传输',unsupported_security:'不支持的安全层',ss_plugin:'带插件的 SS',vmess_alterid:'VMess alterId 非 0',ipv6_address:'IPv6 地址',missing_field:'缺少字段',duplicate:'重复',insecure_transport:'不安全的传输',invalid_value:'无效的值',new_reason:'new_reason'};
+  const reasons = {malformed:'格式错误',unsupported_scheme:'不支持的协议',unsupported_transport:'不支持的传输',unsupported_security:'不支持的安全层',ss_plugin:'带插件的 SS',vmess_alterid:'VMess alterId 非 0',new_reason:'new_reason'};
   const skipped = Object.fromEntries(Object.keys(reasons).map(k => [k, 2]));
   const text = row({}, {skipped}).result.skipped;
-  assert.ok(text.startsWith('跳过 24 个：'));
+  assert.ok(text.startsWith('跳过 14 个：'));
   for (const reason of Object.values(reasons)) assert.ok(text.includes(reason + ' 2'), text);
   for (const [delta, text] of [[5,'5 秒前'],[120,'2 分钟前'],[7200,'2 小时前'],[172800,'2 天前']]) assert.equal(row({}, {last_attempt:200000-delta}).result.time, text);
  });
