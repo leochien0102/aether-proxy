@@ -53,6 +53,9 @@ jobs:
       - name: Run job mechanism tests
         run: bash tests/job/run.sh
 
+      - name: Run rpcd plugin tests
+        run: bash tests/rpcd/run.sh
+
       - name: Run subscription schedule tests
         run: bash tests/schedule/run.sh
 
