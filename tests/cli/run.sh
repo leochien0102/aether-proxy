@@ -329,6 +329,19 @@ out="$(PATH="$T/fakebin:$PATH" ap probe nodes n_000000000000000000000000000000c9
 expect "probe unresolved domain: exit code 0" 0 "$rc"
 expect "probe unresolved domain: resolve_failed" resolve_failed "$(echo "$out" | jget nodes.n_000000000000000000000000000000c9.error)"
 
+# --- full precheck path (without --no-precheck): every earlier check skipped it, which hid a
+# reference to an undefined variable that crashed `check` (and the LuCI check button) once the
+# precheck passed. Stubs make the precheck pass; --sys-root/--bin-dir must reach it.
+PC="$T/precheck"; mkdir -p "$PC/bin" "$PC/root/sys/class/net/br-lan"
+printf '#!/bin/sh\nexit 0\n' > "$PC/bin/nft"
+printf '#!/bin/sh\necho "Usage: ip rule [ fwmark FWMARK[/MASK] ]"\n' > "$PC/bin/ip"
+printf '#!/bin/sh\nexit 0\n' > "$PC/bin/xray"; printf '#!/bin/sh\nexit 0\n' > "$PC/bin/chinadns-ng"
+chmod +x "$PC/bin"/*
+out="$(ap check --json $(opts "$FIX/sample" "$T/run-pc") --sys-root "$PC/root" --bin-dir "$PC/bin" 2>"$T/pc.stderr")"; rc=$?
+expect "check with precheck: exit code 0" 0 "$rc"
+expect "check with precheck: stderr empty" "" "$(cat "$T/pc.stderr")"
+echo "$out" | grep -q '"precheck"' && echo "$out" | grep -q '"xray"' && ok "check with precheck: precheck and xray validation reported" || bad "check with precheck: precheck and xray validation reported" "$out"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

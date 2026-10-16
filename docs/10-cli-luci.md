@@ -219,7 +219,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 | `IPV6_PRESENT` | `main.lan_ifaces` 中某个接口在 `/proc/net/if_inet6` 有全局地址（scope 字段为 `00`） | `iface` |
 | `DNSMASQ_EXTRA_SERVERS` | dnsmasq 生成的配置与 confdir 中（除自己的片段外）存在 `server=` 行——与启动时 `apply` 的检测相同，把检测部分抽成不记事件的共用函数 | `servers`（数组） |
 
-`UPDATE_AVAILABLE` 是新事件码，只用于 `notices`（不写事件日志），登记到 09 的事件表。
+`notices` 沿用已有的事件码（`UPDATE_AVAILABLE` 原本是 `update check` 的事件），但 `status` 只返回、不写事件日志；`notices` 中的 args 以上表为准。
 
 **页面内容**（模型 `model/overview.js` 计算，视图渲染）：
 - 状态：`state` 的中文名（`stopped` 已停止、`starting` 启动中——`waiting_network` 为真时显示「等待网络」、`running` 运行中、`degraded` 降级、`failsafe` 故障放行、`error` 启动失败），

@@ -91,8 +91,10 @@ if printf '%s\n' "$added" | grep -E '^\+.*\brequire\(' >/dev/null; then
 	warn "added code uses require() (cannot load modules with exports; docs/12 syntax limit 3)"
 fi
 
-if printf '%s\n' "$added" | grep -E '^\+.*\.join\(' >/dev/null; then
-	fail "added code calls .join() (ucode arrays have no .join; use join(sep, arr))"
+# ucode only: JS (LuCI) arrays do have .join().
+added_uc=$(git diff -U0 "$BASE"...HEAD -- '*.uc' 'aether-proxy/src/aether-proxy' | grep -E '^\+[^+]' || true)
+if printf '%s\n' "$added_uc" | grep -E '^\+.*\.join\(' >/dev/null; then
+	fail "added ucode calls .join() (ucode arrays have no .join; use join(sep, arr))"
 fi
 
 # --- 4. scope of the change ---------------------------------------------------

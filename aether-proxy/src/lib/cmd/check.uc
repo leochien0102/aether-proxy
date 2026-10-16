@@ -158,7 +158,7 @@ export function run(args) {
 		return pipeline.finish(opts, result, 0, `ok: rendered to ${staging} (checks skipped)`);
 	}
 
-	let pc = precheck(res.snapshot, staging);
+	let pc = precheck(res.snapshot, staging, opts);
 	let bad = filter(pc.items, i => !i.ok);
 
 	result.precheck = { skipped: false, items: pc.items, components: pc.components };
@@ -181,7 +181,7 @@ export function run(args) {
 	let validation = {};
 	let errors = [];
 
-	let r = sys.run([ options.bin_dir ? `${options.bin_dir}/nft` : 'nft', '-c', '-f', files.nft ], { timeout: 10, quiet: true });
+	let r = sys.run([ opts.bin_dir ? `${opts.bin_dir}/nft` : 'nft', '-c', '-f', files.nft ], { timeout: 10, quiet: true });
 
 	validation.nft = { ok: r.code == 0 };
 

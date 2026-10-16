@@ -95,7 +95,6 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `NFT_TABLE_RESTORED` | warn | — |
 | `DNSMASQ_CONFDIR_NOT_FOUND` / `DNSMASQ_EXTRA_SERVERS` | error / warn | `servers` |
 | `IPV6_PRESENT` | warn | `iface` |
-| `UPDATE_AVAILABLE` | —（只出现在 `status` 的 `notices` 中，不写事件日志） | `package`、`available` |
 | `SUB_UPDATED` | notice | `sub`、`added`、`updated`、`stale`、`removed`、`skipped`（按原因计数的对象） |
 | `SUB_FETCH_FAILED` / `SUB_DECODE_FAILED` / `SUB_FORMAT_UNSUPPORTED` / `SUB_APPLY_INVALID` / `SUB_PROXY_UNAVAILABLE` | error | `sub`、`detail` |
 | `SUB_SHRANK` | warn | `sub`、`old`、`new` |
