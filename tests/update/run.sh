@@ -429,6 +429,17 @@ make_data_manifest future; out=$(data_update); rc=$?
 expect 'data: unknown future item is not a failure' 0 "$rc"
 expect 'data: unknown future item not reported' '{}' "$(get "$out" failed)"
 [ ! -e "$T/root/etc/aether-proxy/data/chnroute6.sha256" ] && ok 'data: unknown future item not written' || bad 'data: unknown future item not written'
+# update check with the same manifest: the unknown item is reported changed without
+# hashing a nonexistent baseline (no CMD_FAILED for it)
+: >| "$T/run/events.jsonl"
+out=$(run_check); expect 'check: unknown future item reported changed' true "$(get "$out" data.chnroute6.changed)"
+grep -q 'sha256sum' "$T/run/events.jsonl" && bad 'check: unknown future item hashes nothing' || ok 'check: unknown future item hashes nothing'
+# a .sha256 with garbage content: update data refuses the item, update check reports changed
+make_data_manifest single
+printf 'not-a-hash\n' >| "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(data_update); expect 'data: garbage .sha256 fails the item' 'invalid local content hash' "$(get "$out" failed.chnroute4)"
+out=$(run_check); expect 'check: garbage .sha256 reports changed' true "$(get "$out" data.chnroute4.changed)"
+rm -f "$T/root/etc/aether-proxy/data/chnroute4.sha256"
 # release hosts redirect (GitHub: 302 to a storage host): manifest and assets follow it
 mkdir -p "$T/conf-redirect"
 printf "config update 'update'\n list channel_urls 'http://127.0.0.1:%s/'\n" "$PORT3" > "$T/conf-redirect/aetherproxy"

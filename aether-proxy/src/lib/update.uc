@@ -221,6 +221,13 @@ function data_status(ctx, manifest) {
 	let result = {};
 	for (let name in sort(keys(manifest.data ?? {}))) {
 		let filename = C.DATA_DOMAIN_FILES[name] ?? C.DATA_IP_FILES[name];
+		// An item this version does not know (added by a later channel) has no baseline to
+		// hash; report it as changed without running sha256sum on a nonexistent file
+		// (and without the CMD_FAILED event that would log), as before the shared hash.
+		if (filename == null) {
+			result[name] = { changed: true };
+			continue;
+		}
 		let local = local_data_hash(ctx.root, name, filename);
 		if (!local.ok && local.kind == 'read')
 			log.event('error', 'FS_FAILED', { op: 'read', path: local.path, detail: local.detail });
