@@ -1,0 +1,150 @@
+'use strict';
+
+/* Test double loader for the aether-proxy LuCI modules (docs/tasks/m8.md T8.3).
+ *
+ * loadModule() loads a LuCI class module the way luci-base's luci.js does it
+ * (compileClass): the leading string statements are scanned for 'use strict'
+ * and 'require x [as y]', the source is wrapped in
+ * (function(window, document, L, <alias>…) { … }) and evaluated with the
+ * requested module instances as arguments. The doubles for rpc / baseclass /
+ * view live in the test files. Only node built-ins are used.
+ */
+
+const fs = require('node:fs');
+
+const REQUIRE_RE = /^require[ \t]+(\S+)(?:[ \t]+as[ \t]+([a-zA-Z_]\S*))?$/;
+const STRICT_RE = /^use[ \t]+strict$/;
+
+/* Character-level scanner, mirroring LuCI's compileClass so that the same
+ * files resolve the same dependencies in the browser and in the tests. */
+function scanRequires(source) {
+	const requires = [];
+
+	for (let i = 0, off = -1, prev = -1, quote = -1, comment = -1, esc = false; i < source.length; i++) {
+		const chr = source.charCodeAt(i);
+
+		if (esc) {
+			esc = false;
+		}
+		else if (comment != -1) {
+			if ((comment == 47 && chr == 10) || (comment == 42 && prev == 42 && chr == 47))
+				comment = -1;
+		}
+		else if ((chr == 42 || chr == 47) && prev == 47) {
+			comment = chr;
+		}
+		else if (chr == 92) {
+			esc = true;
+		}
+		else if (chr == quote) {
+			const s = source.substring(off, i);
+			const m = REQUIRE_RE.exec(s);
+
+			if (m)
+				requires.push({ name: m[1], as: m[2] || m[1].replace(/[^a-zA-Z0-9_]/g, '_') });
+			else if (!STRICT_RE.exec(s))
+				break;
+
+			off = -1;
+			quote = -1;
+		}
+		else if (quote == -1 && (chr == 34 || chr == 39)) {
+			off = i + 1;
+			quote = chr;
+		}
+
+		prev = chr;
+	}
+
+	return requires;
+}
+
+/* Minimal document double: a hidden flag plus visibilitychange listeners. */
+function createDocument() {
+	const listeners = {};
+
+	return {
+		hidden: false,
+
+		addEventListener(type, fn) {
+			(listeners[type] = listeners[type] || []).push(fn);
+		},
+
+		removeEventListener(type, fn) {
+			const l = listeners[type] || [];
+			const i = l.indexOf(fn);
+
+			if (i != -1)
+				l.splice(i, 1);
+		},
+
+		/* Test helper: fire an event the way the browser would. */
+		emit(type) {
+			for (const fn of (listeners[type] || []).slice())
+				fn({ type });
+		}
+	};
+}
+
+/* rpc double: records every declare() option and every issued call; the
+ * handler installed by the test decides what each call returns. A handler
+ * may return a value (resolved asynchronously) or a promise (fully
+ * controlled resolution, rejection or pending forever). */
+function createRpc() {
+	const declared = [];
+	const calls = [];
+	let handler = null;
+
+	return {
+		declared,
+		calls,
+
+		setHandler(fn) {
+			handler = fn;
+		},
+
+		declare(options) {
+			declared.push(options);
+
+			const names = options.params || [];
+
+			return function(...args) {
+				const params = {};
+
+				for (let i = 0; i < names.length; i++)
+					params[names[i]] = args[i];
+
+				calls.push({ object: options.object, method: options.method, params });
+
+				if (!handler)
+					return Promise.resolve({});
+
+				return Promise.resolve().then(() => handler(options.method, params));
+			};
+		}
+	};
+}
+
+/* Load `file` like LuCI would. `modules` maps require names to doubles;
+ * `env` supplies window, document and L. Returns the module's export. */
+function loadModule(file, modules, env) {
+	const source = fs.readFileSync(file, 'utf8');
+	const requires = scanRequires(source);
+	const params = [ 'window', 'document', 'L' ];
+
+	for (const r of requires)
+		params.push(r.as);
+
+	const factory = new Function(params.join(', '), source);
+
+	const instances = requires.map(function(r) {
+		if (!(r.name in modules))
+			throw new Error('loader: no double provided for require "' + r.name + '"');
+
+		return modules[r.name];
+	});
+
+	return factory.apply(null, [ env.window, env.document, env.L ?? {} ].concat(instances));
+}
+
+module.exports = { scanRequires, createDocument, createRpc, loadModule };

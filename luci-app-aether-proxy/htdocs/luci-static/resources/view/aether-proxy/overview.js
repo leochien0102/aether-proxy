@@ -1,15 +1,10 @@
 'use strict';
 'require view';
-'require rpc';
-
-var callVersion = rpc.declare({
-	object: 'aetherproxy',
-	method: 'version'
-});
+'require aether-proxy.common as ap';
 
 return view.extend({
 	load: function() {
-		return callVersion();
+		return ap.call('version');
 	},
 
 	render: function(res) {

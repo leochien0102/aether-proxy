@@ -9,3 +9,30 @@ msgstr "无法读取版本号。"
 
 msgid "aether-proxy"
 msgstr "aether-proxy"
+
+msgid "Overview"
+msgstr "概览"
+
+msgid "Nodes"
+msgstr "节点"
+
+msgid "Subscriptions"
+msgstr "订阅"
+
+msgid "Access Control"
+msgstr "访问控制"
+
+msgid "Rules & DNS"
+msgstr "规则与 DNS"
+
+msgid "Updates"
+msgstr "更新"
+
+msgid "Logs"
+msgstr "日志"
+
+msgid "Advanced"
+msgstr "高级"
+
+msgid "This page has not been implemented yet."
+msgstr "此页面尚未实现"

@@ -3,12 +3,107 @@
 		"title": "aether-proxy",
 		"order": 60,
 		"action": {
-			"type": "view",
-			"path": "aether-proxy/overview"
+			"type": "firstchild"
 		},
 		"depends": {
 			"acl": [ "luci-app-aether-proxy" ],
 			"uci": { "aetherproxy": true }
+		}
+	},
+
+	"admin/services/aether-proxy/overview": {
+		"title": "Overview",
+		"order": 1,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/nodes": {
+		"title": "Nodes",
+		"order": 2,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/nodes"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/subscriptions": {
+		"title": "Subscriptions",
+		"order": 3,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/subscriptions"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/access": {
+		"title": "Access Control",
+		"order": 4,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/access"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/rules": {
+		"title": "Rules & DNS",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/rules"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/updates": {
+		"title": "Updates",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/updates"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/logs": {
+		"title": "Logs",
+		"order": 7,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/logs"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
+	"admin/services/aether-proxy/advanced": {
+		"title": "Advanced",
+		"order": 8,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/advanced"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
 		}
 	}
 }
