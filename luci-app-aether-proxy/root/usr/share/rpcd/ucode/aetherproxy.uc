@@ -18,10 +18,6 @@ const CHECK_TIMEOUT_SECS = 30;
 const DEFAULT_TIMEOUT_SECS = 10;
 const STDERR_FORWARD_BYTES = 512;
 
-// TODO(design): the event level enum (docs/09) exists only as lib/log.uc's RANK
-// table and is not exported by aetherproxy.const; this card may not change
-// aether-proxy/, so the list is kept in sync by hand.
-const EVENT_LEVELS = [ 'error', 'warn', 'notice', 'info', 'debug' ];
 
 const SERVICE_ACTIONS = [ 'start', 'stop', 'restart' ];
 
@@ -144,6 +140,8 @@ function job_argv(kind, args) {
 	return null;
 }
 
+// `args` values are examples: rpcd derives each argument's ubus type from the value's type
+// ('' string, 0 int32, [] array) and rejects calls with another type or an unknown name.
 const methods = {
 	version: {
 		call: function(req) {
@@ -176,7 +174,7 @@ const methods = {
 
 			return { ok: true, action: action };
 		},
-		args: { action: 'string' }
+		args: { action: '' }
 	},
 
 	check: {
@@ -204,7 +202,7 @@ const methods = {
 
 			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
 		},
-		args: { kind: 'string', args: 'array' }
+		args: { kind: '', args: [] }
 	},
 
 	job_status: {
@@ -216,7 +214,7 @@ const methods = {
 
 			return call_cli([ 'job', 'status', id ], DEFAULT_TIMEOUT_SECS);
 		},
-		args: { id: 'string' }
+		args: { id: '' }
 	},
 
 	events: {
@@ -234,14 +232,14 @@ const methods = {
 			}
 
 			if (level != null) {
-				if (type(level) != 'string' || index(EVENT_LEVELS, level) < 0)
-					return usage(`level must be one of ${join('|', EVENT_LEVELS)}`);
+				if (type(level) != 'string' || index(C.EVENT_LEVELS, level) < 0)
+					return usage(`level must be one of ${join('|', C.EVENT_LEVELS)}`);
 				push(argv, '--level', level);
 			}
 
 			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
 		},
-		args: { since: 'int', level: 'string' }
+		args: { since: 0, level: '' }
 	}
 };
 

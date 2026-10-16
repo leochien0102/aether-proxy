@@ -114,7 +114,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - **转发**：执行 `/usr/bin/aether-proxy <子命令…> --json`（`sys.run`，参数数组，不经 shell）。stdout 能解析为 JSON 对象 → **原样返回，不论退出码**
   （命令行的 JSON 已带 `ok`/`code`，例如 `job start` 忙时的 `{"ok": false, "code": "BUSY", "job": …}`）；
   否则返回 `{"ok": false, "code": "CMD_FAILED", "detail": "exit <退出码>: <stderr 前 512 字节>"}`，超时的 `detail` 为 `timeout after <秒>s`。
-- **参数错误**：不执行任何命令，返回 `{"ok": false, "code": "USAGE", "detail": "…"}`。缺省的可选参数等同于不传；传了未知参数名，按 rpcd 的规则忽略。
+- **参数错误**：不执行任何命令，返回 `{"ok": false, "code": "USAGE", "detail": "…"}`。缺省的可选参数等同于不传。
 - **超时**：`check` 30 秒，其余 10 秒（rpcd 串行处理调用，每个调用必须很快；长任务一律走 `job_start`）。
 - **`service`**：重启可能超过 30 秒（停止要等子进程退出），所以放到后台执行后立即返回 `{"ok": true, "action": "<action>"}`：
   `sh -c '"$0" "$1" </dev/null >/dev/null 2>&1 &' /etc/init.d/aether-proxy <action>`。结果由前端轮询 `status` 得知。
@@ -128,7 +128,9 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   | `update_package` | `[<包>]` 或 `[<包>, "--previous"]`，包名属于 `xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` | `job start update package <包> [--previous]` |
 
 - **`events`**：`since` 为非负整数，`level` 为 `error|warn|notice|info|debug`，都可省略。
-- 每个方法在插件中声明 `args`（rpcd 据此做类型检查），类型不符时 rpcd 直接拒绝，插件里仍按上面的规则再校验一遍。
+- 每个方法在插件中声明 `args`。**值是示例，rpcd 按值的类型生成 ubus 参数规则**（`''` 字符串、`0` int32、`[]` 数组、`{}` 对象、`true` 布尔；rpcd `ucode.c`），
+  写成 `'int'`、`'array'` 这样的字符串会被当作字符串类型。类型不符或参数名不在声明中 → rpcd 直接返回 `INVALID_ARGUMENT`，不进插件（T8.1 复审时核对源码，2026-10-16）。
+  插件里仍按上面的规则再校验一遍。
 - **仅供测试**：环境变量 `AETHER_PROXY_TEST_RPCD_CLI`、`AETHER_PROXY_TEST_RPCD_INIT` 分别替换命令行与 init 脚本的路径（与其他 `AETHER_PROXY_TEST_*` 一样，生产环境不设置）。
 - `log`、`node_import`、`list_file`/`save_file` 要等命令行实现对应子命令（T8.2）后再加，T8.1 不提供。
 

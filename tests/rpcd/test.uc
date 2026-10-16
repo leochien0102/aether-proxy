@@ -471,12 +471,25 @@ function scenario_10() {
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
 	check('10. status declares empty args', deep_eq(methods.status.args, {}), show(methods.status.args));
 	check('10. check declares empty args', deep_eq(methods.check.args, {}), show(methods.check.args));
-	check('10. service declares action:string', deep_eq(methods.service.args, { action: 'string' }), show(methods.service.args));
-	check('10. job_start declares kind:string args:array',
-		deep_eq(methods.job_start.args, { kind: 'string', args: 'array' }), show(methods.job_start.args));
-	check('10. job_status declares id:string', deep_eq(methods.job_status.args, { id: 'string' }), show(methods.job_status.args));
-	check('10. events declares since:int level:string',
-		deep_eq(methods.events.args, { since: 'int', level: 'string' }), show(methods.events.args));
+	// rpcd builds the ubus policy from the *type* of each example value (rpcd ucode.c: boolean ->
+	// int8, integer -> int32 (8/16/64 select other widths), double, array, object -> table,
+	// anything else -> string) and rejects a call whose argument has another type. So
+	// `since: 'int'` would declare a string and every integer `since` sent by LuCI would fail.
+	let rpcd_policy = (args) => {
+		let out = {};
+		for (let k, v in args) {
+			let t = type(v);
+			out[k] = t == 'bool' ? 'int8' : t == 'int' ? (v == 8 ? 'int8' : v == 16 ? 'int16' : v == 64 ? 'int64' : 'int32')
+				: t == 'double' ? 'double' : t == 'array' ? 'array' : t == 'object' ? 'table' : 'string';
+		}
+		return out;
+	};
+	check('10. service policy: action string', deep_eq(rpcd_policy(methods.service.args), { action: 'string' }), show(methods.service.args));
+	check('10. job_start policy: kind string, args array',
+		deep_eq(rpcd_policy(methods.job_start.args), { kind: 'string', args: 'array' }), show(methods.job_start.args));
+	check('10. job_status policy: id string', deep_eq(rpcd_policy(methods.job_status.args), { id: 'string' }), show(methods.job_status.args));
+	check('10. events policy: since int32, level string',
+		deep_eq(rpcd_policy(methods.events.args), { since: 'int32', level: 'string' }), show(methods.events.args));
 
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',

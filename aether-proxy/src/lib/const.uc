@@ -200,3 +200,6 @@ export const UPDATE_DATA_MIN_PERCENT = 90;
 
 // Default update channel (05 `channel_urls`, 08 "发布仓库").
 export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
+
+// Event levels, most severe first (docs/09); `events --level` and the rpcd plugin validate against it.
+export const EVENT_LEVELS = [ 'error', 'warn', 'notice', 'info', 'debug' ];
