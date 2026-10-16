@@ -26,6 +26,7 @@ init.d / hotplug / daemon ──────────────────
 | `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容）和 `notices`（见「概览页」） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
+| `probe results` | 读取最近的节点检测结果（[07](07-probe.md)） | 否 |
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
 | `update check` | 检查新版本 | 是 |
@@ -131,6 +132,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data`，`args`（按 kind 校验） | `job start …` |
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
+| `probe_results` | — | `probe results`（read） |
 | `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |
 | `node_import` | `uri`（≤ 4096 字节，须以 `<协议>://` 开头，防止被当作命令行选项） | `node import <uri>` |
 | `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`；`save_file` 另有 `content`（≤ 65536 字节） | `custom get <name>` / `custom set <name> --content <content>`（校验与保存都在命令行） |
@@ -232,6 +234,22 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   点击后经 `ap.call('service', …)`，1.5 秒后立即刷新一次，其余靠定时刷新；返回 `ok: false` 时用 `ui.addNotification` 显示 `code` 与 `detail`。
 - 每 5 秒经 `ap.poll` 刷新 `status`；`version` 与 UCI 只在页面加载时取一次。
 - 本页之后会被 Dashboard（B2）取代为首页，所以不做历史曲线、流量统计。
+
+### 节点页（2026-10-16 定，T8.5）
+
+- 列表用 LuCI 的 `form.GridSection`（`aetherproxy` 的 `node` 段），一行一个节点，列：名称（`label`）、地址（`address:port`）、协议/传输/安全层（如 `vless / ws / tls`）、
+  来源（`手动` 或订阅的 `name`，找不到订阅就显示段名）、标记（当前节点、`stale`）、**TCP 可达／延迟**（[07](07-probe.md) 的列名）。
+  检测结果的文字：段名在 `pending` 中 → 「检测中」；有结果且 `ok > 0` → 「<median_ms> ms（<ok>/3）」；`ok == 0` → 按 `error` 显示「解析失败」「超时」「拒绝连接」「不可达」「其他错误」；没有结果 → 「未检测」。
+- 每行的操作：「设为当前」（当前节点不显示）、「检测」（只测这一个）、编辑（GridSection 自带的模态框）、删除（`cbi-button-remove`，要确认；**当前节点不能删除**）。
+  列表上方：「检测全部」、导入 URI。
+- 设为当前：`uci.set('aetherproxy', 'main', 'node', <段名>)`、`uci.save()`，然后走 LuCI 标准的保存并应用（`ui.changes.apply()`，带回滚确认）。
+- 检测：`ap.run_job('probe_nodes', [<段名>…])`（全部检测时为空数组）；作业进行中每次 `on_update` 后取一次 `probe_results` 并刷新检测列，同时显示进度「检测中 <done>/<total>」；
+  作业期间两个检测按钮不可用。页面加载时取一次 `probe_results`。
+- 编辑模态框：`label`、`protocol`、`address`、`port`，以及按 `protocol`、`transport`、`security` 显示的字段（05「`config node`」，用 `depends`）；`source`、`stale`、`match_*` 不显示、不可改。
+  来自订阅的节点在模态框顶部提示「此节点来自订阅，下次更新订阅时修改会被覆盖」。保存走 `form.Map` 的标准流程。
+- 导入 URI：一个多行文本框，每个非空行一个 URI，逐个调用 `ap.call('node_import', { uri })`（顺序执行），完成后汇总「新增 x 个，已存在 y 个，失败 z 个」，失败的列出行号与原因；
+  有新增时重新加载页面数据。
+- 模型 `model/nodes.js` 负责：每行的显示文字、标记、可用的操作（设为当前、删除是否允许）、检测列文字、进度文字、导入文本的拆行与结果汇总。
 
 UI 规则：
 
