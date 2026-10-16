@@ -113,6 +113,16 @@ test('scenario 9: static checks — page requires, rpc.declare only in common.js
 		assert.ok(!src.includes('cbi-button-reset'), `${name}: no cbi-button-reset`);
 	assert.ok(!common.includes('cbi-button-reset'), 'common.js: no cbi-button-reset');
 
+	/* placeholder pages and overview provide no save/reset buttons (pages that
+	   build real forms with 'require form' are exempt) */
+	for (const [ name, src ] of views) {
+		if (/'require form'/.test(src))
+			continue;
+
+		for (const handler of [ 'handleSave', 'handleSaveApply', 'handleReset' ])
+			assert.match(src, new RegExp(`\\b${handler}:\\s*null\\b`), `${name}: ${handler} is null`);
+	}
+
 	/* po: every menu title and every _() string of the sources has a non-empty
 	   Chinese translation */
 	const po = parsePo(read(PO));

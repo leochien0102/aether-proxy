@@ -25,7 +25,9 @@ done < <(find "$ROOT/luci-app-aether-proxy" -name '*.js' -type f | sort)
 
 # --- 2. scenario tests: node --test over tests/luci/*.test.js -----------------
 cd "$ROOT"
-tap=$(node --test --test-reporter=tap tests/luci/*.test.js 2>&1)
+# The per-test timeout keeps a broken implementation (a promise that never
+# settles) from hanging the whole suite.
+tap=$(node --test --test-reporter=tap --test-timeout=10000 tests/luci/*.test.js 2>&1)
 rc=$?
 
 printf '%s\n' "$tap"
