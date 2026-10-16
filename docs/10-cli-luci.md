@@ -23,7 +23,7 @@ init.d / hotplug / daemon ──────────────────
 | `daemon [--boot]` | procd 实例入口（[04](04-lifecycle.md)） | 常驻 |
 | `check` | 校验配置并完成全部渲染，不改动系统状态 | 否 |
 | `cleanup` | 幂等清理 | 否 |
-| `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）和 `updates_available`（M7 之前恒为 `null`） | 否 |
+| `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容）和 `notices`（见「概览页」） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
@@ -199,6 +199,39 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   规则与 DNS `rules`、更新 `updates`、日志 `logs`、高级 `advanced`（顺序同 10「LuCI 页面」表），视图 `aether-proxy/<名称>`，都依赖 ACL `luci-app-aether-proxy`。
   T8.3 只建空页面（标题 + 「此页面尚未实现」），各页面的卡再填内容；概览保留现在的版本显示，改用 `ap.call('version')`。
 - 写法跟随 LuCI 自身代码（`'use strict'`、`'require …'`、`baseclass.extend`/`view.extend`）。界面文字一律 `_()`，中文翻译写进 `po/zh_Hans/aether-proxy.po`。
+
+### 页面卡的写法（2026-10-16 定，T8.4 起）
+
+- 页面要显示的内容由**纯函数**计算：每个页面一个模型模块 `resources/aether-proxy/model/<页面>.js`（`baseclass.extend`，不发请求、不碰 DOM），
+  输入是 rpc 的返回值与 UCI 数据，输出是页面直接渲染的「视图模型」（文字已翻译、状态已分类、按钮是否可用已算好）。用 `tests/luci/` 的加载器在 node 中测试。
+- 视图 `view/aether-proxy/<页面>.js` 只做三件事：取数据（经 `ap`）、调用模型、用 LuCI 的 `E()`/`ui` 渲染。视图里不写判断业务含义的逻辑。
+- 自动刷新一律 `ap.poll`，长任务一律 `ap.run_job`，所有 rpc 经 `ap.call`。
+
+### 概览页（2026-10-16 定，T8.4）
+
+**`status` 新增 `notices`**（命令行在每次调用时现场检测，只读、不记事件；`status` 为此读取配置，接受 `--confdir`、`--sys-root`、`--bin-dir` 测试选项）：
+`notices` 是数组，每项 `{ "code": "<事件码>", "args": { … } }`，没有就是空数组：
+
+| code | 条件 | args |
+|---|---|---|
+| `COMPONENT_MISSING` | `xray` 或 `chinadns-ng` 按 01「组件二进制的查找顺序」找不到（与 `check` 用同一个查找函数） | `component` |
+| `UPDATE_AVAILABLE` | `updates.json` 中某个包 `newer == true`；`xray-core` 在 `update.xray_auto == 'off'` 时不提示 | `package`、`available` |
+| `IPV6_PRESENT` | `main.lan_ifaces` 中某个接口在 `/proc/net/if_inet6` 有全局地址（scope 字段为 `00`） | `iface` |
+| `DNSMASQ_EXTRA_SERVERS` | dnsmasq 生成的配置与 confdir 中（除自己的片段外）存在 `server=` 行——与启动时 `apply` 的检测相同，把检测部分抽成不记事件的共用函数 | `servers`（数组） |
+
+`UPDATE_AVAILABLE` 是新事件码，只用于 `notices`（不写事件日志），登记到 09 的事件表。
+
+**页面内容**（模型 `model/overview.js` 计算，视图渲染）：
+- 状态：`state` 的中文名（`stopped` 已停止、`starting` 启动中——`waiting_network` 为真时显示「等待网络」、`running` 运行中、`degraded` 降级、`failsafe` 故障放行、`error` 启动失败），
+  `dns_failsafe` 为真时另显示「DNS 已回退到原配置」；进入当前状态的时间（`since`，显示为「x 分钟前」之类的相对时间）；`last_error` 不为空时显示事件码。
+- DNS 级别 `dns_tier`；当前节点：用 UCI 中该节点的 `label`，找不到就显示段名，另附 `node_ip`。
+- 最近一次健康检测：`last_probe.ok` 为真显示「正常，<latency_ms> ms」，为假显示「失败」，没有就显示「尚未检测」，附相对时间。
+- 组件版本：`components` 中每项的名称、版本、路径；以及 aether-proxy 自身版本（`version` 方法，页面加载时取一次）。
+- 待处理提示：`notices` 每项一条中文提示（`IPV6_PRESENT` 用 03 的原话；其余各写一句并带上 args）。
+- 按钮：启动、重启、停止，按状态决定是否可用（`stopped`/`error` 时只有启动可用；其他状态启动不可用）。停止用 `cbi-button-negative` 并要求确认（「停止后所有流量直连」）。
+  点击后经 `ap.call('service', …)`，1.5 秒后立即刷新一次，其余靠定时刷新；返回 `ok: false` 时用 `ui.addNotification` 显示 `code` 与 `detail`。
+- 每 5 秒经 `ap.poll` 刷新 `status`；`version` 与 UCI 只在页面加载时取一次。
+- 本页之后会被 Dashboard（B2）取代为首页，所以不做历史曲线、流量统计。
 
 UI 规则：
 
