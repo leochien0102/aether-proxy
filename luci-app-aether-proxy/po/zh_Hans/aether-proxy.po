@@ -607,9 +607,6 @@ msgstr "安全层"
 msgid "Host"
 msgstr "Host"
 
-msgid "Path"
-msgstr "路径"
-
 msgid "gRPC service name"
 msgstr "gRPC 服务名"
 
