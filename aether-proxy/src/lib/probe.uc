@@ -40,6 +40,50 @@ function error_kind(code, text) {
 	return 'other';
 }
 
+function summarize_node(record) {
+	let samples = [];
+	let ok = 0;
+	let error = null;
+
+	for (let attempt in record.attempts) {
+		if (attempt?.ok) {
+			ok++;
+			push(samples, attempt.ms);
+		}
+		else if (attempt?.error != null) {
+			error = attempt.error;
+		}
+	}
+
+	samples = sort(samples, (a, b) => a - b);
+	let min_ms = length(samples) ? samples[0] : null;
+	let median_ms = null;
+	if (length(samples)) {
+		let middle = length(samples) >> 1;
+		median_ms = (length(samples) % 2)
+			? samples[middle]
+			: int((samples[middle - 1] + samples[middle]) / 2 + 0.5);
+	}
+
+	return { ip: record.ip, ok, fail: 3 - ok, min_ms, median_ms, error };
+}
+
+// T8.5 (docs/07 「实现细节」): one callback per finished node, fired as soon as all
+// three attempts of the node have a result (or the resolution failed). The probe
+// itself is unchanged; reporting the result incrementally is up to the caller.
+function complete_if_done(results, node_id, on_done) {
+	if (on_done == null)
+		return;
+
+	let record = results[node_id];
+
+	for (let attempt in record.attempts)
+		if (attempt == null)
+			return;
+
+	on_done(node_id, summarize_node(record));
+}
+
 function resolve_node(node, timeout, bin_dir) {
 	if (ipv4(node.address) != null)
 		return { ip: node.address };
@@ -57,27 +101,29 @@ function resolve_node(node, timeout, bin_dir) {
 	return { error: 'resolve_failed' };
 }
 
-function record_success(results, job, start, end) {
+function record_success(results, job, start, end, on_done) {
 	results[job.node_id].attempts[job.attempt] = {
 		ok: true,
 		ms: elapsed_ms(start, end)
 	};
+	complete_if_done(results, job.node_id, on_done);
 }
 
-function record_failure(results, job, reason) {
+function record_failure(results, job, reason, on_done) {
 	results[job.node_id].attempts[job.attempt] = { ok: false, error: reason };
+	complete_if_done(results, job.node_id, on_done);
 }
 
-function start_attempt(results, job, timeout) {
+function start_attempt(results, job, timeout, on_done) {
 	let start = monotonic_ms();
 	if (start == null) {
-		record_failure(results, job, 'other');
+		record_failure(results, job, 'other', on_done);
 		return null;
 	}
 
 	let sock = socket.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
 	if (sock == null) {
-		record_failure(results, job, error_kind(socket.error(true), socket.error()));
+		record_failure(results, job, error_kind(socket.error(true), socket.error()), on_done);
 		return null;
 	}
 
@@ -86,9 +132,9 @@ function start_attempt(results, job, timeout) {
 		let end = monotonic_ms();
 		sock.close();
 		if (end == null)
-			record_failure(results, job, 'other');
+			record_failure(results, job, 'other', on_done);
 		else
-			record_success(results, job, start, end);
+			record_success(results, job, start, end, on_done);
 		return null;
 	}
 
@@ -96,7 +142,7 @@ function start_attempt(results, job, timeout) {
 	let message = socket.error();
 	if (code != EINPROGRESS && code != EALREADY && index(lc(message ?? ''), 'progress') < 0) {
 		sock.close();
-		record_failure(results, job, error_kind(code, message));
+		record_failure(results, job, error_kind(code, message), on_done);
 		return null;
 	}
 
@@ -110,22 +156,22 @@ function start_attempt(results, job, timeout) {
 	};
 }
 
-function finish_pending(results, job, reason, now) {
+function finish_pending(results, job, reason, now, on_done) {
 	if (reason == null)
-		record_success(results, job, job.started, now);
+		record_success(results, job, job.started, now, on_done);
 	else
-		record_failure(results, job, reason);
+		record_failure(results, job, reason, on_done);
 	job.sock.close();
 }
 
-function run_attempts(results, jobs, timeout, concurrency) {
+function run_attempts(results, jobs, timeout, concurrency, on_done) {
 	let pending = [];
 	let next_job = 0;
 
 	while (next_job < length(jobs) || length(pending)) {
 		while (next_job < length(jobs) && length(pending) < concurrency) {
 			let job = jobs[next_job++];
-			let active = start_attempt(results, job, timeout);
+			let active = start_attempt(results, job, timeout, on_done);
 			if (active != null)
 				push(pending, active);
 		}
@@ -136,7 +182,7 @@ function run_attempts(results, jobs, timeout, concurrency) {
 		let now = monotonic_ms();
 		if (now == null) {
 			for (let job in pending)
-				finish_pending(results, job, 'other', job.started);
+				finish_pending(results, job, 'other', job.started, on_done);
 			pending = [];
 			continue;
 		}
@@ -167,7 +213,7 @@ function run_attempts(results, jobs, timeout, concurrency) {
 			if (socket.error(true) == EINTR)
 				continue;
 			for (let job in pending)
-				finish_pending(results, job, error_kind(socket.error(true), socket.error()), now);
+				finish_pending(results, job, error_kind(socket.error(true), socket.error()), now, on_done);
 			pending = [];
 			continue;
 		}
@@ -180,7 +226,7 @@ function run_attempts(results, jobs, timeout, concurrency) {
 		let remaining_jobs = [];
 		for (let job in pending) {
 			if (now == null) {
-				finish_pending(results, job, 'other', job.started);
+				finish_pending(results, job, 'other', job.started, on_done);
 				continue;
 			}
 
@@ -189,14 +235,14 @@ function run_attempts(results, jobs, timeout, concurrency) {
 			if (ready[job.key]) {
 				let so_error = job.sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR);
 				if (so_error == 0)
-					finish_pending(results, job, null, now);
+					finish_pending(results, job, null, now, on_done);
 				else
-					finish_pending(results, job, error_kind(so_error, socket.error()), now);
+					finish_pending(results, job, error_kind(so_error, socket.error()), now, on_done);
 				continue;
 			}
 
 			if (now >= job.deadline) {
-				finish_pending(results, job, 'timeout', now);
+				finish_pending(results, job, 'timeout', now, on_done);
 				continue;
 			}
 
@@ -206,36 +252,10 @@ function run_attempts(results, jobs, timeout, concurrency) {
 	}
 }
 
-function summarize_node(record) {
-	let samples = [];
-	let ok = 0;
-	let error = null;
-
-	for (let attempt in record.attempts) {
-		if (attempt?.ok) {
-			ok++;
-			push(samples, attempt.ms);
-		}
-		else if (attempt?.error != null) {
-			error = attempt.error;
-		}
-	}
-
-	samples = sort(samples, (a, b) => a - b);
-	let min_ms = length(samples) ? samples[0] : null;
-	let median_ms = null;
-	if (length(samples)) {
-		let middle = length(samples) >> 1;
-		median_ms = (length(samples) % 2)
-			? samples[middle]
-			: int((samples[middle - 1] + samples[middle]) / 2 + 0.5);
-	}
-
-	return { ip: record.ip, ok, fail: 3 - ok, min_ms, median_ms, error };
-}
-
 // nodes is a normalized config snapshot map; ids is its sorted selected subset.
-export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir) {
+// on_done (T8.5) is called once per finished node as (node_id, summarized_result);
+// pass null to keep the pre-T8.5 behavior of returning everything at the end.
+export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done) {
 	let results = {};
 	let jobs = [];
 
@@ -249,6 +269,8 @@ export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir) {
 				{ ok: false, error: 'resolve_failed' },
 				{ ok: false, error: 'resolve_failed' }
 			] };
+			// A resolution failure is a finished node for docs/07 「实现细节」.
+			complete_if_done(results, id, on_done);
 			continue;
 		}
 
@@ -257,7 +279,7 @@ export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir) {
 			push(jobs, { key: id + '|' + attempt, node_id: id, attempt, ip: resolved.ip, port: nodes[id].port });
 	}
 
-	run_attempts(results, jobs, timeout, concurrency);
+	run_attempts(results, jobs, timeout, concurrency, on_done);
 
 	let output = {};
 	for (let id in ids)
