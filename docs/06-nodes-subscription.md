@@ -118,6 +118,8 @@ weak   = protocol|lower(address)|port|transport|tdisc
 退出码：全部订阅成功 0；任一订阅失败 1；段名不存在或不是 `subscription` 段 2；拿不到锁 3。
 `--json` 输出 `{ "ok": <bool>, "subs": { "<段名>": { "ok": <bool>, "code": <事件码>|null, "added": n, "updated": n, "stale": n, "revived": n, "removed": n, "skipped": {…} } } }`。
 
+**删除订阅**（2026-10-16 定）：同时删除该订阅的节点，被 `main.node` 引用的节点保留并改为 `source manual`（不然它会指向一个不存在的订阅）。由 LuCI 订阅页执行（[10](10-cli-luci.md)「订阅页」）。
+
 ## 调度
 
 订阅不使用 cron。daemon 内部计时：每个订阅按 `interval_hours` 加 0–10% 的随机抖动执行；手动更新通过

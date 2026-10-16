@@ -28,6 +28,7 @@ init.d / hotplug / daemon ──────────────────
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `probe results` | 读取最近的节点检测结果（[07](07-probe.md)） | 否 |
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
+| `sub status` | 读取各订阅最近一次更新的记录（`sub.json`） | 否 |
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
 | `update check` | 检查新版本 | 是 |
 | `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本（[08](08-updates.md)） | 是 |
@@ -133,6 +134,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
+| `sub_status` | — | `sub status`（read） |
 | `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |
 | `node_import` | `uri`（≤ 4096 字节，须以 `<协议>://` 开头，防止被当作命令行选项） | `node import <uri>` |
 | `list_file` / `save_file` | `name: direct_domain\|proxy_domain\|direct_ip\|proxy_ip`；`save_file` 另有 `content`（≤ 65536 字节） | `custom get <name>` / `custom set <name> --content <content>`（校验与保存都在命令行） |
@@ -250,6 +252,26 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - 导入 URI：一个多行文本框，每个非空行一个 URI，逐个调用 `ap.call('node_import', { uri })`（顺序执行），完成后汇总「新增 x 个，已存在 y 个，失败 z 个」，失败的列出行号与原因；
   有新增时重新加载页面数据。
 - 模型 `model/nodes.js` 负责：每行的显示文字、标记、可用的操作（设为当前、删除是否允许）、检测列文字、进度文字、导入文本的拆行与结果汇总。
+
+### 订阅页（2026-10-16 定，T8.6）
+
+**`sub status`**：只读，输出 `{ "ok": true, "subs": { "<段名>": <sub.json 中该订阅的记录> } }`（[06](06-nodes-subscription.md) 第 7 步的格式）；
+`sub.json` 不存在或损坏 → `{ "ok": true, "subs": {} }`，不记事件（页面会在更新后读取）。只输出配置中仍存在的订阅。
+
+**页面**（模型 `model/subscriptions.js`，视图 `view/aether-proxy/subscriptions.js`）：
+- 列表用 `form.GridSection`（`subscription` 段），列：名称（`name`，没有就显示段名）、地址（**只显示 `协议://主机/…`**，订阅地址里常带令牌，不在列表中明文显示）、启用、更新间隔
+  （`interval_hours`，0 显示「仅手动」）、经由（`fetch_via`）、最近一次结果。
+- 最近一次结果（来自 `sub_status`）：没有记录 →「尚未更新」；`error` 为空 →「成功，<nodes> 个节点」；否则显示事件码对应的文字（`SUB_FETCH_FAILED` 下载失败、`SUB_DECODE_FAILED` 解码失败、
+  `SUB_FORMAT_UNSUPPORTED` 格式不支持、`SUB_NO_VALID_NODES` 没有可用节点、`SUB_APPLY_INVALID` 应用后配置无效、`SUB_PROXY_UNAVAILABLE` 代理不可用、`SUB_SHRANK` 节点数骤减；未知码原样显示）；
+  附相对时间（`last_attempt`）。`skipped` 不为空时另起一行「跳过 <总数> 个：<原因> <数量>、…」，原因用中文（`malformed` 格式错误、`unsupported_scheme` 不支持的协议、
+  `unsupported_transport` 不支持的传输、`unsupported_security` 不支持的安全层、`ss_plugin` 带插件的 SS、`vmess_alterid` VMess alterId 非 0；未知原因原样显示）。
+- 操作：每行「立即更新」（`ap.run_job('sub_update', [<段名>])`）、编辑、删除；列表上方「全部更新」（`ap.run_job('sub_update', [])`）。作业进行中两类更新按钮都不可用，
+  结束后显示作业结果中每个订阅的「新增 / 更新 / 失效 / 恢复 / 移除」数量（[06](06-nodes-subscription.md) `sub update --json` 的字段），并重新读取 `sub_status` 与页面数据。
+- 编辑模态框：`name`、`url`（`password` 样式，可点开查看）、`enabled`、`interval_hours`、`fetch_via`、`user_agent`。
+- **新增**：GridSection 自带的添加会生成匿名段，不符合 `^s_[0-9a-f]{8}$`。改为自定义「添加」：用 `crypto.getRandomValues` 取 4 字节生成段名（与已有段名冲突就重取），新建段后打开编辑模态框。
+  生成段名的逻辑在模型里（随机字节由视图传入，便于测试）。
+- **删除**（`cbi-button-remove`，要确认，确认框写明会一并删除多少个节点）：同时删除 `source` 为该订阅的节点；其中被 `main.node` 引用的那个**不删**，改为 `source manual`、`stale 0`，
+  并在确认框中说明。删除计划（要删的节点、要改为手动的节点）由模型计算，视图按计划调用 `uci.remove`/`uci.set`，之后由用户「保存并应用」。
 
 UI 规则：
 
