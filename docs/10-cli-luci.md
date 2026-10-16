@@ -180,6 +180,26 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 | 日志 | 事件页（默认）+ 原始日志页（[09](09-logging.md)） |
 | 高级 | `lan_ifaces`、`quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`、日志等级、开机等待、健康检测参数、二进制路径 |
 
+### 公共模块与菜单（2026-10-16 定，T8.3）
+
+页面共用的逻辑放在一个 LuCI 类模块里：`htdocs/luci-static/resources/aether-proxy/common.js`，页面用 `'require aether-proxy.common as ap'` 引入。
+页面里不再直接 `rpc.declare`，也不直接用 LuCI 的 `poll`（它的 promise 链没有 `.catch()`，见上方「作业机制」）。
+
+- **`ap.call(method, params)`**：声明并调用 rpcd 插件的方法（10「rpcd 插件」表中的全部 11 个）。**永不 reject**，只 resolve 一次（settle-once）：
+  rpc 的结果、rpc 的失败、硬超时三者谁先到用谁，后到的忽略。失败 → `{ ok: false, code: "RPC_FAILED", detail: "<错误信息>" }`；
+  超时 → `{ ok: false, code: "TIMEOUT", detail: "<方法> did not answer in <秒>s" }`。硬超时：`check`、`save_file` 35 秒，其余 15 秒（比插件的 30/10 秒各多 5 秒），
+  取自 `ap.TIMEOUTS`（对象，测试可改小）。
+- **同时在途 ≤ 2**：模块内对 `ap.call` 计数，超出的调用按先后排队；一个调用 settle 后（包括超时），队首的下一个才发出（UI 规则「同时发出的请求不超过 2 个」）。
+- **`ap.poll(fn, interval_ms)`** → `{ stop() }`：每隔 `interval_ms`（小于 2000 按 2000）调用一次 `fn`（返回 promise）。
+  上一次还没 settle → 本次跳过；`document.hidden` 为真时暂停，变为可见后立即执行一次再继续；`stop()` 之后不再调用。
+- **`ap.run_job(kind, args, on_update)`** → promise：`job_start` 后每 2 秒 `job_status`，直到 `state` 为 `ok`/`failed`，resolve 最终的作业对象；每次拿到状态都调用 `on_update(job)`。
+  `job_start` 返回 `BUSY` 且带 `job` → 改为轮询那个正在运行的作业（结果中 `attached: true`），不报错；
+  其他失败（`USAGE`、`RPC_FAILED`、`TIMEOUT`、`job_status` 返回 `JOB_NOT_FOUND` 等）→ resolve 该失败对象并停止；总时长超过 `ap.TIMEOUTS.job`（默认 620 秒，作业上限 600 秒）→ `{ ok: false, code: "TIMEOUT" }`。
+- **菜单**：服务 → aether-proxy 为父节点（`firstchild`），下设 8 个子页面：概览 `overview`、节点 `nodes`、订阅 `subscriptions`、访问控制 `access`、
+  规则与 DNS `rules`、更新 `updates`、日志 `logs`、高级 `advanced`（顺序同 10「LuCI 页面」表），视图 `aether-proxy/<名称>`，都依赖 ACL `luci-app-aether-proxy`。
+  T8.3 只建空页面（标题 + 「此页面尚未实现」），各页面的卡再填内容；概览保留现在的版本显示，改用 `ap.call('version')`。
+- 写法跟随 LuCI 自身代码（`'use strict'`、`'require …'`、`baseclass.extend`/`view.extend`）。界面文字一律 `_()`，中文翻译写进 `po/zh_Hans/aether-proxy.po`。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
