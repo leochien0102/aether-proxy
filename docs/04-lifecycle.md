@@ -17,6 +17,11 @@
 `state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`node_ip`、`since`（进入当前状态的时间戳）、
 `last_probe`（`ok`、`latency_ms`、`at`）、`last_error`（事件码）、`components`（各组件的版本与路径）、`render_hash`（各产物的哈希）。
 
+`components` 的版本（2026-10-16 定，T8.9a）：`{ "xray": { "path", "version" }, "chinadns-ng": { "path", "version" } }`。daemon 在启动流程的前置检查找到组件后，
+分别执行 `<xray> version` 与 `<chinadns-ng> -V`（各 5 秒超时），取输出**第一行的第二个字段**作为版本（实测 `Xray 26.9.30 (Xray, Penetrates Everything.) …`、
+`ChinaDNS-NG 2025.06.20 be347b5 | …`，[08](08-updates.md)「S7 探针结论」）。取不到（命令失败、超时、输出不符合格式）→ `version` 为 `null`，**不影响启动**，也不记事件。
+收到 SIGUSR2 重启 Xray 时（`xray-core` 软件包更新后，二进制可能换了）重新取一次 Xray 的版本并写回 `state.json`。版本解析是纯函数。
+
 ## 启动（`aether-proxy daemon [--boot]` 的前半段）
 
 **每一步失败都按相反顺序回滚已完成的步骤**，最终状态为 `error`，事件里带上失败的步骤名。
