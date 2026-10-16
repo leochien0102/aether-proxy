@@ -4,6 +4,204 @@ msgstr ""
 "Language: zh_Hans\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Service started in {elapsed_ms} ms"
+msgstr "服务已启动，耗时 {elapsed_ms} 毫秒"
+
+msgid "Service stopped (mode {mode}, node {node})"
+msgstr "服务已停止（模式 {mode}，节点 {node}）"
+
+msgid "Operation locked by {holder}"
+msgstr "操作被 {holder} 锁定"
+
+msgid "Invalid configuration: {field}, {reason}"
+msgstr "配置无效：{field}，{reason}"
+
+msgid "Precheck failed: {missing}"
+msgstr "预检失败：缺少 {missing}"
+
+msgid "Invalid artifact {artifact}: {detail}"
+msgstr "渲染产物 {artifact} 无效：{detail}"
+
+msgid "Start failed at {step}: {detail}"
+msgstr "启动在 {step} 失败：{detail}"
+
+msgid "Job {job} ({kind}) lost its worker"
+msgstr "作业 {job}（{kind}）的工作进程已丢失"
+
+msgid "Start retry {attempt} in {in_secs} seconds"
+msgstr "将在 {in_secs} 秒后进行第 {attempt} 次启动重试"
+
+msgid "Network wait timed out after {waited} seconds"
+msgstr "等待网络 {waited} 秒后超时"
+
+msgid "Component missing: {component}"
+msgstr "缺少组件：{component}"
+
+msgid "Component {component} version {version} requires {min}"
+msgstr "组件 {component} 版本 {version} 低于要求 {min}"
+
+msgid "Node {node}: using {lkg_ip} for {domain}"
+msgstr "节点 {node}：为 {domain} 使用最近可用地址 {lkg_ip}"
+
+msgid "Node {node}: could not resolve {domain}"
+msgstr "节点 {node}：无法解析 {domain}"
+
+msgid "Node {node} IP changed from {old} to {new}"
+msgstr "节点 {node} 的 IP 已从 {old} 变为 {new}"
+
+msgid "Node {node} ({label}) is stale"
+msgstr "节点 {node}（{label}）已失效"
+
+msgid "Current node {node} ({label}) is stale"
+msgstr "当前节点 {node}（{label}）已失效"
+
+msgid "Ignored insecure setting for node {node} ({label})"
+msgstr "已忽略节点 {node}（{label}）的不安全设置"
+
+msgid "Proxy healthy: {latency_ms} ms"
+msgstr "代理正常：{latency_ms} 毫秒"
+
+msgid "Proxy unhealthy: {fails} failures"
+msgstr "代理异常：已失败 {fails} 次"
+
+msgid "DNS changed from {from} to {to} (reason: {reason})"
+msgstr "DNS 已从 {from} 切换到 {to}（原因：{reason}）"
+
+msgid "Xray down on port {port}; traffic goes directly"
+msgstr "端口 {port} 的 Xray 不可用，流量已放行直连"
+
+msgid "Xray down on port {port}"
+msgstr "端口 {port} 的 Xray 不可用"
+
+msgid "Xray recovered on port {port}"
+msgstr "端口 {port} 的 Xray 已恢复"
+
+msgid "Child {name} (PID {pid}) exited with {code}; restart in {restart_in} seconds"
+msgstr "子进程 {name}（PID {pid}）退出码 {code}，将在 {restart_in} 秒后重启"
+
+msgid "DNS down; original upstream configuration restored"
+msgstr "DNS 不可用，已恢复原始上游配置"
+
+msgid "DNS recovered"
+msgstr "DNS 已恢复"
+
+msgid "Missing nftables table restored"
+msgstr "已恢复丢失的 nftables 表"
+
+msgid "dnsmasq configuration directory not found"
+msgstr "未找到 dnsmasq 配置目录"
+
+msgid "Additional dnsmasq servers: {servers}"
+msgstr "dnsmasq 存在额外上游：{servers}"
+
+msgid "Global IPv6 address present on {iface}"
+msgstr "接口 {iface} 存在全局 IPv6 地址"
+
+msgid "Subscription {sub}: added {added}, updated {updated}, stale {stale}, removed {removed}, skipped {skipped}"
+msgstr "订阅 {sub}：新增 {added}、更新 {updated}、失效 {stale}、移除 {removed}、跳过 {skipped}"
+
+msgid "Subscription {sub} fetch failed: {detail}"
+msgstr "订阅 {sub} 获取失败：{detail}"
+
+msgid "Subscription {sub} decode failed: {detail}"
+msgstr "订阅 {sub} 解码失败：{detail}"
+
+msgid "Subscription {sub} format unsupported: {detail}"
+msgstr "订阅 {sub} 格式不支持：{detail}"
+
+msgid "Subscription {sub} apply invalid: {detail}"
+msgstr "订阅 {sub} 应用无效：{detail}"
+
+msgid "Subscription {sub} proxy unavailable: {detail}"
+msgstr "订阅 {sub} 代理不可用：{detail}"
+
+msgid "Subscription {sub} shrank from {old} to {new}"
+msgstr "订阅 {sub} 从 {old} 个节点缩减至 {new} 个"
+
+msgid "Subscription {sub} has no valid nodes; skipped {skipped}"
+msgstr "订阅 {sub} 无有效节点，跳过 {skipped}"
+
+msgid "Update available for {package}: {current} to {latest}"
+msgstr "软件包 {package} 有更新：{current} → {latest}"
+
+msgid "Installed {package} version {version}"
+msgstr "已安装 {package} 版本 {version}"
+
+msgid "Update verification failed for {package}: {version}"
+msgstr "{package} 更新校验失败：{version}"
+
+msgid "Rolled back {package} to {version}"
+msgstr "已将 {package} 回滚至 {version}"
+
+msgid "Updated rule data: {items}"
+msgstr "已更新规则数据：{items}"
+
+msgid "Invalid manifest signature: {url}"
+msgstr "清单签名无效：{url}"
+
+msgid "Could not fetch update channels: {urls}"
+msgstr "无法获取更新通道：{urls}"
+
+msgid "Insufficient space: need {need}, free {free}"
+msgstr "空间不足：需要 {need}，可用 {free}"
+
+msgid "Unsupported architecture: {arch}"
+msgstr "不支持的架构：{arch}"
+
+msgid "Command {cmd} exited with {rc}: {stderr}"
+msgstr "命令 {cmd} 退出码 {rc}：{stderr}"
+
+msgid "File operation {op} failed for {path}: {detail}"
+msgstr "文件操作 {op} 失败，路径 {path}：{detail}"
+
+msgid "Error"
+msgstr "错误"
+
+msgid "Warning"
+msgstr "警告"
+
+msgid "Notice"
+msgstr "通知"
+
+msgid "Skipped {n} damaged event lines"
+msgstr "有 {n} 行记录损坏，已跳过"
+
+msgid "All"
+msgstr "全部"
+
+msgid "Increase the buffer in System → Log; return to notice after troubleshooting."
+msgstr "建议在 系统 → 日志 中调大缓冲区，排查完成后调回 notice"
+
+msgid "Time"
+msgstr "时间"
+
+msgid "Level"
+msgstr "等级"
+
+msgid "Event code"
+msgstr "事件码"
+
+msgid "Description"
+msgstr "说明"
+
+msgid "Warning and above"
+msgstr "警告及以上"
+
+msgid "Notice and above"
+msgstr "通知及以上"
+
+msgid "Automatic refresh"
+msgstr "自动刷新"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Events"
+msgstr "事件"
+
+msgid "Raw logs"
+msgstr "原始日志"
+
 msgid "Invalid DNS probe domain."
 msgstr "DNS 探测域名无效。"
 
