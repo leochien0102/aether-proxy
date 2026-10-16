@@ -71,13 +71,14 @@ init.d / hotplug / daemon ──────────────────
   原文件期间被改过 → `CONFIG_INVALID`（detail 说明「配置被同时修改，请重试」），退出码 2。
   成功：`{"ok": true, "node": "<新段名>", "duplicate": false}`。解析时的警告（例如 `NODE_INSECURE_IGNORED`）照常记事件。
 - 不 reload：新节点不是当前节点，运行中的配置不受影响。设为当前节点由 LuCI 改 `main.node` 后走正常的保存并应用。
+- 与订阅更新共用订阅锁（两者都整体替换同一个配置文件）：拿不到锁 → `BUSY`，退出码 3，不写任何东西（T8.2 复审确认，2026-10-16）。
 
 **`custom get <名称>` / `custom set <名称> --content <文本>`**
 - 名称与文件：`direct_domain` → `direct_domain.txt`、`proxy_domain` → `proxy_domain.txt`、`direct_ip` → `direct_ip.txt`、`proxy_ip` → `proxy_ip.txt`，目录 `/etc/aether-proxy/custom/`（`--custom-dir` 可替换）。
 - `get`：`{"ok": true, "name": "<名称>", "content": "<文件内容>"}`；文件不存在时 `content` 为空字符串。
 - `set`：内容不超过 65536 字节（超过 → `USAGE`）。按 [05](05-config.md)「列表文件的解析规则」逐行校验（域名类 `data.parse_domains`，IP 类 `data.parse_cidrs`）。
   有非法行 → `{"ok": false, "code": "CONFIG_INVALID", "detail": "…", "errors": [ { "line": <行号>, "text": "<原文>" }, … ]}`（最多 20 条），退出码 2，文件不变。
-  合法：内容与现有文件相同 → 不写（不写 flash）；否则 `sys.write_atomic` 写入（内容末尾补一个换行）。
+  合法：将要写入的内容（补上末尾换行之后）与现有文件相同 → 不写（不写 flash），也不 reload；否则 `sys.write_atomic` 写入（内容末尾补一个换行）。
   写入后服务在运行（`state` 为 `starting`/`running`/`degraded`）→ 执行一次 `/etc/init.d/aether-proxy reload`（失败不回滚文件，`reload` 字段报告）。
   输出 `{"ok": true, "name": "<名称>", "changed": <bool>, "reload": <true|false|"failed">}`。
 - 内容经命令行参数传递（rpcd 不写临时文件）：65536 字节远小于 Linux 单个参数的上限（131072）。
