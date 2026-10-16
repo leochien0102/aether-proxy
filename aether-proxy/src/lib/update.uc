@@ -44,8 +44,10 @@ function proxy_running(ctx) {
 
 function curl(ctx, url, output, max_size, via_proxy) {
 	let bin = 'curl';
-	let argv = [ bin, '--fail', '--silent', '--show-error', '--max-time', `${C.UPDATE_DOWNLOAD_MAX_SECS}`,
-		'--max-filesize', `${max_size}` ];
+	// GitHub release downloads answer 302 to a storage host; without --location curl saves the
+	// redirect body and exits 0, and every manifest would look like a bad signature.
+	let argv = [ bin, '--fail', '--silent', '--show-error', '--location', '--max-redirs', '5',
+		'--max-time', `${C.UPDATE_DOWNLOAD_MAX_SECS}`, '--max-filesize', `${max_size}` ];
 	if (via_proxy)
 		push(argv, '-x', `http://${C.HTTP_LISTEN}:${C.HTTP_PORT}`);
 	push(argv, '-o', output, url);

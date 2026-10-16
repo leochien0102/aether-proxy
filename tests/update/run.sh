@@ -35,6 +35,19 @@ config update 'update'
 UCI
 python3 -m http.server "$PORT1" --bind 127.0.0.1 --directory "$T/ch1" >"$T/http1" 2>&1 & PIDS+=("$!")
 python3 -m http.server "$PORT2" --bind 127.0.0.1 --directory "$T/ch2" >"$T/http2" 2>&1 & PIDS+=("$!")
+# Like GitHub releases: every path answers 302 to the real file on the first server.
+PORT3=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+python3 - "$PORT3" "$PORT1" >"$T/http3" 2>&1 <<'PY' & PIDS+=("$!")
+import http.server, sys
+port, target = int(sys.argv[1]), sys.argv[2]
+class Redirect(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(302)
+        self.send_header("Location", f"http://127.0.0.1:{target}{self.path}")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+http.server.HTTPServer(("127.0.0.1", port), Redirect).serve_forever()
+PY
 for _ in {1..100}; do curl -fsS "http://127.0.0.1:$PORT1/" >/dev/null 2>&1 && curl -fsS "http://127.0.0.1:$PORT2/" >/dev/null 2>&1 && break; sleep .05; done
 make_manifest() {
  python3 - "$T" <<'PY'
@@ -392,4 +405,12 @@ make_data_manifest future; out=$(data_update); rc=$?
 expect 'data: unknown future item is not a failure' 0 "$rc"
 expect 'data: unknown future item not reported' '{}' "$(get "$out" failed)"
 [ ! -e "$T/root/etc/aether-proxy/data/chnroute6.sha256" ] && ok 'data: unknown future item not written' || bad 'data: unknown future item not written'
+# release hosts redirect (GitHub: 302 to a storage host): manifest and assets follow it
+mkdir -p "$T/conf-redirect"
+printf "config update 'update'\n list channel_urls 'http://127.0.0.1:%s/'\n" "$PORT3" > "$T/conf-redirect/aetherproxy"
+out=$(ap update check --json --confdir "$T/conf-redirect" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
+expect 'redirected channel: check succeeds' 0 "$rc"
+make_data_manifest single; printf "%064d\n" 0 > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
+out=$(ap update data --json --confdir "$T/conf-redirect" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
+expect 'redirected channel: data asset downloads' 0 "$rc"; expect 'redirected channel: item updated' chnroute4 "$(get "$out" updated.0)"
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]
