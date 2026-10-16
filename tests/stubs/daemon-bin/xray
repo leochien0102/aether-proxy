@@ -4,6 +4,8 @@ if [ "$1" = version ]; then
 	printf 'xray version\n' >> "$STUB_LOG"
 	if [ -f "$SYSROOT/xray-version-delay" ]; then sleep 30; fi
 	if [ -f "$SYSROOT/xray-version-fail" ]; then
+		# A parseable banner with a nonzero exit proves the caller checks the status first.
+		printf 'Xray 26.9.30 (Xray, Penetrates Everything.)\n'
 		printf 'version query failed\n' >&2
 		exit 7
 	fi
