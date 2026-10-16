@@ -602,3 +602,120 @@ msgstr "%s（%s）"
 
 msgid ", "
 msgstr "，"
+
+msgid "Not checked yet"
+msgstr "尚未检查"
+
+msgid "Cannot reach the release channel"
+msgstr "连不上发布通道"
+
+msgid "Signature verification failed"
+msgstr "签名校验失败"
+
+msgid "No usable channel URL"
+msgstr "没有可用的通道地址"
+
+msgid "Another update job is running"
+msgstr "另一个更新作业正在运行"
+
+msgid "Job process exited unexpectedly"
+msgstr "作业进程意外退出"
+
+msgid "Verification failed"
+msgstr "校验失败"
+
+msgid "Not enough space"
+msgstr "空间不足"
+
+msgid "Unavailable on this device"
+msgstr "本机不可用"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Enter an HTTP or HTTPS URL without whitespace"
+msgstr "请输入不含空白的 HTTP 或 HTTPS 地址"
+
+msgid "Not in channel"
+msgstr "通道中没有"
+
+msgid "Not installed"
+msgstr "未安装"
+
+msgid "Up to date"
+msgstr "最新"
+
+msgid "Roll back to %s"
+msgstr "回滚到 %s"
+
+msgid "Install %s, replacing the current %s?"
+msgstr "将安装 %s，替换当前的 %s？"
+
+msgid "The service will restart."
+msgstr "服务会重启。"
+
+msgid "Not in the release channel; install or update from feeds on the Software page."
+msgstr "不进发布通道，请在软件包页面从软件源安装或更新。"
+
+msgid "Check complete: %s packages have updates"
+msgstr "检查完成，%s 个包有更新"
+
+msgid "Post-install check failed; rolled back to %s"
+msgstr "安装后检查失败，已回滚到 %s"
+
+msgid "%s installed: %s"
+msgstr "%s 已安装 %s"
+
+msgid "%s updated from %s to %s"
+msgstr "%s 已从 %s 更新到 %s"
+
+msgid "Page files may have changed; please refresh your browser."
+msgstr "页面文件可能已变化，请刷新浏览器。"
+
+msgid "Installed"
+msgstr "已安装"
+
+msgid "Previous"
+msgstr "上一版"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Install"
+msgstr "安装"
+
+msgid "Check for updates"
+msgstr "检查更新"
+
+msgid "Running components"
+msgstr "运行中的组件"
+
+msgid "Update policy"
+msgstr "更新策略"
+
+msgid "Xray update policy"
+msgstr "Xray 更新策略"
+
+msgid "Off — do not notify"
+msgstr "关闭——不提示"
+
+msgid "Notify — do not install automatically"
+msgstr "只提示——不自动安装"
+
+msgid "Auto — install only while healthy; try each version once; roll back on check failure"
+msgstr "自动——只在运行正常时安装，同一版本只尝试一次，检查失败自动回滚"
+
+msgid "Automatically update rule data"
+msgstr "自动更新规则数据"
+
+msgid "Update hour"
+msgstr "更新小时"
+
+msgid "Update minute"
+msgstr "更新分钟"
+
+msgid "Channel URLs"
+msgstr "通道地址"
+
+msgid "Leave empty to use the default release channel."
+msgstr "留空则使用默认的发布通道。"
