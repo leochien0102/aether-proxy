@@ -22,11 +22,6 @@ function find_component(name, configured, options) {
 	if (configured != null && configured != '')
 		return fs.access(configured, 'x') ? { path: configured, source: 'uci' } : null;
 
-	let managed = `${C.BIN_DIR}/${name}/current/${name}`;
-
-	if (fs.access(managed, 'x'))
-		return { path: managed, source: 'managed' };
-
 	for (let dir in split(getenv('PATH') ?? '', ':')) {
 		if (dir != '' && fs.access(`${dir}/${name}`, 'x'))
 			return { path: `${dir}/${name}`, source: 'path' };

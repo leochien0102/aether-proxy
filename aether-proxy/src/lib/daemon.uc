@@ -295,6 +295,21 @@ function child_options(ctx, name, argv) {
 	return supervise.create({ name, argv, run_dir: run_dir(ctx), backoff: [ 5, 10, 30, 60 ], stable_secs: 300 });
 };
 
+function restart_xray(ctx, children, service_state, done) {
+	let binary = service_state.components?.[C.XRAY_COMPONENT]?.path ??
+		(ctx.bin_dir ? `${ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
+	let config_path = `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}/${C.ARTIFACT_FILES.xray}`;
+	let start_again = () => {
+		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
+		children.xray.start();
+		done(children.xray.pid() == null ? `cannot restart ${C.XRAY_COMPONENT}` : null);
+	};
+	if (children.xray != null)
+		children.xray.stop(start_again);
+	else
+		start_again();
+};
+
 function pid_path(ctx, name) {
 	return `${run_dir(ctx)}/${name}.pid`;
 };
@@ -870,7 +885,7 @@ function run(args) {
 	let monitor_daemon = null;
 	let tick = () => monitor_daemon == null ? null : monitor.tick(monitor_daemon);
 	let on_signal = () => signal == 'stop';
-	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ] ]) {
+	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ], [ 'SIGUSR2', 'xray_restart' ] ]) {
 		let name = item[0], kind = item[1];
 		signals[kind + name] = uloop.signal(name, () => {
 			if (signal == null)
@@ -919,6 +934,16 @@ function run(args) {
 		}
 
 		while (signal != 'stop') {
+			if (signal == 'xray_restart') {
+				signal = null;
+				if (monitor_daemon.machine.state != 'failsafe')
+					restart_xray(ctx, children, monitor_daemon.state, error => {
+						if (error != null)
+							event_failure(ctx, 'sigusr2', error);
+						tick();
+					});
+				continue;
+			}
 			if (signal == 'tick') {
 				tick();
 				signal = null;

@@ -40,7 +40,6 @@ export const STATE_FILE = 'state.json';
 export const EVENTS_FILE = 'events.jsonl';
 export const PROBE_FILE = 'probe.json';
 export const BASELINE_DATA_DIR = '/usr/share/aether-proxy/data';
-export const BIN_DIR = '/usr/share/aether-proxy/bin';
 export const RUN_DIR = '/var/run/aether-proxy';
 export const DOWNLOAD_DIR = '/tmp/aether-proxy-dl';
 export const UPLOAD_DIR = '/tmp/aether-proxy-upload';
@@ -172,12 +171,23 @@ export const SCHEDULE_TEST_HOUR_ENV = 'AETHER_PROXY_TEST_SCHEDULE_HOUR_SECS';
 
 // T7.3 (signed update checks)
 export const UPDATE_FILE = 'updates.json';
-export const UPDATE_PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy' ];
+export const UPDATE_PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 export const UPDATE_MANIFEST_MAX = 1048576;
 export const UPDATE_DOWNLOAD_MAX_SECS = 30;
 export const UPDATE_COMMAND_TIMEOUT_SECS = 35;
 export const UPDATE_SPACE_RESERVE = 1048576;
 export const UPDATE_RELEASE_FILE = '/etc/openwrt_release';
+
+// T7.4 (signed package installation)
+export const UPDATE_PACKAGE_NAMES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+export const UPDATE_XRAY_WAIT_SECS = 60;
+export const UPDATE_SERVICE_WAIT_SECS = 120;
+export const UPDATE_PACKAGE_POLL_SECS = 1;
+export const UPDATE_PORT_WAIT_SECS = 5;
+export const UPDATE_TEST_WAIT_ENV = 'AETHER_PROXY_TEST_UPDATE_WAIT_SECS';
+export const UPDATE_TEST_POLL_ENV = 'AETHER_PROXY_TEST_UPDATE_POLL_SECS';
+export const UPDATE_INIT = '/etc/init.d/aether-proxy';
+export const UPDATE_DAEMON_PROCESS = 'aether-proxy';
 
 // Default update channel (05 `channel_urls`, 08 "发布仓库").
 export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';

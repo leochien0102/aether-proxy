@@ -358,3 +358,236 @@ export function check(opts) {
 	}
 	return { ok: true, value: built.value, exit: 0 };
 };
+
+function wait_seconds() {
+	let value = getenv(C.UPDATE_TEST_WAIT_ENV);
+	return match(value ?? '', /^[0-9]+$/) ? +value : null;
+}
+
+function poll_seconds() {
+	let value = getenv(C.UPDATE_TEST_POLL_ENV);
+	return match(value ?? '', /^[0-9]+$/) && +value > 0 ? +value : C.UPDATE_PACKAGE_POLL_SECS;
+}
+
+function wait_limit(default_value) {
+	let value = wait_seconds();
+	return value == null ? default_value : value;
+}
+
+function read_manifest_for(opts, base) {
+	let root = opts.sys_root ?? '';
+	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
+	let ctx = {
+		root,
+		bin_dir: opts.bin_dir ?? null,
+		run_dir,
+		tmp_dir: system_path(root, C.TMP_DIR),
+		download_dir: system_path(root, C.DOWNLOAD_DIR),
+		keys_dir: system_path(root, C.KEYS_DIR)
+	};
+	if (!sys.mkdir_p(ctx.download_dir))
+		return { ok: false, code: 'FS_FAILED', detail: `cannot create ${ctx.download_dir}: ${sys.error()}` };
+	let manifest = download_manifest(ctx, base, proxy_running(ctx), 999);
+	for (let path in [ `${ctx.download_dir}/manifest-999.json`, `${ctx.download_dir}/manifest-999.json.sig` ])
+		if (unlink_file(path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs_error() });
+	if (manifest.manifest == null)
+		return { ok: false, code: 'MANIFEST_BAD_SIGNATURE', detail: 'cannot retrieve a valid signed manifest' };
+	return { ok: true, ctx, manifest: manifest.manifest };
+}
+
+function package_asset(manifest, name, arch, pm, previous) {
+	let entry = manifest.packages?.[name];
+	let version = previous ? entry?.previous?.version : entry?.current?.version;
+	let release = previous ? entry?.previous : entry?.current;
+	if (type(release) != 'object' || type(release.assets) != 'object')
+		return null;
+	let asset_set = release.assets[arch] ?? release.assets.all;
+	let asset = asset_set?.[pm] ?? null;
+	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
+		? { ...asset, version } : null;
+}
+
+function install_package(ctx, pm, path, previous) {
+	let bin = ctx.bin_dir ? `${ctx.bin_dir}/${pm}` : pm;
+	let argv = pm == 'opkg'
+		? [ bin, 'install', ...(previous ? [ '--force-downgrade' ] : []), path ]
+		: [ bin, 'add', '--allow-untrusted', path ];
+	// TODO(design): package-manager runtime is unspecified; use the background-job ceiling so a
+	// slow flash write is not interrupted at the shorter health-check deadline.
+	let result = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS });
+	if (result.code == 0)
+		return { ok: true };
+	let stderr = trim(result.stderr);
+	let lower_stderr = lc(stderr);
+	if (index(lower_stderr, 'no space') >= 0 || index(lower_stderr, 'not enough space') >= 0 ||
+	    index(lower_stderr, 'disk full') >= 0 || index(lower_stderr, 'insufficient space') >= 0)
+		log.event('error', 'NO_SPACE', { need: 0, free: 0 });
+	return { ok: false, detail: `${pm} install exited ${result.code}: ${stderr}`, code: result.code };
+}
+
+function xray_binary(ctx) {
+	if (ctx.bin_dir && fs.access(`${ctx.bin_dir}/${C.XRAY_COMPONENT}`, 'x'))
+		return `${ctx.bin_dir}/${C.XRAY_COMPONENT}`;
+	return C.XRAY_COMPONENT;
+}
+
+function port_listening(ctx) {
+	for (let file in [ C.PROC_NET_TCP, C.PROC_NET_TCP6 ])
+		if (net.tcp_listening(fs.readfile(system_path(ctx.root, file)), C.TPROXY_PORT))
+			return true;
+	return false;
+}
+
+function monotonic_seconds() {
+	let value = clock(true);
+	return value == null ? null : value[0] + value[1] / 1000000000;
+}
+
+function wait_for(ctx, timeout, predicate) {
+	let started = monotonic_seconds();
+	if (started == null)
+		return false;
+	let deadline = started + timeout;
+	while (true) {
+		if (predicate())
+			return true;
+		let now = monotonic_seconds();
+		if (now == null || now >= deadline)
+			break;
+		let sleep = sys.run([ 'sleep', `${poll_seconds()}` ], { timeout: poll_seconds() + 1, quiet: true });
+		if (sleep.code != 0) {
+			log.event('error', 'CMD_FAILED', { cmd: 'sleep', rc: sleep.code, stderr: trim(sleep.stderr) });
+			return false;
+		}
+	}
+	return predicate();
+}
+
+function service_state(ctx) {
+	return read_object(`${ctx.run_dir}/${C.STATE_FILE}`);
+}
+
+function verify_installed_version(ctx, pm, name, version) {
+	let installed = installed_version(ctx, pm, name);
+	return installed.ok && installed.version == version;
+}
+
+function verify_package(ctx, opts, pm, name, version, before_state, before_probe) {
+	if (name == 'luci-app-aether-proxy' || name == 'luci-i18n-aether-proxy-zh-cn')
+		return true;
+	if (name == 'xray-core') {
+		if (before_state?.state == 'running') {
+			let signal = sys.run([ 'killall', '-USR2', C.UPDATE_DAEMON_PROCESS ], { timeout: 5 });
+			if (signal.code != 0) {
+				log.event('error', 'CMD_FAILED', { cmd: 'killall -USR2 aether-proxy', rc: signal.code, stderr: trim(signal.stderr) });
+				return false;
+			}
+			let wait = wait_limit(C.UPDATE_XRAY_WAIT_SECS);
+			return wait_for(ctx, wait, () => {
+				let state = service_state(ctx);
+				return state?.last_probe?.ok == true && type(state.last_probe.at) == 'int' && state.last_probe.at > before_probe;
+			});
+		}
+		if (index([ 'starting', 'degraded', 'failsafe' ], before_state?.state) >= 0)
+			return wait_for(ctx, wait_limit(C.UPDATE_PORT_WAIT_SECS), () => port_listening(ctx));
+		if (before_state == null || index([ 'stopped', 'error' ], before_state.state) >= 0) {
+			let result = sys.run([ xray_binary(ctx), 'version' ], { timeout: 10, quiet: true });
+			if (result.code != 0)
+				return false;
+			let found = split(trim(result.stdout), /[[:space:]]+/)[1] ?? null;
+			let expected = split(version, '-r')[0];
+			return found == expected;
+		}
+		// TODO(design): 08 defines xray checks for running, unhealthy, and stopped states, but not failsafe.
+		return false;
+	}
+	if (name == 'aether-proxy') {
+		let init = system_path(ctx.root, C.UPDATE_INIT);
+		let restarted = sys.run([ init, 'restart' ], { timeout: 35 });
+		if (restarted.code != 0) {
+			log.event('error', 'CMD_FAILED', { cmd: `${init} restart`, rc: restarted.code, stderr: trim(restarted.stderr) });
+			return false;
+		}
+		if (index([ 'running', 'degraded' ], before_state?.state) >= 0)
+			return wait_for(ctx, wait_limit(C.UPDATE_SERVICE_WAIT_SECS), () => {
+				let state = service_state(ctx);
+				return index([ 'running', 'degraded' ], state?.state) >= 0;
+			});
+		let check_bin = ctx.bin_dir ? `${ctx.bin_dir}/${C.PROG}` : C.PROG;
+		let argv = [ check_bin, 'check', '--json', '--run-dir', ctx.run_dir, '--sys-root', ctx.root ];
+		if (opts.confdir != null)
+			push(argv, '--confdir', opts.confdir);
+		if (ctx.bin_dir != null)
+			push(argv, '--bin-dir', ctx.bin_dir);
+		return sys.run(argv, { timeout: 35, quiet: true }).code == 0;
+	}
+	return false;
+}
+
+// Install one manifest-selected package. All package-manager calls happen only after the
+// signed manifest and downloaded asset have both been verified.
+export function package_update(opts, name, previous) {
+	opts ??= {};
+	let root = opts.sys_root ?? '';
+	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
+	log.set_run_dir(run_dir);
+	if (index(C.UPDATE_PACKAGE_NAMES, name) < 0)
+		return { ok: false, code: 'USAGE', exit: 2, detail: `unsupported package '${name}'` };
+	let checked = check(opts);
+	if (!checked.ok)
+		return { ok: false, code: checked.code, exit: checked.exit, detail: checked.detail };
+	let selected = read_manifest_for(opts, checked.value.url);
+	if (!selected.ok)
+		return { ok: false, code: selected.code, exit: 1, detail: selected.detail };
+	let ctx = selected.ctx;
+	let configured_channels = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
+	if (!configured_channels.ok)
+		return { ok: false, code: 'CONFIG_INVALID', exit: 2, detail: configured_channels.detail };
+	let arch = checked.value.arch, pm = checked.value.pm;
+	let asset = package_asset(selected.manifest, name, arch, pm, previous == true);
+	if (asset == null) {
+		log.event('error', 'ARCH_UNSUPPORTED', { arch });
+		return { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail: `no ${pm} asset for ${name} on ${arch}` };
+	}
+	let from = installed_version(ctx, pm, name);
+	if (!from.ok)
+		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: from.detail };
+	let before_state = service_state(ctx);
+	let before_probe = before_state?.last_probe?.at ?? 0;
+	let downloaded = download_asset(opts, configured_channels.urls, asset, asset.url);
+	if (!downloaded.ok)
+		return { ok: false, code: downloaded.code, exit: 1, detail: downloaded.detail ?? downloaded.code };
+	let installed = install_package(ctx, pm, downloaded.path, previous == true);
+	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
+		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
+	if (!installed.ok)
+		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: installed.detail };
+	let verified = verify_package(ctx, opts, pm, name, asset.version, before_state, before_probe);
+	if (verified && !verify_installed_version(ctx, pm, name, asset.version))
+		verified = false;
+	if (verified) {
+		log.event('notice', 'UPDATE_INSTALLED', { package: name, version: asset.version });
+		return { ok: true, exit: 0, value: { ok: true, package: name, from: from.version, to: asset.version, rolled_back: false, code: null } };
+	}
+	log.event('error', 'UPDATE_VERIFY_FAILED', { package: name, version: asset.version });
+	let prior = package_asset(selected.manifest, name, arch, pm, false);
+	let previous_asset = package_asset(selected.manifest, name, arch, pm, true);
+	// --previous is an explicit downgrade request, not a failed upgrade; restore current only if
+	// its post-install check fails.
+	let rollback = previous == true ? prior : previous_asset;
+	if (rollback == null)
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: 'no rollback version is available',
+			value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: false, code: 'UPDATE_VERIFY_FAILED', detail: '无可回滚的版本' } };
+	let rollback_file = download_asset(opts, configured_channels.urls, rollback, rollback.url);
+	if (!rollback_file.ok)
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `rollback asset unavailable: ${rollback_file.code}` };
+	let rolled = install_package(ctx, pm, rollback_file.path, true);
+	if (fs.stat(rollback_file.path) != null && !fs.unlink(rollback_file.path))
+		log.event('error', 'FS_FAILED', { op: 'unlink', path: rollback_file.path, detail: fs_error() });
+	if (!rolled.ok)
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `rollback failed: ${rolled.detail}` };
+	log.event('error', 'UPDATE_ROLLED_BACK', { package: name, version: rollback.version });
+	return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `verification failed; rolled back to ${rollback.version}`,
+		value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: true, code: 'UPDATE_VERIFY_FAILED' } };
+};

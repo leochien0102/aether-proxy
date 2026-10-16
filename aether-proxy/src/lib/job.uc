@@ -195,6 +195,8 @@ function kind_for(argv) {
 		return 'sub_update';
 	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'check')
 		return 'update_check';
+	if (length(argv) >= 3 && argv[0] == 'update' && argv[1] == 'package')
+		return argv[2] == 'data' ? null : 'update_package';
 	return null;
 }
 

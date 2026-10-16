@@ -1,9 +1,22 @@
 #!/bin/sh
 if [ "$1" = status ]; then
+	[ -z "${UPDATE_INSTALLED_SLEEP:-}" ] || sleep "$UPDATE_INSTALLED_SLEEP"
+	if [ -n "${UPDATE_PACKAGE_STATE_FILE:-}" ] && [ -f "$UPDATE_PACKAGE_STATE_FILE" ]; then
+		printf 'Package: %s\nVersion: %s\n' "$2" "$(cat "$UPDATE_PACKAGE_STATE_FILE")"; exit 0
+	fi
 	case "$UPDATE_INSTALLED_MODE" in
 		missing) exit 0 ;;
 		versions) printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_INSTALLED_VERSION:-26.9.30-r5}"; exit 0 ;;
 		*) printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_INSTALLED_VERSION:-0.1.0-r1}"; exit 0 ;;
 	esac
+fi
+if [ "$1" = install ]; then
+	printf '%s\n' "$*" >> "${UPDATE_PACKAGE_CALLS:?}"
+	shift
+	[ "${1:-}" = --force-downgrade ] && shift
+	[ "${UPDATE_INSTALL_EXIT:-0}" = 0 ] || exit "$UPDATE_INSTALL_EXIT"
+	file=${1##*/}; version=${file#*_}; version=${version%%_*}
+	[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
+	exit 0
 fi
 exit 2

@@ -267,6 +267,27 @@ cat "$L1_START"
 echo 'CALL SEQUENCE scenario 2 (SIGTERM teardown):'
 cat "$STOP_LOG"
 
+# SIGUSR2 restarts only the supervised Xray child and schedules an immediate monitor round.
+R2U="$T/sys2usr2"; L2U="$T/sys2usr2/calls.log"; make_root "$R2U"; : > "$L2U"
+start_daemon "$R2U" "$L2U"
+if wait_for "$R2U/var/run/aether-proxy/state.json" 'starting'; then
+	old_xray=$(cat "$R2U/xray.pid"); old_dns=$(cat "$R2U/chinadns-ng.pid" 2>/dev/null || cat "$R2U/chinadns.pid")
+	old_curl=$(count_calls "$L2U" 'curl ')
+	kill -USR2 "$DAEMON_PID"
+	for _ in {1..200}; do
+		new_xray=$(cat "$R2U/xray.pid" 2>/dev/null || :)
+		[ -n "$new_xray" ] && [ "$new_xray" != "$old_xray" ] && break
+		sleep 0.05
+	done
+	new_dns=$(cat "$R2U/chinadns-ng.pid" 2>/dev/null || cat "$R2U/chinadns.pid" 2>/dev/null || :)
+	[ -n "$new_xray" ] && [ "$new_xray" != "$old_xray" ] && ok 'SIGUSR2 changes Xray pid' || bad 'SIGUSR2 changes Xray pid'
+	expect 'SIGUSR2 keeps chinadns pid' "$old_dns" "$new_dns"
+	wait_count "$L2U" 'curl ' "$((old_curl + 1))" && ok 'SIGUSR2 immediately runs monitor' || bad 'SIGUSR2 immediately runs monitor'
+else
+	bad 'SIGUSR2 test daemon starts' "$(cat "$R2U/daemon.stderr")"
+fi
+stop_daemon; expect 'SIGUSR2 daemon stops cleanly' 0 "$?"; assert_no_children "$R2U"
+
 # 3. Repeated cleanup does not repeat destructive operations after the first pass.
 R3="$T/sys3"; L3="$T/sys3/calls.log"; make_root "$R3"; : > "$L3"
 touch "$R3/nft-table" "$R3/tmp/dnsmasq.d/aether-proxy.conf"

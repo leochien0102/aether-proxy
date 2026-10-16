@@ -15,6 +15,5 @@ config dns 'dns'
 config update 'update'
 	option data_auto '1'
 	option xray_auto 'notify'
-	option chinadns_auto 'notify'
 
 config probe 'probe'
