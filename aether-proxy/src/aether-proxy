@@ -26,6 +26,7 @@ Commands:
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   probe results      print the latest node reachability results
+  sub status         read subscription update records
   sub update         download and atomically apply subscriptions
   node import <uri>  import a share-link URI as a manual node
   custom get|set     read or validate-and-save a custom list file

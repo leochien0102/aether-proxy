@@ -53,6 +53,9 @@ jobs:
       - name: Run init script tests
         run: bash tests/stubs/procd/run.sh
 
+      - name: Run subscription status and page tests
+        run: bash tests/sub-status/run.sh
+
       - name: Run subscription update tests
         run: bash tests/sub/run.sh
 

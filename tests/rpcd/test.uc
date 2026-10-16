@@ -461,8 +461,8 @@ function scenario_10() {
 	let acl = json(fs.readfile(ACL_PATH));
 	let app = acl?.['luci-app-aether-proxy'];
 
-	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file/probe_results',
-		show([ 'events', 'job_status', 'list_file', 'log', 'probe_results', 'status', 'version' ]),
+	expect_eq('10. ACL read methods are exactly version/status/events/job_status/log/list_file/probe_results/sub_status',
+		show([ 'events', 'job_status', 'list_file', 'log', 'probe_results', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file',
 		show([ 'check', 'job_start', 'node_import', 'save_file', 'service' ]),
@@ -473,8 +473,8 @@ function scenario_10() {
 		deep_eq(app?.write?.uci, [ 'aetherproxy' ]), show(app?.write?.uci));
 
 	let names = sort(keys(methods));
-	expect_eq('10. plugin exposes exactly the T8.1+T8.2+T8.5 methods',
-		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'probe_results', 'save_file', 'service', 'status', 'version' ]),
+	expect_eq('10. plugin exposes exactly the current methods',
+		show([ 'check', 'events', 'job_start', 'job_status', 'list_file', 'log', 'node_import', 'probe_results', 'save_file', 'service', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
@@ -511,7 +511,7 @@ function scenario_10() {
 
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
-		log: 'read', list_file: 'read', probe_results: 'read',
+		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
 		service: 'write', check: 'write', job_start: 'write',
 		node_import: 'write', save_file: 'write'
 	};
@@ -693,6 +693,15 @@ function scenario_14() {
 		show([ 'probe', 'results', '--json' ]), show(argv_of()));
 }
 
+function scenario_15() {
+	let data = { ok: true, subs: { s_00000001: { nodes: 2, error: null } } };
+	stub_ctrl({ exit: 0, stdout: sprintf('%J', data) });
+	let argv_of = watch_cli();
+	let r = methods.sub_status.call({ args: {} });
+	expect_eq('15. sub_status forwards exactly sub status --json', show([ 'sub', 'status', '--json' ]), show(argv_of()));
+	check('15. sub_status preserves records and declares empty args', deep_eq(r, data) && deep_eq(methods.sub_status.args, {}), show(r));
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -709,6 +718,7 @@ scenario_11();
 scenario_12();
 scenario_13();
 scenario_14();
+scenario_15();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

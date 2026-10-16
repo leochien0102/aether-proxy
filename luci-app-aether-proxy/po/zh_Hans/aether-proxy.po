@@ -306,3 +306,117 @@ msgstr "REALITY 短 ID"
 
 msgid "REALITY spiderX"
 msgstr "REALITY spiderX"
+
+msgid "Download failed"
+msgstr "下载失败"
+
+msgid "Decode failed"
+msgstr "解码失败"
+
+msgid "Unsupported format"
+msgstr "格式不支持"
+
+msgid "No valid nodes"
+msgstr "没有可用节点"
+
+msgid "Invalid configuration after update"
+msgstr "应用后配置无效"
+
+msgid "Proxy unavailable"
+msgstr "代理不可用"
+
+msgid "Node count dropped sharply"
+msgstr "节点数骤减"
+
+msgid "Malformed"
+msgstr "格式错误"
+
+msgid "Unsupported protocol"
+msgstr "不支持的协议"
+
+msgid "Unsupported transport"
+msgstr "不支持的传输"
+
+msgid "Unsupported security"
+msgstr "不支持的安全层"
+
+msgid "SS with plugin"
+msgstr "带插件的 SS"
+
+msgid "VMess alterId is not zero"
+msgstr "VMess alterId 非 0"
+
+msgid "IPv6 address"
+msgstr "IPv6 地址"
+
+msgid "Missing field"
+msgstr "缺少字段"
+
+msgid "Duplicate"
+msgstr "重复"
+
+msgid "Insecure transport"
+msgstr "不安全的传输"
+
+msgid "Invalid value"
+msgstr "无效的值"
+
+msgid "Not updated yet"
+msgstr "尚未更新"
+
+msgid "Success, %s nodes"
+msgstr "成功，%s 个节点"
+
+msgid "Skipped %s: %s"
+msgstr "跳过 %s 个：%s"
+
+msgid "Disabled"
+msgstr "禁用"
+
+msgid "Enabled"
+msgstr "启用"
+
+msgid "Manual only"
+msgstr "仅手动"
+
+msgid "%s hours"
+msgstr "%s 小时"
+
+msgid "Added %s / Updated %s / Stale %s / Revived %s / Removed %s"
+msgstr "新增 %s / 更新 %s / 失效 %s / 恢复 %s / 移除 %s"
+
+msgid "Delete this subscription and %s nodes? %s current node(s) will be kept as manual."
+msgstr "删除此订阅并一并删除 %s 个节点？%s 个当前节点将保留并改为手动。"
+
+msgid "Update now"
+msgstr "立即更新"
+
+msgid "Update interval"
+msgstr "更新间隔"
+
+msgid "Fetch via"
+msgstr "经由"
+
+msgid "Last result"
+msgstr "最近一次结果"
+
+msgid "Subscription URL"
+msgstr "订阅地址"
+
+msgid "Automatic"
+msgstr "自动"
+
+msgid "Direct"
+msgstr "直连"
+
+msgid "Proxy"
+msgstr "代理"
+
+msgid "User agent"
+msgstr "用户代理"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Update all"
+msgstr "全部更新"

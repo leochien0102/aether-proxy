@@ -1,9 +1,12 @@
 'use strict';
 
+import * as fs from 'fs';
+import * as uci from 'uci';
+import * as C from 'aetherproxy.const';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as sub from 'aetherproxy.sub';
 
-const USAGE = 'Usage: aether-proxy sub update [<subscription>] [--json] [--confdir <dir>] [--run-dir <dir>] [--sys-root <dir>] [--bin-dir <dir>]';
+const USAGE = 'Usage: aether-proxy sub status [--json] [--confdir <dir>] [--sys-root <dir>]\n       aether-proxy sub update [<subscription>] [--json] [--confdir <dir>] [--run-dir <dir>] [--sys-root <dir>] [--bin-dir <dir>]';
 
 function usage(detail, json) {
 	return pipeline.finish({ json }, { ok: false, code: 'USAGE', detail }, 2, `${detail}\n${USAGE}`);
@@ -68,11 +71,43 @@ function human_result(result) {
 	return join('\n', lines);
 }
 
+// Unlike the updater's reader, this read path must not log corrupt records.
+function status_records(path) {
+	let text = fs.readfile(path);
+	if (text == null)
+		return {};
+	try {
+		let value = json(text);
+		return type(value) == 'object' ? value : {};
+	}
+	catch (e) {
+		return {}; // Corrupt status explicitly means no records (docs/10).
+	}
+}
+
 export function run(args) {
 	let json = index(args, '--json') >= 0;
 	let parsed = parse_args(args);
 	if (parsed.error)
 		return usage(parsed.error, json);
+	if (parsed.positional[0] == 'status') {
+		if (length(parsed.positional) != 1)
+			return usage('expected `sub status`', json);
+		let opts = parsed.opts;
+		let cursor = uci.cursor(opts.confdir ?? C.CONFIG_DIR);
+		// TODO(design): configuration read failure has no specified status reply.
+		// Fail closed instead of returning records without a configured owner.
+		if (!cursor.load(C.UCI_PACKAGE))
+			return pipeline.finish(opts, { ok: false, code: 'CONFIG_INVALID', detail: 'cannot load configuration' }, 2, 'cannot load configuration');
+		let records = status_records(`${sub.system_path(opts.sys_root ?? '', C.STATE_DIR)}/${C.SUB_STATE_FILE}`);
+		let subs = {};
+		cursor.foreach(C.UCI_PACKAGE, 'subscription', section => {
+			let id = section['.name'];
+			if (id in records)
+				subs[id] = records[id];
+		});
+		return pipeline.finish(opts, { ok: true, subs }, 0, sprintf('%.J', subs));
+	}
 	if (parsed.positional[0] != 'update' || length(parsed.positional) > 2)
 		return usage('expected `sub update [<subscription>]`', !!parsed.opts.json);
 
