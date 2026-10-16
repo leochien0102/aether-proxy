@@ -85,6 +85,39 @@ expect 'architecture is stored' aarch64_generic "$(get "$out" arch)"; expect 'op
 expect 'installed package version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'available package version' 26.10.10-r1 "$(get "$out" packages.xray-core.available)"
 expect 'newer version detected' true "$(get "$out" packages.xray-core.newer)"; expect 'opkg asset key' xray-core_26.10.10-r1_aarch64_generic.ipk "$(get "$out" packages.xray-core.asset)"
 status=$(ap status --json --run-dir "$T/run"); expect 'status reads updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["updates_available"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$status")"
+# T8.9b: sign each variant so asset selection, not signature rejection, is tested.
+expect 'T8.9b previous opkg asset yields version' 26.7.28-r1 "$(get "$out" packages.xray-core.previous)"
+for variant in null arch ipk-only; do
+	make_manifest
+	python3 - "$T" "$variant" <<'PY'
+import json, os, sys
+for channel in ('ch1', 'ch2'):
+    path = os.path.join(sys.argv[1], channel, 'manifest.json')
+    manifest = json.load(open(path))
+    previous = manifest['packages']['xray-core']['previous']
+    if sys.argv[2] == 'null':
+        manifest['packages']['xray-core']['previous'] = None
+    elif sys.argv[2] == 'arch':
+        previous['assets'] = {'other_arch': previous['assets']['aarch64_generic']}
+    else:
+        for assets in previous['assets'].values():
+            del assets['apk']
+    json.dump(manifest, open(path, 'w'))
+PY
+	for channel in ch1 ch2; do
+		"$USIGN" -S -m "$T/$channel/manifest.json" -s "$T/sec"
+	done
+	if [ "$variant" = ipk-only ]; then
+		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
+		chmod +x "$T/bin/apk"
+	fi
+	out=$(run_check)
+	expect "T8.9b previous $variant returns null" '<null>' "$(get "$out" packages.xray-core.previous)"
+	if [ "$variant" = ipk-only ]; then
+		rm "$T/bin/apk"
+	fi
+done
+make_manifest
 # T8.8 scenario 1: baseline equality must work without a downloaded hash.
 printf '192.0.2.0/24\n' > "$T/root/usr/share/aether-proxy/data/chnroute4.txt"
 base_hash=$(sha256sum "$T/root/usr/share/aether-proxy/data/chnroute4.txt" | cut -d' ' -f1)
@@ -113,6 +146,7 @@ make_manifest
 cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin/apk"
 export UPDATE_APK_VERSION=26.9.30-r5; out=$(run_check); expect 'apk check succeeds' 0 "$?"; expect 'apk preferred' apk "$(get "$out" pm)"
 expect 'apk installed version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'apk asset key' xray-core-26.10.10-r1_aarch64_generic.apk "$(get "$out" packages.xray-core.asset)"; rm "$T/bin/apk"
+expect 'T8.9b previous apk asset yields version' 26.7.28-r1 "$(get "$out" packages.xray-core.previous)"
 # 3 tampered first address falls through
 printf ' ' >> "$T/ch1/manifest.json"; out=$(run_check); expect 'tampered first address falls through' 0 "$?"
 expect 'second channel selected' "http://127.0.0.1:$PORT2/" "$(get "$out" url)"; grep -q '"code": "MANIFEST_BAD_SIGNATURE"' "$T/run/events.jsonl" && ok 'bad signature event logged' || bad 'bad signature event logged'; make_manifest

@@ -239,6 +239,19 @@ function data_status(ctx, manifest) {
 	return result;
 }
 
+// Shared by check and install so rollback availability follows identical asset fallback rules (docs/10 updates).
+function package_asset(manifest, name, arch, pm, previous) {
+	let entry = manifest.packages?.[name];
+	let version = previous ? entry?.previous?.version : entry?.current?.version;
+	let release = previous ? entry?.previous : entry?.current;
+	if (type(release) != 'object' || type(release.assets) != 'object')
+		return null;
+	let asset_set = release.assets[arch] ?? release.assets.all;
+	let asset = asset_set?.[asset_format(pm)] ?? null;
+	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
+		? { ...asset, version } : null;
+}
+
 function build_result(ctx, manifest, base, arch, pm) {
 	let packages = {};
 	let prior = read_object(`${ctx.run_dir}/${C.UPDATE_FILE}`);
@@ -252,7 +265,7 @@ function build_result(ctx, manifest, base, arch, pm) {
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
-	let newer = asset != null && version_newer(current.version, installed.version);
+		let newer = asset != null && version_newer(current.version, installed.version);
 		if (asset == null)
 			log.event('error', 'ARCH_UNSUPPORTED', { arch });
 		let was_reported = prior?.packages?.[name]?.available == current.version && prior?.packages?.[name]?.newer == true;
@@ -260,6 +273,7 @@ function build_result(ctx, manifest, base, arch, pm) {
 			log.event('notice', 'UPDATE_AVAILABLE', { package: name, current: installed.version, latest: current.version });
 		packages[name] = {
 			installed: installed.version,
+			previous: package_asset(manifest, name, arch, pm, true)?.version ?? null,
 			available: current.version,
 			newer,
 			asset: asset == null ? null : asset.url	// file name for this arch and pm (08 "检查")
@@ -584,18 +598,6 @@ function poll_seconds() {
 function wait_limit(default_value) {
 	let value = wait_seconds();
 	return value == null ? default_value : value;
-}
-
-function package_asset(manifest, name, arch, pm, previous) {
-	let entry = manifest.packages?.[name];
-	let version = previous ? entry?.previous?.version : entry?.current?.version;
-	let release = previous ? entry?.previous : entry?.current;
-	if (type(release) != 'object' || type(release.assets) != 'object')
-		return null;
-	let asset_set = release.assets[arch] ?? release.assets.all;
-	let asset = asset_set?.[asset_format(pm)] ?? null;
-	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
-		? { ...asset, version } : null;
 }
 
 function install_package(ctx, pm, path, previous) {
