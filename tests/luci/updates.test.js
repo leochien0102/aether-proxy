@@ -111,7 +111,8 @@ test('T8.9b scenario 5: running versions, paths and optional architecture note',
 	assert.equal(rows[1].path, '/dns');
 	assert.match(rows[1].note, /软件包页面.*test_arch/);
 	s.updates_available = null;
-	assert.ok(!model.components(s)[1].note.includes('test_arch'));
+	// Without a check there is no arch at all, not an empty or undefined one.
+	assert.doesNotMatch(model.components(s)[1].note, /test_arch|\(/);
 	assert.equal(model.components({})[1].version, '未知');
 });
 test('T8.9b scenario 6: every channel URL fixture agrees with real CLI validation', () => {
