@@ -237,7 +237,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - 按钮：启动、重启、停止，按状态决定是否可用（`stopped`/`error` 时只有启动可用；其他状态启动不可用）。停止用 `cbi-button-negative` 并要求确认（「停止后所有流量直连」）。
   点击后经 `ap.call('service', …)`，1.5 秒后立即刷新一次，其余靠定时刷新；返回 `ok: false` 时用 `ui.addNotification` 显示 `code` 与 `detail`。
 - 每 5 秒经 `ap.poll` 刷新 `status`；`version` 与 UCI 只在页面加载时取一次。
-- 本页之后会被 Dashboard（B2）取代为首页，所以不做历史曲线、流量统计。
+- 本页之后升级为 Dashboard（见下方「Dashboard：概览页升级」，2026-10-17 定），历史曲线不做。
 
 **启用开关**（2026-10-16 补，T8.11a）：T8.4 漏了 `main.enabled`（默认 `0`）。init 的 `start_service` 在它为 `0` 时直接返回成功，所以全新安装后点「启动」没有任何效果，页面也没有提示。
 - 状态区上方加「启用」开关（复选框或 `ui.Checkbox`），值取页面加载时读到的 UCI `main.enabled`。切换后 `uci.set('aetherproxy', 'main', 'enabled', '1'|'0')`、`uci.save()`、
@@ -380,6 +380,59 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 
 数值与列表项的校验由模型给出（作为各选项的 `validate`）：整数按命令行的规则（`lib/config.uc`：`^-?[0-9]{1,9}$`，前导零允许，空白与小数不允许）与上下限；`hostport`、`url`、`path`、非空字符串同命令行。
 留空的可选字段（删掉选项 = 用默认值）不报错。
+
+### Dashboard：概览页升级（2026-10-17 定，T8.12）
+
+需求见 [backlog](backlog.md) B2。仓库所有者确认（2026-10-17）：**在现有概览页上升级**（菜单不变）；自动刷新间隔存在**浏览器 localStorage**（各浏览器各自记，不进 UCI）；**不做历史曲线**（留在 B2）。
+原则不变：数据由命令行按需读取（不在后台采样），速率由前端用相邻两次读数相减得到。
+
+**1. 流量计数（T8.12a）**：nft 表增加两个具名计数器与两条只计数的链（`render/nft.uc`）：
+
+```
+counter proxy_tx {}
+counter proxy_rx {}
+chain traffic_out { type filter hook output priority filter; policy accept; ip daddr @node_ip4 counter name proxy_tx }
+chain traffic_in { type filter hook input priority filter - 2; policy accept; ip saddr @node_ip4 counter name proxy_rx }
+```
+
+路由器发往节点、节点发回路由器的全部流量（Xray 与节点之间的连接，含 UDP）分别计入。整表替换（启动、节点 IP 变化的 reload）会把计数清零，前端按「计数变小」处理。
+
+**`aether-proxy stats`**（只读、不记事件；接受 `--run-dir`、`--sys-root`、`--bin-dir`）：
+
+```json
+{ "ok": true, "at_ms": 123456789,
+  "proxy": { "tx_bytes": 0, "rx_bytes": 0 },
+  "wan": { "dev": "eth1", "tx_bytes": 0, "rx_bytes": 0 },
+  "connections": { "proxy": 0, "total": 0 } }
+```
+
+- `at_ms`：单调时钟毫秒（ucode `clock(true)`），只用于前端求差，不是时间戳。
+- `proxy`：`nft -j list counters table inet aetherproxy`（`sys.run`，5 秒，`quiet`）中 `proxy_tx`/`proxy_rx` 的 `bytes`；表不存在、命令失败或缺计数器 → `null`。
+- `wan`：`/proc/net/route` 中目的为 `00000000`、`Metric` 最小的那一行的接口（IPv4 默认路由），在 `/proc/net/dev` 中取它的接收字节（第 1 个数）与发送字节（第 9 个数）；没有默认路由或读不到 → `null`。
+- `connections.proxy`：`state.json` 的 `node_ip` 不为空时，统计 `/proc/net/tcp` 中远端地址等于它、状态为 `01`（ESTABLISHED）的行，加上 `/proc/net/tcp6` 中远端为对应 `::ffff:` 映射地址的行；`node_ip` 为空或文件读不到 → `null`。
+  （文件中的 IPv4 是小端序十六进制，如 `1.2.3.4` 写作 `04030201`。）
+- `connections.total`：`/proc/sys/net/netfilter/nf_conntrack_count`；读不到 → `null`。
+- 某一项读不到只让该项为 `null`，整个调用仍 `ok: true`；`--sys-root` 下的 `/proc/...` 路径按 sys-root 拼接（测试用）。
+- rpcd 方法 `stats`（无参数，read，10 秒）。
+
+**2. 立即检测与换节点后自动检测（T8.12b）**：
+- **`aether-proxy probe now`**：读 `state.json`，`state` 不是 `starting`、`running`、`degraded`、`failsafe` → `{ "ok": false, "code": "NOT_RUNNING", "detail": "…" }`，退出码 1，不记事件；
+  否则经 procd 向 daemon 发 SIGUSR1（`ubus call service signal '{"name":"aether-proxy","signal":10}'`，与 08 的 SIGUSR2 写法相同），失败 → `CMD_FAILED`（记事件），退出码 1；
+  成功 → `{ "ok": true, "requested_at": <秒> }`。monitor 立即跑一轮代理健康检测，`last_probe.at` 随后更新。rpcd 方法 `probe_now`（无参数，write，10 秒）。
+- **daemon**：reload 成功、且当前节点（`main.node`）或节点 IP 变了 → reload 结束后立即跑一轮 monitor（等同收到 SIGUSR1），切换节点后几秒内就有新节点的健康检测结果。
+
+**3. 页面（T8.12c，在概览页上加，原有内容与规则不变）**：
+- **刷新间隔**：下拉「2 秒、5 秒（默认）、10 秒、30 秒、关闭」，存 `localStorage` 的 `aether-proxy.refresh`（读写都包在 try/catch 中，读不到就用默认值）。改了立即按新间隔重建 `ap.poll`；「关闭」时停止轮询，另有「刷新」按钮手动刷新一次。
+  每次刷新**依次**调用 `status`、`stats`（同一时刻最多一个刷新在途，`ap.poll` 已保证）。
+- **流量**：代理 ↑/↓、直连 ↑/↓、合计 ↑/↓ 的速率（↑ = 发送，`tx`）。速率 = 两次读数的字节差 ÷ `at_ms` 差；直连 = WAN − 代理（小于 0 按 0）。
+  第一次读数、某项为 `null`、字节差为负（计数被清零或接口重置）、`wan.dev` 变了、`at_ms` 差不大于 0 → 该项显示「–」。单位按 1024 进位：`B/s`、`KB/s`、`MB/s`（保留一位小数）。
+- **连接数**：代理连接、总连接（conntrack），`null` 显示「–」。
+- **切换节点**：节点下拉（显示 `label`，当前节点预选）加「切换」按钮 → `uci.set('aetherproxy', 'main', 'node', <段名>)`、`uci.save()`、`ui.changes.apply(true)`（与节点页「设为当前」相同）。之后的健康检测由 daemon 自动完成。
+- **测当前节点延迟**：`ap.call('probe_now')` → 成功后每秒取一次 `status`，直到 `last_probe.at` 不早于 `requested_at`（最多 15 秒），显示「正常，<latency_ms> ms」或「失败」；超时显示「检测未在 15 秒内完成」。
+  进行中按钮不可用；`NOT_RUNNING` 显示「服务未运行」；其他失败显示 `code` 与 `detail`。
+- **更新订阅**：`ap.run_job('sub_update', [])`，结束后显示「订阅更新完成：成功 <n> 个，失败 <m> 个」（按结果 `subs` 中各项的 `ok` 计数），失败的列出订阅名与事件码；作业期间按钮不可用。
+- 「停用/启用」即已有的「启用」开关（持久），「重启」即已有按钮；不新增。
+- 模型 `model/overview.js` 增加：速率计算与格式化、连接数文字、刷新间隔的选项与解析、检测结果文字、订阅更新结果汇总。
 
 UI 规则：
 
