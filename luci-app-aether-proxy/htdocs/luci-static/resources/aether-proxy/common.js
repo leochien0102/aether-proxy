@@ -26,6 +26,7 @@ var METHODS = {
 	probe_results: [],
 	sub_status: [],
 	data_status: [],
+	stats: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],

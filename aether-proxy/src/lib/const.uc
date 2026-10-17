@@ -227,3 +227,9 @@ export const DATA_STATUS_NAMES = DATA_UPDATE_ITEMS;
 
 // T8.9a (docs/04 "components" versions): informational queries have a bounded wait.
 export const COMPONENT_VERSION_TIMEOUT_SECS = 5;
+
+// T8.12a (docs/10 "Dashboard"): read-only traffic and connection snapshots.
+export const PROC_NET_ROUTE = '/proc/net/route';
+export const PROC_NET_DEV = '/proc/net/dev';
+export const CONNTRACK_COUNT = '/proc/sys/net/netfilter/nf_conntrack_count';
+export const STATS_NFT_TIMEOUT_SECS = 5;
