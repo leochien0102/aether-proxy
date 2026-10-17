@@ -4,6 +4,7 @@ import json
 import pathlib
 import subprocess
 import tempfile
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CLI = [str(ROOT / 'tests/host/ucode'), str(ROOT / 'aether-proxy/src/aether-proxy'), '--', 'stats']
@@ -174,6 +175,9 @@ def snapshots(base):
 	first, second = read(), read()
 	check('5. at_ms is numeric and monotonic', isinstance(first['at_ms'], (int, float))
 		and isinstance(second['at_ms'], (int, float)) and second['at_ms'] >= first['at_ms'])
+	# A monotonic clock counts from boot; wall-clock milliseconds since 1970 are far larger.
+	check('5. at_ms is monotonic time, not a wall-clock timestamp',
+		first['at_ms'] < time.time() * 1000 - 1e11)
 	for invalid in [['extra'], ['--confdir', str(base)], ['--run-dir'], ['--unknown']]:
 		result = subprocess.run(CLI + ['--json'] + invalid, cwd=ROOT, text=True, capture_output=True)
 		check('usage rejects ' + ' '.join(invalid), result.returncode == 2
