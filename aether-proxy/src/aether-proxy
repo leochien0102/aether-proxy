@@ -69,8 +69,8 @@ function main(argv) {
 		return 0;
 	}
 
-	// TODO(design): subcommands from docs/10 that are not implemented yet are treated
-	// like unknown ones (usage, exit 2); the docs do not define a "not implemented" code.
+	// docs/10「`aether-proxy` 约定」: unimplemented subcommands, like unknown ones,
+	// are usage errors (USAGE, exit 2), not a separate "not implemented" code.
 	if (cmd == 'version')
 		return cmd_version(slice(argv, 1));
 

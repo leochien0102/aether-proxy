@@ -652,6 +652,8 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'nft_load', detail: nft.detail, children };
 		}
+		// Removal errors are logged, but cannot undo an already loaded ruleset (docs/04).
+		apply.sets_remove(ctx);
 		let route = apply.route_add(ctx);
 		if (!route.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);

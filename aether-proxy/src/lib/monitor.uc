@@ -149,8 +149,17 @@ function load_restored_sets(daemon) {
 	if (!table.ok)
 		return { ok: false, detail: table.detail };
 	if (!table.exists)
-		return apply.sets_load(daemon.ctx);
+		return { ...apply.sets_load(daemon.ctx), from_save: true };
 	return apply.sets_export(daemon.ctx);
+};
+
+// docs/04「动态集合的导出与恢复」: sets.save is removed only after nft accepts the rebuilt
+// table, so a failed rebuild stays retryable. Every rebuild path goes through here.
+function load_nft(daemon, path, restored) {
+	let loaded = apply.nft_load(daemon.ctx, path);
+	if (loaded.ok && restored.from_save)
+		apply.sets_remove(daemon.ctx);
+	return loaded;
 };
 
 function action_nft_reload(daemon, machine) {
@@ -163,7 +172,7 @@ function action_nft_reload(daemon, machine) {
 	let path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.nft}`;
 	if (!sys.write_atomic(path, built.artifacts.nft))
 		return { ok: false, detail: `cannot write ${path}: ${sys.error()}` };
-	return apply.nft_load(daemon.ctx, path);
+	return load_nft(daemon, path, restored);
 };
 
 function action_set_tier(daemon, tier, done) {
@@ -224,7 +233,7 @@ function update_node_ip(daemon, machine, done) {
 		done(`xray run -test failed (${test.code}): ${test.stderr}`);
 		return;
 	}
-	let loaded = apply.nft_load(daemon.ctx, nft_path);
+	let loaded = load_nft(daemon, nft_path, restored);
 	if (!loaded.ok) {
 		done(loaded.detail);
 		return;

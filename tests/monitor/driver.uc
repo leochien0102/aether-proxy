@@ -1,4 +1,5 @@
 'use strict';
+// Exercise monitor side effects against isolated fixtures (docs/04 recovery and docs/07 probes).
 
 import * as fs from 'fs';
 import * as uloop from 'uloop';
@@ -143,6 +144,15 @@ else if (scenario == 'xray-failsafe') {
 	let restored = `${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`;
 	let tcp = fs.readfile(restored) ?? '';
 	write(restored, tcp + '  1: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n');
+	let saved_path = `${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`;
+	let saved_before = fs.readfile(saved_path);
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	uloop.run(100);
+	check(fs.readfile(saved_path) == saved_before,
+		'failed missing-table reload preserves sets.save byte for byte');
+	check(d.machine.state == 'failsafe', 'failed missing-table reload stays in failsafe');
+	// The one-shot failure has cleared; the next tick must restore the same elements.
 	monitor.tick(d);
 	while (d.busy) uloop.run(100);
 	uloop.run(100);

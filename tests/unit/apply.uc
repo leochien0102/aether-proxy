@@ -1,4 +1,5 @@
 'use strict';
+// Verify lifecycle primitives with isolated files and command stubs (docs/04 and docs/03).
 
 import * as fs from 'fs';
 import * as apply from 'aetherproxy.apply';
@@ -119,12 +120,23 @@ function run_sets() {
 	if (!apply.sets_save(c, exported.sets).ok)
 		return fail('sets_save failed');
 	let loaded = apply.sets_load(c);
-	if (!loaded.ok || fs.stat(`${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`) != null ||
+	if (!loaded.ok || fs.stat(`${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`) == null ||
 	    sprintf('%.J', loaded.sets) != sprintf('%.J', exported.sets))
-		return fail('sets_load mismatch or file not removed');
+		return fail('sets_load mismatch or recovery source removed prematurely');
+	if (!apply.sets_remove(c).ok || !apply.sets_remove(c).ok)
+		return fail('sets_remove should delete the save file and be idempotent');
 	let empty = apply.sets_load(c);
 	if (!empty.ok || length(empty.sets.gfw4))
 		return fail('empty sets_load should be idempotent');
+	// A directory cannot be unlinked: removal must report FS_FAILED, not silent success.
+	let saved_path = `${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`;
+	if (!sys.mkdir_p(saved_path))
+		return fail('cannot prepare removal failure');
+	if (apply.sets_remove(c).ok || index(read(`${t.base}/var/run/aether-proxy/${C.EVENTS_FILE}`),
+	    '"code": "FS_FAILED"') < 0)
+		return fail('sets_remove failure must emit FS_FAILED');
+	if (!fs.rmdir(saved_path))
+		return fail('cannot remove failure fixture');
 	if (apply.sets_save(c, { gfw4: [ 'bad' ], udirect4: [], uproxy4: [] }).ok)
 		return fail('invalid set data accepted');
 	write(`${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`, '{invalid json');
