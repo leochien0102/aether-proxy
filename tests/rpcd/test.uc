@@ -465,8 +465,8 @@ function scenario_10() {
 		show([ 'data_status', 'events', 'job_status', 'list_file', 'log',
 			'probe_results', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
-	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file',
-		show([ 'check', 'job_start', 'node_import', 'save_file', 'service' ]),
+	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
+		show([ 'check', 'job_start', 'node_import', 'probe_now', 'save_file', 'service' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -476,7 +476,7 @@ function scenario_10() {
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
-			'node_import', 'probe_results', 'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
+			'node_import', 'probe_now', 'probe_results', 'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
@@ -516,7 +516,7 @@ function scenario_10() {
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
 		data_status: 'read', stats: 'read',
 		service: 'write', check: 'write', job_start: 'write',
-		node_import: 'write', save_file: 'write'
+		node_import: 'write', save_file: 'write', probe_now: 'write'
 	};
 
 	for (let name in names) {
@@ -733,6 +733,21 @@ function scenario_17() {
 		match(plugin_src, /const DEFAULT_TIMEOUT_SECS = 10;/) != null, 'timeout policy');
 }
 
+// T8.12b (docs/10 Dashboard part 2): forwarding is immediate and uses the ordinary timeout.
+function scenario_18() {
+	let data = { ok: true, requested_at: 123456 };
+	stub_ctrl({ stdout: show(data), exit: 0 });
+	let argv_of = watch_cli();
+	let result = methods.probe_now.call({ args: {} });
+	expect_eq('18. probe_now forwards exactly probe now --json',
+		show([ 'probe', 'now', '--json' ]), show(argv_of()));
+	check('18. probe_now preserves response and declares empty args',
+		deep_eq(result, data) && deep_eq(methods.probe_now.args, {}), show(result));
+	check('18. probe_now uses default 10-second timeout',
+		match(plugin_src, /call_cli\(\[ 'probe', 'now' \], DEFAULT_TIMEOUT_SECS\)/) != null &&
+		match(plugin_src, /const DEFAULT_TIMEOUT_SECS = 10;/) != null, 'timeout policy');
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -752,6 +767,7 @@ scenario_14();
 scenario_15();
 scenario_16();
 scenario_17();
+scenario_18();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

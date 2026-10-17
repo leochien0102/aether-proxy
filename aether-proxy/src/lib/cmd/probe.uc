@@ -1,6 +1,7 @@
 'use strict';
 
-// `aether-proxy probe nodes|results` (docs/07 「节点可达性检测」, 「实现细节」 2026-10-16).
+// Node probe results (docs/07 「节点可达性检测」) and immediate monitor requests
+// (docs/10 「Dashboard：概览页升级」 part 2).
 //
 // `probe nodes` runs the TCP probes and records the outcome incrementally:
 // one write before probing, one per finished node and one final write with
@@ -16,9 +17,11 @@ import * as pipeline from 'aetherproxy.pipeline';
 import * as probe from 'aetherproxy.probe';
 import * as schema from 'aetherproxy.schema';
 import * as sys from 'aetherproxy.sys';
+import * as state from 'aetherproxy.state';
 
 const USAGE = 'Usage: aether-proxy probe nodes [<node-id>...] [--json] [--confdir <dir>] [--run-dir <dir>]\n'
-	+ '       aether-proxy probe results [--json] [--run-dir <dir>]';
+	+ '       aether-proxy probe results [--json] [--run-dir <dir>]\n'
+	+ '       aether-proxy probe now [--json] [--run-dir <dir>] [--bin-dir <dir>]';
 
 function usage(detail, json) {
 	return pipeline.finish({ json }, { ok: false, code: 'USAGE', detail, errors: [] }, 2, `${detail}\n${USAGE}`);
@@ -194,6 +197,31 @@ function probe_results_cmd(opts, parsed, json) {
 	return pipeline.finish(opts, result, 0, human_result(result));
 };
 
+function probe_now_cmd(opts, parsed, json) {
+	if (length(parsed.positional) > 1)
+		return usage('probe now takes no arguments', json);
+
+	let run_dir = opts.run_dir ?? (opts.sys_root ? replace(opts.sys_root, /\/$/, '') + C.RUN_DIR : C.RUN_DIR);
+	let current = state.read(run_dir);
+	if (index([ 'starting', 'running', 'degraded', 'failsafe' ], current?.state) < 0) {
+		let detail = state.error() ?? 'service is not running';
+		return pipeline.finish(opts, { ok: false, code: 'NOT_RUNNING', detail }, 1, detail);
+	}
+
+	log.set_run_dir(run_dir);
+	let ubus = opts.bin_dir ? opts.bin_dir + '/ubus' : 'ubus';
+	// procd requires an integer signal; omitting instance targets all service instances.
+	let request = sprintf('%.J', { name: C.UPDATE_SERVICE_NAME, signal: C.PROBE_SIGUSR1 });
+	let requested_at = time();
+	let result = sys.run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
+	if (result.code != 0) {
+		// sys.run records the single CMD_FAILED event, including command and exit code.
+		let detail = `ubus call service signal: exit ${result.code}: ${trim(result.stderr)}`;
+		return pipeline.finish(opts, { ok: false, code: 'CMD_FAILED', detail }, 1, detail);
+	}
+	return pipeline.finish(opts, { ok: true, requested_at }, 0, 'Health check requested');
+};
+
 export function run(args) {
 	let parsed = pipeline.parse_args(args);
 	let json = !!(parsed.opts?.json || index(args, '--json') >= 0);
@@ -207,13 +235,16 @@ export function run(args) {
 			return usage(`option --${replace(key, /_/g, '-')} is not supported by probe`, json);
 
 	if (!length(parsed.positional))
-		return usage('expected `probe nodes` or `probe results`', json);
+		return usage('expected `probe nodes`, `probe results` or `probe now`', json);
+
+	if (parsed.positional[0] == 'now')
+		return probe_now_cmd(opts, parsed, json);
 
 	if (parsed.positional[0] == 'results')
 		return probe_results_cmd(opts, parsed, json);
 
 	if (parsed.positional[0] != 'nodes')
-		return usage('expected `probe nodes` or `probe results`', json);
+		return usage('expected `probe nodes`, `probe results` or `probe now`', json);
 
 	return probe_nodes_cmd(opts, parsed, json);
 };

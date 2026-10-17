@@ -29,6 +29,7 @@ Commands:
   status [--json]    print the latest runtime state
   stats [--json]     read traffic and connection counters
   events [options]   list structured events
+  probe now          request an immediate proxy health check
   probe nodes        test TCP reachability of subscription nodes
   probe results      print the latest node reachability results
   sub status         read subscription update records

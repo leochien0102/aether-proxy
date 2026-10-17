@@ -1092,6 +1092,8 @@ function run(args) {
 					if (type(stored) == 'string')
 						base.render_hash.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);
 				}
+				let old_node = monitor_daemon.snapshot.main.node;
+				let old_ip = base.node_ip;
 				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
 				if (changed.stop) {
 					stopping = true;
@@ -1113,6 +1115,10 @@ function run(args) {
 					monitor_daemon.machine.node_ip = changed.state.node_ip;
 					subscription_jitter = reconcile_subscription_jitter(ctx,
 						changed.snapshot.subscriptions, subscription_jitter);
+					// docs/10 Dashboard part 2: measure the new route after it is fully applied.
+					// Unrelated reloads must not add probes to the periodic monitor schedule.
+					if (old_node != changed.snapshot.main.node || old_ip != changed.state.node_ip)
+						tick();
 				}
 				continue;
 			}
