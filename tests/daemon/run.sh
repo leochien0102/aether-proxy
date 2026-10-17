@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Exercise startup, shutdown and signal-driven monitoring with isolated command stubs.
+# Design: docs/04 lifecycle and docs/10 Dashboard part 2 (reload-triggered probes).
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -303,6 +305,83 @@ else
 	bad 'SIGUSR2 test daemon starts' "$(cat "$R2U/daemon.stderr")"
 fi
 stop_daemon; expect 'SIGUSR2 daemon stops cleanly' 0 "$?"; assert_no_children "$R2U"
+
+# T8.12b (docs/10 Dashboard part 2): node identity and IP changes each trigger a probe.
+# The existing timer is 10 s while starting/degraded and 30 s while running.
+# A separate 5 s bound prevents the periodic timer from making this test pass by accident.
+wait_reload_probe() {
+	local wanted="$1"
+	for _ in {1..100}; do
+		[ "$(count_calls "$LP" 'curl ')" -ge "$wanted" ] && return 0
+		sleep 0.05
+	done
+	return 1
+}
+RP="$T/sys-probe-reload"; LP="$RP/calls.log"; make_root "$RP"
+P_CONF="$T/probe-reload-conf"; mkdir -p "$P_CONF"
+cp "$FIX/aetherproxy" "$P_CONF/aetherproxy"
+cat >> "$P_CONF/aetherproxy" <<'CONF'
+
+config node 'n_00000000000000000000000000000002'
+	option protocol 'trojan'
+	option security 'tls'
+	option address 'node.example.com'
+	option port '443'
+	option password 'other-secret'
+CONF
+start_daemon "$RP" "$LP" --confdir "$P_CONF"
+wait_for "$RP/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' \
+	&& ok 'probe reload: startup completed' || bad 'probe reload: startup completed'
+# Startup intentionally persists `starting` until monitor successes reach the default threshold.
+for _ in 1 2; do
+	probe_count=$(count_calls "$LP" 'curl ')
+	kill -USR1 "$DAEMON_PID"
+	wait_reload_probe "$((probe_count + 1))" || bad 'probe reload: warmup probe completed'
+	sleep 0.1
+done
+wait_for "$RP/var/run/aether-proxy/state.json" '"state": "running"' 40 \
+	&& ok 'probe reload: service is running before changes' || bad 'probe reload: service is running before changes'
+probe_count=$(count_calls "$LP" 'curl ')
+# The new node resolves to the same IP, proving node identity alone is sufficient.
+sed -i "0,/option node /s/00000000000000000000000000000001/00000000000000000000000000000002/" "$P_CONF/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_reload_probe "$((probe_count + 1))" \
+	&& ok 'probe reload: node change probes within 5 seconds' \
+	|| bad 'probe reload: node change probes within 5 seconds'
+sleep 0.3
+expect 'probe reload: node change adds exactly one probe' "$((probe_count + 1))" "$(count_calls "$LP" 'curl ')"
+
+probe_count=$(count_calls "$LP" 'curl ')
+# Change only the current node's address; a literal IP bypasses the fixed DNS substitute.
+sed -i "s/option address 'node.example.com'/option address '203.0.113.21'/g" "$P_CONF/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_reload_probe "$((probe_count + 1))" \
+	&& ok 'probe reload: IP change probes within 5 seconds' || bad 'probe reload: IP change probes within 5 seconds'
+sleep 0.3
+expect 'probe reload: IP change adds exactly one probe' "$((probe_count + 1))" "$(count_calls "$LP" 'curl ')"
+expect 'probe reload: new node IP persisted' '203.0.113.21' "$(jget node_ip < "$RP/var/run/aether-proxy/state.json")"
+
+probe_count=$(count_calls "$LP" 'curl ')
+validation_count=$(count_calls "$LP" 'xray run -test')
+sed -i "/option mode 'gfw'/a\\\toption log_level 'debug'" "$P_CONF/aetherproxy"
+kill -HUP "$DAEMON_PID"
+# Wait for validation rather than merely sleeping before the reload could have started.
+wait_count "$LP" 'xray run -test' "$((validation_count + 1))" \
+	&& ok 'probe reload: unrelated reload validated' || bad 'probe reload: unrelated reload validated'
+sleep 1
+expect 'probe reload: unrelated reload adds no probe' "$probe_count" "$(count_calls "$LP" 'curl ')"
+
+# Failed reloads must not trigger an extra probe either.
+probe_count=$(count_calls "$LP" 'curl ')
+sed -i "s/option port '443'/option port '0'/g" "$P_CONF/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_for "$RP/var/run/aether-proxy/events.jsonl" 'CONFIG_INVALID' \
+	&& ok 'probe reload: invalid reload rejected' || bad 'probe reload: invalid reload rejected'
+sleep 0.3
+expect 'probe reload: failed reload adds no probe' "$probe_count" "$(count_calls "$LP" 'curl ')"
+stop_daemon
+expect 'probe reload: daemon stops cleanly' 0 "$?"
+assert_no_children "$RP"
 
 # 3. Repeated cleanup does not repeat destructive operations after the first pass.
 R3="$T/sys3"; L3="$T/sys3/calls.log"; make_root "$R3"; : > "$L3"

@@ -267,6 +267,14 @@ const methods = {
 		args: {}
 	},
 
+	// T8.12b (docs/10 Dashboard part 2): request a monitor round, not a node probe job.
+	probe_now: {
+		call: function(req) {
+			return call_cli([ 'probe', 'now' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
 	probe_results: {
 		call: function(req) {
 			return call_cli([ 'probe', 'results' ], DEFAULT_TIMEOUT_SECS);

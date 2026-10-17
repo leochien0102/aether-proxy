@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# CLI scenario tests for `aether-proxy check` and `render` (docs/tasks/m1 T1.7).
+# CLI scenarios for check/render (docs/tasks/m1 T1.7) and immediate health checks
+# (docs/10 Dashboard part 2, T8.12b).
 # Runs the real entry point on the host through the test-only options of docs/10, so nothing
 # outside a mktemp directory is touched. Needs tests/host/bootstrap.sh to have run.
 set -u
@@ -341,6 +342,55 @@ out="$(ap check --json $(opts "$FIX/sample" "$T/run-pc") --sys-root "$PC/root" -
 expect "check with precheck: exit code 0" 0 "$rc"
 expect "check with precheck: stderr empty" "" "$(cat "$T/pc.stderr")"
 echo "$out" | grep -q '"precheck"' && echo "$out" | grep -q '"xray"' && ok "check with precheck: precheck and xray validation reported" || bad "check with precheck: precheck and xray validation reported" "$out"
+
+# T8.12b (docs/10 Dashboard part 2): exercise the real CLI with a recording ubus.
+mkdir -p "$T/probe-now/bin" "$T/probe-now/run"
+cat > "$T/probe-now/bin/ubus" <<'SH'
+#!/bin/sh
+printf '%s\n' "$@" > "$PROBE_UBUS_ARGS"
+exit "${PROBE_UBUS_RC:-0}"
+SH
+chmod +x "$T/probe-now/bin/ubus"
+export PROBE_UBUS_ARGS="$T/probe-now/argv"
+PN_RUN="$T/probe-now/run"
+for state in starting running degraded failsafe; do
+	printf '{"state":"%s"}\n' "$state" > "$PN_RUN/state.json"
+	before=$(date +%s)
+	out=$(ap probe now --json --run-dir "$PN_RUN" --bin-dir "$T/probe-now/bin"); rc=$?
+	expect "probe now $state: exit 0" 0 "$rc"
+	expect "probe now $state: ok true" true "$(echo "$out" | jget ok)"
+	requested=$(echo "$out" | jget requested_at)
+	[[ "$requested" =~ ^[0-9]+$ ]] && [ "$requested" -ge "$before" ] && [ "$requested" -le "$(date +%s)" ] \
+		&& ok "probe now $state: requested_at is current seconds" \
+		|| bad "probe now $state: requested_at is current seconds"
+	expect "probe now $state: ubus method" "$(printf 'call\nservice\nsignal')" "$(head -n 3 "$PROBE_UBUS_ARGS")"
+	request=$(awk 'NR >= 4' "$PROBE_UBUS_ARGS")
+	expect "probe now $state: service name" aether-proxy "$(echo "$request" | jget name)"
+	# Inspect JSON text too: jget alone would not distinguish 10 from the string "10".
+	[[ "$request" =~ \"signal\"[[:space:]]*:[[:space:]]*10[[:space:]]*[,}] ]] \
+		&& ok "probe now $state: signal is integer 10" || bad "probe now $state: signal is integer 10"
+done
+[ ! -e "$PN_RUN/events.jsonl" ] && ok 'probe now success: no events' || bad 'probe now success: no events'
+for state in stopped error missing corrupt; do
+	rm -f "$PROBE_UBUS_ARGS" "$PN_RUN/state.json"
+	case "$state" in
+		missing) ;;
+		corrupt) printf 'broken JSON' > "$PN_RUN/state.json" ;;
+		*) printf '{"state":"%s"}\n' "$state" > "$PN_RUN/state.json" ;;
+	esac
+	out=$(ap probe now --json --run-dir "$PN_RUN" --bin-dir "$T/probe-now/bin"); rc=$?
+	expect "probe now $state: exit 1" 1 "$rc"
+	expect "probe now $state: NOT_RUNNING" NOT_RUNNING "$(echo "$out" | jget code)"
+	[ ! -e "$PROBE_UBUS_ARGS" ] && ok "probe now $state: no ubus" || bad "probe now $state: no ubus"
+	[ ! -e "$PN_RUN/events.jsonl" ] && ok "probe now $state: no events" || bad "probe now $state: no events"
+done
+printf '{"state":"running"}\n' > "$PN_RUN/state.json"
+out=$(PROBE_UBUS_RC=7 ap probe now --json --run-dir "$PN_RUN" --bin-dir "$T/probe-now/bin"); rc=$?
+expect 'probe now ubus failure: exit 1' 1 "$rc"
+expect 'probe now ubus failure: CMD_FAILED' CMD_FAILED "$(echo "$out" | jget code)"
+expect 'probe now ubus failure: exactly one event' 1 "$(wc -l < "$PN_RUN/events.jsonl" | tr -d ' ')"
+expect 'probe now ubus failure: event code' CMD_FAILED "$(jget code < "$PN_RUN/events.jsonl")"
+expect 'probe now ubus failure: event exit code' 7 "$(jget args.rc < "$PN_RUN/events.jsonl")"
 
 echo
 echo "$pass passed, $fail failed"
