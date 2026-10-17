@@ -1093,3 +1093,54 @@ msgstr "chinadns-ng 可执行文件"
 msgid "dnsmasq instance"
 msgstr "dnsmasq 实例"
 
+msgid "2 seconds"
+msgstr "2 秒"
+
+msgid "5 seconds (default)"
+msgstr "5 秒（默认）"
+
+msgid "10 seconds"
+msgstr "10 秒"
+
+msgid "30 seconds"
+msgstr "30 秒"
+
+msgid "Off"
+msgstr "关闭"
+
+msgid "The probe did not finish within 15 seconds."
+msgstr "检测未在 15 秒内完成"
+
+msgid "The service is not running."
+msgstr "服务未运行"
+
+msgid "Subscription update finished: %s succeeded, %s failed."
+msgstr "订阅更新完成：成功 %s 个，失败 %s 个"
+
+msgid "Measure latency"
+msgstr "测延迟"
+
+msgid "Update subscriptions"
+msgstr "更新订阅"
+
+msgid "Refresh interval"
+msgstr "刷新间隔"
+
+msgid "Switch"
+msgstr "切换"
+
+msgid "Proxy traffic ↑ / ↓"
+msgstr "代理 ↑ / ↓"
+
+msgid "Direct traffic ↑ / ↓"
+msgstr "直连 ↑ / ↓"
+
+msgid "Total traffic ↑ / ↓"
+msgstr "合计 ↑ / ↓"
+
+msgid "Proxy connections"
+msgstr "代理连接"
+
+msgid "Total connections (conntrack)"
+msgstr "总连接（conntrack）"
+

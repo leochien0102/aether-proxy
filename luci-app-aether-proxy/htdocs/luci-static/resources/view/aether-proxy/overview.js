@@ -7,13 +7,14 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview page (docs/10 「概览页」, including the 「启用开关」 section added for
- * T8.11a).
+ * Overview/Dashboard view (docs/10 「概览页」「Dashboard：概览页升级」).
+ * Dashboard controls keep DOM state across refreshes; the model calculates
+ * rates and completion messages, while this view owns requests and timers.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
  * availability and the stop confirmation are all decided there. status is
- * refreshed every 5 seconds via ap.poll; version and the UCI node labels plus
+ * refreshed at the selected interval via ap.poll; version and the UCI node labels plus
  * main.enabled are read once per page load.
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
@@ -25,19 +26,27 @@
 return view.extend({
 	load: function() {
 		return Promise.all([
-			ap.call('status'),
+			ap.call('status').then(function(reply) {
+				return ap.call('stats').then(function(stats) { return { reply: reply, stats: stats }; });
+			}),
 			ap.call('version'),
 			uci.load('aetherproxy').then(function() {
-				const labels = {};
+				const labels = {}, subscriptions = {};
 
 				uci.sections('aetherproxy', 'node', function(s) {
 					labels[s['.name']] = s.label || s['.name'];
+				});
+
+				uci.sections('aetherproxy', 'subscription', function(s) {
+					subscriptions[s['.name']] = s.name || s['.name'];
 				});
 
 				/* docs/10 「启用开关」: the switch reflects main.enabled at page
 				   load; an unset option means 0, the schema default. */
 				return {
 					labels: labels,
+					subscriptions: subscriptions,
+					node: uci.get('aetherproxy', 'main', 'node'),
 					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
 				};
 			})
@@ -91,11 +100,9 @@ return view.extend({
 					E('p', {}, _('The service action failed: %s (%s).').replace('%s', res.code).replace('%s', res.detail ?? '')),
 					'error');
 
-			/* One immediate refresh after the action; the rest is the 5s poll. */
+			/* Keep service actions useful even when automatic refresh is off. */
 			window.setTimeout(function() {
-				ap.call('status').then(function(status) {
-					self.refresh(status);
-				});
+				self.fetchRefresh();
 			}, 1500);
 		});
 	},
@@ -118,6 +125,120 @@ return view.extend({
 			btn(_('Start'), 'cbi-button-apply', buttons.start, () => self.handleService('start')),
 			btn(_('Restart'), 'cbi-button-apply', buttons.restart, () => self.handleService('restart')),
 			btn(_('Stop'), 'cbi-button-negative', buttons.stop, () => self.handleService('stop'))
+		]);
+	},
+
+	/* Manual refresh, service actions and replacement pollers share the same
+	   promise: ap.poll alone cannot serialize these independent entry points. */
+	fetchRefresh: function() {
+		if (this.refreshing)
+			return this.refreshing;
+		this.refreshing = ap.call('status').then((reply) => {
+			return ap.call('stats').then((stats) => {
+				this.refresh(reply, stats);
+			});
+		}).finally(() => { this.refreshing = null; });
+		return this.refreshing;
+	},
+
+	readInterval: function() {
+		try {
+			return model.refresh_interval(window.localStorage.getItem('aether-proxy.refresh'));
+		}
+		catch (e) {
+			console.warn('Unable to read Dashboard refresh preference:', e);
+			return model.refresh_interval(null);
+		}
+	},
+
+	setInterval: function(value) {
+		try {
+			window.localStorage.setItem('aether-proxy.refresh', value);
+		}
+		catch (e) {
+			console.warn('Unable to save Dashboard refresh preference:', e);
+		}
+		this.startPolling(model.refresh_interval(value));
+	},
+
+	startPolling: function(interval) {
+		if (this.poller)
+			this.poller.stop();
+		this.poller = interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
+	},
+
+	handleNode: function(node) {
+		uci.set('aetherproxy', 'main', 'node', node);
+		return uci.save().then(function() { return ui.changes.apply(true); });
+	},
+
+	handleProbe: function() {
+		const button = this.probeButton;
+		button.disabled = true;
+		return ap.call('probe_now').then((reply) => {
+			if (!reply.ok)
+				return model.probe_result(reply);
+			/* The deadline also covers a slow status RPC. Late replies must not
+			   start another poll or overwrite the displayed timeout. */
+			return new Promise((resolve) => {
+				let finished = false, next;
+				const finish = (text) => {
+					if (finished)
+						return;
+					finished = true;
+					window.clearTimeout(deadline);
+					window.clearTimeout(next);
+					resolve(text);
+				};
+				const deadline = window.setTimeout(() => {
+					finish(model.probe_result({ code: 'TIMEOUT' }));
+				}, 15000);
+				const poll = () => ap.call('status').then((status) => {
+					if (finished)
+						return;
+					const completion = model.probe_completion(status, reply.requested_at);
+					if (completion.done)
+						finish(completion.text);
+					else
+						next = window.setTimeout(poll, 1000);
+				});
+				next = window.setTimeout(poll, 1000);
+			});
+		}).then((text) => {
+			dom.content(this.probeMessage, text);
+		}).finally(() => { button.disabled = false; });
+	},
+
+	handleSubscriptions: function() {
+		this.subButton.disabled = true;
+		return ap.run_job('sub_update', []).then((job) => {
+			const result = model.subscription_result(job, this.subscriptions);
+			dom.content(this.subMessage, E('div', {}, [
+				E('p', {}, result.text), E('ul', {}, result.failures.map((text) => E('li', {}, text)))
+			]));
+		}).finally(() => { this.subButton.disabled = false; });
+	},
+
+	dashboardControls: function(interval, node) {
+		const select = E('select', { change: (ev) => this.setInterval(ev.target.value) },
+			model.refresh_options().map((option) => E('option', {
+				value: option.value, selected: Number(option.value) * 1000 === interval ? 'selected' : null
+			}, option.text)));
+		const nodes = E('select', {}, Object.keys(this.labels).map((id) => E('option', {
+			value: id, selected: id === node ? 'selected' : null
+		}, this.labels[id])));
+		const button = (text, fn) => E('button', {
+			'class': 'cbi-button cbi-button-apply', click: ui.createHandlerFn(this, fn)
+		}, text);
+		this.probeButton = button(_('Measure latency'), () => this.handleProbe());
+		this.subButton = button(_('Update subscriptions'), () => this.handleSubscriptions());
+		this.probeMessage = E('div', { 'aria-live': 'polite' });
+		this.subMessage = E('div', { 'aria-live': 'polite' });
+		return E('div', {}, [
+			E('label', {}, [ _('Refresh interval'), select ]),
+			button(_('Refresh'), () => this.fetchRefresh()),
+			nodes, button(_('Switch'), () => this.handleNode(nodes.value)),
+			this.probeButton, this.probeMessage, this.subButton, this.subMessage
 		]);
 	},
 
@@ -154,43 +275,48 @@ return view.extend({
 	},
 
 	render: function(data) {
-		const self = this;
-
 		this.version = data[1];
 		this.labels = data[2].labels;
+		this.subscriptions = data[2].subscriptions;
 		this.enabled = data[2].enabled;
 
 		this.content = E('div', {});
 
 		/* Build the view model once here so the switch description also comes
 		   from the model; later refreshes replace only this.content, never the
-		   switch, so the 5s poll cannot fight with the user's checkbox. */
-		const vm = this.refresh(data[0]);
+		   switch, so polling cannot fight with the user's checkbox. */
+		const vm = this.refresh(data[0].reply, data[0].stats);
+		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('aether-proxy')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.')),
 			this.enableSwitch(vm.enabled_note),
+			this.dashboardControls(interval, data[2].node),
 			this.content
 		]);
 
-		this.poller = ap.poll(function() {
-			return ap.call('status').then(function(status) {
-				self.refresh(status);
-			});
-		}, 5000);
+		this.startPolling(interval);
 
 		return root;
 	},
 
-	refresh: function(status) {
+	refresh: function(status, stats) {
 		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000), this.enabled);
 
 		/* Keep the latest model output so handleService can use its
 		   stop_confirmation without rebuilding the model. */
 		this.vm = vm;
 
-		const parts = [];
+		const traffic = model.traffic(this.previousStats, stats);
+		this.previousStats = stats;
+		const parts = [ E('table', { 'class': 'table' }, [
+			this.row(_('Proxy traffic ↑ / ↓'), traffic.proxy.tx, ' / ', traffic.proxy.rx),
+			this.row(_('Direct traffic ↑ / ↓'), traffic.direct.tx, ' / ', traffic.direct.rx),
+			this.row(_('Total traffic ↑ / ↓'), traffic.total.tx, ' / ', traffic.total.rx),
+			this.row(_('Proxy connections'), traffic.connections.proxy),
+			this.row(_('Total connections (conntrack)'), traffic.connections.total)
+		]) ];
 
 		if (!vm.ok) {
 			parts.push(E('div', { 'class': 'alert-message error' }, vm.error));

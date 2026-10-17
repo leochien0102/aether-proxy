@@ -2,7 +2,7 @@
 'require baseclass';
 
 /*
- * Pure view model for the overview page (docs/10 「页面卡的写法」「概览页」).
+ * Pure overview/Dashboard model (docs/10 「页面卡的写法」「概览页」「Dashboard：概览页升级」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -102,7 +102,106 @@ function notice_text(n) {
 	}
 }
 
+/* Counter resets invalidate only the affected direction; a WAN device change
+   invalidates WAN rates, not the independent nft proxy counters. */
+function byte_rate(previous, current, direction, elapsed) {
+	if (!previous || !current || !Number.isFinite(elapsed) || elapsed <= 0)
+		return null;
+	const before = previous[direction + '_bytes'];
+	const after = current[direction + '_bytes'];
+	if (!Number.isFinite(before) || !Number.isFinite(after) || after < before)
+		return null;
+	return (after - before) * 1000 / elapsed;
+}
+
+function failure_text(reply) {
+	return (reply?.code ?? 'RPC_FAILED') + (reply?.detail ? ': ' + reply.detail : '');
+}
+
+function rate_text(rate) {
+	if (rate == null)
+		return '–';
+	const units = [ 'B/s', 'KB/s', 'MB/s' ];
+	let unit = 0;
+	while (rate >= 1024 && unit < units.length - 1) {
+		rate /= 1024;
+		unit++;
+	}
+	return rate.toFixed(1) + ' ' + units[unit];
+}
+
 return baseclass.extend({
+	refresh_options: function() {
+		return [
+			{ value: '2', text: _('2 seconds') },
+			{ value: '5', text: _('5 seconds (default)') },
+			{ value: '10', text: _('10 seconds') },
+			{ value: '30', text: _('30 seconds') },
+			{ value: '0', text: _('Off') }
+		];
+	},
+
+	refresh_interval: function(value) {
+		return [ '2', '5', '10', '30', '0' ].includes(value) ? Number(value) * 1000 : 5000;
+	},
+
+	traffic: function(previous, current) {
+		const elapsed = previous && current ? current.at_ms - previous.at_ms : 0;
+		const result = { proxy: {}, direct: {}, total: {} };
+		for (const direction of [ 'tx', 'rx' ]) {
+			const proxy = byte_rate(previous?.proxy, current?.proxy, direction, elapsed);
+			const same_device = previous?.wan?.dev === current?.wan?.dev;
+			const total = same_device ? byte_rate(previous?.wan, current?.wan, direction, elapsed) : null;
+			const direct = proxy == null || total == null ? null : Math.max(0, total - proxy);
+			result.proxy[direction] = rate_text(proxy);
+			result.total[direction] = rate_text(total);
+			result.direct[direction] = rate_text(direct);
+		}
+		result.connections = {
+			proxy: current?.connections?.proxy == null ? '–' : String(current.connections.proxy),
+			total: current?.connections?.total == null ? '–' : String(current.connections.total)
+		};
+		return result;
+	},
+
+	probe_result: function(reply) {
+		if (reply?.code == 'TIMEOUT')
+			return _('The probe did not finish within 15 seconds.');
+		if (reply?.code == 'NOT_RUNNING')
+			return _('The service is not running.');
+		if (!reply || reply.code)
+			return failure_text(reply);
+		return reply.ok ? fmt(_('Healthy, %s ms.'), reply.latency_ms ?? '?') : _('Probe failed.');
+	},
+
+	/* Keep completion detection here: the view must not interpret last_probe. */
+	probe_completion: function(reply, requested_at) {
+		if (reply?.ok === false)
+			return { done: true, text: this.probe_result(reply) };
+		const probe = reply?.last_probe;
+		if (!probe || probe.at < requested_at || typeof probe.at != 'number')
+			return { done: false };
+		return { done: true, text: probe.ok
+			? fmt(_('Healthy, %s ms.'), probe.latency_ms ?? '?') : _('Probe failed.') };
+	},
+
+	subscription_result: function(job, labels) {
+		const subs = job?.result?.subs;
+		if (!subs)
+			return { text: failure_text({ code: job?.code ?? job?.result?.code,
+				detail: job?.detail ?? job?.result?.detail }), failures: [] };
+		let success = 0;
+		const failures = [];
+		for (const [id, sub] of Object.entries(subs)) {
+			if (sub.ok)
+				success++;
+			else
+				failures.push((labels?.[id] || id) + ': ' + (sub.code ?? '?'));
+		}
+		return { text: fmt(_('Subscription update finished: %s succeeded, %s failed.'), success, failures.length),
+			failures: failures };
+	},
+
 	/* status: the object resolved by ap.call('status'), version: the object
 	   resolved by ap.call('version'), labels: node section name -> label from
 	   UCI, now: current unix time in seconds. Returns the view model. */

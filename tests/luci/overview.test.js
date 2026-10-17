@@ -1,6 +1,6 @@
 'use strict';
 
-/* Scenario tests 7-9 for the overview page (docs/tasks/m8.md T8.4).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a and T8.12c Dashboard).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -99,7 +99,10 @@ function loadView(overrides = {}) {
 		dom: { content: (el, node) => { el.content = node; } },
 		'aether-proxy.common': ap,
 		'aether-proxy.model.overview': modelMod
-	}, { window: { setTimeout: () => {} }, document: { addEventListener() {}, removeEventListener() {} } });
+	}, { window: Object.assign({
+		setTimeout: () => {}, clearTimeout: () => {},
+		localStorage: { getItem: () => null, setItem: () => {} }
+	}, overrides.window ?? {}), document: { addEventListener() {}, removeEventListener() {} } });
 }
 
 /* Expected text for a translated template with its %s filled in. */
@@ -382,10 +385,15 @@ test('scenario 9: static view checks — model only, stop button negative and co
 	assert.doesNotMatch(src, /cbi-button-reset/);
 
 	/* 5s poll, service via ap.call, notification on failure */
-	assert.match(src, /}, 5000\)/);
+	assert.match(src, /this\.startPolling\(interval\)/);
+	assert.equal(loadView().readInterval(), 5000, 'default remains the original 5s poll');
 	assert.match(src, /ap\.call\('service', \{ action: action \}\)/);
 	assert.match(src, /ui\.addNotification\(/);
 });
+
+function dashboardModel() {
+	return loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: {} });
+}
 
 function findAll(node, tag, out = []) {
 	if (!node || typeof node != 'object')
@@ -427,5 +435,316 @@ test('T8.11a review: service buttons are clickable and stop asks with the model 
 	}
 	finally {
 		globalThis.confirm = saved;
+	}
+});
+
+function readings(at_ms, proxy_tx, proxy_rx, wan_tx, wan_rx, dev = 'eth1') {
+	return { ok: true, at_ms, proxy: { tx_bytes: proxy_tx, rx_bytes: proxy_rx },
+		wan: { dev, tx_bytes: wan_tx, rx_bytes: wan_rx }, connections: { proxy: 3, total: 10 } };
+}
+
+test('T8.12c scenario 1a: rates, direct clamp, units and connections', () => {
+	const model = dashboardModel();
+	const before = readings(1000, 100, 200, 500, 600);
+	const after = readings(3000, 103, 200 + 3072, 500 + 3 * 1048576, 600 + 1024);
+	const vm = model.traffic(before, after);
+	assert.deepEqual(vm.proxy, { tx: '1.5 B/s', rx: '1.5 KB/s' });
+	assert.deepEqual(vm.total, { tx: '1.5 MB/s', rx: '512.0 B/s' });
+	assert.deepEqual(vm.direct, { tx: '1.5 MB/s', rx: '0.0 B/s' });
+	assert.deepEqual(vm.connections, { proxy: '3', total: '10' });
+	assert.deepEqual(model.traffic(null, {}).connections, { proxy: '–', total: '–' });
+	// Units step at 1024, not 1000: 1000 B/s stays in bytes.
+	const edge = model.traffic(readings(0, 0, 0, 0, 0), readings(1000, 1000, 1023, 1024, 0));
+	assert.deepEqual(edge.proxy, { tx: '1000.0 B/s', rx: '1023.0 B/s' });
+	assert.equal(edge.total.tx, '1.0 KB/s');
+});
+
+test('T8.12c scenario 1b: first sample, nulls, resets, device and clock changes invalidate affected rates', () => {
+	const model = dashboardModel();
+	const before = readings(1000, 100, 200, 500, 600);
+	const after = readings(2000, 200, 400, 1500, 2600);
+	for (const previous of [ null, readings(2000, 100, 200, 500, 600),
+		readings(3000, 100, 200, 500, 600) ]) {
+		const vm = model.traffic(previous, after);
+		for (const kind of [ 'proxy', 'total', 'direct' ])
+			assert.deepEqual(vm[kind], { tx: '–', rx: '–' });
+	}
+	for (const group of [ 'proxy', 'wan' ]) {
+		for (const direction of [ 'tx', 'rx' ]) {
+			for (const sample of [ 'previous', 'current' ]) {
+				const p = structuredClone(before), c = structuredClone(after);
+				(sample === 'previous' ? p : c)[group][direction + '_bytes'] = null;
+				const vm = model.traffic(p, c);
+				assert.equal(vm[group === 'wan' ? 'total' : 'proxy'][direction], '–');
+				assert.equal(vm.direct[direction], '–');
+			}
+			const c = structuredClone(after);
+			c[group][direction + '_bytes'] = 1;
+			const vm = model.traffic(before, c);
+			assert.equal(vm[group === 'wan' ? 'total' : 'proxy'][direction], '–');
+			assert.equal(vm.direct[direction], '–');
+		}
+	}
+	const changed = model.traffic(before, { ...after, wan: { ...after.wan, dev: 'pppoe-wan' } });
+	assert.deepEqual(changed.proxy, { tx: '100.0 B/s', rx: '200.0 B/s' });
+	assert.deepEqual(changed.total, { tx: '–', rx: '–' });
+	assert.deepEqual(changed.direct, { tx: '–', rx: '–' });
+});
+
+test('T8.12c scenario 2: refresh options and storage parsing including exceptions and Off', () => {
+	const model = dashboardModel();
+	assert.deepEqual(model.refresh_options(), [
+		{ value: '2', text: '2 秒' }, { value: '5', text: '5 秒（默认）' },
+		{ value: '10', text: '10 秒' }, { value: '30', text: '30 秒' }, { value: '0', text: '关闭' }
+	]);
+	for (const value of [ '2', '5', '10', '30', '0' ]) {
+		const page = loadView({ window: { localStorage: { getItem: (key) => {
+			assert.equal(key, 'aether-proxy.refresh');
+			return value;
+		} } } });
+		assert.equal(page.readInterval(), Number(value) * 1000);
+	}
+	for (const value of [ null, '', '7', '5000', '05', 'false' ])
+		assert.equal(model.refresh_interval(value), 5000);
+	const saved = console.warn;
+	const warnings = [];
+	console.warn = (...args) => warnings.push(args);
+	try {
+		const page = loadView({ window: { localStorage: {
+			getItem: () => { throw new Error('blocked'); },
+			setItem: () => { throw new Error('blocked'); }
+		} } });
+		assert.equal(page.readInterval(), 5000);
+		page.setInterval('0');
+		assert.equal(warnings.length, 2, 'storage failures are reported, not swallowed');
+		assert.equal(page.poller, null);
+	}
+	finally {
+		console.warn = saved;
+	}
+});
+
+test('T8.12c scenario 3: probe wording, freshness and subscription success/failure summary', () => {
+	const model = dashboardModel();
+	assert.equal(model.probe_result({ ok: true, latency_ms: 12 }), tr('Healthy, %s ms.', 12));
+	assert.equal(model.probe_result({ ok: false }), tr('Probe failed.'));
+	assert.equal(model.probe_result({ code: 'TIMEOUT' }), '检测未在 15 秒内完成');
+	assert.equal(model.probe_result({ code: 'NOT_RUNNING' }), '服务未运行');
+	assert.equal(model.probe_result({ code: 'CMD_FAILED', detail: 'ubus' }), 'CMD_FAILED: ubus');
+	assert.deepEqual(model.probe_completion({ last_probe: { at: 9, ok: true } }, 10), { done: false });
+	assert.deepEqual(model.probe_completion({}, 10), { done: false });
+	assert.deepEqual(model.probe_completion({ last_probe: { at: 10, ok: false } }, 10),
+		{ done: true, text: tr('Probe failed.') });
+	assert.deepEqual(model.subscription_result({ result: { subs: {
+		s_a: { ok: true }, s_b: { ok: false, code: 'SUB_FETCH_FAILED' },
+		s_c: { ok: true }, s_d: { ok: false, code: 'CONFIG_INVALID' }
+	} } }, { s_b: 'Airport' }), {
+		text: '订阅更新完成：成功 2 个，失败 2 个',
+		failures: [ 'Airport: SUB_FETCH_FAILED', 's_d: CONFIG_INVALID' ]
+	});
+	assert.deepEqual(model.subscription_result({ ok: false, code: 'RPC_FAILED', detail: 'offline' }),
+		{ text: 'RPC_FAILED: offline', failures: [] });
+	assert.deepEqual(model.subscription_result({ ok: false, code: 'TIMEOUT' }),
+		{ text: 'TIMEOUT', failures: [] });
+});
+
+test('T8.12c scenario 4a: render, sequential serialized refresh, interval replacement, storage and manual refresh',
+	async () => {
+	const calls = [], polls = [], writes = [];
+	let release;
+	const page = loadView({
+		ap: {
+			call: async (method) => {
+				calls.push(method);
+				if (method === 'status') {
+					if (release !== undefined)
+						await new Promise((resolve) => { release = resolve; });
+					return { ok: true, state: 'running' };
+				}
+				return method === 'stats' ? readings(calls.length * 1000, 1, 2, 3, 4) : { ok: true };
+			},
+			poll: (fn, ms) => {
+				const poll = { fn, ms, stopped: false, stop() { this.stopped = true; } };
+				polls.push(poll);
+				return poll;
+			}
+		},
+		window: { localStorage: { getItem: () => null, setItem: (...args) => writes.push(args) } }
+	});
+	const data = await page.load();
+	assert.ok(calls.indexOf('stats') > calls.indexOf('status'));
+	const root = page.render(data);
+	assert.equal(polls[0].ms, 5000);
+	const selects = findAll(root, 'select');
+	selects[0].attrs.change({ target: { value: '10' } });
+	assert.equal(polls[0].stopped, true);
+	assert.equal(polls[1].ms, 10000);
+	selects[0].attrs.change({ target: { value: '0' } });
+	assert.equal(polls[1].stopped, true);
+	assert.equal(page.poller, null);
+	assert.deepEqual(writes, [ [ 'aether-proxy.refresh', '10' ], [ 'aether-proxy.refresh', '0' ] ]);
+	calls.length = 0;
+	release = true;
+	const manual = findAll(root, 'button').find((b) => b.children === '刷新');
+	const first = manual.attrs.click();
+	const second = page.fetchRefresh();
+	assert.equal(first, second, 'manual and poll requests share the in-flight promise');
+	assert.deepEqual(calls, [ 'status' ], 'stats waits for status');
+	release();
+	await first;
+	assert.deepEqual(calls, [ 'status', 'stats' ]);
+});
+
+test('T8.12c scenario 4b: node selection switches via UCI save and rollback apply', async () => {
+	const order = [];
+	const page = loadView({
+		uci: {
+			sections: (cfg, type, cb) => {
+				if (type === 'node') {
+					cb({ '.name': 'n_a', label: 'Alpha' });
+					cb({ '.name': 'n_b' });
+				}
+			},
+			get: (cfg, sec, opt) => opt === 'node' ? 'n_a' : '1',
+			set: (...args) => order.push([ 'set', ...args ]),
+			save: async () => { order.push([ 'save' ]); }
+		},
+		ui: { changes: { apply: (rollback) => order.push([ 'apply', rollback ]) } }
+	});
+	const root = page.render(await page.load());
+	const nodes = findAll(root, 'select')[1];
+	assert.equal(nodes.children[0].children, 'Alpha');
+	assert.equal(nodes.children[0].attrs.selected, 'selected');
+	assert.equal(nodes.children[1].children, 'n_b');
+	nodes.value = 'n_b';
+	await findAll(root, 'button').find((b) => b.children === '切换').attrs.click();
+	assert.deepEqual(order, [ [ 'set', 'aetherproxy', 'main', 'node', 'n_b' ], [ 'save' ], [ 'apply', true ] ]);
+});
+
+function timerQueue() {
+	const timers = [];
+	return {
+		timers,
+		setTimeout: (fn, ms) => {
+			const timer = { fn, ms, cleared: false };
+			timers.push(timer);
+			return timer;
+		},
+		clearTimeout: (timer) => { if (timer) timer.cleared = true; },
+		run: async (ms) => {
+			const timer = timers.find((t) => t.ms === ms && !t.cleared);
+			assert.ok(timer, `pending ${ms}ms timer exists`);
+			timer.cleared = true;
+			await timer.fn();
+		}
+	};
+}
+
+test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every second and disables while busy',
+	async () => {
+	const clock = timerQueue(), calls = [];
+	let count = 0;
+	const page = loadView({ window: clock, ap: {
+		call: async (method) => {
+			calls.push(method);
+			return method === 'probe_now' ? { ok: true, requested_at: 10 }
+				: { ok: true, last_probe: { at: ++count === 1 ? 9 : 10, ok: true, latency_ms: 42 } };
+		}
+	} });
+	page.labels = {};
+	const controls = page.dashboardControls(5000);
+	const pending = findAll(controls, 'button').find((b) => b.children === '测延迟').attrs.click();
+	assert.equal(page.probeButton.disabled, true);
+	await Promise.resolve();
+	await clock.run(1000);
+	assert.equal(page.probeMessage.content, undefined, 'stale result cannot finish the probe');
+	await clock.run(1000);
+	await pending;
+	assert.deepEqual(calls, [ 'probe_now', 'status', 'status' ]);
+	assert.equal(page.probeMessage.content, tr('Healthy, %s ms.', 42));
+	assert.equal(page.probeButton.disabled, false);
+	assert.ok(clock.timers.every((t) => t.cleared));
+});
+
+test('T8.12c scenario 4d: latency deadline wins over a late RPC; NOT_RUNNING and other errors are shown', async () => {
+	const clock = timerQueue();
+	let release;
+	const page = loadView({ window: clock, ap: {
+		call: (method) => method === 'probe_now' ? Promise.resolve({ ok: true, requested_at: 10 })
+			: new Promise((resolve) => { release = resolve; })
+	} });
+	page.labels = {};
+	page.dashboardControls(5000);
+	const pending = page.handleProbe();
+	await Promise.resolve();
+	const rpc = clock.run(1000);
+	await clock.run(15000);
+	await pending;
+	assert.equal(page.probeMessage.content, '检测未在 15 秒内完成');
+	assert.equal(page.probeButton.disabled, false);
+	release({ ok: true, last_probe: { at: 10, ok: true, latency_ms: 1 } });
+	await rpc;
+	assert.equal(page.probeMessage.content, '检测未在 15 秒内完成', 'late reply cannot overwrite timeout');
+	assert.ok(clock.timers.every((t) => t.cleared));
+	for (const [code, text] of [ [ 'NOT_RUNNING', '服务未运行' ], [ 'CMD_FAILED', 'CMD_FAILED: ubus' ] ]) {
+		const errorPage = loadView({ ap: { call: async () => ({ ok: false, code, detail: 'ubus' }) } });
+		errorPage.labels = {};
+		errorPage.dashboardControls(5000);
+		await errorPage.handleProbe();
+		assert.equal(errorPage.probeMessage.content, text);
+		assert.equal(errorPage.probeButton.disabled, false);
+	}
+});
+
+test('T8.12c scenario 4e: subscription button runs sub_update with no args, locks and shows result', async () => {
+	let finish;
+	const calls = [];
+	const page = loadView({ ap: { run_job: (kind, args) => {
+		calls.push([ kind, args ]);
+		return new Promise((resolve) => { finish = resolve; });
+	} } });
+	page.labels = {};
+	page.subscriptions = { s_a: 'Airport' };
+	const controls = page.dashboardControls(5000);
+	const pending = findAll(controls, 'button').find((b) => b.children === '更新订阅').attrs.click();
+	assert.equal(page.subButton.disabled, true);
+	assert.deepEqual(calls, [ [ 'sub_update', [] ] ]);
+	finish({ state: 'failed', result: { subs: { s_a: { ok: false, code: 'SUB_FETCH_FAILED' } } } });
+	await pending;
+	assert.equal(page.subButton.disabled, false);
+	assert.equal(page.subMessage.content.children[0].children, '订阅更新完成：成功 0 个，失败 1 个');
+	assert.equal(findTag(page.subMessage.content, 'li').children, 'Airport: SUB_FETCH_FAILED');
+});
+
+test('T8.12c service refresh: action schedules serialized status/stats even with automatic refresh off', async () => {
+	const clock = timerQueue(), calls = [];
+	const page = loadView({ window: clock, ap: { call: async (method, params) => {
+		calls.push([ method, params ]);
+		return method === 'status' ? { ok: true, state: 'running' }
+			: method === 'stats' ? readings(1000, 1, 2, 3, 4) : { ok: true };
+	} } });
+	page.content = E('div', {});
+	page.labels = {};
+	page.enabled = true;
+	page.startPolling(0);
+	await page.handleService('restart');
+	assert.deepEqual(calls, [ [ 'service', { action: 'restart' } ] ]);
+	await clock.run(1500);
+	await page.refreshing;
+	assert.deepEqual(calls.map((call) => call[0]), [ 'service', 'status', 'stats' ]);
+	assert.equal(page.vm.state_text, '运行中');
+	assert.equal(page.previousStats.at_ms, 1000);
+	assert.equal(page.poller, null);
+});
+
+test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
+	const src = fs.readFileSync(VIEW, 'utf8');
+	assert.doesNotMatch(src, /rpc\s*\.\s*declare|cbi-button-reset|innerHTML/);
+	for (const operation of [ 'getItem', 'setItem' ])
+		assert.match(src, new RegExp('try \\{[^}]*localStorage\\.' + operation + '[^}]*\\}\\s*catch'));
+	for (const file of [ MODEL, VIEW ]) {
+		const source = fs.readFileSync(file, 'utf8');
+		for (const match of source.matchAll(/_\('([^'\n]*)'\)/g))
+			assert.ok(po[match[1]], `translation exists for ${match[1]}`);
 	}
 });
