@@ -82,3 +82,15 @@
 - 待验证：代理目标的 TCP 连接是**立即被拒绝**（TPROXY 找不到监听 socket，包经表 233 送入本机，无 socket 时内核回 RST），还是**挂起直到超时**。
   下次真机窗口顺带测：让节点解析失败（错误的节点域名）+ `fail_open=0`，在 LAN 上 `curl -m 10 https://ipinfo.io/ip`，看耗时与报错。
 - 若为挂起：考虑在 Xray 缺位时给 proxy 链加 `reject with tcp reset`（快速失败），属新的设计决定。
+
+## B9 T8.14 补注释时发现的待定（2026-10-17）
+
+T8.14 只加注释、不改代码，下列位置找不到设计依据，由设计负责人逐条判断（可能是缺陷，也可能只是缺理由）：
+
+- `lib/apply.uc` 删除重复 policy rule 封顶 16 次：上限的依据未写明。
+- `lib/apply.uc` `sets_load` 解析成功即删除 `sets.save`，实际 nft 加载在后面：加载失败时会失去再次恢复的机会。**疑似缺陷**，优先看。
+- `lib/apply.uc` `read_lkg` 遇 JSON 损坏返回 `null` 且不记 `FS_FAILED`：与 docs/12「错误必须显式处理」如何衔接待定。
+- `lib/log.uc` 事件历史裁剪是「读全文件 → 写临时文件 → rename」：daemon 与作业进程同时追加时可能丢行，是否接受、由谁串行化未定。
+- `lib/reload.uc` 计划的旧哈希取自 `daemon.state.render_hash`：daemon 在调用前已用 current 的实际文件覆盖（`daemon.uc` 的 reload 处理），需确认两边一致后在 reload.uc 补理由。
+- docs/04「进程模型」末尾仍写「回滚后 daemon 非零退出」，与「启动」中「启动失败留在 error 并退避」冲突，改文档。
+- 原有 `TODO(design)`：入口对未实现子命令的处理（`src/aether-proxy`）、`sub status` 读配置失败时的回复（`lib/cmd/sub.uc`）。
