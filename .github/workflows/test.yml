@@ -35,6 +35,9 @@ jobs:
       - name: Run CLI scenario tests
         run: bash tests/cli/run.sh
 
+      - name: Run traffic stats tests
+        run: bash tests/stats/run.sh
+
       - name: Run status notices tests
         run: bash tests/status/run.sh
 

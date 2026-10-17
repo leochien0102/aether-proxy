@@ -1,7 +1,7 @@
 'use strict';
 
 // nftables ruleset renderer (docs/02-dataplane.md "nft 规则模板"). Pure function: snapshot and
-// ctx in, text out.
+// ctx in, text out. Traffic-only counters follow docs/10 "Dashboard", part 1.
 
 import * as C from 'aetherproxy.const';
 import { ip_key, cidr_parts } from 'aetherproxy.net';
@@ -125,6 +125,17 @@ export function render(snapshot, ctx) {
 	}
 
 	push(out, '');
+	// Count node traffic independently of LAN policy, including UDP and degraded startup.
+	push(out, `${T}counter proxy_tx {}`);
+	push(out, `${T}counter proxy_rx {}`);
+	push(out, `${T}chain traffic_out {`);
+	push(out, `${T}${T}type filter hook output priority filter; policy accept;`);
+	push(out, `${T}${T}ip daddr @node_ip4 counter name proxy_tx`);
+	push(out, `${T}}`);
+	push(out, `${T}chain traffic_in {`);
+	push(out, `${T}${T}type filter hook input priority filter - 2; policy accept;`);
+	push(out, `${T}${T}ip saddr @node_ip4 counter name proxy_rx`);
+	push(out, `${T}}`);
 	push(out, `${T}chain prerouting {`);
 	push(out, `${T}${T}type filter hook prerouting priority mangle; policy accept;`);
 	push(out, `${T}${T}iifname != { ${lan} } return`);

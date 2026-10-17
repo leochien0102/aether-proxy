@@ -7,6 +7,7 @@ import * as C from 'aetherproxy.const';
 import * as check from 'aetherproxy.cmd.check';
 import * as render from 'aetherproxy.cmd.render';
 import * as status from 'aetherproxy.cmd.status';
+import * as stats from 'aetherproxy.cmd.stats';
 import * as events from 'aetherproxy.cmd.events';
 import * as probe from 'aetherproxy.cmd.probe';
 import * as daemon from 'aetherproxy.cmd.daemon';
@@ -26,6 +27,7 @@ Commands:
   check [--json]     validate the configuration and render into staging
   render <name>      print one artifact (xray|nft|chinadns|dnsmasq)
   status [--json]    print the latest runtime state
+  stats [--json]     read traffic and connection counters
   events [options]   list structured events
   probe nodes        test TCP reachability of subscription nodes
   probe results      print the latest node reachability results
@@ -79,6 +81,9 @@ function main(argv) {
 
 	if (cmd == 'status')
 		return status.run(slice(argv, 1));
+
+	if (cmd == 'stats')
+		return stats.run(slice(argv, 1));
 
 	if (cmd == 'events')
 		return events.run(slice(argv, 1));
