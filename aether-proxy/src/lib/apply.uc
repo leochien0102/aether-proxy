@@ -1,4 +1,7 @@
 'use strict';
+// Lifecycle side-effect primitives: nft, policy routes, DNS handoff and node resolution.
+// Design: docs/04「动态集合的导出与恢复」, docs/04「重载（`aether-proxy reload`，UCI 变更触发）」,
+// and docs/03「dnsmasq 对接」「引导解析（节点域名）」.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
@@ -67,6 +70,8 @@ function nft_load(ctx, file) {
 function nft_delete(ctx) {
 	setup_log(ctx);
 	let r = exec(ctx, 'nft', [ 'delete', 'table', ...nft_table_args() ], true);
+	// Cleanup is idempotent (docs/04「进程模型（已定）」): an absent table needs no deletion,
+	// but other failures must still reach the caller rather than masquerade as success.
 	if (r.code == 0 || missing_object(r.stderr + r.stdout))
 		return result('nft table deleted or absent');
 	return failed(ctx, 'nft_delete', `nft delete table failed (${r.code}): ${r.stderr}`);
@@ -376,6 +381,8 @@ function dnsmasq_install(ctx, content) {
 		return failed(ctx, 'dnsmasq_install', `cannot read existing ${path}: ${fs.error() ?? 'unknown error'}`);
 	if (!sys.write_atomic(path, content))
 		return failed(ctx, 'dnsmasq_install', `cannot write ${path}: ${sys.error()}`);
+	// The fragment changes persistent-in-this-boot DNS handoff, not just this command's output.
+	// Keep its previous contents for rollback if restart rejects the new handoff.
 	let err = dnsmasq_restart(ctx);
 	if (err != null) {
 		let restored = previous != null ? sys.write_atomic(path, previous) : fs.unlink(path);

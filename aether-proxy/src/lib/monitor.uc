@@ -1,4 +1,6 @@
 'use strict';
+// Observe service health, compute transitions and execute ordered recovery actions.
+// Design: docs/04「monitor 循环」 and docs/03「DNS 级别（trust 组上游）」.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
@@ -36,6 +38,8 @@ function run(ctx, name, args, timeout, quiet) {
 };
 
 function port_listening(daemon, port) {
+	// Xray's dual-stack listener may appear only in tcp6 even for IPv4 traffic;
+	// checking tcp alone would falsely trigger fail-open (docs/04「真机验证（M2 验收，2026-10-15）」).
 	for (let file in [ C.PROC_NET_TCP, C.PROC_NET_TCP6 ])
 		if (net.tcp_listening(fs.readfile(system_path(daemon.ctx, file)), port))
 			return true;
@@ -181,6 +185,8 @@ function action_set_tier(daemon, tier, done) {
 				done(error);
 				return;
 			}
+			// Clear dnsmasq's cache too: polluted fallback answers must not outlive a tier change
+			// after chinadns-ng has restarted (docs/03「DNS 级别（trust 组上游）」).
 			let hup = apply.dnsmasq_hup(daemon.ctx);
 			done(hup.ok ? null : hup.detail);
 		});
@@ -341,6 +347,8 @@ function tick(daemon) {
 	if (started == null)
 		return;
 	let lock_path = system_path(daemon.ctx, C.LOCK_FILE);
+	// Monitor mutates the same runtime resources as user actions; skip a busy round rather
+	// than block behind them (docs/04「monitor 循环」).
 	let lock = sys.lock(lock_path);
 	if (lock == null) {
 		log.set_run_dir(run_dir(daemon));

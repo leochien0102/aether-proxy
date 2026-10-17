@@ -1,4 +1,6 @@
 'use strict';
+// Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
+// Design: docs/10「订阅页（2026-10-16 定，T8.6）」「作业机制」.
 'require view';
 'require form';
 'require uci';

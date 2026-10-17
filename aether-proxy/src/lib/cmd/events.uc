@@ -1,4 +1,6 @@
 'use strict';
+// Read structured history tolerantly and expose CLI timestamp/severity filtering.
+// Design: docs/09「结构化事件」 and docs/10「`aether-proxy` 约定」.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';

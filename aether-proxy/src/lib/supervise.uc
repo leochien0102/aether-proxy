@@ -1,4 +1,6 @@
 'use strict';
+// Supervise child lifetimes, crash backoff and shutdown; clean up matching stale children.
+// Design: docs/04「进程模型（已定）」 and docs/09「子进程日志（S1 已定，2026-10-15）」.
 
 import * as fs from 'fs';
 import * as uloop from 'uloop';
@@ -50,6 +52,8 @@ function create(opts) {
 			return;
 		}
 
+		// uloop.process inherits daemon output for procd/logd; popen plus uloop.handle can
+		// strand buffered lines on this ucode version (docs/09「子进程日志（S1 已定，2026-10-15）」).
 		proc = uloop.process(opts.argv[0], slice(opts.argv, 1), null, on_exit);
 		if (proc == null) {
 			log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot start ${opts.name}` });
@@ -99,6 +103,8 @@ function create(opts) {
 		stable_timer = null;
 		unlink_pid(pidfile);
 
+		// A signal-terminated child can report exit code zero, so code alone cannot distinguish
+		// intentional shutdown from a crash (docs/09「子进程日志（S1 已定，2026-10-15）」).
 		if (stopping) {
 			finish_stop(exited_pid);
 			return;
@@ -124,6 +130,7 @@ function create(opts) {
 	};
 
 	function stop(done) {
+		// Cancel a pending crash restart before stopping, or shutdown could spawn a new child.
 		if (restart_timer != null)
 			restart_timer.cancel();
 		restart_timer = null;

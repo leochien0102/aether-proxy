@@ -1,4 +1,6 @@
 'use strict';
+// Emit catalogued syslog messages and bounded machine-readable event history in tmpfs.
+// Design: docs/09「原则」「syslog 行格式」「结构化事件」.
 
 import * as fs from 'fs';
 import * as syslog from 'log';
@@ -101,6 +103,8 @@ function fs_err() {
 }
 
 function fs_failed(op, path, detail) {
+	// Report event-file failures directly to syslog: calling event() here would attempt
+	// another append to the same failing file and recurse through fs_failed().
 	open_syslog();
 	syslog.syslog(PRIORITY.error, '%s', format_line('FS_FAILED', { op, path, detail }));
 }
@@ -190,6 +194,8 @@ function event(level, code, args, message) {
 	if (RANK[level] == null)
 		die(`log.event: unknown level '${level}'`);
 
+	// JSONL records notice-and-higher independently of the human log threshold;
+	// filtering syslog must not hide those events from LuCI (docs/09「结构化事件」).
 	append_event(level, code, args);
 
 	if (RANK[level] > RANK[threshold])

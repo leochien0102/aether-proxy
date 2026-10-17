@@ -1,4 +1,6 @@
 'use strict';
+// Stage and validate fresh artifacts, plan incremental changes and roll back failed actions.
+// Design: docs/04「重载（`aether-proxy reload`，UCI 变更触发）」.
 
 import * as fs from 'fs';
 import * as uloop from 'uloop';
@@ -216,6 +218,8 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	daemon.ctx.lan_ifaces = new_lan_ifaces;
 	let done = [];
 	for (let action in actions) {
+		// Include the attempted action before executing it: restart may stop the old child
+		// and then fail to start the replacement, so that action also needs rollback.
 		push(done, action);
 		let result = execute_action(daemon, action, artifacts, components);
 		if (!result.ok) {
@@ -300,6 +304,8 @@ function run(daemon) {
 			return failure(daemon, 'staging_cleanup', `cannot discard ${stage}`);
 		return { ok: true, stop: true, snapshot };
 	}
+	// Even a no-change plan must pass validation before returning success; a hash match
+	// alone does not establish that the current prerequisites are still available.
 	let validated = validate(daemon, snapshot, stage, null, true);
 	if (!validated.ok) {
 		discard_stage(daemon, stage);
