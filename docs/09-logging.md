@@ -65,7 +65,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 {"ts":1760400000,"level":"warn","code":"DNS_TIER_CHANGED","args":{"from":"T1","to":"T2","reason":"proxy_unhealthy"}}
 ```
 
-保留最近 500 行（超过时截掉前面的一半）。读取时跳过无法解析的行（断电可能留下半行）并计数，不能因个别坏行导致整个读取失败。LuCI 的「事件」视图读取这个文件，按 `code` 套用中文模板显示，
+保留最近 500 行（超过时截掉前面的一半）。裁剪是「读全文件 → 写临时文件 → 改名」，不加锁：daemon 与作业进程恰好同时追加时，裁剪窗口内另一进程追加的那一行可能丢失。这是接受的代价（每约 250 条事件才裁剪一次，窗口很短；每个事件同时写了 syslog，`events.jsonl` 只是 LuCI 的视图），2026-10-17 定（backlog B9）。读取时跳过无法解析的行（断电可能留下半行）并计数，不能因个别坏行导致整个读取失败。LuCI 的「事件」视图读取这个文件，按 `code` 套用中文模板显示，
 例如 `DNS_TIER_CHANGED` → 「DNS 已从 {from} 切换到 {to}（原因：{reason}）」。
 
 ## 事件码目录（首版）

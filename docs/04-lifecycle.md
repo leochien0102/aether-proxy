@@ -55,7 +55,7 @@
 
 1. 退出 monitor 循环
 2. 导出动态集合（`gfw4`、`udirect4`、`uproxy4`）到 `/var/run/aether-proxy/sets.save`
-3. `nft delete table inet aetherproxy`；删除 ip rule / route
+3. `nft delete table inet aetherproxy`；删除 ip rule / route。重复的 ip rule（异常退出后再次启动可能留下）逐条删除，**最多 16 次**：正常只有 0～1 条；上限只是防止 `ip rule del` 报成功而规则仍在时陷入死循环，超过仍有残留就报失败（2026-10-17 补理由，backlog B9）。
 4. 删除 dnsmasq 片段并重启 dnsmasq
 5. 停止 chinadns-ng、Xray
 6. 状态写为 `stopped`
@@ -83,7 +83,7 @@
   （读取 `/proc/<pid>/cmdline` 核对），避免误杀复用了该 pid 的其他进程。
 
 所以「启动」表里第 7、10 步的「启动」都由 daemon 派生子进程完成。表中的「回滚」等于执行 `cleanup`，
-然后 daemon 以非零码退出，交给 procd 的 respawn 策略处理。
+之后 daemon **不退出**：状态写为 `error`，在 daemon 内按退避重试（见「启动」，2026-10-17 改正此处的旧说法）。
 
 ## 重载（`aether-proxy reload`，UCI 变更触发）
 
@@ -168,7 +168,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 - 导出：`nft -j list set inet aetherproxy <set>`，把元素写入 `/var/run/aether-proxy/sets.save`（tmpfs，整机重启会丢失）。
   文件格式：`{ "gfw4": ["1.2.3.4", …], "udirect4": […], "uproxy4": […] }`，元素为裸 IPv4 字符串（不带超时等属性），即渲染上下文 `ctx.runtime.restored` 的格式。
 - `nft -j` 的元素格式：普通元素是裸值（`"1.2.3.4"`、`{"prefix":…}`、`{"range":[…]}`），只有带超时、计数器、注释的元素才包成 `{"elem":{"val":…}}`。两种都要解析（真机验收时发现只认包装格式导致导出全部失败）。
-- 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去。
+- 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去。**`nft -f` 加载成功之后才删除 `sets.save`**（2026-10-17 改，backlog B9）：之前解析成功即删除，加载失败后的退避重试只能用空集合重建，导出的动态集合全部丢失。启动与 monitor 的「表丢失后重建」两处都按此顺序。
 - 会导出的地方：stop、`cleanup`（表还在时，兜底 daemon 被 SIGKILL 的情况；导出失败只记日志，不阻断清理）、reload（整表替换）、failsafe 恢复。
 
 ## 故障语义汇总

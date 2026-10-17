@@ -141,6 +141,7 @@ verdict-cache 4096
 3. 成功：把 IP 写进 Xray 出站的 `address`（域名保留在 `serverName` / `host` 中），并更新 LKG 文件
    `/etc/aether-proxy/state/node-ip.json`（值变化时才写）。
 4. 失败：使用 LKG 中的 IP，记 WARN `NODE_RESOLVE_FALLBACK`。LKG 也没有：节点不可用，进入降级状态（`NODE_RESOLVE_FAILED`）。
+   LKG 文件损坏（JSON 解析失败、地址不匹配、IP 不合法）**等同没有 LKG，不记事件**：它是可以重新生成的缓存，下一次成功解析就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
 5. monitor 每 10 分钟重新解析一次当前节点的域名。IP 变了就更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。
 
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，

@@ -17,6 +17,7 @@ init.d / hotplug / daemon ──────────────────
   具体对应（T1.7 实现，2026-10-14 确认）：配置校验错误与规则数据缺失/非法 → `CONFIG_INVALID`，退出码 2；前置检查失败 → `PRECHECK_FAILED`，退出码 1；产物未通过 `nft -c` / `xray run -test` → `RENDER_INVALID`，退出码 4；参数用法错误 → JSON 中 `code` 为 `USAGE`（不是事件码，不写日志），退出码 2。
 - `check` 找不到 Xray 时不算失败：在结果中注明跳过 `xray run -test`，并返回 `COMPONENT_MISSING` 警告；真正启动时（04 第 3 步）缺组件才是错误。
 - 失败时的 JSON：`{"ok": false, "code": "<事件码>", "detail": "..."}`。
+- 未知的子命令，以及本表列出但尚未实现的子命令，一律按用法错误处理（`USAGE`，退出码 2），不另设「未实现」码（2026-10-17 定，backlog B9）。
 
 | 子命令 | 作用 | 是否长任务 |
 |---|---|---|
@@ -267,7 +268,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 
 ### 订阅页（2026-10-16 定，T8.6）
 
-**`sub status`**：只读，输出 `{ "ok": true, "subs": { "<段名>": <sub.json 中该订阅的记录> } }`（[06](06-nodes-subscription.md) 第 7 步的格式）；
+**`sub status`**：只读，输出 `{ "ok": true, "subs": { "<段名>": <sub.json 中该订阅的记录> } }`（[06](06-nodes-subscription.md) 第 7 步的格式）；读不到配置 → `{ "ok": false, "code": "CONFIG_INVALID", "detail": "cannot load configuration" }`，退出码 2（只输出配置中仍存在的订阅，没有配置就无从判断，2026-10-17 定）；
 `sub.json` 不存在或损坏 → `{ "ok": true, "subs": {} }`，不记事件（页面会在更新后读取）。只输出配置中仍存在的订阅。
 
 **页面**（模型 `model/subscriptions.js`，视图 `view/aether-proxy/subscriptions.js`）：
