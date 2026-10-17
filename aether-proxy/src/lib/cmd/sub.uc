@@ -1,4 +1,6 @@
 'use strict';
+// Expose subscription updates and read-only records through the CLI's result contract.
+// Design: docs/06「原子应用」 and docs/10「订阅页（2026-10-16 定，T8.6）」.
 
 import * as fs from 'fs';
 import * as uci from 'uci';

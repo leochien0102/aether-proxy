@@ -1,5 +1,7 @@
 'use strict';
 'require baseclass';
+// Pure subscription presentation, ID generation and deletion plans for the LuCI view.
+// Design: docs/10「订阅页（2026-10-16 定，T8.6）」; keep URLs masked and the current node retained.
 
 function fmt(text, ...args) {
 	for (const arg of args) text = text.replace('%s', String(arg));

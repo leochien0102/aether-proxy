@@ -1,4 +1,6 @@
 'use strict';
+// Adapt job start/status and the internal worker command to the background-job implementation.
+// Design: docs/10「作业机制」; long work stays outside the rpcd request lifetime.
 
 import * as job from 'aetherproxy.job';
 import * as pipeline from 'aetherproxy.pipeline';

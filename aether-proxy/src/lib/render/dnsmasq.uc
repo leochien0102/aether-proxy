@@ -1,4 +1,6 @@
 'use strict';
+// Render the volatile DNS handoff fragment without changing the user's DHCP configuration.
+// Design: docs/03「dnsmasq 对接」.
 
 import * as C from 'aetherproxy.const';
 

@@ -1,5 +1,7 @@
 #!/usr/bin/ucode -S
 'use strict';
+// CLI entry point: dispatch subcommands while keeping their business logic in modules.
+// Design: docs/10「分层」「`aether-proxy` 约定」.
 
 import * as C from 'aetherproxy.const';
 import * as check from 'aetherproxy.cmd.check';

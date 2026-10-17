@@ -1,4 +1,6 @@
 'use strict';
+// Parse update check/data/package commands and format results; trust and installation
+// decisions stay in the updater. Design: docs/08「设备端流程」.
 
 import * as pipeline from 'aetherproxy.pipeline';
 import * as update from 'aetherproxy.update';
