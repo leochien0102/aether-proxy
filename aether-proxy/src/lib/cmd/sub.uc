@@ -97,8 +97,8 @@ export function run(args) {
 			return usage('expected `sub status`', json);
 		let opts = parsed.opts;
 		let cursor = uci.cursor(opts.confdir ?? C.CONFIG_DIR);
-		// TODO(design): configuration read failure has no specified status reply.
-		// Fail closed instead of returning records without a configured owner.
+		// docs/10「订阅页」 (`sub status`): without configuration we cannot identify
+		// surviving subscriptions, so fail with CONFIG_INVALID instead of exposing orphan records.
 		if (!cursor.load(C.UCI_PACKAGE))
 			return pipeline.finish(opts, { ok: false, code: 'CONFIG_INVALID', detail: 'cannot load configuration' }, 2, 'cannot load configuration');
 		let records = status_records(`${sub.system_path(opts.sys_root ?? '', C.STATE_DIR)}/${C.SUB_STATE_FILE}`);

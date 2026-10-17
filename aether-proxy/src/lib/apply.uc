@@ -225,9 +225,21 @@ function sets_load(ctx) {
 	}
 	if (!valid_sets(sets))
 		return failed(ctx, 'sets_load', `invalid dynamic sets in ${path}`);
-	if (!fs.unlink(path))
-		return failed(ctx, 'sets_load', `cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
-	return result('dynamic sets loaded and save file removed', { sets });
+	return result('dynamic sets loaded', { sets });
+};
+
+// docs/04「动态集合的导出与恢复」: retain the recovery source until nft accepts it.
+function sets_remove(ctx) {
+	setup_log(ctx);
+	let path = `${run_dir(ctx)}/${C.SETS_SAVE_FILE}`;
+	if (fs.stat(path) == null)
+		return result('no saved dynamic sets');
+	if (!fs.unlink(path)) {
+		let detail = fs.error() ?? 'unknown error';
+		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail });
+		return { ok: false, detail };
+	}
+	return result('saved dynamic sets removed');
 };
 
 function ip_rule_matches(text) {
@@ -260,6 +272,8 @@ function route_del(ctx) {
 		return failed(ctx, 'route_del', `ip rule show failed (${show.code}): ${show.stderr}`);
 	let found = ip_rule_matches(show.stdout);
 	let attempts = 0;
+	// docs/04「停止」: normally 0-1 rules; cap retries to avoid looping forever if
+	// ip reports successful deletion without removing the rule. Remaining rules fail below.
 	while (found && attempts++ < 16) {
 		let del = exec(ctx, 'ip', [ 'rule', 'del', 'fwmark', C.FWMARK, 'lookup', `${C.ROUTE_TABLE}`, 'pref', `${C.RULE_PREF}` ]);
 		if (del.code != 0)
@@ -480,6 +494,8 @@ function dnsmasq_extra_servers(ctx) {
 	return result('external dnsmasq servers collected', { servers: scan.servers });
 };
 
+// docs/03「引导解析（节点域名）」 step 4: corrupt LKG is an absent, regenerable cache.
+// Do not emit an event on every lookup; a successful resolution will replace it.
 function read_lkg(ctx, address) {
 	let path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
 	let text = fs.readfile(path);
@@ -629,7 +645,7 @@ function artifact_hashes(ctx, dir) {
 
 export {
 	nft_load, nft_delete, nft_table_exists, nft_flush_prerouting,
-	sets_export, sets_save, sets_load,
+	sets_export, sets_save, sets_load, sets_remove,
 	route_add, route_del,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
 	scan_extra_servers,

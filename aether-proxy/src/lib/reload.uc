@@ -14,6 +14,9 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 
 // Pure plan over renderer hashes, never over UCI input values.
+// docs/04「进程模型（已定）」: daemon.uc's reload handler replaces base.render_hash
+// with hashes of the actual current files before calling run(). Both planning passes
+// below therefore compare against the installed outputs, not stale state.json hashes.
 function plan(old, fresh) {
 	if (old.enabled == true && fresh.enabled == false)
 		return [ 'stop' ];

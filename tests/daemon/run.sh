@@ -420,6 +420,11 @@ has_line "$R4/var/run/aether-proxy/events.jsonl" '"code": "START_RETRY"' && ok "
 assert_no_children "$R4"
 if wait_count "$L4" 'nft -f ' 2 && wait_for "$R4/var/run/aether-proxy/events.jsonl" '"code": "SERVICE_STARTED"' 200; then
 	ok "retry succeeds and enters monitor"
+	if grep 'set gfw4 ' "$R4/var/run/aether-proxy/current/aether-proxy.nft" | grep -qv 'elements'; then
+		ok "startup without sets.save renders empty dynamic set"
+	else
+		bad "startup without sets.save renders empty dynamic set"
+	fi
 else
 	bad "retry succeeds and enters monitor" "$(cat "$R4/daemon.stderr")"
 fi
@@ -525,8 +530,16 @@ fi
 
 # 9. SIGHUP cancels the long retry timer and triggers a prompt attempt.
 R9="$T/sys9"; L9="$T/sys9/calls.log"; make_root "$R9"; : > "$L9"
+# Preserve the source through a failed nft load, then consume it only after HUP succeeds.
+saved9="$R9/var/run/aether-proxy/sets.save"
+printf '{"gfw4":["198.51.100.19"],"udirect4":[],"uproxy4":[]}\n' > "$saved9"
+cp "$saved9" "$T/sets9.expected"
 STUB_NFT_FAIL_ONCE=1 start_daemon "$R9" "$L9"
 if wait_for "$R9/var/run/aether-proxy/events.jsonl" '"code": "START_RETRY"' 200; then
+	expect "saved-set startup failure enters error" error "$(jget state < "$R9/var/run/aether-proxy/state.json")"
+	cmp -s "$saved9" "$T/sets9.expected" \
+		&& ok "failed startup preserves sets.save byte for byte" \
+		|| bad "failed startup preserves sets.save byte for byte"
 	SECONDS_BEFORE_HUP=$SECONDS
 	kill -HUP "$DAEMON_PID"
 	if wait_for "$R9/var/run/aether-proxy/events.jsonl" '"code": "SERVICE_STARTED"' 100; then
@@ -536,6 +549,11 @@ if wait_for "$R9/var/run/aether-proxy/events.jsonl" '"code": "START_RETRY"' 200;
 		bad "SIGHUP retries immediately" "$(cat "$R9/daemon.stderr")"
 	fi
 	wait_count "$L9" 'nft -f ' 2 && ok "SIGHUP retry loads nft" || bad "SIGHUP retry loads nft"
+	has_line "$R9/var/run/aether-proxy/current/aether-proxy.nft" '198.51.100.19' \
+		&& ok "SIGHUP retry renders preserved dynamic elements" \
+		|| bad "SIGHUP retry renders preserved dynamic elements"
+	[ ! -e "$saved9" ] && ok "successful SIGHUP retry removes sets.save" \
+		|| bad "successful SIGHUP retry removes sets.save"
 	stop_daemon; expect "SIGHUP-retried daemon stops" 0 "$?"
 	assert_no_children "$R9"
 else

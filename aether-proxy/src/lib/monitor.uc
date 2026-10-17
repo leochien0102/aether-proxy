@@ -149,7 +149,7 @@ function load_restored_sets(daemon) {
 	if (!table.ok)
 		return { ok: false, detail: table.detail };
 	if (!table.exists)
-		return apply.sets_load(daemon.ctx);
+		return { ...apply.sets_load(daemon.ctx), from_save: true };
 	return apply.sets_export(daemon.ctx);
 };
 
@@ -163,7 +163,11 @@ function action_nft_reload(daemon, machine) {
 	let path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.nft}`;
 	if (!sys.write_atomic(path, built.artifacts.nft))
 		return { ok: false, detail: `cannot write ${path}: ${sys.error()}` };
-	return apply.nft_load(daemon.ctx, path);
+	let loaded = apply.nft_load(daemon.ctx, path);
+	// docs/04「动态集合的导出与恢复」: a failed rebuild must remain retryable.
+	if (loaded.ok && restored.from_save)
+		apply.sets_remove(daemon.ctx);
+	return loaded;
 };
 
 function action_set_tier(daemon, tier, done) {
@@ -229,6 +233,8 @@ function update_node_ip(daemon, machine, done) {
 		done(loaded.detail);
 		return;
 	}
+	if (restored.from_save)
+		apply.sets_remove(daemon.ctx);
 	let old_ip = machine.node_ip;
 	restart_child(daemon, 'xray', C.XRAY_COMPONENT,
 		[ binary, 'run', '-c', xray_path ], error => {

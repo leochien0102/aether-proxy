@@ -69,4 +69,4 @@ run_case() {
 }
 
 run_case proxy-tier 2
-run_case xray-failsafe 999999
+STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999

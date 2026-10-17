@@ -152,6 +152,9 @@ function append_event(level, code, args) {
 		return;
 	}
 
+	// docs/09「结构化事件」: trimming deliberately has no cross-process lock. About
+	// every 250 events a concurrent append may be lost in this short rename window;
+	// syslog retains its copy, while this file is only the LuCI history view.
 	let trimmed = trim_event_history(text);
 	if (trimmed == text)
 		return;
