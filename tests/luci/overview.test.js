@@ -453,6 +453,10 @@ test('T8.12c scenario 1a: rates, direct clamp, units and connections', () => {
 	assert.deepEqual(vm.direct, { tx: '1.5 MB/s', rx: '0.0 B/s' });
 	assert.deepEqual(vm.connections, { proxy: '3', total: '10' });
 	assert.deepEqual(model.traffic(null, {}).connections, { proxy: '–', total: '–' });
+	// Units step at 1024, not 1000: 1000 B/s stays in bytes.
+	const edge = model.traffic(readings(0, 0, 0, 0, 0), readings(1000, 1000, 1023, 1024, 0));
+	assert.deepEqual(edge.proxy, { tx: '1000.0 B/s', rx: '1023.0 B/s' });
+	assert.equal(edge.total.tx, '1.0 KB/s');
 });
 
 test('T8.12c scenario 1b: first sample, nulls, resets, device and clock changes invalidate affected rates', () => {
