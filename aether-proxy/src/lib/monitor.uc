@@ -341,8 +341,12 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 		lock.close();
 	}
 	daemon.busy = false;
-	if (daemon.interval != null)
-		daemon.interval.set(interval_ms(daemon.machine));
+	if (daemon.interval != null) {
+		// Re-observe only after the T2 restart and unlock; the previous sample used the
+		// old DNS upstream. A transition edge, not residence in T2, prevents a busy loop.
+		let entered_t2 = error == null && index(transition.actions, 'set_tier:T2') >= 0;
+		daemon.interval.set(entered_t2 ? 1 : interval_ms(daemon.machine));
+	}
 };
 
 function tick(daemon) {
@@ -391,6 +395,7 @@ initial_state = (service, now) => {
 		xray_down_reported: false,
 		chinadns_down_count: 0,
 		chinadns_down_reported: service?.dns_failsafe == true,
+		ever_healthy: service?.state == 'running',
 		proxy_fail_count: 0,
 		proxy_ok_count: 0,
 		dns_fail_count: 0,
@@ -419,6 +424,7 @@ next = (state, obs, cfg) => {
 		xray_down_reported: old.xray_down_reported == true,
 		chinadns_down_count: old.chinadns_down_count ?? 0,
 		chinadns_down_reported: old.chinadns_down_reported == true,
+		ever_healthy: old.ever_healthy == true || old.state == 'running',
 		proxy_fail_count: old.proxy_fail_count ?? 0,
 		proxy_ok_count: old.proxy_ok_count ?? 0,
 		dns_fail_count: old.dns_fail_count ?? 0,
@@ -532,7 +538,11 @@ next = (state, obs, cfg) => {
 		out.proxy_ok_count = min(out.proxy_ok_count + 1, recover_threshold);
 		out.proxy_fail_count = 0;
 		out.last_probe = { ok: true, latency_ms: obs.proxy_latency_ms ?? null, at: now };
-		if (out.proxy_ok_count >= recover_threshold && out.state != 'running' && out.state != 'failsafe') {
+		// Warmup has no healthy route to protect against flapping. Once healthy, keep
+		// the configured recovery hysteresis even after leaving `starting`/entering T3.
+		let recovered = !out.ever_healthy || out.proxy_ok_count >= recover_threshold;
+		if (recovered && out.state != 'running' && out.state != 'failsafe') {
+			out.ever_healthy = true;
 			out.state = 'running';
 			out.since = now;
 			tier('T1', 'proxy_healthy');

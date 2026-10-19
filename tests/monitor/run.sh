@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# Exercise monitor actions and edge-triggered T2 ramp-up (docs/03 DNS tiers and docs/04).
 set -u
+status=0
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UCODE="$ROOT/tests/host/ucode"
@@ -65,8 +67,12 @@ run_case() {
 	STUB_LOG="$root/var/run/aether-proxy/calls.log" \
 	SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/var/run/aether-proxy/curl-count" \
 	STUB_CURL_FAIL_FROM="${2:-999999}" PATH="$T/bin:$PATH" \
-		timeout 30s "$UCODE" "$DRIVER" -- "$name" "$root" "$FIX" "$T/data" "$T/base" "$T/custom" "$T/bin"
+		timeout 30s "$UCODE" "$DRIVER" -- "$name" "$root" "$FIX" "$T/data" "$T/base" "$T/custom" "$T/bin" || status=1
 }
 
 run_case proxy-tier 2
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999
+for scenario in immediate-proxy immediate-xray immediate-retry; do
+	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1
+done
+exit "$status"

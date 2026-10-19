@@ -77,7 +77,17 @@ cp "$STUB_SRC/nft" "$T/bin/nft"
 cp "$STUB_SRC/ip" "$T/bin/ip"
 cp "$STUB_SRC/resolveip" "$T/bin/resolveip"
 cp "$STUB_SRC/killall" "$T/bin/killall"
-cp "$STUB_SRC/curl" "$T/bin/curl"
+cp "$STUB_SRC/curl" "$T/bin/curl-original"
+# Record real invocation times without changing the shared stubs used by other cards.
+cat > "$T/bin/curl" <<'EOF'
+#!/bin/sh
+read -r uptime rest < /proc/uptime
+printf '%s\n' "$uptime" >> "$SYSROOT/curl-times"
+if [ ! -f "$SYSROOT/first-probe-chinadns.conf" ]; then
+	cp "$SYSROOT/var/run/aether-proxy/current/chinadns.conf" "$SYSROOT/first-probe-chinadns.conf" || exit 1
+fi
+exec "$(dirname "$0")/curl-original" "$@"
+EOF
 cp "$STUB_SRC/xray" "$T/bin/xray"
 cp "$STUB_SRC/chinadns-ng" "$T/bin/chinadns-ng"
 cp "$STUB_SRC/kill" "$T/bin/kill"
@@ -99,6 +109,10 @@ exit "${STUB_DNSMASQ_RC:-0}"
 EOF
 	chmod +x "$root/etc/init.d/dnsmasq"
 	printf 'local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n' > "$root/proc/net/tcp"
+	# The DNS substitute stays alive but opens no socket; expose its listener so the
+	# new startup tick plus a signal tick do not falsely exercise DNS fail-safe.
+	printf '  0: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' \
+		>> "$root/proc/net/tcp"
 	: > "$root/ip-rules"
 	: > "$root/ip-routes"
 	: > "$root/conflicts"
@@ -191,22 +205,32 @@ UCODE
 	return 1
 }
 
-# 1. Normal startup reaches starting with the required side-effect order.
+# 1. Startup begins on T2, then the first immediate success reaches running/T1 within 5 s.
 R1="$T/sys1"; L1="$T/sys1/calls.log"; make_root "$R1"; : > "$L1"
 L1_START="$T/sys1/startup.log"
 printf '{"gfw4":["1.2.3.4"],"udirect4":[],"uproxy4":[]}\n' > "$R1/var/run/aether-proxy/sets.save"
+read -r startup_time rest < /proc/uptime
 start_daemon "$R1" "$L1"
-if wait_for "$R1/var/run/aether-proxy/state.json" 'starting'; then
-	ok "normal startup state is starting"
+if wait_for "$R1/var/run/aether-proxy/state.json" '"state": "running"' 100; then
+	read -r running_time rest < /proc/uptime
+	read -r first_curl_time < "$R1/curl-times"
+	printf 'TIMING uptime seconds: startup=%s first-curl=%s running=%s\n' \
+		"$startup_time" "$first_curl_time" "$running_time"
+	awk -v start="$startup_time" -v probe="$first_curl_time" -v running="$running_time" \
+		'BEGIN { exit !(probe >= start && probe - start < 5 && running - start < 5) }' \
+		&& ok 'startup curl and running state arrive within 5 seconds' \
+		|| bad 'startup curl and running state arrive within 5 seconds'
 else
-	bad "normal startup state is starting" "daemon stderr: $(cat "$R1/daemon.stderr")"
+	bad 'startup curl and running state arrive within 5 seconds' "daemon stderr: $(cat "$R1/daemon.stderr")"
 fi
+expect 'startup first success selects T1' T1 "$(jget dns_tier < "$R1/var/run/aether-proxy/state.json")"
+expect 'startup needs exactly one successful curl' 1 "$(count_calls "$L1" 'curl ')"
 grep -Fq '203.0.113.20' "$R1/var/run/aether-proxy/current/xray.json" \
 	&& ok "runtime node IP reaches xray renderer" || bad "runtime node IP reaches xray renderer"
 grep -Fq 'set gfw4' "$R1/var/run/aether-proxy/current/aether-proxy.nft" && \
 	grep -Fq 'elements = { 1.2.3.4 }' "$R1/var/run/aether-proxy/current/aether-proxy.nft" \
 	&& ok "saved dynamic sets reach nft renderer" || bad "saved dynamic sets reach nft renderer"
-grep -Fq 'trust-dns tcp://8.8.8.8,tcp://1.1.1.1' "$R1/var/run/aether-proxy/current/chinadns.conf" \
+grep -Fq 'trust-dns tcp://8.8.8.8,tcp://1.1.1.1' "$R1/first-probe-chinadns.conf" \
 	&& ok "startup chinadns config uses T2" || bad "startup chinadns config uses T2"
 [ ! -e "$R1/var/run/aether-proxy/sets.save" ] && ok "sets.save is consumed after restoring" || bad "sets.save is consumed after restoring"
 for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 5' 'xray run -c' 'nft -f' 'ip rule add'; do
@@ -280,7 +304,7 @@ cat "$STOP_LOG"
 # SIGUSR2 restarts only the supervised Xray child and schedules an immediate monitor round.
 R2U="$T/sys2usr2"; L2U="$T/sys2usr2/calls.log"; make_root "$R2U"; : > "$L2U"
 start_daemon "$R2U" "$L2U"
-if wait_for "$R2U/var/run/aether-proxy/state.json" 'starting'; then
+if wait_for "$R2U/var/run/aether-proxy/state.json" '"state": "running"'; then
 	old_xray=$(cat "$R2U/xray.pid"); old_dns=$(cat "$R2U/chinadns-ng.pid" 2>/dev/null || cat "$R2U/chinadns.pid")
 	old_curl=$(count_calls "$L2U" 'curl ')
 	printf 'Xray 26.10.10 (replacement)\n' > "$R2U/xray-version"
@@ -332,13 +356,7 @@ CONF
 start_daemon "$RP" "$LP" --confdir "$P_CONF"
 wait_for "$RP/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' \
 	&& ok 'probe reload: startup completed' || bad 'probe reload: startup completed'
-# Startup intentionally persists `starting` until monitor successes reach the default threshold.
-for _ in 1 2; do
-	probe_count=$(count_calls "$LP" 'curl ')
-	kill -USR1 "$DAEMON_PID"
-	wait_reload_probe "$((probe_count + 1))" || bad 'probe reload: warmup probe completed'
-	sleep 0.1
-done
+# Startup now probes without signals; wait for it before measuring reload-only probes.
 wait_for "$RP/var/run/aether-proxy/state.json" '"state": "running"' 40 \
 	&& ok 'probe reload: service is running before changes' || bad 'probe reload: service is running before changes'
 probe_count=$(count_calls "$LP" 'curl ')
@@ -490,8 +508,8 @@ else
 	bad "first daemon reaches held-lock window"
 	rc7=1
 fi
-if ! wait_for "$R7/var/run/aether-proxy/state.json" 'starting' 200; then
-	bad "first locked daemon reaches starting after lock release"
+if ! wait_for "$R7/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' 200; then
+	bad "first locked daemon finishes startup after lock release"
 fi
 stop_daemon; expect "first locked daemon stops" 0 "$?"
 assert_no_children "$R7"
@@ -505,7 +523,7 @@ if start_loopback_listener "$T/listener.port" "$T/listener.accepted"; then
 	port=$(cat "$T/listener.port")
 	sed -i "s/127.0.0.1:1/127.0.0.1:$port/" "$BOOT_CONF/aetherproxy"
 	start_daemon "$R8" "$L8" --boot --confdir "$BOOT_CONF"
-	if wait_for "$R8/var/run/aether-proxy/state.json" 'starting'; then
+	if wait_for "$R8/var/run/aether-proxy/state.json" '"state": "running"'; then
 		ok "--boot continues after local TCP target succeeds"
 	else
 		bad "--boot local TCP target succeeds" "$(cat "$R8/daemon.stderr")"

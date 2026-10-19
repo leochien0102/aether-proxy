@@ -1062,6 +1062,10 @@ function run(args) {
 			log.event('error', 'START_FAILED', { step: 'subscription_schedule', detail: 'uloop.interval returned null' });
 		}
 
+		// Startup has released its lock: do not leave DNS on direct upstreams for a
+		// full non-running interval before the first probe (03/04).
+		if (signal != 'stop')
+			tick();
 		while (signal != 'stop') {
 			if (signal == 'xray_restart') {
 				signal = null;

@@ -165,6 +165,69 @@ else if (scenario == 'xray-failsafe') {
 	check(fs.stat(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`) == null, 'sets.save is consumed');
 	no_external_children(d);
 }
+else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scenario) >= 0) {
+	let d = opts.daemon;
+	d.snapshot.probe.fail_threshold = 1;
+	d.snapshot.probe.recover_threshold = 2;
+	d.snapshot.dns.allow_china_fallback = true;
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', ever_healthy: true };
+	if (scenario == 'immediate-xray') {
+		d.machine.xray_down_count = 1;
+		let path = `${opts.ctx.root}/proc/net/tcp`;
+		let lines = split(fs.readfile(path), '\n');
+		check(write(path, join('\n', filter(lines, line => index(line, '7968') < 0))),
+			'immediate-xray removes listener');
+	}
+	if (scenario == 'immediate-retry') {
+		d.machine.state = 'degraded';
+		d.machine.dns_tier = 'T3';
+		d.machine.last_t2_retry = time() - 301;
+	}
+	let automatic_rounds = 0;
+	d.interval = uloop.interval(10000, () => {
+		automatic_rounds++;
+		monitor.tick(d);
+	});
+	let started = clock(true);
+	monitor.tick(d);
+	// Five seconds is shorter than the normal 10 s degraded/failsafe cadence.
+	for (let i = 0; i < 50 && (automatic_rounds == 0 || d.busy); i++)
+		uloop.run(100);
+	let ended = clock(true);
+	let elapsed = ended[0] - started[0] + (ended[1] - started[1]) / 1000000000;
+	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
+	let calls = fs.readfile(log_path) ?? '';
+	let expected_dns = scenario == 'immediate-retry' ? 2 : 1;
+	check(automatic_rounds == 1 && elapsed < 5 && count(calls, 'resolveip ') == expected_dns,
+		`${scenario}: T2 transition probes DNS within 5 seconds`,
+		sprintf('automatic=%d DNS=%d elapsed=%.3f', automatic_rounds, count(calls, 'resolveip '), elapsed));
+	if (scenario != 'immediate-retry') {
+		check(d.machine.dns_tier == 'T2' && d.machine.dns_fail_count == 1,
+			`${scenario}: immediate DNS failure counts once in T2`, sprintf('%.J', d.machine));
+		let samples = count(calls, 'resolveip ');
+		uloop.run(250);
+		check(automatic_rounds == 1 && count(fs.readfile(log_path), 'resolveip ') == samples,
+			`${scenario}: ordinary T2 round does not schedule another immediate round`);
+		monitor.tick(d);
+		while (d.busy)
+			uloop.run(100);
+		check(d.machine.dns_tier == 'T3' && count(fs.readfile(log_path), 'resolveip ') == 2,
+			`${scenario}: two consecutive DNS failures enter T3`, sprintf('%.J', d.machine));
+	}
+	else {
+		check(d.machine.dns_tier == 'T3' && !d.machine.t2_retry_pending,
+			'immediate-retry: failed fresh T2 sample returns to T3');
+	}
+	let samples = count(fs.readfile(log_path), 'resolveip ');
+	monitor.tick(d);
+	while (d.busy)
+		uloop.run(100);
+	uloop.run(250);
+	check(automatic_rounds == 1 && count(fs.readfile(log_path), 'resolveip ') == samples + 1,
+		`${scenario}: ordinary T3 round does not schedule another immediate round`);
+	d.interval.cancel();
+	no_external_children(d);
+}
 else {
 	bad('unknown monitor integration scenario', scenario);
 }
