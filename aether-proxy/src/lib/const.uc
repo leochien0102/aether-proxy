@@ -236,3 +236,6 @@ export const STATS_NFT_TIMEOUT_SECS = 5;
 
 // T8.12b: procd service signal uses the numeric SIGUSR1 value.
 export const PROBE_SIGUSR1 = 10;
+
+// T8.16 (docs/08 "检查"): default command search path when PATH is empty or unset.
+export const UPDATE_DEFAULT_PATH = '/usr/sbin:/usr/bin:/sbin:/bin';
