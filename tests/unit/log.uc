@@ -2,7 +2,16 @@
 // log line classification and tail selection (docs/10 "`log`、`node import`、`custom`",
 // docs/09 "子进程日志"). Pure functions of aetherproxy.cmd.log, table-driven.
 
+import * as fs from 'fs';
 import { classify, select_lines } from 'aetherproxy.cmd.log';
+
+// Source-location text comes from T8.18's on-device examples. The fixture supplies
+// synthetic logd envelopes and SGR colors because the full capture is not in the repo.
+const DEVICE_PATH = fs.dirname(sourcepath()) + '/../node/fixtures/logd-chinadns.txt';
+const DEVICE_TEXT = fs.readfile(DEVICE_PATH);
+if (DEVICE_TEXT == null)
+	die(`cannot read ${DEVICE_PATH}: ${fs.error() ?? 'unknown error'}\n`);
+const DEVICE_LINES = split(trim(DEVICE_TEXT), '\n');
 
 const LOGD = [
 	'Thu Oct 16 12:00:00 2026 daemon.notice aether-proxy[1234]: SERVICE_STARTED proxy started',
@@ -30,11 +39,41 @@ export const cases = [
 	  message: '[main.zig:123] upstream switched', expect: 'dns' },
 	{ name: 'classify dns nested module', kind: 'classify',
 	  message: '[resolver.zig:44] cached 10 entries', expect: 'dns' },
+	{ name: 'classify dns C source', kind: 'classify',
+	  message: '[dnl.c:541 dnl_init]', expect: 'dns' },
+	{ name: 'classify dns strips colors inside Zig location', kind: 'classify',
+	  message: '[\x1b[1;32mmain.zig\x1b[0m:164 main]', expect: 'dns' },
+	{ name: 'classify dns strips colors inside C location', kind: 'classify',
+	  message: '[\x1b[32mdnl.c\x1b[m:541 dnl_init]', expect: 'dns' },
+	{ name: 'classify xray strips all color sequences', kind: 'classify',
+	  message: '\x1b[32m2026/10/19 12:00:01.123456 \x1b[1m[Info]\x1b[0m app: ready', expect: 'xray' },
+	{ name: 'classify C source requires digits', kind: 'classify',
+	  message: '[dnl.c:x dnl_init]', expect: 'aether-proxy' },
+	{ name: 'classify unrelated source extension is not dns', kind: 'classify',
+	  message: '[dnl.cpp:541 dnl_init]', expect: 'aether-proxy' },
+	{ name: 'classify null', kind: 'classify', message: null, expect: 'aether-proxy' },
 	{ name: 'classify dns requires digits', kind: 'classify',
 	  message: '[main.zig:x] no line number', expect: 'aether-proxy' },
 	{ name: 'classify event line', kind: 'classify',
 	  message: 'SERVICE_STARTED proxy started [mode=gfw]', expect: 'aether-proxy' },
 	{ name: 'classify empty', kind: 'classify', message: '', expect: 'aether-proxy' },
+
+	// Compare complete objects, including raw ESC bytes, rather than only source labels.
+	{ name: 'select device locations and sources preserves every text byte', kind: 'select',
+	  text: DEVICE_TEXT, source: 'all', n: 200,
+	  expect: [
+		{ source: 'aether-proxy', text: DEVICE_LINES[0] },
+		{ source: 'xray', text: DEVICE_LINES[1] },
+		{ source: 'xray', text: DEVICE_LINES[2] },
+		{ source: 'dns', text: DEVICE_LINES[3] },
+		{ source: 'dns', text: DEVICE_LINES[4] }
+	  ] },
+	{ name: 'select device dns keeps both colored locations only', kind: 'select',
+	  text: DEVICE_TEXT, source: 'dns', n: 200,
+	  expect: [
+		{ source: 'dns', text: DEVICE_LINES[3] },
+		{ source: 'dns', text: DEVICE_LINES[4] }
+	  ] },
 
 	// --- select_lines: tag filter, source filter, tail, order -------------------
 	{ name: 'select all keeps the tagged lines in order', kind: 'select',

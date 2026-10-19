@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CLI scenario tests for `log`, `node import` and `custom` (docs/tasks/m8.md T8.2,
 # scenarios 1-9 of the card; scenario 10 lives in tests/rpcd/run.sh).
+# Also covers T8.18's colored Zig/C log sources (docs/10 log classification).
 # Runs the real entry point on the host through the test-only options of docs/10, with
 # stubs for `logread` (via PATH), the init script (via --sys-root) and the import race
 # hook (via AETHER_PROXY_TEST_NODE_IMPORT_RACE), so nothing outside a mktemp directory
@@ -117,6 +118,43 @@ expect "logread exits 5: exit code 1" 1 "$rc"
 expect "logread exits 5: code CMD_FAILED" CMD_FAILED "$(echo "$out" | jget code)"
 unset LOGREAD_RC
 
+# T8.18: preserve the task's on-device location text; envelopes and SGR sequences
+# are synthetic because the repository does not contain the full device capture.
+export LOGREAD_FIXTURE="$ROOT/tests/node/fixtures/logd-chinadns.txt"
+mapfile -t device_lines < "$LOGREAD_FIXTURE"
+expected_sources=(aether-proxy xray xray dns dns)
+out="$(PATH="$T/bin:$PATH" ap log --json 2>"$T/device-all.stderr")"; rc=$?
+expect "log device all: exit code 0" 0 "$rc"
+expect "log device all: stderr empty" '' "$(<"$T/device-all.stderr")"
+expect "log device all: five tagged lines" 5 "$(alen "$out" lines)"
+for i in "${!expected_sources[@]}"; do
+	expect "log device all: line $((i + 1)) source" "${expected_sources[$i]}" \
+		"$(printf '%s' "$out" | jget "lines.$i.source")"
+	expect "log device all: line $((i + 1)) text byte-identical" "${device_lines[$i]}" \
+		"$(printf '%s' "$out" | jget "lines.$i.text")"
+done
+
+out="$(PATH="$T/bin:$PATH" ap log --json --source dns 2>"$T/device-dns.stderr")"; rc=$?
+expect "log device --source dns: exit code 0" 0 "$rc"
+expect "log device --source dns: stderr empty" '' "$(<"$T/device-dns.stderr")"
+expect "log device --source dns: exactly two lines" 2 "$(alen "$out" lines)"
+for i in 0 1; do
+	expect "log device --source dns: line $((i + 1)) source dns" dns \
+		"$(printf '%s' "$out" | jget "lines.$i.source")"
+	expect "log device --source dns: line $((i + 1)) text byte-identical" "${device_lines[$((i + 3))]}" \
+		"$(printf '%s' "$out" | jget "lines.$i.text")"
+done
+
+PATH="$T/bin:$PATH" ap log --source dns >"$T/device-human.txt" 2>"$T/device-human.stderr"; rc=$?
+expect "log device human dns: exit code 0" 0 "$rc"
+expect "log device human dns: stderr empty" '' "$(<"$T/device-human.stderr")"
+printf '%s\n' "${device_lines[3]}" "${device_lines[4]}" > "$T/device-expected.txt"
+if cmp -s "$T/device-expected.txt" "$T/device-human.txt"; then
+	ok "log device human dns: output byte-identical including ANSI and newlines"
+else
+	bad "log device human dns: output byte-identical including ANSI and newlines"
+fi
+export LOGREAD_FIXTURE="$T/logd.txt"
 
 # ===========================================================================
 # 3-6: node import

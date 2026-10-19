@@ -1,0 +1,6 @@
+Mon Oct 19 12:00:00 2026 daemon.notice aether-proxy[1234]: SERVICE_STARTED proxy started
+Mon Oct 19 12:00:01 2026 daemon.info aether-proxy[1234]: 2026/10/19 12:00:01.123456 [Info] app: listener ready
+Mon Oct 19 12:00:02 2026 daemon.warn aether-proxy[1234]: 2026/10/19 12:00:02.123456 [Warning] transport: dial failed
+Mon Oct 19 12:00:03 2026 daemon.notice aether-proxy[1234]: [1;32m[main.zig:164 main][0m
+Mon Oct 19 12:00:04 2026 daemon.notice aether-proxy[1234]: [1;32m[dnl.c:541 dnl_init][0m
+Mon Oct 19 12:00:05 2026 daemon.notice dnsmasq[999]: reading /tmp/resolv.conf
