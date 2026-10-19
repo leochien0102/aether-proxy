@@ -171,7 +171,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - `packages.<包>.previous`：清单中 `previous` 对本机可用时为它的版本，否则为 `null`（2026-10-16 加，T8.9b；更新页据此显示回滚按钮）。
 - `channel_urls` 为空 → `CONFIG_INVALID`（退出码 2）。至少一个地址返回了清单但都没通过验签 → `MANIFEST_BAD_SIGNATURE`（退出码 4）；所有地址都连不上 → `UPDATE_FETCH_FAILED`（退出码 1）。
   两种失败分开报，LuCI 才能分别提示「连不上发布通道」与「签名校验失败」。
-- `pm`：有 `apk` 命令为 `apk`，否则有 `opkg` 为 `opkg`。`installed` 取自包管理器（`opkg status <包>` 的 `Version:`、`apk list -I <包>`）；没装为 `null`。
+- `pm`：有 `apk` 命令为 `apk`，否则有 `opkg` 为 `opkg`。「有命令」指在 `PATH` 的各目录中找到可执行文件（`PATH` 为空时用 `/usr/sbin:/usr/bin:/sbin:/bin`）；指定 `--bin-dir` 时只看该目录。OpenWrt 的 opkg 在 `/bin/opkg`（2026-10-19 真机发现：之前只检查了相对路径，检查更新完全不可用，backlog B10）。`installed` 取自包管理器（`opkg status <包>` 的 `Version:`、`apk list -I <包>`）；没装为 `null`。
 - 版本比较：先按 `-r` 前的上游版本逐段比较数字，相同再比 `r` 后的数字（`26.10.10-r1` > `26.9.30-r5`）。
 - 包对本机架构不可用 → `available` 照常填、`newer: false`，记 `ARCH_UNSUPPORTED`。
 - 有包 `newer: true` 时记 `UPDATE_AVAILABLE`（每个包、每个新版本只记一次）。

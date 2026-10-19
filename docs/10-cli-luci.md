@@ -22,7 +22,7 @@ init.d / hotplug / daemon ──────────────────
 | 子命令 | 作用 | 是否长任务 |
 |---|---|---|
 | `daemon [--boot]` | procd 实例入口（[04](04-lifecycle.md)） | 常驻 |
-| `check` | 校验配置并完成全部渲染，不改动系统状态 | 否 |
+| `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup` | 幂等清理 | 否 |
 | `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容）和 `notices`（见「概览页」） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
@@ -62,7 +62,8 @@ init.d / hotplug / daemon ──────────────────
 **`log [--source all|aether-proxy|xray|dns] [--lines n]`**
 - 执行 `logread`（`sys.run`，10 秒），只保留标签为 `aether-proxy` 的行（`<日期> <设施>.<等级> aether-proxy[<pid>]: <消息>`）。
   Xray 与 chinadns-ng 继承 daemon 的输出、共用这个标签（[09](09-logging.md)「子进程日志」），按消息内容区分来源：
-  消息匹配 `^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]` → `xray`；匹配 `\[[A-Za-z0-9_]+\.zig:[0-9]+` → `dns`；其余 → `aether-proxy`。
+  消息匹配 `^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]` → `xray`；匹配 `\[[A-Za-z0-9_]+\.(zig|c):[0-9]+` → `dns`；其余 → `aether-proxy`。
+  （2026-10-19 真机核对：Xray 规则正确；chinadns-ng 也有来自 C 源文件的行，如 `[dnl.c:541 dnl_init]`，故 `dns` 规则加上 `.c`。chinadns-ng 的行带 ANSI 颜色码，匹配前先去掉 `\x1b[…m` 序列；`text` 字段原样保留。）
   两个格式按上游源码推定，**真机验收（T8.13）时核对**，不符就改这两条规则。
 - `--source` 默认 `all`；`--lines` 为 1–2000，默认 200，取过滤后的**最后** n 行，按时间先后排列。
 - 输出：`{ "ok": true, "source": "<来源>", "lines": [ { "source": "xray", "text": "<原始整行>" }, … ] }`。没有 `logread` 或它失败 → `CMD_FAILED`，退出码 1。

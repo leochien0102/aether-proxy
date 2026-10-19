@@ -142,6 +142,8 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 ## monitor 循环
 
 在 daemon 内运行，正常每 30 秒一轮，非 `running` 状态下每 10 秒一轮；收到 SIGUSR1 立即执行一轮。
+另有两处立即执行一轮（2026-10-19，[03](03-dns.md)「DNS 级别」）：启动流程完成后（不等第一个周期），以及任何原因切到 DNS T2 之后。
+启动以来从未健康过时，一次代理健康检测通过即进入 `running` 与 T1。
 每轮按顺序执行：
 
 1. **规则表自检**：`inet aetherproxy` **连续 2 轮**不存在（被 `fw4 flush` 或第三方工具删除）且当前不是 `failsafe` → 重新加载，记 WARN `NFT_TABLE_RESTORED`。
