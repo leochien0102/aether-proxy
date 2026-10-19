@@ -8,6 +8,7 @@ import * as uci from 'uci';
 import * as config from 'aetherproxy.config';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as monitor from 'aetherproxy.monitor';
+import * as supervise from 'aetherproxy.supervise';
 import * as C from 'aetherproxy.const';
 
 let pass = 0, fail = 0;
@@ -126,12 +127,17 @@ if (scenario == 'proxy-tier') {
 }
 else if (scenario == 'xray-failsafe') {
 	let d = opts.daemon;
-	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', xray_down_count: 1, xray_down_reported: false };
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', xray_down_count: 0, xray_down_reported: false };
 	let before = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`) ?? '';
 	write(`${replace(opts.ctx.root, /\/$/, '')}/proc/net/tcp`, replace(before, /.*7968.*\n/g, ''));
 	monitor.tick(d);
 	while (d.busy) uloop.run(100);
 	uloop.run(100);
+	check(d.machine.state == 'running' && d.machine.xray_down_count == 1,
+		'first missing-listener round does not enter failsafe');
+	monitor.tick(d);
+	while (d.busy)
+		uloop.run(100);
 	let calls = fs.readfile(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/calls.log`) ?? '';
 	check(d.machine.state == 'failsafe', 'two missing-listener rounds enter failsafe');
 	check(index(calls, 'nft flush chain inet aetherproxy prerouting') >= 0, 'failsafe clears prerouting only');
@@ -163,6 +169,32 @@ else if (scenario == 'xray-failsafe') {
 	let nft_file = fs.readfile(`${opts.current}/${C.ARTIFACT_FILES.nft}`) ?? '';
 	check(index(nft_file, 'elements = { 198.51.100.10 }') >= 0, 'missing-table reload consumes sets.save');
 	check(fs.stat(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`) == null, 'sets.save is consumed');
+	no_external_children(d);
+}
+else if (scenario == 'node-refresh') {
+	let d = opts.daemon;
+	let tcp_path = `${opts.ctx.root}/proc/net/tcp`;
+	let lines = split(fs.readfile(tcp_path), '\n');
+	check(write(tcp_path, join('\n', filter(lines, line => index(line, '7968') < 0))),
+		'node refresh removes the static Xray listener fixture');
+	d.children.xray = supervise.create({
+		name: C.XRAY_COMPONENT,
+		argv: [ `${opts.ctx.bin_dir}/xray`, 'run', '-c', `${opts.current}/${C.ARTIFACT_FILES.xray}` ],
+		run_dir: `${opts.ctx.root}${C.RUN_DIR}`, backoff: [ 5 ], stable_secs: 300
+	});
+	d.children.xray.start();
+	check(monitor.wait_xray_port(opts.ctx), 'node refresh starts with a real supervised Xray substitute');
+	check(write(`${opts.ctx.root}/xray-listen-delay`, '1\n'), 'node refresh enables delayed replacement');
+	d.machine.node_ip = '203.0.113.19';
+	d.machine.last_node_refresh = time() - C.MONITOR_NODE_REFRESH_SECS - 1;
+	monitor.tick(d);
+	while (d.busy)
+		uloop.run(100);
+	check(d.machine.node_ip == '203.0.113.20', 'node refresh publishes the resolved IP');
+	check(index(fs.readfile(`${opts.ctx.root}/proc/net/tcp6`) ?? '', ':7968 ') >= 0,
+		'node refresh finishes only after the delayed Xray listener is ready');
+	check(d.machine.xray_down_count == 0 && !d.machine.xray_down_reported,
+		'node refresh does not count its deliberate restart as an outage');
 	no_external_children(d);
 }
 else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scenario) >= 0) {

@@ -88,7 +88,24 @@ if [ ! -f "$SYSROOT/first-probe-chinadns.conf" ]; then
 fi
 exec "$(dirname "$0")/curl-original" "$@"
 EOF
-cp "$STUB_SRC/xray" "$T/bin/xray"
+cp "$STUB_SRC/xray" "$T/bin/xray-original"
+# Keep delayed-listener controls local to this suite, not in shared infrastructure.
+cat > "$T/bin/xray" <<'EOF'
+#!/bin/sh
+if [ "$1" = run ] && [ "$2" = -c ]; then
+	root=${3%/var/run/aether-proxy/current/*}
+	if [ -f "$root/xray-listen-delay" ]; then
+		read -r uptime rest < /proc/uptime
+		printf '%s\n' "$uptime" >> "$root/xray-launch-times"
+		sleep 1
+	fi
+fi
+if [ "$1" = run ] && [ "$2" = -test ]; then
+	root=${4%/var/run/aether-proxy/staging/*}
+	if [ -f "$root/xray-test-delay" ]; then sleep 2; fi
+fi
+exec "$(dirname "$0")/xray-original" "$@"
+EOF
 cp "$STUB_SRC/chinadns-ng" "$T/bin/chinadns-ng"
 cp "$STUB_SRC/kill" "$T/bin/kill"
 chmod +x "$T/bin/"*
@@ -353,6 +370,7 @@ config node 'n_00000000000000000000000000000002'
 	option port '443'
 	option password 'other-secret'
 CONF
+touch "$RP/xray-listen-delay"
 start_daemon "$RP" "$LP" --confdir "$P_CONF"
 wait_for "$RP/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' \
 	&& ok 'probe reload: startup completed' || bad 'probe reload: startup completed'
@@ -368,6 +386,10 @@ wait_reload_probe "$((probe_count + 1))" \
 	|| bad 'probe reload: node change probes within 5 seconds'
 sleep 0.3
 expect 'probe reload: node change adds exactly one probe' "$((probe_count + 1))" "$(count_calls "$LP" 'curl ')"
+expect 'delayed reload: node change leaves no missing-listener count' 0 \
+	"$(jget monitor.xray_down_count < "$RP/var/run/aether-proxy/state.json")"
+printf 'TRACE delayed node reload: xray_down_count=%s\n' \
+	"$(jget monitor.xray_down_count < "$RP/var/run/aether-proxy/state.json")"
 
 probe_count=$(count_calls "$LP" 'curl ')
 # Change only the current node's address; a literal IP bypasses the fixed DNS substitute.
@@ -378,6 +400,16 @@ wait_reload_probe "$((probe_count + 1))" \
 sleep 0.3
 expect 'probe reload: IP change adds exactly one probe' "$((probe_count + 1))" "$(count_calls "$LP" 'curl ')"
 expect 'probe reload: new node IP persisted' '203.0.113.21' "$(jget node_ip < "$RP/var/run/aether-proxy/state.json")"
+expect 'delayed reload: IP change leaves no missing-listener count' 0 \
+	"$(jget monitor.xray_down_count < "$RP/var/run/aether-proxy/state.json")"
+if has_line "$RP/var/run/aether-proxy/events.jsonl" 'XRAY_DOWN_FAILOPEN'; then
+	bad 'delayed reload: planned restarts never emit XRAY_DOWN_FAILOPEN'
+else
+	ok 'delayed reload: planned restarts never emit XRAY_DOWN_FAILOPEN'
+fi
+printf 'TRACE delayed IP reload: xray_down_count=%s state=%s\n' \
+	"$(jget monitor.xray_down_count < "$RP/var/run/aether-proxy/state.json")" \
+	"$(jget state < "$RP/var/run/aether-proxy/state.json")"
 
 probe_count=$(count_calls "$LP" 'curl ')
 validation_count=$(count_calls "$LP" 'xray run -test')
@@ -397,9 +429,61 @@ wait_for "$RP/var/run/aether-proxy/events.jsonl" 'CONFIG_INVALID' \
 	&& ok 'probe reload: invalid reload rejected' || bad 'probe reload: invalid reload rejected'
 sleep 0.3
 expect 'probe reload: failed reload adds no probe' "$probe_count" "$(count_calls "$LP" 'curl ')"
+
+# Restore valid on-disk UCI after the negative reload test: the failsafe DNS render
+# reads it too, and otherwise fails validation rather than committing the transition.
+sed -i "s/option port '0'/option port '443'/g" "$P_CONF/aetherproxy"
+# A real child exit must still count two missing samples, before its 5 s crash restart.
+read -r xray_pid < "$RP/xray.pid"
+kill -TERM "$xray_pid"
+for _ in {1..60}; do
+	if ! grep -Fq ':7968 ' "$RP/proc/net/tcp6"; then break; fi
+	sleep 0.05
+done
+kill -USR1 "$DAEMON_PID"
+wait_for "$RP/var/run/aether-proxy/state.json" '"xray_down_count": 1' 40 \
+	&& ok 'real Xray exit: first round counts one missing listener' \
+	|| bad 'real Xray exit: first round counts one missing listener'
+expect 'real Xray exit: first round keeps running' running \
+	"$(jget state < "$RP/var/run/aether-proxy/state.json")"
+# Let the first signal handler return before sending a distinct second signal.
+sleep 0.2
+kill -USR1 "$DAEMON_PID"
+wait_for "$RP/var/run/aether-proxy/events.jsonl" 'XRAY_DOWN_FAILOPEN' 40 \
+	&& ok 'real Xray exit: second round emits XRAY_DOWN_FAILOPEN' \
+	|| bad 'real Xray exit: second round emits XRAY_DOWN_FAILOPEN'
+expect 'real Xray exit: second round enters failsafe' failsafe \
+	"$(jget state < "$RP/var/run/aether-proxy/state.json")"
 stop_daemon
 expect 'probe reload: daemon stops cleanly' 0 "$?"
 assert_no_children "$RP"
+
+# A periodic deadline expires during validation. wait_stopped/readiness pump uloop,
+# but the reload transaction must remain the only owner until its post-apply probe.
+RB="$T/sys-reload-busy"; LB="$RB/calls.log"; make_root "$RB"
+B_CONF="$T/reload-busy-conf"; mkdir -p "$B_CONF"
+cp "$FIX/aetherproxy" "$B_CONF/aetherproxy"
+start_daemon "$RB" "$LB" --confdir "$B_CONF"
+if wait_for "$RB/var/run/aether-proxy/state.json" '"state": "running"'; then
+	# Running uses a real 30 s period; do not change production constants for this test.
+	sleep 29
+	touch "$RB/xray-test-delay" "$RB/xray-listen-delay"
+	sed -i "s/option address 'node.example.com'/option address '203.0.113.22'/g" "$B_CONF/aetherproxy"
+	tables_before=$(count_calls "$LB" 'nft list table inet aetherproxy')
+	probes_before=$(count_calls "$LB" 'curl ')
+	kill -HUP "$DAEMON_PID"
+	wait_count "$LB" 'curl ' "$((probes_before + 1))" \
+		&& ok 'reload busy: new route is probed after readiness' \
+		|| bad 'reload busy: new route is probed after readiness'
+	sleep 0.2
+	# One reload sets-export check plus one post-reload observation, no nested monitor.
+	expect 'reload busy: overdue periodic callback cannot observe inside reload' 2 \
+		"$(( $(count_calls "$LB" 'nft list table inet aetherproxy') - tables_before ))"
+	expect 'reload busy: exactly one post-apply health probe' "$((probes_before + 1))" "$(count_calls "$LB" 'curl ')"
+else
+	bad 'reload busy: daemon starts'
+fi
+stop_daemon
 
 # 3. Repeated cleanup does not repeat destructive operations after the first pass.
 R3="$T/sys3"; L3="$T/sys3/calls.log"; make_root "$R3"; : > "$L3"

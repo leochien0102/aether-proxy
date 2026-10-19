@@ -272,28 +272,6 @@ function hash_artifacts(ctx, current) {
 	return apply.artifact_hashes(ctx, current);
 };
 
-function port_listening(opts) {
-	for (let file in [ C.PROC_NET_TCP, C.PROC_NET_TCP6 ])
-		if (net.tcp_listening(fs.readfile(root_path(opts, file)), C.TPROXY_PORT))
-			return true;
-	return false;
-};
-
-function wait_xray_port(ctx, opts, on_signal) {
-	let started = monotonic_ms();
-	if (started == null)
-		return false;
-	let deadline = started + C.DAEMON_PORT_WAIT_SECS * 1000;
-	while (monotonic_ms() < deadline) {
-		if (on_signal())
-			return false;
-		if (port_listening(opts))
-			return true;
-		uloop.run(C.DAEMON_POLL_MS);
-	}
-	return port_listening(opts);
-};
-
 function child_options(ctx, name, argv) {
 	return supervise.create({ name, argv, run_dir: run_dir(ctx), backoff: [ 5, 10, 30, 60 ], stable_secs: 300 });
 };
@@ -617,7 +595,7 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_start', detail: 'xray process could not be started', children };
 		}
-		if (!wait_xray_port(ctx, opts, signal_pending)) {
+		if (!monitor.wait_xray_port(ctx, signal_pending)) {
 			record_step(ctx, 'start_xray_listen', step_started);
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_listen', detail: 'xray did not listen on the TPROXY port within 5 seconds', children, interrupted: signal_pending() };
@@ -1101,7 +1079,11 @@ function run(args) {
 				}
 				let old_node = monitor_daemon.snapshot.main.node;
 				let old_ip = base.node_ip;
+				// Reload pumps uloop while stopping/starting children. Timer callbacks must
+				// not sample the intentional listener gap or mutate current/ mid-transaction.
+				monitor_daemon.busy = true;
 				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
+				monitor_daemon.busy = false;
 				if (changed.stop) {
 					stopping = true;
 					cancel_subscription_timer();

@@ -53,6 +53,23 @@ function monotonic_ms() {
 	return value == null ? null : value[0] * 1000 + value[1] / 1000000;
 };
 
+// A PID proves fork succeeded, not that Xray can serve traffic. Reuse startup's bounded
+// readiness check for deliberate restarts, before allowing a new-route monitor sample.
+function wait_xray_port(ctx, on_signal) {
+	let started = monotonic_ms();
+	if (started == null)
+		return false;
+	let deadline = started + C.DAEMON_PORT_WAIT_SECS * 1000;
+	while (monotonic_ms() < deadline) {
+		if (on_signal != null && on_signal())
+			return false;
+		if (port_listening({ ctx }, C.TPROXY_PORT))
+			return true;
+		uloop.run(C.DAEMON_POLL_MS);
+	}
+	return port_listening({ ctx }, C.TPROXY_PORT);
+};
+
 function log_failure(daemon, step, detail) {
 	log.set_run_dir(run_dir(daemon));
 	log.event('error', 'START_FAILED', { step: `monitor:${step}`, detail });
@@ -245,6 +262,12 @@ function update_node_ip(daemon, machine, done) {
 		[ binary, 'run', '-c', xray_path ], error => {
 			if (error != null) {
 				done(error);
+				return;
+			}
+			// This action already owns busy and the monitor lock, so pumping uloop while
+			// waiting cannot observe our own restart as an unrelated Xray outage.
+			if (!wait_xray_port(daemon.ctx)) {
+				done('xray did not listen on the TPROXY port within 5 seconds');
 				return;
 			}
 			machine.node_ip = resolved.ip;
@@ -612,4 +635,4 @@ interval_ms = machine => {
 	return machine?.state == 'running' ? C.MONITOR_RUNNING_INTERVAL_MS : C.MONITOR_OTHER_INTERVAL_MS;
 };
 
-export { create_daemon, initial_state, interval_ms, next, tick };
+export { create_daemon, initial_state, interval_ms, next, tick, wait_xray_port };
