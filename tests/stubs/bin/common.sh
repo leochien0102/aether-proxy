@@ -24,9 +24,15 @@ if [ "$name" = ip ] && [ -n "${STUB_IP_RULES_FILE:-}" ]; then
 		*" rule del "*) sed '1d' "$STUB_IP_RULES_FILE" >"$STUB_IP_RULES_FILE.tmp"; mv "$STUB_IP_RULES_FILE.tmp" "$STUB_IP_RULES_FILE" ;;
 	esac
 fi
-# ip(8) on a device: flushing an already empty table fails with ESRCH.
-if [ "$name" = ip ] && [ "${STUB_IP_FLUSH_ESRCH:-0}" = 1 ]; then
-	case " $* " in *" route flush "*) echo 'Failed to send flush request: No such process' >&2; exit 2 ;; esac
+# ip(8) on a device: flushing an already empty table fails; the wording differs between
+# builds (STUB_IP_FLUSH_ERR), ESRCH being the first one seen.
+[ "${STUB_IP_FLUSH_ESRCH:-0}" = 1 ] && STUB_IP_FLUSH_ERR='Failed to send flush request: No such process'
+if [ "$name" = ip ] && [ -n "${STUB_IP_FLUSH_ERR:-}" ]; then
+	case " $* " in *" route flush "*) echo "$STUB_IP_FLUSH_ERR" >&2; exit 2 ;; esac
+fi
+# `ip route show table`: empty unless STUB_IP_ROUTES_FILE holds routes that remain.
+if [ "$name" = ip ] && [ -n "${STUB_IP_ROUTES_FILE:-}" ]; then
+	case " $* " in *" route show table "*) cat "$STUB_IP_ROUTES_FILE"; exit 0 ;; esac
 fi
 if [ -n "$out" ]; then cat "$out"; fi
 exit "$rc"

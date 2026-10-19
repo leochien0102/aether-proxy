@@ -36,6 +36,17 @@ var METHODS = {
 
 /* docs/10 「公共模块与菜单」: check and save_file get the long hard-timeout
    tier, every other method the normal one (35s/15s vs the plugin's 30s/10s). */
+/* Hard timeouts in seconds (docs/10 「公共模块与菜单」). call/long are the
+   ap.call tiers; job is the total budget for one background job (the job
+   itself caps at 600s); job_poll is the job_status polling cadence required
+   by docs/10 「作业机制」 (frontend polls every 2 seconds). */
+var TIMEOUTS = {
+	call: 15,
+	long: 35,
+	job: 620,
+	job_poll: 2
+};
+
 var LONG_CALLS = [ 'check', 'save_file' ];
 
 /* docs/10 「公共模块与菜单」: ap.poll() intervals below 2000ms count as 2000ms. */
@@ -103,7 +114,7 @@ function invoke(entry) {
 		return;
 	}
 
-	var timeout_s = (LONG_CALLS.indexOf(entry.method) != -1) ? ap.TIMEOUTS.long : ap.TIMEOUTS.call;
+	var timeout_s = (LONG_CALLS.indexOf(entry.method) != -1) ? TIMEOUTS.long : TIMEOUTS.call;
 
 	timer = setTimeout(function() {
 		finish({
@@ -123,36 +134,34 @@ function invoke(entry) {
 	}
 }
 
+/* Call one of the rpcd plugin methods (docs/10 「rpcd 插件」) and resolve
+   exactly once: with the rpc reply, or { ok: false, code: "RPC_FAILED" }
+   when the rpc layer rejects, or { ok: false, code: "TIMEOUT" } on hard
+   timeout. Never rejects. Calls beyond 2 in flight wait in FIFO order and
+   are sent when a slot frees up (docs/10 「UI 规则」). */
+function call(method, params) {
+	var names = METHODS[method] ?? [];
+	var args = [];
+
+	for (var i = 0; i < names.length; i++)
+		args.push(params ? params[names[i]] : undefined);
+
+	return new Promise(function(resolve) {
+		queue.push({ method: method, args: args, resolve: resolve });
+		pump();
+	});
+}
+
+/* LuCI's baseclass.extend() returns a class; L.require hands views an instance
+   of it. Code in this module must therefore use the module-level TIMEOUTS and
+   call(), never `ap.TIMEOUTS` / `ap.call` (those are prototype members, absent
+   on the class itself: the T8.13 device window failed on exactly that). */
 var ap = baseclass.extend({
-	/* Hard timeouts in seconds, kept in an object so tests can shrink them
-	   (docs/10 「公共模块与菜单」). call/long are the ap.call tiers; job is the
-	   total budget for one background job (the job itself caps at 600s);
-	   job_poll is the job_status polling cadence required by docs/10
-	   「作业机制」 (frontend polls every 2 seconds). */
-	TIMEOUTS: {
-		call: 15,
-		long: 35,
-		job: 620,
-		job_poll: 2
-	},
+	/* Shared with the module-level TIMEOUTS object, so tests can shrink the
+	   timeouts through the instance (docs/10 「公共模块与菜单」). */
+	TIMEOUTS: TIMEOUTS,
 
-	/* Call one of the rpcd plugin methods (docs/10 「rpcd 插件」) and resolve
-	   exactly once: with the rpc reply, or { ok: false, code: "RPC_FAILED" }
-	   when the rpc layer rejects, or { ok: false, code: "TIMEOUT" } on hard
-	   timeout. Never rejects. Calls beyond 2 in flight wait in FIFO order and
-	   are sent when a slot frees up (docs/10 「UI 规则」). */
-	call: function(method, params) {
-		var names = METHODS[method] ?? [];
-		var args = [];
-
-		for (var i = 0; i < names.length; i++)
-			args.push(params ? params[names[i]] : undefined);
-
-		return new Promise(function(resolve) {
-			queue.push({ method: method, args: args, resolve: resolve });
-			pump();
-		});
-	},
+	call: call,
 
 	/* Call fn (which returns a promise) every interval_ms, but at most every
 	   2000ms. A tick is skipped while the previous run has not settled and
@@ -211,12 +220,12 @@ var ap = baseclass.extend({
 		var track = function(id, attached) {
 			return new Promise(function(resolve) {
 				var poll_once = function() {
-					if (Date.now() - started_at > ap.TIMEOUTS.job * 1000) {
+					if (Date.now() - started_at > TIMEOUTS.job * 1000) {
 						resolve({ ok: false, code: 'TIMEOUT' });
 						return;
 					}
 
-					ap.call('job_status', { id: id }).then(function(st) {
+					call('job_status', { id: id }).then(function(st) {
 						if (!st || st.ok === false) {
 							resolve(st ?? { ok: false, code: 'RPC_FAILED', detail: 'job_status returned nothing' });
 							return;
@@ -232,7 +241,7 @@ var ap = baseclass.extend({
 							return;
 						}
 
-						setTimeout(poll_once, ap.TIMEOUTS.job_poll * 1000);
+						setTimeout(poll_once, TIMEOUTS.job_poll * 1000);
 					});
 				};
 
@@ -241,7 +250,7 @@ var ap = baseclass.extend({
 			});
 		};
 
-		return ap.call('job_start', { kind: kind, args: args ?? [] }).then(function(started) {
+		return call('job_start', { kind: kind, args: args ?? [] }).then(function(started) {
 			/* BUSY with a job id: attach to the already running job instead of
 			   failing (docs/10 「公共模块与菜单」). */
 			if (started && started.code == 'BUSY' && typeof started.job == 'string')

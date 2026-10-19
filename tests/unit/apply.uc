@@ -165,7 +165,15 @@ function run_routes() {
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=1\n');
 	if (!apply.route_del(c).ok)
 		return fail('route_del treated an already empty table (ESRCH) as a failure');
-	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=0\n');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=0\nSTUB_IP_FLUSH_ERR="Flush terminated"\n');
+	if (!apply.route_del(c).ok)
+		return fail('route_del treated an empty table reported as "Flush terminated" as a failure');
+	// A failed flush with routes still in the table is a real failure.
+	write(`${t.base}/routes-left`, 'local default dev lo scope host\n');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + `STUB_IP_ROUTES_FILE=${t.base}/routes-left\n`);
+	if (apply.route_del(c).ok)
+		return fail('route_del accepted a failed flush that left routes in the table');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ERR=\nSTUB_IP_ROUTES_FILE=\n');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_RC=1\n');
 	return !apply.route_add(c).ok && !apply.route_del(c).ok ? 'PASS' : fail('ip rule query/deletion failure accepted');
 };

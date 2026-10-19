@@ -32,7 +32,12 @@ function setup(t) {
 
 	const rpc = createRpc();
 	const document = createDocument();
-	const ap = loadModule(COMMON, { rpc, baseclass: { extend: (o) => o } }, { window: {}, document });
+	// Like LuCI: baseclass.extend() returns a class whose members live on the prototype,
+	// and L.require instantiates it. A plain-object double hid `ap.TIMEOUTS` being
+	// undefined inside the module (found in the T8.13 device window).
+	const baseclass = { extend: (props) => { const Class = function() {}; Class.prototype = props; return Class; } };
+	const Module = loadModule(COMMON, { rpc, baseclass }, { window: {}, document });
+	const ap = new Module();
 
 	return { ap, rpc, document };
 }

@@ -209,4 +209,4 @@ daemon 启动失败 → 留在 `error` 并按 30 秒重试成功；真实订阅�
 - busybox 可能没有 `od`；uci-defaults 改用 ucode 读 `/dev/urandom`。
 - pid 文件指向的进程已不存在或被复用时，`cleanup` 只删 pid 文件，不算失败。
 - `chinadns.conf` 按路径引用名单，只改名单时渲染文本不变，reload 判定无变化；哈希改为覆盖被引用的名单（见「重载」）。
-- 路由表 233 已空时 `ip route flush` 返回 ESRCH（No such process），按成功处理。
+- 路由表 233 已空时 `ip route flush` 会失败，不同 ip(8) 版本措辞不同（ESRCH「No such process」；2026-10-19 H28K 上为「Flush terminated」）。实现不再匹配错误文字：flush 失败后再查一次表，表为空就按成功处理。
