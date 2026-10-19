@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Signed update discovery/install regressions, including PATH lookup (docs/08 "检查").
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UCODE="$ROOT/tests/host/ucode"; ENTRY="$ROOT/aether-proxy/src/aether-proxy"; USIGN="$ROOT/tests/host/prefix/bin/usign"
@@ -482,4 +483,130 @@ expect 'redirected channel: check succeeds' 0 "$rc"
 make_data_manifest single; printf "%064d\n" 0 > "$T/root/etc/aether-proxy/data/chnroute4.sha256"
 out=$(ap update data --json --confdir "$T/conf-redirect" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>/dev/null); rc=$?
 expect 'redirected channel: data asset downloads' 0 "$rc"; expect 'redirected channel: item updated' chnroute4 "$(get "$out" updated.0)"
+# T8.16: isolate PATH so neither the repository stubs nor a host package manager can leak in.
+make_manifest
+mkdir -p "$T/path-tools" "$T/path-first" "$T/path-later" "$T/path-apk" "$T/path-empty"
+for tool in sh mktemp sleep rm cat curl sha256sum sed; do
+	ln -s "$(command -v "$tool")" "$T/path-tools/$tool"
+done
+ln -s "$USIGN" "$T/path-tools/usign"
+export UPDATE_PM_PATH_CALLS="$T/pm-path-calls"
+make_path_pm() {
+	local name=$1 dir=$2
+	cat > "$dir/$name" <<PM
+#!/bin/sh
+printf '%s %s\\n' "\$0" "\$*" >> "\$UPDATE_PM_PATH_CALLS"
+exec "$ROOT/tests/stubs/update-bin/$name" "\$@"
+PM
+	chmod +x "$dir/$name"
+}
+# Launch the real host binary directly: the host bash wrapper itself needs PATH utilities.
+path_ap() {
+	local search=$1
+	shift
+	PATH="$search" LD_LIBRARY_PATH="$ROOT/tests/host/prefix/lib" \
+		"$ROOT/tests/host/prefix/bin/ucode" -L "$ROOT/tests/host/modules/*.uc" \
+		-L "$ROOT/tests/host/modules/*/*.uc" -S "$ENTRY" -- "$@" 2>"$T/path-stderr"
+}
+path_check() {
+	local search=$1
+	shift
+	path_ap "$search" update check --json --confdir "$T/conf" --run-dir "$T/run" \
+		--sys-root "$T/root" "$@"
+}
+make_path_pm opkg "$T/path-later"
+search="$T/path-tools:$T/path-first:$T/path-later"
+export UPDATE_INSTALLED_VERSION=26.9.30-r5
+unset UPDATE_PACKAGE_STATE_FILE
+out=$(path_check "$search")
+expect 'T8.16 PATH opkg check succeeds without bin-dir' 0 "$?"
+expect 'T8.16 PATH later directory selects opkg' opkg "$(get "$out" pm)"
+expect 'T8.16 PATH opkg supplies installed version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"
+expect 'T8.16 opkg called by absolute path' "$T/path-later/opkg status xray-core" \
+	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
+# apk wins even when opkg appears earlier in PATH.
+make_path_pm apk "$T/path-apk"
+export UPDATE_APK_VERSION=26.8.8-r2
+out=$(path_check "$search:$T/path-apk")
+expect 'T8.16 PATH apk check succeeds' 0 "$?"
+expect 'T8.16 PATH apk outranks earlier opkg' apk "$(get "$out" pm)"
+expect 'T8.16 PATH apk supplies installed version' 26.8.8-r2 "$(get "$out" packages.xray-core.installed)"
+# An executable directory is not an executable file; non-executable files must not mask later tools.
+printf '#!/bin/sh\nexit 99\n' > "$T/path-first/opkg"
+chmod 644 "$T/path-first/opkg"
+mkdir "$T/path-first/apk"
+out=$(path_check "$search")
+expect 'T8.16 non-executable and directory candidates are skipped' 0 "$?"
+expect 'T8.16 later executable still supplies installed version' 26.9.30-r5 \
+	"$(get "$out" packages.xray-core.installed)"
+out=$(path_check "$T/path-tools:$T/path-first")
+expect 'T8.16 no executable manager exits 1' 1 "$?"
+expect 'T8.16 no executable manager code' CMD_FAILED "$(get "$out" code)"
+expect 'T8.16 no executable manager preserves error' 'neither apk nor opkg is available' "$(get "$out" detail)"
+: > "$UPDATE_PM_PATH_CALLS"
+ln -s "$USIGN" "$T/path-empty/usign"
+out=$(path_check "$search" --bin-dir "$T/path-empty")
+expect 'T8.16 bin-dir excludes PATH managers' 1 "$?"
+expect 'T8.16 bin-dir missing manager error' 'neither apk nor opkg is available' "$(get "$out" detail)"
+expect 'T8.16 bin-dir never calls PATH managers' '' "$(< "$UPDATE_PM_PATH_CALLS")"
+# Relative and empty PATH entries must still produce absolute invocation paths.
+relative_dir=${T#"$ROOT/"}/path-later
+out=$(cd "$ROOT" && path_check "$T/path-tools:$relative_dir")
+expect 'T8.16 relative PATH entry works' 0 "$?"
+expect 'T8.16 relative PATH command is called absolutely' "$T/path-later/opkg status xray-core" \
+	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
+: > "$UPDATE_PM_PATH_CALLS"
+out=$(cd "$T/path-later" && path_check "$T/path-tools:")
+expect 'T8.16 empty PATH entry searches current directory' 0 "$?"
+expect 'T8.16 empty PATH entry command is called absolutely' "$T/path-later/opkg status xray-core" \
+	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
+# Exercise the private lookup with a fake fs: no host /bin/opkg or permissions are required.
+# Keep the production helper intact instead of exporting an implementation detail for tests.
+cat > "$T/default-path.uc" <<'UCODE'
+'use strict';
+import * as fs from 'fs';
+import * as C from 'aetherproxy.const';
+let source = fs.readfile(ARGV[0]);
+let start = index(source, 'function package_manager(');
+let end = index(source, '\nfunction installed_version(');
+let factory = loadstring('(function(fs, C) { ' + substr(source, start, end - start) +
+	' return package_manager(null); })')();
+let probed = [];
+let manager = factory({
+	access: (path, mode) => {
+		push(probed, path);
+		return path == '/bin/opkg' && mode == 'x';
+	},
+	stat: path => ({ type: 'file' }),
+	realpath: path => path
+}, C);
+print(sprintf('%.J', { manager, probed }), '\n');
+UCODE
+for mode in empty unset; do
+	if [ "$mode" = empty ]; then
+		path_env=(PATH=)
+	else
+		path_env=(-u PATH)
+	fi
+	out=$(/usr/bin/env "${path_env[@]}" LD_LIBRARY_PATH="$ROOT/tests/host/prefix/lib" \
+		"$ROOT/tests/host/prefix/bin/ucode" -L "$ROOT/tests/host/modules/*.uc" \
+		-L "$ROOT/tests/host/modules/*/*.uc" "$T/default-path.uc" -- "$ROOT/aether-proxy/src/lib/update.uc")
+	expect "T8.16 $mode PATH default lookup succeeds" 0 "$?"
+	expect "T8.16 $mode PATH default finds bin opkg" /bin/opkg "$(get "$out" manager.path)"
+	expect "T8.16 $mode PATH default searches usr sbin first" /usr/sbin/apk "$(get "$out" probed.0)"
+done
+# Shared callers must reuse discovery for installation too, not rebuild a bare command name.
+: > "$UPDATE_PM_PATH_CALLS"
+export UPDATE_PACKAGE_STATE_FILE="$T/path-installed-version"
+printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
+out=$(cd "$ROOT" && path_ap "$T/path-tools:$relative_dir" update package luci-app-aether-proxy \
+	--json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root")
+expect 'T8.16 PATH package install succeeds' 0 "$?"
+expect 'T8.16 PATH package install verifies new version' 0.2.0-r1 "$(get "$out" to)"
+if grep -q "^$T/path-later/opkg install " "$UPDATE_PM_PATH_CALLS"; then
+	ok 'T8.16 package install calls discovered absolute path'
+else
+	bad 'T8.16 package install calls discovered absolute path'
+fi
+
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

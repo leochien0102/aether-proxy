@@ -1,6 +1,7 @@
 'use strict';
 
-// Device-side update discovery and shared local-data hashes (docs/08 "本机数据的哈希").
+// Device-side update discovery, PATH package-manager lookup and shared local-data hashes
+// (docs/08 "检查" and "本机数据的哈希").
 // Downloaded metadata is never trusted before usign succeeds.
 
 import * as fs from 'fs';
@@ -124,17 +125,24 @@ function asset_format(pm) {
 }
 
 function package_manager(bin_dir) {
-	let apk = bin_dir ? `${bin_dir}/apk` : 'apk';
-	if (fs.access(apk, 'x'))
-		return 'apk';
-	let opkg = bin_dir ? `${bin_dir}/opkg` : 'opkg';
-	if (fs.access(opkg, 'x'))
-		return 'opkg';
+	let dirs = bin_dir != null ? [ bin_dir ] : split(getenv('PATH') || C.UPDATE_DEFAULT_PATH, ':');
+	// Search every directory for apk before trying opkg: format preference outranks PATH order.
+	for (let name in [ 'apk', 'opkg' ]) {
+		for (let dir in dirs) {
+			let candidate = `${dir || '.'}/${name}`;
+			if (!fs.access(candidate, 'x') || fs.stat(candidate)?.type != 'file')
+				continue;
+			// PATH may contain relative/empty entries; pin the actual command for all later calls.
+			let path = fs.realpath(candidate);
+			if (path != null)
+				return { name, path };
+		}
+	}
 	return null;
 }
 
 function installed_version(ctx, pm, name) {
-	let bin = ctx.bin_dir ? `${ctx.bin_dir}/${pm}` : pm;
+	let bin = ctx.pm_bin;
 	let argv = pm == 'opkg' ? [ bin, 'status', name ] : [ bin, 'list', '-I', name ];
 	let result = sys.run(argv, { timeout: 10, quiet: true });
 	if (result.code != 0) {
@@ -411,10 +419,11 @@ function platform(ctx) {
 	let architecture = match(release, /(^|\n)DISTRIB_ARCH=['"]?([^'"\r\n]+)['"]?/);
 	if (!architecture)
 		return { ok: false, code: 'CONFIG_INVALID', exit: 1, detail: 'DISTRIB_ARCH is missing from /etc/openwrt_release' };
-	let pm = package_manager(ctx.bin_dir);
-	if (pm == null)
+	let manager = package_manager(ctx.bin_dir);
+	if (manager == null)
 		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: 'neither apk nor opkg is available' };
-	return { ok: true, arch: architecture[2], pm };
+	ctx.pm_bin = manager.path;
+	return { ok: true, arch: architecture[2], pm: manager.name };
 }
 
 // Compare the manifest with what is installed and store the result as updates.json.
@@ -601,7 +610,7 @@ function wait_limit(default_value) {
 }
 
 function install_package(ctx, pm, path, previous) {
-	let bin = ctx.bin_dir ? `${ctx.bin_dir}/${pm}` : pm;
+	let bin = ctx.pm_bin;
 	let argv = pm == 'opkg'
 		? [ bin, 'install', ...(previous ? [ '--force-downgrade' ] : []), path ]
 		: [ bin, 'add', '--allow-untrusted', path ];
