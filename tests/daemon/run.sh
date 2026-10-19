@@ -247,7 +247,7 @@ grep -Fq '203.0.113.20' "$R1/var/run/aether-proxy/current/xray.json" \
 grep -Fq 'set gfw4' "$R1/var/run/aether-proxy/current/aether-proxy.nft" && \
 	grep -Fq 'elements = { 1.2.3.4 }' "$R1/var/run/aether-proxy/current/aether-proxy.nft" \
 	&& ok "saved dynamic sets reach nft renderer" || bad "saved dynamic sets reach nft renderer"
-grep -Fq 'trust-dns tcp://8.8.8.8,tcp://1.1.1.1' "$R1/first-probe-chinadns.conf" \
+grep -Fq 'trust-dns tcp://9.9.9.9,tcp://8.8.8.8' "$R1/first-probe-chinadns.conf" \
 	&& ok "startup chinadns config uses T2" || bad "startup chinadns config uses T2"
 [ ! -e "$R1/var/run/aether-proxy/sets.save" ] && ok "sets.save is consumed after restoring" || bad "sets.save is consumed after restoring"
 for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 5' 'xray run -c' 'nft -f' 'ip rule add'; do
