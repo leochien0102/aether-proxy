@@ -159,7 +159,8 @@ function installed_version(ctx, pm, name) {
 }
 
 function version_parts(version) {
-	let m = match(version, /^(.*)-r([0-9]+)$/);
+	// Firmware and SDK packages use both suffixes; treating -N as upstream loses its release order.
+	let m = match(version, /^(.*)-r?([0-9]+)$/);
 	let upstream = m ? m[1] : version;
 	let release = m ? +m[2] : 0;
 	let parts = [];
