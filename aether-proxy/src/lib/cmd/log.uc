@@ -5,24 +5,26 @@
 // Xray and chinadns-ng inherit the daemon's stdout/stderr, so all three share the
 // `aether-proxy` syslog tag; the source is told apart by the message format:
 //   xray          `2026/10/16 12:00:00.123456 [Warning] …`
-//   dns (chinadns-ng) `[main.zig:123] …`
+//   dns (chinadns-ng) `[main.zig:164 main] …` or `[dnl.c:541 dnl_init] …`
 //   aether-proxy  everything else
-// Both child formats are inferred from the upstream sources; docs/10 says to re-check them
-// during the T8.13 on-device acceptance and adjust these two rules if they differ.
+// The on-device log check recorded in docs/10 also found C source locations and ANSI colors.
 
 import * as C from 'aetherproxy.const';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as sys from 'aetherproxy.sys';
 
 const XRAY_LINE_RE = /^[0-9]{4}\/[0-9]{2}\/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]/;
-const DNS_LINE_RE = /\[[A-Za-z0-9_]+\.zig:[0-9]+/;
+const DNS_LINE_RE = /\[[A-Za-z0-9_]+\.(zig|c):[0-9]+/;
+const ANSI_COLOR_RE = /\x1b\[[0-9;]*m/g;
 const TAG = 'aether-proxy[';
 
 // Pure: source class of one syslog message (docs/10).
 export function classify(message) {
-	if (match(message ?? '', XRAY_LINE_RE) != null)
+	// Strip SGR only for matching: select_lines must retain the original bytes for display.
+	let plain = replace(message ?? '', ANSI_COLOR_RE, '');
+	if (match(plain, XRAY_LINE_RE) != null)
 		return 'xray';
-	if (match(message ?? '', DNS_LINE_RE) != null)
+	if (match(plain, DNS_LINE_RE) != null)
 		return 'dns';
 	return 'aether-proxy';
 };
