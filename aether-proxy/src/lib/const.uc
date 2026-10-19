@@ -239,3 +239,6 @@ export const PROBE_SIGUSR1 = 10;
 
 // T8.16 (docs/08 "检查"): default command search path when PATH is empty or unset.
 export const UPDATE_DEFAULT_PATH = '/usr/sbin:/usr/bin:/sbin:/bin';
+
+// T8.17 (docs/10 command table): check scratch directories never share daemon staging.
+export const CHECK_DIR_PREFIX = 'check.';
