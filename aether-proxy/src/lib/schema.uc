@@ -57,7 +57,7 @@ const main = [
 const dns = [
 	{ name: 'china_dns', type: 'list', item: 'upstream', default: [ '223.5.5.5', '114.114.114.114' ] },
 	{ name: 'trust_dns', type: 'list', item: 'ipv4', min_items: 1, max_items: 2, default: [ '8.8.8.8', '1.1.1.1' ] },
-	{ name: 'direct_dns', type: 'list', item: 'upstream', default: [ 'tcp://8.8.8.8', 'tcp://1.1.1.1' ] },
+	{ name: 'direct_dns', type: 'list', item: 'upstream', default: [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ] },
 	{ name: 'allow_china_fallback', type: 'bool', default: true },
 	{ name: 'dns_probe_domain', type: 'domain', default: 'www.google.com' },
 	{ name: 'dnsmasq_instance', type: 'string', default: null }
