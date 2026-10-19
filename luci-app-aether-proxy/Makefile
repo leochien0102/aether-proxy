@@ -8,7 +8,9 @@ PKG_NAME:=luci-app-aether-proxy
 PKG_VERSION:=0.2.0
 PKG_RELEASE:=4
 
-# TODO(design): license and maintainer are not specified in docs/.
+PKG_LICENSE:=GPL-3.0-or-later
+PKG_LICENSE_FILES:=LICENSE
+PKG_MAINTAINER:=leochien0102 <leochien0102@users.noreply.github.com>
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

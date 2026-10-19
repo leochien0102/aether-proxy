@@ -4,7 +4,9 @@ PKG_NAME:=aether-proxy
 PKG_VERSION:=0.2.0
 PKG_RELEASE:=4
 
-# TODO(design): license and maintainer are not specified in docs/.
+PKG_LICENSE:=GPL-3.0-or-later
+PKG_LICENSE_FILES:=LICENSE
+PKG_MAINTAINER:=leochien0102 <leochien0102@users.noreply.github.com>
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -38,7 +40,6 @@ define Build/Compile
 endef
 
 # The placeholder in const.uc becomes "<PKG_VERSION>-<PKG_RELEASE>".
-# TODO(design): keys/ and data/ contents are installed once they exist.
 define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aether-proxy $(1)/usr/bin/aether-proxy
@@ -58,6 +59,8 @@ define Package/aether-proxy/install
 	$(foreach key,$(wildcard ./files/keys/*),$(INSTALL_DATA) $(key) $(1)/etc/aether-proxy/keys/;)
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
 	$(INSTALL_DATA) ./files/data/*.txt $(1)/usr/share/aether-proxy/data/
+	# Upstream sources and licenses of the bundled lists (gfwlist is LGPL-2.1, docs/08).
+	$(INSTALL_DATA) ./files/data/SOURCES.md $(1)/usr/share/aether-proxy/data/SOURCES.md
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input
 	$(INSTALL_DATA) ./files/30-aether-proxy.nft $(1)/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft
 	# conffiles cannot list directories; keep.d entries may (sysupgrade runs find on them).
