@@ -97,3 +97,17 @@ T8.14 只加注释、不改代码，下列位置找不到设计依据，由设�
 
 **处理结果（2026-10-17）**：`sets.save` 提前删除确认为缺陷，改为加载成功后删除（docs/04「动态集合的导出与恢复」）；其余为缺理由或文档过时，
 理由补进 docs/03「引导解析」、docs/04「停止」「进程模型」、docs/09「结构化事件」、docs/10「`aether-proxy` 约定」与「`sub status`」。代码改动与注释见 m8 的 T8.15。
+
+## B10 T8.13 真机窗口发现的问题（2026-10-19，H28K，0.2.0-r1→r3）
+
+已修（随测试包 r2、r3 发布）：`common.js` 经类访问原型成员致所有页面报错；空表 flush 的措辞；Linux 6.18 上按表查询 233 报错致启动失败（docs/04「真机验证」）。
+
+待修（日志与事件存档在本地 `h28k-test/ap-window8-20261019-122804.txt`、`window8-events-20261019.jsonl`、`window8-syslog-20261019.txt`，不进仓库）：
+
+1. **检查更新完全不可用**（高）：`update.uc` 的 `package_manager()` 用 `fs.access('opkg', 'x')` 检查相对路径，不在 PATH 中查找；测试总带 `--bin-dir` 所以没暴露。H28K 的 opkg 在 `/bin/opkg`。
+2. **切换节点时误判 Xray 挂掉**（高）：reload 换节点、Xray 12:41:48 已启动，12:41:50 monitor 仍报 `XRAY_DOWN_FAILOPEN`，故障放行约 23 秒后恢复。需查重启前后 `xray_down_count` 的累积，以及 T8.12b「reload 后立即跑一轮」与此的关系。
+3. **T2 直连 `tcp://8.8.8.8` 被重置**（高，设计）：启动后约 25 秒（以及任何降到 T2 时）境外域名解析失败。需重新设计 T2 的上游或启动时的初始级别（docs/03）。
+4. **多个 `check` 共用 staging 目录**（中）：并发运行时互相删文件（实测 `PRECHECK_FAILED: cannot remove …/staging/precheck.nft`），导致保存名单后的 reload 偶发失败。CLI 的 check 应使用自己的临时目录。
+5. **日志来源分类**（低）：chinadns-ng 来自 C 源文件的行（`[dnl.c:541 …]`）被分到 aether-proxy；规则只认 `.zig`。行内另有 ANSI 颜色码。
+
+本次未覆盖：L3 订阅的增删（用户在浏览器加过订阅，后端更新作业正常）、L4 访问控制（不改用户电脑的分流）、T7.7（未建测试通道）、各页面外观细节。
