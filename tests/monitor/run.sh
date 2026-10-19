@@ -34,6 +34,17 @@ trap cleanup EXIT INT TERM
 mkdir -p "$T/bin" "$T/data" "$T/base" "$T/custom"
 cp "$STUB_SRC/"* "$T/bin/"
 cp "$ROOT/tests/stubs/daemon-bin/curl" "$T/bin/curl"
+cp "$STUB_SRC/xray" "$T/bin/xray-original"
+cat > "$T/bin/xray" <<'EOF'
+#!/bin/sh
+if [ "$1" = run ] && [ "$2" = -c ]; then
+	root=${3%/var/run/aether-proxy/current/*}
+	if [ -f "$root/xray-listen-delay" ]; then
+		sleep 1
+	fi
+fi
+exec "$(dirname "$0")/xray-original" "$@"
+EOF
 chmod +x "$T/bin/"*
 for f in gfwlist chnlist apple; do printf 'example.com\n' > "$T/base/$f.txt"; done
 printf '1.0.0.0/8\n' > "$T/base/chnroute4.txt"
@@ -71,6 +82,7 @@ run_case() {
 }
 
 run_case proxy-tier 2
+run_case node-refresh
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999
 for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked; do
 	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1

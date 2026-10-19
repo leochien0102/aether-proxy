@@ -12,6 +12,7 @@ import * as pipeline from 'aetherproxy.pipeline';
 import * as check from 'aetherproxy.cmd.check';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
+import * as monitor from 'aetherproxy.monitor';
 
 // Pure plan over renderer hashes, never over UCI input values.
 // docs/04「重载（`aether-proxy reload`，UCI 变更触发）」: daemon.uc's reload handler replaces base.render_hash
@@ -120,7 +121,13 @@ function start_child(daemon, key, name, argv) {
 	let child = supervise.create({ name, argv, run_dir: run_dir(daemon), backoff: [ 5, 10, 30, 60 ], stable_secs: 300 });
 	daemon.children[key] = child;
 	child.start();
-	return child.pid() != null ? null : `cannot start ${name}`;
+	if (child.pid() == null)
+		return `cannot start ${name}`;
+	// Forward and rollback restarts have the same readiness contract as startup.
+	// Returning at fork time would count the planned gap in the post-reload probe.
+	if (key == 'xray' && !monitor.wait_xray_port(daemon.ctx))
+		return 'xray did not listen on the TPROXY port within 5 seconds';
+	return null;
 };
 
 function execute_action(daemon, action, artifacts, components) {
