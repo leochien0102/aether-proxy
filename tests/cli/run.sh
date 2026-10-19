@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # CLI scenarios for check/render (docs/tasks/m1 T1.7) and immediate health checks
-# (docs/10 Dashboard part 2, T8.12b).
+# (docs/10 Dashboard part 2, T8.12b); private check scratch lifecycle (docs/10, T8.17).
 # Runs the real entry point on the host through the test-only options of docs/10, so nothing
 # outside a mktemp directory is touched. Needs tests/host/bootstrap.sh to have run.
 set -u
@@ -47,6 +47,61 @@ opts() {
 	echo --confdir "$1" --data-dir "$T/data" --baseline-dir "$T/base" --custom-dir "$T/custom" --run-dir "$2"
 }
 
+check_clean() {
+	if compgen -G "$2/check.*" > /dev/null; then
+		bad "$1: no check scratch remains"
+	else
+		ok "$1: no check scratch remains"
+	fi
+}
+
+no_staging() {
+	[ ! -e "$2/staging" ] && ok "$1: no daemon staging created" || bad "$1: no daemon staging created"
+}
+
+# Validators observe the scratch files before check removes them. The barrier forces both
+# concurrent checks to keep precheck.nft live at once, reproducing the old shared-file race.
+PC="$T/precheck"
+mkdir -p "$PC/bin" "$PC/root/sys/class/net/br-lan"
+cat > "$PC/bin/nft" <<'SH'
+#!/bin/sh
+file="$3"
+case "$file" in
+	*/precheck.nft)
+		if [ -n "${CHECK_BARRIER:-}" ]; then
+			touch "$CHECK_BARRIER/$(basename "$(dirname "$file")")"
+			attempt=0
+			while [ "$(find "$CHECK_BARRIER" -type f | wc -l)" -lt 2 ]; do
+				attempt=$((attempt + 1))
+				if [ "$attempt" -ge 100 ]; then
+					echo 'concurrent prechecks did not overlap' >&2
+					exit 9
+				fi
+				sleep 0.05
+			done
+		fi
+		if [ "${CHECK_PRECHECK_FAIL:-0}" = 1 ]; then
+			echo 'injected precheck failure' >&2
+			exit 6
+		fi
+		;;
+	*)
+		if [ -n "${CHECK_CAPTURE:-}" ]; then
+			cp "$(dirname "$file")/"* "$CHECK_CAPTURE/" || exit 8
+		fi
+		if [ "${CHECK_NFT_FAIL:-0}" = 1 ]; then
+			echo 'injected render validation failure' >&2
+			exit 7
+		fi
+		;;
+esac
+[ -s "$file" ] || exit 5
+SH
+printf '#!/bin/sh\necho "Usage: ip rule [ fwmark FWMARK[/MASK] ]"\n' > "$PC/bin/ip"
+printf '#!/bin/sh\nexit 0\n' > "$PC/bin/xray"
+printf '#!/bin/sh\nexit 0\n' > "$PC/bin/chinadns-ng"
+chmod +x "$PC/bin"/*
+
 # --- 1. enabled=1 without a node: configuration error, exit 2, nothing staged
 mkdir -p "$T/run1"
 out="$(ap check --json --no-precheck $(opts "$FIX/t11-err-enabled-no-node" "$T/run1") 2>"$T/check-fail.stderr")"; rc=$?
@@ -57,30 +112,45 @@ expect "no node: code" CONFIG_INVALID "$(echo "$out" | jget code)"
 expect "no node: error field" main.node "$(echo "$out" | jget errors.0.field)"
 expect "no node: error code" required "$(echo "$out" | jget errors.0.code)"
 [ ! -e "$T/run1/staging" ] && ok "no node: no staging written" || bad "no node: no staging written"
+check_clean 'no node' "$T/run1"
 [ -s "$T/run1/events.jsonl" ] && ok "no node: structured failure event appended" || bad "no node: structured failure event appended"
 expect "no node: event is one JSONL object" CONFIG_INVALID "$(head -n 1 "$T/run1/events.jsonl" | jget code)"
 expect "no node: event severity" error "$(head -n 1 "$T/run1/events.jsonl" | jget level)"
 [ -n "$(head -n 1 "$T/run1/events.jsonl" | jget ts)" ] \
 	&& ok "no node: event timestamp present" || bad "no node: event timestamp present"
 
-# --- 2. valid config: exit 0, staging files equal render output byte for byte
+# --- 2. valid config: report the deleted private path, capture bytes inside a validator
 out="$(ap check --json --no-precheck $(opts "$FIX/sample" "$T/run2") 2>"$T/check-ok.stderr")"; rc=$?
 expect "valid: exit code 0" 0 "$rc"
 expect "check --json success: stderr empty" "" "$(cat "$T/check-ok.stderr")"
 expect "valid: ok true" true "$(echo "$out" | jget ok)"
-expect "valid: staging path" "$T/run2/staging" "$(echo "$out" | jget staging)"
+stage="$(echo "$out" | jget staging)"
+[[ "$stage" =~ ^$T/run2/check\.[0-9]+$ ]] \
+	&& ok 'valid: staging path is check.<pid>' || bad 'valid: staging path is check.<pid>' "$stage"
+check_clean 'valid skipped validators' "$T/run2"
+no_staging 'valid skipped validators' "$T/run2"
+
+mkdir -p "$T/captured"
+checked="$(CHECK_CAPTURE="$T/captured" ap check --json $(opts "$FIX/sample" "$T/run2") \
+	--sys-root "$PC/root" --bin-dir "$PC/bin" 2>"$T/captured.stderr")"; rc=$?
+expect 'valid captured: exit code 0' 0 "$rc"
+expect 'valid captured: stderr empty' '' "$(cat "$T/captured.stderr")"
+expect 'valid captured: ok true' true "$(echo "$checked" | jget ok)"
+check_clean 'valid captured' "$T/run2"
+no_staging 'valid captured' "$T/run2"
 
 declare -A FILES=( [nft]=aether-proxy.nft [chinadns]=chinadns.conf [dnsmasq]=dnsmasq.conf [xray]=xray.json )
 for name in nft chinadns dnsmasq xray; do
 	ap render "$name" $(opts "$FIX/sample" "$T/run2") > "$T/render-$name" 2>/dev/null; rc=$?
 	expect "render $name: exit code 0" 0 "$rc"
-	if cmp -s "$T/render-$name" "$T/run2/staging/${FILES[$name]}" && [ -s "$T/render-$name" ]; then
+	expect "valid: $name reports deleted scratch path" "$stage/${FILES[$name]}" "$(echo "$out" | jget "files.$name")"
+	if cmp -s "$T/render-$name" "$T/captured/${FILES[$name]}" && [ -s "$T/render-$name" ]; then
 		ok "render $name: identical to staged ${FILES[$name]}"
 	else
 		bad "render $name: identical to staged ${FILES[$name]}"
 	fi
 done
-[ "$(ls "$T/run2" | tr '\n' ' ')" == "staging " ] && ok "valid: only staging created in run dir" || bad "valid: only staging created in run dir"
+[ -z "$(ls -A "$T/run2")" ] && ok "valid: run dir is empty after check" || bad "valid: run dir is empty after check"
 [ ! -e "$T/run2/boot.txt" ] && ok "valid: boot.txt not written" || bad "valid: boot.txt not written"
 
 # render writes no files
@@ -114,9 +184,15 @@ mkdir -p "$T/conf_cn"
 sed "s/option mode 'gfw'/option mode 'bypass_cn'/" "$FIX/sample/aetherproxy" > "$T/conf_cn/aetherproxy"
 ap check --json --no-precheck $(opts "$T/conf_cn" "$T/run3") >/dev/null 2>&1; rc=$?
 expect "data dir overrides baseline: exit code 0" 0 "$rc"
-grep -F "chnlist-file" "$T/run3/staging/chinadns.conf" | grep -qF "$T/data/chnlist.txt" \
+mkdir -p "$T/override-captured"
+CHECK_CAPTURE="$T/override-captured" ap check --json $(opts "$T/conf_cn" "$T/run3") \
+	--sys-root "$PC/root" --bin-dir "$PC/bin" > "$T/override.json" 2>"$T/override.stderr"; rc=$?
+expect 'data dir overrides baseline: captured check exit code 0' 0 "$rc"
+check_clean 'data override' "$T/run3"
+no_staging 'data override' "$T/run3"
+grep -F "chnlist-file" "$T/override-captured/chinadns.conf" | grep -qF "$T/data/chnlist.txt" \
 	&& ok "data dir overrides baseline: chnlist from data dir" || bad "data dir overrides baseline: chnlist from data dir"
-grep -F "chnlist-file" "$T/run3/staging/chinadns.conf" | grep -qF "$T/base/apple.txt" \
+grep -F "chnlist-file" "$T/override-captured/chinadns.conf" | grep -qF "$T/base/apple.txt" \
 	&& ok "data dir overrides baseline: apple from baseline" || bad "data dir overrides baseline: apple from baseline"
 
 # --- 4. usage errors
@@ -330,18 +406,90 @@ out="$(PATH="$T/fakebin:$PATH" ap probe nodes n_000000000000000000000000000000c9
 expect "probe unresolved domain: exit code 0" 0 "$rc"
 expect "probe unresolved domain: resolve_failed" resolve_failed "$(echo "$out" | jget nodes.n_000000000000000000000000000000c9.error)"
 
-# --- full precheck path (without --no-precheck): every earlier check skipped it, which hid a
-# reference to an undefined variable that crashed `check` (and the LuCI check button) once the
-# precheck passed. Stubs make the precheck pass; --sys-root/--bin-dir must reach it.
-PC="$T/precheck"; mkdir -p "$PC/bin" "$PC/root/sys/class/net/br-lan"
-printf '#!/bin/sh\nexit 0\n' > "$PC/bin/nft"
-printf '#!/bin/sh\necho "Usage: ip rule [ fwmark FWMARK[/MASK] ]"\n' > "$PC/bin/ip"
-printf '#!/bin/sh\nexit 0\n' > "$PC/bin/xray"; printf '#!/bin/sh\nexit 0\n' > "$PC/bin/chinadns-ng"
-chmod +x "$PC/bin"/*
+# --- full precheck regression: a historical undefined variable crashed check after precheck.
+# Keep coverage for the CLI/LuCI response and forwarding of --sys-root/--bin-dir.
 out="$(ap check --json $(opts "$FIX/sample" "$T/run-pc") --sys-root "$PC/root" --bin-dir "$PC/bin" 2>"$T/pc.stderr")"; rc=$?
 expect "check with precheck: exit code 0" 0 "$rc"
 expect "check with precheck: stderr empty" "" "$(cat "$T/pc.stderr")"
 echo "$out" | grep -q '"precheck"' && echo "$out" | grep -q '"xray"' && ok "check with precheck: precheck and xray validation reported" || bad "check with precheck: precheck and xray validation reported" "$out"
+
+check_clean 'check with precheck' "$T/run-pc"
+no_staging 'check with precheck' "$T/run-pc"
+
+# T8.17: early precheck return and failed rendered rules both discard private artifacts.
+for failure in precheck validation; do
+	pre_fail=0
+	nft_fail=0
+	if [ "$failure" = precheck ]; then pre_fail=1; else nft_fail=1; fi
+	out="$(CHECK_PRECHECK_FAIL="$pre_fail" CHECK_NFT_FAIL="$nft_fail" \
+		ap check --json $(opts "$FIX/sample" "$T/run-$failure") \
+		--sys-root "$PC/root" --bin-dir "$PC/bin" 2>"$T/$failure.stderr")"; rc=$?
+	if [ "$failure" = precheck ]; then
+		expect 'failed precheck: exit code 1' 1 "$rc"
+		expect 'failed precheck: code' PRECHECK_FAILED "$(echo "$out" | jget code)"
+	else
+		expect 'failed validation: exit code 4' 4 "$rc"
+		expect 'failed validation: code' RENDER_INVALID "$(echo "$out" | jget code)"
+	fi
+	expect "failed $failure: ok false" false "$(echo "$out" | jget ok)"
+	expect "failed $failure: stderr empty" '' "$(cat "$T/$failure.stderr")"
+	check_clean "failed $failure" "$T/run-$failure"
+	no_staging "failed $failure" "$T/run-$failure"
+done
+
+# Include real artifact names, nested files and precheck.nft: a successful check must not
+# overwrite any daemon candidate, and neither configuration nor validator failures may do so.
+DAEMON_RUN="$T/daemon-run"
+mkdir -p "$DAEMON_RUN/staging/nested" "$T/daemon-before/nested"
+for file in "${FILES[@]}" precheck.nft nested/keep; do
+	printf 'daemon owns %s\n' "$file" > "$DAEMON_RUN/staging/$file"
+done
+cp -a "$DAEMON_RUN/staging/." "$T/daemon-before/"
+for mode in success config-invalid validation-invalid; do
+	conf="$FIX/sample"
+	nft_fail=0
+	expected_rc=0
+	case "$mode" in
+		config-invalid) conf="$FIX/t11-err-enabled-no-node"; expected_rc=2 ;;
+		validation-invalid) nft_fail=1; expected_rc=4 ;;
+	esac
+	out="$(CHECK_NFT_FAIL="$nft_fail" ap check --json $(opts "$conf" "$DAEMON_RUN") \
+		--sys-root "$PC/root" --bin-dir "$PC/bin" 2>"$T/daemon-$mode.stderr")"; rc=$?
+	expect "daemon staging $mode: check exit" "$expected_rc" "$rc"
+	if diff -r "$T/daemon-before" "$DAEMON_RUN/staging"; then
+		ok "daemon staging $mode: all files unchanged"
+	else
+		bad "daemon staging $mode: all files unchanged"
+	fi
+	check_clean "daemon staging $mode" "$DAEMON_RUN"
+done
+
+# Start separate real entry processes against the same config and a not-yet-created run dir.
+# Waiting for both unique barrier markers proves overlap, rather than two serial successes.
+mkdir -p "$T/barrier"
+concurrent_pids=()
+for n in 1 2; do
+	CHECK_BARRIER="$T/barrier" ap check --json $(opts "$FIX/sample" "$T/concurrent-run") \
+		--sys-root "$PC/root" --bin-dir "$PC/bin" >"$T/concurrent-$n.json" 2>"$T/concurrent-$n.stderr" &
+	concurrent_pids+=("$!")
+done
+for n in 1 2; do
+	wait "${concurrent_pids[$((n - 1))]}"; rc=$?
+	expect "concurrent check $n: exit code 0" 0 "$rc"
+	expect "concurrent check $n: ok true" true "$(jget ok < "$T/concurrent-$n.json")"
+	expect "concurrent check $n: stderr empty" '' "$(cat "$T/concurrent-$n.stderr")"
+done
+expect 'concurrent checks: two overlapping private prechecks' 2 "$(find "$T/barrier" -type f | wc -l | tr -d ' ')"
+first_stage="$(jget staging < "$T/concurrent-1.json")"
+second_stage="$(jget staging < "$T/concurrent-2.json")"
+if [[ "$first_stage" =~ /check\.[0-9]+$ && "$second_stage" =~ /check\.[0-9]+$ ]] \
+	&& [ "$first_stage" != "$second_stage" ]; then
+	ok 'concurrent checks: distinct check.<pid> paths'
+else
+	bad 'concurrent checks: distinct check.<pid> paths'
+fi
+check_clean 'concurrent checks' "$T/concurrent-run"
+no_staging 'concurrent checks' "$T/concurrent-run"
 
 # T8.12b (docs/10 Dashboard part 2): exercise the real CLI with a recording ubus.
 mkdir -p "$T/probe-now/bin" "$T/probe-now/run"

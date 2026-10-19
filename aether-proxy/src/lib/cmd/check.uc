@@ -1,8 +1,8 @@
 'use strict';
 
-// `aether-proxy check`: validates the configuration, renders all artifacts into the staging
-// directory and runs the external validators (docs/04 "启动" steps 2, 3, 5). The only thing it
-// writes is <run-dir>/staging/.
+// `aether-proxy check`: validates configuration and rendered artifacts (docs/10 command table,
+// docs/04 "启动" steps 2, 3, 5). Scratch files live in a private check.<pid> directory which is
+// removed before returning; daemon reload alone owns <run-dir>/staging.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
@@ -105,39 +105,15 @@ function precheck(snapshot, staging, options) {
 
 export { precheck };
 
-export function run(args) {
-	let p = pipeline.parse_args(args);
+function fail(code, detail, errors, exit) {
+	log.event(null, code, { detail });
+	let result = { ok: false, code, detail, errors };
+	return { result, exit, human: pipeline.describe_errors(result) };
+}
 
-	if (p.error || length(p.positional)) {
-		let detail = p.error ?? 'check takes no arguments';
-
-		return pipeline.finish({ json: !!(p.opts?.json || index(args, '--json') >= 0) },
-			{ ok: false, code: 'USAGE', detail, errors: [] }, 2, `${detail}\nUsage: aether-proxy check [--json]`);
-	}
-
-	let opts = p.opts;
-	let res = pipeline.build(opts);
-
-	function fail(code, detail, errors, exit) {
-		log.event(null, code, { detail });
-
-		let r = { ok: false, code, detail, errors };
-
-		return pipeline.finish(opts, r, exit, pipeline.describe_errors(r));
-	}
-
-	if (!res.ok) {
-		log.event(null, res.code, { detail: res.detail });
-
-		return pipeline.finish(opts, { ok: false, code: res.code, detail: res.detail, errors: res.errors },
-			res.exit, pipeline.describe_errors(res));
-	}
-
-	let staging = pipeline.run_dir(opts) + '/' + C.STAGING_SUBDIR;
-
-	if (!sys.mkdir_p(staging))
-		return fail('RENDER_INVALID', `cannot create ${staging}: ${sys.error()}`, [], 1);
-
+// Return an outcome instead of printing: the caller must clean scratch files even when a
+// validator or an artifact write returns early.
+function check_staged(opts, res, staging) {
 	let files = {};
 
 	for (let name, file in C.ARTIFACT_FILES) {
@@ -155,7 +131,7 @@ export function run(args) {
 		result.precheck = { skipped: true };
 		result.validation = { skipped: true };
 
-		return pipeline.finish(opts, result, 0, `ok: rendered to ${staging} (checks skipped)`);
+		return { result, exit: 0, human: `ok: rendered to ${staging} (checks skipped)` };
 	}
 
 	let pc = precheck(res.snapshot, staging, opts);
@@ -206,5 +182,57 @@ export function run(args) {
 	if (length(errors))
 		return fail('RENDER_INVALID', `${length(errors)} validation(s) failed`, errors, 4);
 
-	return pipeline.finish(opts, result, 0, `ok: rendered and validated in ${staging}`);
+	return { result, exit: 0, human: `ok: rendered and validated in ${staging}` };
+}
+
+export function run(args) {
+	let p = pipeline.parse_args(args);
+
+	if (p.error || length(p.positional)) {
+		let detail = p.error ?? 'check takes no arguments';
+
+		return pipeline.finish({ json: !!(p.opts?.json || index(args, '--json') >= 0) },
+			{ ok: false, code: 'USAGE', detail, errors: [] }, 2, `${detail}\nUsage: aether-proxy check [--json]`);
+	}
+
+	let opts = p.opts;
+	let res = pipeline.build(opts);
+	let outcome;
+
+	if (!res.ok) {
+		outcome = fail(res.code, res.detail, res.errors, res.exit);
+		return pipeline.finish(opts, outcome.result, outcome.exit, outcome.human);
+	}
+
+	let dir = pipeline.run_dir(opts);
+	let pid = fs.readlink(C.PROC_DIR + '/self');
+
+	if (pid == null)
+		outcome = fail('RENDER_INVALID', `cannot read process id: ${fs.error() ?? 'unknown error'}`, [], 1);
+	// Concurrent checks can race while creating their shared parent, not their private dirs.
+	else if (!sys.mkdir_p(dir) && fs.stat(dir)?.type != 'directory')
+		outcome = fail('RENDER_INVALID', `cannot create ${dir}: ${sys.error()}`, [], 1);
+	else {
+		let staging = `${dir}/${C.CHECK_DIR_PREFIX}${pid}`;
+
+		// Do not reuse a stale directory (or follow a symlink) left by an earlier process.
+		// Only a successful exclusive mkdir gives this invocation ownership to remove it.
+		if (!fs.mkdir(staging, 0700))
+			outcome = fail('RENDER_INVALID', `cannot create ${staging}: ${fs.error() ?? 'unknown error'}`, [], 1);
+		else {
+			try {
+				outcome = check_staged(opts, res, staging);
+			}
+			catch (e) {
+				outcome = fail('RENDER_INVALID', `check failed: ${e.message ?? e}`, [], 1);
+			}
+
+			let removed = sys.run([ 'rm', '-rf', staging ], { timeout: 10 });
+			if (removed.code != 0)
+				outcome = fail('RENDER_INVALID',
+					`cannot remove ${staging}: rm exited ${removed.code}: ${removed.stderr}`, [], 1);
+		}
+	}
+
+	return pipeline.finish(opts, outcome.result, outcome.exit, outcome.human);
 };
