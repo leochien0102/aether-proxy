@@ -1,4 +1,5 @@
 'use strict';
+// Check pure monitor transitions and startup/recovery hysteresis (docs/03 DNS tiers, docs/04).
 
 import * as mon from 'aetherproxy.monitor';
 
@@ -6,7 +7,7 @@ const BASE = {
 	state: 'running', dns_tier: 'T1', dns_failsafe: false,
 	xray_down_count: 0, xray_down_reported: false,
 	chinadns_down_count: 0, chinadns_down_reported: false,
-	proxy_fail_count: 0, proxy_ok_count: 0, dns_fail_count: 0,
+	ever_healthy: true, proxy_fail_count: 0, proxy_ok_count: 0, dns_fail_count: 0,
 	t3_since: null, last_t2_retry: null, t2_retry_pending: false,
 	last_node_refresh: 1000, node_ip: '203.0.113.9', last_probe: null, since: 900
 };
@@ -22,6 +23,13 @@ function test(name, state, obs, cfg, actions, codes, fields) {
 
 export const cases = [
 	{ name: 'monitor cadence follows running state', expect: 'PASS', kind: 'interval' },
+	{ name: 'first startup success uses T1 but later recovery still needs two successes',
+		expect: 'PASS', kind: 'startup-recovery' },
+	test('never-healthy degraded startup enters T1 on its first success',
+		{ state: 'degraded', dns_tier: 'T3', ever_healthy: false },
+		{ now: 1030, proxy_ok: true }, CFG,
+		[ 'set_tier:T1' ], [ 'DNS_TIER_CHANGED', 'PROXY_HEALTHY' ],
+		{ state: 'running', dns_tier: 'T1', ever_healthy: true, proxy_ok_count: 1 }),
 	test('one missing-table sample is debounced', {},
 		{ now: 1000, table_present: false, xray_listening: true, chinadns_listening: true }, CFG,
 		[], [], { state: 'running', table_missing_count: 1 }),
@@ -100,6 +108,18 @@ export const cases = [
 ];
 
 export function run(c) {
+	if (c.kind == 'startup-recovery') {
+		let cfg = { ...CFG, probe: { fail_threshold: 1, recover_threshold: 2 } };
+		let state = mon.initial_state({ state: 'starting', dns_tier: 'T2' }, 1000);
+		let expected = [ 'running:T1', 'degraded:T2', 'degraded:T2', 'running:T1' ];
+		let probes = [ true, false, true, true ];
+		for (let i = 0; i < length(probes); i++) {
+			state = mon.next(state, { now: 1001 + i, proxy_ok: probes[i] }, cfg).state;
+			if (`${state.state}:${state.dns_tier}` != expected[i])
+				return `FAIL: sample ${i} expected ${expected[i]} got ${state.state}:${state.dns_tier}`;
+		}
+		return state.ever_healthy ? 'PASS' : 'FAIL: healthy history lost';
+	}
 	if (c.kind == 'interval')
 		return mon.interval_ms({ state: 'running' }) == 30000 && mon.interval_ms({ state: 'degraded' }) == 10000
 			? 'PASS' : 'FAIL: cadence mismatch';

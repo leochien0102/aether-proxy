@@ -3,6 +3,7 @@
 // Design: docs/04「monitor 循环」 and docs/03「DNS 级别（trust 组上游）」.
 
 import * as fs from 'fs';
+import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
@@ -12,7 +13,8 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as net from 'aetherproxy.net';
 
-let initial_state, interval_ms, next;
+// tick is declared up front: finish_tick schedules it before its definition (ucode does not hoist).
+let initial_state, interval_ms, next, tick;
 
 function system_path(ctx, path) {
 	let root = ctx.root ?? '';
@@ -341,11 +343,20 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 		lock.close();
 	}
 	daemon.busy = false;
-	if (daemon.interval != null)
+	if (daemon.interval != null) {
 		daemon.interval.set(interval_ms(daemon.machine));
+		// Re-observe only after the T2 restart and unlock; the previous sample used the
+		// old DNS upstream. A transition edge, not residence in T2, prevents a busy loop.
+		// One-shot timer, never a shortened period: a tick that is skipped (lock held by a
+		// user command, or still busy) would otherwise leave the interval at 1 ms and spin,
+		// logging BUSY every millisecond (found in T8.19 review, 2026-10-19).
+		let entered_t2 = error == null && index(transition.actions, 'set_tier:T2') >= 0;
+		if (entered_t2 && daemon.immediate == null)
+			daemon.immediate = uloop.timer(1, () => { daemon.immediate = null; tick(daemon); });
+	}
 };
 
-function tick(daemon) {
+tick = function(daemon) {
 	if (daemon.busy)
 		return;
 	if (daemon.skip_next) {
@@ -391,6 +402,7 @@ initial_state = (service, now) => {
 		xray_down_reported: false,
 		chinadns_down_count: 0,
 		chinadns_down_reported: service?.dns_failsafe == true,
+		ever_healthy: service?.state == 'running',
 		proxy_fail_count: 0,
 		proxy_ok_count: 0,
 		dns_fail_count: 0,
@@ -419,6 +431,7 @@ next = (state, obs, cfg) => {
 		xray_down_reported: old.xray_down_reported == true,
 		chinadns_down_count: old.chinadns_down_count ?? 0,
 		chinadns_down_reported: old.chinadns_down_reported == true,
+		ever_healthy: old.ever_healthy == true || old.state == 'running',
 		proxy_fail_count: old.proxy_fail_count ?? 0,
 		proxy_ok_count: old.proxy_ok_count ?? 0,
 		dns_fail_count: old.dns_fail_count ?? 0,
@@ -532,7 +545,11 @@ next = (state, obs, cfg) => {
 		out.proxy_ok_count = min(out.proxy_ok_count + 1, recover_threshold);
 		out.proxy_fail_count = 0;
 		out.last_probe = { ok: true, latency_ms: obs.proxy_latency_ms ?? null, at: now };
-		if (out.proxy_ok_count >= recover_threshold && out.state != 'running' && out.state != 'failsafe') {
+		// Warmup has no healthy route to protect against flapping. Once healthy, keep
+		// the configured recovery hysteresis even after leaving `starting`/entering T3.
+		let recovered = !out.ever_healthy || out.proxy_ok_count >= recover_threshold;
+		if (recovered && out.state != 'running' && out.state != 'failsafe') {
+			out.ever_healthy = true;
 			out.state = 'running';
 			out.since = now;
 			tier('T1', 'proxy_healthy');
