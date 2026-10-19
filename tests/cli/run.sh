@@ -169,6 +169,27 @@ expect "render --json: stderr empty" "" "$(cat "$T/render-json.stderr")"
 expect "render --json: ok" true "$(echo "$out" | jget ok)"
 expect "render --json: file" aether-proxy.nft "$(echo "$out" | jget file)"
 
+# T8.22: validate the actual shipped file, not a copied fixture that could drift from it.
+# T2 and boot must share the new direct upstreams (docs/05 "config dns 'dns'").
+mkdir -p "$T/install-conf"
+cp "$ROOT/aether-proxy/files/aether-proxy.config" "$T/install-conf/aetherproxy"
+out="$(ap check --json --no-precheck $(opts "$T/install-conf" "$T/install-run") \
+	2>"$T/install-check.stderr")"; rc=$?
+expect 'installed config: check --no-precheck exit code 0' 0 "$rc"
+expect 'installed config: check ok true' true "$(echo "$out" | jget ok)"
+expect 'installed config: check stderr empty' '' "$(cat "$T/install-check.stderr")"
+check_clean 'installed config' "$T/install-run"
+no_staging 'installed config' "$T/install-run"
+ap render chinadns $(opts "$T/install-conf" "$T/install-run") \
+	> "$T/install-chinadns.conf" 2>"$T/install-render.stderr"; rc=$?
+expect 'installed config: render chinadns exit code 0' 0 "$rc"
+expect 'installed config: render stderr empty' '' "$(cat "$T/install-render.stderr")"
+expect 'installed config: T2 trust uses new direct defaults in order' \
+	'trust-dns tcp://9.9.9.9,tcp://8.8.8.8' "$(grep '^trust-dns ' "$T/install-chinadns.conf")"
+expect 'installed config: boot uses new direct defaults in order' \
+	'group-upstream tcp://9.9.9.9,tcp://8.8.8.8' \
+	"$(awk '/^group boot$/ { boot = 1; next } boot && /^group-upstream / { print; exit }' "$T/install-chinadns.conf")"
+
 # --- 3. rule data missing in both places: error, exit 2
 rm "$T/base/chnlist.txt"
 out="$(ap check --json --no-precheck $(opts "$FIX/sample" "$T/run3") 2>/dev/null)"; rc=$?
