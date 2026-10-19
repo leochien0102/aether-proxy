@@ -187,6 +187,74 @@ PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
 export UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check)
 expect '26.9.30-r6 > 26.9.30-r5' true "$(get "$out" packages.xray-core.newer)"; make_manifest
+# T8.21: use signed, usable assets and fresh run directories so cached results cannot
+# suppress a spurious UPDATE_AVAILABLE event. Keep private comparison helpers private.
+version_case=0
+while IFS='|' read -r package installed available newer label; do
+	version_case=$((version_case + 1))
+	version_run="$T/version-$version_case"
+	mkdir -p "$version_run"
+	make_manifest
+	python3 - "$T" "$package" "$available" <<'PY'
+import json, os, sys
+root, package, available = sys.argv[1:]
+for channel in ('ch1', 'ch2'):
+    path = os.path.join(root, channel, 'manifest.json')
+    with open(path) as source:
+        manifest = json.load(source)
+    entry = manifest['packages'][package]
+    entry['current']['version'] = available
+    # Discovery only needs a usable asset; leave its existing filename and hash intact.
+    manifest['packages'] = {package: entry}
+    with open(path, 'w') as target:
+        json.dump(manifest, target)
+PY
+	for channel in ch1 ch2; do
+		"$USIGN" -S -m "$T/$channel/manifest.json" -s "$T/sec"
+	done
+	export UPDATE_INSTALLED_VERSION="$installed"
+	out=$(ap update check --json --confdir "$T/conf" --run-dir "$version_run" \
+		--sys-root "$T/root" --bin-dir "$T/bin" 2>"$T/stderr")
+	expect "T8.21 $label check succeeds" 0 "$?"
+	expect "T8.21 $label installed version" "$installed" "$(get "$out" "packages.$package.installed")"
+	expect "T8.21 $label channel version" "$available" "$(get "$out" "packages.$package.available")"
+	asset=$(get "$out" "packages.$package.asset")
+	if [ -n "$asset" ] && [ "$asset" != '<null>' ]; then
+		ok "T8.21 $label has usable asset"
+	else
+		bad "T8.21 $label has usable asset"
+	fi
+	expect "T8.21 $label newer=$newer" "$newer" "$(get "$out" "packages.$package.newer")"
+	events=$(python3 - "$version_run/events.jsonl" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+events = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+print(sum(event['code'] == 'UPDATE_AVAILABLE' for event in events))
+PY
+	)
+	if [ "$newer" = true ]; then
+		expected_events=1
+	else
+		expected_events=0
+	fi
+	expect "T8.21 $label UPDATE_AVAILABLE count" "$expected_events" "$events"
+done <<'CASES'
+xray-core|26.9.30-5|26.9.30-r1|false|plain release 5 beats r1
+xray-core|26.9.30-5|26.10.10-r1|true|upstream beats plain release 5
+xray-core|26.9.30-r5|26.9.30-6|true|plain release 6 beats r5
+xray-core|26.9.30-r5|26.10.10-r1|true|legacy upstream ordering
+xray-core|26.9.30|26.9.30-r1|true|missing release is zero before r1
+xray-core|26.9.30-r1|26.9.30|false|missing release is zero after r1
+xray-core|26.9.30|26.9.30-1|true|missing release is zero before plain 1
+xray-core|26.9.30-1|26.9.30|false|missing release is zero after plain 1
+xray-core|26.9.30-5|26.9.30-r5|false|equal plain and r releases
+xray-core|26.9.30-r5|26.9.30-5|false|equal r and plain releases
+luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.290.04520~fffffff|false|i18n hash ignored
+luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.291.00001~0000000|true|i18n higher numeric segment
+luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.289.99999~fffffff|false|i18n lower numeric segment
+CASES
+make_manifest
+export UPDATE_INSTALLED_VERSION=26.9.30-r5
 # 9 asset helper checksum failure cleanup and test-only low-space hook
 cat > "$T/asset.uc" <<'UCODE'
 'use strict';
