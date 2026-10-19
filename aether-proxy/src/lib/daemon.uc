@@ -358,14 +358,15 @@ function apply_cleanup(ctx) {
 			push(failures, `nft_delete: ${r.detail}`);
 	}
 	let rule = run_command(ctx, 'ip', [ 'rule', 'show' ], 5);
-	let route = run_command(ctx, 'ip', [ '-4', 'route', 'show', 'table', `${C.ROUTE_TABLE}` ], 5);
-	if (rule.code != 0 || route.code != 0) {
+	// Not `show table 233`: that fails while the table has never existed (apply.table_routes).
+	let route = apply.table_routes(ctx);
+	if (rule.code != 0 || !route.ok) {
 		// Query failure is logged by sys.run(); still attempt the idempotent deletion path.
 		let removed = apply.route_del(ctx);
 		if (!removed.ok)
 			push(failures, `route_del: ${removed.detail}`);
 	}
-	else if (has_output(rule.stdout) || has_output(route.stdout)) {
+	else if (has_output(rule.stdout) || length(route.routes)) {
 		let removed = apply.route_del(ctx);
 		if (!removed.ok)
 			push(failures, `route_del: ${removed.detail}`);

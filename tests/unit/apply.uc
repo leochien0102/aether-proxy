@@ -162,18 +162,30 @@ function run_routes() {
 	let del = apply.route_del(c), again_del = apply.route_del(c);
 	if (!del.ok || !again_del.ok)
 		return fail('route_del failed or was not idempotent');
-	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=1\n');
-	if (!apply.route_del(c).ok)
-		return fail('route_del treated an already empty table (ESRCH) as a failure');
-	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ESRCH=0\nSTUB_IP_FLUSH_ERR="Flush terminated"\n');
-	if (!apply.route_del(c).ok)
-		return fail('route_del treated an empty table reported as "Flush terminated" as a failure');
-	// A failed flush with routes still in the table is a real failure.
-	write(`${t.base}/routes-left`, 'local default dev lo scope host\n');
-	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + `STUB_IP_ROUTES_FILE=${t.base}/routes-left\n`);
+	let env = (line) => write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + line + '\n');
+	let flushes = () => length(filter(split(read(t.log_path), '\n'), l => match(l, /ip route flush/)));
+	// docs/04「真机验证」: table 233 is queried through `show table all`; nothing there, no flush.
+	let before = flushes();
+	if (!apply.route_del(c).ok || flushes() != before)
+		return fail('route_del flushed (or failed on) a table without routes');
+	// Linux 6.18 / iproute2 6.18 (H28K): per-table show and flush fail while the table never existed.
+	env('STUB_IP_TABLE_MISSING=1');
+	if (!apply.route_del(c).ok || flushes() != before)
+		return fail('route_del failed on a never-created table (Dump/Flush terminated)');
+	env('STUB_IP_TABLE_MISSING=0');
+	write(`${t.base}/routes-left`, 'local default dev lo table 233 scope host\nlocal 127.0.0.1 dev lo table local\n');
+	env(`STUB_IP_ROUTES_FILE=${t.base}/routes-left`);
+	if (!apply.route_del(c).ok || flushes() != before + 1)
+		return fail('route_del did not flush a table that has routes');
+	// A failed flush with routes still there is a real failure, whatever the wording.
+	env('STUB_IP_FLUSH_ERR="Flush terminated"');
 	if (apply.route_del(c).ok)
 		return fail('route_del accepted a failed flush that left routes in the table');
-	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_FLUSH_ERR=\nSTUB_IP_ROUTES_FILE=\n');
+	// Routes of other tables do not count as table 233.
+	write(`${t.base}/routes-left`, 'local 127.0.0.1 dev lo table local\nlocal 10.0.0.1 dev lo table 2330\n');
+	if (!apply.route_del(c).ok)
+		return fail('route_del mistook routes of other tables for table 233');
+	env('STUB_IP_FLUSH_ERR=\nSTUB_IP_ROUTES_FILE=');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_IP_RC=1\n');
 	return !apply.route_add(c).ok && !apply.route_del(c).ok ? 'PASS' : fail('ip rule query/deletion failure accepted');
 };

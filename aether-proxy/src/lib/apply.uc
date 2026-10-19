@@ -265,6 +265,18 @@ function route_add(ctx) {
 	return route.code == 0 ? result('policy route installed') : failed(ctx, 'route_add', `ip route replace failed (${route.code}): ${route.stderr}`);
 };
 
+// docs/04「真机验证」: query table 233 through `show table all`. Linux 6.18 with iproute2 6.18
+// (H28K, 2026-10-19) rejects `show`/`flush table 233` with "Dump/Flush terminated" while the
+// table has never existed, so a per-table query cannot tell "empty" from "failed".
+function table_routes(ctx) {
+	setup_log(ctx);
+	let all = exec(ctx, 'ip', [ '-4', 'route', 'show', 'table', 'all' ]);
+	if (all.code != 0)
+		return failed(ctx, 'table_routes', `ip route show table all failed (${all.code}): ${all.stderr}`);
+	let mine = filter(split(all.stdout ?? '', '\n'), l => match(l, regexp(`(^|\\s)table ${C.ROUTE_TABLE}(\\s|$)`)) != null);
+	return result('policy routes listed', { routes: mine });
+};
+
 function route_del(ctx) {
 	setup_log(ctx);
 	let show = exec(ctx, 'ip', [ 'rule', 'show' ]);
@@ -285,14 +297,19 @@ function route_del(ctx) {
 	}
 	if (found)
 		return failed(ctx, 'route_del', 'more than 16 duplicate policy rules remain');
+	// Nothing in the table: no flush, since flushing an empty or never-created table fails on
+	// devices with build-dependent wording ("No such process", "Flush terminated").
+	let before = table_routes(ctx);
+	if (!before.ok)
+		return before;
+	if (!length(before.routes))
+		return result('policy rules and routes removed');
 	let flush = exec(ctx, 'ip', [ 'route', 'flush', 'table', `${C.ROUTE_TABLE}` ], true);
 	if (flush.code == 0)
 		return result('policy rules and routes removed');
-	// docs/04「真机验证」: flushing an already empty table fails, and ip(8) words it differently
-	// across builds ("No such process", "Flush terminated", both seen on devices). Judge by the
-	// table itself: nothing left to remove is success for an idempotent cleanup.
-	let left = exec(ctx, 'ip', [ '-4', 'route', 'show', 'table', `${C.ROUTE_TABLE}` ], true);
-	if (left.code == 0 && trim(left.stdout ?? '') == '')
+	// Judge a failed flush by what is left, not by the error text.
+	let after = table_routes(ctx);
+	if (after.ok && !length(after.routes))
 		return result('policy rules and routes removed');
 	return failed(ctx, 'route_del', `ip route flush failed (${flush.code}): ${flush.stderr}`);
 };
@@ -650,7 +667,7 @@ function artifact_hashes(ctx, dir) {
 export {
 	nft_load, nft_delete, nft_table_exists, nft_flush_prerouting,
 	sets_export, sets_save, sets_load, sets_remove,
-	route_add, route_del,
+	route_add, route_del, table_routes,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
 	scan_extra_servers,
 	resolve_node, write_boot_list, conflicts,

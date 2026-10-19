@@ -6,7 +6,7 @@ LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-aether-proxy
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 # TODO(design): license and maintainer are not specified in docs/.
 

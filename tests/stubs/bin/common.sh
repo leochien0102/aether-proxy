@@ -30,9 +30,17 @@ fi
 if [ "$name" = ip ] && [ -n "${STUB_IP_FLUSH_ERR:-}" ]; then
 	case " $* " in *" route flush "*) echo "$STUB_IP_FLUSH_ERR" >&2; exit 2 ;; esac
 fi
-# `ip route show table`: empty unless STUB_IP_ROUTES_FILE holds routes that remain.
-if [ "$name" = ip ] && [ -n "${STUB_IP_ROUTES_FILE:-}" ]; then
-	case " $* " in *" route show table "*) cat "$STUB_IP_ROUTES_FILE"; exit 0 ;; esac
+# Linux 6.18 / iproute2 6.18 (H28K): per-table show/flush fail while table 233 never existed;
+# `show table all` still works.
+if [ "$name" = ip ] && [ "${STUB_IP_TABLE_MISSING:-0}" = 1 ]; then
+	case " $* " in
+		*" route show table 233 "*) echo 'Dump terminated' >&2; exit 2 ;;
+		*" route flush "*) echo 'Flush terminated' >&2; exit 2 ;;
+	esac
+fi
+# `ip -4 route show table all`: STUB_IP_ROUTES_FILE holds the routes present (none by default).
+if [ "$name" = ip ]; then
+	case " $* " in *" route show table all "*) [ -n "${STUB_IP_ROUTES_FILE:-}" ] && cat "$STUB_IP_ROUTES_FILE"; exit 0 ;; esac
 fi
 if [ -n "$out" ]; then cat "$out"; fi
 exit "$rc"
