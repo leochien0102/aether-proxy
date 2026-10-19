@@ -3,6 +3,7 @@
 // Design: docs/04「monitor 循环」 and docs/03「DNS 级别（trust 组上游）」.
 
 import * as fs from 'fs';
+import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
@@ -12,7 +13,8 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as net from 'aetherproxy.net';
 
-let initial_state, interval_ms, next;
+// tick is declared up front: finish_tick schedules it before its definition (ucode does not hoist).
+let initial_state, interval_ms, next, tick;
 
 function system_path(ctx, path) {
 	let root = ctx.root ?? '';
@@ -342,14 +344,19 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 	}
 	daemon.busy = false;
 	if (daemon.interval != null) {
+		daemon.interval.set(interval_ms(daemon.machine));
 		// Re-observe only after the T2 restart and unlock; the previous sample used the
 		// old DNS upstream. A transition edge, not residence in T2, prevents a busy loop.
+		// One-shot timer, never a shortened period: a tick that is skipped (lock held by a
+		// user command, or still busy) would otherwise leave the interval at 1 ms and spin,
+		// logging BUSY every millisecond (found in T8.19 review, 2026-10-19).
 		let entered_t2 = error == null && index(transition.actions, 'set_tier:T2') >= 0;
-		daemon.interval.set(entered_t2 ? 1 : interval_ms(daemon.machine));
+		if (entered_t2 && daemon.immediate == null)
+			daemon.immediate = uloop.timer(1, () => { daemon.immediate = null; tick(daemon); });
 	}
 };
 
-function tick(daemon) {
+tick = function(daemon) {
 	if (daemon.busy)
 		return;
 	if (daemon.skip_next) {

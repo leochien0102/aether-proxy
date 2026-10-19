@@ -190,15 +190,16 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 	});
 	let started = clock(true);
 	monitor.tick(d);
-	// Five seconds is shorter than the normal 10 s degraded/failsafe cadence.
-	for (let i = 0; i < 50 && (automatic_rounds == 0 || d.busy); i++)
+	// Five seconds is shorter than the normal 10 s degraded/failsafe cadence. The extra round
+	// comes from a one-shot timer: the 10 s period itself must never be shortened.
+	let expected_dns = scenario == 'immediate-retry' ? 2 : 1;
+	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
+	for (let i = 0; i < 50 && (count(fs.readfile(log_path), 'resolveip ') < expected_dns || d.busy || d.immediate != null); i++)
 		uloop.run(100);
 	let ended = clock(true);
 	let elapsed = ended[0] - started[0] + (ended[1] - started[1]) / 1000000000;
-	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
 	let calls = fs.readfile(log_path) ?? '';
-	let expected_dns = scenario == 'immediate-retry' ? 2 : 1;
-	check(automatic_rounds == 1 && elapsed < 5 && count(calls, 'resolveip ') == expected_dns,
+	check(automatic_rounds == 0 && elapsed < 5 && count(calls, 'resolveip ') == expected_dns,
 		`${scenario}: T2 transition probes DNS within 5 seconds`,
 		sprintf('automatic=%d DNS=%d elapsed=%.3f', automatic_rounds, count(calls, 'resolveip '), elapsed));
 	if (scenario != 'immediate-retry') {
@@ -206,7 +207,7 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 			`${scenario}: immediate DNS failure counts once in T2`, sprintf('%.J', d.machine));
 		let samples = count(calls, 'resolveip ');
 		uloop.run(250);
-		check(automatic_rounds == 1 && count(fs.readfile(log_path), 'resolveip ') == samples,
+		check(automatic_rounds == 0 && count(fs.readfile(log_path), 'resolveip ') == samples,
 			`${scenario}: ordinary T2 round does not schedule another immediate round`);
 		monitor.tick(d);
 		while (d.busy)
@@ -223,7 +224,7 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 	while (d.busy)
 		uloop.run(100);
 	uloop.run(250);
-	check(automatic_rounds == 1 && count(fs.readfile(log_path), 'resolveip ') == samples + 1,
+	check(automatic_rounds == 0 && count(fs.readfile(log_path), 'resolveip ') == samples + 1,
 		`${scenario}: ordinary T3 round does not schedule another immediate round`);
 	d.interval.cancel();
 	no_external_children(d);
