@@ -72,7 +72,7 @@ run_case() {
 
 run_case proxy-tier 2
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999
-for scenario in immediate-proxy immediate-xray immediate-retry; do
+for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked; do
 	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1
 done
 exit "$status"

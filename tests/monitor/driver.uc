@@ -229,6 +229,32 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 	d.interval.cancel();
 	no_external_children(d);
 }
+else if (scenario == 'immediate-locked') {
+	// T8.19 review: the immediate T2 round is a one-shot timer. If a user command holds the
+	// lock when it fires, the round is skipped once (one BUSY event) and the normal period
+	// continues; it must not be retried continuously.
+	let d = opts.daemon;
+	d.snapshot.probe.fail_threshold = 1;
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', ever_healthy: true };
+	let automatic_rounds = 0;
+	d.interval = uloop.interval(10000, () => { automatic_rounds++; monitor.tick(d); });
+	monitor.tick(d);
+	while (d.busy)
+		uloop.run(100);
+	check(d.machine.dns_tier == 'T2', 'immediate-locked: proxy failure enters T2', sprintf('%.J', d.machine));
+	let held = sys.lock(`${replace(opts.ctx.root, /\/$/, '')}${C.LOCK_FILE}`);
+	check(held != null, 'immediate-locked: test holds the global lock');
+	let events_path = `${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/events.jsonl`;
+	let busy_before = count(fs.readfile(events_path), '"BUSY"');
+	uloop.run(300);
+	let busy_after = count(fs.readfile(events_path), '"BUSY"');
+	check(automatic_rounds == 0 && busy_after - busy_before == 1 && d.immediate == null,
+		'immediate-locked: a skipped immediate round is tried once, not retried',
+		sprintf('automatic=%d BUSY events=%d', automatic_rounds, busy_after - busy_before));
+	held?.close();
+	d.interval.cancel();
+	no_external_children(d);
+}
 else {
 	bad('unknown monitor integration scenario', scenario);
 }
