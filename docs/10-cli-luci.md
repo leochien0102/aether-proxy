@@ -432,14 +432,56 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 - **切换节点**：节点下拉（显示 `label`，当前节点预选）加「切换」按钮 → `uci.set('aetherproxy', 'main', 'node', <段名>)`、`uci.save()`、`ui.changes.apply(true)`（与节点页「设为当前」相同）。之后的健康检测由 daemon 自动完成。
 - **测当前节点延迟**：`ap.call('probe_now')` → 成功后每秒取一次 `status`，直到 `last_probe.at` 不早于 `requested_at`（最多 15 秒），显示「正常，<latency_ms> ms」或「失败」；超时显示「检测未在 15 秒内完成」。
   进行中按钮不可用；`NOT_RUNNING` 显示「服务未运行」；其他失败显示 `code` 与 `detail`。
-- **更新订阅**：`ap.run_job('sub_update', [])`，结束后显示「订阅更新完成：成功 <n> 个，失败 <m> 个」（按结果 `subs` 中各项的 `ok` 计数），失败的列出订阅名与事件码；作业期间按钮不可用。
+- ~~**更新订阅**~~（2026-10-20 起不在概览页，见下方「概览页重排」）：`ap.run_job('sub_update', [])`，结束后显示「订阅更新完成：成功 <n> 个，失败 <m> 个」（按结果 `subs` 中各项的 `ok` 计数），失败的列出订阅名与事件码；作业期间按钮不可用。
 - 「停用/启用」即已有的「启用」开关（持久），「重启」即已有按钮；不新增。
 - 模型 `model/overview.js` 增加：速率计算与格式化、连接数文字、刷新间隔的选项与解析、检测结果文字、订阅更新结果汇总。
+
+### 概览页重排（2026-10-20 定，T10.3）
+
+仓库所有者看过 0.2.0-r6 的概览页后的意见：状态文字偏小；「DNS 级别 T2」、节点名后的 IP 等含义不清；控件挤在一行，整页没有主次。
+按 2026-10-20 确认的示意图重排。**本节与上面「概览页」「启用开关」「Dashboard」冲突的地方以本节为准**；没提到的规则（按钮可用性、停止确认、启用开关的保存流程、
+刷新间隔与 localStorage、速率算法、测延迟的完成判断、切换节点的保存流程）全部不变。
+
+**从上到下的分块**（视图中按此顺序排列，每块一个 `cbi-section`；第 0 块不是 section）：
+
+0. **标题行**：左边页面标题（显示名，T10.2）；右边「自动刷新」下拉（选项与原来相同）和「刷新」按钮。删除标题下的说明「服务状态、待处理提示与启停控制。」。
+1. **待处理提示**：读取状态失败的错误（`alert-message error`）、「服务未启用」提示、`notices` 各条（`alert-message warning`，一条一个列表项）都放在这里，没有就不显示这一块。
+2. **状态**：
+   - 第一行左边是**状态词**，字号 1.6 倍（`font-size: 1.6em`）、加粗，按状态着色（见下方「着色」）；后面跟持续时间「已持续 <时长>」（`since` 到现在，时长写成「x 秒」「x 分钟」「x 小时」「x 天」，进位同原来的相对时间）；`dns_failsafe` 为真时同一行再显示「DNS 已回退到原配置」（警告色）。
+     右边是「启用」开关，开关的说明文字（原来的 `enabled_note`）放在开关下方，用小字。
+   - `last_error` 不为空时，第一行下方显示「原因：<文字>」（失败色）。上面「概览页」本来就要求显示它，T8.4 漏了（2026-10-20 复查发现），这次补上。
+     文字：`NODE_RESOLVE_FAILED` 节点地址解析失败；`CONFIG_INVALID` 配置无效，详见日志页；`START_FAILED` 启动失败，详见日志页；其他值原样显示（这三个是 daemon 目前会写入的全部取值）。
+   - 第二行「境外域名解析」：服务处于 `starting`、`running`、`degraded`、`failsafe` 且 `dns_tier` 不为空时才显示，文字按级别（[03](03-dns.md)「DNS 级别」）：
+     `T1` 经节点解析（正常）；`T2` 直连境外 DNS（启动中，或代理不健康）；`T3` 仅用国内 DNS（境外 DNS 都不通，结果可能被污染）；其他值原样显示。T1/T2/T3 这几个代号不出现在页面上。
+   - 第三行：启动、重启、停止三个按钮（可用性与停止确认不变）。
+3. **当前节点**：
+   - 节点名（UCI `label`，找不到用段名；没有当前节点显示「未选择节点」），字号 1.2 倍；后面用小字显示 `node_ip`，悬停提示「节点地址」。
+   - 同一行右边：最近一次健康检测的结果（「正常，<n> ms」成功色、「检测失败」失败色、「尚未检测」默认色）、相对时间、「测延迟」按钮；测延迟的结果文字显示在按钮旁边（原来的规则不变）。
+   - 第二行：节点下拉（当前节点的选项后加「（当前）」）+「使用此节点」按钮；下拉选中的就是当前节点时按钮不可用（避免一次没有变化的保存并应用）。
+4. **流量与连接**：表格三列「（空）| 上传 | 下载」，三行「代理」「直连」「合计」，取代原来「代理 ↑ / ↓」的写法（速率算法与「–」的规则不变）。表下一行「代理连接 <n>」「总连接 <n>」，
+   「总连接」悬停提示「系统连接跟踪表（conntrack）中的连接总数」；页面上不再出现「conntrack」字样。
+5. **组件版本**：小字（`font-size: 0.9em`）表格「组件 | 版本 | 路径」。第一行是本程序自身：名称 `aether-proxy`（指向具体程序，按 [README](README.md)「命名」不写显示名）、版本取 `version` 方法、路径「–」，
+   取不到版本显示「–」；之后是 `components` 各项（原样）。原来状态表里单独的「aether-proxy 版本」一行删除。
+
+**删除**：「更新订阅」按钮及其结果显示（仓库所有者定：订阅本来会定时更新，手动更新留在节点页与订阅页）。
+
+**着色**（各主题通用的写法，见下方「UI 规则」中的「样式」）：模型给出等级 `ok`、`warn`、`error`、`neutral`，视图按等级取颜色：
+`ok` → `var(--success-color-high, #2f855a)`；`warn` → `var(--warning-color, #b7791f)`；`error` → `var(--error-color-high, #c53030)`；`neutral` → 不设颜色。
+状态词：`running` 为 `ok`；`degraded`、`failsafe` 为 `warn`；`error` 为 `error`；`stopped`、`starting`（含等待网络）及未知状态为 `neutral`。健康检测结果：成功 `ok`、失败 `error`、尚未检测 `neutral`。
+
+**模型 `model/overview.js` 的变化**：`build()` 增加 `state_level`、`state_duration_text`（替代 `state_since_text`）、`dns_text`（不该显示时为 `null`，替代 `dns_tier_text`）、`probe_level`、
+`error_text`（`last_error` 的文字，没有为 `null`）、`node_text` 没有当前节点时为「未选择节点」、`components` 的第一项为本程序自身；增加 `node_options(labels, current)` → `[{ value, text }]`（按 `labels` 的键排序，当前节点带「（当前）」）
+与 `can_switch(selected, current)`；删除 `subscription_result`、`own_version` 不再单独渲染。所有文字、等级、显示与否都由模型决定，视图只把等级映射成颜色。
 
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
 - 前端同时发出的请求不超过 2 个（为 uhttpd 的 `max_requests 3` 留出余量）。
+- **样式**（2026-10-20 定，T10.3 起；跨页面问题 X7）：页面要在用户的任意主题下可用（H28K 用第三方主题 `proton2025`，另装 bootstrap、argon-plus），所以：
+  布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
+  和**相对**字号（`em`），不写 `px` 字号；颜色只用主题的 CSS 变量，并带上回退值：`var(--success-color-high, #2f855a)`、`var(--warning-color, #b7791f)`、`var(--error-color-high, #c53030)`
+  （bootstrap 与 proton2025 都定义了前两个 success/error 变量，warning 只有 proton2025 有，2026-10-20 核对）。**不要用 `label success` 之类的修饰类着色**：proton2025 只有 `.label`，没有这些修饰类。
+  控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。
 - 翻译包 `luci-i18n-aether-proxy-zh-cn` 与功能包分开生成。修改 po 后两个包要一起安装。
 - **翻译一律带上下文 `aether-proxy`**（2026-10-20 定，T10.1）：界面文字写成 `_('Refresh', 'aether-proxy')`，po 中对应条目带 `msgctxt "aether-proxy"`。
   原因：LuCI 把设备上**所有**已安装应用的翻译目录（`/usr/lib/lua/luci/i18n/*.zh-cn.lmo`）并成一张表，按「上下文 + 原文」的哈希查找，
