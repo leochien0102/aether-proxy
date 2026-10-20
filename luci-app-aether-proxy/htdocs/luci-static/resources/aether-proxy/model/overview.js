@@ -1,8 +1,9 @@
 'use strict';
 'require baseclass';
+'require aether-proxy.model.logs as logs';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第四轮修正」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「切换节点未生效时提示」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -215,7 +216,46 @@ function node_options(labels, current) {
 	}));
 }
 
+/* Reload failures leave runtime status unchanged. Compare against UCI instead
+   of last_error, which describes startup rather than the attempted switch. */
+function switch_pending(status, configured_node) {
+	const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
+	if (status?.ok === false || !active)
+		return false;
+	return !!configured_node && !!status.node_id && configured_node !== status.node_id;
+}
+
+function switch_reason(reply) {
+	if (!reply || reply.ok === false)
+		return null;
+	const codes = [ 'NODE_RESOLVE_FAILED', 'CONFIG_INVALID', 'PRECHECK_FAILED', 'RENDER_INVALID' ];
+	let latest = null;
+	for (const event of reply.events ?? []) {
+		const reload_failure = event.code === 'START_FAILED'
+			&& typeof event.args?.step === 'string' && event.args.step.startsWith('reload:');
+		if (!codes.includes(event.code) && !reload_failure)
+			continue;
+		if (!latest || event.ts >= latest.ts)
+			latest = event;
+	}
+	return latest;
+}
+
+function switch_notice(status, configured_node, labels, reply, now) {
+	if (!switch_pending(status, configured_node))
+		return null;
+	const configured = labels[configured_node] || configured_node;
+	const reason = switch_reason(reply);
+	if (!reason)
+		return fmt(_('Switching to “%s”…', 'aether-proxy'), configured);
+	return fmt(_('Switching to “%s” did not take effect; the service is still using “%s”. '
+		+ 'Reason: %s (%s). Click Restart to start with the configured node '
+		+ '(this briefly interrupts proxy traffic), or see the logs page for details.', 'aether-proxy'),
+		configured, labels[status.node_id] || status.node_id, logs.message(reason), rel_time(now, reason.ts));
+}
+
 return baseclass.extend({
+	switch_pending: switch_pending,
 	component_rows: component_rows,
 	refresh_options: function() {
 		return [
@@ -289,8 +329,9 @@ return baseclass.extend({
 	   resolved by ap.call('version'), labels: node section name -> label from
 	   UCI, now: current unix time in seconds. configured_node is read at load;
 	   inventory is undefined while pending, null/ok:false on failure, and is
-	   fetched once after rendering (docs/10 「概览页第二轮修正」). */
-	build: function(status, version, labels, now, enabled, configured_node, inventory) {
+	   fetched once after rendering (docs/10 「概览页第二轮修正」). events contains
+	   recent errors only while a node switch is pending (docs/10 T10.11). */
+	build: function(status, version, labels, now, enabled, configured_node, inventory, events) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
 
@@ -319,6 +360,7 @@ return baseclass.extend({
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
 		const nodes = {
+			switch_notice: switch_notice(status, configured_node, labels, events, now),
 			current_node,
 			node_options: node_options(labels, current_node),
 			node_text: Object.keys(labels).length ? null
