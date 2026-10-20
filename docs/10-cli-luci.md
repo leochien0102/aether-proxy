@@ -156,7 +156,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   （命令行的 JSON 已带 `ok`/`code`，例如 `job start` 忙时的 `{"ok": false, "code": "BUSY", "job": …}`）；
   否则返回 `{"ok": false, "code": "CMD_FAILED", "detail": "exit <退出码>: <stderr 前 512 字节>"}`，超时的 `detail` 为 `timeout after <秒>s`。
 - **参数错误**：不执行任何命令，返回 `{"ok": false, "code": "USAGE", "detail": "…"}`。缺省的可选参数等同于不传。
-- **超时**：`check`、`save_file` 30 秒（`save_file` 可能触发 reload），其余 10 秒（rpcd 串行处理调用，每个调用必须很快；长任务一律走 `job_start`）。
+- **超时**：`check`、`save_file` 30 秒（`save_file` 可能触发 reload），`components` 15 秒（T10.4），其余 10 秒（rpcd 串行处理调用，每个调用必须很快；长任务一律走 `job_start`）。
 - **`service`**：重启可能超过 30 秒（停止要等子进程退出），所以放到后台执行后立即返回 `{"ok": true, "action": "<action>"}`：
   `sh -c '"$0" "$1" </dev/null >/dev/null 2>&1 &' /etc/init.d/aether-proxy <action>`。结果由前端轮询 `status` 得知。
 - **`job_start` 的参数**（`args` 为字符串数组，缺省为空数组）：
@@ -197,7 +197,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 
 - **`ap.call(method, params)`**：声明并调用 rpcd 插件的方法（10「rpcd 插件」表中的全部 11 个）。**永不 reject**，只 resolve 一次（settle-once）：
   rpc 的结果、rpc 的失败、硬超时三者谁先到用谁，后到的忽略。失败 → `{ ok: false, code: "RPC_FAILED", detail: "<错误信息>" }`；
-  超时 → `{ ok: false, code: "TIMEOUT", detail: "<方法> did not answer in <秒>s" }`。硬超时：`check`、`save_file` 35 秒，其余 15 秒（比插件的 30/10 秒各多 5 秒），
+  超时 → `{ ok: false, code: "TIMEOUT", detail: "<方法> did not answer in <秒>s" }`。硬超时：`check`、`save_file` 35 秒，`components` 20 秒（T10.4），其余 15 秒（比插件的 30/10 秒各多 5 秒），
   取自 `ap.TIMEOUTS`（对象，测试可改小）。
 - **同时在途 ≤ 2**：模块内对 `ap.call` 计数，超出的调用按先后排队；一个调用 settle 后（包括超时），队首的下一个才发出（UI 规则「同时发出的请求不超过 2 个」）。
 - **`ap.poll(fn, interval_ms)`** → `{ stop() }`：每隔 `interval_ms`（小于 2000 按 2000）调用一次 `fn`（返回 promise）。
