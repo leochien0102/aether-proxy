@@ -282,6 +282,10 @@ expect "results with a node ID: usage error, exit 2" 2 "$rc"
 out="$(ap probe results n_00000000000000000000000000000001 --json --run-dir "$T/res-run" 2>/dev/null)"
 expect "results with a node ID: USAGE code" USAGE "$(echo "$out" | jget code)"
 
+# T9.5: real CLI jobs seed the isolated per-address LKG cache once, never on unchanged results.
+python3 "$ROOT/tests/probe/lkg.py" "$ROOT" "$T/lkg" "$OPEN_PORT" "$CLOSED_PORT" \
+	&& ok 'probe LKG job scenarios' || bad 'probe LKG job scenarios'
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

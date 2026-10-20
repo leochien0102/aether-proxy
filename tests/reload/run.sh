@@ -52,6 +52,19 @@ wait_count() {
 	return 1
 }
 
+# Wait for committed state, not merely a restarted child: publication follows readiness.
+wait_field() {
+	local field="$1" wanted="$2" got=''
+	for _ in {1..200}; do
+		if [ -s "$SYSROOT/var/run/aether-proxy/state.json" ]; then
+			got=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- "$field" < "$SYSROOT/var/run/aether-proxy/state.json")
+		fi
+		[ "$got" = "$wanted" ] && return 0
+		sleep 0.05
+	done
+	return 1
+}
+
 mkdir -p "$T/bin" "$T/conf" "$T/data" "$T/base" "$T/custom"
 cp "$STUB_SRC/"* "$T/bin/"
 chmod +x "$T/bin/"*
@@ -103,6 +116,9 @@ if [ ! -f "$SYSROOT/xray.pid" ] || [ ! -f "$SYSROOT/chinadns.pid" ]; then
 	exit 1
 fi
 
+wait_field state running && ok 'T9.5 startup reaches running' || bad 'T9.5 startup reaches running'
+versions_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components < "$SYSROOT/var/run/aether-proxy/state.json")
+
 # Mode change: nft and chinadns outputs change; Xray's process must retain its pid.
 xray_before=$(cat "$SYSROOT/xray.pid")
 nft_before=$(count_calls "$LOG" 'nft -f ')
@@ -121,6 +137,9 @@ done
 	|| bad "mode reload restarts chinadns" "old=$dns_before new=$dns_after"
 xray_after=$(cat "$SYSROOT/xray.pid")
 expect "mode reload leaves xray pid unchanged" "$xray_before" "$xray_after"
+# Change live banners: unchanged paths must preserve the original version, not re-query.
+printf 'Xray SHOULD-NOT-REFRESH\n' > "$SYSROOT/xray-version"
+printf 'ChinaDNS-NG SHOULD-NOT-REFRESH\n' > "$SYSROOT/chinadns-version"
 
 # Node-only change: the rendered Xray artifact changes, while nft/chinadns do not.
 nft_before=$(count_calls "$LOG" 'nft -f ')
@@ -172,6 +191,112 @@ grep -q '198.51.100.7' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" 
 grep -q '203.0.113.20' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" \
 	&& bad "address reload drops the old node IP" || ok "address reload drops the old node IP"
 [ "$xray_after" != "$xray_before" ] && ok "address reload restarts xray" || bad "address reload restarts xray"
+
+# T9.5: switch to an unseen domain with a transient failure, then back with DNS fully down.
+# Startup already seeded the original domain; resolving B must not overwrite A's cache entry.
+wait_field node_ip 198.51.100.7 \
+	&& ok 'T9.5 previous address reload committed' || bad 'T9.5 previous address reload committed'
+expect 'T9.5 reload preserves both component versions at unchanged paths' "$versions_before" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T9.5 unchanged paths do not query Xray version again' 1 "$(count_calls "$LOG" 'xray version')"
+expect 'T9.5 unchanged paths do not query ChinaDNS version again' 1 "$(count_calls "$LOG" 'chinadns-ng -V')"
+
+cat >> "$T/conf/aetherproxy" <<'CONF'
+
+config node 'n_00000000000000000000000000000002'
+	option protocol 'trojan'
+	option security 'tls'
+	option address 'new-node.example'
+	option port '443'
+	option password 'new-secret'
+CONF
+sed -i "s/option address '198.51.100.7'/option address 'node.example.com'/;\
+	s/option node 'n_00000000000000000000000000000001'/option node 'n_00000000000000000000000000000002'/" \
+	"$T/conf/aetherproxy"
+printf '1\n' > "$SYSROOT/resolve-failures"
+printf '198.51.100.8\n' > "$SYSROOT/resolve-ip"
+kill -HUP "$DAEMON_PID"
+wait_field node_id n_00000000000000000000000000000002 \
+	&& ok 'T9.5 unseen node switches successfully after transient DNS failure' \
+	|| bad 'T9.5 unseen node switches successfully after transient DNS failure'
+expect 'T9.5 unseen node uses exactly two bounded DNS attempts' 2 \
+	"$(count_calls "$LOG" 'resolveip -4 -t 3 new-node.example')"
+expect 'T9.5 unseen node persists its resolved IP' 198.51.100.8 \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_ip < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T9.5 transient DNS failure emits no resolve events' 0 \
+	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_')"
+
+touch "$SYSROOT/resolve-always-fail"
+sed -i "s/option node 'n_00000000000000000000000000000002'/option node 'n_00000000000000000000000000000001'/" \
+	"$T/conf/aetherproxy"
+old_calls=$(count_calls "$LOG" 'resolveip -4 -t 3 node.example.com')
+kill -HUP "$DAEMON_PID"
+wait_field node_id n_00000000000000000000000000000001 \
+	&& ok 'T9.5 switches back to original node using retained LKG during DNS outage' \
+	|| bad 'T9.5 switches back to original node using retained LKG during DNS outage'
+expect 'T9.5 switch back exhausts three DNS attempts before LKG' "$((old_calls + 3))" \
+	"$(count_calls "$LOG" 'resolveip -4 -t 3 node.example.com')"
+expect 'T9.5 switch back persists original IP' 203.0.113.20 \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_ip < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T9.5 switch back records exactly one fallback' 1 \
+	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_FALLBACK')"
+expect 'T9.5 switch back never records resolve failure' 0 \
+	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_FAILED')"
+
+# A new executable plus a rendered port change exercises apply_plan's fresh version lookup.
+# --bin-dir intentionally takes precedence over UCI, so remove the default fixture name.
+cp "$T/bin/xray" "$T/bin/xray-original"
+rm "$T/bin/xray"
+cat > "$T/bin/xray-alt" <<'EOF'
+#!/bin/sh
+if [ "$1" = version ]; then
+	printf 'xray-alt version\n' >> "$STUB_LOG"
+	printf 'Xray 26.10.10 (alternate binary)\n'
+	exit 0
+fi
+exec "$(dirname "$0")/xray-original" "$@"
+EOF
+chmod +x "$T/bin/xray-alt"
+sed -i "/config main 'main'/a\\\toption xray_bin '$T/bin/xray-alt'" "$T/conf/aetherproxy"
+sed -i "s/option port '444'/option port '445'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_field components.xray.version 26.10.10 \
+	&& ok 'T9.5 changed executable path refreshes Xray version on applied reload' \
+	|| bad 'T9.5 changed executable path refreshes Xray version on applied reload'
+expect 'T9.5 new executable version queried exactly once' 1 "$(count_calls "$LOG" 'xray-alt version')"
+expect 'T9.5 changed Xray path preserves ChinaDNS version' 2025.06.20 \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.version \
+	< "$SYSROOT/var/run/aether-proxy/state.json")"
+
+# Path-only overrides do not change rendered outputs, but must still refresh metadata.
+printf 'Xray 26.11.1 (original path replaced)\n' > "$SYSROOT/xray-version"
+cp "$T/bin/xray-original" "$T/bin/xray"
+sed -i '/option xray_bin /d' "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_field components.xray.version 26.11.1 \
+	&& ok 'T9.5 path-only reload refreshes component metadata without renderer changes' \
+	|| bad 'T9.5 path-only reload refreshes component metadata without renderer changes'
+expect 'T9.5 path-only reload records discovered path' "$T/bin/xray" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.xray.path < "$SYSROOT/var/run/aether-proxy/state.json")"
+
+# Live gfw4 elements make the rough plan differ only in nft; the export re-render then matches,
+# so the final plan is empty. A path change must still refresh metadata on that branch too.
+printf '["198.51.100.1"]\n' > "$SYSROOT/gfw4-elem"
+nft_before=$(count_calls "$LOG" 'nft -f ')
+sed -i "s/option mode 'bypass_cn'/option mode 'gfw'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_count "$LOG" 'nft -f ' "$((nft_before + 1))" \
+	&& ok 'T9.5 mode reload embeds live gfw4 elements' || bad 'T9.5 mode reload embeds live gfw4 elements'
+grep -Fq 'elements = { 198.51.100.1 }' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" \
+	&& ok 'T9.5 running nft carries the live element' || bad 'T9.5 running nft carries the live element'
+nft_before=$(count_calls "$LOG" 'nft -f ')
+rm "$T/bin/xray"
+sed -i "/config main 'main'/a\\\toption xray_bin '$T/bin/xray-alt'" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_field components.xray.version 26.10.10 \
+	&& ok 'T9.5 path change refreshes version when only live set elements differ' \
+	|| bad 'T9.5 path change refreshes version when only live set elements differ'
+expect 'T9.5 live-element reload does not replace nft' "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
 
 # Disable: the pure plan returns stop alone and daemon follows the normal stop path.
 sed -i "s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"

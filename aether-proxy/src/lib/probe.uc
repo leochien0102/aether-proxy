@@ -1,11 +1,14 @@
 'use strict';
 
 // Synchronous TCP reachability probes for subscription nodes (docs/07).
+// Successful DNS answers seed the per-address LKG cache once per job (docs/03 bootstrap step 3).
 
 import * as socket from 'socket';
 import * as C from 'aetherproxy.const';
 import { ipv4 } from 'aetherproxy.net';
 import * as sys from 'aetherproxy.sys';
+import * as apply from 'aetherproxy.apply';
+import * as log from 'aetherproxy.log';
 
 // Linux errno values from the target socket ABI; socket 2025.07.18 exposes errors numerically.
 const EINTR = 4;
@@ -255,9 +258,10 @@ function run_attempts(results, jobs, timeout, concurrency, on_done) {
 // nodes is a normalized config snapshot map; ids is its sorted selected subset.
 // on_done (T8.5) is called once per finished node as (node_id, summarized_result);
 // pass null to keep the pre-T8.5 behavior of returning everything at the end.
-export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done) {
+export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done, ctx) {
 	let results = {};
 	let jobs = [];
+	let resolved_addresses = {};
 
 	for (let id in ids) {
 		let resolved = resolve_node(nodes[id], timeout, bin_dir);
@@ -274,6 +278,9 @@ export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done) 
 			continue;
 		}
 
+		// Do not reuse LKG or retry here: this probe measures DNS reachability right now.
+		if (ipv4(nodes[id].address) == null)
+			resolved_addresses[nodes[id].address] = resolved.ip;
 		results[id] = { ip: resolved.ip, attempts: [ null, null, null ] };
 		for (let attempt = 0; attempt < 3; attempt++)
 			push(jobs, { key: id + '|' + attempt, node_id: id, attempt, ip: resolved.ip, port: nodes[id].port });
@@ -281,6 +288,14 @@ export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done) 
 
 	run_attempts(results, jobs, timeout, concurrency, on_done);
 
+	if (length(resolved_addresses)) {
+		let saved = apply.update_lkg(ctx ?? {}, resolved_addresses);
+		if (!saved.ok) {
+			// TODO(design): docs/03 does not specify whether a failed cache write fails the probe job.
+			// Keep the measured results, but report the cache failure rather than hiding it.
+			log.event('error', 'FS_FAILED', { op: 'update_lkg', detail: saved.detail });
+		}
+	}
 	let output = {};
 	for (let id in ids)
 		output[id] = summarize_node(results[id]);

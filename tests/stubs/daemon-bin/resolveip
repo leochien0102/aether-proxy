@@ -2,4 +2,17 @@
 printf 'resolveip %s\n' "$*" >> "$STUB_LOG"
 if [ -n "${STUB_RESOLVE_DELAY:-}" ]; then sleep "$STUB_RESOLVE_DELAY"; fi
 [ "${STUB_RESOLVE_FAIL:-0}" = 1 ] && exit 1
-echo '203.0.113.20'
+# T9.5: opt-in transient failures and custom answers, controlled inside the fixture root.
+if [ -f "$SYSROOT/resolve-always-fail" ]; then exit 1; fi
+if [ -f "$SYSROOT/resolve-failures" ]; then
+	read -r remaining < "$SYSROOT/resolve-failures"
+	if [ "$remaining" -gt 0 ]; then
+		printf '%s\n' "$((remaining - 1))" > "$SYSROOT/resolve-failures"
+		exit 1
+	fi
+fi
+if [ -f "$SYSROOT/resolve-ip" ]; then
+	cat "$SYSROOT/resolve-ip"
+else
+	echo '203.0.113.20'
+fi

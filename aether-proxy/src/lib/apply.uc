@@ -517,19 +517,52 @@ function dnsmasq_extra_servers(ctx) {
 
 // docs/03「引导解析（节点域名）」 step 4: corrupt LKG is an absent, regenerable cache.
 // Do not emit an event on every lookup; a successful resolution will replace it.
-function read_lkg(ctx, address) {
-	let path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
-	let text = fs.readfile(path);
+function read_lkg(ctx) {
+	let text = fs.readfile(`${state_dir(ctx)}/${C.NODE_IP_FILE}`);
 	if (text == null)
-		return null;
+		return {};
+	let obj;
 	try {
-		let obj = json(text);
-		// The LKG entry is bound to the node address, so switching nodes never reuses another node's IP.
-		return obj.address == address && net.ipv4(obj.ip) != null ? obj.ip : null;
+		obj = json(text);
 	}
 	catch (e) {
-		return null;
+		return {};
 	}
+	if (type(obj) != 'object')
+		return {};
+	let entries = obj.nodes;
+	if (entries == null && type(obj.address) == 'string' && obj.address != '')
+		entries = { [obj.address]: obj.ip };
+	if (type(entries) != 'object')
+		return {};
+	let nodes = {};
+	for (let address, ip in entries)
+		if (address != '' && type(ip) == 'string' && net.ipv4(ip) != null)
+			nodes[address] = ip;
+	return nodes;
+};
+
+// Batch updates let a probe job persist all resolved addresses with one atomic write.
+// An unchanged IP must not refresh its position or wear flash (docs/03, bootstrap step 3).
+function update_lkg(ctx, updates) {
+	let nodes = read_lkg(ctx), changed = false;
+	for (let address, ip in updates) {
+		if (nodes[address] == ip)
+			continue;
+		delete nodes[address];
+		nodes[address] = ip;
+		changed = true;
+		while (length(nodes) > C.NODE_LKG_MAX)
+			delete nodes[keys(nodes)[0]];
+	}
+	if (!changed)
+		return result('node addresses unchanged', { written: false });
+	if (!sys.mkdir_p(state_dir(ctx)))
+		return { ok: false, detail: `cannot create ${state_dir(ctx)}: ${sys.error()}` };
+	let path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
+	if (!sys.write_atomic(path, sprintf('%.J\n', { nodes })))
+		return { ok: false, detail: `cannot write ${path}: ${sys.error()}` };
+	return result('node addresses saved', { written: true });
 };
 
 function resolve_node(ctx, address) {
@@ -538,26 +571,23 @@ function resolve_node(ctx, address) {
 		return failed(ctx, 'resolve_node', 'address must be a non-empty string');
 	if (net.ipv4(address) != null)
 		return result('literal IPv4 address', { ip: address, source: 'literal' });
-	let resolved = exec(ctx, 'resolveip', [ '-4', '-t', '5', address ], true);
-	if (resolved.code == 0) {
-		let ips = [];
-		for (let line in split(trim(resolved.stdout), '\n'))
-		if (net.ipv4(trim(line)) != null && !array_has(ips, trim(line)))
-				push(ips, trim(line));
-		if (length(ips)) {
+	for (let attempt = 0; attempt < C.NODE_RESOLVE_ATTEMPTS; attempt++) {
+		// Transient boot-group DNS failures are expected; only the final outcome emits an event.
+		let resolved = sys.run([ command(ctx, 'resolveip'), '-4', '-t',
+			`${C.NODE_RESOLVE_TIMEOUT_SECS}`, address ], { timeout: C.NODE_RESOLVE_TIMEOUT_SECS, quiet: true });
+		if (resolved.code != 0)
+			continue;
+		for (let ip in split(trim(resolved.stdout ?? ''), /[[:space:]]+/)) {
+			if (net.ipv4(ip) == null)
+				continue;
 			// Several A records: take the first valid one (03-dns.md, bootstrap resolution).
-			let ip = ips[0], path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
-			let old = read_lkg(ctx, address);
-			if (old != ip) {
-				if (!sys.mkdir_p(state_dir(ctx)))
-					return failed(ctx, 'resolve_node', `cannot create ${state_dir(ctx)}: ${sys.error()}`);
-				if (!sys.write_atomic(path, sprintf('%.J\n', { address, ip })))
-					return failed(ctx, 'resolve_node', `cannot write ${path}: ${sys.error()}`);
-			}
+			let saved = update_lkg(ctx, { [address]: ip });
+			if (!saved.ok)
+				return failed(ctx, 'resolve_node', saved.detail);
 			return result('node address resolved', { ip, source: 'dns' });
 		}
 	}
-	let lkg = read_lkg(ctx, address);
+	let lkg = read_lkg(ctx)[address];
 	if (lkg != null) {
 		log.event('warn', 'NODE_RESOLVE_FALLBACK', { node: address, domain: address, lkg_ip: lkg });
 		return result('last-known-good address used', { ip: lkg, source: 'lkg' });
@@ -670,6 +700,6 @@ export {
 	route_add, route_del, table_routes,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
 	scan_extra_servers,
-	resolve_node, write_boot_list, conflicts,
+	read_lkg, update_lkg, resolve_node, write_boot_list, conflicts,
 	artifact_hashes
 };

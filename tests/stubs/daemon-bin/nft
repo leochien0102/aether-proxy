@@ -21,6 +21,8 @@ case " $* " in
 		for name do :; done
 		elem='[]'
 		[ "$name" = gfw4 ] && elem="${STUB_GFW4_ELEM:-[]}"	# bare values, as real nft -j prints them
+		# Opt-in for a daemon that is already running: live elements appear without a restart.
+		[ "$name" = gfw4 ] && [ -f "$SYSROOT/gfw4-elem" ] && elem=$(cat "$SYSROOT/gfw4-elem")
 		printf '{"nftables":[{"set":{"name":"%s","elem":%s}}]}\n' "$name" "$elem"
 		exit 0
 		;;

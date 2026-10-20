@@ -162,6 +162,8 @@ function probe_nodes_cmd(opts, parsed, json) {
 	// --sys-root moves the default run dir like everywhere else (10, test-only options).
 	let run_dir = opts.run_dir ?? (opts.sys_root ? replace(opts.sys_root, /\/$/, '') + C.RUN_DIR : C.RUN_DIR);
 	let path = run_dir + '/' + C.PROBE_FILE;
+	// Cache write failures belong to this job's runtime, including isolated --sys-root runs.
+	log.set_run_dir(run_dir);
 
 	// Results of nodes that are still configured survive the new run (docs/07
 	// 「实现细节」); nodes that vanished from the configuration are dropped here.
@@ -170,7 +172,7 @@ function probe_nodes_cmd(opts, parsed, json) {
 	let recorder = new_recorder(path, ids, kept, time());
 	probe.probe_nodes(loaded.snapshot.nodes, ids,
 		loaded.snapshot.probe.node_timeout, loaded.snapshot.probe.node_concurrency, opts.bin_dir,
-		recorder.on_node_done);
+		recorder.on_node_done, { root: opts.sys_root });
 	let final = recorder.finish();
 
 	if (final.error != null) {

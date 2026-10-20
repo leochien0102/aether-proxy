@@ -250,12 +250,12 @@ grep -Fq 'set gfw4' "$R1/var/run/aether-proxy/current/aether-proxy.nft" && \
 grep -Fq 'trust-dns tcp://9.9.9.9,tcp://8.8.8.8' "$R1/first-probe-chinadns.conf" \
 	&& ok "startup chinadns config uses T2" || bad "startup chinadns config uses T2"
 [ ! -e "$R1/var/run/aether-proxy/sets.save" ] && ok "sets.save is consumed after restoring" || bad "sets.save is consumed after restoring"
-for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 5' 'xray run -c' 'nft -f' 'ip rule add'; do
+for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 3' 'xray run -c' 'nft -f' 'ip rule add'; do
 	has_line "$L1" "$command" && ok "normal call recorded: $command" || bad "normal call recorded: $command"
 done
 dns_line=$(line_no "$L1" 'chinadns-ng -C')
 install_line=$(line_no "$L1" 'dnsmasq restart')
-resolve_line=$(line_no "$L1" 'resolveip -4 -t 5')
+resolve_line=$(line_no "$L1" 'resolveip -4 -t 3')
 xray_line=$(line_no "$L1" 'xray run -c')
 nft_line=$(line_no "$L1" 'nft -f ')
 rule_line=$(line_no "$L1" 'ip rule add')
@@ -584,7 +584,7 @@ stop_daemon; expect "conflict daemon stops" 0 "$?"
 # 7. A second daemon sees BUSY while the first still holds its startup lock.
 R7="$T/sys7"; L7="$T/sys7/calls.log"; make_root "$R7"; : > "$L7"
 STUB_RESOLVE_DELAY=2 start_daemon "$R7" "$L7"
-if wait_for "$L7" 'resolveip -4 -t 5' 200; then
+if wait_for "$L7" 'resolveip -4 -t 3' 200; then
 	timeout 5s env STUB_LOG="$L7" SYSROOT="$R7" PATH="$T/bin:$PATH" \
 		"$UCODE" -S "$ENTRY" -- daemon $(args_for "$R7") >/dev/null 2>>"$QUIET"; rc7=$?
 	expect "second daemon exits BUSY" 3 "$rc7"

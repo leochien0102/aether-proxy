@@ -10,6 +10,17 @@ case "$name" in
 	resolveip) rc=${STUB_RESOLVEIP_RC:-0}; out=${STUB_RESOLVEIP_OUT_FILE:-} ;;
 	killall) rc=${STUB_KILLALL_RC:-1}; out=${STUB_KILLALL_OUT_FILE:-} ;;
 esac
+# T9.5: opt-in numbered DNS responses; absent entries retain the original behavior.
+if [ "$name" = resolveip ] && [ -n "${STUB_RESOLVEIP_SEQUENCE:-}" ]; then
+	count=0
+	if [ -f "$STUB_RESOLVEIP_SEQUENCE/count" ]; then read -r count < "$STUB_RESOLVEIP_SEQUENCE/count"; fi
+	count=$((count + 1))
+	printf '%s\n' "$count" > "$STUB_RESOLVEIP_SEQUENCE/count"
+	if [ -f "$STUB_RESOLVEIP_SEQUENCE/$count.rc" ]; then
+		read -r rc < "$STUB_RESOLVEIP_SEQUENCE/$count.rc"
+	fi
+	if [ -f "$STUB_RESOLVEIP_SEQUENCE/$count.out" ]; then out="$STUB_RESOLVEIP_SEQUENCE/$count.out"; fi
+fi
 if [ "$name" = nft ]; then
 	case " $* " in
 		*" gfw4 "*) out=${STUB_NFT_GFW4_OUT_FILE:-$out} ;;
