@@ -1,6 +1,6 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9, T10.11).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -61,11 +61,11 @@ function findTag(node, tag) {
 	return null;
 }
 
-function build(status, version, labels, now, enabled, configuredNode, components) {
-	const model = loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+function build(status, version, labels, now, enabled, configuredNode, components, events) {
+	const model = dashboardModel();
 
 	return model.build(status, version ?? { ok: true, version: '0.1.0-r2' }, labels ?? {}, now ?? NOW,
-		enabled, configuredNode, components);
+		enabled, configuredNode, components, events);
 }
 
 /* Load view/aether-proxy/overview.js with doubles for the modules it requires,
@@ -100,8 +100,7 @@ function loadView(overrides = {}) {
 		changes: { apply: () => {} },
 		addNotification: () => {}
 	}, overrides.ui ?? {});
-	const modelMod = loadModule(MODEL, { baseclass: { extend: (o) => o } },
-		{ window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+	const modelMod = dashboardModel();
 
 	return loadModule(VIEW, {
 		view: { extend: (o) => o },
@@ -430,8 +429,15 @@ test('scenario 9: static view checks — model only, stop button negative and co
 	assert.match(src, /ui\.addNotification\(/);
 });
 
+function logsModel() {
+	return loadModule(path.join(RES, 'aether-proxy', 'model', 'logs.js'),
+		{ baseclass: { extend: (o) => o } }, { window: {}, document: {} });
+}
+
 function dashboardModel() {
-	return loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: {} });
+	return loadModule(MODEL, {
+		baseclass: { extend: (o) => o }, 'aether-proxy.model.logs': logsModel()
+	}, { window: {}, document: {} });
 }
 
 function findAll(node, tag, out = []) {
@@ -1536,6 +1542,206 @@ test('T10.9 scenario 5: one runtime block has state/buttons, optional details an
 		assert.equal(block.children.at(-1), nodeRow(root));
 		assert.equal(findAll(nodeRow(root), 'select')[0], findAll(page.nodeControl, 'select')[0]);
 		assert.ok(!findAll(root, 'h3').some((n) => [ '状态', '当前节点', '待处理提示' ].includes(visibleText(n))));
+	}
+});
+
+test('T10.11 scenario 1: active-state node mismatch matrix, inactive states and empty sides', () => {
+	const model = dashboardModel();
+	for (const state of [ 'starting', 'running', 'degraded', 'failsafe', 'stopped', 'error', 'unknown' ]) {
+		for (const configured of [ 'n_a', 'n_b', '', null, undefined ]) {
+			for (const runtime of [ 'n_a', '', null, undefined ]) {
+				const status = { ok: true, state, node_id: runtime };
+				const pending = ['starting', 'running', 'degraded', 'failsafe'].includes(state)
+					&& configured === 'n_b' && runtime === 'n_a';
+				assert.equal(model.switch_pending(status, configured), pending,
+					`${state}: configured=${configured}, runtime=${runtime}`);
+				const vm = build(status, null, {}, NOW, true, configured);
+				assert.equal(vm.switch_notice, pending ? '正在切换到「n_b」…' : null);
+			}
+		}
+	}
+	for (const status of [ null, { ok: false, state: 'running', node_id: 'n_a' } ]) {
+		assert.equal(model.switch_pending(status, 'n_b'), false);
+		assert.equal(build(status, null, {}, NOW, true, 'n_b').switch_notice, null);
+	}
+});
+
+/* Deliberately not timestamp-sorted: neither RPC order nor unrelated newer
+   errors may determine the explanation of an incomplete switch. */
+function switchEvents() {
+	return [
+		{ ts: NOW - 30, code: 'NODE_RESOLVE_FAILED', args: { node: 'n_b', domain: 'new.example' } },
+		{ ts: NOW - 20, code: 'START_FAILED', args: { step: 'precheck', detail: 'ignore startup' } },
+		{ ts: NOW - 5, code: 'CMD_FAILED', args: { cmd: 'unrelated' } },
+		{ ts: NOW - 90, code: 'CONFIG_INVALID', args: { field: 'main.node', reason: 'old failure' } }
+	];
+}
+
+function switchModel(events, labels = { n_a: 'Alpha', n_b: 'Beta' }) {
+	return build({ ok: true, state: 'running', node_id: 'n_a' }, null, labels, NOW, true, 'n_b', null, events);
+}
+
+function failedSwitchText(configured, current, reason, age) {
+	return `切换到「${configured}」未生效，服务仍在使用「${current}」。原因：${reason}（${age}）。`
+		+ '可以点「重启」用配置的节点重新启动（会短暂中断代理），或到日志页查看详情。';
+}
+
+function logText(event) {
+	return logsModel().events({ ok: true, events: [ event ] }, null, '', '').rows[0].text;
+}
+
+const SWITCH_REASON_CASES = [
+	[ 'NODE_RESOLVE_FAILED', { node: 'n_b', domain: 'new.example', lkg_ip: null } ],
+	[ 'CONFIG_INVALID', { field: 'main.node', reason: 'missing' } ],
+	[ 'PRECHECK_FAILED', { missing: [ 'xray', 'chinadns-ng' ] } ],
+	[ 'RENDER_INVALID', { artifact: 'xray.json', detail: 'invalid' } ],
+	[ 'START_FAILED', { step: 'reload:xray', detail: 'failed' } ]
+];
+
+for (const [code, args] of SWITCH_REASON_CASES) {
+	test(`T10.11 scenario 2a/3: latest ${code} shares the log description, labels and relative age`, () => {
+		const event = { ts: NOW - 120, code, args };
+		const reply = { ok: true, events: [
+			{ ts: NOW - 5, code: 'CMD_FAILED', args: {} },
+			event,
+			{ ts: NOW - 180, code: 'NODE_RESOLVE_FAILED', args: { domain: 'older.example' } }
+		] };
+		assert.equal(switchModel(reply).switch_notice,
+			failedSwitchText('Beta', 'Alpha', logText(event), '2 分钟前'));
+		assert.equal(switchModel(reply, { n_b: '' }).switch_notice,
+			failedSwitchText('n_b', 'n_a', logText(event), '2 分钟前'));
+	});
+}
+
+test('T10.11 scenario 2b: unsorted events choose newest allowed failure, not startup or unrelated errors', () => {
+	const events = switchEvents();
+	for (const ordered of [ events, [...events].reverse() ]) {
+		assert.equal(switchModel({ ok: true, events: ordered }).switch_notice,
+			failedSwitchText('Beta', 'Alpha', logText(events[0]), '30 秒前'));
+	}
+	for (const step of [ 'precheck', 'reload', 'prefix:reload:xray', '', null, 123, undefined ]) {
+		assert.equal(switchModel({ ok: true, events: [
+			{ ts: NOW - 1, code: 'START_FAILED', args: { step } }
+		] }).switch_notice, '正在切换到「Beta」…');
+	}
+	assert.equal(switchModel({ ok: true, events: [
+		{ ts: NOW - 1, code: 'START_FAILED' }
+	] }).switch_notice, '正在切换到「Beta」…');
+});
+
+test('T10.11 scenario 2c/3: no matching event or failed events read gives pending text and label fallback', () => {
+	for (const reply of [ undefined, null, { ok: false, code: 'RPC_FAILED', events: switchEvents() },
+		{ ok: true, events: [] }, { ok: true, events: [ { ts: NOW, code: 'UNRELATED' } ] } ]) {
+		assert.equal(switchModel(reply).switch_notice, '正在切换到「Beta」…');
+		assert.equal(switchModel(reply, {}).switch_notice, '正在切换到「n_b」…');
+	}
+});
+
+/* Real load/render/refresh entry points, with a mutable runtime node and clock.
+   The selected UCI node stays n_b throughout, just as after save & apply. */
+function switchPage(reply) {
+	const calls = [], polls = [], notifications = [];
+	const runtime = { node: 'n_b' };
+	const page = loadView({
+		ap: {
+			call: async (method, params) => {
+				calls.push([ method, params ]);
+				if (method === 'status')
+					return { ok: true, state: 'running', node_id: runtime.node, node_ip: '203.0.113.10' };
+				if (method === 'stats')
+					return readings(calls.length * 1000, 10, 20, 30, 40);
+				if (method === 'version')
+					return { ok: true, version: '0.2.0-r7' };
+				if (method === 'events')
+					return reply;
+				return { ok: true, components: {} };
+			},
+			poll: (fn) => { polls.push(fn); return { stop() {} }; }
+		},
+		uci: {
+			sections: (cfg, type, cb) => {
+				if (type === 'node') {
+					cb({ '.name': 'n_a', label: 'Alpha' });
+					cb({ '.name': 'n_b', label: 'Beta' });
+				}
+			},
+			get: (cfg, sec, opt) => opt === 'node' ? 'n_b' : '1'
+		},
+		ui: { addNotification: (...args) => notifications.push(args) }
+	});
+	return { page, calls, polls, notifications, runtime };
+}
+
+test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetches errors; recovery clears banner',
+	async (t) => {
+	let now = NOW;
+	t.mock.method(Date, 'now', () => now * 1000);
+	const { page, calls, polls, runtime } = switchPage({ ok: true, events: switchEvents() });
+	const root = page.render(await page.load());
+	await page.componentRequest;
+	assert.equal(calls.filter(([method]) => method === 'events').length, 0, 'initial equal nodes skip events');
+	await page.fetchRefresh();
+	assert.equal(calls.filter(([method]) => method === 'events').length, 0, 'equal refresh skips events');
+	runtime.node = 'n_a';
+	const manual = findAll(root, 'button').find((b) => b.children === '刷新');
+	for (const refresh of [ () => manual.attrs.click(), polls[0] ]) {
+		now += 10;
+		calls.length = 0;
+		await refresh();
+		assert.deepEqual(calls, [ [ 'status', undefined ], [ 'stats', undefined ],
+			[ 'events', { since: now - 600, level: 'error' } ] ]);
+		const parts = page.content.content.children;
+		assert.equal(parts[0].attrs.class, 'alert-message warning');
+		assert.equal(parts[1], sections(root)[0], 'banner is before runtime section');
+		assert.equal(visibleText(parts[0]),
+			failedSwitchText('Beta', 'Alpha', logText(switchEvents()[0]), `${now - NOW + 30} 秒前`));
+		assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_a', 'runtime remains preselected');
+		assert.equal(findAll(nodeRow(root), 'option')[0].children, 'Alpha（当前）');
+	}
+	runtime.node = 'n_b';
+	calls.length = 0;
+	await page.fetchRefresh();
+	assert.deepEqual(calls.map(([method]) => method), [ 'status', 'stats' ]);
+	assert.equal(page.vm.switch_notice, null);
+	assert.equal(page.content.content.children[0], sections(root)[0]);
+	assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_b');
+});
+
+test('T10.11 scenario 4b: initial mismatch fetches one events response before rendering the warning', async (t) => {
+	t.mock.method(Date, 'now', () => NOW * 1000);
+	const { page, calls, runtime } = switchPage({ ok: true, events: switchEvents() });
+	runtime.node = 'n_a';
+	const root = page.render(await page.load());
+	await page.componentRequest;
+	assert.deepEqual(calls.filter(([method]) => method === 'events'),
+		[ [ 'events', { since: NOW - 600, level: 'error' } ] ]);
+	assert.equal(page.content.content.children[0].attrs.class, 'alert-message warning');
+	assert.ok(visibleText(root).includes('切换到「Beta」未生效'));
+});
+
+test('T10.11 scenario 5: failed events reads show pending warning without errors or losing other regions',
+	async (t) => {
+	t.mock.method(Date, 'now', () => NOW * 1000);
+	for (const reply of [ null, { ok: false, code: 'RPC_FAILED', detail: 'offline' },
+		{ ok: false, code: 'TIMEOUT' } ]) {
+		const { page, calls, notifications, runtime } = switchPage(reply);
+		runtime.node = 'n_a';
+		const root = page.render(await page.load());
+		await page.componentRequest;
+		for (let refresh = 0; refresh < 2; refresh++) {
+			const banner = page.content.content.children[0];
+			assert.equal(banner.attrs.class, 'alert-message warning');
+			assert.equal(visibleText(banner), '正在切换到「Beta」…');
+			assert.deepEqual(notifications, []);
+			assert.doesNotMatch(visibleText(root), /RPC_FAILED|TIMEOUT|offline/);
+			assert.deepEqual(sections(root).map((s) => visibleText(s.children[0])),
+				[ '运行状态', '流量与连接', '组件版本' ]);
+			assert.equal(findAll(root, 'strong')[0].children, '运行中');
+			assert.ok(visibleText(nodeRow(root)).includes('节点地址 203.0.113.10'));
+			assert.equal(componentCells(root).length, 2);
+			await page.fetchRefresh();
+		}
+		assert.equal(calls.filter(([method]) => method === 'events').length, 3);
 	}
 });
 

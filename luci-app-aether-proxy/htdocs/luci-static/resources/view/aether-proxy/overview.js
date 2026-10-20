@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第四轮修正」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「切换节点未生效时提示」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -51,7 +51,18 @@ return view.extend({
 					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
 				};
 			})
-		]);
+		]).then((data) => this.switchEvents(data[0].reply, data[2].node).then((events) => {
+			data[0].events = events;
+			return data;
+		}));
+	},
+
+	/* Only mismatched runtime/configured nodes need diagnostic events. ap.call
+	   settles RPC failures; the model treats those as a switch still in progress. */
+	switchEvents: function(status, configured_node) {
+		if (!model.switch_pending(status, configured_node))
+			return Promise.resolve(null);
+		return ap.call('events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' });
 	},
 
 	/* Toggle handler for the enable switch: stage the UCI value and go through
@@ -143,7 +154,9 @@ return view.extend({
 			return this.refreshing;
 		this.refreshing = ap.call('status').then((reply) => {
 			return ap.call('stats').then((stats) => {
-				this.refresh(reply, stats);
+				return this.switchEvents(reply, this.currentNode).then((events) => {
+					this.refresh(reply, stats, events);
+				});
 			});
 		}).finally(() => { this.refreshing = null; });
 		return this.refreshing;
@@ -344,7 +357,7 @@ return view.extend({
 
 		this.content = E('div', {});
 
-		this.refresh(data[0].reply, data[0].stats);
+		this.refresh(data[0].reply, data[0].stats, data[0].events);
 		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
@@ -358,9 +371,9 @@ return view.extend({
 		return root;
 	},
 
-	refresh: function(status, stats) {
+	refresh: function(status, stats, events) {
 		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
-			this.enabled, this.currentNode, this.components);
+			this.enabled, this.currentNode, this.components, events);
 
 		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;
@@ -388,6 +401,8 @@ return view.extend({
 		if (vm.notices.length)
 			notices.push(E('ul', {}, vm.notices.map((text) =>
 				E('li', { 'class': 'alert-message warning' }, text))));
+		if (vm.switch_notice)
+			notices.push(E('div', { 'class': 'alert-message warning' }, vm.switch_notice));
 		parts.push(...notices);
 
 		const stateRows = [ E('div', {
