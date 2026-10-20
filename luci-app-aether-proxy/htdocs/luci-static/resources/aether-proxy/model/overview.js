@@ -2,7 +2,7 @@
 'require baseclass';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页重排」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第二轮修正」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -181,6 +181,10 @@ function component_rows(version, inventory) {
 	}];
 	/* Inventory is independent of runtime status, including failed status reads. */
 	for (const name of [ 'xray', 'chinadns-ng' ]) {
+		if (inventory === undefined) {
+			components.push({ name, version: _('Reading…', 'aether-proxy'), path: _('Reading…', 'aether-proxy') });
+			continue;
+		}
 		const c = inventory?.ok === true ? inventory.components?.[name] : null;
 		components.push({
 			name,
@@ -203,7 +207,16 @@ function probe_fields(probe, now) {
 	};
 }
 
+function node_options(labels, current) {
+	return Object.keys(labels ?? {}).sort().map((id) => ({
+		value: id,
+		text: id === current
+			? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)
+	}));
+}
+
 return baseclass.extend({
+	component_rows: component_rows,
 	refresh_options: function() {
 		return [
 			{ value: '2', text: _('2 seconds', 'aether-proxy') },
@@ -259,13 +272,7 @@ return baseclass.extend({
 			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy') };
 	},
 
-	node_options: function(labels, current) {
-		return Object.keys(labels ?? {}).sort().map((id) => ({
-			value: id,
-			text: id === current
-				? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)
-		}));
-	},
+	node_options: node_options,
 
 	can_switch: function(selected, current) {
 		return !!selected && selected !== current;
@@ -273,8 +280,9 @@ return baseclass.extend({
 
 	/* status: the object resolved by ap.call('status'), version: the object
 	   resolved by ap.call('version'), labels: node section name -> label from
-	   UCI, now: current unix time in seconds. configured_node and inventory are
-	   read once at load (docs/10 「概览页真机修正」). Returns the view model. */
+	   UCI, now: current unix time in seconds. configured_node is read at load;
+	   inventory is undefined while pending, null/ok:false on failure, and is
+	   fetched once after rendering (docs/10 「概览页第二轮修正」). */
 	build: function(status, version, labels, now, enabled, configured_node, inventory) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
@@ -294,6 +302,16 @@ return baseclass.extend({
 			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
 
 		const components = component_rows(version, inventory);
+		const state = (status?.ok === false ? null : status?.state) ?? 'unknown';
+		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
+		/* Inactive state files can retain an old node_id; only runtime wins. */
+		const current_node = (active && status.node_id) || configured_node || null;
+		const nodes = {
+			current_node,
+			node_options: node_options(labels, current_node),
+			node_text: Object.keys(labels).length ? null
+				: _('There are no nodes yet. Add or import nodes on the Nodes page.', 'aether-proxy')
+		};
 
 		/* docs/10: a failed status read shows the error and disables every button. */
 		if (!status || status.ok === false) {
@@ -309,9 +327,9 @@ return baseclass.extend({
 				state_duration_text: null,
 				error_text: null,
 				dns_text: null,
-				/* Unknown, not 「未选择节点」: the status read failed. */
-				node_text: null,
+				...nodes,
 				node_ip: null,
+				node_address_text: null,
 				probe_text: null,
 				probe_since_text: null,
 				probe_level: 'neutral',
@@ -325,10 +343,6 @@ return baseclass.extend({
 			};
 		}
 
-		const state = status.state ?? 'unknown';
-		const node_id = status.node_id || configured_node || null;
-		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
-
 		return {
 			ok: true,
 			error: null,
@@ -338,8 +352,10 @@ return baseclass.extend({
 			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,
 			error_text: error_text(status.last_error),
 			dns_text: dns_text(state, status.dns_tier),
-			node_text: (node_id == null) ? _('No node selected', 'aether-proxy') : (labels[node_id] || node_id),
-			node_ip: (!active || status.node_ip == null) ? null : String(status.node_ip),
+			...nodes,
+			node_ip: (active && status.node_ip) ? String(status.node_ip) : null,
+			node_address_text: (active && status.node_ip)
+				? fmt(_('Node address %s', 'aether-proxy'), status.node_ip) : null,
 			...probe_fields(status.last_probe, now),
 			components,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),

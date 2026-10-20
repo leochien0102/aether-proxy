@@ -1536,8 +1536,8 @@ msgid "Domestic DNS only (overseas DNS unreachable; results may be poisoned)."
 msgstr "仅用国内 DNS（境外 DNS 都不通，结果可能被污染）"
 
 msgctxt "aether-proxy"
-msgid "No node selected"
-msgstr "未选择节点"
+msgid "There are no nodes yet. Add or import nodes on the Nodes page."
+msgstr "还没有节点，请到节点页添加或导入"
 
 msgctxt "aether-proxy"
 msgid "%s (current)"
@@ -1580,8 +1580,12 @@ msgid "Overseas domain resolution: %s"
 msgstr "境外域名解析：%s"
 
 msgctxt "aether-proxy"
-msgid "Node address"
-msgstr "节点地址"
+msgid "Node address %s"
+msgstr "节点地址 %s"
+
+msgctxt "aether-proxy"
+msgid "Reading…"
+msgstr "读取中…"
 
 msgctxt "aether-proxy"
 msgid "Component versions"

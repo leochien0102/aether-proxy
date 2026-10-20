@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页重排」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第二轮修正」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -15,7 +15,8 @@
  * the view model the model returns: state wording, notice texts, button
  * availability and the stop confirmation are all decided there. status is
  * refreshed at the selected interval via ap.poll; version and the UCI node labels plus
- * main.enabled and installed components are read once per page load (docs/10 T10.4).
+ * main.enabled are read at load; installed components are read once after rendering
+ * and update only their table, without delaying the first screen (docs/10 T10.5).
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
  * registers a reload trigger for the aetherproxy config, so saving the UCI
@@ -49,8 +50,7 @@ return view.extend({
 					node: uci.get('aetherproxy', 'main', 'node'),
 					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
 				};
-			}),
-			ap.call('components')
+			})
 		]);
 	},
 
@@ -228,7 +228,7 @@ return view.extend({
 			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
 			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 				E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
-					_('Automatic refresh', 'aether-proxy'), select
+					E('span', { style: 'white-space: nowrap' }, _('Automatic refresh', 'aether-proxy')), select
 				]),
 				this.button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh())
 			])
@@ -243,8 +243,9 @@ return view.extend({
 		]);
 	},
 
-	nodeControls: function(current) {
-		const nodes = E('select', {}, model.node_options(this.labels, current).map((option) => E('option', {
+	nodeControls: function(vm) {
+		const current = vm.current_node;
+		const nodes = E('select', {}, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
 		const button = this.button(_('Use this node', 'aether-proxy'), () => this.handleNode(nodes.value));
@@ -309,9 +310,19 @@ return view.extend({
 		return E('table', { 'class': 'table', 'style': 'font-size: 0.9em' }, rows);
 	},
 
+	/* ap.call settles failures too; an explicit null distinguishes failure from
+	   the initial pending state. Updating this container leaves controls intact. */
+	loadComponents: function() {
+		this.componentRequest ??= Promise.resolve().then(() => ap.call('components')).then((reply) => {
+			this.components = reply ?? null;
+			this.vm.components = model.component_rows(this.version, this.components);
+			dom.content(this.componentContent, this.componentTable(this.vm.components));
+		});
+		return this.componentRequest;
+	},
+
 	render: function(data) {
 		this.version = data[1];
-		this.components = data[3];
 		this.labels = data[2].labels;
 		this.currentNode = data[2].node;
 		this.enabled = data[2].enabled;
@@ -327,6 +338,7 @@ return view.extend({
 		]);
 
 		this.startPolling(interval);
+		this.loadComponents();
 
 		return root;
 	},
@@ -344,8 +356,14 @@ return view.extend({
 		/* Reuse controls when moving them into fresh sections: polling must not
 		   reset an edited selection, the enable switch or an in-flight probe. */
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
-		this.nodeControl ??= this.nodeControls(this.currentNode);
+		/* Keep edits across ordinary polls, but rebase the suffix and switch
+		   guard if the effective runtime node changes. */
+		if (!this.nodeControl || this.controlNode !== vm.current_node) {
+			this.nodeControl = vm.node_options.length ? this.nodeControls(vm) : null;
+			this.controlNode = vm.current_node;
+		}
 		this.probeControl ??= this.probeControls();
+		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);
 
 		const parts = [];
 		const notices = [];
@@ -382,22 +400,15 @@ return view.extend({
 		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
 
 		parts.push(this.section(_('Current node', 'aether-proxy'), [
-			E('div', {
-				style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
-			}, [
-				E('div', {}, [
-					E('span', { style: 'font-size: 1.2em' }, vm.node_text ?? '–'), ' ',
-					E('small', { title: _('Node address', 'aether-proxy') }, vm.node_ip ?? '')
-				]),
-				E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-					E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
-					E('small', {}, vm.probe_since_text ?? ''), this.probeControl
-				])
-			]),
-			this.nodeControl
+			this.nodeControl ?? E('p', {}, vm.node_text),
+			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+				...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
+				E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
+				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
+			])
 		]));
 		parts.push(this.trafficSection(traffic));
-		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentTable(vm.components) ]));
+		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]));
 
 		dom.content(this.content, E('div', {}, parts));
 
