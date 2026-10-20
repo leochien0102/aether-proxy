@@ -25,6 +25,7 @@ init.d / hotplug / daemon ──────────────────
 | `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup` | 幂等清理 | 否 |
 | `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容）和 `notices`（见「概览页」） | 否 |
+| `components` | 现场查找 Xray、chinadns-ng 并读取版本（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `probe results` | 读取最近的节点检测结果（[07](07-probe.md)） | 否 |
@@ -137,6 +138,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
+| `components` | — | `components`（read，超时 15 秒，T10.4） |
 | `sub_status` | — | `sub status`（read） |
 | `data_status` | — | `data status`（read） |
 | `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |
@@ -473,6 +475,31 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 `error_text`（`last_error` 的文字，没有为 `null`）、`node_text` 没有当前节点时为「未选择节点」、`components` 的第一项为本程序自身；增加 `node_options(labels, current)` → `[{ value, text }]`（按 `labels` 的键排序，当前节点带「（当前）」）
 与 `can_switch(selected, current)`；删除 `subscription_result`、`own_version` 不再单独渲染。所有文字、等级、显示与否都由模型决定，视图只把等级映射成颜色。
 
+### 概览页真机修正（2026-10-20 定，T10.4）
+
+T10.2、T10.3 在 H28K（主题 `proton2025`，服务未启用）上预览时仓库所有者发现的问题。**与「概览页重排」冲突处以本节为准。**
+
+1. **标题行**：「刷新」按钮被拉伸成与「自动刷新」整块（标签在上、下拉在下）一样高；标题行与下方第一块贴在一起。
+   → 标题行与其中的控件容器加 `align-items: center`；「自动刷新」的标签文字与下拉放在同一行（`label` 内 `display:flex; align-items:center; gap:0.5em`）；标题行下方留 `margin-bottom: 1em`。
+2. **当前节点块**：「尚未检测。」与「测延迟」按钮上下错位。→ 该块所有 flex 行加 `align-items: center`。
+   检测结果是短语，不是句子，去掉句号：「正常，<n> ms」「检测失败」「尚未检测」（测延迟后的结果文字同样）；「检测未在 15 秒内完成」之类的整句不变。
+3. **服务未运行时的当前节点**：页面显示「未选择节点」，而下拉里写着「xxx（当前）」，互相矛盾。原因是 `status.node_id` 只在服务运行时才有。
+   → 节点名：`status.node_id` 不为空时用它；为空时用页面加载时读到的 UCI `main.node`（取 `label`，找不到用段名）；两者都为空才显示「未选择节点」；读取状态失败仍显示「–」。
+   节点地址（`node_ip`）只来自 `status`，服务未运行时不显示。健康检测结果照旧来自 `last_probe`。
+4. **「服务未启用」提示**：原文是「打开上方的『启用』」，重排后开关不在提示上方了。→ 改为「服务未启用：打开『启用』开关后会自动启动」。
+5. **组件版本只有 aether-proxy 一行**：`status.components` 由 daemon 在启动时写入 `state.json`，服务没运行就没有。概览页要的是「装了什么」，与服务是否运行无关，所以改为现场查找：
+   - **命令行 `aether-proxy components --json`**（只读、不记事件；接受 `--confdir`、`--bin-dir` 测试选项）：
+     `{ "ok": true, "components": { "xray": { "found": true, "path": "/usr/bin/xray", "version": "26.9.30" }, "chinadns-ng": { "found": false, "path": null, "version": null } } }`。
+     查找用 `cmd/check.uc` 的 `find_component`（与 `check`、`status` 的 `notices` 相同；配置中的 `xray_bin`、`chinadns_bin` 作为 `configured`，读不到配置时按未配置处理）；
+     版本按 daemon 已有的读法（`xray version`、`chinadns-ng -V`，取第一行第二个字段，`component_version.parse_version`），每个组件超时 3 秒、`quiet`，失败或超时版本为 `null`。
+     把 daemon 中的 `read_component_version` 挪到可共用的位置，不要复制一份。
+   - **rpcd 方法 `components`**（无参数，read，超时 15 秒；`ap` 的硬超时 20 秒），ACL 的 read 增加它。
+   - **页面**：`load()` 中调用一次（与其他请求一样经 `ap.call`），不随刷新重复调用。组件表三行：`aether-proxy`（版本取 `version`，路径「–」）、`xray`、`chinadns-ng`
+     （`found` 为真 → 版本，取不到为「–」，以及路径；`found` 为假 → 版本「–」、路径列写「未找到」；整个调用失败 → 这两行版本与路径都为「–」）。概览页不再使用 `status.components`。
+   - 更新页「运行中的组件」**不改**：它要的就是正在运行的版本。
+6. **节点下拉为空**（T10.3 的 `TODO(design)`）：没有节点、或下拉没有选中项时，「使用此节点」不可用。定为设计，删掉该 `TODO`。
+7. **样式规则补一条**（10「UI 规则」的「样式」）：flex 容器一律写 `align-items`（一般为 `center`），不要依赖默认的 `stretch`——按钮会被拉高。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
@@ -481,7 +508,7 @@ UI 规则：
   布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
   和**相对**字号（`em`），不写 `px` 字号；颜色只用主题的 CSS 变量，并带上回退值：`var(--success-color-high, #2f855a)`、`var(--warning-color, #b7791f)`、`var(--error-color-high, #c53030)`
   （bootstrap 与 proton2025 都定义了前两个 success/error 变量，warning 只有 proton2025 有，2026-10-20 核对）。**不要用 `label success` 之类的修饰类着色**：proton2025 只有 `.label`，没有这些修饰类。
-  控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。
+  控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。flex 容器一律写 `align-items`（一般为 `center`）：默认的 `stretch` 会把按钮拉高（2026-10-20 真机发现，T10.4）。
 - 翻译包 `luci-i18n-aether-proxy-zh-cn` 与功能包分开生成。修改 po 后两个包要一起安装。
 - **翻译一律带上下文 `aether-proxy`**（2026-10-20 定，T10.1）：界面文字写成 `_('Refresh', 'aether-proxy')`，po 中对应条目带 `msgctxt "aether-proxy"`。
   原因：LuCI 把设备上**所有**已安装应用的翻译目录（`/usr/lib/lua/luci/i18n/*.zh-cn.lmo`）并成一张表，按「上下文 + 原文」的哈希查找，
