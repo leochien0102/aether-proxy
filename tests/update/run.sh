@@ -350,6 +350,65 @@ out=$(ap update package luci-app-aether-proxy --json --confdir "$T/conf" --run-d
 expect 'apk package install succeeds' 0 "$?"
 grep -q 'add --allow-untrusted .*luci-app-aether-proxy-0.2.0-r1_aarch64_generic.apk' "$UPDATE_PACKAGE_CALLS" && ok 'apk uses --allow-untrusted and selected asset' || bad 'apk uses --allow-untrusted and selected asset'
 rm "$T/bin/apk"
+# T9.6: real signed installs refresh installed versions after the stub touches the
+# package database. A later external package install invalidates only the presentation.
+for manager in opkg apk; do
+	if [ "$manager" = apk ]; then
+		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
+		chmod +x "$T/bin/apk"
+		database="$T/root/lib/apk/db/installed"
+	else
+		database="$T/root/usr/lib/opkg/status"
+	fi
+	mkdir -p "$(dirname "$database")"
+	touch -d @1760400000 "$database"
+	export UPDATE_PACKAGE_DB_FILE="$database"
+	printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
+	out=$(ap update package luci-app-aether-proxy --json --confdir "$T/conf" \
+		--run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin")
+	expect "T9.6 $manager signed install succeeds" 0 "$?"
+	status=$(ap status --json --confdir "$T/conf" --run-dir "$T/run" \
+		--sys-root "$T/root" --bin-dir "$T/bin")
+	expect "T9.6 $manager post-install status succeeds" 0 "$?"
+	expect "T9.6 $manager post-install cache remains fresh" "$manager" "$(get "$status" updates_available.pm)"
+	expect "T9.6 $manager post-install installed version refreshed" 0.2.0-r1 \
+		"$(get "$status" updates_available.packages.luci-app-aether-proxy.installed)"
+	if python3 - "$database" "$T/run/updates.json" <<'PY'
+import json, os, sys
+mtime = int(os.stat(sys.argv[1]).st_mtime)
+checked = json.load(open(sys.argv[2]))['checked']
+assert 1760400000 < mtime <= checked, (mtime, checked)
+PY
+	then
+		ok "T9.6 $manager install touched database before checked"
+	else
+		bad "T9.6 $manager install touched database before checked"
+	fi
+	cp "$T/run/updates.json" "$T/post-install-cache"
+	# Simulate another opkg/apk install: no new check, only database mtime changes.
+	checked=$(get "$status" updates_available.checked)
+	touch -d "@$((checked + 10))" "$database"
+	status=$(ap status --json --confdir "$T/conf" --run-dir "$T/run" \
+		--sys-root "$T/root" --bin-dir "$T/bin")
+	expect "T9.6 $manager external install status succeeds" 0 "$?"
+	expect "T9.6 $manager external install hides cache" '<null>' "$(get "$status" updates_available)"
+	if python3 - "$status" <<'PY'
+import json, sys
+assert all(n['code'] != 'UPDATE_AVAILABLE' for n in json.loads(sys.argv[1])['notices'])
+PY
+	then
+		ok "T9.6 $manager external install hides update notices"
+	else
+		bad "T9.6 $manager external install hides update notices"
+	fi
+	cmp -s "$T/post-install-cache" "$T/run/updates.json" \
+		&& ok "T9.6 $manager external install preserves cache bytes" \
+		|| bad "T9.6 $manager external install preserves cache bytes"
+	unset UPDATE_PACKAGE_DB_FILE
+	rm "$database"
+	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
+done
+
 # Invalid hashes and unsupported architectures never reach the package manager.
 : > "$UPDATE_PACKAGE_CALLS"
 python3 - "$T/ch1/manifest.json" <<'PY'

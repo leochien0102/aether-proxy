@@ -18,6 +18,7 @@ import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
 import * as reload from 'aetherproxy.reload';
 import * as schedule from 'aetherproxy.schedule';
+import * as updates_cache from 'aetherproxy.updates_cache';
 import * as uci from 'uci';
 import * as components_cmd from 'aetherproxy.cmd.components';
 
@@ -923,14 +924,12 @@ function schedule_update_jobs(ctx, opts, started_at, daemon) {
 	}
 	if (service_state != 'running')
 		return;
-	let updates_path = `${run_dir(ctx)}/${C.UPDATE_FILE}`;
-	let text = fs.readfile(updates_path);
-	if (text == null)
+	let updates = updates_cache.read(run_dir(ctx), ctx.root);
+	// A direct package-manager install invalidates cached versions; leave the attempt
+	// record untouched so a later update check can make the version eligible again.
+	if (updates.stale)
 		return;
-	let updates = null;
-	try { updates = json(text); }
-	catch (e) { return; }
-	let version = schedule.auto_install_due(cfg, updates, record);
+	let version = schedule.auto_install_due(cfg, updates.value, record);
 	if (version == null)
 		return;
 	let result = update_job(ctx, opts, [ 'update', 'package', 'xray-core' ]);

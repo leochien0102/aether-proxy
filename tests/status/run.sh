@@ -238,6 +238,142 @@ expect "invalid configuration: exit code 2" 2 "$rc"
 expect "invalid configuration: code" "CONFIG_INVALID" "$(echo "$out" | jget code)"
 expect "invalid configuration: error field" "main.node" "$(echo "$out" | jget errors.0.field)"
 
+# T9.6: compare the entire status response with the original usable-cache response,
+# not just its notice count. Database times are fixed, independent of the wall clock.
+R="$T/cache"; SR="$T/cache-root"
+make_root "$SR"
+mkdir -p "$R" "$SR/usr/lib/opkg" "$SR/lib/apk/db"
+cache_status() {
+	ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" \
+		--sys-root "$SR/" --bin-dir "$T/bin" 2>"$T/cache.stderr"
+}
+cache='{"checked":1760400000,"pm":"opkg",
+ "packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}},"data":{}}'
+printf '%s\n' "$cache" > "$R/updates.json"
+reference=$(cache_status)
+expect 'T9.6 reference has UPDATE_AVAILABLE' UPDATE_AVAILABLE "$(echo "$reference" | jget notices.0.code)"
+
+cache_case() {
+	local label=$1 pm=$2 checked=$3 opkg_time=$4 apk_time=$5 stale=$6 output expected actual before after
+	python3 - "$R/updates.json" "$cache" "$pm" "$checked" <<'PY'
+import json, sys
+path, source, pm, checked = sys.argv[1:]
+value = json.loads(source)
+for key, raw in [('pm', pm), ('checked', checked)]:
+    if raw == 'missing':
+        del value[key]
+    else:
+        value[key] = json.loads(raw)
+with open(path, 'w') as dest:
+    json.dump(value, dest)
+PY
+	rm -f "$SR/usr/lib/opkg/status" "$SR/lib/apk/db/installed"
+	python3 - "$SR" "$opkg_time" "$apk_time" <<'PY'
+import os, pathlib, sys
+root, opkg, apk = sys.argv[1:]
+for path, stamp in [('usr/lib/opkg/status', opkg), ('lib/apk/db/installed', apk)]:
+    target = pathlib.Path(root) / path
+    if stamp == 'missing':
+        continue
+    if stamp == 'stat-fail':
+        target.symlink_to(target.name)  # ELOOP: an existing entry that stat cannot follow.
+    else:
+        target.write_text('package database fixture\n')
+        os.utime(target, (int(stamp), int(stamp)))
+PY
+	before=$(stat -c '%y' "$R/updates.json")
+	cp "$R/updates.json" "$T/cache-before"
+	output=$(cache_status)
+	expect "T9.6 $label exit 0" 0 "$?"
+	expected=$(python3 - "$reference" "$R/updates.json" "$stale" <<'PY'
+import json, sys
+value = json.loads(sys.argv[1])
+value['updates_available'] = None if sys.argv[3] == 'yes' else json.load(open(sys.argv[2]))
+if sys.argv[3] == 'yes':
+    value['notices'] = []
+print(json.dumps(value, sort_keys=True))
+PY
+	)
+	actual=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin),sort_keys=True))' <<< "$output")
+	expect "T9.6 $label full status and notices" "$expected" "$actual"
+	cmp -s "$T/cache-before" "$R/updates.json" \
+		&& ok "T9.6 $label cache bytes unchanged" || bad "T9.6 $label cache bytes unchanged"
+	after=$(stat -c '%y' "$R/updates.json")
+	expect "T9.6 $label cache mtime unchanged" "$before" "$after"
+	[ ! -e "$R/events.jsonl" ] && ok "T9.6 $label no events" || bad "T9.6 $label no events"
+}
+while IFS='|' read -r label pm checked opkg_time apk_time stale; do
+	cache_case "$label" "$pm" "$checked" "$opkg_time" "$apk_time" "$stale"
+done <<'CACHE_CASES'
+opkg T+10|"opkg"|1760400000|1760400010|missing|yes
+opkg T-10|"opkg"|1760400000|1760399990|missing|no
+opkg T exact|"opkg"|1760400000|1760400000|missing|no
+opkg ignores newer apk|"opkg"|1760400000|1760399990|1760400010|no
+apk T+10|"apk"|1760400000|1760399990|1760400010|yes
+apk ignores newer opkg|"apk"|1760400000|1760400010|1760399990|no
+apk T exact|"apk"|1760400000|1760400010|1760400000|no
+missing database|"opkg"|1760400000|missing|missing|no
+stat failure|"opkg"|1760400000|stat-fail|missing|no
+missing pm|missing|1760400000|1760400010|1760400010|no
+unknown pm|"other"|1760400000|1760400010|1760400010|no
+null pm|null|1760400000|1760400010|1760400010|no
+missing checked|"opkg"|missing|1760400010|missing|no
+string checked|"opkg"|"1760400000"|1760400010|missing|no
+null checked|"opkg"|null|1760400010|missing|no
+boolean checked|"opkg"|true|1760400010|missing|no
+object checked|"opkg"|{}|1760400010|missing|no
+double checked fresh|"opkg"|1760400000.5|1760400000|missing|no
+double checked stale|"opkg"|1760400000.5|1760400010|missing|yes
+CACHE_CASES
+
+# Package freshness must not hide rule-data discovery results (docs/08).
+printf '%s\n' "$cache" > "$R/updates.json"
+rm -f "$SR/usr/lib/opkg/status"
+mkdir -p "$SR/usr/share/aether-proxy/data"
+for name in gfwlist chnlist apple; do
+	printf 'example.com\n' > "$SR/usr/share/aether-proxy/data/$name.txt"
+done
+for name in chnroute4 gfw_static4; do
+	printf '192.0.2.0/24\n' > "$SR/usr/share/aether-proxy/data/$name.txt"
+done
+python3 - "$R/updates.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+value = json.load(open(path))
+value['data'] = {'gfwlist': {'changed': True}, 'chnroute4': {'changed': False}}
+json.dump(value, open(path, 'w'))
+PY
+data_before=$(ap "$PATH_BOTH" data status --json --run-dir "$R" --sys-root "$SR")
+expect 'T9.6 fresh data status exit 0' 0 "$?"
+expect 'T9.6 fresh data status changed true' true "$(echo "$data_before" | jget items.gfwlist.changed)"
+expect 'T9.6 fresh data status changed false' false "$(echo "$data_before" | jget items.chnroute4.changed)"
+touch -d @1760400010 "$SR/usr/lib/opkg/status"
+out=$(cache_status)
+expect 'T9.6 data test package cache is stale' '<missing>' "$(echo "$out" | jget updates_available)"
+data_after=$(ap "$PATH_BOTH" data status --json --run-dir "$R" --sys-root "$SR")
+expect 'T9.6 stale data status exit 0' 0 "$?"
+expect 'T9.6 stale data status unchanged byte for byte' "$data_before" "$data_after"
+expect 'T9.6 stale data status keeps checked' 1760400000 "$(echo "$data_after" | jget checked)"
+[ ! -e "$R/events.jsonl" ] && ok 'T9.6 data status no events' || bad 'T9.6 data status no events'
+
+# Broken JSON and non-object JSON retain the old FS_FAILED parse semantics.
+for broken in '{broken' '[]' 'null'; do
+	printf '%s\n' "$broken" > "$R/updates.json"
+	rm -f "$R/events.jsonl"
+	out=$(cache_status)
+	expect "T9.6 corrupt $broken exit 0" 0 "$?"
+	expect "T9.6 corrupt $broken cache null" '<missing>' "$(echo "$out" | jget updates_available)"
+	expect "T9.6 corrupt $broken no update notice" '<missing>' "$(echo "$out" | jget notices.0.code)"
+	expect "T9.6 corrupt $broken FS_FAILED" FS_FAILED "$(jget code < "$R/events.jsonl")"
+	expect "T9.6 corrupt $broken parse operation" parse "$(jget args.op < "$R/events.jsonl")"
+done
+rm "$R/updates.json" "$R/events.jsonl"
+out=$(cache_status)
+expect 'T9.6 absent cache exit 0' 0 "$?"
+expect 'T9.6 absent cache null' '<missing>' "$(echo "$out" | jget updates_available)"
+expect 'T9.6 absent cache no notice' '<missing>' "$(echo "$out" | jget notices.0.code)"
+[ ! -e "$R/events.jsonl" ] && ok 'T9.6 absent cache no events' || bad 'T9.6 absent cache no events'
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
