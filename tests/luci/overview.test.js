@@ -1339,15 +1339,16 @@ test('T10.6 scenario 2a: WAN row title and small inactive explanation precede co
 		const block = sections(root).find((s) => s.children[0].children === '流量与连接');
 		const table = block.children[1];
 		const total = table.children[3];
-		assert.deepEqual(total.children.map((c) => c.children), [ '合计（WAN 口）', '1.0 KB/s', '2.0 KB/s' ]);
+		assert.deepEqual(total.children.slice(1).map((c) => c.children), [ '1.0 KB/s', '2.0 KB/s' ]);
+		assert.equal(visibleText(total.children[0]), inactive ? '合计（WAN 口）' + TRAFFIC_NOTE : '合计（WAN 口）');
 		assert.equal(total.children[0].attrs.title, 'WAN 接口 eth1 的全部流量，含路由器自身');
 		for (const row of table.children.slice(1, 3))
 			assert.deepEqual(row.children.slice(1).map((c) => c.children), [ '–', '–' ]);
-		assert.equal(block.children.length, inactive ? 4 : 3);
+		/* the inactive note lives in the WAN row's label cell, not below the table */
+		assert.equal(block.children.length, 3);
 		if (inactive) {
-			assert.equal(block.children[2].tag, 'p');
-			assert.equal(visibleText(block.children[2]), TRAFFIC_NOTE);
-			assert.match(block.children[2].attrs.style, /font-size:\s*0\.9em/);
+			const small = total.children[0].children.find((c) => c.tag === 'small');
+			assert.equal(visibleText(small), TRAFFIC_NOTE);
 		}
 		assert.equal(visibleText(block.children.at(-1)), '代理连接 3总连接 10');
 		assert.equal(visibleText(block).includes(TRAFFIC_NOTE), inactive);

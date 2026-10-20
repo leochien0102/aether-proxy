@@ -280,12 +280,14 @@ return view.extend({
 			[ 'total', traffic.total_label ]
 		])
 			rows.push(E('tr', {}, [
-				E('td', { title: key === 'total' ? traffic.total_title : null }, title),
+				/* The inactive note sits under the WAN label: it explains why only
+				   this row has rates (owner's choice, 2026-10-20). */
+				E('td', { title: key === 'total' ? traffic.total_title : null },
+					key === 'total' && note ? [ title, E('br'), E('small', {}, note) ] : title),
 				E('td', {}, traffic[key].tx), E('td', {}, traffic[key].rx)
 			]));
 		return this.section(_('Traffic and connections', 'aether-proxy'), [
 			E('table', { 'class': 'table' }, rows),
-			...(note ? [ E('p', { style: 'font-size: 0.9em' }, note) ] : []),
 			E('div', { 'style': 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
 				E('span', {}, [ _('Proxy connections', 'aether-proxy'), ' ', traffic.connections.proxy ]),
 				E('span', {
