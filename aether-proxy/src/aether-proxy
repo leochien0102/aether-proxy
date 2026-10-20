@@ -1,25 +1,29 @@
 #!/usr/bin/ucode -S
 'use strict';
-// CLI entry point: dispatch subcommands while keeping their business logic in modules.
-// Design: docs/10「分层」「`aether-proxy` 约定」.
+// CLI entry point: parse arguments and load only the selected subcommand module.
+// Design: docs/10「分层」「`aether-proxy` 约定」「按子命令加载模块」.
 
 import * as C from 'aetherproxy.const';
-import * as check from 'aetherproxy.cmd.check';
-import * as render from 'aetherproxy.cmd.render';
-import * as status from 'aetherproxy.cmd.status';
-import * as components from 'aetherproxy.cmd.components';
-import * as stats from 'aetherproxy.cmd.stats';
-import * as events from 'aetherproxy.cmd.events';
-import * as probe from 'aetherproxy.cmd.probe';
-import * as daemon from 'aetherproxy.cmd.daemon';
-import * as cleanup from 'aetherproxy.cmd.cleanup';
-import * as sub from 'aetherproxy.cmd.sub';
-import * as job from 'aetherproxy.cmd.job';
-import * as update from 'aetherproxy.cmd.update';
-import * as log from 'aetherproxy.cmd.log';
-import * as node from 'aetherproxy.cmd.node';
-import * as custom from 'aetherproxy.cmd.custom';
-import * as data from 'aetherproxy.cmd.data';
+
+// Keep module names fixed: user input must never become import source code.
+const COMMAND_MODULES = {
+	check: 'aetherproxy.cmd.check',
+	render: 'aetherproxy.cmd.render',
+	status: 'aetherproxy.cmd.status',
+	components: 'aetherproxy.cmd.components',
+	stats: 'aetherproxy.cmd.stats',
+	events: 'aetherproxy.cmd.events',
+	probe: 'aetherproxy.cmd.probe',
+	daemon: 'aetherproxy.cmd.daemon',
+	cleanup: 'aetherproxy.cmd.cleanup',
+	sub: 'aetherproxy.cmd.sub',
+	job: 'aetherproxy.cmd.job',
+	update: 'aetherproxy.cmd.update',
+	log: 'aetherproxy.cmd.log',
+	node: 'aetherproxy.cmd.node',
+	custom: 'aetherproxy.cmd.custom',
+	data: 'aetherproxy.cmd.data',
+};
 
 const USAGE = `Usage: aether-proxy <command> [options]
 
@@ -76,43 +80,13 @@ function main(argv) {
 	if (cmd == 'version')
 		return cmd_version(slice(argv, 1));
 
-	if (cmd == 'check')
-		return check.run(slice(argv, 1));
-
-	if (cmd == 'render')
-		return render.run(slice(argv, 1));
-
-	if (cmd == 'status')
-		return status.run(slice(argv, 1));
-
-	if (cmd == 'components')
-		return components.run(slice(argv, 1));
-
-	if (cmd == 'stats')
-		return stats.run(slice(argv, 1));
-
-	if (cmd == 'events')
-		return events.run(slice(argv, 1));
-	if (cmd == 'probe')
-		return probe.run(slice(argv, 1));
-	if (cmd == 'daemon')
-		return daemon.run(slice(argv, 1));
-	if (cmd == 'cleanup')
-		return cleanup.run(slice(argv, 1));
-	if (cmd == 'sub')
-		return sub.run(slice(argv, 1));
-	if (cmd == 'job')
-		return job.run(slice(argv, 1));
-	if (cmd == 'update')
-		return update.run(slice(argv, 1));
-	if (cmd == 'log')
-		return log.run(slice(argv, 1));
-	if (cmd == 'node')
-		return node.run(slice(argv, 1));
-	if (cmd == 'custom')
-		return custom.run(slice(argv, 1));
-	if (cmd == 'data')
-		return data.run(slice(argv, 1));
+	let module_name = COMMAND_MODULES[cmd];
+	if (module_name != null) {
+		// require() cannot load exports on ucode 2025.07.18. Import after dispatch
+		// so unrelated modules (including broken ones) do not affect this command.
+		let module = loadstring(sprintf("import * as m from '%s'; return m;", module_name))();
+		return module.run(slice(argv, 1));
+	}
 
 	warn(USAGE);
 	return 2;
