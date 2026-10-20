@@ -94,7 +94,8 @@ function notice_text(n) {
 			return fmt(_('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.', 'aether-proxy'), args.iface ?? '?');
 
 		case 'DNSMASQ_EXTRA_SERVERS':
-			return fmt(_('dnsmasq configuration contains additional server= lines outside aether-proxy: %s.', 'aether-proxy'),
+			return fmt(
+				_('dnsmasq configuration contains server= lines that this service did not write: %s.', 'aether-proxy'),
 				(Array.isArray(args.servers) ? args.servers : []).join('; '));
 
 		default:
@@ -219,7 +220,7 @@ return baseclass.extend({
 			+ 'immediately and all traffic goes out directly.', 'aether-proxy');
 		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the switch above '
 			+ 'and it will start automatically.', 'aether-proxy');
-		const stop_confirmation = _('Stopping aether-proxy leaves all traffic going out directly. '
+		const stop_confirmation = _('Stopping the service leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
 			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
 

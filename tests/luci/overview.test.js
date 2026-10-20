@@ -210,6 +210,9 @@ test('scenario 8a: every notice kind becomes one line carrying its args', () => 
 	assert.ok(vm.notices[2].includes('br-lan'), vm.notices[2]);
 	assert.equal(vm.notices[2], tr('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.', 'br-lan'));
 	assert.ok(vm.notices[3].includes('server=8.8.8.8') && vm.notices[3].includes('server=9.9.9.9'), vm.notices[3]);
+	assert.equal(vm.notices[3], tr('dnsmasq configuration contains server= lines that this service did not write: %s.',
+		'server=8.8.8.8; server=9.9.9.9'));
+	assert.equal(vm.notices[3], 'dnsmasq 配置中有不是本服务写入的 server= 行：server=8.8.8.8; server=9.9.9.9。');
 
 	/* the same wording the docs quote for the confirm-free parts */
 	assert.equal(po['A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.']
@@ -272,7 +275,7 @@ test('T8.11a scenario 2: disabled notice, enable note and the new stop confirmat
 		+ 'immediately and all traffic goes out directly.';
 	const notice = 'The service is not enabled: turn on the switch above '
 		+ 'and it will start automatically.';
-	const confirm_id = 'Stopping aether-proxy leaves all traffic going out directly. '
+	const confirm_id = 'Stopping the service leaves all traffic going out directly. '
 		+ 'This is only temporary: restarting the router or saving the settings of this '
 		+ 'service again starts it; to disable it for good, turn off Enable above.';
 
@@ -292,6 +295,8 @@ test('T8.11a scenario 2: disabled notice, enable note and the new stop confirmat
 	assert.ok(vm.stop_confirmation.includes('暂时'), vm.stop_confirmation);
 	assert.ok(vm.stop_confirmation.includes('启用'), vm.stop_confirmation);
 	assert.equal(vm.stop_confirmation, tr(confirm_id));
+	assert.equal(vm.stop_confirmation, '停止服务后所有流量直连。这只是暂时停止：'
+		+ '重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。');
 });
 
 test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts as 0', async () => {
@@ -354,7 +359,7 @@ test('T8.11a scenario 4: static checks — switch wiring, no service from the sw
 			+ 'immediately and all traffic goes out directly.',
 		'The service is not enabled: turn on the switch above '
 			+ 'and it will start automatically.',
-		'Stopping aether-proxy leaves all traffic going out directly. '
+		'Stopping the service leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
 			+ 'service again starts it; to disable it for good, turn off Enable above.'
 	]) {
@@ -581,6 +586,7 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	const data = await page.load();
 	assert.ok(calls.indexOf('stats') > calls.indexOf('status'));
 	const root = page.render(data);
+	assert.equal(findTag(root, 'h2').children, '以太跃迁');
 	assert.equal(polls[0].ms, 5000);
 	const selects = findAll(root, 'select');
 	selects[0].attrs.change({ target: { value: '10' } });
