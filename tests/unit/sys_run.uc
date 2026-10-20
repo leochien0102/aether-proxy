@@ -83,22 +83,22 @@ export const cases = [
 		kind: 'lock_cloexec'
 	},
 	{
-		name: 'inherited ignored TERM: true returns within 2s without timer residue',
+		name: 'inherited ignored TERM: true returns within 5s without timer residue',
 		expect: 'PASS',
 		kind: 'inherited',
 		argv: [ 'true' ],
 		timeout: 10,
 		code: 0,
-		limit: 2
+		limit: 5
 	},
 	{
-		name: 'inherited ignored TERM: timeout returns 124 within 3s without timer residue',
+		name: 'inherited ignored TERM: timeout returns 124 within 5s without timer residue',
 		expect: 'PASS',
 		kind: 'inherited',
 		argv: [ 'sleep', '30' ],
 		timeout: 1,
 		code: 124,
-		limit: 3
+		limit: 5
 	},
 	{
 		name: 'timeout delivers TERM before KILL and reaps grace timer',
@@ -117,63 +117,71 @@ function clock_seconds() {
 	return r.code == 0 ? +r.stdout : null;
 }
 
-function sleeper_pids(durations) {
-	let r = sys.run([ 'ps', '-C', 'sleep', '-o', 'pid=,args=' ], { quiet: true });
+// Only sleeps in one session count: suites running in parallel start sleeps of their own.
+function sleeper_pids(durations, sid) {
+	let r = sys.run([ 'ps', '-C', 'sleep', '-o', 'pid=,sid=,args=' ], { quiet: true });
 	let pids = [];
 	// ps -C returns 1 when no sleep exists; any other failure must not fake an empty table.
 	if (r.code != 0 && (r.code != 1 || r.stderr != ''))
 		die(sprintf('cannot inspect sleep processes: %.J', r));
 
 	for (let line in split(trim(r.stdout ?? ''), '\n')) {
-		let fields = match(trim(line), /^([0-9]+) sleep ([0-9]+)$/);
-		if (fields && index(durations, +fields[2]) >= 0)
+		let fields = match(trim(line), /^([0-9]+) +([0-9]+) sleep ([0-9]+)$/);
+		if (fields && +fields[2] == sid && index(durations, +fields[3]) >= 0)
 			push(pids, fields[1]);
 	}
 
 	return pids;
 }
 
-function sleep_30_count() {
-	return length(sleeper_pids([ 30 ]));
+// Run one sys.run in another interpreter in its own session (setsid -w waits for it).
+// Timer sleeps keep that session even after they are reparented, so the residue scan sees
+// this call's sleeps only. ignore_term models rc.common's inherited TERM ignore; doing that
+// in the test runner itself would contaminate later cases.
+function session_run(argv, opts, durations, ignore_term) {
+	let code = "import * as sys from 'aetherproxy.sys'; import * as fs from 'fs'; " +
+		'let start = clock(true); ' +
+		`let result = sys.run(${sprintf('%.J', argv)}, ${sprintf('%.J', opts)}); ` +
+		'let end = clock(true); ' +
+		"print(sprintf('%.J', { result, sid: +fs.readlink('/proc/self'), " +
+		'elapsed: end[0] - start[0] + (end[1] - start[1]) / 1000000000.0 }));';
+	let shell = ignore_term ? [ 'sh', '-c', 'trap \'\' TERM; exec "$@"', 'sh' ] : [];
+	let child = sys.run([ 'setsid', '-w', ...shell, 'tests/host/ucode', '-e', code ], { quiet: true });
+	if (child.code != 0)
+		return { error: sprintf('child %.J', child) };
+	let measured = json(child.stdout);
+	measured.residue = sleeper_pids(durations, measured.sid);
+	return measured;
 }
 
 function failed(detail) {
 	return 'FAIL: ' + detail;
 }
 
+// The limits sit at half of what the regression costs (waiting out the 10 s timeout, or the
+// 30 s sleep): a loaded host must not fail them, the regression still does.
 function inherited_term_case(c) {
-	let before = sleeper_pids([ 1, 10, 30 ]);
-	// Start another interpreter: changing the test runner's signal disposition would
-	// contaminate later cases and would not model inheritance through rc.common.
-	let code = "import * as sys from 'aetherproxy.sys'; " +
-		'let start = clock(true); ' +
-		`let result = sys.run(${sprintf('%.J', c.argv)}, { timeout: ${c.timeout}, quiet: true }); ` +
-		'let end = clock(true); ' +
-		"print(sprintf('%.J', { result, elapsed: end[0] - start[0] + (end[1] - start[1]) / 1000000000.0 }));";
-	let child = sys.run([ 'sh', '-c', 'trap \'\' TERM; exec "$@"', 'sh',
-		'tests/host/ucode', '-e', code ], { quiet: true });
-	if (child.code != 0)
-		return failed(sprintf('child %.J', child));
-	let measured = json(child.stdout);
+	let measured = session_run(c.argv, { timeout: c.timeout, quiet: true }, [ 1, 10, 30 ], true);
+	if (measured.error)
+		return failed(measured.error);
 	let r = measured.result;
 	printf('INFO  %s: %.3fs, code %d, timed_out %J\n', c.name, measured.elapsed, r.code, r.timed_out);
 	if (r.code != c.code || r.timed_out != (c.code == 124) || measured.elapsed >= c.limit)
 		return failed(sprintf('measured %.J', measured));
 	if (r.stdout != '' || r.stderr != '')
 		return failed(sprintf('unexpected inherited-command output %.J', r));
-	let residue = filter(sleeper_pids([ 1, 10, 30 ]), pid => index(before, pid) < 0);
-	if (length(residue))
-		return failed(sprintf('unreaped sleepers %.J', residue));
+	if (length(measured.residue))
+		return failed(sprintf('unreaped sleepers %.J', measured.residue));
 	return 'PASS';
 }
 
 function term_first_case() {
 	let path = `tests/unit/term-first.${fs.readlink('/proc/self')}`;
-	let before = sleeper_pids([ 1 ]);
 	let script = 'trap \'printf TERM > "$1"; exit 0\' TERM; while :; do :; done';
-	let started = clock_seconds();
-	let r = sys.run([ 'sh', '-c', script, 'sh', path ], { timeout: 1, quiet: true });
-	let elapsed = clock_seconds() - started;
+	let measured = session_run([ 'sh', '-c', script, 'sh', path ], { timeout: 1, quiet: true }, [ 1 ]);
+	if (measured.error)
+		return failed(measured.error);
+	let r = measured.result, elapsed = measured.elapsed;
 	let received = fs.readfile(path);
 	if (received != null && !fs.unlink(path))
 		return failed(`cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
@@ -182,8 +190,7 @@ function term_first_case() {
 	// The command exits on TERM, so the wrapper must cancel the 1 s grace sleep, not wait it out.
 	if (elapsed >= 1.7)
 		return failed(sprintf('returned after %.2fs; the grace sleep was waited out', elapsed));
-	let residue = filter(sleeper_pids([ 1 ]), pid => index(before, pid) < 0);
-	return length(residue) ? failed(sprintf('unreaped grace sleepers %.J', residue)) : 'PASS';
+	return length(measured.residue) ? failed(sprintf('unreaped grace sleepers %.J', measured.residue)) : 'PASS';
 }
 
 export function run(c) {
@@ -217,14 +224,13 @@ export function run(c) {
 	}
 
 	if (c.kind == 'quick') {
-		let before = sleep_30_count();
-		let start = clock_seconds();
-		let r = sys.run(c.argv, c.opts);
-		let elapsed = clock_seconds() - start;
-		let after = sleep_30_count();
+		let measured = session_run(c.argv, c.opts, [ 30 ]);
+		if (measured.error)
+			return failed(measured.error);
+		let r = measured.result;
 
-		if (r.code != 0 || r.stdout != 'done' || r.timed_out || elapsed >= 1 || before != after)
-			return failed(sprintf('result %.J, elapsed %.3f seconds, sleep count %d -> %d', r, elapsed, before, after));
+		if (r.code != 0 || r.stdout != 'done' || r.timed_out || measured.elapsed >= 1 || length(measured.residue))
+			return failed(sprintf('measured %.J', measured));
 
 		return 'PASS';
 	}
