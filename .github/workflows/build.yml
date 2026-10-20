@@ -71,3 +71,62 @@ jobs:
           name: packages-${{ matrix.sdk }}
           path: bin/packages/x86_64/aetherproxy/*
           if-no-files-found: error
+
+  # T9.3 / docs/11: package installation and pure CLI rendering only, not a dataplane test.
+  smoke:
+    needs: packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: openwrt/rootfs:x86-64-24.10.8
+            platform: linux/amd64
+            sdk: 24.10.8
+          - image: openwrt/rootfs:armsr-armv8-24.10.8
+            platform: linux/arm64
+            sdk: 24.10.8
+          - image: openwrt/rootfs:x86-64-25.12.5
+            platform: linux/amd64
+            sdk: 25.12.5
+          - image: openwrt/rootfs:armsr-armv8-25.12.5
+            platform: linux/arm64
+            sdk: 25.12.5
+          - image: immortalwrt/rootfs:x86-64-openwrt-24.10.6
+            platform: linux/amd64
+            sdk: 24.10.8
+          - image: immortalwrt/rootfs:armsr-armv8-openwrt-24.10.6
+            platform: linux/arm64
+            sdk: 24.10.8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ matrix.sdk }}
+          path: smoke-packages
+
+      - name: Prepare pinned host ucode
+        run: bash tests/host/bootstrap.sh
+
+      - name: Test smoke runner and prepare host goldens
+        run: python3 tests/ci/smoke-host.py --golden-dir "$PWD/smoke-packages/smoke-golden"
+
+      - name: Enable aarch64 emulation
+        if: matrix.platform == 'linux/arm64'
+        uses: docker/setup-qemu-action@v3.6.0
+        with:
+          platforms: arm64
+
+      - name: Install, render and uninstall in disposable rootfs
+        env:
+          SMOKE_IMAGE: ${{ matrix.image }}
+          SMOKE_PLATFORM: ${{ matrix.platform }}
+        run: |
+          docker run --rm --platform "$SMOKE_PLATFORM" \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --volume "$PWD:/repo:ro" \
+            --volume "$PWD/smoke-packages:/packages:ro" \
+            --entrypoint /bin/sh "$SMOKE_IMAGE" -c \
+            '/bin/ash -n /repo/tests/ci/smoke.sh && exec /bin/ash /repo/tests/ci/smoke.sh /packages /repo'
