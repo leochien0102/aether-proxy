@@ -42,6 +42,19 @@ init.d / hotplug / daemon ──────────────────
 | `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取 logd 中的相关行 | 否 |
 | `custom get <名称>` / `custom set <名称> --content <文本>` | 读取 / 校验并保存自定义列表（`direct_domain`、`proxy_domain`、`direct_ip`、`proxy_ip`） | 否 |
 
+### 按子命令加载模块（2026-10-20 定，T10.8；跨页面问题 X5）
+
+页面的每个 rpc 都是一次 `aether-proxy <子命令> --json` 进程。入口原来在文件开头静态 `import` 全部 16 个子命令模块，**任何子命令（包括 `version`）都要先把所有模块加载一遍**。
+2026-10-20 在 H28K（aarch64）上实测：裸 `ucode` 启动 4 毫秒；只加载 `const` 10 毫秒；单个子命令模块连同它的依赖 55–85 毫秒（`status` 84、`custom` 84、`data` 78、`stats` 60、`events` 54）；
+完整入口 254 毫秒。在 `/tmp` 里用下面的写法做的原型：`status` 从 278 毫秒降到 106 毫秒，输出不变。
+
+- 入口只静态导入 `aetherproxy.const`（`version`、`--help` 用得到）。其余子命令用一张「子命令名 → 模块名」的表，**命中后才加载**：
+  `loadstring("import * as m from '<模块名>'; return m;")()`（12「ucode 2025.07.18 的语法限制」第 3 条：`require()` 不能加载带 `export` 的模块），然后调用它的 `run(args)`。
+  模块名只取自这张常量表，不拼接用户输入。
+- 行为完全不变：同样的参数、输出、退出码、事件；`--help` 与 `version` 不加载任何子命令模块；未知子命令照旧是 `USAGE`、退出码 2。
+- 附带的好处：某个子命令模块损坏（语法错误、缺依赖）时，只有这个子命令失败，`version`、`status` 等仍可用（原来整个命令行都无法运行）。加载失败时异常照常抛出（ucode 打印错误、非 0 退出），不另包装。
+- daemon 进程照旧只加载一次，不受影响。子命令模块自身的依赖链（例如 `cmd.status` 依赖的模块）本次不动；还要更快时再看（例如预编译字节码），先量再定。
+
 ### 仅供测试的选项
 
 `check`、`render`、`status`、`events`、`probe`、`daemon`、`cleanup` 接受下列选项中与自己相关的部分，用于在宿主机上脱离真实系统运行测试。rpcd 插件**不准**传递这些选项：

@@ -24,7 +24,7 @@ aether-proxy/                         后端包目录
 │   ├── keys/                         → /etc/aether-proxy/keys/
 │   └── data/                         → /usr/share/aether-proxy/data/（规则数据基线）
 └── src/
-    ├── aether-proxy                  → /usr/bin/aether-proxy（入口，只做参数解析和分发）
+    ├── aether-proxy                  → /usr/bin/aether-proxy（入口，只做参数解析和分发；子命令模块按需加载，见 10「按子命令加载模块」）
     └── lib/                          → /usr/share/ucode/aetherproxy/
         ├── const.uc                  常量（01 常量表的唯一实现）
         ├── log.uc                    事件与 syslog（09）
