@@ -1,6 +1,6 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a and T8.12c Dashboard).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -32,7 +32,17 @@ const NOW = 1760400000;
 
 /* Lightweight E() double for the view tests (docs/tasks/m8.md T8.11a): stores
    tag/attrs/children so a test can walk the returned tree. */
-globalThis.E = (tag, attrs, children) => ({ tag, attrs: attrs || {}, children: children || [] });
+globalThis.E = (tag, attrs, children) => {
+	const el = {
+		tag, attrs: attrs || {}, children: children ?? [],
+		addEventListener(event, fn) { this.attrs[event] = fn; }
+	};
+	if (tag === 'select') {
+		const options = children ?? [];
+		el.value = (options.find((o) => o.attrs.selected) ?? options[0])?.attrs.value ?? '';
+	}
+	return el;
+};
 
 function findTag(node, tag) {
 	if (!node || typeof node != 'object')
@@ -163,34 +173,35 @@ test('scenario 7c: health probe texts and their relative time', () => {
 	assert.equal(vm.probe_since_text, null);
 });
 
-test('scenario 7d: relative time buckets (seconds, minutes, hours, days)', () => {
+test('scenario 7d: state duration buckets (seconds, minutes, hours, days)', () => {
 	let vm = build({ ok: true, state: 'running', since: NOW - 45 });
-	assert.equal(vm.state_since_text, tr('%s seconds ago', 45));
+	assert.equal(vm.state_duration_text, tr('For %s seconds', 45));
 
 	vm = build({ ok: true, state: 'running', since: NOW - 150 });
-	assert.equal(vm.state_since_text, tr('%s minutes ago', 2));
+	assert.equal(vm.state_duration_text, tr('For %s minutes', 2));
 
 	vm = build({ ok: true, state: 'running', since: NOW - 7200 });
-	assert.equal(vm.state_since_text, tr('%s hours ago', 2));
+	assert.equal(vm.state_duration_text, tr('For %s hours', 2));
 
 	vm = build({ ok: true, state: 'running', since: NOW - 3 * 86400 });
-	assert.equal(vm.state_since_text, tr('%s days ago', 3));
+	assert.equal(vm.state_duration_text, tr('For %s days', 3));
+	assert.equal(build({ ok: true, state: 'running' }).state_duration_text, null);
 });
 
-test('scenario 7e: node shows the UCI label, falling back to the section name; dns tier and version', () => {
+test('scenario 7e: node label fallback, DNS explanation and own component version', () => {
 	let vm = build({ ok: true, state: 'running', node_id: 'n_ab', node_ip: '203.0.113.10', dns_tier: 'T1' }, null, { n_ab: 'My Node' });
 	assert.equal(vm.node_text, 'My Node');
 	assert.equal(vm.node_ip, '203.0.113.10');
-	assert.equal(vm.dns_tier_text, 'T1');
-	assert.equal(vm.own_version, '0.1.0-r2');
+	assert.equal(vm.dns_text, '经节点解析（正常）');
+	assert.equal(vm.components[0].version, '0.1.0-r2');
 
 	vm = build({ ok: true, state: 'running', node_id: 'n_ab', node_ip: '203.0.113.10' }, null, {});
 	assert.equal(vm.node_text, 'n_ab');
 
 	vm = build({ ok: true, state: 'stopped', dns_tier: null }, { ok: false, code: 'RPC_FAILED' });
-	assert.equal(vm.node_text, null);
-	assert.equal(vm.dns_tier_text, null);
-	assert.equal(vm.own_version, null);
+	assert.equal(vm.node_text, '未选择节点');
+	assert.equal(vm.dns_text, null);
+	assert.equal(vm.components[0].version, null);
 });
 
 test('scenario 8a: every notice kind becomes one line carrying its args', () => {
@@ -414,6 +425,7 @@ function findAll(node, tag, out = []) {
 		out.push(node);
 	for (const child of node.children ?? [])
 		findAll(child, tag, out);
+	findAll(node.content, tag, out);
 	return out;
 }
 
@@ -536,7 +548,7 @@ test('T8.12c scenario 2: refresh options and storage parsing including exception
 	}
 });
 
-test('T8.12c scenario 3: probe wording, freshness and subscription success/failure summary', () => {
+test('T8.12c scenario 3: probe wording and freshness', () => {
 	const model = dashboardModel();
 	assert.equal(model.probe_result({ ok: true, latency_ms: 12 }), tr('Healthy, %s ms.', 12));
 	assert.equal(model.probe_result({ ok: false }), tr('Probe failed.'));
@@ -547,17 +559,6 @@ test('T8.12c scenario 3: probe wording, freshness and subscription success/failu
 	assert.deepEqual(model.probe_completion({}, 10), { done: false });
 	assert.deepEqual(model.probe_completion({ last_probe: { at: 10, ok: false } }, 10),
 		{ done: true, text: tr('Probe failed.') });
-	assert.deepEqual(model.subscription_result({ result: { subs: {
-		s_a: { ok: true }, s_b: { ok: false, code: 'SUB_FETCH_FAILED' },
-		s_c: { ok: true }, s_d: { ok: false, code: 'CONFIG_INVALID' }
-	} } }, { s_b: 'Airport' }), {
-		text: '订阅更新完成：成功 2 个，失败 2 个',
-		failures: [ 'Airport: SUB_FETCH_FAILED', 's_d: CONFIG_INVALID' ]
-	});
-	assert.deepEqual(model.subscription_result({ ok: false, code: 'RPC_FAILED', detail: 'offline' }),
-		{ text: 'RPC_FAILED: offline', failures: [] });
-	assert.deepEqual(model.subscription_result({ ok: false, code: 'TIMEOUT' }),
-		{ text: 'TIMEOUT', failures: [] });
 });
 
 test('T8.12c scenario 4a: render, sequential serialized refresh, interval replacement, storage and manual refresh',
@@ -626,12 +627,26 @@ test('T8.12c scenario 4b: node selection switches via UCI save and rollback appl
 	});
 	const root = page.render(await page.load());
 	const nodes = findAll(root, 'select')[1];
-	assert.equal(nodes.children[0].children, 'Alpha');
+	assert.equal(nodes.children[0].children, 'Alpha（当前）');
 	assert.equal(nodes.children[0].attrs.selected, 'selected');
 	assert.equal(nodes.children[1].children, 'n_b');
+	const use = findAll(root, 'button').find((b) => b.children === '使用此节点');
+	assert.equal(use.disabled, true, 'current node cannot be applied again');
 	nodes.value = 'n_b';
-	await findAll(root, 'button').find((b) => b.children === '切换').attrs.click();
+	nodes.attrs.change();
+	assert.equal(use.disabled, false, 'another node can be applied');
+	nodes.value = 'n_a';
+	nodes.attrs.change();
+	assert.equal(use.disabled, true, 'reselecting the current node disables apply again');
+	nodes.value = 'n_b';
+	nodes.attrs.change();
+	await use.attrs.click();
 	assert.deepEqual(order, [ [ 'set', 'aetherproxy', 'main', 'node', 'n_b' ], [ 'save' ], [ 'apply', true ] ]);
+
+	const emptyPage = loadView();
+	const emptyRoot = emptyPage.render(await emptyPage.load());
+	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.children === '使用此节点');
+	assert.equal(emptyUse.disabled, true, 'an empty node list must not allow saving an empty node');
 });
 
 function timerQueue() {
@@ -665,7 +680,7 @@ test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every 
 		}
 	} });
 	page.labels = {};
-	const controls = page.dashboardControls(5000);
+	const controls = page.probeControls();
 	const pending = findAll(controls, 'button').find((b) => b.children === '测延迟').attrs.click();
 	assert.equal(page.probeButton.disabled, true);
 	await Promise.resolve();
@@ -687,7 +702,7 @@ test('T8.12c scenario 4d: latency deadline wins over a late RPC; NOT_RUNNING and
 			: new Promise((resolve) => { release = resolve; })
 	} });
 	page.labels = {};
-	page.dashboardControls(5000);
+	page.probeControls();
 	const pending = page.handleProbe();
 	await Promise.resolve();
 	const rpc = clock.run(1000);
@@ -702,31 +717,11 @@ test('T8.12c scenario 4d: latency deadline wins over a late RPC; NOT_RUNNING and
 	for (const [code, text] of [ [ 'NOT_RUNNING', '服务未运行' ], [ 'CMD_FAILED', 'CMD_FAILED: ubus' ] ]) {
 		const errorPage = loadView({ ap: { call: async () => ({ ok: false, code, detail: 'ubus' }) } });
 		errorPage.labels = {};
-		errorPage.dashboardControls(5000);
+		errorPage.probeControls();
 		await errorPage.handleProbe();
 		assert.equal(errorPage.probeMessage.content, text);
 		assert.equal(errorPage.probeButton.disabled, false);
 	}
-});
-
-test('T8.12c scenario 4e: subscription button runs sub_update with no args, locks and shows result', async () => {
-	let finish;
-	const calls = [];
-	const page = loadView({ ap: { run_job: (kind, args) => {
-		calls.push([ kind, args ]);
-		return new Promise((resolve) => { finish = resolve; });
-	} } });
-	page.labels = {};
-	page.subscriptions = { s_a: 'Airport' };
-	const controls = page.dashboardControls(5000);
-	const pending = findAll(controls, 'button').find((b) => b.children === '更新订阅').attrs.click();
-	assert.equal(page.subButton.disabled, true);
-	assert.deepEqual(calls, [ [ 'sub_update', [] ] ]);
-	finish({ state: 'failed', result: { subs: { s_a: { ok: false, code: 'SUB_FETCH_FAILED' } } } });
-	await pending;
-	assert.equal(page.subButton.disabled, false);
-	assert.equal(page.subMessage.content.children[0].children, '订阅更新完成：成功 0 个，失败 1 个');
-	assert.equal(findTag(page.subMessage.content, 'li').children, 'Airport: SUB_FETCH_FAILED');
 });
 
 test('T8.12c service refresh: action schedules serialized status/stats even with automatic refresh off', async () => {
@@ -748,6 +743,230 @@ test('T8.12c service refresh: action schedules serialized status/stats even with
 	assert.equal(page.vm.state_text, '运行中');
 	assert.equal(page.previousStats.at_ms, 1000);
 	assert.equal(page.poller, null);
+});
+
+test('T10.3 scenario 1: state levels, duration buckets, missing since and DNS failsafe', () => {
+	const levels = {
+		stopped: 'neutral', starting: 'neutral', running: 'ok',
+		degraded: 'warn', failsafe: 'warn', error: 'error', future: 'neutral'
+	};
+	for (const [state, level] of Object.entries(levels)) {
+		const vm = build({ ok: true, state, waiting_network: true, dns_failsafe: true });
+		assert.equal(vm.state_level, level, state);
+		assert.equal(vm.state_duration_text, null, state);
+		assert.equal(vm.dns_failsafe, true, state);
+	}
+	for (const [age, text] of [ [ 45, '已持续 45 秒' ], [ 150, '已持续 2 分钟' ],
+		[ 7200, '已持续 2 小时' ], [ 3 * 86400, '已持续 3 天' ] ])
+		assert.equal(build({ ok: true, state: 'running', since: NOW - age }).state_duration_text, text);
+});
+
+test('T10.3 scenario 2: known reasons, unknown code and null last_error', () => {
+	const reasons = {
+		NODE_RESOLVE_FAILED: '节点地址解析失败',
+		CONFIG_INVALID: '配置无效，详见日志页',
+		START_FAILED: '启动失败，详见日志页',
+		FUTURE_ERROR: 'FUTURE_ERROR'
+	};
+	for (const [last_error, text] of Object.entries(reasons))
+		assert.equal(build({ ok: true, state: 'error', last_error }).error_text, text);
+	assert.equal(build({ ok: true, last_error: null }).error_text, null);
+});
+
+/* Inspect every string, including nested components and button descriptions. */
+function allStrings(value) {
+	if (typeof value === 'string')
+		return [ value ];
+	if (!value || typeof value !== 'object')
+		return [];
+	return Object.values(value).flatMap(allStrings);
+}
+
+test('T10.3 scenario 3: DNS explanations, visibility and no raw tier codes in model strings', () => {
+	const tiers = {
+		T1: '经节点解析（正常）',
+		T2: '直连境外 DNS（启动中，或代理不健康）',
+		T3: '仅用国内 DNS（境外 DNS 都不通，结果可能被污染）',
+		future: 'future'
+	};
+	for (const [dns_tier, text] of Object.entries(tiers)) {
+		for (const state of [ 'starting', 'running', 'degraded', 'failsafe', 'stopped', 'error', 'unknown' ]) {
+			const vm = build({ ok: true, state, dns_tier });
+			assert.equal(vm.dns_text, ['stopped', 'error', 'unknown'].includes(state) ? null : text);
+			for (const s of allStrings(vm))
+				assert.doesNotMatch(s, /T[123]/);
+		}
+	}
+	assert.equal(build({ ok: true, state: 'running', dns_tier: null }).dns_text, null);
+});
+
+test('T10.3 scenario 4: node labels, sorted current options, switch guard and probe levels', () => {
+	const model = dashboardModel();
+	assert.equal(build({ ok: true, node_id: 'n_a' }, null, { n_a: 'Alpha' }).node_text, 'Alpha');
+	assert.equal(build({ ok: true, node_id: 'n_a' }).node_text, 'n_a');
+	assert.equal(build({ ok: true }).node_text, '未选择节点');
+	assert.deepEqual(model.node_options({ n_z: 'Zulu', n_a: 'Alpha', n_b: '' }, 'n_a'), [
+		{ value: 'n_a', text: 'Alpha（当前）' }, { value: 'n_b', text: 'n_b' }, { value: 'n_z', text: 'Zulu' }
+	]);
+	assert.deepEqual(model.node_options(null, null), []);
+	assert.equal(model.can_switch('n_a', 'n_a'), false);
+	assert.equal(model.can_switch('n_b', 'n_a'), true);
+	assert.equal(model.can_switch('', 'n_a'), false);
+	for (const [probe, level] of [ [ { ok: true }, 'ok' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ])
+		assert.equal(build({ ok: true, last_probe: probe }).probe_level, level);
+});
+
+test('T10.3 scenario 5: own component first, version failure null, remaining components retain sorted order', () => {
+	const status = { ok: true, components: {
+		xray: { version: '26.9.30', path: '/usr/bin/xray' },
+		'chinadns-ng': { version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
+	} };
+	const vm = build(status);
+	assert.deepEqual(vm.components, [
+		{ name: 'aether-proxy', version: '0.1.0-r2', path: null },
+		{ name: 'chinadns-ng', version: '2025.06.20', path: '/usr/bin/chinadns-ng' },
+		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' }
+	]);
+	assert.equal(build(status, { ok: false }).components[0].version, null);
+	assert.deepEqual(build({ ok: false }, { ok: false }).components,
+		[ { name: 'aether-proxy', version: null, path: null } ]);
+});
+
+function visibleText(node) {
+	if (typeof node === 'string')
+		return node;
+	if (!node || typeof node !== 'object')
+		return '';
+	return visibleText(node.content) + (Array.isArray(node.children)
+		? node.children.map(visibleText).join('') : visibleText(node.children));
+}
+
+function sections(root) {
+	return findAll(root, 'div').filter((el) => el.attrs.class === 'cbi-section');
+}
+
+function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
+	const page = loadView();
+	const root = page.render([ { reply: status, stats: readings(1000, 0, 0, 0, 0) }, version,
+		{ labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', enabled } ]);
+	return { page, root };
+}
+
+test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notices and removed subscriptions', () => {
+	const status = { ok: true, state: 'running', notices: [
+		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
+		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
+	] };
+	const { root } = renderStatus(status);
+	assert.deepEqual(sections(root).map((s) => s.children[0].children),
+		[ '待处理提示', '状态', '当前节点', '流量与连接', '组件版本' ]);
+	const title = root.children[0];
+	assert.equal(findAll(title, 'h2')[0].children, '以太跃迁');
+	assert.equal(findAll(title, 'select').length, 1);
+	assert.equal(findAll(title, 'button')[0].children, '刷新');
+	assert.ok(visibleText(title).includes('自动刷新'));
+	const noticeItems = findAll(sections(root)[0], 'li');
+	assert.equal(noticeItems.length, 2);
+	assert.ok(noticeItems.every((li) => li.attrs.class === 'alert-message warning'));
+	assert.ok(visibleText(noticeItems[0]).includes('xray'));
+	assert.doesNotMatch(visibleText(root), /更新订阅|服务状态、待处理提示与启停控制/);
+	assert.doesNotMatch(fs.readFileSync(VIEW, 'utf8'), /sub_update/);
+	const clean = renderStatus({ ok: true, state: 'running' }).root;
+	assert.deepEqual(sections(clean).map((s) => s.children[0].children),
+		[ '状态', '当前节点', '流量与连接', '组件版本' ]);
+	const failure = renderStatus({ ok: false, code: 'TIMEOUT', detail: 'offline' }, undefined, false).root;
+	const pending = sections(failure)[0];
+	assert.equal(pending.children[0].children, '待处理提示');
+	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message error'
+		&& visibleText(n).includes('TIMEOUT: offline')));
+	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message warning'
+		&& visibleText(n).includes('服务未启用')));
+});
+
+test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has no color', () => {
+	const colors = {
+		ok: 'var(--success-color-high, #2f855a)', warn: 'var(--warning-color, #b7791f)',
+		error: 'var(--error-color-high, #c53030)', neutral: ''
+	};
+	for (const [state, level] of [ [ 'running', 'ok' ], [ 'degraded', 'warn' ], [ 'failsafe', 'warn' ],
+		[ 'error', 'error' ], [ 'stopped', 'neutral' ], [ 'starting', 'neutral' ], [ 'future', 'neutral' ] ]) {
+		for (const [probe, probeLevel] of [ [ { ok: true }, 'ok' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ]) {
+			const { root } = renderStatus({ ok: true, state, last_probe: probe });
+			const word = findAll(root, 'strong')[0];
+			assert.match(word.attrs.style, /font-size: 1\.6em/);
+			assert.equal(word.attrs.style.includes('color:'), level !== 'neutral');
+			if (level !== 'neutral')
+				assert.ok(word.attrs.style.includes(colors[level]));
+			const text = probe ? (probe.ok ? tr('Healthy, %s ms.', '?') : tr('Probe failed.'))
+				: tr('Not probed yet.');
+			const result = findAll(sections(root)[1], 'span').find((n) => visibleText(n) === text);
+			assert.ok(result, 'health result is in the current-node section');
+			assert.equal(result.attrs.style, probeLevel === 'neutral' ? '' : 'color:' + colors[probeLevel]);
+		}
+	}
+});
+
+test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip and own version', () => {
+	const { page, root } = renderStatus({ ok: true, state: 'running', since: NOW,
+		dns_tier: 'T1', dns_failsafe: true, node_id: 'n_a', node_ip: '203.0.113.10',
+		last_error: 'NODE_RESOLVE_FAILED' }, { ok: false });
+	const blocks = sections(root);
+	assert.ok(visibleText(blocks[0]).includes('已持续'));
+	assert.ok(visibleText(blocks[0]).includes('原因： 节点地址解析失败'));
+	assert.ok(visibleText(blocks[0]).includes('境外域名解析: 经节点解析（正常）'));
+	const reason = findAll(blocks[0], 'div').find((n) => n.children[0] === '原因：');
+	assert.equal(reason.attrs.style, 'color:var(--error-color-high, #c53030)');
+	const fallback = findAll(blocks[0], 'span').find((n) => visibleText(n) === 'DNS 已回退到原配置');
+	assert.equal(fallback.attrs.style, 'color:var(--warning-color, #b7791f)');
+	const address = findAll(blocks[1], 'small').find((n) => n.attrs.title === '节点地址');
+	assert.equal(address.children, '203.0.113.10');
+	assert.ok(findAll(blocks[1], 'span').some((n) => n.children === 'Alpha'
+		&& n.attrs.style === 'font-size: 1.2em'));
+	const table = findAll(blocks[2], 'table')[0];
+	assert.deepEqual(table.children.map((row) => row.children.map((cell) => cell.children)), [
+		[ '', '上传', '下载' ], [ '代理', '–', '–' ], [ '直连', '–', '–' ], [ '合计', '–', '–' ]
+	]);
+	const connections = findAll(blocks[2], 'span');
+	assert.equal(visibleText(connections[0]), '代理连接 3');
+	assert.equal(visibleText(connections[1]), '总连接 10');
+	assert.equal(connections[1].attrs.title, '系统连接跟踪表（conntrack）中的连接总数');
+	assert.doesNotMatch(visibleText(root), /T[123]|conntrack|aether-proxy 版本/);
+	const componentTable = findAll(blocks[3], 'table')[0];
+	assert.equal(componentTable.attrs.style, 'font-size: 0.9em');
+	assert.deepEqual(componentTable.children[1].children.map((c) => c.children), [ 'aether-proxy', '–', '–' ]);
+	page.refresh({ ok: true, state: 'stopped', dns_tier: 'T2' });
+	assert.doesNotMatch(visibleText(root), /境外域名解析|原因：/);
+});
+
+test('T10.3 scenario 6d: polling preserves enable, node selection, probe button and result nodes', () => {
+	const { page, root } = renderStatus({ ok: true, state: 'running' });
+	const enable = findAll(root, 'input')[0];
+	const nodes = findAll(root, 'select')[1];
+	const probeButton = page.probeButton;
+	const probeMessage = page.probeMessage;
+	nodes.value = 'n_b';
+	nodes.attrs.change();
+	probeButton.disabled = true;
+	probeMessage.content = '检测中';
+	page.refresh({ ok: true, state: 'degraded' }, readings(2000, 1024, 2048, 4096, 8192));
+	assert.equal(findAll(root, 'input')[0], enable);
+	assert.equal(findAll(root, 'select')[1], nodes);
+	assert.equal(nodes.value, 'n_b');
+	assert.equal(page.probeButton, probeButton);
+	assert.equal(probeButton.disabled, true);
+	assert.equal(page.probeMessage, probeMessage);
+	assert.equal(probeMessage.content, '检测中');
+	const rows = findAll(sections(root)[2], 'table')[0].children;
+	assert.deepEqual(rows[1].children.map((c) => c.children), [ '代理', '1.0 KB/s', '2.0 KB/s' ]);
+});
+
+test('T10.3 scenario 7: relative font sizes, theme-only colors and no theme-specific label modifiers', () => {
+	const src = fs.readFileSync(VIEW, 'utf8');
+	assert.doesNotMatch(src, /font-size:\s*\d+(?:\.\d+)?px/);
+	const withoutFallbacks = src.replace(/var\(--[\w-]+,\s*#[a-f\d]{3,8}\)/gi, '');
+	assert.doesNotMatch(withoutFallbacks, /#[a-f\d]{3,8}\b/i);
+	assert.doesNotMatch(src, /label\s+(success|warning|danger|notice|important)\b/);
+	assert.doesNotMatch(src, /rpc\s*\.\s*declare|innerHTML|cbi-button-reset/);
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {

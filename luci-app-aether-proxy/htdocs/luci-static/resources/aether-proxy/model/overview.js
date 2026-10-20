@@ -2,7 +2,7 @@
 'require baseclass';
 
 /*
- * Pure overview/Dashboard model (docs/10 「页面卡的写法」「概览页」「Dashboard：概览页升级」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页重排」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -48,6 +48,47 @@ function rel_time(now, ts) {
 		return fmt(_('%s hours ago', 'aether-proxy'), Math.floor(d / 3600));
 
 	return fmt(_('%s days ago', 'aether-proxy'), Math.floor(d / 86400));
+}
+
+/* Duration uses the same buckets as probe age, without implying a timestamp. */
+function state_duration(now, ts) {
+	const d = Math.max(0, Math.floor(now - ts));
+	if (d < 60)
+		return fmt(_('For %s seconds', 'aether-proxy'), d);
+	if (d < 3600)
+		return fmt(_('For %s minutes', 'aether-proxy'), Math.floor(d / 60));
+	if (d < 86400)
+		return fmt(_('For %s hours', 'aether-proxy'), Math.floor(d / 3600));
+	return fmt(_('For %s days', 'aether-proxy'), Math.floor(d / 86400));
+}
+
+function state_level(state) {
+	if (state == 'running')
+		return 'ok';
+	if (state == 'degraded' || state == 'failsafe')
+		return 'warn';
+	return state == 'error' ? 'error' : 'neutral';
+}
+
+function error_text(code) {
+	const texts = {
+		NODE_RESOLVE_FAILED: _('Node address resolution failed.', 'aether-proxy'),
+		CONFIG_INVALID: _('Invalid configuration; see the logs page.', 'aether-proxy'),
+		START_FAILED: _('Start failed; see the logs page.', 'aether-proxy')
+	};
+	return code == null ? null : (texts[code] ?? String(code));
+}
+
+/* DNS tiers are backend codes, not user-facing explanations (docs/03). */
+function dns_text(state, tier) {
+	if (!['starting', 'running', 'degraded', 'failsafe'].includes(state) || tier == null)
+		return null;
+	const texts = {
+		T1: _('Resolved through the node (normal).', 'aether-proxy'),
+		T2: _('Direct to overseas DNS (starting, or proxy unhealthy).', 'aether-proxy'),
+		T3: _('Domestic DNS only (overseas DNS unreachable; results may be poisoned).', 'aether-proxy')
+	};
+	return texts[tier] ?? String(tier);
 }
 
 /* docs/10 「概览页」「启用开关」: only start is usable in stopped/error; in every
@@ -131,6 +172,37 @@ function rate_text(rate) {
 	return rate.toFixed(1) + ' ' + units[unit];
 }
 
+/* Own version comes from a separate RPC, even when reading status failed. */
+function component_rows(version, status) {
+	const components = [{
+		name: 'aether-proxy',
+		version: (version && version.ok && typeof version.version == 'string') ? version.version : null,
+		path: null
+	}];
+	const raw = status?.components;
+	const entries = (typeof raw == 'object' && raw != null) ? raw : {};
+	for (const name of Object.keys(entries).sort()) {
+		const c = entries[name];
+		components.push({
+			name,
+			version: (c && typeof c == 'object' && c.version != null) ? String(c.version) : null,
+			path: (c && typeof c == 'object' && c.path != null) ? String(c.path) : null
+		});
+	}
+	return components;
+}
+
+function probe_fields(probe, now) {
+	if (typeof probe != 'object' || probe == null)
+		return { probe_text: _('Not probed yet.', 'aether-proxy'), probe_since_text: null, probe_level: 'neutral' };
+	return {
+		probe_text: probe.ok
+			? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy'),
+		probe_since_text: typeof probe.at == 'number' ? rel_time(now, probe.at) : null,
+		probe_level: probe.ok ? 'ok' : 'error'
+	};
+}
+
 return baseclass.extend({
 	refresh_options: function() {
 		return [
@@ -186,21 +258,17 @@ return baseclass.extend({
 			? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy') };
 	},
 
-	subscription_result: function(job, labels) {
-		const subs = job?.result?.subs;
-		if (!subs)
-			return { text: failure_text({ code: job?.code ?? job?.result?.code,
-				detail: job?.detail ?? job?.result?.detail }), failures: [] };
-		let success = 0;
-		const failures = [];
-		for (const [id, sub] of Object.entries(subs)) {
-			if (sub.ok)
-				success++;
-			else
-				failures.push((labels?.[id] || id) + ': ' + (sub.code ?? '?'));
-		}
-		return { text: fmt(_('Subscription update finished: %s succeeded, %s failed.', 'aether-proxy'), success, failures.length),
-			failures: failures };
+	node_options: function(labels, current) {
+		return Object.keys(labels ?? {}).sort().map((id) => ({
+			value: id,
+			text: id === current
+				? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)
+		}));
+	},
+
+	can_switch: function(selected, current) {
+		/* TODO(design): no empty-selection rule is specified; do not save an empty node. */
+		return !!selected && selected !== current;
 	},
 
 	/* status: the object resolved by ap.call('status'), version: the object
@@ -224,7 +292,7 @@ return baseclass.extend({
 			+ 'This is only temporary: restarting the router or saving the settings of this '
 			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
 
-		const own_version = (version && version.ok && typeof version.version == 'string') ? version.version : null;
+		const components = component_rows(version, status?.ok === false ? null : status);
 
 		/* docs/10: a failed status read shows the error and disables every button. */
 		if (!status || status.ok === false) {
@@ -236,14 +304,16 @@ return baseclass.extend({
 				error: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
 				state_text: null,
 				dns_failsafe: false,
-				state_since_text: null,
-				dns_tier_text: null,
-				node_text: null,
+				state_level: 'neutral',
+				state_duration_text: null,
+				error_text: null,
+				dns_text: null,
+				node_text: _('No node selected', 'aether-proxy'),
 				node_ip: null,
 				probe_text: null,
 				probe_since_text: null,
-				components: [],
-				own_version,
+				probe_level: 'neutral',
+				components,
 				notices: [],
 				enabled: is_enabled,
 				enabled_note,
@@ -256,45 +326,19 @@ return baseclass.extend({
 		const state = status.state ?? 'unknown';
 		const node_id = (status.node_id == null) ? null : String(status.node_id);
 
-		let probe_text = null, probe_since_text = null;
-		const probe = (typeof status.last_probe == 'object' && status.last_probe != null) ? status.last_probe : null;
-
-		if (probe) {
-			probe_text = probe.ok ? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy');
-
-			if (typeof probe.at == 'number')
-				probe_since_text = rel_time(now, probe.at);
-		}
-		else {
-			probe_text = _('Not probed yet.', 'aether-proxy');
-		}
-
-		const components = [];
-		const raw_components = (typeof status.components == 'object' && status.components != null) ? status.components : {};
-
-		for (const name of Object.keys(raw_components).sort()) {
-			const c = raw_components[name];
-
-			components.push({
-				name,
-				version: (c && typeof c == 'object' && c.version != null) ? String(c.version) : null,
-				path: (c && typeof c == 'object' && c.path != null) ? String(c.path) : null
-			});
-		}
-
 		return {
 			ok: true,
 			error: null,
 			state_text: state_text(state, status.waiting_network === true),
 			dns_failsafe: status.dns_failsafe === true,
-			state_since_text: (typeof status.since == 'number') ? rel_time(now, status.since) : null,
-			dns_tier_text: (status.dns_tier == null) ? null : String(status.dns_tier),
-			node_text: (node_id == null) ? null : (labels[node_id] || node_id),
+			state_level: state_level(state),
+			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,
+			error_text: error_text(status.last_error),
+			dns_text: dns_text(state, status.dns_tier),
+			node_text: (node_id == null) ? _('No node selected', 'aether-proxy') : (labels[node_id] || node_id),
 			node_ip: (status.node_ip == null) ? null : String(status.node_ip),
-			probe_text,
-			probe_since_text,
+			...probe_fields(status.last_probe, now),
 			components,
-			own_version,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),
 			enabled: is_enabled,
 			enabled_note,

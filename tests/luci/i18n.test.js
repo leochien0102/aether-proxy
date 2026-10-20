@@ -23,9 +23,7 @@ const NON_LITERAL_ALLOWLIST = new Map();
 /* Keys are exact source texts, values explain why the program name remains.
  * Reject unused entries so this temporary allowance cannot outlive its page card.
  */
-const DISPLAY_NAME_ALLOWLIST = new Map([
-	[ 'aether-proxy version', '随概览页的卡移除' ]
-]);
+const DISPLAY_NAME_ALLOWLIST = new Map();
 
 function files_under(dir, suffix) {
 	return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })
@@ -418,8 +416,8 @@ test('T10.2 scenario 1: menu and overview titles use Aether Proxy with their own
 	}
 });
 
-test('T10.2 scenario 2: real UI texts pass the program-name gate with only the version exception', () => {
-	assert.deepEqual([ ...DISPLAY_NAME_ALLOWLIST.keys() ], [ 'aether-proxy version' ]);
+test('T10.2 scenario 2: real UI texts pass the program-name gate without exceptions', () => {
+	assert.equal(DISPLAY_NAME_ALLOWLIST.size, 0);
 	assert.deepEqual(display_name_errors(real.entries), []);
 });
 
@@ -433,10 +431,12 @@ test('T10.2 scenario 2: JS and menu program names fail once each with exact file
 });
 
 test('T10.2 scenario 2: display-name exceptions must appear, match exactly and explain why', () => {
-	assert.deepEqual(display_name_errors([]), [ 'Unused display-name exception: aether-proxy version' ]);
+	assert.deepEqual(display_name_errors([]), []);
+	const allowlist = new Map([ [ 'aether-proxy version', 'Synthetic exception for exact-match testing.' ] ]);
+	assert.deepEqual(display_name_errors([], allowlist), [ 'Unused display-name exception: aether-proxy version' ]);
 	const entry = { file: 'version.js', line: 3, msgid: 'aether-proxy version' };
-	assert.deepEqual(display_name_errors([ entry ]), []);
-	assert.deepEqual(display_name_errors([ { ...entry, msgid: 'Aether-Proxy version' } ]), [
+	assert.deepEqual(display_name_errors([ entry ], allowlist), []);
+	assert.deepEqual(display_name_errors([ { ...entry, msgid: 'Aether-Proxy version' } ], allowlist), [
 		'version.js:3 program name in UI text: "Aether-Proxy version"',
 		'Unused display-name exception: aether-proxy version'
 	]);
@@ -449,7 +449,7 @@ test('T10.2 scenario 2: display-name exceptions must appear, match exactly and e
 test('T9.1 scenario 1: all htdocs JS and menu titles have non-empty translations', t => {
 	assert.ok(sources.size > 0, 'must discover JS files');
 	assert.ok(menus.size > 0, 'must discover menu files');
-	assert.equal(real.entries.length, 450, 'context migration must preserve the reference count');
+	assert.equal(real.entries.length, 465, 'T10.3 overview layout reference count');
 	assert.deepEqual(real.unused, [], 'all non-metadata entries must be referenced');
 	t.diagnostic(`Scanned ${sources.size} JS files, ${menus.size} menu files, ${real.entries.length} references`);
 	t.diagnostic(`Unused msgids: ${real.unused.length}; first 10: ${JSON.stringify(real.unused.slice(0, 10))}`);
