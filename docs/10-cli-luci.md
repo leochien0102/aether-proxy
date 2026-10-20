@@ -472,7 +472,7 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 1. **待处理提示**：读取状态失败的错误（`alert-message error`）、「服务未启用」提示、`notices` 各条（`alert-message warning`，一条一个列表项）都放在这里，没有就不显示这一块。
 2. **状态**：
    - 第一行左边是**状态词**，字号 1.6 倍（`font-size: 1.6em`）、加粗，按状态着色（见下方「着色」）；后面跟持续时间「已持续 <时长>」（`since` 到现在，时长写成「x 秒」「x 分钟」「x 小时」「x 天」，进位同原来的相对时间）；`dns_failsafe` 为真时同一行再显示「DNS 已回退到原配置」（警告色）。
-     右边是「启用」开关，开关的说明文字（原来的 `enabled_note`）放在开关下方，用小字。
+     右边是「启用」开关，开关的说明文字（原来的 `enabled_note`）放在开关下方，用小字。开关与说明是一个**靠右对齐**的紧凑组（不用 `cbi-value` 表单行：它的标题列让开关和说明与页面其他靠右的控件对不齐，2026-10-20 真机预览后改）。
    - `last_error` 不为空时，第一行下方显示「原因：<文字>」（失败色）。上面「概览页」本来就要求显示它，T8.4 漏了（2026-10-20 复查发现），这次补上。
      文字：`NODE_RESOLVE_FAILED` 节点地址解析失败；`CONFIG_INVALID` 配置无效，详见日志页；`START_FAILED` 启动失败，详见日志页；其他值原样显示（这三个是 daemon 目前会写入的全部取值）。
    - 第二行「境外域名解析」：服务处于 `starting`、`running`、`degraded`、`failsafe` 且 `dns_tier` 不为空时才显示，文字按级别（[03](03-dns.md)「DNS 级别」）：

@@ -329,6 +329,8 @@ test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts
 
 		page.enabled = data[2].enabled;
 		const box = findTag(page.enableSwitch('note'), 'input');
+		/* right-aligned compact group, not a cbi-value form row (it misaligned on H28K) */
+		assert.match(page.enableSwitch('note').attrs.style, /align-items:\s*flex-end/);
 
 		assert.ok(box, 'the switch renders an input');
 		assert.equal(box.attrs.checked, expected ? 'checked' : null, `checked attribute for main.enabled=${raw}`);
@@ -1090,7 +1092,7 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	for (const tag of [ 'div', 'label' ]) {
 		for (const element of findAll(root, tag)) {
 			if (/display:\s*flex/.test(element.attrs.style ?? ''))
-				assert.match(element.attrs.style, /align-items:\s*center/);
+				assert.match(element.attrs.style, /align-items:\s*(center|flex-end)/);
 		}
 	}
 });
@@ -1100,7 +1102,8 @@ test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; n
 	const styles = [ ...source.matchAll(/['"]([^'"\n]*display:\s*flex[^'"\n]*)['"]/g) ];
 	assert.ok(styles.length >= 8, 'all remaining flex declarations are examined');
 	for (const [, style] of styles)
-		assert.match(style, /align-items:\s*center/);
+		/* docs/10 「样式」 requires an explicit value, usually center (flex-end for the right-aligned enable group) */
+		assert.match(style, /align-items:\s*(center|flex-end)/);
 	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
 

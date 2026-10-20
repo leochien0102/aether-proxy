@@ -71,9 +71,14 @@ return view.extend({
 	enableSwitch: function(note) {
 		const self = this;
 
-		return E('div', { 'class': 'cbi-value' }, [
-			E('label', { 'class': 'cbi-value-title' }, _('Enable', 'aether-proxy')),
-			E('div', { 'class': 'cbi-value-field' }, [
+		/* A compact right-aligned group instead of cbi-value: the form-row title
+		   column left the switch and its note out of line with the other
+		   right-hand controls of the page (H28K preview, 2026-10-20). */
+		return E('div', {
+			'style': 'display:flex; flex-direction:column; align-items:flex-end; gap:0.25em; text-align:right'
+		}, [
+			E('label', { 'style': 'display:flex; align-items:center; gap:0.5em' }, [
+				_('Enable', 'aether-proxy'),
 				E('input', {
 					'type': 'checkbox',
 					'id': 'aetherproxy-enabled',
@@ -81,9 +86,9 @@ return view.extend({
 					'change': ui.createHandlerFn(this, function(ev) {
 						return self.handleEnable(ev.target.checked);
 					})
-				}),
-				E('div', { 'class': 'cbi-value-description', 'style': 'font-size: 0.9em' }, [ note ?? '' ])
-			])
+				})
+			]),
+			E('small', { 'style': 'max-width:22em' }, [ note ?? '' ])
 		]);
 	},
 
