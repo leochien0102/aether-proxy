@@ -47,11 +47,17 @@ else
 	bad 'package manager available'
 	exit 1
 fi
+# apk v3 takes --no-scripts as a commit option of add/del, after the applet; update rejects it.
 pm() {
 	if [ "$manager" = opkg ]; then
 		run opkg --offline-root "${root:-/}" "$@"
 	else
-		run apk --root "${root:-/}" --no-scripts "$@"
+		applet=$1
+		shift
+		case "$applet" in
+			add|del) run apk --root "${root:-/}" "$applet" --no-scripts "$@" ;;
+			*) run apk --root "${root:-/}" "$applet" "$@" ;;
+		esac
 	fi
 }
 
@@ -73,6 +79,8 @@ for name in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
 	fi
 	set -- "$@" "$selected"
 done
+# An unbooted rootfs has an empty /tmp, which /var points into: opkg cannot create its lock.
+mkdir -p "$root/var/lock" || exit 1
 pm update || exit 1
 if [ "$manager" = opkg ]; then
 	pm install "$@" || exit 1

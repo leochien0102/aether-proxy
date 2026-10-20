@@ -76,9 +76,13 @@ with open(root / 'commands', 'a') as log:
 if manager == 'opkg':
     assert a[:2] == ['--offline-root', str(root)], a
 else:
-    assert a[:3] == ['--root', str(root), '--no-scripts'], a
+    assert a[:2] == ['--root', str(root)], a
+    if a[2] in ('add', 'del'):
+        assert a[3] == '--no-scripts', a
+    else:
+        assert '--no-scripts' not in a, a
 assert '--nodeps' not in a and '--force-depends' not in a, a
-command = a[2] if manager == 'opkg' else a[3]
+command = a[2]
 if command == 'update':
     sys.exit(0)
 if command in ('install', 'add'):
