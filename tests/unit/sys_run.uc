@@ -171,12 +171,17 @@ function term_first_case() {
 	let path = `tests/unit/term-first.${fs.readlink('/proc/self')}`;
 	let before = sleeper_pids([ 1 ]);
 	let script = 'trap \'printf TERM > "$1"; exit 0\' TERM; while :; do :; done';
+	let started = clock_seconds();
 	let r = sys.run([ 'sh', '-c', script, 'sh', path ], { timeout: 1, quiet: true });
+	let elapsed = clock_seconds() - started;
 	let received = fs.readfile(path);
 	if (received != null && !fs.unlink(path))
 		return failed(`cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
 	if (r.code != 124 || !r.timed_out || received != 'TERM')
 		return failed(sprintf('result %.J, first signal %J', r, received));
+	// The command exits on TERM, so the wrapper must cancel the 1 s grace sleep, not wait it out.
+	if (elapsed >= 1.7)
+		return failed(sprintf('returned after %.2fs; the grace sleep was waited out', elapsed));
 	let residue = filter(sleeper_pids([ 1 ]), pid => index(before, pid) < 0);
 	return length(residue) ? failed(sprintf('unreaped grace sleepers %.J', residue)) : 'PASS';
 }
