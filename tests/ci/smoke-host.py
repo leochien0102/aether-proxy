@@ -59,6 +59,7 @@ def make_root(root):
 	shutil.copytree(REPO / 'luci-app-aether-proxy/root', root, dirs_exist_ok=True)
 	shutil.copytree(REPO / 'luci-app-aether-proxy/htdocs', root / 'www', dirs_exist_ok=True)
 	(root / 'usr/share/ucode/aetherproxy').mkdir(parents=True)
+	(root / 'usr/share/ucode/aetherproxy/const.uc').write_text('// module\n')
 
 
 # Package-manager stubs enforce safe options and simulate uninstall; any unexpected command
@@ -99,7 +100,9 @@ assert a[-3:] == ['luci-i18n-aether-proxy-zh-cn', 'luci-app-aether-proxy', 'aeth
 for file in ('usr/bin/aether-proxy', 'etc/init.d/aether-proxy'):
     (root / file).unlink()
 if os.environ['STUB_FAULT'] != 'uninstall':
-    shutil.rmtree(root / 'usr/share/ucode/aetherproxy')
+    # Like opkg --offline-root in CI: the module files go, the emptied directory may stay.
+    for module in (root / 'usr/share/ucode/aetherproxy').iterdir():
+        module.unlink()
 '''
 
 CLI_STUB = '''#!/usr/bin/env python3
@@ -190,7 +193,7 @@ def verify_scenarios(work, golden):
 		'default': 'FAIL  default check exits 0 (got 2)',
 		'sample': 'FAIL  sample check exits 0 (got 2)',
 		'plugin': 'FAIL  rpcd plugin loads without rpcd',
-		'uninstall': 'FAIL  removed /usr/share/ucode/aetherproxy',
+		'uninstall': 'FAIL  removed /usr/share/ucode/aetherproxy files',
 		'version': 'FAIL  version exits 0 (got 19)',
 		'version-content': 'FAIL  version contains package version',
 		'install': 'solver: missing dependency example-dependency',

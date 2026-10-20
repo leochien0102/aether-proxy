@@ -171,12 +171,21 @@ if [ "$manager" = opkg ]; then
 else
 	pm del luci-i18n-aether-proxy-zh-cn luci-app-aether-proxy aether-proxy || exit 1
 fi
-for file in /usr/bin/aether-proxy /usr/share/ucode/aetherproxy /etc/init.d/aether-proxy; do
+for file in /usr/bin/aether-proxy /etc/init.d/aether-proxy; do
 	if [ ! -e "$root$file" ] && [ ! -L "$root$file" ]; then
 		ok "removed $file"
 	else
 		bad "removed $file"
 	fi
 done
+# opkg --offline-root removes the module files but may keep the emptied directories (first CI
+# run, 24.10): what matters is that no module file is left behind.
+left=$(find "$root/usr/share/ucode/aetherproxy" ! -type d 2>/dev/null)
+if [ -z "$left" ]; then
+	ok 'removed /usr/share/ucode/aetherproxy files'
+else
+	printf '%s\n' "$left"
+	bad 'removed /usr/share/ucode/aetherproxy files'
+fi
 printf 'smoke: %s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
