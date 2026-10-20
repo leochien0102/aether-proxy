@@ -1,5 +1,6 @@
 'use strict';
 
+// Process timeout regressions, including rc.common's inherited SIGTERM ignore (docs/12 rule 2).
 import * as sys from 'aetherproxy.sys';
 import * as fs from 'fs';
 import * as uloop from 'uloop';
@@ -38,6 +39,16 @@ export const cases = [
 		code: 3
 	},
 	{
+		name: 'timer diagnostic filtering preserves identical command stderr',
+		expect: 'PASS',
+		kind: 'exit',
+		argv: [ 'sh', '-c', 'printf "\\nTerminated\\nKilled\\nNo such process\\n\\n" >&2; exit 7' ],
+		opts: { timeout: 10 },
+		stdout: '',
+		stderr: '\nTerminated\nKilled\nNo such process\n\n',
+		code: 7
+	},
+	{
 		name: 'timeout kills command and reports timeout',
 		expect: 'PASS',
 		kind: 'timeout',
@@ -72,6 +83,29 @@ export const cases = [
 		kind: 'lock_cloexec'
 	},
 	{
+		name: 'inherited ignored TERM: true returns within 2s without timer residue',
+		expect: 'PASS',
+		kind: 'inherited',
+		argv: [ 'true' ],
+		timeout: 10,
+		code: 0,
+		limit: 2
+	},
+	{
+		name: 'inherited ignored TERM: timeout returns 124 within 3s without timer residue',
+		expect: 'PASS',
+		kind: 'inherited',
+		argv: [ 'sleep', '30' ],
+		timeout: 1,
+		code: 124,
+		limit: 3
+	},
+	{
+		name: 'timeout delivers TERM before KILL and reaps grace timer',
+		expect: 'PASS',
+		kind: 'term_first'
+	},
+	{
 		name: 'timeout implementation uses integer sleep only',
 		expect: 'PASS',
 		kind: 'source'
@@ -83,19 +117,68 @@ function clock_seconds() {
 	return r.code == 0 ? +r.stdout : null;
 }
 
+function sleeper_pids(durations) {
+	let r = sys.run([ 'ps', '-C', 'sleep', '-o', 'pid=,args=' ], { quiet: true });
+	let pids = [];
+	// ps -C returns 1 when no sleep exists; any other failure must not fake an empty table.
+	if (r.code != 0 && (r.code != 1 || r.stderr != ''))
+		die(sprintf('cannot inspect sleep processes: %.J', r));
+
+	for (let line in split(trim(r.stdout ?? ''), '\n')) {
+		let fields = match(trim(line), /^([0-9]+) sleep ([0-9]+)$/);
+		if (fields && index(durations, +fields[2]) >= 0)
+			push(pids, fields[1]);
+	}
+
+	return pids;
+}
+
 function sleep_30_count() {
-	let r = sys.run([ 'ps', '-C', 'sleep', '-o', 'args=' ], { quiet: true });
-	let count = 0;
-
-	for (let line in split(trim(r.stdout ?? ''), '\n'))
-		if (trim(line) == 'sleep 30')
-			count++;
-
-	return count;
+	return length(sleeper_pids([ 30 ]));
 }
 
 function failed(detail) {
 	return 'FAIL: ' + detail;
+}
+
+function inherited_term_case(c) {
+	let before = sleeper_pids([ 1, 10, 30 ]);
+	// Start another interpreter: changing the test runner's signal disposition would
+	// contaminate later cases and would not model inheritance through rc.common.
+	let code = "import * as sys from 'aetherproxy.sys'; " +
+		'let start = clock(true); ' +
+		`let result = sys.run(${sprintf('%.J', c.argv)}, { timeout: ${c.timeout}, quiet: true }); ` +
+		'let end = clock(true); ' +
+		"print(sprintf('%.J', { result, elapsed: end[0] - start[0] + (end[1] - start[1]) / 1000000000.0 }));";
+	let child = sys.run([ 'sh', '-c', 'trap \'\' TERM; exec "$@"', 'sh',
+		'tests/host/ucode', '-e', code ], { quiet: true });
+	if (child.code != 0)
+		return failed(sprintf('child %.J', child));
+	let measured = json(child.stdout);
+	let r = measured.result;
+	printf('INFO  %s: %.3fs, code %d, timed_out %J\n', c.name, measured.elapsed, r.code, r.timed_out);
+	if (r.code != c.code || r.timed_out != (c.code == 124) || measured.elapsed >= c.limit)
+		return failed(sprintf('measured %.J', measured));
+	if (r.stdout != '' || r.stderr != '')
+		return failed(sprintf('unexpected inherited-command output %.J', r));
+	let residue = filter(sleeper_pids([ 1, 10, 30 ]), pid => index(before, pid) < 0);
+	if (length(residue))
+		return failed(sprintf('unreaped sleepers %.J', residue));
+	return 'PASS';
+}
+
+function term_first_case() {
+	let path = `tests/unit/term-first.${fs.readlink('/proc/self')}`;
+	let before = sleeper_pids([ 1 ]);
+	let script = 'trap \'printf TERM > "$1"; exit 0\' TERM; while :; do :; done';
+	let r = sys.run([ 'sh', '-c', script, 'sh', path ], { timeout: 1, quiet: true });
+	let received = fs.readfile(path);
+	if (received != null && !fs.unlink(path))
+		return failed(`cannot remove ${path}: ${fs.error() ?? 'unknown error'}`);
+	if (r.code != 124 || !r.timed_out || received != 'TERM')
+		return failed(sprintf('result %.J, first signal %J', r, received));
+	let residue = filter(sleeper_pids([ 1 ]), pid => index(before, pid) < 0);
+	return length(residue) ? failed(sprintf('unreaped grace sleepers %.J', residue)) : 'PASS';
 }
 
 export function run(c) {
@@ -140,6 +223,12 @@ export function run(c) {
 
 		return 'PASS';
 	}
+
+	if (c.kind == 'inherited')
+		return inherited_term_case(c);
+
+	if (c.kind == 'term_first')
+		return term_first_case();
 
 	if (c.kind == 'sigchld') {
 		uloop.init();

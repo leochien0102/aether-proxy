@@ -675,19 +675,51 @@ function verify_installed_version(ctx, pm, name, version) {
 	return installed.ok && installed.version == version;
 }
 
+// Share the exact activation commands between post-install verification and rollback:
+// reinstalling files alone leaves the failed version running in memory (docs/08 step 4).
+function signal_xray(ctx) {
+	let ubus = ctx.bin_dir ? `${ctx.bin_dir}/ubus` : 'ubus';
+	// procd's `service signal` policy: name string, signal int32; no instance = all instances.
+	let request = sprintf('%.J', { name: C.UPDATE_SERVICE_NAME, signal: C.UPDATE_SIGUSR2 });
+	let signal = sys.run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
+	if (signal.code != 0) {
+		log.event('error', 'CMD_FAILED', {
+			cmd: `ubus call service signal ${request}`, rc: signal.code, stderr: trim(signal.stderr)
+		});
+		return false;
+	}
+	return true;
+}
+
+function restart_service(ctx) {
+	let init = system_path(ctx.root, C.UPDATE_INIT);
+	let restarted = sys.run([ init, 'restart' ], { timeout: C.UPDATE_RESTART_TIMEOUT_SECS });
+	if (restarted.code != 0) {
+		log.event('error', 'CMD_FAILED', {
+			cmd: `${init} restart`, rc: restarted.code, stderr: trim(restarted.stderr)
+		});
+		return false;
+	}
+	return true;
+}
+
+function activate_rollback(ctx, name, before_state) {
+	if (index([ 'starting', 'running', 'degraded' ], before_state?.state) < 0)
+		return;
+	// Best effort only: do not verify again or turn a completed rollback into a new result.
+	if (name == 'aether-proxy')
+		restart_service(ctx);
+	else if (name == 'xray-core')
+		signal_xray(ctx);
+}
+
 function verify_package(ctx, opts, pm, name, version, before_state, before_probe) {
 	if (name == 'luci-app-aether-proxy' || name == 'luci-i18n-aether-proxy-zh-cn')
 		return true;
 	if (name == 'xray-core') {
 		if (before_state?.state == 'running') {
-			let ubus = ctx.bin_dir ? `${ctx.bin_dir}/ubus` : 'ubus';
-			// procd's `service signal` policy: name string, signal int32; no instance = all instances.
-			let request = sprintf('%.J', { name: C.UPDATE_SERVICE_NAME, signal: C.UPDATE_SIGUSR2 });
-			let signal = sys.run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
-			if (signal.code != 0) {
-				log.event('error', 'CMD_FAILED', { cmd: `ubus call service signal ${request}`, rc: signal.code, stderr: trim(signal.stderr) });
+			if (!signal_xray(ctx))
 				return false;
-			}
 			let wait = wait_limit(C.UPDATE_XRAY_WAIT_SECS);
 			return wait_for(ctx, wait, () => {
 				let state = service_state(ctx);
@@ -708,12 +740,8 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 		return false;
 	}
 	if (name == 'aether-proxy') {
-		let init = system_path(ctx.root, C.UPDATE_INIT);
-		let restarted = sys.run([ init, 'restart' ], { timeout: 35 });
-		if (restarted.code != 0) {
-			log.event('error', 'CMD_FAILED', { cmd: `${init} restart`, rc: restarted.code, stderr: trim(restarted.stderr) });
+		if (!restart_service(ctx))
 			return false;
-		}
 		if (index([ 'running', 'degraded' ], before_state?.state) >= 0)
 			return wait_for(ctx, wait_limit(C.UPDATE_SERVICE_WAIT_SECS), () => {
 				let state = service_state(ctx);
@@ -771,6 +799,7 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 	if (!rolled.ok)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `rollback failed: ${rolled.detail}` };
 	log.event('error', 'UPDATE_ROLLED_BACK', { package: name, version: rollback.version });
+	activate_rollback(ctx, name, before_state);
 	return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `verification failed; rolled back to ${rollback.version}`,
 		value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: true, code: 'UPDATE_VERIFY_FAILED' } };
 }
