@@ -2,7 +2,7 @@
 'require baseclass';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第三轮修正」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第四轮修正」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -302,6 +302,8 @@ return baseclass.extend({
 			: (enabled === true || enabled === '1' || enabled === 1);
 		const enabled_note = _('Once enabled the service starts at boot; turning it off stops the service '
 			+ 'immediately and all traffic goes out directly.', 'aether-proxy');
+		const disable_confirmation = _('Turning this off stops the service immediately, sends all traffic directly, '
+			+ 'and disables automatic startup at boot. Turn it off?', 'aether-proxy');
 		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the Enable switch '
 			+ 'and it will start automatically.', 'aether-proxy');
 		const stop_confirmation = _('Stopping the service leaves all traffic going out directly. '
@@ -348,6 +350,7 @@ return baseclass.extend({
 				notices: [],
 				enabled: is_enabled,
 				enabled_note,
+				disable_confirmation,
 				disabled_notice,
 				stop_confirmation,
 				buttons: { start: false, restart: false, stop: false }
@@ -373,6 +376,7 @@ return baseclass.extend({
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),
 			enabled: is_enabled,
 			enabled_note,
+			disable_confirmation,
 			disabled_notice,
 			stop_confirmation,
 			buttons: buttons_for(true, state, is_enabled)

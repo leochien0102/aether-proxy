@@ -1,6 +1,6 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -329,15 +329,18 @@ test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts
 
 		page.enabled = data[2].enabled;
 		const box = findTag(page.enableSwitch('note'), 'input');
-		/* right-aligned compact group, not a cbi-value form row (it misaligned on H28K) */
-		assert.match(page.enableSwitch('note').attrs.style, /align-items:\s*flex-end/);
+		/* The compact switch now sits beside the title, without a visible note. */
+		assert.match(page.enableSwitch('note').attrs.style, /align-items:\s*center/);
 
 		assert.ok(box, 'the switch renders an input');
 		assert.equal(box.attrs.checked, expected ? 'checked' : null, `checked attribute for main.enabled=${raw}`);
 	}
 });
 
-test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, and never calls service', async () => {
+test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, and never calls service', async (t) => {
+	const saved = globalThis.confirm;
+	globalThis.confirm = () => true;
+	t.after(() => { globalThis.confirm = saved; });
 	const order = [];
 	const rpcCalls = [];
 	const page = loadView({
@@ -349,6 +352,7 @@ test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, 
 		ui: { changes: { apply: (rollback) => { order.push([ 'apply', rollback ]); } } }
 	});
 
+	page.vm = build({ ok: true, state: 'running' });
 	await page.handleEnable(true);
 	assert.deepEqual(order, [ [ 'set', 'aetherproxy', 'main', 'enabled', '1' ], [ 'save' ], [ 'apply', true ] ]);
 	assert.equal(page.enabled, true);
@@ -863,6 +867,11 @@ function sections(root) {
 	return findAll(root, 'div').filter((el) => el.attrs.class === 'cbi-section');
 }
 
+/* The node controls are the last row of the merged runtime section. */
+function nodeRow(root) {
+	return sections(root).find((s) => s.children[0].children === '运行状态').children.at(-1);
+}
+
 function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
 	const page = loadView();
 	const root = page.render([ { reply: status, stats: readings(1000, 0, 0, 0, 0) }, version,
@@ -877,13 +886,13 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	] };
 	const { root } = renderStatus(status);
 	assert.deepEqual(sections(root).map((s) => s.children[0].children),
-		[ '待处理提示', '状态', '当前节点', '流量与连接', '组件版本' ]);
+		[ '运行状态', '流量与连接', '组件版本' ]);
 	const title = root.children[0];
 	assert.equal(findAll(title, 'h2')[0].children, '以太跃迁');
 	assert.equal(findAll(title, 'select').length, 1);
 	assert.equal(findAll(title, 'button')[0].children, '刷新');
 	assert.ok(visibleText(title).includes('自动刷新'));
-	const noticeItems = findAll(sections(root)[0], 'li');
+	const noticeItems = findAll(root, 'li');
 	assert.equal(noticeItems.length, 2);
 	assert.ok(noticeItems.every((li) => li.attrs.class === 'alert-message warning'));
 	assert.ok(visibleText(noticeItems[0]).includes('xray'));
@@ -891,10 +900,10 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	assert.doesNotMatch(fs.readFileSync(VIEW, 'utf8'), /sub_update/);
 	const clean = renderStatus({ ok: true, state: 'running' }).root;
 	assert.deepEqual(sections(clean).map((s) => s.children[0].children),
-		[ '状态', '当前节点', '流量与连接', '组件版本' ]);
+		[ '运行状态', '流量与连接', '组件版本' ]);
 	const failure = renderStatus({ ok: false, code: 'TIMEOUT', detail: 'offline' }, undefined, false).root;
-	const pending = sections(failure)[0];
-	assert.equal(pending.children[0].children, '待处理提示');
+	const pending = failure.children[1];
+	assert.doesNotMatch(visibleText(pending), /待处理提示/);
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message error'
 		&& visibleText(n).includes('TIMEOUT: offline')));
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message warning'
@@ -917,8 +926,8 @@ test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has
 				assert.ok(word.attrs.style.includes(colors[level]));
 			const text = probe ? (probe.ok ? tr('Healthy, %s ms', '?') : tr('Probe failed'))
 				: tr('Not probed yet');
-			const result = findAll(sections(root)[1], 'span').find((n) => visibleText(n) === text);
-			assert.ok(result, 'health result is in the current-node section');
+			const result = findAll(nodeRow(root), 'span').find((n) => visibleText(n) === text);
+			assert.ok(result, 'health result is in the runtime node row');
 			assert.equal(result.attrs.style, probeLevel === 'neutral' ? '' : 'color:' + colors[probeLevel]);
 		}
 	}
@@ -936,20 +945,20 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.equal(reason.attrs.style, 'color:var(--error-color-high, #c53030)');
 	const fallback = findAll(blocks[0], 'span').find((n) => visibleText(n) === 'DNS 已回退到原配置');
 	assert.equal(fallback.attrs.style, 'color:var(--warning-color, #b7791f)');
-	const address = findAll(blocks[1], 'span').find((n) => n.children === '节点地址 203.0.113.10');
+	const address = findAll(nodeRow(root), 'span').find((n) => n.children === '节点地址 203.0.113.10');
 	assert.ok(address);
 	assert.equal(address.attrs.title, undefined);
-	assert.ok(!findAll(blocks[1], 'span').some((n) => n.attrs.style === 'font-size: 1.2em'));
-	const table = findAll(blocks[2], 'table')[0];
+	assert.ok(!findAll(nodeRow(root), 'span').some((n) => n.attrs.style === 'font-size: 1.2em'));
+	const table = findAll(blocks[1], 'table')[0];
 	assert.deepEqual(table.children.map((row) => row.children.map((cell) => cell.children)), [
 		[ '', '上传', '下载' ], [ '代理', '–', '–' ], [ '直连', '–', '–' ], [ '合计（WAN 口）', '–', '–' ]
 	]);
-	const connections = findAll(blocks[2], 'span');
+	const connections = findAll(blocks[1], 'span');
 	assert.equal(visibleText(connections[0]), '代理连接 3');
 	assert.equal(visibleText(connections[1]), '总连接 10');
 	assert.equal(connections[1].attrs.title, '系统连接跟踪表（conntrack）中的连接总数');
 	assert.doesNotMatch(visibleText(root), /T[123]|conntrack|aether-proxy 版本/);
-	const componentTable = findAll(blocks[3], 'table')[0];
+	const componentTable = findAll(blocks[2], 'table')[0];
 	assert.equal(componentTable.attrs.style, 'font-size: 0.9em');
 	assert.deepEqual(componentTable.children[1].children.map((c) => c.children), [ 'aether-proxy', '–', '–' ]);
 	page.refresh({ ok: true, state: 'stopped', dns_tier: 'T2' });
@@ -974,7 +983,7 @@ test('T10.3 scenario 6d: polling preserves enable, node selection, probe button 
 	assert.equal(probeButton.disabled, true);
 	assert.equal(page.probeMessage, probeMessage);
 	assert.equal(probeMessage.content, '检测中');
-	const rows = findAll(sections(root)[2], 'table')[0].children;
+	const rows = findAll(sections(root)[1], 'table')[0].children;
 	assert.deepEqual(rows[1].children.map((c) => c.children), [ '代理', '1.0 KB/s', '2.0 KB/s' ]);
 });
 
@@ -1084,7 +1093,7 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	assert.deepEqual(page.vm.components.slice(1).map((c) => c.path), [ '/usr/bin/xray', '未找到' ]);
 	const title = root.children[0];
 	assert.match(title.attrs.style, /margin-bottom:\s*1em/);
-	const label = findAll(title, 'label')[0];
+	const label = findAll(title, 'label').find((el) => visibleText(el).includes('自动刷新'));
 	assert.ok(findAll(label, 'span').some((n) => n.children === '自动刷新'
 		&& /white-space:\s*nowrap/.test(n.attrs.style)));
 	assert.equal(findAll(label, 'select').length, 1, 'label and select share the flex container');
@@ -1102,7 +1111,7 @@ test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; n
 	const styles = [ ...source.matchAll(/['"]([^'"\n]*display:\s*flex[^'"\n]*)['"]/g) ];
 	assert.ok(styles.length >= 8, 'all remaining flex declarations are examined');
 	for (const [, style] of styles)
-		/* docs/10 「样式」 requires an explicit value, usually center (flex-end for the right-aligned enable group) */
+		/* docs/10 「样式」 requires an explicit value, usually center. */
 		assert.match(style, /align-items:\s*(center|flex-end)/);
 	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
@@ -1204,7 +1213,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	]);
 	const blocks = sections(root).slice(0, -1);
 	const tables = findAll(root, 'table');
-	const nodes = findAll(blocks[1], 'select')[0];
+	const nodes = findAll(blocks[0], 'select')[0];
 	nodes.value = 'n_b';
 	nodes.attrs.change();
 	page.probeMessage.content = '检测中';
@@ -1222,7 +1231,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	sections(root).slice(0, -1).forEach((block, i) => assert.equal(block, blocks[i]));
 	assert.equal(findAll(root, 'table')[0], tables[0], 'traffic table is not replaced');
 	assert.notEqual(findAll(root, 'table')[1], tables[1], 'component table alone is replaced');
-	assert.equal(findAll(blocks[1], 'select')[0], nodes);
+	assert.equal(findAll(blocks[0], 'select')[0], nodes);
 	assert.equal(nodes.value, 'n_b');
 	assert.equal(page.probeMessage.content, '检测中');
 	await polls[0]();
@@ -1249,9 +1258,8 @@ test('T10.5 scenario 2b: failed post-render inventory replaces all four loading 
 test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallback, address and no large name', () => {
 	const { page, root } = renderStatus({ ok: true, state: 'running', node_id: 'n_b',
 		node_ip: '203.0.113.10', last_probe: { ok: true, latency_ms: 12, at: NOW - 30 } });
-	const nodeBlock = sections(root)[1];
-	assert.equal(nodeBlock.children.length, 2, 'heading plus exactly one outer row');
-	const row = nodeBlock.children[1];
+	const nodeBlock = nodeRow(root);
+	const row = nodeBlock;
 	assert.equal(row.children.length, 2, 'left selector group and right probe group');
 	const [first, second] = row.children;
 	const select = findAll(first, 'select')[0];
@@ -1268,13 +1276,13 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => s.attrs.title));
 	page.refresh({ ok: true, state: 'stopped', node_id: 'n_b', node_ip: 'stale' });
-	let updated = sections(root)[1];
+	let updated = nodeRow(root);
 	assert.equal(findAll(updated, 'select')[0].value, 'n_a');
 	assert.equal(findAll(updated, 'select')[0].children[0].children, 'Alpha（当前）');
 	assert.equal(findAll(updated, 'button')[0].disabled, true);
 	assert.doesNotMatch(visibleText(updated), /节点地址|stale/);
 	page.refresh({ ok: false, code: 'TIMEOUT' });
-	updated = sections(root).find((s) => s.children[0].children === '当前节点');
+	updated = nodeRow(root);
 	assert.equal(findAll(updated, 'select')[0].value, 'n_a', 'failed status selects the configured node');
 	assert.equal(findAll(updated, 'button')[0].disabled, true);
 });
@@ -1282,8 +1290,8 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 test('T10.5 scenario 2d: no nodes renders guidance instead of selector and apply button', async () => {
 	const page = loadView();
 	const root = page.render(await page.load());
-	const block = sections(root).find((s) => s.children[0].children === '当前节点');
-	assert.equal(visibleText(block.children[1].children[0]), '还没有节点，请到节点页添加或导入');
+	const block = nodeRow(root);
+	assert.equal(visibleText(block.children[0]), '还没有节点，请到节点页添加或导入');
 	assert.equal(findAll(block, 'select').length, 0);
 	assert.deepEqual(findAll(block, 'button').map((b) => b.children), [ '测延迟' ]);
 	await page.componentRequest;
@@ -1361,9 +1369,7 @@ test('T10.6 scenario 2a: WAN row title and small inactive explanation precede co
 test('T10.6 scenario 2b: single wrapping outer node row contains left controls and ordered right probe group', () => {
 	const { root } = renderStatus({ ok: true, state: 'running', node_id: 'n_a', node_ip: '203.0.113.10',
 		last_probe: { ok: true, latency_ms: 12, at: NOW - 30 } });
-	const block = sections(root).find((s) => s.children[0].children === '当前节点');
-	assert.equal(block.children.length, 2, 'only heading and outer flex row');
-	const row = block.children[1];
+	const row = nodeRow(root);
 	for (const rule of [ /display:\s*flex/, /align-items:\s*center/, /justify-content:\s*space-between/,
 		/flex-wrap:\s*wrap/, /gap:\s*0\.5em\s+1em/ ])
 		assert.match(row.attrs.style, rule);
@@ -1388,9 +1394,7 @@ test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address
 	const page = loadView();
 	const root = page.render(await page.load());
 	page.refresh({ ok: true, state: 'stopped', node_ip: 'stale', last_probe: { ok: false, at: NOW - 30 } });
-	const block = sections(root).find((s) => s.children[0].children === '当前节点');
-	assert.equal(block.children.length, 2);
-	const row = block.children[1];
+	const row = nodeRow(root);
 	assert.equal(row.children.length, 2);
 	assert.equal(visibleText(row.children[0]), '还没有节点，请到节点页添加或导入');
 	assert.equal(findAll(row.children[0], 'select').length, 0);
@@ -1402,6 +1406,137 @@ test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address
 	assert.equal(findAll(right, 'button')[0].children, '测延迟');
 	assert.doesNotMatch(visibleText(right), /节点地址|stale/);
 	await page.componentRequest;
+});
+
+test('T10.9 scenario 1: disable confirmation and enable tooltip come from the model even on status failure', () => {
+	for (const status of [ { ok: true, state: 'running' }, { ok: false, code: 'TIMEOUT' } ]) {
+		for (const enabled of [ true, false ]) {
+			const vm = build(status, null, null, NOW, enabled);
+			assert.equal(vm.disable_confirmation,
+				'关闭后服务立即停止，所有流量直连，开机也不再自动启动。确定关闭吗？');
+			assert.equal(vm.enabled_note, '启用后开机自动启动；关闭会立即停止服务，所有流量直连');
+		}
+	}
+});
+
+test('T10.9 scenario 2: title left group has heading then tooltip-only enable; right group has refresh controls',
+	() => {
+	const { page, root } = renderStatus({ ok: true, state: 'running' });
+	const title = root.children[0];
+	assert.equal(title.children.length, 2);
+	const [left, right] = title.children;
+	assert.deepEqual(left.children.map((n) => n.tag), [ 'h2', 'label' ]);
+	assert.equal(visibleText(left.children[0]), '以太跃迁');
+	assert.equal(visibleText(left.children[1]), '启用');
+	assert.match(left.attrs.style, /align-items:\s*center/);
+	assert.match(left.children[1].attrs.style, /align-items:\s*center/);
+	assert.equal(left.children[1].attrs.title, page.vm.enabled_note);
+	assert.equal(findAll(left, 'input')[0].attrs.title, page.vm.enabled_note);
+	assert.equal(findAll(right, 'label').length, 1);
+	assert.equal(visibleText(findAll(right, 'span')[0]), '自动刷新');
+	assert.equal(findAll(right, 'select').length, 1);
+	assert.equal(findAll(right, 'button')[0].children, '刷新');
+	assert.ok(!visibleText(root).includes(page.vm.enabled_note));
+	assert.equal(findAll(root, 'input').length, 1, 'only one enable switch, in the title');
+});
+
+test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm saves 0; enable skips confirm',
+	async (t) => {
+	const saved = globalThis.confirm;
+	t.after(() => { globalThis.confirm = saved; });
+	for (const [initial, answer] of [ [ true, false ], [ true, true ], [ false, false ] ]) {
+		const order = [], asked = [], calls = [];
+		const page = loadView({
+			rpcCalls: calls,
+			uci: {
+				set: (...args) => order.push([ 'set', ...args ]),
+				save: async () => { order.push([ 'save' ]); }
+			},
+			ui: { changes: { apply: (rollback) => order.push([ 'apply', rollback ]) } }
+		});
+		const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
+			{ labels: {}, enabled: initial } ]);
+		/* A sentinel proves the handler uses the model field, not copied wording. */
+		page.vm.disable_confirmation = 'model confirmation';
+		globalThis.confirm = (text) => {
+			asked.push(text);
+			assert.deepEqual(order, [], 'confirmation precedes any UCI change');
+			return answer;
+		};
+		const box = findAll(root, 'input')[0];
+		box.checked = !initial;
+		await box.attrs.change({ target: box });
+		assert.deepEqual(asked, initial ? [ page.vm.disable_confirmation ] : []);
+		const cancelled = initial && !answer;
+		assert.equal(box.checked, cancelled ? true : !initial);
+		assert.equal(page.enabled, box.checked);
+		assert.deepEqual(order, cancelled ? [] : [
+			[ 'set', 'aetherproxy', 'main', 'enabled', initial ? '0' : '1' ], [ 'save' ], [ 'apply', true ]
+		]);
+		await page.componentRequest;
+		assert.ok(!calls.includes('service'), 'the reload trigger remains responsible for start/stop');
+		page.refresh({ ok: true, state: 'running' });
+		assert.equal(findAll(root, 'input')[0], box, 'refresh preserves the title switch');
+	}
+});
+
+test('T10.9 scenario 4: banners follow title before first section with original severity and order; clean has none',
+	() => {
+	const { page, root } = renderStatus({ ok: false, code: 'TIMEOUT' }, undefined, false);
+	assert.equal(root.children[0].children[0].children[0].tag, 'h2');
+	assert.equal(root.children[1], page.content, 'banners occupy the content immediately after the title');
+	let parts = page.content.content.children;
+	assert.deepEqual(parts.map((n) => n.attrs.class), [
+		'alert-message error', 'alert-message warning', 'cbi-section', 'cbi-section', 'cbi-section'
+	]);
+	assert.ok(visibleText(parts[0]).includes('TIMEOUT'));
+	assert.ok(visibleText(parts[1]).includes('服务未启用'));
+	page.refresh({ ok: true, state: 'running', notices: [
+		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
+		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
+	] });
+	parts = page.content.content.children;
+	assert.equal(parts[0].attrs.class, 'alert-message warning', 'disabled banner remains first');
+	assert.equal(parts[1].tag, 'ul');
+	assert.ok(visibleText(parts[1].children[0]).includes('xray'));
+	assert.ok(visibleText(parts[1].children[1]).includes('27'));
+	assert.ok(parts[1].children.every((n) => n.attrs.class === 'alert-message warning'));
+	assert.equal(parts[2], sections(root)[0]);
+	assert.doesNotMatch(visibleText(root), /待处理提示/);
+	const clean = renderStatus({ ok: true, state: 'running' });
+	assert.equal(clean.page.content.content.children[0], sections(clean.root)[0]);
+	assert.equal(visibleText(sections(clean.root)[0].children[0]), '运行状态');
+	assert.equal(findAll(clean.root, 'div').filter((n) => /alert-message/.test(n.attrs.class ?? '')).length, 0);
+});
+
+test('T10.9 scenario 5: one runtime block has state/buttons, optional details and node row before traffic/components',
+	() => {
+	for (const [last_error, dns_tier] of [ [ null, null ], [ 'CONFIG_INVALID', null ],
+		[ null, 'T1' ], [ 'CONFIG_INVALID', 'T1' ] ]) {
+		const { page, root } = renderStatus({ ok: true, state: 'running', since: NOW,
+			dns_failsafe: true, last_error, dns_tier });
+		const blocks = sections(root);
+		assert.deepEqual(blocks.map((n) => visibleText(n.children[0])), [ '运行状态', '流量与连接', '组件版本' ]);
+		const block = blocks[0];
+		const [left, right] = block.children[1].children;
+		assert.equal(findAll(left, 'strong')[0].children, '运行中');
+		assert.ok(visibleText(left).includes('已持续'));
+		assert.ok(visibleText(left).includes('DNS 已回退到原配置'));
+		assert.deepEqual(findAll(right, 'button').map(visibleText), [ '启动', '重启', '停止' ]);
+		assert.equal(findAll(block.children[1], 'input').length, 0);
+		assert.match(block.children[1].attrs.style, /justify-content:\s*space-between/);
+		const hasDetails = !!(last_error || dns_tier);
+		assert.equal(block.children.length, hasDetails ? 4 : 3, 'heading, state, optional details, node row');
+		if (hasDetails) {
+			const details = block.children[2];
+			assert.equal(visibleText(details).includes('原因：配置无效'), !!last_error);
+			assert.equal(visibleText(details).includes('境外域名解析：经节点解析（正常）'), !!dns_tier);
+			assert.equal(details.children.length, Number(!!last_error) + Number(!!dns_tier));
+		}
+		assert.equal(block.children.at(-1), nodeRow(root));
+		assert.equal(findAll(nodeRow(root), 'select')[0], findAll(page.nodeControl, 'select')[0]);
+		assert.ok(!findAll(root, 'h3').some((n) => [ '状态', '当前节点', '待处理提示' ].includes(visibleText(n))));
+	}
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {

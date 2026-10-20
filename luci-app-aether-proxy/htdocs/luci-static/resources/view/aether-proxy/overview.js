@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第三轮修正」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第四轮修正」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -59,6 +59,11 @@ return view.extend({
 	   node page's 「设为当前」 (docs/10 「节点页」). No `service` call is made:
 	   the reload trigger starts or stops the service. */
 	handleEnable: function(checked) {
+		/* Disabling is persistent and immediately stops traffic interception;
+		   cancelling must leave both the local setting and UCI untouched. */
+		if (this.enabled && !checked && !confirm(this.vm.disable_confirmation))
+			return;
+
 		this.enabled = (checked === true);
 
 		uci.set('aetherproxy', 'main', 'enabled', this.enabled ? '1' : '0');
@@ -71,24 +76,21 @@ return view.extend({
 	enableSwitch: function(note) {
 		const self = this;
 
-		/* A compact right-aligned group instead of cbi-value: the form-row title
-		   column left the switch and its note out of line with the other
-		   right-hand controls of the page (H28K preview, 2026-10-20). */
-		return E('div', {
-			'style': 'display:flex; flex-direction:column; align-items:flex-end; gap:0.25em; text-align:right'
-		}, [
-			E('label', { 'style': 'display:flex; align-items:center; gap:0.5em' }, [
-				_('Enable', 'aether-proxy'),
-				E('input', {
-					'type': 'checkbox',
-					'id': 'aetherproxy-enabled',
-					'checked': this.enabled ? 'checked' : null,
-					'change': ui.createHandlerFn(this, function(ev) {
-						return self.handleEnable(ev.target.checked);
-					})
+		/* The explanation is a tooltip now, not a visible line (docs/10 T10.9). */
+		return E('label', { 'title': note, 'style': 'display:flex; align-items:center; gap:0.5em' }, [
+			_('Enable', 'aether-proxy'),
+			E('input', {
+				'type': 'checkbox',
+				'id': 'aetherproxy-enabled',
+				'title': note,
+				'checked': this.enabled ? 'checked' : null,
+				'change': ui.createHandlerFn(this, function(ev) {
+					const pending = self.handleEnable(ev.target.checked);
+					/* The browser already toggled it before firing change. */
+					ev.target.checked = self.enabled;
+					return pending;
 				})
-			]),
-			E('small', { 'style': 'max-width:22em' }, [ note ?? '' ])
+			})
 		]);
 	},
 
@@ -230,7 +232,9 @@ return view.extend({
 			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; '
 				+ 'flex-wrap:wrap; margin-bottom:1em'
 		}, [
-			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
+			E('div', { style: 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
+				E('h2', {}, _('Aether Proxy', 'aether-proxy')), this.enableControl
+			]),
 			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 				E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
 					E('span', { style: 'white-space: nowrap' }, _('Automatic refresh', 'aether-proxy')), select
@@ -358,8 +362,7 @@ return view.extend({
 		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
 			this.enabled, this.currentNode, this.components);
 
-		/* Keep the latest model output so handleService can use its
-		   stop_confirmation without rebuilding the model. */
+		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;
 
 		const traffic = model.traffic(this.previousStats, stats);
@@ -385,8 +388,7 @@ return view.extend({
 		if (vm.notices.length)
 			notices.push(E('ul', {}, vm.notices.map((text) =>
 				E('li', { 'class': 'alert-message warning' }, text))));
-		if (notices.length)
-			parts.push(this.section(_('Pending notices', 'aether-proxy'), notices));
+		parts.push(...notices);
 
 		const stateRows = [ E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
@@ -397,31 +399,31 @@ return view.extend({
 				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
 					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : [])
 			]),
-			this.enableControl
+			this.buttonBar(vm.buttons)
 		]) ];
+		const details = [];
 		/* Label and value go through one msgid: concatenating ': ' here gave the
 		   Chinese page a half-width colon (and a stray space after 「：」). */
 		if (vm.error_text != null)
-			stateRows.push(E('div', { style: this.colorStyle('error') },
+			details.push(E('div', { style: this.colorStyle('error') },
 				_('Reason: %s', 'aether-proxy').replace('%s', vm.error_text)));
 		if (vm.dns_text != null)
-			stateRows.push(E('p', {},
+			details.push(E('p', {},
 				_('Overseas domain resolution: %s', 'aether-proxy').replace('%s', vm.dns_text)));
-		stateRows.push(this.buttonBar(vm.buttons));
-		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
+		if (details.length)
+			stateRows.push(E('div', {}, details));
 
-		parts.push(this.section(_('Current node', 'aether-proxy'), [
-			E('div', {
-				style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
-			}, [
-				this.nodeControl ?? E('p', {}, vm.node_text),
-				E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-					...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
-					E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
-					E('small', {}, vm.probe_since_text ?? ''), this.probeControl
-				])
+		stateRows.push(E('div', {
+			style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
+		}, [
+			this.nodeControl ?? E('p', {}, vm.node_text),
+			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+				...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
+				E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
+				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
 			])
 		]));
+		parts.push(this.section(_('Runtime status', 'aether-proxy'), stateRows));
 		parts.push(this.trafficSection(traffic, vm.traffic_note));
 		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]));
 
