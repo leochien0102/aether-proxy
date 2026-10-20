@@ -89,7 +89,8 @@ if mode == 'missing':
 elif mode == 'nonnumeric':
 	rows[0] = rows[0].rsplit(b':', 1)[0] + b':NaN'
 elif mode == 'duplicate':
-	rows[-1] = rows[0]
+	# Keep every path so only the duplicate check (not the missing-path one) can reject it.
+	rows.append(rows[0])
 elif mode == 'reverse':
 	rows.reverse()
 sys.stdout.buffer.write(b'\\n'.join(rows) + b'\\n')
