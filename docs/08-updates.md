@@ -184,7 +184,9 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
    完整性由我们的签名清单保证，`--allow-untrusted` 只是跳过 apk 对 SDK 临时构建密钥的签名检查。
 4. 安装后检查（失败 → 安装清单中的 `previous` 资产回滚，记 ERR `UPDATE_ROLLED_BACK`）：
    - `xray-core`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」；经 procd：`ubus call service signal '{"name":"aether-proxy","signal":12}'`，`signal` 必须是整数，不带 `instance`），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `xray version` 输出的版本等于清单版本的上游部分。
-   - `aether-proxy`（及 luci 包）：`/etc/init.d/aether-proxy restart` 后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时只检查 `aether-proxy check` 通过。
+   - `aether-proxy`：`/etc/init.d/aether-proxy restart`（超时 90 秒：stop 最多等 daemon 30 秒，即 `term_timeout`，再加 `cleanup` 与 start 中的 `check`）后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时 restart 之后只检查 `aether-proxy check` 通过。
+   - luci 包：不做检查（页面文件在下次加载时生效）。
+   - **回滚之后要让旧版生效**（2026-10-20 T7.7 发现：只重装不重启，内存里跑的仍是检查失败的那一版）：`aether-proxy` 在更新前服务处于 `starting`、`running` 或 `degraded` 时执行一次 restart（同样 90 秒超时）；`xray-core` 在更新前服务处于 `running`、`degraded` 或 `starting` 时发一次 SIGUSR2。回滚后不再做检查，结果仍是 `UPDATE_VERIFY_FAILED`（`rolled_back: true`）；restart 或信号失败记 `CMD_FAILED`。`--previous` 的检查失败、改装回 `current` 时同样处理。
 5. 成功记 `UPDATE_INSTALLED`。
 
 更新 `aether-proxy` 自身时，执行更新的是作业进程：ucode 在启动时就加载完了全部模块，安装过程中替换磁盘上的文件不影响它跑完。

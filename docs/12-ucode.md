@@ -78,6 +78,10 @@ import * as nft from 'aetherproxy.render.nft';
    sys.run(['nft', '-f', path], { timeout: 10 });
    ```
    参数必须以**数组**传入，由 `sys.run` 负责 shell 转义（单引号包裹，内部单引号转写为 `'\''`）。不准拼接 shell 字符串。
+   超时：到时先向命令发 SIGTERM，1 秒后仍在则 SIGKILL，结果为 124。**超时机制本身不能依赖 SIGTERM 能送达**：OpenWrt 的 `rc.common`
+   在 `restart` 的 stop 期间执行 `trap '' TERM`，进入时就被忽略的信号会传给所有子进程，sh 也无法再为它设 trap（POSIX）。
+   2026-10-20 真机：此时每个带超时的调用都等满超时，`cleanup` 从 0 秒变成 41 秒，更新的安装后检查因此超时并回滚。
+   命令结束后 `sys.run` 返回时，不得留下它启动的计时进程。
 3. **文件写入只通过 `sys.write_atomic(path, content)`**：写到同目录下的临时文件，然后 `fs.rename`。不准就地覆盖。
 4. **错误必须显式处理**：`fs.*` 返回 `null` 时，用 `fs.error()` 取得原因并记事件。禁止 `try { … } catch {}` 吞掉异常；
    捕获后必须记事件或继续向上抛出。
