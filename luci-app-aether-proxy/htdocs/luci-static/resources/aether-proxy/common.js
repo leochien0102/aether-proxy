@@ -1,6 +1,7 @@
 'use strict';
 'require baseclass';
 'require rpc';
+'require ui';
 
 /*
  * Shared helpers for the aether-proxy LuCI pages (docs/10 「公共模块与菜单」).
@@ -10,8 +11,43 @@
  * settles exactly once — rpc reply, rpc failure or hard timeout, whichever
  * comes first — and never rejects. At most 2 calls are in flight at any time;
  * further calls wait in a FIFO queue (docs/10 「UI 规则」: 为 uhttpd 的
- * max_requests 3 留出余量).
+ * max_requests 3 留出余量). Module loading also checks for a stale browser
+ * copy of this script (docs/10 「页面脚本过期检测」), independently of RPC.
  */
+
+var SCRIPT_VERSION = '@@VERSION@@';
+
+/* LuCI caches the module instance: run once here, not on each ap.call or
+   construction. Do not block page loading on this best-effort static fetch. */
+function check_script_version() {
+	/* Split the sentinel so the build's replacement cannot rewrite this guard. */
+	if (SCRIPT_VERSION === '@@' + 'VERSION@@')
+		return;
+
+	Promise.resolve().then(function() {
+		return fetch(L.resource('aether-proxy/build.json'), { cache: 'no-store' });
+	}).then(function(response) {
+		if (!response.ok)
+			throw new Error('build.json HTTP status ' + response.status);
+
+		return response.json();
+	}).then(function(build) {
+		if (!build || typeof build.version != 'string' || !build.version)
+			throw new Error('build.json has no version');
+
+		if (build.version !== SCRIPT_VERSION)
+			ui.addNotification(null, E('p', {}, [
+				_('Page scripts are out of date: installed %s, but the browser is still using %s. '
+					+ 'Clear your browser cache and reload the page (some third-party themes do not '
+					+ 'automatically refresh page scripts after an upgrade).', 'aether-proxy')
+					.format(build.version, SCRIPT_VERSION)
+			]), 'warning');
+	}).catch(function(e) {
+		console.warn('aether-proxy: page script version check failed', e);
+	});
+}
+
+check_script_version();
 
 /* docs/10 「rpcd 插件」: all 12 ubus methods of the aetherproxy object with
    their named parameters, in declaration order. */

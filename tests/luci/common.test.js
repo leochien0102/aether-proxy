@@ -5,13 +5,16 @@
  * common.js is loaded the way LuCI loads class modules (tests/luci/loader.js)
  * with doubles for rpc and baseclass. Time is controlled with node:test's
  * mock timers, so the tests run against the real ap.TIMEOUTS values without
- * waiting and without network access. */
+ * waiting and without network access. T10.12 also checks the module-load
+ * stale-script warning (docs/10 「页面脚本过期检测」) with a cached L.require
+ * double and stamped copies inside this worktree, never a live SDK build. */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 
-const { createDocument, createRpc, loadModule } = require('./loader.js');
+const { createDocument, createRpc, loadModule, parsePo } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const COMMON = path.join(APP, 'htdocs', 'luci-static', 'resources', 'aether-proxy', 'common.js');
@@ -36,7 +39,7 @@ function setup(t) {
 	// and L.require instantiates it. A plain-object double hid `ap.TIMEOUTS` being
 	// undefined inside the module (found in the T8.13 device window).
 	const baseclass = { extend: (props) => { const Class = function() {}; Class.prototype = props; return Class; } };
-	const Module = loadModule(COMMON, { rpc, baseclass }, { window: {}, document });
+	const Module = loadModule(COMMON, { rpc, baseclass, ui: {} }, { window: {}, document });
 	const ap = new Module();
 
 	return { ap, rpc, document };
@@ -505,4 +508,171 @@ test('scenario 7: run_job failures — USAGE resolves at once; JOB_NOT_FOUND sto
 		assert.deepEqual(final, { ok: false, code: 'TIMEOUT' });
 		assert.equal(updates.length, 2, 'no status after the budget ran out');
 	}
+});
+
+/* LuCI caches one instance per module name. Do not re-evaluate the factory
+ * for every require: that would test a different lifetime than the browser. */
+function setupScriptCheck(t, version, fetchReply) {
+	const dir = fs.mkdtempSync(path.join(__dirname, '.stale-script-'));
+	t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+	const file = path.join(dir, 'common.js');
+	const source = fs.readFileSync(COMMON, 'utf8');
+	fs.writeFileSync(file, version == null ? source : source.replaceAll('@@VERSION@@', version));
+
+	const po = parsePo(fs.readFileSync(path.join(APP, 'po', 'zh_Hans', 'aether-proxy.po'), 'utf8'));
+	const globals = { _: globalThis._, E: globalThis.E, format: String.prototype.format };
+	t.after(() => {
+		globalThis._ = globals._;
+		globalThis.E = globals.E;
+		if (globals.format === undefined)
+			delete String.prototype.format;
+		else
+			String.prototype.format = globals.format;
+	});
+	globalThis._ = (text, context) => {
+		assert.equal(context, 'aether-proxy');
+		assert.ok(po[text], 'the notification has a Chinese translation');
+		return po[text];
+	};
+	globalThis.E = (tag, attrs, children) => ({ tag, attrs, children });
+	String.prototype.format = function(...args) {
+		let i = 0;
+		return this.replace(/%s/g, () => String(args[i++]));
+	};
+
+	const calls = [], notifications = [], warnings = [], resources = [];
+	t.mock.method(globalThis, 'fetch', (url, options) => {
+		calls.push({ url, options });
+		return fetchReply();
+	});
+	t.mock.method(console, 'warn', (...args) => warnings.push(args));
+	const rpc = createRpc();
+	const cache = new Map();
+	const L = {
+		resource(name) {
+			resources.push(name);
+			return '/custom-resource-root/' + name;
+		},
+		require(name) {
+			assert.equal(name, 'aether-proxy.common');
+			if (!cache.has(name)) {
+				const Module = loadModule(file, {
+					rpc,
+					baseclass: { extend: (props) => {
+						const Class = function() {};
+						Class.prototype = props;
+						return Class;
+					} },
+					ui: { addNotification: (...args) => notifications.push(args) }
+				}, { L, window: {}, document: createDocument() });
+				cache.set(name, Promise.resolve(new Module()));
+			}
+			return cache.get(name);
+		}
+	};
+	return { L, rpc, calls, notifications, warnings, resources };
+}
+
+function buildReply(version) {
+	return { ok: true, json: async () => ({ version }) };
+}
+
+test('T10.12 scenario 1: placeholder skips fetch and notification', async (t) => {
+	const env = setupScriptCheck(t, null, () => buildReply('0.2.0-r9'));
+	await env.L.require('aether-proxy.common');
+	await flush();
+	assert.deepEqual(env.calls, []);
+	assert.deepEqual(env.resources, []);
+	assert.deepEqual(env.notifications, []);
+	assert.deepEqual(env.warnings, []);
+});
+
+test('T10.12 scenario 2: matching version fetches resource once with no-store and stays silent', async (t) => {
+	const env = setupScriptCheck(t, '0.2.0-r9', () => buildReply('0.2.0-r9'));
+	await env.L.require('aether-proxy.common');
+	await flush();
+	assert.deepEqual(env.resources, [ 'aether-proxy/build.json' ]);
+	assert.deepEqual(env.calls, [ {
+		url: '/custom-resource-root/aether-proxy/build.json', options: { cache: 'no-store' }
+	} ]);
+	assert.deepEqual(env.rpc.calls, [], 'the static version check does not call the backend');
+	assert.deepEqual(env.notifications, []);
+	assert.deepEqual(env.warnings, []);
+});
+
+test('T10.12 scenario 3: mismatch warns once with both versions and the Chinese cache instructions', async (t) => {
+	const env = setupScriptCheck(t, '0.2.0-r9', () => buildReply('0.2.0-r10'));
+	await env.L.require('aether-proxy.common');
+	await flush();
+	assert.equal(env.notifications.length, 1);
+	const [ target, node, level ] = env.notifications[0];
+	assert.equal(target, null);
+	assert.equal(level, 'warning');
+	assert.equal(node.tag, 'p');
+	assert.equal(node.children.join(''), '页面脚本已过期：已安装 0.2.0-r10，浏览器仍在使用 0.2.0-r9。'
+		+ '请清除浏览器缓存后刷新页面（部分第三方主题升级后不会自动更新页面脚本）。');
+	assert.deepEqual(env.warnings, []);
+});
+
+test('T10.12 scenario 4: unavailable or invalid build metadata only logs a warning', async (t) => {
+	const cases = {
+		'fetch rejection': () => Promise.reject(new Error('offline')),
+		'synchronous fetch error': () => { throw new Error('fetch unavailable'); },
+		'HTTP error': () => ({ ok: false, status: 404, json: async () => ({ version: 'new' }) }),
+		'non-JSON response': () => ({ ok: true, json: async () => { throw new SyntaxError('not JSON'); } }),
+		'missing version': () => ({ ok: true, json: async () => ({}) }),
+		'null JSON': () => ({ ok: true, json: async () => null }),
+		'empty version': () => buildReply(''),
+		'invalid version type': () => buildReply(123)
+	};
+	for (const [ name, reply ] of Object.entries(cases)) {
+		await t.test(name, async (t) => {
+			const env = setupScriptCheck(t, '0.2.0-r9', reply);
+			await env.L.require('aether-proxy.common');
+			await flush();
+			assert.equal(env.calls.length, 1);
+			assert.deepEqual(env.notifications, []);
+			assert.equal(env.warnings.length, 1);
+			assert.match(env.warnings[0][0], /page script version check failed/);
+			assert.ok(env.warnings[0][1] instanceof Error, 'the failure reason is logged');
+		});
+	}
+});
+
+test('T10.12 scenario 5: repeated L.require shares one pending check and one notification', async (t) => {
+	const pending = deferred();
+	const env = setupScriptCheck(t, '0.2.0-r9', () => pending.promise);
+	const [ ap, again ] = await Promise.all([
+		env.L.require('aether-proxy.common'), env.L.require('aether-proxy.common')
+	]);
+	assert.equal(ap, again);
+	await flush();
+	assert.equal(env.calls.length, 1);
+	assert.deepEqual(env.notifications, []);
+	pending.resolve(buildReply('0.2.0-r10'));
+	await flush();
+	assert.equal(env.notifications.length, 1);
+	assert.equal(await env.L.require('aether-proxy.common'), ap);
+	await ap.call('version');
+	await flush();
+	assert.equal(env.calls.length, 1, 'neither require nor ap.call starts another check');
+	assert.equal(env.notifications.length, 1);
+});
+
+test('T10.12: pending static fetch does not consume either RPC concurrency slot', async (t) => {
+	const pending = deferred();
+	const env = setupScriptCheck(t, '0.2.0-r9', () => pending.promise);
+	const ap = await env.L.require('aether-proxy.common');
+	const first = deferred(), second = deferred();
+	env.rpc.setHandler((method) => method == 'status' ? first.promise : second.promise);
+	const replies = [ ap.call('status'), ap.call('version') ];
+	await flush();
+	assert.equal(env.calls.length, 1);
+	assert.deepEqual(env.rpc.calls.map(c => c.method), [ 'status', 'version' ]);
+	first.resolve({ ok: true });
+	second.resolve({ ok: true });
+	await Promise.all(replies);
+	pending.resolve(buildReply('0.2.0-r9'));
+	await flush();
+	assert.deepEqual(env.notifications, []);
 });
