@@ -252,6 +252,8 @@ test('scenario 8c: status failure -> error message, all buttons disabled', () =>
 	assert.deepEqual(vm.buttons, { start: false, restart: false, stop: false });
 	assert.deepEqual(vm.notices, []);
 	assert.equal(vm.state_text, null);
+	/* the node is unknown when status cannot be read: never claim 「未选择节点」 */
+	assert.equal(vm.node_text, null);
 });
 
 test('T8.11a scenario 1: main.enabled=1 keeps the old buttons; =0 disables start/restart in every state', () => {
@@ -912,9 +914,9 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 		last_error: 'NODE_RESOLVE_FAILED' }, { ok: false });
 	const blocks = sections(root);
 	assert.ok(visibleText(blocks[0]).includes('已持续'));
-	assert.ok(visibleText(blocks[0]).includes('原因： 节点地址解析失败'));
-	assert.ok(visibleText(blocks[0]).includes('境外域名解析: 经节点解析（正常）'));
-	const reason = findAll(blocks[0], 'div').find((n) => n.children[0] === '原因：');
+	assert.ok(visibleText(blocks[0]).includes('原因：节点地址解析失败'));
+	assert.ok(visibleText(blocks[0]).includes('境外域名解析：经节点解析（正常）'));
+	const reason = findAll(blocks[0], 'div').find((n) => visibleText(n) === '原因：节点地址解析失败');
 	assert.equal(reason.attrs.style, 'color:var(--error-color-high, #c53030)');
 	const fallback = findAll(blocks[0], 'span').find((n) => visibleText(n) === 'DNS 已回退到原配置');
 	assert.equal(fallback.attrs.style, 'color:var(--warning-color, #b7791f)');

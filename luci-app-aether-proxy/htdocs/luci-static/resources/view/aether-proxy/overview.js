@@ -362,19 +362,21 @@ return view.extend({
 			]),
 			this.enableControl
 		]) ];
+		/* Label and value go through one msgid: concatenating ': ' here gave the
+		   Chinese page a half-width colon (and a stray space after 「：」). */
 		if (vm.error_text != null)
-			stateRows.push(E('div', { style: this.colorStyle('error') }, [
-				_('Reason:', 'aether-proxy'), ' ', vm.error_text
-			]));
+			stateRows.push(E('div', { style: this.colorStyle('error') },
+				_('Reason: %s', 'aether-proxy').replace('%s', vm.error_text)));
 		if (vm.dns_text != null)
-			stateRows.push(E('p', {}, [ _('Overseas domain resolution', 'aether-proxy'), ': ', vm.dns_text ]));
+			stateRows.push(E('p', {},
+				_('Overseas domain resolution: %s', 'aether-proxy').replace('%s', vm.dns_text)));
 		stateRows.push(this.buttonBar(vm.buttons));
 		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
 
 		parts.push(this.section(_('Current node', 'aether-proxy'), [
 			E('div', { style: 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap' }, [
 				E('div', {}, [
-					E('span', { style: 'font-size: 1.2em' }, vm.node_text), ' ',
+					E('span', { style: 'font-size: 1.2em' }, vm.node_text ?? '–'), ' ',
 					E('small', { title: _('Node address', 'aether-proxy') }, vm.node_ip ?? '')
 				]),
 				E('div', { style: 'display:flex; gap:0.5em; flex-wrap:wrap' }, [

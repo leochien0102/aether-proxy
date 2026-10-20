@@ -308,7 +308,8 @@ return baseclass.extend({
 				state_duration_text: null,
 				error_text: null,
 				dns_text: null,
-				node_text: _('No node selected', 'aether-proxy'),
+				/* Unknown, not 「未选择节点」: the status read failed. */
+				node_text: null,
 				node_ip: null,
 				probe_text: null,
 				probe_since_text: null,

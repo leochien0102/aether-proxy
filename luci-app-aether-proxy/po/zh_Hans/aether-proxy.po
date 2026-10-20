@@ -1568,12 +1568,12 @@ msgid "Pending notices"
 msgstr "待处理提示"
 
 msgctxt "aether-proxy"
-msgid "Reason:"
-msgstr "原因："
+msgid "Reason: %s"
+msgstr "原因：%s"
 
 msgctxt "aether-proxy"
-msgid "Overseas domain resolution"
-msgstr "境外域名解析"
+msgid "Overseas domain resolution: %s"
+msgstr "境外域名解析：%s"
 
 msgctxt "aether-proxy"
 msgid "Node address"

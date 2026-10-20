@@ -449,7 +449,9 @@ test('T10.2 scenario 2: display-name exceptions must appear, match exactly and e
 test('T9.1 scenario 1: all htdocs JS and menu titles have non-empty translations', t => {
 	assert.ok(sources.size > 0, 'must discover JS files');
 	assert.ok(menus.size > 0, 'must discover menu files');
-	assert.equal(real.entries.length, 465, 'T10.3 overview layout reference count');
+	/* No exact count: it changes with every page card (T10.1 only needed it to
+	   prove the context migration kept every reference). */
+	assert.ok(real.entries.length > 0, 'must discover translated references');
 	assert.deepEqual(real.unused, [], 'all non-metadata entries must be referenced');
 	t.diagnostic(`Scanned ${sources.size} JS files, ${menus.size} menu files, ${real.entries.length} references`);
 	t.diagnostic(`Unused msgids: ${real.unused.length}; first 10: ${JSON.stringify(real.unused.slice(0, 10))}`);
