@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview/Dashboard view (docs/10 「概览页」「Dashboard：概览页升级」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页重排」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -81,7 +81,7 @@ return view.extend({
 						return self.handleEnable(ev.target.checked);
 					})
 				}),
-				E('div', { 'class': 'cbi-value-description' }, [ note ?? '' ])
+				E('div', { 'class': 'cbi-value-description', 'style': 'font-size: 0.9em' }, [ note ?? '' ])
 			])
 		]);
 	},
@@ -121,7 +121,7 @@ return view.extend({
 			return E('button', attrs, [ label ]);
 		};
 
-		return E('div', { 'class': 'cbi-page-actions' }, [
+		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
 			btn(_('Start', 'aether-proxy'), 'cbi-button-apply', buttons.start, () => self.handleService('start')),
 			btn(_('Restart', 'aether-proxy'), 'cbi-button-apply', buttons.restart, () => self.handleService('restart')),
 			btn(_('Stop', 'aether-proxy'), 'cbi-button-negative', buttons.stop, () => self.handleService('stop'))
@@ -209,49 +209,78 @@ return view.extend({
 		}).finally(() => { button.disabled = false; });
 	},
 
-	handleSubscriptions: function() {
-		this.subButton.disabled = true;
-		return ap.run_job('sub_update', []).then((job) => {
-			const result = model.subscription_result(job, this.subscriptions);
-			dom.content(this.subMessage, E('div', {}, [
-				E('p', {}, result.text), E('ul', {}, result.failures.map((text) => E('li', {}, text)))
-			]));
-		}).finally(() => { this.subButton.disabled = false; });
+	button: function(text, fn) {
+		return E('button', {
+			'class': 'cbi-button cbi-button-apply', click: ui.createHandlerFn(this, fn)
+		}, text);
 	},
 
-	dashboardControls: function(interval, node) {
+	titleLine: function(interval) {
 		const select = E('select', { change: (ev) => this.setInterval(ev.target.value) },
 			model.refresh_options().map((option) => E('option', {
 				value: option.value, selected: Number(option.value) * 1000 === interval ? 'selected' : null
 			}, option.text)));
-		const nodes = E('select', {}, Object.keys(this.labels).map((id) => E('option', {
-			value: id, selected: id === node ? 'selected' : null
-		}, this.labels[id])));
-		const button = (text, fn) => E('button', {
-			'class': 'cbi-button cbi-button-apply', click: ui.createHandlerFn(this, fn)
-		}, text);
-		this.probeButton = button(_('Measure latency', 'aether-proxy'), () => this.handleProbe());
-		this.subButton = button(_('Update subscriptions', 'aether-proxy'), () => this.handleSubscriptions());
-		this.probeMessage = E('div', { 'aria-live': 'polite' });
-		this.subMessage = E('div', { 'aria-live': 'polite' });
-		return E('div', {}, [
-			E('label', {}, [ _('Refresh interval', 'aether-proxy'), select ]),
-			button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh()),
-			nodes, button(_('Switch', 'aether-proxy'), () => this.handleNode(nodes.value)),
-			this.probeButton, this.probeMessage, this.subButton, this.subMessage
+		return E('div', { 'style': 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap' }, [
+			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
+			E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+				E('label', {}, [ _('Automatic refresh', 'aether-proxy'), select ]),
+				this.button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh())
+			])
 		]);
 	},
 
-	row: function(label, ...values) {
-		const cells = [];
+	probeControls: function() {
+		this.probeButton = this.button(_('Measure latency', 'aether-proxy'), () => this.handleProbe());
+		this.probeMessage = E('span', { 'aria-live': 'polite' });
+		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+			this.probeButton, this.probeMessage
+		]);
+	},
 
-		for (const v of values)
-			if (v != null)
-				cells.push(v);
+	nodeControls: function(current) {
+		const nodes = E('select', {}, model.node_options(this.labels, current).map((option) => E('option', {
+			value: option.value, selected: option.value === current ? 'selected' : null
+		}, option.text)));
+		const button = this.button(_('Use this node', 'aether-proxy'), () => this.handleNode(nodes.value));
+		const update = () => { button.disabled = !model.can_switch(nodes.value, current); };
+		nodes.addEventListener('change', update);
+		update();
+		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [ nodes, button ]);
+	},
 
-		return E('tr', {}, [
-			E('td', {}, [ label ]),
-			E('td', {}, cells.length ? cells : [ '–' ])
+	colorStyle: function(level) {
+		const colors = {
+			ok: 'var(--success-color-high, #2f855a)',
+			warn: 'var(--warning-color, #b7791f)',
+			error: 'var(--error-color-high, #c53030)'
+		};
+		return colors[level] ? 'color:' + colors[level] : '';
+	},
+
+	section: function(title, children) {
+		return E('div', { 'class': 'cbi-section' }, [ E('h3', {}, title), ...children ]);
+	},
+
+	trafficSection: function(traffic) {
+		const rows = [ E('tr', {}, [
+			E('th', {}, ''), E('th', {}, _('Upload', 'aether-proxy')), E('th', {}, _('Download', 'aether-proxy'))
+		]) ];
+		for (const [key, title] of [
+			[ 'proxy', _('Proxy', 'aether-proxy') ],
+			[ 'direct', _('Direct', 'aether-proxy') ],
+			[ 'total', _('Total', 'aether-proxy') ]
+		])
+			rows.push(E('tr', {}, [
+				E('td', {}, title), E('td', {}, traffic[key].tx), E('td', {}, traffic[key].rx)
+			]));
+		return this.section(_('Traffic and connections', 'aether-proxy'), [
+			E('table', { 'class': 'table' }, rows),
+			E('div', { 'style': 'display:flex; gap:1em; flex-wrap:wrap' }, [
+				E('span', {}, [ _('Proxy connections', 'aether-proxy'), ' ', traffic.connections.proxy ]),
+				E('span', {
+					title: _('Total connections in the system connection tracking table (conntrack).', 'aether-proxy')
+				}, [ _('Total connections', 'aether-proxy'), ' ', traffic.connections.total ])
+			])
 		]);
 	},
 
@@ -271,28 +300,22 @@ return view.extend({
 				E('td', {}, c.path ?? '–')
 			]));
 
-		return E('table', { 'class': 'table' }, rows);
+		return E('table', { 'class': 'table', 'style': 'font-size: 0.9em' }, rows);
 	},
 
 	render: function(data) {
 		this.version = data[1];
 		this.labels = data[2].labels;
-		this.subscriptions = data[2].subscriptions;
+		this.currentNode = data[2].node;
 		this.enabled = data[2].enabled;
 
 		this.content = E('div', {});
 
-		/* Build the view model once here so the switch description also comes
-		   from the model; later refreshes replace only this.content, never the
-		   switch, so polling cannot fight with the user's checkbox. */
-		const vm = this.refresh(data[0].reply, data[0].stats);
+		this.refresh(data[0].reply, data[0].stats);
 		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.', 'aether-proxy')),
-			this.enableSwitch(vm.enabled_note),
-			this.dashboardControls(interval, data[2].node),
+			this.titleLine(interval),
 			this.content
 		]);
 
@@ -310,44 +333,59 @@ return view.extend({
 
 		const traffic = model.traffic(this.previousStats, stats);
 		this.previousStats = stats;
-		const parts = [ E('table', { 'class': 'table' }, [
-			this.row(_('Proxy traffic ↑ / ↓', 'aether-proxy'), traffic.proxy.tx, ' / ', traffic.proxy.rx),
-			this.row(_('Direct traffic ↑ / ↓', 'aether-proxy'), traffic.direct.tx, ' / ', traffic.direct.rx),
-			this.row(_('Total traffic ↑ / ↓', 'aether-proxy'), traffic.total.tx, ' / ', traffic.total.rx),
-			this.row(_('Proxy connections', 'aether-proxy'), traffic.connections.proxy),
-			this.row(_('Total connections (conntrack)', 'aether-proxy'), traffic.connections.total)
-		]) ];
+		/* Reuse controls when moving them into fresh sections: polling must not
+		   reset an edited selection, the enable switch or an in-flight probe. */
+		this.enableControl ??= this.enableSwitch(vm.enabled_note);
+		this.nodeControl ??= this.nodeControls(this.currentNode);
+		this.probeControl ??= this.probeControls();
 
-		if (!vm.ok) {
-			parts.push(E('div', { 'class': 'alert-message error' }, vm.error));
-		}
-		else {
-			parts.push(E('table', { 'class': 'table' }, [
-				this.row(_('Status', 'aether-proxy'), vm.state_text,
-					vm.dns_failsafe ? _('DNS has fallen back to the original upstream configuration.', 'aether-proxy') : null,
-					vm.state_since_text),
-				this.row(_('DNS level', 'aether-proxy'), vm.dns_tier_text),
-				this.row(_('Current node', 'aether-proxy'), vm.node_text, vm.node_ip),
-				this.row(_('Last health probe', 'aether-proxy'), vm.probe_text, vm.probe_since_text),
-				this.row(_('aether-proxy version', 'aether-proxy'), vm.own_version ?? _('Unable to read the version.', 'aether-proxy'))
-			]));
-
-			if (vm.components.length)
-				parts.push(this.componentTable(vm.components));
-
-			if (vm.notices.length) {
-				const items = vm.notices.map((n) => E('li', {}, n));
-
-				parts.push(E('div', { 'class': 'alert-message warning' }, E('ul', {}, items)));
-			}
-
-			parts.push(this.buttonBar(vm.buttons));
-		}
-
-		/* docs/10 「启用开关」: with the switch off, the status area says the
-		   service is not enabled instead of pretending the buttons failed. */
+		const parts = [];
+		const notices = [];
+		if (vm.error)
+			notices.push(E('div', { 'class': 'alert-message error' }, vm.error));
 		if (vm.disabled_notice)
-			parts.unshift(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
+			notices.push(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
+		if (vm.notices.length)
+			notices.push(E('ul', {}, vm.notices.map((text) =>
+				E('li', { 'class': 'alert-message warning' }, text))));
+		if (notices.length)
+			parts.push(this.section(_('Pending notices', 'aether-proxy'), notices));
+
+		const stateRows = [ E('div', {
+			style: 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap'
+		}, [
+			E('div', {}, [
+				E('strong', { style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level) }, vm.state_text ?? '–'),
+				' ', E('span', {}, vm.state_duration_text ?? ''), ' ',
+				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
+					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : [])
+			]),
+			this.enableControl
+		]) ];
+		if (vm.error_text != null)
+			stateRows.push(E('div', { style: this.colorStyle('error') }, [
+				_('Reason:', 'aether-proxy'), ' ', vm.error_text
+			]));
+		if (vm.dns_text != null)
+			stateRows.push(E('p', {}, [ _('Overseas domain resolution', 'aether-proxy'), ': ', vm.dns_text ]));
+		stateRows.push(this.buttonBar(vm.buttons));
+		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
+
+		parts.push(this.section(_('Current node', 'aether-proxy'), [
+			E('div', { style: 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap' }, [
+				E('div', {}, [
+					E('span', { style: 'font-size: 1.2em' }, vm.node_text), ' ',
+					E('small', { title: _('Node address', 'aether-proxy') }, vm.node_ip ?? '')
+				]),
+				E('div', { style: 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+					E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
+					E('small', {}, vm.probe_since_text ?? ''), this.probeControl
+				])
+			]),
+			this.nodeControl
+		]));
+		parts.push(this.trafficSection(traffic));
+		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentTable(vm.components) ]));
 
 		dom.content(this.content, E('div', {}, parts));
 

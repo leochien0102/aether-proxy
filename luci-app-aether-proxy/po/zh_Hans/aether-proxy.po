@@ -440,10 +440,6 @@ msgctxt "aether-proxy"
 msgid "Rule data"
 msgstr "规则数据"
 
-msgctxt "aether-proxy"
-msgid "Unable to read the version."
-msgstr "无法读取版本号。"
-
 msgid "Aether Proxy"
 msgstr "以太跃迁"
 
@@ -500,28 +496,12 @@ msgid "Advanced"
 msgstr "高级"
 
 msgctxt "aether-proxy"
-msgid "Service status, pending notices and start/stop controls."
-msgstr "服务状态、待处理提示与启停控制。"
-
-msgctxt "aether-proxy"
 msgid "Status"
 msgstr "状态"
 
 msgctxt "aether-proxy"
-msgid "DNS level"
-msgstr "DNS 级别"
-
-msgctxt "aether-proxy"
 msgid "Current node"
 msgstr "当前节点"
-
-msgctxt "aether-proxy"
-msgid "Last health probe"
-msgstr "最近一次健康检测"
-
-msgctxt "aether-proxy"
-msgid "aether-proxy version"
-msgstr "aether-proxy 版本"
 
 msgctxt "aether-proxy"
 msgid "DNS has fallen back to the original upstream configuration."
@@ -1500,42 +1480,106 @@ msgid "The service is not running."
 msgstr "服务未运行"
 
 msgctxt "aether-proxy"
-msgid "Subscription update finished: %s succeeded, %s failed."
-msgstr "订阅更新完成：成功 %s 个，失败 %s 个"
-
-msgctxt "aether-proxy"
 msgid "Measure latency"
 msgstr "测延迟"
-
-msgctxt "aether-proxy"
-msgid "Update subscriptions"
-msgstr "更新订阅"
-
-msgctxt "aether-proxy"
-msgid "Refresh interval"
-msgstr "刷新间隔"
-
-msgctxt "aether-proxy"
-msgid "Switch"
-msgstr "切换"
-
-msgctxt "aether-proxy"
-msgid "Proxy traffic ↑ / ↓"
-msgstr "代理 ↑ / ↓"
-
-msgctxt "aether-proxy"
-msgid "Direct traffic ↑ / ↓"
-msgstr "直连 ↑ / ↓"
-
-msgctxt "aether-proxy"
-msgid "Total traffic ↑ / ↓"
-msgstr "合计 ↑ / ↓"
 
 msgctxt "aether-proxy"
 msgid "Proxy connections"
 msgstr "代理连接"
 
 msgctxt "aether-proxy"
-msgid "Total connections (conntrack)"
-msgstr "总连接（conntrack）"
+msgid "Total connections"
+msgstr "总连接"
+
+msgctxt "aether-proxy"
+msgid "For %s seconds"
+msgstr "已持续 %s 秒"
+
+msgctxt "aether-proxy"
+msgid "For %s minutes"
+msgstr "已持续 %s 分钟"
+
+msgctxt "aether-proxy"
+msgid "For %s hours"
+msgstr "已持续 %s 小时"
+
+msgctxt "aether-proxy"
+msgid "For %s days"
+msgstr "已持续 %s 天"
+
+msgctxt "aether-proxy"
+msgid "Node address resolution failed."
+msgstr "节点地址解析失败"
+
+msgctxt "aether-proxy"
+msgid "Invalid configuration; see the logs page."
+msgstr "配置无效，详见日志页"
+
+msgctxt "aether-proxy"
+msgid "Start failed; see the logs page."
+msgstr "启动失败，详见日志页"
+
+msgctxt "aether-proxy"
+msgid "Resolved through the node (normal)."
+msgstr "经节点解析（正常）"
+
+msgctxt "aether-proxy"
+msgid "Direct to overseas DNS (starting, or proxy unhealthy)."
+msgstr "直连境外 DNS（启动中，或代理不健康）"
+
+msgctxt "aether-proxy"
+msgid "Domestic DNS only (overseas DNS unreachable; results may be poisoned)."
+msgstr "仅用国内 DNS（境外 DNS 都不通，结果可能被污染）"
+
+msgctxt "aether-proxy"
+msgid "No node selected"
+msgstr "未选择节点"
+
+msgctxt "aether-proxy"
+msgid "%s (current)"
+msgstr "%s（当前）"
+
+msgctxt "aether-proxy"
+msgid "Use this node"
+msgstr "使用此节点"
+
+msgctxt "aether-proxy"
+msgid "Upload"
+msgstr "上传"
+
+msgctxt "aether-proxy"
+msgid "Download"
+msgstr "下载"
+
+msgctxt "aether-proxy"
+msgid "Total"
+msgstr "合计"
+
+msgctxt "aether-proxy"
+msgid "Traffic and connections"
+msgstr "流量与连接"
+
+msgctxt "aether-proxy"
+msgid "Total connections in the system connection tracking table (conntrack)."
+msgstr "系统连接跟踪表（conntrack）中的连接总数"
+
+msgctxt "aether-proxy"
+msgid "Pending notices"
+msgstr "待处理提示"
+
+msgctxt "aether-proxy"
+msgid "Reason:"
+msgstr "原因："
+
+msgctxt "aether-proxy"
+msgid "Overseas domain resolution"
+msgstr "境外域名解析"
+
+msgctxt "aether-proxy"
+msgid "Node address"
+msgstr "节点地址"
+
+msgctxt "aether-proxy"
+msgid "Component versions"
+msgstr "组件版本"
 
