@@ -575,6 +575,13 @@ else
 	bad 'T10.7 data status CLI scenarios'
 fi
 
+# T10.8: dispatch-table coverage and real CLI isolation from broken command modules.
+if python3 "$ROOT/tests/cli/lazy-subcommands.py"; then
+	ok 'T10.8 lazy subcommand CLI scenarios'
+else
+	bad 'T10.8 lazy subcommand CLI scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
