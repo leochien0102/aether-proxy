@@ -130,3 +130,16 @@ T8.14 只加注释、不改代码，下列位置找不到设计依据，由设�
 
 结论：设备侧单次处理不慢；体感主要来自前端组织方式——概览页 `load()` 串行取 `status`→`stats`，再加 `version` 与 UCI，全部到齐前页面空白；节点页同样等数据齐了才渲染，节点多时 GridSection 渲染也占时间。
 候选改进（待排期，用户看过前端后再定）：页面先出骨架、数据到达后再填；概览页三个请求并发；命令行按子命令按需加载模块（每次调用约 0.27→0.12 s）；节点多时分批渲染。
+
+## B12 T7.7 真机验收（2026-10-20，H28K，官方 channel-stable）
+
+第一轮（服务不启用，0.2.0-r4 起步）：升到 r5 后安装后检查的 restart 超时（35 秒）→ 判失败并**自动回滚**到 0.1.0-r2（自动回滚路径在真机上实际走通）。
+根因：`rc.common` 的 restart 在 stop 期间 `trap '' TERM`，`sys.run` 的计时器无法再用 TERM 取消，每个带超时的调用都等满超时（`cleanup` 0 → 41 s）→ T8.23，0.2.0-r6。
+
+第二轮（r5 起步，channel 当前 r6、上一版 r5）：检查更新 → r6 → `--previous` 回 r5 → r6 → luci-app r6 → 无更新，两种方式全部通过：
+- 服务不启用：每步检查走 `aether-proxy check`；回滚到 r5 那一步约 57 s（r5 自己的慢 cleanup，r6 的 90 s 上限兜住）。
+- 服务运行（停 ssr-plus，LAN 流量全程经 aether-proxy）：每次安装后 restart 都回到 running；结束时 DNS T1、检测正常（196 ms）。
+
+观察：procd 的 stop 是异步的，`service_stopped` 里的 `cleanup` 与正在有序退出的 daemon 并行（本次 daemon 在 stop 返回约 4 s 后才记 `SERVICE_STOPPED`）。两边步骤都幂等，cleanup 也会先导出集合，暂不处理。
+
+m7 T7.7 卡上未覆盖：篡改清单的验签失败、`xray-core` 更新（ssr-plus 共用二进制，不动）、数据更新的实际变化（本次数据未变）。这三项均有宿主机测试；真机是否补测待定（需要测试通道）。
