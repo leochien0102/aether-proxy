@@ -14,6 +14,7 @@ import * as config from 'aetherproxy.config';
 import * as state from 'aetherproxy.state';
 import * as check from 'aetherproxy.cmd.check';
 import * as apply from 'aetherproxy.apply';
+import * as updates_cache from 'aetherproxy.updates_cache';
 
 function usage(args, detail) {
 	let json = index(args, '--json') >= 0;
@@ -52,28 +53,6 @@ function probe_summary(run_dir) {
 			reachable++;
 	}
 	return { at: data.at ?? null, total, reachable };
-}
-
-function updates_summary(run_dir) {
-	let path = `${run_dir}/${C.UPDATE_FILE}`;
-	let text = fs.readfile(path);
-	if (text == null) {
-		let detail = fs.error() ?? 'unknown error';
-		if (detail != 'No such file or directory')
-			log.event('error', 'FS_FAILED', { op: 'read', path, detail });
-		return null;
-	}
-	try {
-		let value = json(text);
-		if (type(value) == 'object')
-			return value;
-		log.event('error', 'FS_FAILED', { op: 'parse', path, detail: 'expected a JSON object' });
-		return null;
-	}
-	catch (e) {
-		log.event('error', 'FS_FAILED', { op: 'parse', path, detail: e.message ?? `${e}` });
-		return null;
-	}
 }
 
 // --sys-root prefix for absolute system paths (docs/10 「仅供测试的选项」).
@@ -208,7 +187,8 @@ export function run(args) {
 			2, pipeline.describe_errors({ code: 'CONFIG_INVALID', detail: 'configuration invalid', errors: cfg.errors }));
 
 	current.probe = probe_summary(run_dir);
-	current.updates_available = updates_summary(run_dir);
+	let updates = updates_cache.read(run_dir, parsed.opts.sys_root);
+	current.updates_available = updates.stale ? null : updates.value;
 	current.notices = collect_notices(cfg.snapshot, parsed.opts, current.updates_available);
 
 	return pipeline.finish(parsed.opts, current, 0, human_status(current));

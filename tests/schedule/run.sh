@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Exercise subscription/update scheduling and stale-cache auto-install gating (docs/06, docs/08).
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -295,6 +296,66 @@ else
 	bad "auto policy starts xray package job while running" "$(cat "$R/daemon.stderr") $(cat "$R/var/run/aether-proxy/state.json" 2>/dev/null)"
 fi
 stop_daemon
+
+# T9.6: exercise the real daemon while healthy and auto-enabled. The same cache must
+# become eligible when only the selected database mtime changes back to checked.
+for manager in opkg apk; do
+	make_root "$T/root-stale-$manager"
+	R="$T/root-stale-$manager"
+	sed -i -e "s/option xray_auto 'notify'/option xray_auto 'auto'/" \
+		-e "s/option interval_hours '1'/option interval_hours '0'/" "$R/etc/config/aetherproxy"
+	now=$(date +%s)
+	printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s},"auto_install":{"version":"old","at":1}}\n' \
+		"$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
+	cp "$R/etc/aether-proxy/state/update-schedule.json" "$T/stale-record"
+	cat > "$R/var/run/aether-proxy/updates.json" <<EOF
+{"pm":"$manager","checked":1760400000,
+ "packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}
+EOF
+	cp "$R/var/run/aether-proxy/updates.json" "$T/stale-cache"
+	if [ "$manager" = opkg ]; then
+		database="$R/usr/lib/opkg/status"
+	else
+		database="$R/lib/apk/db/installed"
+	fi
+	mkdir -p "$(dirname "$database")"
+	touch -d @1760400010 "$database"
+	SCHEDULE_RESOLVE_FAIL=0 start_daemon "$R"
+	if wait_monitor_state running; then
+		ok "T9.6 $manager stale auto setup reaches running"
+		cp "$R/var/run/aether-proxy/events.jsonl" "$T/stale-events"
+		sleep 0.4
+		if grep -Fq 'job start update package xray-core' "$R/schedule-calls.log"; then
+			bad "T9.6 $manager stale cache does not auto-install"
+		else
+			ok "T9.6 $manager stale cache does not auto-install"
+		fi
+		cmp -s "$T/stale-record" "$R/etc/aether-proxy/state/update-schedule.json" \
+			&& ok "T9.6 $manager stale auto_install record unchanged" \
+			|| bad "T9.6 $manager stale auto_install record unchanged"
+		cmp -s "$T/stale-events" "$R/var/run/aether-proxy/events.jsonl" \
+			&& ok "T9.6 $manager stale detection emits no events" \
+			|| bad "T9.6 $manager stale detection emits no events"
+		touch -d @1760400000 "$database"
+		if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 400; then
+			ok "T9.6 $manager same cache fresh at equality auto-installs"
+			# The stub logs before the daemon persists the record; wait for that write.
+			if wait_for_text "$R/etc/aether-proxy/state/update-schedule.json" '26.10-r1' 200; then
+				ok "T9.6 $manager fresh auto_install version recorded"
+			else
+				bad "T9.6 $manager fresh auto_install version recorded"
+			fi
+		else
+			bad "T9.6 $manager same cache fresh at equality auto-installs" "$(< "$R/daemon.stderr")"
+		fi
+		cmp -s "$T/stale-cache" "$R/var/run/aether-proxy/updates.json" \
+			&& ok "T9.6 $manager scheduler preserves cache bytes" \
+			|| bad "T9.6 $manager scheduler preserves cache bytes"
+	else
+		bad "T9.6 $manager stale auto setup reaches running" "$(< "$R/daemon.stderr")"
+	fi
+	stop_daemon
+done
 
 # notify never installs, also while running (the degraded loop below cannot show that).
 make_root "$T/root-notify-running"
