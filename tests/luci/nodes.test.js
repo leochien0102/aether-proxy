@@ -227,3 +227,76 @@ test('scenario 9: static view checks — GridSection, no rpc.declare, confirmed 
 	/* per docs/10 「UI 规则」: never cbi-button-reset */
 	assert.doesNotMatch(src, /cbi-button-reset/);
 });
+
+/* Regression (M10 full regression, 2026-10-20): the row buttons were bound with
+ * ui.createHandlerFn(self, 'handleProbeOne' / 'handleSetCurrent', section_id), but the
+ * handlers took (ev, section_id). LuCI passes the bound arguments first and the event
+ * last, so 「检测」 sent the event object as the node list (rpcd: USAGE) and 「设为当前」
+ * would have written it into main.node. The double below follows luci-base ui.js:
+ * fn.apply(ctx, [...bound, ev]) with ev.currentTarget taken after the bound arguments. */
+function luciCreateHandlerFn(ctx, fn, ...bound) {
+	if (typeof fn == 'string')
+		fn = ctx[fn];
+	if (typeof fn != 'function')
+		return null;
+	return function(...rest) {
+		const target = [ ...bound, ...rest ][bound.length].currentTarget;
+		target.disabled = true;
+		return Promise.resolve(fn.apply(ctx, [ ...bound, ...rest ])).finally(() => { target.disabled = false; });
+	};
+}
+
+function loadNodesView(calls) {
+	const modelMod = loadModule(MODEL, { baseclass: { extend: (o) => o } },
+		{ window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+	const view = loadModule(VIEW, {
+		view: { extend: (o) => o },
+		form: {},
+		uci: {
+			sections: () => [],
+			get: () => undefined,
+			set: (...args) => calls.push([ 'uci.set', ...args ]),
+			save: () => { calls.push([ 'uci.save' ]); return Promise.resolve(); }
+		},
+		ui: {
+			createHandlerFn: luciCreateHandlerFn,
+			changes: { apply: (...args) => { calls.push([ 'apply', ...args ]); } },
+			addNotification: (...args) => calls.push([ 'notify', ...args ])
+		},
+		dom: { content: () => {} },
+		'aether-proxy.common': {
+			call: (method) => { calls.push([ 'call', method ]); return Promise.resolve({ ok: true, nodes: {} }); },
+			run_job: (kind, args) => { calls.push([ 'run_job', kind, args ]); return Promise.resolve({ state: 'ok' }); }
+		},
+		'aether-proxy.model.nodes': modelMod
+	}, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+	view.probeButtons = [];
+	view.probeCells = {};
+	view.progressEl = {};
+	return view;
+}
+
+test('row 「检测」 click sends only that node id to probe_nodes', async () => {
+	const calls = [];
+	const view = loadNodesView(calls);
+	const click = luciCreateHandlerFn(view, 'handleProbeOne', 'n_0123456789abcdef0123456789abcdef');
+
+	await click({ currentTarget: {} });
+
+	assert.deepEqual(calls.find((c) => c[0] == 'run_job'),
+		[ 'run_job', 'probe_nodes', [ 'n_0123456789abcdef0123456789abcdef' ] ]);
+});
+
+test('row 「设为当前」 click writes the node id into main.node, saves and applies with rollback', async () => {
+	const calls = [];
+	const view = loadNodesView(calls);
+	const click = luciCreateHandlerFn(view, 'handleSetCurrent', 'n_0123456789abcdef0123456789abcdef');
+
+	await click({ currentTarget: {} });
+
+	assert.deepEqual(calls, [
+		[ 'uci.set', 'aetherproxy', 'main', 'node', 'n_0123456789abcdef0123456789abcdef' ],
+		[ 'uci.save' ],
+		[ 'apply', true ]
+	]);
+});

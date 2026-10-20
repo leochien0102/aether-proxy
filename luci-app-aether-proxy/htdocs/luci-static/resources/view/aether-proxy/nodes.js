@@ -403,7 +403,9 @@ return view.extend({
 		return this.handleProbe(ev, []);
 	},
 
-	handleProbeOne: function(ev, section_id) {
+	/* ui.createHandlerFn passes its bound arguments first and the event last
+	   (luci-base ui.js), so the row's section_id comes before ev. */
+	handleProbeOne: function(section_id, ev) {
 		return this.handleProbe(ev, [ section_id ]);
 	},
 
@@ -451,7 +453,7 @@ return view.extend({
 
 	/* 设为当前: stage the UCI change and go through LuCI's standard save &
 	   apply with rollback confirmation (docs/10 「节点页」). */
-	handleSetCurrent: function(ev, section_id) {
+	handleSetCurrent: function(section_id, ev) {
 		uci.set('aetherproxy', 'main', 'node', section_id);
 
 		return uci.save().then(function() {

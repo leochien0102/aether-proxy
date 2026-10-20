@@ -180,3 +180,28 @@ test('po has no duplicate msgid', () => {
 	const repeated = ids.filter((id, i) => ids.indexOf(id) != i);
 	assert.deepEqual(repeated, []);
 });
+
+/* LuCI's ui.createHandlerFn(ctx, fn, ...args) calls fn(...args, ev): bound arguments
+ * first, the event last. Handlers bound by name with extra arguments must therefore not
+ * take the event as their first parameter (the node page's row buttons did, from T8.5
+ * until the M10 regression found it, 2026-10-20). */
+test('handlers bound with extra createHandlerFn arguments take them before the event', () => {
+	let checked = 0;
+
+	for (const [ file, src ] of viewSources()) {
+		for (const m of src.matchAll(/createHandlerFn\(\s*(?:self|this)\s*,\s*'(\w+)'\s*,\s*([^)]+)\)/g)) {
+			const name = m[1];
+			const def = new RegExp('\\b' + name + ':\\s*function\\s*\\(([^)]*)\\)').exec(src);
+
+			assert.ok(def, `${file}: handler ${name} is defined in the view`);
+
+			const first = def[1].split(',')[0].trim();
+
+			assert.ok(first != '' && !/^(ev|e|event)$/.test(first),
+				`${file}: ${name}(${def[1]}) is bound with extra arguments (${m[2].trim()}), so its first parameter must be the bound value, not the event`);
+			checked++;
+		}
+	}
+
+	assert.ok(checked >= 3, 'the bound handlers of the node and subscription pages are found');
+});
