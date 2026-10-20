@@ -8,11 +8,15 @@ on:
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
+      - 'tests/ci/smoke*'
+      - 'tests/fixtures/sample/**'
   pull_request:
     paths:
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
+      - 'tests/ci/smoke*'
+      - 'tests/fixtures/sample/**'
   workflow_dispatch:
 
 jobs:
@@ -71,3 +75,71 @@ jobs:
           name: packages-${{ matrix.sdk }}
           path: bin/packages/x86_64/aetherproxy/*
           if-no-files-found: error
+
+  # T9.3 / docs/11: package installation and pure CLI rendering only, not a dataplane test.
+  smoke:
+    needs: packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    name: smoke (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      # Images are pinned by the digest of the single rootfs image, not selected by --platform:
+      # the OpenWrt arm images declare architecture "aarch64_generic" and the ImmortalWrt one
+      # "amd64", so docker's platform matching fails (second CI run). qemu runs the aarch64 ones.
+      matrix:
+        include:
+          - name: openwrt x86-64-24.10.8
+            image: openwrt/rootfs@sha256:62b8bdaa417736a93cc770e5015118612f0b1c62385b1ae6e838af4357b225c4
+            arch: x86_64
+            sdk: 24.10.8
+          - name: openwrt armsr-armv8-24.10.8
+            image: openwrt/rootfs@sha256:f6dd33c1d9b7d6f1e0848f2fbb92b8d03fc9b425dc08c3574a44936b93133704
+            arch: aarch64
+            sdk: 24.10.8
+          - name: openwrt x86-64-25.12.5
+            image: openwrt/rootfs@sha256:c5d5f05bab4ce06a4e840b3573671a06ec8ae9842273188ffc53f7021836b8e2
+            arch: x86_64
+            sdk: 25.12.5
+          - name: openwrt armsr-armv8-25.12.5
+            image: openwrt/rootfs@sha256:1e27df61f032ed014336cb7843ddb4734283b95f2b6888a83b5e356e6a946462
+            arch: aarch64
+            sdk: 25.12.5
+          - name: immortalwrt x86-64-openwrt-24.10.6
+            image: immortalwrt/rootfs@sha256:a7dbc0b1986bce967e155a5bd2e83713a5f29ca439cc8cd47c86befde635ec60
+            arch: x86_64
+            sdk: 24.10.8
+          - name: immortalwrt armsr-armv8-openwrt-24.10.6
+            image: immortalwrt/rootfs@sha256:930c22e95198dc3e4137b1368ced9e6e9df6228c60d171c3eca938b4131716a7
+            arch: aarch64
+            sdk: 24.10.8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ matrix.sdk }}
+          path: smoke-packages
+
+      - name: Prepare pinned host ucode
+        run: bash tests/host/bootstrap.sh
+
+      - name: Test smoke runner and prepare host goldens
+        run: python3 tests/ci/smoke-host.py --golden-dir "$PWD/smoke-packages/smoke-golden"
+
+      - name: Enable aarch64 emulation
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v3.6.0
+        with:
+          platforms: arm64
+
+      - name: Install, render and uninstall in disposable rootfs
+        env:
+          SMOKE_IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --volume "$PWD:/repo:ro" \
+            --volume "$PWD/smoke-packages:/packages:ro" \
+            --entrypoint /bin/sh "$SMOKE_IMAGE" -c \
+            '/bin/ash -n /repo/tests/ci/smoke.sh && exec /bin/ash /repo/tests/ci/smoke.sh /packages /repo'
