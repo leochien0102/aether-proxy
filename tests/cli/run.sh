@@ -568,6 +568,13 @@ else
 	bad 'T10.4 components CLI scenarios'
 fi
 
+# T10.7: one native grep scan with the former line-count algorithm as an oracle.
+if python3 "$ROOT/tests/cli/data-status.py"; then
+	ok 'T10.7 data status CLI scenarios'
+else
+	bad 'T10.7 data status CLI scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
