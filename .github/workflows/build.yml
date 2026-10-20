@@ -22,8 +22,9 @@ on:
 jobs:
   packages:
     runs-on: ubuntu-latest
-    # A normal build takes 10-15 minutes; a hung SDK step otherwise runs to GitHub's 6 h limit.
-    timeout-minutes: 30
+    # A normal build takes 10-15 minutes, but a slow OpenWrt mirror once took 21 minutes for the
+    # SDK download alone; a hung step otherwise runs to GitHub's 6 h limit.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
