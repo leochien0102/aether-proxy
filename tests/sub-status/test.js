@@ -99,7 +99,7 @@ try {
   assert.match(source,/model\.new_id/); assert.match(source,/crypto\.getRandomValues/);
   assert.match(source,/uci\.add\('aetherproxy', 'subscription', id\)/);
   assert.match(source,/renderMoreOptionsModal\(id\)/);
-  assert.match(source,/'url', _\('Subscription URL'\)\).*o\.password = true/);
+  assert.match(source,/'url', _\('Subscription URL', 'aether-proxy'\)\).*o\.password = true/);
   assert.match(source,/cbi-button-remove/); assert.match(source,/if \(!confirm\(plan.confirm\)\) return/);
   assert.match(source,/ap\.run_job\('sub_update', ids\)/);
   assert.match(source,/uci\.set\('aetherproxy', node, 'source', 'manual'\)/);
@@ -107,7 +107,10 @@ try {
   assert.doesNotMatch(source,/rpc\.declare|cbi-button-reset/);
   for (const f of ['view/aether-proxy/subscriptions.js','aether-proxy/model/subscriptions.js']) {
    const text=fs.readFileSync(path.join(res,f),'utf8');
-   for (const m of text.matchAll(/_\('([^']+)'\)/g)) assert.ok(po[m[1]], 'translation missing: '+m[1]);
+   // _() calls carry the translation context since T10.1; an empty match list would make this check vacuous.
+   const ids=[...text.matchAll(/_\('([^']+)', 'aether-proxy'\)/g)].map(m=>m[1]);
+   assert.ok(ids.length > 0, 'translation scan found no _() calls in '+f);
+   for (const id of ids) assert.ok(po[id], 'translation missing: '+id);
    assert.equal(cp.spawnSync('node',['--check',path.join(res,f)]).status,0);
   }
  });
