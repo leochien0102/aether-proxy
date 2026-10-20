@@ -175,7 +175,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 
 ## LuCI 页面
 
-菜单路径：服务 → aether-proxy。全部使用 JS 视图（`form.Map` + `uci`），禁止 Lua。
+菜单路径：服务 → Aether Proxy（中文界面为「以太跃迁」，显示名见 [README](README.md)「命名」）。全部使用 JS 视图（`form.Map` + `uci`），禁止 Lua。
 
 | 页面 | 内容 |
 |---|---|
@@ -203,7 +203,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 - **`ap.run_job(kind, args, on_update)`** → promise：`job_start` 后每 2 秒 `job_status`，直到 `state` 为 `ok`/`failed`，resolve 最终的作业对象；每次拿到状态都调用 `on_update(job)`。
   `job_start` 返回 `BUSY` 且带 `job` → 改为轮询那个正在运行的作业（结果中 `attached: true`），不报错；
   其他失败（`USAGE`、`RPC_FAILED`、`TIMEOUT`、`job_status` 返回 `JOB_NOT_FOUND` 等）→ resolve 该失败对象并停止；总时长超过 `ap.TIMEOUTS.job`（默认 620 秒，作业上限 600 秒）→ `{ ok: false, code: "TIMEOUT" }`。
-- **菜单**：服务 → aether-proxy 为父节点（`firstchild`），下设 8 个子页面：概览 `overview`、节点 `nodes`、订阅 `subscriptions`、访问控制 `access`、
+- **菜单**：服务 → Aether Proxy（显示名，2026-10-20 起；之前为 `aether-proxy`）为父节点（`firstchild`），下设 8 个子页面：概览 `overview`、节点 `nodes`、订阅 `subscriptions`、访问控制 `access`、
   规则与 DNS `rules`、更新 `updates`、日志 `logs`、高级 `advanced`（顺序同 10「LuCI 页面」表），视图 `aether-proxy/<名称>`，都依赖 ACL `luci-app-aether-proxy`。
   T8.3 只建空页面（标题 + 「此页面尚未实现」），各页面的卡再填内容；概览保留现在的版本显示，改用 `ap.call('version')`。
 - 写法跟随 LuCI 自身代码（`'use strict'`、`'require …'`、`baseclass.extend`/`view.extend`）。界面文字一律 `_()`，中文翻译写进 `po/zh_Hans/aether-proxy.po`。

@@ -2,14 +2,16 @@
 
 ## 命名（已定，2026-10-14）
 
-名称中不绑定 Xray，为以后支持多个代理核心留出空间。分两种写法，**不准混用**：
+名称中不绑定 Xray，为以后支持多个代理核心留出空间。分三种写法，**不准混用**：
 
 | 写法 | 用在哪里 |
 |---|---|
 | `aether-proxy`（带连字符） | 仓库名、包名（`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`）、命令 `aether-proxy`、init 脚本 `/etc/init.d/aether-proxy`、目录（`/etc/aether-proxy`、`/usr/share/aether-proxy`、`/var/run/aether-proxy`）、syslog 标签、LuCI 菜单与视图路径、po 文件名 |
 | `aetherproxy`（不带连字符） | 机器标识符：UCI 配置 `/etc/config/aetherproxy`、nft 表 `inet aetherproxy`（nft 标识符不允许连字符）、ubus/rpcd 对象 `aetherproxy`、feeds.conf 中的 feed 名、ucode/shell 中的变量与常量前缀 |
+| **显示名** `Aether Proxy`，中文「以太跃迁」（2026-10-20，仓库所有者定） | 只用于 LuCI 的菜单标题与页面标题。英文界面显示 `Aether Proxy`，中文界面显示「以太跃迁」（Aether 译作以太；「跃迁」代指越过网络限制，不直白地写「代理」「翻墙」） |
 
 判断规则：会被 nft、UCI、ubus 当作**标识符解析**的地方用 `aetherproxy`，其余一律用 `aether-proxy`。
+界面正文提到本服务时**不写名称**，写「服务」（如「停止服务后所有流量直连」）；指向具体程序的地方（包名、命令、日志来源、syslog 标签）仍用 `aether-proxy`。
 
 状态：**可以开工**（2026-10-14）。设计已完成，M0、M1 任务卡已拆好。仓库将公开在 GitHub `leochien0102/aether-proxy`。实现预计交给其他 agent 完成，所以本目录要写到
 **照着做就不需要再做设计决定**的程度。遇到文档没覆盖的问题，按「给实现者的规则」处理。
