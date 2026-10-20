@@ -136,8 +136,8 @@ sys.exit(result.returncode)
 			for directory in (run, default_run)))
 		calls = [json.loads(line) for line in log.read_text().splitlines()]
 		check(f'{mode}: exactly one grep with flags, literal TAB/CR and all five selected paths',
-			len(calls) == 1 and calls[0][:5] == ['-H', '-c', '-v', '-E', '^[ \t\r]*(#|$)']
-			and len(calls[0][5:]) == 5 and set(calls[0][5:]) == set(paths.values()))
+			len(calls) == 1 and calls[0][:3] == ['-H', '-c', '^[ \t\r]*[^ \t\r#]']
+			and len(calls[0][3:]) == 5 and set(calls[0][3:]) == set(paths.values()))
 		return value, elapsed
 
 	reference = subprocess.run(ucode + [str(ROOT / 'tests/cli/data-lines-reference.uc'),
