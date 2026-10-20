@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第二轮修正」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第三轮修正」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -268,20 +268,22 @@ return view.extend({
 		return E('div', { 'class': 'cbi-section' }, [ E('h3', {}, title), ...children ]);
 	},
 
-	trafficSection: function(traffic) {
+	trafficSection: function(traffic, note) {
 		const rows = [ E('tr', {}, [
 			E('th', {}, ''), E('th', {}, _('Upload', 'aether-proxy')), E('th', {}, _('Download', 'aether-proxy'))
 		]) ];
 		for (const [key, title] of [
 			[ 'proxy', _('Proxy', 'aether-proxy') ],
 			[ 'direct', _('Direct', 'aether-proxy') ],
-			[ 'total', _('Total', 'aether-proxy') ]
+			[ 'total', traffic.total_label ]
 		])
 			rows.push(E('tr', {}, [
-				E('td', {}, title), E('td', {}, traffic[key].tx), E('td', {}, traffic[key].rx)
+				E('td', { title: key === 'total' ? traffic.total_title : null }, title),
+				E('td', {}, traffic[key].tx), E('td', {}, traffic[key].rx)
 			]));
 		return this.section(_('Traffic and connections', 'aether-proxy'), [
 			E('table', { 'class': 'table' }, rows),
+			...(note ? [ E('p', { style: 'font-size: 0.9em' }, note) ] : []),
 			E('div', { 'style': 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
 				E('span', {}, [ _('Proxy connections', 'aether-proxy'), ' ', traffic.connections.proxy ]),
 				E('span', {
@@ -400,14 +402,18 @@ return view.extend({
 		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
 
 		parts.push(this.section(_('Current node', 'aether-proxy'), [
-			this.nodeControl ?? E('p', {}, vm.node_text),
-			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-				...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
-				E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
-				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
+			E('div', {
+				style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
+			}, [
+				this.nodeControl ?? E('p', {}, vm.node_text),
+				E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+					...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
+					E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
+					E('small', {}, vm.probe_since_text ?? ''), this.probeControl
+				])
 			])
 		]));
-		parts.push(this.trafficSection(traffic));
+		parts.push(this.trafficSection(traffic, vm.traffic_note));
 		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]));
 
 		dom.content(this.content, E('div', {}, parts));

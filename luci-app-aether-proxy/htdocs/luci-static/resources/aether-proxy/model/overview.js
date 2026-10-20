@@ -2,7 +2,7 @@
 'require baseclass';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第二轮修正」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第三轮修正」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -233,7 +233,14 @@ return baseclass.extend({
 
 	traffic: function(previous, current) {
 		const elapsed = previous && current ? current.at_ms - previous.at_ms : 0;
-		const result = { proxy: {}, direct: {}, total: {} };
+		const result = {
+			proxy: {}, direct: {}, total: {},
+			total_label: _('Total (WAN)', 'aether-proxy'),
+			total_title: current?.wan?.dev
+				? fmt(_('All traffic on WAN interface %s, including the router itself.', 'aether-proxy'),
+					current.wan.dev)
+				: _('All traffic on the WAN interface, including the router itself.', 'aether-proxy')
+		};
 		for (const direction of [ 'tx', 'rx' ]) {
 			const proxy = byte_rate(previous?.proxy, current?.proxy, direction, elapsed);
 			const same_device = previous?.wan?.dev === current?.wan?.dev;
@@ -304,6 +311,9 @@ return baseclass.extend({
 		const components = component_rows(version, inventory);
 		const state = (status?.ok === false ? null : status?.state) ?? 'unknown';
 		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
+		/* WAN counters also include other services; missing proxy counters cannot imply direct traffic. */
+		const traffic_note = active ? null
+			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
 		const nodes = {
@@ -322,6 +332,7 @@ return baseclass.extend({
 				ok: false,
 				error: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
 				state_text: null,
+				traffic_note,
 				dns_failsafe: false,
 				state_level: 'neutral',
 				state_duration_text: null,
@@ -347,6 +358,7 @@ return baseclass.extend({
 			ok: true,
 			error: null,
 			state_text: state_text(state, status.waiting_network === true),
+			traffic_note,
 			dns_failsafe: status.dns_failsafe === true,
 			state_level: state_level(state),
 			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,
