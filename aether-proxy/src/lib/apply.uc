@@ -557,11 +557,11 @@ function update_lkg(ctx, updates) {
 	}
 	if (!changed)
 		return result('node addresses unchanged', { written: false });
-	if (!sys.mkdir_p(state_dir(ctx)))
-		return { ok: false, detail: `cannot create ${state_dir(ctx)}: ${sys.error()}` };
 	let path = `${state_dir(ctx)}/${C.NODE_IP_FILE}`;
+	if (!sys.mkdir_p(state_dir(ctx)))
+		return { ok: false, path, detail: `cannot create ${state_dir(ctx)}: ${sys.error()}` };
 	if (!sys.write_atomic(path, sprintf('%.J\n', { nodes })))
-		return { ok: false, detail: `cannot write ${path}: ${sys.error()}` };
+		return { ok: false, path, detail: `cannot write ${path}: ${sys.error()}` };
 	return result('node addresses saved', { written: true });
 };
 

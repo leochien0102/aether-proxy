@@ -291,9 +291,8 @@ export function probe_nodes(nodes, ids, timeout, concurrency, bin_dir, on_done, 
 	if (length(resolved_addresses)) {
 		let saved = apply.update_lkg(ctx ?? {}, resolved_addresses);
 		if (!saved.ok) {
-			// TODO(design): docs/03 does not specify whether a failed cache write fails the probe job.
-			// Keep the measured results, but report the cache failure rather than hiding it.
-			log.event('error', 'FS_FAILED', { op: 'update_lkg', detail: saved.detail });
+			// docs/03 bootstrap step 3: a failed cache write keeps the measured results.
+			log.event('error', 'FS_FAILED', { op: 'update_lkg', path: saved.path, detail: saved.detail });
 		}
 	}
 	let output = {};

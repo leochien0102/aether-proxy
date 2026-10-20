@@ -113,6 +113,7 @@ try:
     events = (sysroot / "var/run/aether-proxy/events.jsonl").read_text().splitlines()
     check("probe LKG: cache write failure reports FS_FAILED and preserves measured results",
           blocked["finished"] and blocked["nodes"][ids[0]]["ok"] == 3
-          and len(events) == 1 and json.loads(events[0])["code"] == "FS_FAILED" and lkg.is_dir())
+          and len(events) == 1 and json.loads(events[0])["code"] == "FS_FAILED" and lkg.is_dir()
+          and json.loads(events[0])["args"].get("path") == str(lkg))
 finally:
     os.close(fd)
