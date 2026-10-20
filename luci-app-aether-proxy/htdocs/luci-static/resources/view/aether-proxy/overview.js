@@ -7,7 +7,7 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「切换节点未生效时提示」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第五轮修正」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
@@ -17,6 +17,7 @@
  * refreshed at the selected interval via ap.poll; version and the UCI node labels plus
  * main.enabled are read at load; installed components are read once after rendering
  * and update only their table, without delaying the first screen (docs/10 T10.5).
+ * Failed inventory calls can be explicitly retried without reloading the page (T10.13).
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
  * registers a reload trigger for the aetherproxy config, so saving the UCI
@@ -196,37 +197,42 @@ return view.extend({
 	handleProbe: function() {
 		const button = this.probeButton;
 		button.disabled = true;
+		dom.content(this.probeMessage, _('Measuring latency…', 'aether-proxy'));
 		return ap.call('probe_now').then((reply) => {
 			if (!reply.ok)
-				return model.probe_result(reply);
+				return { text: model.probe_result(reply) };
 			/* The deadline also covers a slow status RPC. Late replies must not
 			   start another poll or overwrite the displayed timeout. */
 			return new Promise((resolve) => {
 				let finished = false, next;
-				const finish = (text) => {
+				const finish = (completion) => {
 					if (finished)
 						return;
 					finished = true;
 					window.clearTimeout(deadline);
 					window.clearTimeout(next);
-					resolve(text);
+					resolve(completion);
 				};
 				const deadline = window.setTimeout(() => {
-					finish(model.probe_result({ code: 'TIMEOUT' }));
+					finish({ text: model.probe_result({ code: 'TIMEOUT' }) });
 				}, 15000);
 				const poll = () => ap.call('status').then((status) => {
 					if (finished)
 						return;
 					const completion = model.probe_completion(status, reply.requested_at);
 					if (completion.done)
-						finish(completion.text);
+						finish(completion);
 					else
 						next = window.setTimeout(poll, 1000);
 				});
 				next = window.setTimeout(poll, 1000);
 			});
-		}).then((text) => {
-			dom.content(this.probeMessage, text);
+		}).then((completion) => {
+			dom.content(this.probeMessage, completion.text);
+			/* A normal poll may still carry an older status. Finish it first so
+			   the health item is populated by a new read even with auto-refresh off. */
+			if (completion.refresh)
+				return Promise.resolve(this.refreshing).then(() => this.fetchRefresh());
 		}).finally(() => { button.disabled = false; });
 	},
 
@@ -338,14 +344,28 @@ return view.extend({
 		return E('table', { 'class': 'table', 'style': 'font-size: 0.9em' }, rows);
 	},
 
-	/* ap.call settles failures too; an explicit null distinguishes failure from
-	   the initial pending state. Updating this container leaves controls intact. */
+	updateComponents: function() {
+		this.vm.components = model.component_rows(this.version, this.components);
+		const children = [ this.componentTable(this.vm.components) ];
+		if (model.components_failed(this.components))
+			children.push(E('button', {
+				'class': 'cbi-button cbi-button-action',
+				click: ui.createHandlerFn(this, this.loadComponents)
+			}, _('Retry', 'aether-proxy')));
+		dom.content(this.componentContent, children);
+	},
+
+	/* Only explicit retries reissue inventory calls; ordinary status polls never
+	   do. Reset cells synchronously, and share an in-flight request on repeated clicks. */
 	loadComponents: function() {
-		this.componentRequest ??= Promise.resolve().then(() => ap.call('components')).then((reply) => {
+		if (this.componentRequest)
+			return this.componentRequest;
+		this.components = undefined;
+		this.updateComponents();
+		this.componentRequest = Promise.resolve().then(() => ap.call('components')).then((reply) => {
 			this.components = reply ?? null;
-			this.vm.components = model.component_rows(this.version, this.components);
-			dom.content(this.componentContent, this.componentTable(this.vm.components));
-		});
+			this.updateComponents();
+		}).finally(() => { this.componentRequest = null; });
 		return this.componentRequest;
 	},
 

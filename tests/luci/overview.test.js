@@ -1,6 +1,6 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9, T10.11).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9, T10.11, T10.13).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -108,8 +108,8 @@ function loadView(overrides = {}) {
 		ui: uiDouble,
 		/* dom.content replaces children rather than appending to them. */
 		dom: { content: (el, node) => {
-			el.children = [];
-			el.content = node;
+			el.children = Array.isArray(node) ? node : [];
+			el.content = Array.isArray(node) ? undefined : node;
 		} },
 		'aether-proxy.common': ap,
 		'aether-proxy.model.overview': modelMod
@@ -580,7 +580,7 @@ test('T8.12c scenario 3: probe wording and freshness', () => {
 	assert.deepEqual(model.probe_completion({ last_probe: { at: 9, ok: true } }, 10), { done: false });
 	assert.deepEqual(model.probe_completion({}, 10), { done: false });
 	assert.deepEqual(model.probe_completion({ last_probe: { at: 10, ok: false } }, 10),
-		{ done: true, text: tr('Probe failed') });
+		{ done: true, text: '', refresh: true });
 });
 
 test('T8.12c scenario 4a: render, sequential serialized refresh, interval replacement, storage and manual refresh',
@@ -699,21 +699,28 @@ test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every 
 	const page = loadView({ window: clock, ap: {
 		call: async (method) => {
 			calls.push(method);
-			return method === 'probe_now' ? { ok: true, requested_at: 10 }
-				: { ok: true, last_probe: { at: ++count === 1 ? 9 : 10, ok: true, latency_ms: 42 } };
+			if (method === 'probe_now')
+				return { ok: true, requested_at: 10 };
+			if (method === 'stats')
+				return readings(1000, 1, 2, 3, 4);
+			return { ok: true, state: 'running',
+				last_probe: { at: ++count === 1 ? 9 : 10, ok: true, latency_ms: 42 } };
 		}
 	} });
 	page.labels = {};
+	page.content = E('div', {});
 	const controls = page.probeControls();
+	page.probeControl = controls;
 	const pending = findAll(controls, 'button').find((b) => b.children === '测延迟').attrs.click();
 	assert.equal(page.probeButton.disabled, true);
 	await Promise.resolve();
 	await clock.run(1000);
-	assert.equal(page.probeMessage.content, undefined, 'stale result cannot finish the probe');
+	assert.equal(page.probeMessage.content, '检测中…', 'stale result cannot finish the probe');
 	await clock.run(1000);
 	await pending;
-	assert.deepEqual(calls, [ 'probe_now', 'status', 'status' ]);
-	assert.equal(page.probeMessage.content, tr('Healthy, %s ms', 42));
+	assert.deepEqual(calls, [ 'probe_now', 'status', 'status', 'status', 'stats' ]);
+	assert.equal(page.probeMessage.content, '');
+	assert.equal(page.vm.probe_text, tr('Healthy, %s ms', 42));
 	assert.equal(page.probeButton.disabled, false);
 	assert.ok(clock.timers.every((t) => t.cleared));
 });
@@ -855,8 +862,8 @@ test('T10.3 scenario 5 / T10.4: own component first, version failure null, insta
 	assert.equal(build({ ok: true }, { ok: false }).components[0].version, null);
 	assert.deepEqual(build({ ok: false }, { ok: false }, null, NOW, true, null, { ok: false }).components, [
 		{ name: 'aether-proxy', version: null, path: null },
-		{ name: 'xray', version: null, path: null },
-		{ name: 'chinadns-ng', version: null, path: null }
+		{ name: 'xray', version: '读取失败', path: 'RPC_FAILED' },
+		{ name: 'chinadns-ng', version: '读取失败', path: 'RPC_FAILED' }
 	]);
 });
 
@@ -1031,7 +1038,7 @@ test('T10.4 scenario 4b: probe phrases without full stops, disabled notice and e
 		if (probe) {
 			assert.equal(model.probe_result(probe), text);
 			assert.deepEqual(model.probe_completion({ last_probe: { ...probe, at: 10 } }, 10),
-				{ done: true, text });
+				{ done: true, text: '', refresh: true });
 		}
 	}
 	assert.equal(build({ ok: true }, null, null, NOW, false).disabled_notice,
@@ -1061,7 +1068,8 @@ test('T10.4 scenario 4c: three installed-component rows, missing versions, missi
 			null, null, NOW, true, null, failure).components;
 		assert.equal(result.length, 3);
 		assert.deepEqual(result.slice(1), [
-			{ name: 'xray', version: null, path: null }, { name: 'chinadns-ng', version: null, path: null }
+			{ name: 'xray', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' },
+			{ name: 'chinadns-ng', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' }
 		]);
 	}
 });
@@ -1180,7 +1188,8 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 	]);
 	for (const failure of [ null, { ok: false, code: 'RPC_FAILED' }, { ok: false, code: 'TIMEOUT' } ])
 		assert.deepEqual(model.component_rows(null, failure).slice(1), [
-			{ name: 'xray', version: null, path: null }, { name: 'chinadns-ng', version: null, path: null }
+			{ name: 'xray', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' },
+			{ name: 'chinadns-ng', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' }
 		]);
 });
 
@@ -1246,7 +1255,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	assert.equal(componentCells(root)[0][1], '26.9.30');
 });
 
-test('T10.5 scenario 2b: failed post-render inventory replaces all four loading cells with dashes', async () => {
+test('T10.5 scenario 2b / T10.13: failed post-render inventory shows failures instead of loading cells', async () => {
 	for (const failure of [ null, { ok: false, code: 'RPC_FAILED' }, { ok: false, code: 'TIMEOUT' } ]) {
 		const page = loadView({ ap: {
 			call: async (method) => method === 'components' ? failure : { ok: true, state: 'stopped' },
@@ -1257,7 +1266,10 @@ test('T10.5 scenario 2b: failed post-render inventory replaces all four loading 
 			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
 		]);
 		await page.componentRequest;
-		assert.deepEqual(componentCells(root), [ [ 'xray', '–', '–' ], [ 'chinadns-ng', '–', '–' ] ]);
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '读取失败', failure?.code ?? 'RPC_FAILED' ],
+			[ 'chinadns-ng', '读取失败', failure?.code ?? 'RPC_FAILED' ]
+		]);
 	}
 });
 
@@ -1742,6 +1754,213 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 			await page.fetchRefresh();
 		}
 		assert.equal(calls.filter(([method]) => method === 'events').length, 3);
+	}
+});
+
+/* Render the whole page so completion must update the health item, not just
+   a detached message node. Automatic refresh stays off throughout. */
+for (const ok of [ true, false ]) {
+	test(`T10.13 scenario 1/2: ${ok ? 'healthy' : 'failed'} probe clears message and refreshes health once`,
+		async () => {
+		const clock = timerQueue(), calls = [];
+		const probe = { at: 10, ok, latency_ms: 208 };
+		let statusReads = 0;
+		const page = loadView({ window: clock, ap: {
+			call: async (method) => {
+				calls.push(method);
+				if (method === 'probe_now')
+					return { ok: true, requested_at: 10 };
+				if (method === 'status') {
+					statusReads++;
+					return { ok: true, state: 'running', last_probe: statusReads === 1 ? null : probe };
+				}
+				return method === 'stats' ? readings(1000, 1, 2, 3, 4) : { ok: true, components: {} };
+			},
+			poll: () => ({ stop() {} })
+		} });
+		const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
+			{ labels: {}, enabled: true } ]);
+		page.startPolling(0);
+		await page.componentRequest;
+		calls.length = 0;
+		const pending = page.probeButton.attrs.click();
+		assert.equal(page.probeButton.disabled, true);
+		assert.equal(visibleText(page.probeMessage), '检测中…');
+		await Promise.resolve();
+		await clock.run(1000);
+		assert.equal(page.probeButton.disabled, true, 'no fresh probe yet');
+		assert.equal(visibleText(page.probeMessage), '检测中…');
+		await clock.run(1000);
+		await pending;
+		assert.deepEqual(calls, [ 'probe_now', 'status', 'status', 'status', 'stats' ]);
+		assert.equal(visibleText(page.probeMessage), '');
+		assert.equal(page.probeButton.disabled, false);
+		assert.equal(page.poller, null);
+		const text = ok ? '正常，208 ms' : '检测失败';
+		const matches = findAll(nodeRow(root), 'span').filter((el) => visibleText(el) === text);
+		assert.equal(matches.length, 1, 'only the health item contains the result');
+		assert.equal(matches[0].attrs.style, ok ? 'color:var(--success-color-high, #2f855a)'
+			: 'color:var(--error-color-high, #c53030)');
+		assert.ok(clock.timers.every((timer) => timer.cleared));
+	});
+}
+
+test('T10.13 scenario 2: status polling errors keep original text and restore the latency button', async () => {
+	for (const [code, text] of [ [ 'NOT_RUNNING', '服务未运行' ],
+		[ 'TIMEOUT', '检测未在 15 秒内完成' ], [ 'RPC_FAILED', 'RPC_FAILED: disconnected' ] ]) {
+		const clock = timerQueue(), calls = [];
+		const page = loadView({ window: clock, ap: { call: async (method) => {
+			calls.push(method);
+			return method === 'probe_now' ? { ok: true, requested_at: 10 }
+				: { ok: false, code, detail: 'disconnected' };
+		} } });
+		page.probeControls();
+		const pending = page.handleProbe();
+		assert.equal(visibleText(page.probeMessage), '检测中…');
+		await Promise.resolve();
+		await clock.run(1000);
+		await pending;
+		assert.equal(visibleText(page.probeMessage), text);
+		assert.equal(page.probeButton.disabled, false);
+		assert.deepEqual(calls, [ 'probe_now', 'status' ], 'no success refresh after an RPC error');
+	}
+});
+
+test('T10.13 scenario 1: completion waits out an older refresh before issuing a new status read', async () => {
+	const clock = timerQueue(), calls = [];
+	let releaseOld, statusReads = 0;
+	const page = loadView({ window: clock, ap: {
+		call: async (method) => {
+			calls.push(method);
+			if (method === 'probe_now')
+				return { ok: true, requested_at: 10 };
+			if (method === 'status') {
+				if (++statusReads === 1)
+					return new Promise((resolve) => { releaseOld = resolve; });
+				return { ok: true, state: 'running', last_probe: { at: 10, ok: true, latency_ms: 42 } };
+			}
+			return readings(1000, 1, 2, 3, 4);
+		},
+		poll: () => ({ stop() {} })
+	} });
+	const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
+		{ labels: {}, enabled: true } ]);
+	await page.componentRequest;
+	calls.length = 0;
+	const oldRefresh = page.fetchRefresh();
+	const pending = page.handleProbe();
+	await Promise.resolve();
+	await clock.run(1000);
+	assert.equal(visibleText(page.probeMessage), '');
+	releaseOld({ ok: true, state: 'running', last_probe: { at: 9, ok: false } });
+	await oldRefresh;
+	await pending;
+	assert.deepEqual(calls, [ 'status', 'probe_now', 'status', 'stats', 'status', 'stats' ]);
+	assert.equal(visibleText(page.probeMessage), '');
+	assert.equal(page.vm.probe_text, '正常，42 ms');
+	assert.ok(visibleText(nodeRow(root)).includes('正常，42 ms'));
+});
+
+const INVENTORY_FAILURES = [
+	[ { ok: false, code: 'RPC_FAILED', detail: 'disconnected' }, 'RPC_FAILED: disconnected' ],
+	[ { ok: false, code: 'TIMEOUT' }, 'TIMEOUT' ],
+	[ { ok: false }, 'RPC_FAILED' ],
+	[ null, 'RPC_FAILED' ]
+];
+
+test('T10.13 scenario 3: inventory failures carry code/detail; unknown version stays a dash', () => {
+	const model = dashboardModel();
+	for (const [failure, text] of INVENTORY_FAILURES) {
+		const rows = model.component_rows({ ok: true, version: '0.2.0-r8' }, failure);
+		assert.equal(model.components_failed(failure), true);
+		assert.deepEqual(rows.slice(1), [
+			{ name: 'xray', version: '读取失败', path: text },
+			{ name: 'chinadns-ng', version: '读取失败', path: text }
+		]);
+		assert.deepEqual(rows[0], { name: 'aether-proxy', version: '0.2.0-r8', path: null });
+	}
+	assert.equal(model.components_failed(undefined), false, 'pending is not a failure');
+	const inventory = { ok: true, components: { xray: { found: true, version: null, path: '/usr/bin/xray' } } };
+	assert.equal(model.components_failed(inventory), false);
+	const cells = findAll(loadView().componentTable(model.component_rows(null, inventory)), 'tr');
+	assert.deepEqual(cells[2].children.map((c) => c.children), [ 'xray', '–', '/usr/bin/xray' ]);
+});
+
+function retryButtons(root) {
+	return findAll(root, 'button').filter((button) => visibleText(button) === '重试');
+}
+
+test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds without touching other controls',
+	async () => {
+	for (const [failure, text] of INVENTORY_FAILURES) {
+		let requests = 0, resolveInventory;
+		const page = loadView({ ap: {
+			call: async (method) => {
+				if (method !== 'components')
+					return { ok: true, state: 'running' };
+				requests++;
+				return requests === 1 ? failure : new Promise((resolve) => { resolveInventory = resolve; });
+			},
+			poll: () => ({ stop() {} })
+		} });
+		const root = page.render(await page.load());
+		assert.equal(retryButtons(root).length, 0, 'no retry while initially reading');
+		await page.componentRequest;
+		assert.deepEqual(componentCells(root), [ [ 'xray', '读取失败', text ], [ 'chinadns-ng', '读取失败', text ] ]);
+		const [retry] = retryButtons(root);
+		assert.ok(retry);
+		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
+		const runtime = sections(root)[0], traffic = sections(root)[1], button = page.probeButton;
+		const pending = retry.attrs.click();
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+		]);
+		assert.equal(retryButtons(root).length, 0, 'old retry removed while reading');
+		assert.equal(retry.attrs.click(), pending, 'repeated stale clicks share the in-flight request');
+		await Promise.resolve();
+		assert.equal(requests, 2);
+		resolveInventory({ ok: true, components: {
+			xray: { found: true, version: '26.9.30', path: '/usr/bin/xray' },
+			'chinadns-ng': { found: true, version: '2025.08.09', path: '/usr/bin/chinadns-ng' }
+		} });
+		await pending;
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'chinadns-ng', '2025.08.09', '/usr/bin/chinadns-ng' ]
+		]);
+		assert.equal(retryButtons(root).length, 0);
+		assert.equal(sections(root)[0], runtime);
+		assert.equal(sections(root)[1], traffic);
+		assert.equal(page.probeButton, button);
+		await page.fetchRefresh();
+		assert.equal(requests, 2, 'normal refresh does not rediscover inventory');
+		assert.equal(retryButtons(root).length, 0);
+	}
+});
+
+test('T10.13 scenario 4: successful initial inventory has no retry; a failed retry remains retryable', async () => {
+	for (const success of [ true, false ]) {
+		let requests = 0;
+		const page = loadView({ ap: {
+			call: async (method) => {
+				if (method === 'components') {
+					requests++;
+					return success ? { ok: true, components: {} } : { ok: false, code: 'TIMEOUT' };
+				}
+				return { ok: true, state: 'running' };
+			},
+			poll: () => ({ stop() {} })
+		} });
+		const root = page.render(await page.load());
+		await page.componentRequest;
+		assert.equal(retryButtons(root).length, success ? 0 : 1);
+		if (!success) {
+			await retryButtons(root)[0].attrs.click();
+			assert.equal(requests, 2);
+			assert.equal(retryButtons(root).length, 1);
+			assert.deepEqual(componentCells(root), [
+				[ 'xray', '读取失败', 'TIMEOUT' ], [ 'chinadns-ng', '读取失败', 'TIMEOUT' ]
+			]);
+		}
 	}
 });
 
