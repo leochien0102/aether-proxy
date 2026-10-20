@@ -145,3 +145,18 @@ T8.14 只加注释、不改代码，下列位置找不到设计依据，由设�
 观察：procd 的 stop 是异步的，`service_stopped` 里的 `cleanup` 与正在有序退出的 daemon 并行（本次 daemon 在 stop 返回约 4 s 后才记 `SERVICE_STOPPED`）。两边步骤都幂等，cleanup 也会先导出集合，暂不处理。
 
 m7 T7.7 卡上未覆盖：篡改清单的验签失败、`xray-core` 更新（ssr-plus 共用二进制，不动）、数据更新的实际变化（本次数据未变）。这三项均有宿主机测试；仓库所有者 2026-10-20 决定不补测，T7.7 算完成。
+
+## B13 M10 回归窗口发现的后端问题（2026-10-20，H28K，本地 main a60a48f 的 0.2.0-r7 测试包）
+
+回归结论：新入口（T10.8）在 procd 启停、作业、rpcd、更新与回滚、reload 各路径上都正常；`components` 装包后无需重启 rpcd；
+两个 SDK 的翻译文件逐字节相同、设备上 403 条译文 402 条一致（唯一例外是 X3 的 `", "`）；CI 六格冒烟（含 `data status`、`components`）全绿。下面是一直存在、这次暴露出来的问题：
+
+1. **切换节点偶尔失败，页面看不出来**（仓库所有者手动切换时遇到：选了另一个节点、应用后仍显示原节点，重复几次才切过去）。
+   reload 发现节点变了就调用 `apply.resolve_node` 解析新节点的域名：只调用一次 `resolveip -4 -t 5`，经 dnsmasq → chinadns-ng 的 boot 组 → `direct_dns`，
+   这个网络里直连 DNS 本来就时好时坏（03：`tcp://9.9.9.9` 9 次成功 8 次）；失败时只能用「上次成功的地址」，而 `node-ip.json` **只存一个节点**的 `{address, ip}`：
+   从没用过的节点没有兜底，切过去之后原节点的地址也被覆盖。于是 reload 失败（`NODE_RESOLVE_FAILED`，`lkg_ip` 为空），服务留在原节点。
+   候选修法：解析失败重试（例如 3 次）；last-known-good 按节点地址分别保存；设计时一并考虑 reload 失败如何让页面知道（前端部分交 M10）。
+2. **reload 会丢掉 `state.json` 中组件的版本**：`reload.apply_plan` 把 `components` 重写为只有 `path`（T8.9a 加的 `version` 在第一次 reload 后消失）。
+   概览页已改为调 `components` 子命令（T10.5），影响变小，但 `status` 的输出在 reload 前后不一致。
+3. 观察：stop 恰好赶上 monitor 正在跑一轮（`BUSY {holder: monitor}`）时，Xray 与 chinadns-ng 先收到终止信号、退出码 0，daemon 记了 `CHILD_CRASHED`（`restart_in: 5`），5 秒后正常停止，无残留。
+   只出现一次（R7 回滚时），T7.7 两轮同样的流程没有出现。是否会在停止过程中重新拉起子进程待查。
