@@ -52,6 +52,7 @@ function modelSources() {
 const PLUGIN_METHODS = {
 	version: [],
 	status: [],
+	components: [],
 	service: [ 'action' ],
 	check: [],
 	job_start: [ 'kind', 'args' ],

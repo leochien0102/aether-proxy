@@ -276,12 +276,6 @@ function child_options(ctx, name, argv) {
 	return supervise.create({ name, argv, run_dir: run_dir(ctx), backoff: [ 5, 10, 30, 60 ], stable_secs: 300 });
 };
 
-// Version discovery is informational: failed commands must not emit CMD_FAILED or block startup.
-function read_component_version(binary, arg) {
-	let result = sys.run([ binary, arg ], { timeout: C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true });
-	return result.code == 0 ? component_version.parse_version(result.stdout) : null;
-};
-
 function restart_xray(ctx, children, service_state, done) {
 	let binary = service_state.components?.[C.XRAY_COMPONENT]?.path ??
 		(ctx.bin_dir ? `${ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
@@ -290,7 +284,7 @@ function restart_xray(ctx, children, service_state, done) {
 		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
 		children.xray.start();
 		service_state.components[C.XRAY_COMPONENT] = {
-			path: binary, version: read_component_version(binary, 'version')
+			path: binary, version: component_version.read_component_version(binary, 'version')
 		};
 		write_state(ctx, service_state);
 		done(children.xray.pid() == null ? `cannot restart ${C.XRAY_COMPONENT}` : null);
@@ -453,7 +447,9 @@ function start_sequence(ctx, opts, signal_pending) {
 	let components = {};
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
 		let path = pre.components[name].path;
-		components[name] = { path, version: read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V') };
+		components[name] = {
+			path, version: component_version.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V')
+		};
 	}
 
 	if (opts.boot) {

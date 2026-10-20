@@ -5,7 +5,7 @@
 			"ubus": {
 				"aetherproxy": [
 					"version", "status", "events", "job_status", "log", "list_file",
-					"probe_results", "sub_status", "data_status", "stats"
+					"probe_results", "sub_status", "data_status", "stats", "components"
 				],
 				"luci-rpc": [ "getHostHints" ]
 			},

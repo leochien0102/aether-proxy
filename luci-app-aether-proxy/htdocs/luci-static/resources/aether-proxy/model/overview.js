@@ -173,20 +173,20 @@ function rate_text(rate) {
 }
 
 /* Own version comes from a separate RPC, even when reading status failed. */
-function component_rows(version, status) {
+function component_rows(version, inventory) {
 	const components = [{
 		name: 'aether-proxy',
 		version: (version && version.ok && typeof version.version == 'string') ? version.version : null,
 		path: null
 	}];
-	const raw = status?.components;
-	const entries = (typeof raw == 'object' && raw != null) ? raw : {};
-	for (const name of Object.keys(entries).sort()) {
-		const c = entries[name];
+	/* Inventory is independent of runtime status, including failed status reads. */
+	for (const name of [ 'xray', 'chinadns-ng' ]) {
+		const c = inventory?.ok === true ? inventory.components?.[name] : null;
 		components.push({
 			name,
-			version: (c && typeof c == 'object' && c.version != null) ? String(c.version) : null,
-			path: (c && typeof c == 'object' && c.path != null) ? String(c.path) : null
+			version: c?.found === true && c.version != null ? String(c.version) : null,
+			path: c?.found === false ? _('Not found', 'aether-proxy')
+				: (c?.found === true && c.path != null ? String(c.path) : null)
 		});
 	}
 	return components;
@@ -194,10 +194,10 @@ function component_rows(version, status) {
 
 function probe_fields(probe, now) {
 	if (typeof probe != 'object' || probe == null)
-		return { probe_text: _('Not probed yet.', 'aether-proxy'), probe_since_text: null, probe_level: 'neutral' };
+		return { probe_text: _('Not probed yet', 'aether-proxy'), probe_since_text: null, probe_level: 'neutral' };
 	return {
 		probe_text: probe.ok
-			? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy'),
+			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy'),
 		probe_since_text: typeof probe.at == 'number' ? rel_time(now, probe.at) : null,
 		probe_level: probe.ok ? 'ok' : 'error'
 	};
@@ -244,7 +244,8 @@ return baseclass.extend({
 			return _('The service is not running.', 'aether-proxy');
 		if (!reply || reply.code)
 			return failure_text(reply);
-		return reply.ok ? fmt(_('Healthy, %s ms.', 'aether-proxy'), reply.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy');
+		return reply.ok ? fmt(_('Healthy, %s ms', 'aether-proxy'), reply.latency_ms ?? '?')
+			: _('Probe failed', 'aether-proxy');
 	},
 
 	/* Keep completion detection here: the view must not interpret last_probe. */
@@ -255,7 +256,7 @@ return baseclass.extend({
 		if (!probe || probe.at < requested_at || typeof probe.at != 'number')
 			return { done: false };
 		return { done: true, text: probe.ok
-			? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy') };
+			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy') };
 	},
 
 	node_options: function(labels, current) {
@@ -267,14 +268,14 @@ return baseclass.extend({
 	},
 
 	can_switch: function(selected, current) {
-		/* TODO(design): no empty-selection rule is specified; do not save an empty node. */
 		return !!selected && selected !== current;
 	},
 
 	/* status: the object resolved by ap.call('status'), version: the object
 	   resolved by ap.call('version'), labels: node section name -> label from
-	   UCI, now: current unix time in seconds. Returns the view model. */
-	build: function(status, version, labels, now, enabled) {
+	   UCI, now: current unix time in seconds. configured_node and inventory are
+	   read once at load (docs/10 「概览页真机修正」). Returns the view model. */
+	build: function(status, version, labels, now, enabled, configured_node, inventory) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
 
@@ -286,13 +287,13 @@ return baseclass.extend({
 			: (enabled === true || enabled === '1' || enabled === 1);
 		const enabled_note = _('Once enabled the service starts at boot; turning it off stops the service '
 			+ 'immediately and all traffic goes out directly.', 'aether-proxy');
-		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the switch above '
+		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the Enable switch '
 			+ 'and it will start automatically.', 'aether-proxy');
 		const stop_confirmation = _('Stopping the service leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
 			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
 
-		const components = component_rows(version, status?.ok === false ? null : status);
+		const components = component_rows(version, inventory);
 
 		/* docs/10: a failed status read shows the error and disables every button. */
 		if (!status || status.ok === false) {
@@ -325,7 +326,8 @@ return baseclass.extend({
 		}
 
 		const state = status.state ?? 'unknown';
-		const node_id = (status.node_id == null) ? null : String(status.node_id);
+		const node_id = status.node_id || configured_node || null;
+		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
 
 		return {
 			ok: true,
@@ -337,7 +339,7 @@ return baseclass.extend({
 			error_text: error_text(status.last_error),
 			dns_text: dns_text(state, status.dns_tier),
 			node_text: (node_id == null) ? _('No node selected', 'aether-proxy') : (labels[node_id] || node_id),
-			node_ip: (status.node_ip == null) ? null : String(status.node_ip),
+			node_ip: (!active || status.node_ip == null) ? null : String(status.node_ip),
 			...probe_fields(status.last_probe, now),
 			components,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),

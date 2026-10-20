@@ -15,7 +15,7 @@
  * the view model the model returns: state wording, notice texts, button
  * availability and the stop confirmation are all decided there. status is
  * refreshed at the selected interval via ap.poll; version and the UCI node labels plus
- * main.enabled are read once per page load.
+ * main.enabled and installed components are read once per page load (docs/10 T10.4).
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
  * registers a reload trigger for the aetherproxy config, so saving the UCI
@@ -49,7 +49,8 @@ return view.extend({
 					node: uci.get('aetherproxy', 'main', 'node'),
 					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
 				};
-			})
+			}),
+			ap.call('components')
 		]);
 	},
 
@@ -121,7 +122,7 @@ return view.extend({
 			return E('button', attrs, [ label ]);
 		};
 
-		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 			btn(_('Start', 'aether-proxy'), 'cbi-button-apply', buttons.start, () => self.handleService('start')),
 			btn(_('Restart', 'aether-proxy'), 'cbi-button-apply', buttons.restart, () => self.handleService('restart')),
 			btn(_('Stop', 'aether-proxy'), 'cbi-button-negative', buttons.stop, () => self.handleService('stop'))
@@ -220,10 +221,15 @@ return view.extend({
 			model.refresh_options().map((option) => E('option', {
 				value: option.value, selected: Number(option.value) * 1000 === interval ? 'selected' : null
 			}, option.text)));
-		return E('div', { 'style': 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap' }, [
+		return E('div', {
+			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; '
+				+ 'flex-wrap:wrap; margin-bottom:1em'
+		}, [
 			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
-			E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
-				E('label', {}, [ _('Automatic refresh', 'aether-proxy'), select ]),
+			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+				E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
+					_('Automatic refresh', 'aether-proxy'), select
+				]),
 				this.button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh())
 			])
 		]);
@@ -232,7 +238,7 @@ return view.extend({
 	probeControls: function() {
 		this.probeButton = this.button(_('Measure latency', 'aether-proxy'), () => this.handleProbe());
 		this.probeMessage = E('span', { 'aria-live': 'polite' });
-		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 			this.probeButton, this.probeMessage
 		]);
 	},
@@ -245,7 +251,7 @@ return view.extend({
 		const update = () => { button.disabled = !model.can_switch(nodes.value, current); };
 		nodes.addEventListener('change', update);
 		update();
-		return E('div', { 'style': 'display:flex; gap:0.5em; flex-wrap:wrap' }, [ nodes, button ]);
+		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [ nodes, button ]);
 	},
 
 	colorStyle: function(level) {
@@ -275,7 +281,7 @@ return view.extend({
 			]));
 		return this.section(_('Traffic and connections', 'aether-proxy'), [
 			E('table', { 'class': 'table' }, rows),
-			E('div', { 'style': 'display:flex; gap:1em; flex-wrap:wrap' }, [
+			E('div', { 'style': 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
 				E('span', {}, [ _('Proxy connections', 'aether-proxy'), ' ', traffic.connections.proxy ]),
 				E('span', {
 					title: _('Total connections in the system connection tracking table (conntrack).', 'aether-proxy')
@@ -305,6 +311,7 @@ return view.extend({
 
 	render: function(data) {
 		this.version = data[1];
+		this.components = data[3];
 		this.labels = data[2].labels;
 		this.currentNode = data[2].node;
 		this.enabled = data[2].enabled;
@@ -325,7 +332,8 @@ return view.extend({
 	},
 
 	refresh: function(status, stats) {
-		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000), this.enabled);
+		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
+			this.enabled, this.currentNode, this.components);
 
 		/* Keep the latest model output so handleService can use its
 		   stop_confirmation without rebuilding the model. */
@@ -352,7 +360,7 @@ return view.extend({
 			parts.push(this.section(_('Pending notices', 'aether-proxy'), notices));
 
 		const stateRows = [ E('div', {
-			style: 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap'
+			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
 		}, [
 			E('div', {}, [
 				E('strong', { style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level) }, vm.state_text ?? '–'),
@@ -374,12 +382,14 @@ return view.extend({
 		parts.push(this.section(_('Status', 'aether-proxy'), stateRows));
 
 		parts.push(this.section(_('Current node', 'aether-proxy'), [
-			E('div', { style: 'display:flex; justify-content:space-between; gap:1em; flex-wrap:wrap' }, [
+			E('div', {
+				style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
+			}, [
 				E('div', {}, [
 					E('span', { style: 'font-size: 1.2em' }, vm.node_text ?? '–'), ' ',
 					E('small', { title: _('Node address', 'aether-proxy') }, vm.node_ip ?? '')
 				]),
-				E('div', { style: 'display:flex; gap:0.5em; flex-wrap:wrap' }, [
+				E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 					E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
 					E('small', {}, vm.probe_since_text ?? ''), this.probeControl
 				])

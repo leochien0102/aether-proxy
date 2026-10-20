@@ -245,3 +245,6 @@ export const CHECK_DIR_PREFIX = 'check.';
 
 // T8.23 (docs/08 package verification): allow procd's 30s stop plus cleanup and start/check.
 export const UPDATE_RESTART_TIMEOUT_SECS = 90;
+
+// T10.4 (docs/10 "概览页真机修正"): live component inventory budget, per binary.
+export const COMPONENTS_TIMEOUT_SECS = 3;

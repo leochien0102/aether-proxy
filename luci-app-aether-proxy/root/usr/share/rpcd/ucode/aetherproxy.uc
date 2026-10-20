@@ -16,6 +16,8 @@ import * as sys from 'aetherproxy.sys';
 // and long tasks must go through job_start instead.
 const CHECK_TIMEOUT_SECS = 30;
 const DEFAULT_TIMEOUT_SECS = 10;
+// Live discovery can run two bounded version commands (docs/10 T10.4).
+const COMPONENTS_TIMEOUT_SECS = 15;
 // save_file may trigger a service reload on the CLI side (docs/10 "实现约定").
 const SAVE_TIMEOUT_SECS = 30;
 const STDERR_FORWARD_BYTES = 512;
@@ -161,6 +163,15 @@ const methods = {
 	status: {
 		call: function(req) {
 			return call_cli([ 'status' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
+	components: {
+		call: function(req) {
+			if (length(keys(req?.args ?? {})))
+				return usage('components takes no arguments');
+			return call_cli([ 'components' ], COMPONENTS_TIMEOUT_SECS);
 		},
 		args: {}
 	},

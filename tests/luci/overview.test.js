@@ -61,10 +61,11 @@ function findTag(node, tag) {
 	return null;
 }
 
-function build(status, version, labels, now, enabled) {
+function build(status, version, labels, now, enabled, configuredNode, components) {
 	const model = loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
 
-	return model.build(status, version ?? { ok: true, version: '0.1.0-r2' }, labels ?? {}, now ?? NOW, enabled);
+	return model.build(status, version ?? { ok: true, version: '0.1.0-r2' }, labels ?? {}, now ?? NOW,
+		enabled, configuredNode, components);
 }
 
 /* Load view/aether-proxy/overview.js with doubles for the modules it requires,
@@ -161,15 +162,15 @@ test('scenario 7b: button availability per state', () => {
 
 test('scenario 7c: health probe texts and their relative time', () => {
 	let vm = build({ ok: true, state: 'running', last_probe: { ok: true, latency_ms: 123, at: NOW - 30 } });
-	assert.equal(vm.probe_text, tr('Healthy, %s ms.', 123));
+	assert.equal(vm.probe_text, tr('Healthy, %s ms', 123));
 	assert.equal(vm.probe_since_text, tr('%s seconds ago', 30));
 
 	vm = build({ ok: true, state: 'running', last_probe: { ok: false, at: NOW - 90 } });
-	assert.equal(vm.probe_text, tr('Probe failed.'));
+	assert.equal(vm.probe_text, tr('Probe failed'));
 	assert.equal(vm.probe_since_text, tr('%s minutes ago', 1));
 
 	vm = build({ ok: true, state: 'running' });
-	assert.equal(vm.probe_text, tr('Not probed yet.'));
+	assert.equal(vm.probe_text, tr('Not probed yet'));
 	assert.equal(vm.probe_since_text, null);
 });
 
@@ -286,7 +287,7 @@ test('T8.11a scenario 1: main.enabled=1 keeps the old buttons; =0 disables start
 test('T8.11a scenario 2: disabled notice, enable note and the new stop confirmation come from the model', () => {
 	const note = 'Once enabled the service starts at boot; turning it off stops the service '
 		+ 'immediately and all traffic goes out directly.';
-	const notice = 'The service is not enabled: turn on the switch above '
+	const notice = 'The service is not enabled: turn on the Enable switch '
 		+ 'and it will start automatically.';
 	const confirm_id = 'Stopping the service leaves all traffic going out directly. '
 		+ 'This is only temporary: restarting the router or saving the settings of this '
@@ -370,7 +371,7 @@ test('T8.11a scenario 4: static checks — switch wiring, no service from the sw
 		'Enable',
 		'Once enabled the service starts at boot; turning it off stops the service '
 			+ 'immediately and all traffic goes out directly.',
-		'The service is not enabled: turn on the switch above '
+		'The service is not enabled: turn on the Enable switch '
 			+ 'and it will start automatically.',
 		'Stopping the service leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
@@ -552,15 +553,15 @@ test('T8.12c scenario 2: refresh options and storage parsing including exception
 
 test('T8.12c scenario 3: probe wording and freshness', () => {
 	const model = dashboardModel();
-	assert.equal(model.probe_result({ ok: true, latency_ms: 12 }), tr('Healthy, %s ms.', 12));
-	assert.equal(model.probe_result({ ok: false }), tr('Probe failed.'));
+	assert.equal(model.probe_result({ ok: true, latency_ms: 12 }), tr('Healthy, %s ms', 12));
+	assert.equal(model.probe_result({ ok: false }), tr('Probe failed'));
 	assert.equal(model.probe_result({ code: 'TIMEOUT' }), '检测未在 15 秒内完成');
 	assert.equal(model.probe_result({ code: 'NOT_RUNNING' }), '服务未运行');
 	assert.equal(model.probe_result({ code: 'CMD_FAILED', detail: 'ubus' }), 'CMD_FAILED: ubus');
 	assert.deepEqual(model.probe_completion({ last_probe: { at: 9, ok: true } }, 10), { done: false });
 	assert.deepEqual(model.probe_completion({}, 10), { done: false });
 	assert.deepEqual(model.probe_completion({ last_probe: { at: 10, ok: false } }, 10),
-		{ done: true, text: tr('Probe failed.') });
+		{ done: true, text: tr('Probe failed') });
 });
 
 test('T8.12c scenario 4a: render, sequential serialized refresh, interval replacement, storage and manual refresh',
@@ -691,7 +692,7 @@ test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every 
 	await clock.run(1000);
 	await pending;
 	assert.deepEqual(calls, [ 'probe_now', 'status', 'status' ]);
-	assert.equal(page.probeMessage.content, tr('Healthy, %s ms.', 42));
+	assert.equal(page.probeMessage.content, tr('Healthy, %s ms', 42));
 	assert.equal(page.probeButton.disabled, false);
 	assert.ok(clock.timers.every((t) => t.cleared));
 });
@@ -818,20 +819,23 @@ test('T10.3 scenario 4: node labels, sorted current options, switch guard and pr
 		assert.equal(build({ ok: true, last_probe: probe }).probe_level, level);
 });
 
-test('T10.3 scenario 5: own component first, version failure null, remaining components retain sorted order', () => {
-	const status = { ok: true, components: {
-		xray: { version: '26.9.30', path: '/usr/bin/xray' },
-		'chinadns-ng': { version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
+test('T10.3 scenario 5 / T10.4: own component first, version failure null, installed components in fixed order', () => {
+	const inventory = { ok: true, components: {
+		xray: { found: true, version: '26.9.30', path: '/usr/bin/xray' },
+		'chinadns-ng': { found: true, version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
 	} };
-	const vm = build(status);
+	const vm = build({ ok: true }, null, null, null, null, null, inventory);
 	assert.deepEqual(vm.components, [
 		{ name: 'aether-proxy', version: '0.1.0-r2', path: null },
-		{ name: 'chinadns-ng', version: '2025.06.20', path: '/usr/bin/chinadns-ng' },
-		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' }
+		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' },
+		{ name: 'chinadns-ng', version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
 	]);
-	assert.equal(build(status, { ok: false }).components[0].version, null);
-	assert.deepEqual(build({ ok: false }, { ok: false }).components,
-		[ { name: 'aether-proxy', version: null, path: null } ]);
+	assert.equal(build({ ok: true }, { ok: false }).components[0].version, null);
+	assert.deepEqual(build({ ok: false }, { ok: false }).components, [
+		{ name: 'aether-proxy', version: null, path: null },
+		{ name: 'xray', version: null, path: null },
+		{ name: 'chinadns-ng', version: null, path: null }
+	]);
 });
 
 function visibleText(node) {
@@ -899,8 +903,8 @@ test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has
 			assert.equal(word.attrs.style.includes('color:'), level !== 'neutral');
 			if (level !== 'neutral')
 				assert.ok(word.attrs.style.includes(colors[level]));
-			const text = probe ? (probe.ok ? tr('Healthy, %s ms.', '?') : tr('Probe failed.'))
-				: tr('Not probed yet.');
+			const text = probe ? (probe.ok ? tr('Healthy, %s ms', '?') : tr('Probe failed'))
+				: tr('Not probed yet');
 			const result = findAll(sections(root)[1], 'span').find((n) => visibleText(n) === text);
 			assert.ok(result, 'health result is in the current-node section');
 			assert.equal(result.attrs.style, probeLevel === 'neutral' ? '' : 'color:' + colors[probeLevel]);
@@ -969,6 +973,119 @@ test('T10.3 scenario 7: relative font sizes, theme-only colors and no theme-spec
 	assert.doesNotMatch(withoutFallbacks, /#[a-f\d]{3,8}\b/i);
 	assert.doesNotMatch(src, /label\s+(success|warning|danger|notice|important)\b/);
 	assert.doesNotMatch(src, /rpc\s*\.\s*declare|innerHTML|cbi-button-reset/);
+});
+
+test('T10.4 scenario 4a: configured-node fallback, runtime precedence, unknown status and hidden inactive IP', () => {
+	const labels = { n_a: 'Alpha', n_b: 'Beta' };
+	for (const node_id of [ undefined, null, '' ]) {
+		const vm = build({ ok: true, state: 'stopped', node_id, node_ip: 'stale' },
+			null, labels, NOW, true, 'n_a');
+		assert.equal(vm.node_text, 'Alpha');
+		assert.equal(vm.node_ip, null);
+	}
+	assert.equal(build({ ok: true, node_id: 'n_b' }, null, labels, NOW, true, 'n_a').node_text, 'Beta');
+	assert.equal(build({ ok: true }, null, labels, NOW, true, 'n_unknown').node_text, 'n_unknown');
+	for (const node of [ undefined, null, '' ])
+		assert.equal(build({ ok: true, node_id: '' }, null, labels, NOW, true, node).node_text, '未选择节点');
+	assert.equal(build({ ok: false }, null, labels, NOW, true, 'n_a').node_text, null);
+	for (const state of [ 'stopped', 'error', 'unknown' ])
+		assert.equal(build({ ok: true, state, node_ip: 'stale' }).node_ip, null);
+	for (const state of [ 'starting', 'running', 'degraded', 'failsafe' ])
+		assert.equal(build({ ok: true, state, node_ip: '203.0.113.10' }).node_ip, '203.0.113.10');
+});
+
+test('T10.4 scenario 4b: probe phrases without full stops, disabled notice and empty selection guard', () => {
+	const model = dashboardModel();
+	for (const [probe, text] of [ [ { ok: true, latency_ms: 12 }, '正常，12 ms' ],
+		[ { ok: false }, '检测失败' ], [ null, '尚未检测' ] ]) {
+		assert.equal(build({ ok: true, last_probe: probe }).probe_text, text);
+		if (probe) {
+			assert.equal(model.probe_result(probe), text);
+			assert.deepEqual(model.probe_completion({ last_probe: { ...probe, at: 10 } }, 10),
+				{ done: true, text });
+		}
+	}
+	assert.equal(build({ ok: true }, null, null, NOW, false).disabled_notice,
+		'服务未启用：打开『启用』开关后会自动启动');
+	for (const empty of [ undefined, null, '' ])
+		assert.equal(model.can_switch(empty, 'n_a'), false);
+	assert.doesNotMatch(fs.readFileSync(MODEL, 'utf8'), /TODO\(design\)/);
+});
+
+test('T10.4 scenario 4c: three installed-component rows, missing versions, missing binaries and failed calls', () => {
+	const inventory = { ok: true, components: {
+		xray: { found: true, path: '/usr/bin/xray', version: null },
+		'chinadns-ng': { found: false, path: null, version: null }
+	} };
+	const rows = build({ ok: false }, null, null, NOW, true, null, inventory).components;
+	assert.deepEqual(rows, [
+		{ name: 'aether-proxy', version: '0.1.0-r2', path: null },
+		{ name: 'xray', version: null, path: '/usr/bin/xray' },
+		{ name: 'chinadns-ng', version: null, path: '未找到' }
+	]);
+	const cells = findAll(loadView().componentTable(rows), 'tr').map((row) => row.children.map((c) => c.children));
+	assert.deepEqual(cells.slice(1), [
+		[ 'aether-proxy', '0.1.0-r2', '–' ], [ 'xray', '–', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
+	]);
+	for (const failure of [ undefined, null, { ok: false, code: 'TIMEOUT' } ]) {
+		const result = build({ ok: true, components: inventory.components },
+			null, null, NOW, true, null, failure).components;
+		assert.equal(result.length, 3);
+		assert.deepEqual(result.slice(1), [
+			{ name: 'xray', version: null, path: null }, { name: 'chinadns-ng', version: null, path: null }
+		]);
+	}
+});
+
+test('T10.4 scenario 5: load components once, preserve inventory during polling and align all flex controls',
+	async () => {
+	const calls = [], polls = [];
+	const inventory = { ok: true, components: {
+		xray: { found: true, path: '/usr/bin/xray', version: '26.9.30' },
+		'chinadns-ng': { found: false, path: null, version: null }
+	} };
+	const page = loadView({
+		ap: {
+			call: async (method) => {
+				calls.push(method);
+				return method === 'components' ? inventory : method === 'version'
+					? { ok: true, version: '0.2.0-r6' } : { ok: true, state: 'stopped' };
+			},
+			poll: (fn) => { polls.push(fn); return { stop() {} }; }
+		},
+		uci: {
+			sections: (cfg, type, cb) => { if (type === 'node') cb({ '.name': 'n_a', label: 'Alpha' }); },
+			get: (cfg, sec, opt) => opt === 'node' ? 'n_a' : '1'
+		}
+	});
+	const root = page.render(await page.load());
+	assert.equal(calls.filter((m) => m === 'components').length, 1);
+	assert.equal(page.vm.node_text, 'Alpha', 'view passes UCI main.node to the model');
+	await polls[0]();
+	await page.fetchRefresh();
+	assert.equal(calls.filter((m) => m === 'components').length, 1, 'poll/manual refresh must not rediscover versions');
+	assert.deepEqual(page.vm.components.slice(1).map((c) => c.path), [ '/usr/bin/xray', '未找到' ]);
+	const title = root.children[0];
+	assert.match(title.attrs.style, /margin-bottom:\s*1em/);
+	const label = findAll(title, 'label')[0];
+	assert.ok(label.children.includes('自动刷新'));
+	assert.equal(findAll(label, 'select').length, 1, 'label and select share the flex container');
+	assert.match(label.attrs.style, /gap:\s*0\.5em/);
+	for (const tag of [ 'div', 'label' ]) {
+		for (const element of findAll(root, tag)) {
+			if (/display:\s*flex/.test(element.attrs.style ?? ''))
+				assert.match(element.attrs.style, /align-items:\s*center/);
+		}
+	}
+});
+
+test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; no status.components', () => {
+	const source = fs.readFileSync(VIEW, 'utf8');
+	const styles = [ ...source.matchAll(/['"]([^'"\n]*display:\s*flex[^'"\n]*)['"]/g) ];
+	assert.ok(styles.length >= 9, 'all flex declarations are examined');
+	for (const [, style] of styles)
+		assert.match(style, /align-items:\s*center/);
+	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
