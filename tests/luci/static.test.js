@@ -137,7 +137,7 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 		msgids.add(node.title);
 
 	for (const src of [ common, ...views.values(), ...modelSources().values() ])
-		for (const m of src.matchAll(/_\('([^']*)'\)/g))
+		for (const m of src.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
 			msgids.add(m[1]);
 
 	for (const id of msgids) {
@@ -162,10 +162,20 @@ test('views call depends() with scalar values only', () => {
 	}
 });
 
-// msgfmt rejects a catalog with a repeated msgid; parallel page cards each append to the po.
+/* Context is part of a PO key: menu and page entries may share a msgid. This
+ * small helper follows the real catalog's one-line fields; the global gate
+ * additionally decodes escapes and continuation lines in synthetic cases. */
+function poKeys(text) {
+	return text.trim().split(/\n\s*\n/).flatMap(block => {
+		const id = /^msgid "((?:[^"\\]|\\.)*)"$/m.exec(block)?.[1];
+		const context = /^msgctxt "((?:[^"\\]|\\.)*)"$/m.exec(block)?.[1] ?? '';
+		return id ? [ JSON.stringify([ context, id ]) ] : [];
+	});
+}
+
+// msgfmt rejects a catalog with a repeated key; parallel page cards each append to the po.
 test('po has no duplicate msgid', () => {
-	const ids = [ ...fs.readFileSync(path.join(APP, 'po', 'zh_Hans', 'aether-proxy.po'), 'utf8')
-		.matchAll(/^msgid "((?:[^"\\]|\\.)*)"$/gm) ].map(m => m[1]).filter(id => id != '');
+	const ids = poKeys(fs.readFileSync(path.join(APP, 'po', 'zh_Hans', 'aether-proxy.po'), 'utf8'));
 	const repeated = ids.filter((id, i) => ids.indexOf(id) != i);
 	assert.deepEqual(repeated, []);
 });

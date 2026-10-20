@@ -410,7 +410,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	/* po: every literal of the view and the model has a Chinese translation. */
 	for (const file of [ VIEW, MODEL ]) {
 		const text = fs.readFileSync(file, 'utf8');
-		for (const match of text.matchAll(/_\('([^']*)'\)/g))
+		for (const match of text.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
 			assert.ok(PO[match[1]], 'missing translation: ' + match[1]);
 	}
 });

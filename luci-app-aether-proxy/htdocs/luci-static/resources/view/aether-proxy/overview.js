@@ -71,7 +71,7 @@ return view.extend({
 		const self = this;
 
 		return E('div', { 'class': 'cbi-value' }, [
-			E('label', { 'class': 'cbi-value-title' }, _('Enable')),
+			E('label', { 'class': 'cbi-value-title' }, _('Enable', 'aether-proxy')),
 			E('div', { 'class': 'cbi-value-field' }, [
 				E('input', {
 					'type': 'checkbox',
@@ -97,7 +97,7 @@ return view.extend({
 		return ap.call('service', { action: action }).then(function(res) {
 			if (res && res.ok === false)
 				ui.addNotification(null,
-					E('p', {}, _('The service action failed: %s (%s).').replace('%s', res.code).replace('%s', res.detail ?? '')),
+					E('p', {}, _('The service action failed: %s (%s).', 'aether-proxy').replace('%s', res.code).replace('%s', res.detail ?? '')),
 					'error');
 
 			/* Keep service actions useful even when automatic refresh is off. */
@@ -122,9 +122,9 @@ return view.extend({
 		};
 
 		return E('div', { 'class': 'cbi-page-actions' }, [
-			btn(_('Start'), 'cbi-button-apply', buttons.start, () => self.handleService('start')),
-			btn(_('Restart'), 'cbi-button-apply', buttons.restart, () => self.handleService('restart')),
-			btn(_('Stop'), 'cbi-button-negative', buttons.stop, () => self.handleService('stop'))
+			btn(_('Start', 'aether-proxy'), 'cbi-button-apply', buttons.start, () => self.handleService('start')),
+			btn(_('Restart', 'aether-proxy'), 'cbi-button-apply', buttons.restart, () => self.handleService('restart')),
+			btn(_('Stop', 'aether-proxy'), 'cbi-button-negative', buttons.stop, () => self.handleService('stop'))
 		]);
 	},
 
@@ -230,14 +230,14 @@ return view.extend({
 		const button = (text, fn) => E('button', {
 			'class': 'cbi-button cbi-button-apply', click: ui.createHandlerFn(this, fn)
 		}, text);
-		this.probeButton = button(_('Measure latency'), () => this.handleProbe());
-		this.subButton = button(_('Update subscriptions'), () => this.handleSubscriptions());
+		this.probeButton = button(_('Measure latency', 'aether-proxy'), () => this.handleProbe());
+		this.subButton = button(_('Update subscriptions', 'aether-proxy'), () => this.handleSubscriptions());
 		this.probeMessage = E('div', { 'aria-live': 'polite' });
 		this.subMessage = E('div', { 'aria-live': 'polite' });
 		return E('div', {}, [
-			E('label', {}, [ _('Refresh interval'), select ]),
-			button(_('Refresh'), () => this.fetchRefresh()),
-			nodes, button(_('Switch'), () => this.handleNode(nodes.value)),
+			E('label', {}, [ _('Refresh interval', 'aether-proxy'), select ]),
+			button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh()),
+			nodes, button(_('Switch', 'aether-proxy'), () => this.handleNode(nodes.value)),
 			this.probeButton, this.probeMessage, this.subButton, this.subMessage
 		]);
 	},
@@ -258,9 +258,9 @@ return view.extend({
 	componentTable: function(components) {
 		const rows = [
 			E('tr', {}, [
-				E('th', {}, _('Component')),
-				E('th', {}, _('Version')),
-				E('th', {}, _('Path'))
+				E('th', {}, _('Component', 'aether-proxy')),
+				E('th', {}, _('Version', 'aether-proxy')),
+				E('th', {}, _('Path', 'aether-proxy'))
 			])
 		];
 
@@ -289,8 +289,8 @@ return view.extend({
 		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('aether-proxy')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.')),
+			E('h2', {}, _('aether-proxy', 'aether-proxy')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.', 'aether-proxy')),
 			this.enableSwitch(vm.enabled_note),
 			this.dashboardControls(interval, data[2].node),
 			this.content
@@ -311,11 +311,11 @@ return view.extend({
 		const traffic = model.traffic(this.previousStats, stats);
 		this.previousStats = stats;
 		const parts = [ E('table', { 'class': 'table' }, [
-			this.row(_('Proxy traffic ↑ / ↓'), traffic.proxy.tx, ' / ', traffic.proxy.rx),
-			this.row(_('Direct traffic ↑ / ↓'), traffic.direct.tx, ' / ', traffic.direct.rx),
-			this.row(_('Total traffic ↑ / ↓'), traffic.total.tx, ' / ', traffic.total.rx),
-			this.row(_('Proxy connections'), traffic.connections.proxy),
-			this.row(_('Total connections (conntrack)'), traffic.connections.total)
+			this.row(_('Proxy traffic ↑ / ↓', 'aether-proxy'), traffic.proxy.tx, ' / ', traffic.proxy.rx),
+			this.row(_('Direct traffic ↑ / ↓', 'aether-proxy'), traffic.direct.tx, ' / ', traffic.direct.rx),
+			this.row(_('Total traffic ↑ / ↓', 'aether-proxy'), traffic.total.tx, ' / ', traffic.total.rx),
+			this.row(_('Proxy connections', 'aether-proxy'), traffic.connections.proxy),
+			this.row(_('Total connections (conntrack)', 'aether-proxy'), traffic.connections.total)
 		]) ];
 
 		if (!vm.ok) {
@@ -323,13 +323,13 @@ return view.extend({
 		}
 		else {
 			parts.push(E('table', { 'class': 'table' }, [
-				this.row(_('Status'), vm.state_text,
-					vm.dns_failsafe ? _('DNS has fallen back to the original upstream configuration.') : null,
+				this.row(_('Status', 'aether-proxy'), vm.state_text,
+					vm.dns_failsafe ? _('DNS has fallen back to the original upstream configuration.', 'aether-proxy') : null,
 					vm.state_since_text),
-				this.row(_('DNS level'), vm.dns_tier_text),
-				this.row(_('Current node'), vm.node_text, vm.node_ip),
-				this.row(_('Last health probe'), vm.probe_text, vm.probe_since_text),
-				this.row(_('aether-proxy version'), vm.own_version ?? _('Unable to read the version.'))
+				this.row(_('DNS level', 'aether-proxy'), vm.dns_tier_text),
+				this.row(_('Current node', 'aether-proxy'), vm.node_text, vm.node_ip),
+				this.row(_('Last health probe', 'aether-proxy'), vm.probe_text, vm.probe_since_text),
+				this.row(_('aether-proxy version', 'aether-proxy'), vm.own_version ?? _('Unable to read the version.', 'aether-proxy'))
 			]));
 
 			if (vm.components.length)

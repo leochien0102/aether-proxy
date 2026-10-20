@@ -154,7 +154,7 @@ function note_value(seen, reported, key, raw, i, field, labels, errors) {
 	if (j != null && j != i && !reported[field + ':' + key]) {
 		errors.push({
 			host: labels[i], other: labels[j], field: field, code: 'duplicate', value: raw,
-			text: fmt(_('Host %s: %s is also used by host %s.'), labels[i], raw, labels[j])
+			text: fmt(_('Host %s: %s is also used by host %s.', 'aether-proxy'), labels[i], raw, labels[j])
 		});
 
 		reported[field + ':' + key] = true;
@@ -242,14 +242,14 @@ return baseclass.extend({
 			if (unset(h.ip) && unset(h.mac))
 				errors.push({
 					host: label, field: 'ip', code: 'required',
-					text: fmt(_('Host %s: fill in at least one of IP and MAC.'), label)
+					text: fmt(_('Host %s: fill in at least one of IP and MAC.', 'aether-proxy'), label)
 				});
 
 			/* rule 2 (docs/02: udp 只在 policy ≠ direct 时有效) */
 			if (policy_of(h) == 'direct' && udp_on(h))
 				errors.push({
 					host: label, field: 'udp', code: 'conflict',
-					text: fmt(_('Host %s: game mode (UDP) cannot be enabled when the policy is direct.'), label)
+					text: fmt(_('Host %s: game mode (UDP) cannot be enabled when the policy is direct.', 'aether-proxy'), label)
 				});
 
 			/* rule 4 */
@@ -260,7 +260,7 @@ return baseclass.extend({
 				if (!ip_or_cidr_ok(raw)) {
 					errors.push({
 						host: label, field: 'ip', code: 'invalid_cidr', value: raw,
-						text: fmt(_('Host %s: %s is not a valid IPv4 address or CIDR.'), label, raw)
+						text: fmt(_('Host %s: %s is not a valid IPv4 address or CIDR.', 'aether-proxy'), label, raw)
 					});
 
 					continue;
@@ -275,7 +275,7 @@ return baseclass.extend({
 				if (mac == null) {
 					errors.push({
 						host: label, field: 'mac', code: 'invalid_mac', value: raw,
-						text: fmt(_('Host %s: %s is not a valid MAC address.'), label, raw)
+						text: fmt(_('Host %s: %s is not a valid MAC address.', 'aether-proxy'), label, raw)
 					});
 
 					continue;
@@ -328,7 +328,7 @@ return baseclass.extend({
 
 				warnings.push({
 					a: labels[i], b: labels[j],
-					text: fmt(_('Hosts %s and %s overlap; direct → proxy → follow applies in this order.'), labels[i], labels[j])
+					text: fmt(_('Hosts %s and %s overlap; direct → proxy → follow applies in this order.', 'aether-proxy'), labels[i], labels[j])
 				});
 			}
 		}
@@ -357,11 +357,11 @@ return baseclass.extend({
 
 			const name = (h != null && h.name != null && h.name !== '') ? String(h.name) : null;
 			const ip = first_ipv4(h);
-			const detail = [ name, ip ].filter((x) => x != null).join(_(', '));
+			const detail = [ name, ip ].filter((x) => x != null).join(_(', ', 'aether-proxy'));
 
 			out.push({
 				mac: mac,
-				label: (detail === '') ? mac : fmt(_('%s (%s)'), mac, detail)
+				label: (detail === '') ? mac : fmt(_('%s (%s)', 'aether-proxy'), mac, detail)
 			});
 		}
 
@@ -373,7 +373,7 @@ return baseclass.extend({
 	/* docs/10 访问控制页: follow 跟随 / direct 直连 / proxy 代理; an unknown
 	   value is shown verbatim. */
 	policy_text: function(policy) {
-		const texts = { follow: _('Follow'), direct: _('Direct'), proxy: _('Proxy') };
+		const texts = { follow: _('Follow', 'aether-proxy'), direct: _('Direct', 'aether-proxy'), proxy: _('Proxy', 'aether-proxy') };
 
 		return has_own(texts, policy) ? texts[policy] : String(policy);
 	},
@@ -381,7 +381,7 @@ return baseclass.extend({
 	/* docs/10 访问控制页: 「跟随全局模式」/「直连」; an unknown value is
 	   shown verbatim. */
 	unlisted_text: function(v) {
-		const texts = { follow: _('Follow global mode'), direct: _('Direct') };
+		const texts = { follow: _('Follow global mode', 'aether-proxy'), direct: _('Direct', 'aether-proxy') };
 
 		return has_own(texts, v) ? texts[v] : String(v);
 	}

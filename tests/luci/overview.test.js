@@ -363,8 +363,15 @@ test('T8.11a scenario 4: static checks — switch wiring, no service from the sw
 	}
 });
 
+/* The legacy structural assertions inspect the one-argument spelling. Remove
+ * only literal translation contexts; i18n.test.js validates them separately. */
+function structuralSource(file) {
+	return fs.readFileSync(file, 'utf8')
+		.replace(/(_\('(?:[^'\\]|\\.)*'), 'aether-proxy'\)/g, '$1)');
+}
+
 test('scenario 9: static view checks — model only, stop button negative and confirmed, no business fields', () => {
-	const src = fs.readFileSync(VIEW, 'utf8');
+	const src = structuralSource(VIEW);
 
 	/* the view goes through ap and the model, never through rpc */
 	assert.doesNotMatch(src, /rpc\s*\.\s*declare/);
@@ -744,7 +751,7 @@ test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translation
 		assert.match(src, new RegExp('try \\{[^}]*localStorage\\.' + operation + '[^}]*\\}\\s*catch'));
 	for (const file of [ MODEL, VIEW ]) {
 		const source = fs.readFileSync(file, 'utf8');
-		for (const match of source.matchAll(/_\('([^'\n]*)'\)/g))
+		for (const match of source.matchAll(/_\('([^'\n]*)', 'aether-proxy'\)/g))
 			assert.ok(po[match[1]], `translation exists for ${match[1]}`);
 	}
 });

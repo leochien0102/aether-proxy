@@ -21,17 +21,17 @@ function fmt(s) {
 
 /* docs/10 「概览页」: the state wording, with 「等待网络」 while --boot waits. */
 const STATE_TEXT = {
-	stopped: _('Stopped'),
-	starting: _('Starting'),
-	running: _('Running'),
-	degraded: _('Degraded'),
-	failsafe: _('Failsafe'),
-	error: _('Start failed')
+	stopped: _('Stopped', 'aether-proxy'),
+	starting: _('Starting', 'aether-proxy'),
+	running: _('Running', 'aether-proxy'),
+	degraded: _('Degraded', 'aether-proxy'),
+	failsafe: _('Failsafe', 'aether-proxy'),
+	error: _('Start failed', 'aether-proxy')
 };
 
 function state_text(state, waiting_network) {
 	if (state == 'starting' && waiting_network)
-		return _('Waiting for network');
+		return _('Waiting for network', 'aether-proxy');
 
 	return STATE_TEXT[state] ?? state;
 }
@@ -41,13 +41,13 @@ function rel_time(now, ts) {
 	const d = Math.max(0, Math.floor(now - ts));
 
 	if (d < 60)
-		return fmt(_('%s seconds ago'), d);
+		return fmt(_('%s seconds ago', 'aether-proxy'), d);
 	if (d < 3600)
-		return fmt(_('%s minutes ago'), Math.floor(d / 60));
+		return fmt(_('%s minutes ago', 'aether-proxy'), Math.floor(d / 60));
 	if (d < 86400)
-		return fmt(_('%s hours ago'), Math.floor(d / 3600));
+		return fmt(_('%s hours ago', 'aether-proxy'), Math.floor(d / 3600));
 
-	return fmt(_('%s days ago'), Math.floor(d / 86400));
+	return fmt(_('%s days ago', 'aether-proxy'), Math.floor(d / 86400));
 }
 
 /* docs/10 「概览页」「启用开关」: only start is usable in stopped/error; in every
@@ -78,27 +78,27 @@ function notice_args(n) {
    naming the event code instead of throwing (docs/tasks/m8.md T8.4 scenario 8). */
 function notice_text(n) {
 	if (!n || typeof n.code != 'string')
-		return fmt(_('Unhandled notice: %s.'), JSON.stringify(n ?? {}));
+		return fmt(_('Unhandled notice: %s.', 'aether-proxy'), JSON.stringify(n ?? {}));
 
 	const args = notice_args(n);
 
 	switch (n.code) {
 		case 'COMPONENT_MISSING':
-			return fmt(_('The component %s is missing; install it before starting the service.'), args.component ?? '?');
+			return fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'), args.component ?? '?');
 
 		case 'UPDATE_AVAILABLE':
-			return fmt(_('An update for %s is available (%s).'), args.package ?? '?', args.available ?? '?');
+			return fmt(_('An update for %s is available (%s).', 'aether-proxy'), args.package ?? '?', args.available ?? '?');
 
 		case 'IPV6_PRESENT':
 			/* docs/03 「IPv4-only 的泄漏处理」 wording. */
-			return fmt(_('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.'), args.iface ?? '?');
+			return fmt(_('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.', 'aether-proxy'), args.iface ?? '?');
 
 		case 'DNSMASQ_EXTRA_SERVERS':
-			return fmt(_('dnsmasq configuration contains additional server= lines outside aether-proxy: %s.'),
+			return fmt(_('dnsmasq configuration contains additional server= lines outside aether-proxy: %s.', 'aether-proxy'),
 				(Array.isArray(args.servers) ? args.servers : []).join('; '));
 
 		default:
-			return fmt(_('Unhandled notice: %s.'), n.code + ' ' + JSON.stringify(args));
+			return fmt(_('Unhandled notice: %s.', 'aether-proxy'), n.code + ' ' + JSON.stringify(args));
 	}
 }
 
@@ -133,11 +133,11 @@ function rate_text(rate) {
 return baseclass.extend({
 	refresh_options: function() {
 		return [
-			{ value: '2', text: _('2 seconds') },
-			{ value: '5', text: _('5 seconds (default)') },
-			{ value: '10', text: _('10 seconds') },
-			{ value: '30', text: _('30 seconds') },
-			{ value: '0', text: _('Off') }
+			{ value: '2', text: _('2 seconds', 'aether-proxy') },
+			{ value: '5', text: _('5 seconds (default)', 'aether-proxy') },
+			{ value: '10', text: _('10 seconds', 'aether-proxy') },
+			{ value: '30', text: _('30 seconds', 'aether-proxy') },
+			{ value: '0', text: _('Off', 'aether-proxy') }
 		];
 	},
 
@@ -166,12 +166,12 @@ return baseclass.extend({
 
 	probe_result: function(reply) {
 		if (reply?.code == 'TIMEOUT')
-			return _('The probe did not finish within 15 seconds.');
+			return _('The probe did not finish within 15 seconds.', 'aether-proxy');
 		if (reply?.code == 'NOT_RUNNING')
-			return _('The service is not running.');
+			return _('The service is not running.', 'aether-proxy');
 		if (!reply || reply.code)
 			return failure_text(reply);
-		return reply.ok ? fmt(_('Healthy, %s ms.'), reply.latency_ms ?? '?') : _('Probe failed.');
+		return reply.ok ? fmt(_('Healthy, %s ms.', 'aether-proxy'), reply.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy');
 	},
 
 	/* Keep completion detection here: the view must not interpret last_probe. */
@@ -182,7 +182,7 @@ return baseclass.extend({
 		if (!probe || probe.at < requested_at || typeof probe.at != 'number')
 			return { done: false };
 		return { done: true, text: probe.ok
-			? fmt(_('Healthy, %s ms.'), probe.latency_ms ?? '?') : _('Probe failed.') };
+			? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy') };
 	},
 
 	subscription_result: function(job, labels) {
@@ -198,7 +198,7 @@ return baseclass.extend({
 			else
 				failures.push((labels?.[id] || id) + ': ' + (sub.code ?? '?'));
 		}
-		return { text: fmt(_('Subscription update finished: %s succeeded, %s failed.'), success, failures.length),
+		return { text: fmt(_('Subscription update finished: %s succeeded, %s failed.', 'aether-proxy'), success, failures.length),
 			failures: failures };
 	},
 
@@ -216,12 +216,12 @@ return baseclass.extend({
 			? true
 			: (enabled === true || enabled === '1' || enabled === 1);
 		const enabled_note = _('Once enabled the service starts at boot; turning it off stops the service '
-			+ 'immediately and all traffic goes out directly.');
+			+ 'immediately and all traffic goes out directly.', 'aether-proxy');
 		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the switch above '
-			+ 'and it will start automatically.');
+			+ 'and it will start automatically.', 'aether-proxy');
 		const stop_confirmation = _('Stopping aether-proxy leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
-			+ 'service again starts it; to disable it for good, turn off Enable above.');
+			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
 
 		const own_version = (version && version.ok && typeof version.version == 'string') ? version.version : null;
 
@@ -232,7 +232,7 @@ return baseclass.extend({
 
 			return {
 				ok: false,
-				error: fmt(_('Reading the status failed: %s.'), detail ? code + ': ' + detail : code),
+				error: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
 				state_text: null,
 				dns_failsafe: false,
 				state_since_text: null,
@@ -259,13 +259,13 @@ return baseclass.extend({
 		const probe = (typeof status.last_probe == 'object' && status.last_probe != null) ? status.last_probe : null;
 
 		if (probe) {
-			probe_text = probe.ok ? fmt(_('Healthy, %s ms.'), probe.latency_ms ?? '?') : _('Probe failed.');
+			probe_text = probe.ok ? fmt(_('Healthy, %s ms.', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed.', 'aether-proxy');
 
 			if (typeof probe.at == 'number')
 				probe_since_text = rel_time(now, probe.at);
 		}
 		else {
-			probe_text = _('Not probed yet.');
+			probe_text = _('Not probed yet.', 'aether-proxy');
 		}
 
 		const components = [];

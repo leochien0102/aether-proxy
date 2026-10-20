@@ -24,11 +24,11 @@ function fmt(s) {
 
 /* docs/07: the fixed error enum of the node probe results. */
 const PROBE_ERROR_TEXT = {
-	resolve_failed: _('Resolve failed'),
-	timeout: _('Timed out'),
-	refused: _('Connection refused'),
-	unreachable: _('Unreachable'),
-	other: _('Other error')
+	resolve_failed: _('Resolve failed', 'aether-proxy'),
+	timeout: _('Timed out', 'aether-proxy'),
+	refused: _('Connection refused', 'aether-proxy'),
+	unreachable: _('Unreachable', 'aether-proxy'),
+	other: _('Other error', 'aether-proxy')
 };
 
 function sections_of(sections) {
@@ -54,7 +54,7 @@ function source_text(s, subs) {
 	const source = (s.source == null || s.source === '') ? 'manual' : String(s.source);
 
 	if (source == 'manual')
-		return _('Manual');
+		return _('Manual', 'aether-proxy');
 
 	const sub = subs ? subs[source] : null;
 
@@ -65,10 +65,10 @@ function marks_for(s, current) {
 	const marks = [];
 
 	if (current != null && s['.name'] == current)
-		marks.push(_('Current node'));
+		marks.push(_('Current node', 'aether-proxy'));
 
 	if (s.stale == '1')
-		marks.push(_('Stale'));
+		marks.push(_('Stale', 'aether-proxy'));
 
 	return marks;
 }
@@ -87,21 +87,21 @@ function pending_of(results) {
    marked as probing). */
 function probe_column(id, results) {
 	if (results == null || typeof results != 'object')
-		return _('Not probed');
+		return _('Not probed', 'aether-proxy');
 
 	const pending = pending_of(results);
 
 	if (pending && pending.indexOf(id) != -1)
-		return _('Probing…');
+		return _('Probing…', 'aether-proxy');
 
 	const nodes = nodes_of(results);
 	const res = nodes ? nodes[id] : null;
 
 	if (res == null || typeof res != 'object')
-		return _('Not probed');
+		return _('Not probed', 'aether-proxy');
 
 	if ((res.ok ?? 0) > 0)
-		return fmt(_('%s ms (%s/3)'), res.median_ms ?? '?', res.ok);
+		return fmt(_('%s ms (%s/3)', 'aether-proxy'), res.median_ms ?? '?', res.ok);
 
 	const text = PROBE_ERROR_TEXT[res.error];
 
@@ -141,7 +141,7 @@ return baseclass.extend({
 				can_set_current: (current == null || id != current),
 				can_delete: (current == null || id != current),
 				modal_hint: from_subscription
-					? _('This node comes from a subscription; edits will be overwritten at the next subscription update.')
+					? _('This node comes from a subscription; edits will be overwritten at the next subscription update.', 'aether-proxy')
 					: null
 			});
 		}
@@ -158,7 +158,7 @@ return baseclass.extend({
 		if (!r || r.finished)
 			return null;
 
-		return fmt(_('Probing %s/%s'), r.done ?? 0, r.total ?? 0);
+		return fmt(_('Probing %s/%s', 'aether-proxy'), r.done ?? 0, r.total ?? 0);
 	},
 
 	/* Text for a finished probe job that did not succeed; null when the job
@@ -168,10 +168,10 @@ return baseclass.extend({
 			return null;
 
 		if (job.ok === false)
-			return fmt(_('The probe job failed: %s (%s).'), job.code ?? '?', job.detail ?? '');
+			return fmt(_('The probe job failed: %s (%s).', 'aether-proxy'), job.code ?? '?', job.detail ?? '');
 
 		if (job.state == 'failed')
-			return fmt(_('The probe job failed: %s (%s).'), job.error ?? 'CMD_FAILED', 'exit ' + (job.exit ?? '?'));
+			return fmt(_('The probe job failed: %s (%s).', 'aether-proxy'), job.error ?? 'CMD_FAILED', 'exit ' + (job.exit ?? '?'));
 
 		return null;
 	},
@@ -225,7 +225,7 @@ return baseclass.extend({
 			added,
 			existing,
 			failed,
-			text: fmt(_('Imported: %s new, %s already present, %s failed.'), added, existing, failed.length)
+			text: fmt(_('Imported: %s new, %s already present, %s failed.', 'aether-proxy'), added, existing, failed.length)
 		};
 	}
 });

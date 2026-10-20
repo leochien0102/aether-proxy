@@ -43,43 +43,43 @@ function upstream(s) {
 }
 function validate(field, value) {
 	if (field == 'dns_probe_domain')
-		return domain(value) ? true : _('Invalid DNS probe domain.');
+		return domain(value) ? true : _('Invalid DNS probe domain.', 'aether-proxy');
 	if (field == 'allow_china_fallback')
-		return value == '0' || value == '1' ? true : _('Invalid fallback flag.');
+		return value == '0' || value == '1' ? true : _('Invalid fallback flag.', 'aether-proxy');
 	const values = Array.isArray(value) ? value : value == null ? [] : [ value ];
 	if (field == 'trust_dns') {
 		if (values.length < 1 || values.length > 2)
-			return _('Trust DNS requires one or two IPv4 addresses.');
-		return values.every(ipv4) ? true : _('Invalid IPv4 address.');
+			return _('Trust DNS requires one or two IPv4 addresses.', 'aether-proxy');
+		return values.every(ipv4) ? true : _('Invalid IPv4 address.', 'aether-proxy');
 	}
-	return values.every(upstream) ? true : _('Invalid DNS upstream.');
+	return values.every(upstream) ? true : _('Invalid DNS upstream.', 'aether-proxy');
 }
 const NAMES = {
-	gfwlist: _('Blocked domains'), chnlist: _('China domains'), apple: _('Apple China domains'),
-	chnroute4: _('China IPv4 routes'), gfw_static4: _('Static proxy IPv4 routes')
+	gfwlist: _('Blocked domains', 'aether-proxy'), chnlist: _('China domains', 'aether-proxy'), apple: _('Apple China domains', 'aether-proxy'),
+	chnroute4: _('China IPv4 routes', 'aether-proxy'), gfw_static4: _('Static proxy IPv4 routes', 'aether-proxy')
 };
 function relative(now, ts) {
 	if (ts == null)
-		return _('Never');
+		return _('Never', 'aether-proxy');
 	const delta = Math.max(0, Math.floor(now - ts));
 	if (delta < 60)
-		return fmt(_('%s seconds ago'), delta);
+		return fmt(_('%s seconds ago', 'aether-proxy'), delta);
 	if (delta < 3600)
-		return fmt(_('%s minutes ago'), Math.floor(delta / 60));
+		return fmt(_('%s minutes ago', 'aether-proxy'), Math.floor(delta / 60));
 	if (delta < 86400)
-		return fmt(_('%s hours ago'), Math.floor(delta / 3600));
-	return fmt(_('%s days ago'), Math.floor(delta / 86400));
+		return fmt(_('%s hours ago', 'aether-proxy'), Math.floor(delta / 3600));
+	return fmt(_('%s days ago', 'aether-proxy'), Math.floor(delta / 86400));
 }
 function failure(r) {
 	return (r?.code ?? 'RPC_FAILED') + ': ' + (r?.detail ?? '');
 }
 function save_result(r) {
 	if (r?.ok)
-		return { text: r.reload == 'failed' ? _('Saved, but reload failed.') :
-			(r.changed ? _('Saved.') : _('Content unchanged.')), errors: [] };
+		return { text: r.reload == 'failed' ? _('Saved, but reload failed.', 'aether-proxy') :
+			(r.changed ? _('Saved.', 'aether-proxy') : _('Content unchanged.', 'aether-proxy')), errors: [] };
 	return {
 		text: failure(r),
-		errors: (r?.errors ?? []).map(e => fmt(_('Line %s: %s'), e.line, e.text))
+		errors: (r?.errors ?? []).map(e => fmt(_('Line %s: %s', 'aether-proxy'), e.line, e.text))
 	};
 }
 function table(r, now) {
@@ -87,10 +87,10 @@ function table(r, now) {
 		error: r?.ok ? null : failure(r), checked: relative(now, r?.checked),
 		rows: Object.keys(NAMES).map(name => {
 			const item = r?.items?.[name] ?? {};
-			return [ NAMES[name], item.source == 'downloaded' ? _('Downloaded') : _('Packaged'),
+			return [ NAMES[name], item.source == 'downloaded' ? _('Downloaded', 'aether-proxy') : _('Packaged', 'aether-proxy'),
 				item.version ?? '—', item.lines ?? '—', relative(now, item.updated_at),
-				item.changed === true ? _('Update available') :
-					item.changed === false ? _('Latest') : _('Not checked') ];
+				item.changed === true ? _('Update available', 'aether-proxy') :
+					item.changed === false ? _('Latest', 'aether-proxy') : _('Not checked', 'aether-proxy') ];
 		})
 	};
 }
@@ -98,16 +98,16 @@ function job_result(job) {
 	const r = job?.result ?? job;
 	const names = list => (list ?? []).map(n => NAMES[n] ?? n).join(', ');
 	const failures = Object.keys(r?.failed ?? {}).map(n => (NAMES[n] ?? n) + ': ' + r.failed[n]);
-	const lines = [ fmt(_('Updated: %s'), names(r?.updated)), fmt(_('Unchanged: %s'), names(r?.unchanged)),
-		fmt(_('Failed: %s'), failures.join('; ')) ];
+	const lines = [ fmt(_('Updated: %s', 'aether-proxy'), names(r?.updated)), fmt(_('Unchanged: %s', 'aether-proxy'), names(r?.unchanged)),
+		fmt(_('Failed: %s', 'aether-proxy'), failures.join('; ')) ];
 	if (job?.ok === false || job?.error)
 		lines.push(failure(job));
 	return lines;
 }
 return baseclass.extend({ validate, save_result, table, job_result, relative,
 	modes: function() {
-		return [ [ 'bypass_cn', _('Bypass China — proxy destinations outside China.') ],
-			[ 'gfw', _('Blocked sites — proxy only blocked domains.') ],
-			[ 'global', _('Global — proxy all follow-policy traffic.') ] ];
+		return [ [ 'bypass_cn', _('Bypass China — proxy destinations outside China.', 'aether-proxy') ],
+			[ 'gfw', _('Blocked sites — proxy only blocked domains.', 'aether-proxy') ],
+			[ 'global', _('Global — proxy all follow-policy traffic.', 'aether-proxy') ] ];
 	}
 });
