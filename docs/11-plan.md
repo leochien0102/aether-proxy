@@ -140,7 +140,7 @@ CI 中额外执行：用真实 Xray 二进制对每个 `expected/xray.json` 执�
 | ImmortalWrt 24.10.6 x86_64 / aarch64（qemu） | CI 容器 | 同上 | 通过 |
 | 流量卸载：软件卸载开启 | 真机（H28K 一直开着 `flow_offloading`） | 上面的全部真机测试都在开启状态下通过 | 通过 |
 | 流量卸载：关闭 | — | 没有专门测；它是最简单的情况（02「已知限制」：卸载只影响直连转发） | 未测 |
-| 流量卸载：硬件卸载 | — | 没有支持硬件卸载的设备（H28K 设了 `flow_offloading_hw`，rockchip 实际没有硬件卸载） | 无环境 |
+| 流量卸载：硬件卸载 | — | 没有确认支持硬件卸载的设备（H28K 也设了 `flow_offloading_hw`，是否真正生效未核实，所以不算覆盖） | 无环境 |
 | 共存：装有 ssr-plus 但未启用 | 真机 | H28K 上与 ssr-plus 交替启用（T8.13、T7.7 的窗口：停 ssr-plus → 启用 aether-proxy → 恢复 ssr-plus）；启用冲突时拒绝启动由宿主机测试覆盖 | 通过 |
 | 共存：mwan3 已启用 | — | 没有装 mwan3 的设备；设计上 `FWMARK` 与 `ip rule` 优先级已避开 mwan3 默认值（01「常量」） | 无环境 |
 | mipsel 等其他架构 | — | 没有设备；发布通道的 `xray-core`、`chinadns-ng` 只编 `aarch64_generic` 与 `x86_64`（aether-proxy 本身与架构无关） | 无环境 |
