@@ -3,7 +3,7 @@
 'require aether-proxy.model.logs as logs';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「切换节点未生效时提示」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第五轮修正」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -173,6 +173,11 @@ function rate_text(rate) {
 	return rate.toFixed(1) + ' ' + units[unit];
 }
 
+/* Undefined is the pending inventory; null is a failed call, not an unknown version. */
+function components_failed(inventory) {
+	return inventory !== undefined && inventory?.ok !== true;
+}
+
 /* Own version comes from a separate RPC, even when reading status failed. */
 function component_rows(version, inventory) {
 	const components = [{
@@ -186,7 +191,11 @@ function component_rows(version, inventory) {
 			components.push({ name, version: _('Reading…', 'aether-proxy'), path: _('Reading…', 'aether-proxy') });
 			continue;
 		}
-		const c = inventory?.ok === true ? inventory.components?.[name] : null;
+		if (components_failed(inventory)) {
+			components.push({ name, version: _('Reading failed', 'aether-proxy'), path: failure_text(inventory) });
+			continue;
+		}
+		const c = inventory.components?.[name];
 		components.push({
 			name,
 			version: c?.found === true && c.version != null ? String(c.version) : null,
@@ -257,6 +266,7 @@ function switch_notice(status, configured_node, labels, reply, now) {
 return baseclass.extend({
 	switch_pending: switch_pending,
 	component_rows: component_rows,
+	components_failed: components_failed,
 	refresh_options: function() {
 		return [
 			{ value: '2', text: _('2 seconds', 'aether-proxy') },
@@ -315,8 +325,8 @@ return baseclass.extend({
 		const probe = reply?.last_probe;
 		if (!probe || probe.at < requested_at || typeof probe.at != 'number')
 			return { done: false };
-		return { done: true, text: probe.ok
-			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy') };
+		/* Completed measurements belong only in the health item, including failed probes. */
+		return { done: true, text: '', refresh: true };
 	},
 
 	node_options: node_options,
@@ -329,7 +339,7 @@ return baseclass.extend({
 	   resolved by ap.call('version'), labels: node section name -> label from
 	   UCI, now: current unix time in seconds. configured_node is read at load;
 	   inventory is undefined while pending, null/ok:false on failure, and is
-	   fetched once after rendering (docs/10 「概览页第二轮修正」). events contains
+	   fetched after rendering or on explicit retry (docs/10 「概览页第五轮修正」). events contains
 	   recent errors only while a node switch is pending (docs/10 T10.11). */
 	build: function(status, version, labels, now, enabled, configured_node, inventory, events) {
 		labels = (labels && typeof labels == 'object') ? labels : {};

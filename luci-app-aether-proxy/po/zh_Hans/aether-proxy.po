@@ -1616,6 +1616,18 @@ msgid "Reading…"
 msgstr "读取中…"
 
 msgctxt "aether-proxy"
+msgid "Reading failed"
+msgstr "读取失败"
+
+msgctxt "aether-proxy"
+msgid "Retry"
+msgstr "重试"
+
+msgctxt "aether-proxy"
+msgid "Measuring latency…"
+msgstr "检测中…"
+
+msgctxt "aether-proxy"
 msgid "Component versions"
 msgstr "组件版本"
 
