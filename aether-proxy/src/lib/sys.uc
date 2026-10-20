@@ -32,34 +32,42 @@ const WRAPPER = join(' ', [
 	'if [ "$timeout" = "-" ]; then',
 	'  "$@" </dev/null 2>"$e"; rc=$?; timed=false;',
 	'else',
-	'  done=$e.done; child=$e.pid; timed_file=$e.timeout; finished=$e.finished;',
+	'  done=$e.done; timed_file=$e.timeout; sleeper=$e.sleep; grace=$e.grace;',
+	'  : >"$sleeper"; : >"$grace";',
 	'  ( exec "$@" </dev/null 2>>"$e" ) 2>>"$helper" & runner=$!;',
-	'  printf "%s\\n" "$runner" >"$child";',
-	'  ( t=;',
-	"    trap 'if [ -n \"$t\" ]; then kill \"$t\" 2>>\"$helper\"; wait \"$t\" 2>>\"$helper\"; fi; : >\"$finished\"; exit 0' TERM;",
-	'    sleep "$timeout" & t=$!; wait "$t"; t=;',
+	// Cancel the sleeps with KILL, not the timer shell with TERM: rc.common may have
+	// passed an ignored TERM disposition that no child shell can reset (docs/12 rule 2).
+	// The timer owns and reaps both sleeps. Each PID is published even if the command
+	// exits during timer startup or between TERM and the grace sleep; '-' means no grace.
+	'  ( sleep "$timeout" & t=$!; printf "%s\\n" "$t" >"$sleeper"; wait "$t";',
 	'    if [ ! -f "$done" ]; then',
-	'      : >"$timed_file"; IFS= read -r c <"$child"; kill -TERM "$c" 2>>"$helper";',
-	'      sleep 1 & t=$!; wait "$t"; t=;',
-	'      if [ ! -f "$done" ]; then kill -KILL "$c" 2>>"$helper"; fi;',
-	'    fi;',
-	'    : >"$finished" ) 2>>"$helper" & timer=$!;',
+	'      : >"$timed_file"; kill -TERM "$runner" 2>>"$helper";',
+	'      sleep 1 & t=$!; printf "%s\\n" "$t" >"$grace"; wait "$t";',
+	'      if [ ! -f "$done" ]; then kill -KILL "$runner" 2>>"$helper"; fi;',
+	'    else printf "%s\\n" - >"$grace"; fi;',
+	'  ) 2>>"$helper" & timer=$!;',
 	'  wait "$runner"; rc=$?; : >"$done";',
-	// The timer may finish between the -f test and the kill; that race is harmless, and its
-	// "can't kill pid" is dropped by the helper filter below instead of reaching stderr.
-	'  if [ ! -f "$finished" ]; then kill -TERM "$timer" 2>>"$helper"; fi;',
+	// Only wait for PID publication, never for the deadline. Kill both stages so the
+	// TERM-handler-exits case does not leave a grace sleep (or block for another second).
+	'  for pidfile in "$sleeper" "$grace"; do',
+	'    while ! IFS= read -r t <"$pidfile"; do :; done;',
+	'    if [ "$t" != "-" ] && kill -0 "$t" 2>>"$helper"; then kill -KILL "$t" 2>>"$helper"; fi;',
+	'  done;',
 	'  wait "$timer" 2>>"$helper";',
 	'  if [ -f "$timed_file" ]; then rc=124; timed=true; else timed=false; fi;',
-	'  rm -f "$done" "$child" "$timed_file" "$finished" 2>>"$e";',
+	'  rm -f "$done" "$timed_file" "$sleeper" "$grace" 2>>"$e";',
 	'fi;',
-	'while IFS= read -r line; do case "$line" in Terminated|*"can\'t kill pid"*) ;; *) printf "%s\\n" "$line" >>"$e" ;; esac; done <"$helper";',
+	// Cancellation races a naturally completed sleep; keep command stderr separate so
+	// filtering those harmless wrapper-only job/kill diagnostics cannot hide its errors.
+	'while IFS= read -r line; do case "$line" in',
+	'  ""|Terminated|Killed|*"can\'t kill pid"*|*"No such process"*) ;;',
+	'  *) printf "%s\\n" "$line" >>"$e" ;; esac; done <"$helper";',
 	'rm -f "$helper" 2>>"$e";',
 	'printf "\\n@@AP-RC@@ %s %s %s\\n" "$rc" "$e" "$timed"'
 ]);
 const MARKER = "\n@@AP-RC@@ ";
 
-// ash may print "Terminated" when a background child is signalled; discard that shell
-// job notification while preserving every other wrapper diagnostic and command stderr.
+// Keep logged stderr bounded without losing the original command's captured stderr.
 function first_line(s, max) {
 	let line = split(trim(s ?? ''), '\n')[0];
 

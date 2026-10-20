@@ -122,7 +122,9 @@ if (scenario == 'proxy-tier') {
 		'T1/T2 transitions restart chinadns and HUP dnsmasq',
 		sprintf('dns=%d hup=%d', count(children_calls, 'chinadns-ng '), count(calls, 'killall -HUP dnsmasq')));
 	let cd = fs.readfile(`${opts.current}/${C.ARTIFACT_FILES.chinadns}`) ?? '';
-	check(index(cd, 'trust-dns tcp://8.8.8.8,tcp://1.1.1.1') >= 0, 'T2 render has direct upstreams');
+	// Follow the configured upstreams, not a default predating T8.22.
+	let direct_upstreams = 'trust-dns ' + join(',', d.snapshot.dns.direct_dns);
+	check(index(cd, direct_upstreams) >= 0, 'T2 render has direct upstreams');
 	no_external_children(d);
 }
 else if (scenario == 'xray-failsafe') {

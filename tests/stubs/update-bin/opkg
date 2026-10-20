@@ -2,7 +2,8 @@
 if [ "$1" = status ]; then
 	[ -z "${UPDATE_INSTALLED_SLEEP:-}" ] || sleep "$UPDATE_INSTALLED_SLEEP"
 	if [ -n "${UPDATE_PACKAGE_STATE_FILE:-}" ] && [ -f "$UPDATE_PACKAGE_STATE_FILE" ]; then
-		printf 'Package: %s\nVersion: %s\n' "$2" "$(cat "$UPDATE_PACKAGE_STATE_FILE")"; exit 0
+		# Simulate a post-install version mismatch independently of the installed asset.
+		printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_STATUS_VERSION:-$(cat "$UPDATE_PACKAGE_STATE_FILE")}"; exit 0
 	fi
 	case "$UPDATE_INSTALLED_MODE" in
 		missing) exit 0 ;;

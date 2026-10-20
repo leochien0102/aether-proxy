@@ -242,3 +242,6 @@ export const UPDATE_DEFAULT_PATH = '/usr/sbin:/usr/bin:/sbin:/bin';
 
 // T8.17 (docs/10 command table): check scratch directories never share daemon staging.
 export const CHECK_DIR_PREFIX = 'check.';
+
+// T8.23 (docs/08 package verification): allow procd's 30s stop plus cleanup and start/check.
+export const UPDATE_RESTART_TIMEOUT_SECS = 90;

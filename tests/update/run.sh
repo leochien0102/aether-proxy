@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Signed update discovery/install regressions, including PATH lookup (docs/08 "检查").
+# Signed update discovery/install regressions (docs/08 "检查" and "软件包安装").
 set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UCODE="$ROOT/tests/host/ucode"; ENTRY="$ROOT/aether-proxy/src/aether-proxy"; USIGN="$ROOT/tests/host/prefix/bin/usign"
@@ -292,12 +292,28 @@ expect 'legacy chinadns_auto check returns ok' true "$(get "$out" ok)"
 cat > "$T/root/etc/init.d/aether-proxy" <<'INIT'
 #!/bin/sh
 printf '%s\n' "$*" >> "$UPDATE_INIT_CALLS"
-if [ "$1" = restart ]; then printf '{"state":"running"}\n' > "$UPDATE_INIT_STATE_FILE"; fi
+if [ "$1" = restart ]; then
+	case "${UPDATE_INIT_FAIL:-none}" in
+		always) exit 7 ;;
+		first)
+			if [ "$(wc -l < "$UPDATE_INIT_CALLS")" -eq 1 ]; then exit 7; fi
+			;;
+	esac
+	printf '{"state":"running"}\n' > "$UPDATE_INIT_STATE_FILE"
+fi
 exit 0
 INIT
 cat > "$T/bin/ubus" <<'UBUS'
 #!/bin/sh
-printf '%s\n' "$*" >> "$UPDATE_SIGNAL_CALLS"
+# JSON may be formatted across lines; keep one record per invocation, not per line.
+python3 - "$@" >> "$UPDATE_SIGNAL_CALLS" <<'PY'
+import json, sys
+assert sys.argv[1:4] == ['call', 'service', 'signal'] and len(sys.argv) == 5
+print('call service signal ' + json.dumps(json.loads(sys.argv[4])))
+PY
+rc=$?
+if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+if [ "${UPDATE_SIGNAL_EXIT:-0}" != 0 ]; then exit "$UPDATE_SIGNAL_EXIT"; fi
 if [ "${UPDATE_SIGNAL_NO_PROBE:-0}" != 1 ]; then
  python3 - "$UPDATE_STATE_FILE" <<'PY'
 import json,sys,time
@@ -380,6 +396,128 @@ printf '{"state":"running"}\n' > "$UPDATE_STATE_FILE"; : > "$UPDATE_INIT_CALLS"
 out=$(ap update package aether-proxy --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'aether-proxy package update succeeds' 0 "$?"
 grep -q '^restart$' "$UPDATE_INIT_CALLS" && ok 'aether-proxy update invokes init restart' || bad 'aether-proxy update invokes init restart'
 out=$(ap update package unknown --json); expect 'unknown package is USAGE' USAGE "$(get "$out" code)"
+
+# T8.23: verification must really fail after installation; then count activation calls
+# against the pre-update state, even if restart changes state.json during verification.
+cat > "$T/bin/xray" <<'XRAY'
+#!/bin/sh
+printf 'Xray wrong-version\n'
+XRAY
+chmod +x "$T/bin/xray"
+rollback_case() {
+	local label=$1 package=$2 state=$3 previous=$4 init_failure=$5 restarts=$6 signals=$7
+	local args=() rc
+	if [ "$previous" = yes ]; then args+=(--previous); fi
+	: > "$UPDATE_PACKAGE_CALLS"
+	: > "$UPDATE_INIT_CALLS"
+	: > "$UPDATE_SIGNAL_CALLS"
+	: > "$T/run/events.jsonl"
+	printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
+	if [ "$state" = missing ]; then
+		rm -f "$UPDATE_STATE_FILE"
+	else
+		printf '{"state":"%s","last_probe":{"ok":true,"at":1}}\n' "$state" > "$UPDATE_STATE_FILE"
+	fi
+	export UPDATE_INIT_FAIL="$init_failure" UPDATE_SIGNAL_NO_PROBE=1 AETHER_PROXY_TEST_UPDATE_WAIT_SECS=0
+	out=$(ap update package "$package" "${args[@]}" --json --confdir "$T/conf" \
+		--run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>"$T/stderr")
+	rc=$?
+	expect "T8.23 $label exit 1" 1 "$rc"
+	expect "T8.23 $label remains UPDATE_VERIFY_FAILED" UPDATE_VERIFY_FAILED "$(get "$out" code)"
+	expect "T8.23 $label rolled_back true" true "$(get "$out" rolled_back)"
+	expect "T8.23 $label restart count" "$restarts" "$(wc -l < "$UPDATE_INIT_CALLS" | tr -d ' ')"
+	expect "T8.23 $label SIGUSR2 count" "$signals" "$(wc -l < "$UPDATE_SIGNAL_CALLS" | tr -d ' ')"
+	expect "T8.23 $label installs exactly twice" 2 "$(wc -l < "$UPDATE_PACKAGE_CALLS" | tr -d ' ')"
+	python3 - "$T/run/events.jsonl" "$UPDATE_SIGNAL_CALLS" "$UPDATE_PACKAGE_CALLS" \
+		"$UPDATE_PACKAGE_STATE_FILE" "$package" "$previous" "$init_failure" "$UPDATE_INIT_CALLS" <<'PY'
+import json, pathlib, sys
+(events_file, signals_file, packages_file, installed_file, package, previous, init_failure, init_file) = sys.argv[1:]
+events = [json.loads(line) for line in pathlib.Path(events_file).read_text().splitlines()]
+update_events = [event['code'] for event in events
+                 if event['code'] in ('UPDATE_VERIFY_FAILED', 'UPDATE_ROLLED_BACK', 'UPDATE_INSTALLED')]
+assert update_events == ['UPDATE_VERIFY_FAILED', 'UPDATE_ROLLED_BACK'], update_events
+for line in pathlib.Path(signals_file).read_text().splitlines():
+    assert line.startswith('call service signal '), line
+    request = json.loads(line[len('call service signal '):])
+    assert request == {'name': 'aether-proxy', 'signal': 12}, request
+    assert type(request['signal']) is int
+current, old = ('26.10.10-r1', '26.7.28-r1') if package == 'xray-core' else ('0.2.0-r1', '0.1.0-r1')
+expected = current if previous == 'yes' else old
+assert pathlib.Path(installed_file).read_text().strip() == expected
+calls = pathlib.Path(packages_file).read_text().splitlines()
+assert (old if previous == 'yes' else current) in calls[0], calls
+assert expected in calls[1] and '--force-downgrade' in calls[1], calls
+if init_failure == 'always' and len(pathlib.Path(init_file).read_text().splitlines()) == 2:
+    rollback_at = next(i for i, event in enumerate(events) if event['code'] == 'UPDATE_ROLLED_BACK')
+    assert any(event['code'] == 'CMD_FAILED' and event['args']['rc'] == 7
+               and 'restart' in event['args']['cmd'] for event in events[rollback_at + 1:])
+PY
+	if [ "$?" -eq 0 ]; then
+		ok "T8.23 $label ordered events, restored asset and activation payload"
+	else
+		bad "T8.23 $label ordered events, restored asset and activation payload"
+	fi
+	unset UPDATE_INIT_FAIL UPDATE_SIGNAL_NO_PROBE AETHER_PROXY_TEST_UPDATE_WAIT_SECS
+}
+while IFS='|' read -r label package state previous init_failure restarts signals; do
+	rollback_case "$label" "$package" "$state" "$previous" "$init_failure" "$restarts" "$signals"
+done <<'ROLLBACK_CASES'
+running rollback|aether-proxy|running|no|first|2|0
+stopped rollback|aether-proxy|stopped|no|first|1|0
+previous restores current|aether-proxy|running|yes|first|2|0
+rollback restart fails|aether-proxy|running|no|always|2|0
+starting rollback|aether-proxy|starting|no|first|2|0
+degraded rollback|aether-proxy|degraded|no|first|2|0
+error rollback|aether-proxy|error|no|first|1|0
+missing state rollback|aether-proxy|missing|no|first|1|0
+failsafe rollback|aether-proxy|failsafe|no|first|1|0
+xray running rollback|xray-core|running|no|none|0|2
+xray stopped rollback|xray-core|stopped|no|none|0|0
+xray previous restores current|xray-core|running|yes|none|0|2
+xray starting rollback|xray-core|starting|no|none|0|1
+xray degraded rollback|xray-core|degraded|no|none|0|1
+ROLLBACK_CASES
+# A failed rollback signal is also best effort; there is no second verification pass.
+export UPDATE_SIGNAL_EXIT=9
+rollback_case 'xray rollback signal fails' xray-core running no none 0 2
+python3 - "$T/run/events.jsonl" <<'PY'
+import json, sys
+events = [json.loads(line) for line in open(sys.argv[1])]
+rollback_at = next(i for i, event in enumerate(events) if event['code'] == 'UPDATE_ROLLED_BACK')
+assert any(event['code'] == 'CMD_FAILED' and event['args']['rc'] == 9 for event in events[rollback_at + 1:])
+PY
+if [ "$?" -eq 0 ]; then
+	ok 'T8.23 rollback signal failure logs CMD_FAILED'
+else
+	bad 'T8.23 rollback signal failure logs CMD_FAILED'
+fi
+unset UPDATE_SIGNAL_EXIT
+# LuCI's version mismatch triggers rollback but never a service activation.
+export UPDATE_STATUS_VERSION=0.0.0-r0
+rollback_case 'luci app rollback has no activation' luci-app-aether-proxy running no none 0 0
+rollback_case 'luci i18n rollback has no activation' luci-i18n-aether-proxy-zh-cn running no none 0 0
+unset UPDATE_STATUS_VERSION
+rm "$T/bin/xray"
+# Inspect the shared helper's actual sys.run options without sleeping for 90 seconds.
+cat > "$T/restart-timeout.uc" <<'UCODE'
+'use strict';
+import * as fs from 'fs';
+import * as C from 'aetherproxy.const';
+let source = fs.readfile(ARGV[0]);
+let start = index(source, 'function restart_service(');
+let end = index(source, '\nfunction activate_rollback(');
+let factory = loadstring('(function(sys, C, system_path) { ' + substr(source, start, end - start) +
+	' return restart_service({ root: "/fixture" }); })')();
+let called = null;
+let ok = factory({ run: (argv, opts) => { called = { argv, opts }; return { code: 0 }; } },
+	C, (root, path) => root + path);
+print(sprintf('%.J', { ok, called, constant: C.UPDATE_RESTART_TIMEOUT_SECS }));
+UCODE
+out=$("$UCODE" "$T/restart-timeout.uc" -- "$ROOT/aether-proxy/src/lib/update.uc")
+expect 'T8.23 restart timeout constant is 90' 90 "$(get "$out" constant)"
+expect 'T8.23 shared restart helper passes 90 seconds to sys.run' 90 "$(get "$out" called.opts.timeout)"
+expect 'T8.23 shared restart helper invokes init restart' restart "$(get "$out" called.argv.1)"
+
 # 10 real update_check background job
 export UPDATE_INSTALLED_MODE=normal UPDATE_INSTALLED_VERSION=26.9.30-r5
 out=$(ap job start update check --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_check job starts' 0 "$?"; id=$(get "$out" job)
