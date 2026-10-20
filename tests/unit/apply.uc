@@ -18,6 +18,15 @@ export const cases = [
 	{ name: 'policy route add and delete are idempotent', expect: 'PASS', kind: 'routes' },
 	{ name: 'dnsmasq directory selection and fragment lifecycle', expect: 'PASS', kind: 'dnsmasq' },
 	{ name: 'node resolution uses literal DNS and matching LKG', expect: 'PASS', kind: 'resolve' },
+	{ name: 'bootstrap retries exit failure and invalid output then succeeds quietly on attempt three',
+	  expect: 'PASS', kind: 'retry' },
+	{ name: 'bootstrap stops after first success and emits one final fallback or failure',
+	  expect: 'PASS', kind: 'retry_end' },
+	{ name: 'LKG reads legacy format and ignores only invalid IP entries', expect: 'PASS', kind: 'lkg_read' },
+	{ name: 'LKG preserves A and B and unchanged A does not rewrite or reorder', expect: 'PASS', kind: 'lkg_keep' },
+	{ name: 'LKG evicts oldest of 65 addresses and moves changed addresses last', expect: 'PASS', kind: 'lkg_limit' },
+	{ name: 'corrupt LKG is silent and successful resolution regenerates new format',
+	  expect: 'PASS', kind: 'lkg_corrupt' },
 	{ name: 'boot list and conflicts', expect: 'PASS', kind: 'misc' }
 ];
 
@@ -48,6 +57,8 @@ function prepare() {
 		if (!fs.chmod(target, 493))
 			return { error: `cannot chmod stub ${name}` };
 	}
+	if (!sys.mkdir_p(`${base}/var/run/aether-proxy`))
+		return { error: sys.error() };
 	let ctx = { root: base, bin_dir: bin, run_dir: '/var/run/aether-proxy', state_dir: '/etc/aether-proxy/state', lan_ifaces: [ 'br-lan', 'eth0.2' ] };
 	let env = `STUB_LOG='${log_path}'\nSTUB_IP_RULES_FILE='${base}/ip-rules'\nSTUB_IP_RULE_LINE='900: from all fwmark 0x80000/0x80000 lookup 233'\n`;
 	if (!write(`${base}/stubs/stub.env`, env) || !write(`${base}/ip-rules`, ''))
@@ -263,6 +274,133 @@ function run_resolve() {
 	return lkg.ok && lkg.source == 'lkg' && lkg.ip == '198.51.100.4' && !missing.ok && lkg_text ? 'PASS' : fail(`LKG result ${sprintf('%.J', [ lkg, missing ])}`);
 };
 
+function lkg_path(t) {
+	return `${t.base}/etc/aether-proxy/state/${C.NODE_IP_FILE}`;
+};
+
+function resolve_calls(t) {
+	return filter(split(read(t.log_path), '\n'), l => match(l, /^resolveip /));
+};
+
+function resolve_events(t) {
+	return filter(split(read(`${t.base}/var/run/aether-proxy/${C.EVENTS_FILE}`), '\n'),
+		l => match(l, /NODE_RESOLVE_/));
+};
+
+function configure_sequence(t, rc, outputs) {
+	let seq = `${t.base}/sequence`;
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) +
+		`STUB_RESOLVEIP_SEQUENCE='${seq}'\n`);
+	for (let i = 0; i < length(rc); i++) {
+		write(`${seq}/${i + 1}.rc`, `${rc[i]}\n`);
+		write(`${seq}/${i + 1}.out`, outputs[i]);
+	}
+};
+
+function run_retry() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	// The first response has an IP but exits nonzero; the second exits zero without an IPv4.
+	configure_sequence(t, [ 1, 0, 0 ], [ '198.51.100.1\n', 'not-an-ip\n::1\n',
+		'invalid\n198.51.100.3\n198.51.100.4\n' ]);
+	let r = apply.resolve_node(t.ctx, 'retry.example');
+	if (!r.ok || r.source != 'dns' || r.ip != '198.51.100.3')
+		return fail(`third response: ${sprintf('%.J', r)}`);
+	let calls = resolve_calls(t);
+	if (length(calls) != 3 || length(filter(calls, l => l == 'resolveip -4 -t 3 retry.example')) != 3)
+		return fail(`retry count/timeout: ${sprintf('%.J', calls)}`);
+	return fs.stat(`${t.base}/var/run/aether-proxy/${C.EVENTS_FILE}`) == null
+		? 'PASS' : fail('intermediate DNS failure emitted an event');
+};
+
+function run_retry_end() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	configure_sequence(t, [ 0 ], [ '203.0.113.1\n' ]);
+	let first = apply.resolve_node(t.ctx, 'first.example');
+	if (!first.ok || length(resolve_calls(t)) != 1)
+		return fail('first success did not stop immediately');
+	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) +
+		'STUB_RESOLVEIP_SEQUENCE=\nSTUB_RESOLVEIP_RC=1\n');
+	let fallback = apply.resolve_node(t.ctx, 'first.example');
+	let missing = apply.resolve_node(t.ctx, 'missing.example');
+	let events = resolve_events(t);
+	if (!fallback.ok || fallback.source != 'lkg' || fallback.ip != '203.0.113.1' || missing.ok)
+		return fail('fallback reused wrong address or ignored matching LKG');
+	if (length(resolve_calls(t)) != 7 || length(events) != 2)
+		return fail(`retry/event count mismatch: ${length(resolve_calls(t))} calls, ${length(events)} events`);
+	return index(events[0], 'NODE_RESOLVE_FALLBACK') >= 0 && index(events[1], 'NODE_RESOLVE_FAILED') >= 0
+		? 'PASS' : fail('final event codes mismatch');
+};
+
+function run_lkg_read() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	write(lkg_path(t), '{"address":"old.example","ip":"198.51.100.1"}');
+	if (apply.read_lkg(t.ctx)['old.example'] != '198.51.100.1')
+		return fail('legacy entry unreadable');
+	// A changed/new address triggers format migration; mere reads need not rewrite flash.
+	apply.update_lkg(t.ctx, { 'new.example': '198.51.100.2' });
+	let migrated = json(read(lkg_path(t)));
+	if (migrated.nodes?.['old.example'] != '198.51.100.1' || migrated.address != null)
+		return fail('legacy migration lost original entry');
+	write(lkg_path(t), '{"nodes":{"a.example":"203.0.113.1","bad.example":"999.0.0.1",' +
+		'"b.example":"203.0.113.2","object.example":{},"null.example":null}}');
+	let valid = apply.read_lkg(t.ctx);
+	return length(valid) == 2 && valid['a.example'] == '203.0.113.1' && valid['b.example'] == '203.0.113.2'
+		? 'PASS' : fail(`valid entries: ${sprintf('%.J', valid)}`);
+};
+
+function run_lkg_keep() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	configure_sequence(t, [ 0, 0, 0 ], [ '203.0.113.1\n', '203.0.113.2\n', '203.0.113.1\n' ]);
+	if (!apply.resolve_node(t.ctx, 'a.example').ok || !apply.resolve_node(t.ctx, 'b.example').ok)
+		return fail('sequential resolutions failed');
+	// Atomic replacement changes the inode; a hard link keeps the old inode allocated.
+	let path = lkg_path(t), link = `${t.base}/lkg-link`;
+	if (sys.run([ 'ln', path, link ], { timeout: 10 }).code != 0)
+		return fail('cannot link LKG');
+	let before = fs.stat(path).inode;
+	if (!apply.resolve_node(t.ctx, 'a.example').ok || fs.stat(path).inode != before)
+		return fail('unchanged A rewrote LKG');
+	let nodes = apply.read_lkg(t.ctx);
+	return join(',', keys(nodes)) == 'a.example,b.example' && nodes['a.example'] == '203.0.113.1' &&
+		nodes['b.example'] == '203.0.113.2' ? 'PASS' : fail('A/B retention or order mismatch');
+};
+
+function run_lkg_limit() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	for (let i = 0; i < 65; i++)
+		if (!apply.update_lkg(t.ctx, { [`node-${i}.example`]: '203.0.113.1' }).ok)
+			return fail(`cannot save address ${i}`);
+	let nodes = apply.read_lkg(t.ctx), order = keys(nodes);
+	if (length(nodes) != 64 || nodes['node-0.example'] != null || order[63] != 'node-64.example')
+		return fail('65-address eviction mismatch');
+	apply.update_lkg(t.ctx, { 'node-1.example': '203.0.113.2' });
+	order = keys(apply.read_lkg(t.ctx));
+	return order[0] == 'node-2.example' && order[63] == 'node-1.example'
+		? 'PASS' : fail('changed address was not moved last');
+};
+
+function run_lkg_corrupt() {
+	let t = prepare();
+	if (t.error) return fail(t.error);
+	for (let text in [ '{broken', 'null', '[]', '{"nodes":[]}', '{"nodes":"wrong"}' ]) {
+		write(lkg_path(t), text);
+		if (length(apply.read_lkg(t.ctx)))
+			return fail(`corrupt cache not empty: ${text}`);
+	}
+	if (length(resolve_events(t)) || fs.stat(`${t.base}/var/run/aether-proxy/${C.EVENTS_FILE}`) != null)
+		return fail('reading corrupt cache emitted events');
+	configure_sequence(t, [ 0 ], [ '203.0.113.4\n' ]);
+	let r = apply.resolve_node(t.ctx, 'fresh.example');
+	let obj = json(read(lkg_path(t)));
+	return r.ok && obj.nodes?.['fresh.example'] == '203.0.113.4' && !length(resolve_events(t))
+		? 'PASS' : fail('successful DNS did not silently regenerate cache');
+};
+
 function run_misc() {
 	let t = prepare();
 	if (t.error) return fail(t.error);
@@ -288,6 +426,12 @@ export function run(c) {
 	if (c.kind == 'routes') return run_routes();
 	if (c.kind == 'dnsmasq') return run_dnsmasq();
 	if (c.kind == 'resolve') return run_resolve();
+	if (c.kind == 'retry') return run_retry();
+	if (c.kind == 'retry_end') return run_retry_end();
+	if (c.kind == 'lkg_read') return run_lkg_read();
+	if (c.kind == 'lkg_keep') return run_lkg_keep();
+	if (c.kind == 'lkg_limit') return run_lkg_limit();
+	if (c.kind == 'lkg_corrupt') return run_lkg_corrupt();
 	if (c.kind == 'misc') return run_misc();
 	return fail('unknown case');
 };

@@ -99,7 +99,8 @@ try {
   assert.match(source,/model\.new_id/); assert.match(source,/crypto\.getRandomValues/);
   assert.match(source,/uci\.add\('aetherproxy', 'subscription', id\)/);
   assert.match(source,/renderMoreOptionsModal\(id\)/);
-  assert.match(source,/'url', _\('Subscription URL'\)\).*o\.password = true/);
+  // T10.1 made translation context explicit; keep checking the same password URL field.
+  assert.match(source,/'url', _\('Subscription URL', 'aether-proxy'\)\).*o\.password = true/);
   assert.match(source,/cbi-button-remove/); assert.match(source,/if \(!confirm\(plan.confirm\)\) return/);
   assert.match(source,/ap\.run_job\('sub_update', ids\)/);
   assert.match(source,/uci\.set\('aetherproxy', node, 'source', 'manual'\)/);

@@ -10,6 +10,7 @@ import * as log from 'aetherproxy.log';
 import * as state_file from 'aetherproxy.state';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as check from 'aetherproxy.cmd.check';
+import * as components_cmd from 'aetherproxy.cmd.components';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as monitor from 'aetherproxy.monitor';
@@ -216,6 +217,36 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 	}
 };
 
+// Precheck returns paths only. Preserve the running versions unless discovery changed a path
+// (docs/04 "components"); a quiet informational lookup cannot fail the reload.
+function component_metadata(previous, components) {
+	let updated = {};
+	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+		let path = components[name].path;
+		let version = previous?.[name]?.path == path ? previous[name].version :
+			components_cmd.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V');
+		updated[name] = { path, version: version ?? null };
+	}
+	return updated;
+};
+
+// Binary overrides need fresh metadata even when renderer hashes do not change.
+// The documented action plan still depends only on rendered outputs, not UCI inputs.
+function retain_components(daemon, components) {
+	let previous = daemon.state.components;
+	let changed = false;
+	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
+		if (previous?.[name]?.path != components[name].path)
+			changed = true;
+	if (!changed)
+		return { ok: true };
+	let updated = { ...daemon.state, components: component_metadata(previous, components) };
+	if (!state_file.write(run_dir(daemon), updated))
+		return { ok: false, detail: `cannot update component metadata: ${state_file.error()}` };
+	daemon.state = updated;
+	return { ok: true };
+};
+
 function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components, old_lan_ifaces, new_lan_ifaces, new_node_id) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
@@ -241,10 +272,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	let updated = {
 		...daemon.state,
 		node_id: new_node_id,
-		components: {
-			[C.XRAY_COMPONENT]: { path: components[C.XRAY_COMPONENT].path },
-			[C.CHINADNS_COMPONENT]: { path: components[C.CHINADNS_COMPONENT].path }
-		},
+		components: component_metadata(daemon.state.components, components),
 		render_hash: stage_hashes
 	};
 	if (!state_file.write(run_dir(daemon), updated)) {
@@ -324,6 +352,9 @@ function run(daemon) {
 	if (!length(rough_plan)) {
 		if (!discard_stage(daemon, stage))
 			return failure(daemon, 'staging_cleanup', `cannot discard ${stage}`);
+		let retained = retain_components(daemon, validated.components);
+		if (!retained.ok)
+			return failure(daemon, 'components', retained.detail);
 		return { ok: true, actions: [], snapshot, state: daemon.state };
 	}
 	let hashes = rough_hashes.hashes;
@@ -393,6 +424,9 @@ function run(daemon) {
 
 	if (!length(actions)) {
 		discard_stage(daemon, stage);
+		let retained = retain_components(daemon, components);
+		if (!retained.ok)
+			return failure(daemon, 'components', retained.detail);
 		daemon.ctx.lan_ifaces = snapshot.main.lan_ifaces ?? [];
 		daemon.snapshot = snapshot;
 		return { ok: true, actions: [], snapshot, state: daemon.state };

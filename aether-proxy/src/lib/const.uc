@@ -248,3 +248,8 @@ export const UPDATE_RESTART_TIMEOUT_SECS = 90;
 
 // T10.4 (docs/10 "概览页真机修正"): live component inventory budget, per binary.
 export const COMPONENTS_TIMEOUT_SECS = 3;
+
+// T9.5 (docs/03 bootstrap resolution and per-address LKG cache).
+export const NODE_RESOLVE_ATTEMPTS = 3;
+export const NODE_RESOLVE_TIMEOUT_SECS = 3;
+export const NODE_LKG_MAX = 64;
