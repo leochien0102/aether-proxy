@@ -18,6 +18,7 @@
 var METHODS = {
 	version: [],
 	status: [],
+	components: [],
 	service: [ 'action' ],
 	check: [],
 	job_start: [ 'kind', 'args' ],
@@ -43,6 +44,7 @@ var METHODS = {
 var TIMEOUTS = {
 	call: 15,
 	long: 35,
+	components: 20, /* Live inventory: plugin 15s + 5s transport margin (docs/10 T10.4). */
 	job: 620,
 	job_poll: 2
 };
@@ -115,6 +117,8 @@ function invoke(entry) {
 	}
 
 	var timeout_s = (LONG_CALLS.indexOf(entry.method) != -1) ? TIMEOUTS.long : TIMEOUTS.call;
+	if (entry.method === 'components')
+		timeout_s = TIMEOUTS.components;
 
 	timer = setTimeout(function() {
 		finish({

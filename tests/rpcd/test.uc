@@ -462,7 +462,7 @@ function scenario_10() {
 	let app = acl?.['luci-app-aether-proxy'];
 
 	expect_eq('10. ACL read methods match the read-only whitelist including stats',
-		show([ 'data_status', 'events', 'job_status', 'list_file', 'log',
+		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log',
 			'probe_results', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
@@ -475,10 +475,11 @@ function scenario_10() {
 
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
-		show([ 'check', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
+		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
 			'node_import', 'probe_now', 'probe_results', 'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
+	check('T10.4 components declares empty args', deep_eq(methods.components.args, {}), show(methods.components.args));
 	check('10. version declares empty args', deep_eq(methods.version.args, {}), show(methods.version.args));
 	check('10. status declares empty args', deep_eq(methods.status.args, {}), show(methods.status.args));
 	check('10. check declares empty args', deep_eq(methods.check.args, {}), show(methods.check.args));
@@ -514,7 +515,7 @@ function scenario_10() {
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
-		data_status: 'read', stats: 'read',
+		data_status: 'read', stats: 'read', components: 'read',
 		service: 'write', check: 'write', job_start: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write'
 	};
@@ -748,6 +749,29 @@ function scenario_18() {
 		match(plugin_src, /const DEFAULT_TIMEOUT_SECS = 10;/) != null, 'timeout policy');
 }
 
+// T10.4: live discovery is read-only, no arguments, with a dedicated timeout.
+function scenario_components() {
+	let data = { ok: true, components: {
+		xray: { found: true, path: '/usr/bin/xray', version: '26.9.30' },
+		'chinadns-ng': { found: false, path: null, version: null }
+	} };
+	stub_ctrl({ stdout: show(data), exit: 0 });
+	let argv_of = watch_cli();
+	let result = methods.components.call({ args: {} });
+	expect_eq('T10.4 components forwards exactly components --json',
+		show([ 'components', '--json' ]), show(argv_of()));
+	check('T10.4 components preserves the CLI object', deep_eq(result, data), show(result));
+	for (let args in [ { unexpected: 'x' }, { confdir: '/tmp' }, { args: [] } ]) {
+		let unused = watch_cli();
+		let r = methods.components.call({ args });
+		check('T10.4 components rejects parameters with USAGE and no execution',
+			r.code == 'USAGE' && unused() == null, show(r));
+	}
+	check('T10.4 components uses 15-second plugin timeout',
+		match(plugin_src, /call_cli\(\[ 'components' \], COMPONENTS_TIMEOUT_SECS\)/) != null &&
+		match(plugin_src, /const COMPONENTS_TIMEOUT_SECS = 15;/) != null, 'timeout policy');
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -768,6 +792,7 @@ scenario_15();
 scenario_16();
 scenario_17();
 scenario_18();
+scenario_components();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

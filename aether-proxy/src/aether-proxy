@@ -7,6 +7,7 @@ import * as C from 'aetherproxy.const';
 import * as check from 'aetherproxy.cmd.check';
 import * as render from 'aetherproxy.cmd.render';
 import * as status from 'aetherproxy.cmd.status';
+import * as components from 'aetherproxy.cmd.components';
 import * as stats from 'aetherproxy.cmd.stats';
 import * as events from 'aetherproxy.cmd.events';
 import * as probe from 'aetherproxy.cmd.probe';
@@ -27,6 +28,7 @@ Commands:
   check [--json]     validate the configuration and render into staging
   render <name>      print one artifact (xray|nft|chinadns|dnsmasq)
   status [--json]    print the latest runtime state
+  components [--json] find installed components and read their versions
   stats [--json]     read traffic and connection counters
   events [options]   list structured events
   probe now          request an immediate proxy health check
@@ -82,6 +84,9 @@ function main(argv) {
 
 	if (cmd == 'status')
 		return status.run(slice(argv, 1));
+
+	if (cmd == 'components')
+		return components.run(slice(argv, 1));
 
 	if (cmd == 'stats')
 		return stats.run(slice(argv, 1));

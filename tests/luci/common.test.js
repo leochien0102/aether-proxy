@@ -138,6 +138,24 @@ test('scenario 2: settle-once — hard timeout wins over a late reply; check use
 	}
 });
 
+test('T10.4 components: declared without parameters, 20s hard timeout ignores late reply', async (t) => {
+	const { ap, rpc } = setup(t);
+	assert.equal(ap.TIMEOUTS.components, 20);
+	const late = deferred(), seen = [];
+	rpc.setHandler(() => late.promise);
+	ap.call('components').then((reply) => seen.push(reply));
+	assert.deepEqual(rpc.calls, [ { object: 'aetherproxy', method: 'components', params: {} } ]);
+	t.mock.timers.tick(19000);
+	await flush();
+	assert.deepEqual(seen, []);
+	t.mock.timers.tick(1000);
+	await flush();
+	assert.deepEqual(seen, [ { ok: false, code: 'TIMEOUT', detail: 'components did not answer in 20s' } ]);
+	late.resolve({ ok: true, components: {} });
+	await flush();
+	assert.equal(seen.length, 1);
+});
+
 test('scenario 3: at most 2 calls in flight; FIFO order; the queued next call goes out when the head settles', async (t) => {
 	const { ap, rpc } = setup(t);
 
