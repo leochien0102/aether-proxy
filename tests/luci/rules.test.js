@@ -186,7 +186,7 @@ test('T8.8 scenario 9: form, independent file saves, model validation, job API a
 		assert.match(match[1], /^'[^']+',\s*'[^']+'$/);
 	for (const file of [ 'view/aether-proxy/rules.js', 'aether-proxy/model/rules.js' ]) {
 		const src = fs.readFileSync(path.join(RES, file), 'utf8');
-		for (const match of src.matchAll(/_\('([^']*)'\)/g))
+		for (const match of src.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
 			assert.ok(PO[match[1]], 'translated: ' + match[1]);
 	}
 	for (const name of ['direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip'])

@@ -192,7 +192,7 @@ test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete tra
 	assert.doesNotMatch(source, /rpc\.declare|innerHTML|cbi-button-reset|setInterval/);
 	for (const file of [ viewFile, modelFile ]) {
 		const text = fs.readFileSync(file, 'utf8');
-		for (const match of text.matchAll(/_\('([^']*)'\)/g))
+		for (const match of text.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
 			assert.ok(po[match[1]], 'missing translation: ' + match[1]);
 	}
 });

@@ -10,8 +10,8 @@
  * Lists deliberately bypass UCI: each save is validated by the CLI independently.
  */
 const LISTS = [
-	[ 'direct_domain', _('Direct domains') ], [ 'proxy_domain', _('Proxy domains') ],
-	[ 'direct_ip', _('Direct IPv4 addresses') ], [ 'proxy_ip', _('Proxy IPv4 addresses') ]
+	[ 'direct_domain', _('Direct domains', 'aether-proxy') ], [ 'proxy_domain', _('Proxy domains', 'aether-proxy') ],
+	[ 'direct_ip', _('Direct IPv4 addresses', 'aether-proxy') ], [ 'proxy_ip', _('Proxy IPv4 addresses', 'aether-proxy') ]
 ];
 return view.extend({
 	load: function() {
@@ -31,7 +31,7 @@ return view.extend({
 					this.show_save(message, r);
 					button.disabled = false;
 				});
-			}) }, _('Save list'));
+			}) }, _('Save list', 'aether-proxy'));
 		return E('div', { class: 'cbi-section' }, [ E('h3', {}, item[1]), input, button, message ]);
 	},
 	show_save: function(target, result) {
@@ -40,25 +40,25 @@ return view.extend({
 	},
 	show_data: function(target, result) {
 		const vm = model.table(result, Date.now() / 1000);
-		target.replaceChildren(E('p', {}, [ _('Last checked'), ': ', vm.checked ]),
+		target.replaceChildren(E('p', {}, [ _('Last checked', 'aether-proxy'), ': ', vm.checked ]),
 			E('table', { class: 'table' }, [
 				E('tr', { class: 'tr table-titles' },
-					[ _('Name'), _('Source'), _('Version'), _('Lines'), _('Updated'), _('Status') ]
+					[ _('Name', 'aether-proxy'), _('Source', 'aether-proxy'), _('Version', 'aether-proxy'), _('Lines', 'aether-proxy'), _('Updated', 'aether-proxy'), _('Status', 'aether-proxy') ]
 						.map(text => E('th', { class: 'th' }, text))),
 				...vm.rows.map(row => E('tr', { class: 'tr' }, row.map(text => E('td', { class: 'td' }, text))))
 			]), E('p', {}, vm.error ?? ''));
 	},
 	render: function(data) {
-		const map = new form.Map('aetherproxy', _('Rules and DNS'));
+		const map = new form.Map('aetherproxy', _('Rules and DNS', 'aether-proxy'));
 		let section = map.section(form.NamedSection, 'main', 'global');
-		let option = section.option(form.ListValue, 'mode', _('Mode'));
+		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
 		model.modes().forEach(item => option.value(item[0], item[1]));
-		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings'));
-		const fields = [ [ 'china_dns', _('China DNS'), form.DynamicList ],
-			[ 'trust_dns', _('Trust DNS'), form.DynamicList ],
-			[ 'direct_dns', _('Direct DNS'), form.DynamicList ],
-			[ 'allow_china_fallback', _('Allow China fallback'), form.Flag ],
-			[ 'dns_probe_domain', _('DNS probe domain'), form.Value ] ];
+		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings', 'aether-proxy'));
+		const fields = [ [ 'china_dns', _('China DNS', 'aether-proxy'), form.DynamicList ],
+			[ 'trust_dns', _('Trust DNS', 'aether-proxy'), form.DynamicList ],
+			[ 'direct_dns', _('Direct DNS', 'aether-proxy'), form.DynamicList ],
+			[ 'allow_china_fallback', _('Allow China fallback', 'aether-proxy'), form.Flag ],
+			[ 'dns_probe_domain', _('DNS probe domain', 'aether-proxy'), form.Value ] ];
 		fields.forEach(field => {
 			const o = section.option(field[2], field[0], field[1]);
 			o.rmempty = false;
@@ -76,9 +76,9 @@ return view.extend({
 					this.show_data(inventory, r);
 					update.disabled = false;
 				});
-			}) }, _('Update now'));
+			}) }, _('Update now', 'aether-proxy'));
 		return map.render().then(node => E('div', {}, [ node,
 			...LISTS.map((item, i) => this.list_editor(item, data[2][i])),
-			E('h3', {}, _('Rule data')), inventory, update, summary ]));
+			E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary ]));
 	}
 });

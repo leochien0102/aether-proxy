@@ -24,7 +24,7 @@ return view.extend({
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		const rows = Object.fromEntries(vm.rows.map(row => [row.id, row]));
-		const m = new form.Map('aetherproxy', _('Subscriptions'));
+		const m = new form.Map('aetherproxy', _('Subscriptions', 'aether-proxy'));
 		this.map = m;
 		const s = m.section(form.GridSection, 'subscription');
 		this.grid = s;
@@ -37,7 +37,7 @@ return view.extend({
 				'class': 'btn cbi-button cbi-button-action',
 				'disabled': !rows[id].can_update || null,
 				'click': ui.createHandlerFn(self, 'update', [id])
-			}, _('Update now'));
+			}, _('Update now', 'aether-proxy'));
 			dom.content(td.lastChild, [button, ...Array.from(td.lastChild.childNodes)]);
 			return td;
 		};
@@ -53,7 +53,7 @@ return view.extend({
 			uci.remove('aetherproxy', id);
 			return self.redraw();
 		};
-		for (const [field, title] of [['_name', _('Name')], ['_address', _('Address')], ['_enabled', _('Enabled')], ['_interval', _('Update interval')], ['_via', _('Fetch via')], ['_result', _('Last result')]]) {
+		for (const [field, title] of [['_name', _('Name', 'aether-proxy')], ['_address', _('Address', 'aether-proxy')], ['_enabled', _('Enabled', 'aether-proxy')], ['_interval', _('Update interval', 'aether-proxy')], ['_via', _('Fetch via', 'aether-proxy')], ['_result', _('Last result', 'aether-proxy')]]) {
 			const o = s.option(form.DummyValue, field, title);
 			o.modalonly = false;
 			o.textvalue = function(id) {
@@ -62,18 +62,18 @@ return view.extend({
 				return row[field.slice(1)];
 			};
 		}
-		let o = s.option(form.Value, 'name', _('Name')); o.modalonly = true;
-		o = s.option(form.Value, 'url', _('Subscription URL')); o.modalonly = true; o.password = true; o.rmempty = false;
-		o = s.option(form.Flag, 'enabled', _('Enabled')); o.modalonly = true; o.default = '1';
-		o = s.option(form.Value, 'interval_hours', _('Update interval')); o.modalonly = true; o.datatype = 'uinteger'; o.default = '24';
-		o = s.option(form.ListValue, 'fetch_via', _('Fetch via')); o.modalonly = true; o.default = 'auto';
-		o.value('auto', _('Automatic')); o.value('direct', _('Direct')); o.value('proxy', _('Proxy'));
-		o = s.option(form.Value, 'user_agent', _('User agent')); o.modalonly = true;
+		let o = s.option(form.Value, 'name', _('Name', 'aether-proxy')); o.modalonly = true;
+		o = s.option(form.Value, 'url', _('Subscription URL', 'aether-proxy')); o.modalonly = true; o.password = true; o.rmempty = false;
+		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy')); o.modalonly = true; o.default = '1';
+		o = s.option(form.Value, 'interval_hours', _('Update interval', 'aether-proxy')); o.modalonly = true; o.datatype = 'uinteger'; o.default = '24';
+		o = s.option(form.ListValue, 'fetch_via', _('Fetch via', 'aether-proxy')); o.modalonly = true; o.default = 'auto';
+		o.value('auto', _('Automatic', 'aether-proxy')); o.value('direct', _('Direct', 'aether-proxy')); o.value('proxy', _('Proxy', 'aether-proxy'));
+		o = s.option(form.Value, 'user_agent', _('User agent', 'aether-proxy')); o.modalonly = true;
 		return m.render().then(content => {
 			dom.content(self.root, [
 				E('p', {}, vm.error),
-				E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add') }, _('Add')),
-				E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null, 'click': ui.createHandlerFn(self, 'update', []) }, _('Update all')),
+				E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add') }, _('Add', 'aether-proxy')),
+				E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null, 'click': ui.createHandlerFn(self, 'update', []) }, _('Update all', 'aether-proxy')),
 				content
 			]);
 		});

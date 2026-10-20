@@ -40,23 +40,23 @@ return view.extend({
 		const self = this;
 		let m, s, o;
 
-		m = new form.Map('aetherproxy', _('Access Control'),
-			_('Set the policy for each LAN host and for hosts that are not listed.'));
+		m = new form.Map('aetherproxy', _('Access Control', 'aether-proxy'),
+			_('Set the policy for each LAN host and for hosts that are not listed.', 'aether-proxy'));
 
 		/* docs/02 主机策略模型: the three helloworld approaches map onto
 		   unlisted_policy plus per-host policies; the mapping is shown so the
 		   choices make sense without reading the design. */
-		s = m.section(form.NamedSection, 'main', 'global', _('Policy for unlisted hosts'));
+		s = m.section(form.NamedSection, 'main', 'global', _('Policy for unlisted hosts', 'aether-proxy'));
 		s.description = E('div', {}, [
-			E('p', {}, _('This corresponds to the three helloworld approaches as follows:')),
+			E('p', {}, _('This corresponds to the three helloworld approaches as follows:', 'aether-proxy')),
 			E('ul', {}, [
-				E('li', {}, _('Disabled: unlisted_policy=follow, no host sections.')),
-				E('li', {}, _('Only allow listed hosts: unlisted_policy=direct, listed hosts use policy=follow.')),
-				E('li', {}, _('Also allow unlisted hosts: unlisted_policy=follow, listed hosts use policy=direct.'))
+				E('li', {}, _('Disabled: unlisted_policy=follow, no host sections.', 'aether-proxy')),
+				E('li', {}, _('Only allow listed hosts: unlisted_policy=direct, listed hosts use policy=follow.', 'aether-proxy')),
+				E('li', {}, _('Also allow unlisted hosts: unlisted_policy=follow, listed hosts use policy=direct.', 'aether-proxy'))
 			])
 		]);
 
-		o = s.option(form.ListValue, 'unlisted_policy', _('Policy for unlisted hosts'));
+		o = s.option(form.ListValue, 'unlisted_policy', _('Policy for unlisted hosts', 'aether-proxy'));
 		o.value('follow', model.unlisted_text('follow'));
 		o.value('direct', model.unlisted_text('direct'));
 		o.default = 'follow';
@@ -64,29 +64,29 @@ return view.extend({
 		s = m.section(form.GridSection, 'host');
 		s.addremove = true;
 
-		o = s.option(form.Flag, 'enabled', _('Enabled'));
+		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy'));
 		o.editable = true;
 		o.default = '1';
 
-		o = s.option(form.Value, 'name', _('Name'));
+		o = s.option(form.Value, 'name', _('Name', 'aether-proxy'));
 		o.editable = true;
 		o.rmempty = true;
 
-		o = s.option(form.DynamicList, 'ip', _('IP'));
+		o = s.option(form.DynamicList, 'ip', _('IP', 'aether-proxy'));
 		o.editable = true;
 		o.rmempty = true;
 
 		/* docs/10 访问控制页: the MAC input offers the DHCP leases and
 		   neighbor table entries computed by the model as combobox choices;
 		   free input stays possible (DynamicList). */
-		o = s.option(form.DynamicList, 'mac', _('MAC'));
+		o = s.option(form.DynamicList, 'mac', _('MAC', 'aether-proxy'));
 		o.editable = true;
 		o.rmempty = true;
 
 		for (const c of self.candidates)
 			o.value(c.mac, c.label);
 
-		o = s.option(form.ListValue, 'policy', _('Policy'));
+		o = s.option(form.ListValue, 'policy', _('Policy', 'aether-proxy'));
 		o.editable = true;
 		o.default = 'follow';
 		o.value('follow', model.policy_text('follow'));
@@ -97,7 +97,7 @@ return view.extend({
 		   the flag is hidden for direct hosts. Two depends() entries are
 		   OR-combined by LuCI; a direct host has the staged udp option removed
 		   on save because inactive options are dropped by parse(). */
-		o = s.option(form.Flag, 'udp', _('Game mode'));
+		o = s.option(form.Flag, 'udp', _('Game mode', 'aether-proxy'));
 		o.editable = true;
 		o.default = '0';
 		o.depends({ policy: 'follow' });
@@ -144,7 +144,7 @@ return view.extend({
 
 	showErrors: function(errors) {
 		ui.addNotification(null, E('div', {}, [
-			E('p', {}, _('The host configuration has %s error(s); nothing was saved.').replace('%s', errors.length)),
+			E('p', {}, _('The host configuration has %s error(s); nothing was saved.', 'aether-proxy').replace('%s', errors.length)),
 			E('ul', {}, errors.map((e) => E('li', {}, e.text)))
 		]), 'error');
 	}

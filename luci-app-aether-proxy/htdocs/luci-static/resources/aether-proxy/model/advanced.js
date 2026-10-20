@@ -52,49 +52,49 @@ const DEFAULTS = {
 };
 
 const LOG_LABELS = {
-	error: _('Error'), warn: _('Warning'), notice: _('Notice'), info: _('Info'),
-	warning: _('Warning'), debug: _('Debug')
+	error: _('Error', 'aether-proxy'), warn: _('Warning', 'aether-proxy'), notice: _('Notice', 'aether-proxy'), info: _('Info', 'aether-proxy'),
+	warning: _('Warning', 'aether-proxy'), debug: _('Debug', 'aether-proxy')
 };
 
 /* docs/10 「高级页」: one sentence per switch, taken from docs/05. The three
    switches that need an extra "when disabled" clause carry it in the same
    string (fail_open, dns_hijack, ipv6_filter). */
 const FIELD_TEXT = {
-	lan_ifaces: _('Which inbound interfaces to intercept; usually br-lan.'),
-	quic_block: _('Reject UDP 443 to proxied destinations (except game-mode hosts).'),
-	dns_hijack: _('Hijack LAN port 53 to the router (direct hosts are excepted). When disabled, devices with their own DNS servers bypass the routing rules.'),
-	ipv6_filter: _('All AAAA queries return an empty answer so devices use IPv4 only. IPv6 address assignment on the LAN is not affected.'),
-	filter_https_rr: _('Filter HTTPS RR records (qtype 65).'),
-	fail_open: _('Remove the interception rules while Xray is down so traffic goes direct. When disabled, proxied traffic is interrupted while Xray is unavailable instead of falling back to direct.'),
-	sniffing: _('Xray inbound sniffing for http/tls/quic with routeOnly=false (the node connects by domain).'),
-	url: _('URL polled by the health check; must start with http:// or https:// and contain no whitespace.'),
-	boot_wait_timeout: _('Seconds to wait for the network at boot; 0 disables the wait.'),
-	boot_check_targets: _('IPv4 address and port probed while waiting for the network, written as address:port.'),
-	expect_code: _('HTTP status code the health check expects.'),
-	timeout: _('Health check timeout in seconds.'),
-	fail_threshold: _('Consecutive failures before the node is marked unhealthy.'),
-	recover_threshold: _('Consecutive successes before the node is marked healthy again.'),
-	node_timeout: _('TCP reachability probe timeout per node, in seconds.'),
-	node_concurrency: _('How many nodes to probe at the same time.'),
-	xray_bin: _('Absolute path to the Xray binary without whitespace; leave empty to search the standard locations.'),
-	chinadns_bin: _('Absolute path to the chinadns-ng binary without whitespace; leave empty to search the standard locations.'),
-	dnsmasq_instance: _('Name of the dnsmasq instance to use; leave empty to detect it automatically.')
+	lan_ifaces: _('Which inbound interfaces to intercept; usually br-lan.', 'aether-proxy'),
+	quic_block: _('Reject UDP 443 to proxied destinations (except game-mode hosts).', 'aether-proxy'),
+	dns_hijack: _('Hijack LAN port 53 to the router (direct hosts are excepted). When disabled, devices with their own DNS servers bypass the routing rules.', 'aether-proxy'),
+	ipv6_filter: _('All AAAA queries return an empty answer so devices use IPv4 only. IPv6 address assignment on the LAN is not affected.', 'aether-proxy'),
+	filter_https_rr: _('Filter HTTPS RR records (qtype 65).', 'aether-proxy'),
+	fail_open: _('Remove the interception rules while Xray is down so traffic goes direct. When disabled, proxied traffic is interrupted while Xray is unavailable instead of falling back to direct.', 'aether-proxy'),
+	sniffing: _('Xray inbound sniffing for http/tls/quic with routeOnly=false (the node connects by domain).', 'aether-proxy'),
+	url: _('URL polled by the health check; must start with http:// or https:// and contain no whitespace.', 'aether-proxy'),
+	boot_wait_timeout: _('Seconds to wait for the network at boot; 0 disables the wait.', 'aether-proxy'),
+	boot_check_targets: _('IPv4 address and port probed while waiting for the network, written as address:port.', 'aether-proxy'),
+	expect_code: _('HTTP status code the health check expects.', 'aether-proxy'),
+	timeout: _('Health check timeout in seconds.', 'aether-proxy'),
+	fail_threshold: _('Consecutive failures before the node is marked unhealthy.', 'aether-proxy'),
+	recover_threshold: _('Consecutive successes before the node is marked healthy again.', 'aether-proxy'),
+	node_timeout: _('TCP reachability probe timeout per node, in seconds.', 'aether-proxy'),
+	node_concurrency: _('How many nodes to probe at the same time.', 'aether-proxy'),
+	xray_bin: _('Absolute path to the Xray binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
+	chinadns_bin: _('Absolute path to the chinadns-ng binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
+	dnsmasq_instance: _('Name of the dnsmasq instance to use; leave empty to detect it automatically.', 'aether-proxy')
 };
 
 /* docs/09 「logd 容量」: only the debug choice carries this hint. */
-const DEBUG_HINT = _('Debug logs fill the 64 KB logd buffer quickly; increase the buffer under System → Logs and switch back to notice when done.');
+const DEBUG_HINT = _('Debug logs fill the 64 KB logd buffer quickly; increase the buffer under System → Logs and switch back to notice when done.', 'aether-proxy');
 
 /* config.uc int_error: the exact integer syntax plus the schema bounds. */
 function int_error(bounds, value) {
 	if (typeof value != 'string' || !/^-?[0-9]{1,9}$/.test(value))
-		return _('Enter an integer.');
+		return _('Enter an integer.', 'aether-proxy');
 
 	const n = Number(value);
 
 	if ((bounds.min != null && n < bounds.min) || (bounds.max != null && n > bounds.max))
 		return bounds.max != null ?
-			_('Enter a value between %s and %s.').replace('%s', bounds.min).replace('%s', bounds.max) :
-			_('Enter a value of at least %s.').replace('%s', bounds.min);
+			_('Enter a value between %s and %s.', 'aether-proxy').replace('%s', bounds.min).replace('%s', bounds.max) :
+			_('Enter a value of at least %s.', 'aether-proxy').replace('%s', bounds.min);
 
 	return true;
 }
@@ -149,31 +149,31 @@ function validate(field, value) {
 		return int_error(INT_BOUNDS[field], value);
 
 	if (BOOL_FIELDS.includes(field))
-		return value === '0' || value === '1' ? true : _('Enter 0 or 1.');
+		return value === '0' || value === '1' ? true : _('Enter 0 or 1.', 'aether-proxy');
 
 	if (field == 'lan_ifaces') {
 		const items = Array.isArray(value) ? value : [ value ];
 
 		return (items.length > 0 && items.every((s) => typeof s == 'string' && s.length > 0)) ?
-			true : _('Select at least one interface.');
+			true : _('Select at least one interface.', 'aether-proxy');
 	}
 
 	switch (field) {
 	case 'boot_check_targets':
 		return list_ok(value, hostport) ?
-			true : _('Every entry must be an IPv4 address and a port (1-65535), like 223.5.5.5:53.');
+			true : _('Every entry must be an IPv4 address and a port (1-65535), like 223.5.5.5:53.', 'aether-proxy');
 	case 'xray_bin':
 	case 'chinadns_bin':
-		return abs_path(value) ? true : _('Enter an absolute path without whitespace.');
+		return abs_path(value) ? true : _('Enter an absolute path without whitespace.', 'aether-proxy');
 	case 'dnsmasq_instance':
 		return typeof value == 'string' && value.length > 0 ?
-			true : _('Enter a non-empty instance name.');
+			true : _('Enter a non-empty instance name.', 'aether-proxy');
 	case 'url':
-		return url_ok(value) ? true : _('Enter an HTTP or HTTPS URL without whitespace.');
+		return url_ok(value) ? true : _('Enter an HTTP or HTTPS URL without whitespace.', 'aether-proxy');
 	case 'log_level':
-		return LOG_LEVELS.includes(value) ? true : _('Select a log level.');
+		return LOG_LEVELS.includes(value) ? true : _('Select a log level.', 'aether-proxy');
 	case 'xray_log_level':
-		return XRAY_LOG_LEVELS.includes(value) ? true : _('Select a log level.');
+		return XRAY_LOG_LEVELS.includes(value) ? true : _('Select a log level.', 'aether-proxy');
 	default:
 		return true;
 	}

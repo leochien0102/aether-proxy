@@ -84,24 +84,24 @@ return view.extend({
 		this.importText = E('textarea', {
 			'class': 'cbi-input-textarea',
 			'rows': 4,
-			'placeholder': _('One node share URI per line.')
+			'placeholder': _('One node share URI per line.', 'aether-proxy')
 		});
 
 		const importBox = E('div', { 'class': 'cbi-map-descr' }, [
-			E('h3', {}, _('Import URIs')),
+			E('h3', {}, _('Import URIs', 'aether-proxy')),
 			this.importText,
 			' ',
 			E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(self, 'handleImport')
-			}, [ _('Import') ])
+			}, [ _('Import', 'aether-proxy') ])
 		]);
 
 		const probeAll = E('button', {
 			'class': 'btn cbi-button cbi-button-action',
 			'click': ui.createHandlerFn(self, 'handleProbeAll'),
 			'disabled': this.probing || null
-		}, [ _('Probe all') ]);
+		}, [ _('Probe all', 'aether-proxy') ]);
 		this.probeButtons.push(probeAll);
 
 		const controls = E('div', { 'class': 'cbi-map-descr' }, [ probeAll, ' ', importBox ]);
@@ -110,8 +110,8 @@ return view.extend({
 
 		return mapNodePromise.then(function(mapNode) {
 			return E('div', {}, [
-				E('h2', {}, _('Nodes')),
-				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.')),
+				E('h2', {}, _('Nodes', 'aether-proxy')),
+				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
 				self.progressEl,
 				controls,
 				mapNode
@@ -146,17 +146,17 @@ return view.extend({
 			if (row && row.can_set_current) {
 				extra.push(E('button', {
 					'class': 'btn cbi-button cbi-button-positive',
-					'title': _('Set this node as the current node'),
+					'title': _('Set this node as the current node', 'aether-proxy'),
 					'click': ui.createHandlerFn(self, 'handleSetCurrent', section_id)
-				}, [ _('Set as current') ]));
+				}, [ _('Set as current', 'aether-proxy') ]));
 			}
 
 			const probeBtn = E('button', {
 				'class': 'btn cbi-button cbi-button-neutral',
-				'title': _('Probe the TCP reachability of this node'),
+				'title': _('Probe the TCP reachability of this node', 'aether-proxy'),
 				'click': ui.createHandlerFn(self, 'handleProbeOne', section_id),
 				'disabled': self.probing || null
-			}, [ _('Probe') ]);
+			}, [ _('Probe', 'aether-proxy') ]);
 			self.probeButtons.push(probeBtn);
 			extra.push(probeBtn);
 
@@ -178,11 +178,11 @@ return view.extend({
 			const row = rowMap[section_id];
 
 			if (row && !row.can_delete) {
-				ui.addNotification(null, E('p', _('The current node cannot be deleted.')));
+				ui.addNotification(null, E('p', _('The current node cannot be deleted.', 'aether-proxy')));
 				return;
 			}
 
-			if (!confirm(_('Really delete this node?')))
+			if (!confirm(_('Really delete this node?', 'aether-proxy')))
 				return;
 
 			return this.super('handleRemove', [ section_id, ev ]);
@@ -198,42 +198,42 @@ return view.extend({
 		};
 
 		/* Table columns; all computed by the model, none editable in the table. */
-		o = s.option(form.DummyValue, '_label', _('Name'));
+		o = s.option(form.DummyValue, '_label', _('Name', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			return row ? row.name : section_id;
 		};
 
-		o = s.option(form.DummyValue, '_address', _('Address'));
+		o = s.option(form.DummyValue, '_address', _('Address', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			return row ? row.address : '–';
 		};
 
-		o = s.option(form.DummyValue, '_summary', _('Protocol / Transport / Security'));
+		o = s.option(form.DummyValue, '_summary', _('Protocol / Transport / Security', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			return row ? row.summary : '–';
 		};
 
-		o = s.option(form.DummyValue, '_source', _('Source'));
+		o = s.option(form.DummyValue, '_source', _('Source', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			return row ? row.source : '–';
 		};
 
-		o = s.option(form.DummyValue, '_marks', _('Marks'));
+		o = s.option(form.DummyValue, '_marks', _('Marks', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			return (row && row.marks.length) ? row.marks.join(', ') : '–';
 		};
 
-		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency'));
+		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			/* The span is kept so the probe column can be refreshed in place
@@ -247,25 +247,25 @@ return view.extend({
 
 		/* Modal edit fields (docs/05 「config node」); source, stale and the
 		   match_* keys are deliberately not editable. */
-		o = s.option(form.Value, 'label', _('Display name'));
+		o = s.option(form.Value, 'label', _('Display name', 'aether-proxy'));
 		o.modalonly = true;
 
-		o = s.option(form.ListValue, 'protocol', _('Protocol'));
+		o = s.option(form.ListValue, 'protocol', _('Protocol', 'aether-proxy'));
 		o.modalonly = true;
 		o.value('vless', 'VLESS');
 		o.value('vmess', 'VMess');
 		o.value('trojan', 'Trojan');
 		o.value('shadowsocks', 'Shadowsocks');
 
-		o = s.option(form.Value, 'address', _('Address'));
+		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
 		o.datatype = 'host';
 
-		o = s.option(form.Value, 'port', _('Port'));
+		o = s.option(form.Value, 'port', _('Port', 'aether-proxy'));
 		o.modalonly = true;
 		o.datatype = 'port';
 
-		o = s.option(form.ListValue, 'transport', _('Transport'));
+		o = s.option(form.ListValue, 'transport', _('Transport', 'aether-proxy'));
 		o.modalonly = true;
 		o.value('raw', 'raw');
 		o.value('ws', 'WebSocket');
@@ -275,32 +275,32 @@ return view.extend({
 		o.optional = true;
 		o.default = 'raw';
 
-		o = s.option(form.Value, 'uuid', _('UUID'));
+		o = s.option(form.Value, 'uuid', _('UUID', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'vless');
 		o.depends('protocol', 'vmess');
 
-		o = s.option(form.Value, 'password', _('Password'));
+		o = s.option(form.Value, 'password', _('Password', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'trojan');
 		o.depends('protocol', 'shadowsocks');
 
-		o = s.option(form.Value, 'method', _('Encryption method'));
+		o = s.option(form.Value, 'method', _('Encryption method', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'shadowsocks');
 		o.depends('protocol', 'vmess');
 
-		o = s.option(form.Value, 'encryption', _('Encryption'));
+		o = s.option(form.Value, 'encryption', _('Encryption', 'aether-proxy'));
 		o.modalonly = true;
 		o.optional = true;
 		o.placeholder = 'none';
 		o.depends('protocol', 'vless');
 
-		o = s.option(form.Value, 'flow', _('Flow'));
+		o = s.option(form.Value, 'flow', _('Flow', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'vless');
 
-		o = s.option(form.ListValue, 'security', _('Security layer'));
+		o = s.option(form.ListValue, 'security', _('Security layer', 'aether-proxy'));
 		o.modalonly = true;
 		o.value('none', 'none');
 		o.value('tls', 'TLS');
@@ -308,65 +308,65 @@ return view.extend({
 		o.optional = true;
 		o.default = 'none';
 
-		o = s.option(form.Value, 'host', _('Host'));
+		o = s.option(form.Value, 'host', _('Host', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('transport', 'ws');
 		o.depends('transport', 'httpupgrade');
 		o.depends('transport', 'xhttp');
 
-		o = s.option(form.Value, 'path', _('Path'));
+		o = s.option(form.Value, 'path', _('Path', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('transport', 'ws');
 		o.depends('transport', 'httpupgrade');
 		o.depends('transport', 'xhttp');
 
-		o = s.option(form.Value, 'service_name', _('gRPC service name'));
+		o = s.option(form.Value, 'service_name', _('gRPC service name', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('transport', 'grpc');
 
-		o = s.option(form.Value, 'xhttp_mode', _('XHTTP mode'));
+		o = s.option(form.Value, 'xhttp_mode', _('XHTTP mode', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('transport', 'xhttp');
 
-		o = s.option(form.ListValue, 'header_type', _('Header type'));
+		o = s.option(form.ListValue, 'header_type', _('Header type', 'aether-proxy'));
 		o.modalonly = true;
 		o.value('none', 'none');
 		o.value('http', 'http');
 		o.optional = true;
 		o.depends('transport', 'raw');
 
-		o = s.option(form.Value, 'sni', _('SNI'));
+		o = s.option(form.Value, 'sni', _('SNI', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'tls');
 		o.depends('security', 'reality');
 
-		o = s.option(form.DynamicList, 'alpn', _('ALPN'));
+		o = s.option(form.DynamicList, 'alpn', _('ALPN', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'tls');
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'fingerprint', _('TLS fingerprint'));
+		o = s.option(form.Value, 'fingerprint', _('TLS fingerprint', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'tls');
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'pinned_cert_sha256', _('Pinned certificate SHA-256'));
+		o = s.option(form.Value, 'pinned_cert_sha256', _('Pinned certificate SHA-256', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'tls');
 
-		o = s.option(form.Value, 'verify_name', _('Verify certificate by name'));
+		o = s.option(form.Value, 'verify_name', _('Verify certificate by name', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'tls');
 
-		o = s.option(form.Value, 'reality_pbk', _('REALITY public key'));
+		o = s.option(form.Value, 'reality_pbk', _('REALITY public key', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'reality_sid', _('REALITY short ID'));
+		o = s.option(form.Value, 'reality_sid', _('REALITY short ID', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX'));
+		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'reality');
 
@@ -464,7 +464,7 @@ return view.extend({
 		const lines = model.split_import(this.importText.value);
 
 		if (!lines.length) {
-			ui.addNotification(null, E('p', _('Nothing to import.')));
+			ui.addNotification(null, E('p', _('Nothing to import.', 'aether-proxy')));
 			return;
 		}
 

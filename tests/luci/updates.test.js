@@ -206,7 +206,7 @@ test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and t
 	assert.match(source, /disabled: !vm.can_check/);
 	for (const file of [ 'view/aether-proxy/updates.js', 'aether-proxy/model/updates.js' ]) {
 		const text = fs.readFileSync(path.join(RES, file), 'utf8');
-		for (const match of text.matchAll(/_\('([^']+)'\)/g))
+		for (const match of text.matchAll(/_\('([^']+)', 'aether-proxy'\)/g))
 			assert.ok(po[match[1]], 'missing translation: ' + match[1]);
 	}
 });

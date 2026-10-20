@@ -34,7 +34,7 @@ return view.extend({
 		const vm = model.events(res, this.lastEvents, this.level.value, this.code.value);
 		this.lastEvents = vm.data;
 		const selected = this.code.value;
-		dom.content(this.code, [ E('option', { value: '' }, _('All')) ].concat(
+		dom.content(this.code, [ E('option', { value: '' }, _('All', 'aether-proxy')) ].concat(
 			vm.codes.map(code => E('option', { value: code }, code))));
 		this.code.value = vm.codes.indexOf(selected) >= 0 ? selected : '';
 		const parts = [];
@@ -43,7 +43,7 @@ return view.extend({
 		if (vm.skipped)
 			parts.push(E('p', { 'class': 'alert-message warning' }, vm.skipped));
 		parts.push(E('table', { 'class': 'table' }, [
-			E('tr', {}, [ _('Time'), _('Level'), _('Event code'), _('Description') ].map(t => E('th', {}, t)))
+			E('tr', {}, [ _('Time', 'aether-proxy'), _('Level', 'aether-proxy'), _('Event code', 'aether-proxy'), _('Description', 'aether-proxy') ].map(t => E('th', {}, t)))
 		].concat(vm.rows.map(row => E('tr', { title: row.title }, [
 			E('td', {}, row.time), E('td', {}, E('span', { 'class': row.class_name }, row.level)),
 			E('td', {}, row.code), E('td', {}, row.text)
@@ -77,30 +77,30 @@ return view.extend({
 		this.auto = E('input', { type: 'checkbox', checked: true, change: () => this.startPolling() });
 		const refilter = () => this.showEvents(this.eventsReply);
 		this.level = E('select', { change: refilter }, [
-			[ '', _('All') ], [ 'error', _('Error') ],
-			[ 'warn', _('Warning and above') ], [ 'notice', _('Notice and above') ]
+			[ '', _('All', 'aether-proxy') ], [ 'error', _('Error', 'aether-proxy') ],
+			[ 'warn', _('Warning and above', 'aether-proxy') ], [ 'notice', _('Notice and above', 'aether-proxy') ]
 		].map(pair => E('option', { value: pair[0] }, pair[1])));
 		this.code = E('select', { change: refilter });
 		this.eventContent = E('div', {});
 		this.eventPanel = E('div', {}, [
-			E('label', {}, [ this.auto, _('Automatic refresh') ]),
-			E('label', {}, [ _('Level'), this.level ]),
-			E('label', {}, [ _('Event code'), this.code ]), this.eventContent
+			E('label', {}, [ this.auto, _('Automatic refresh', 'aether-proxy') ]),
+			E('label', {}, [ _('Level', 'aether-proxy'), this.level ]),
+			E('label', {}, [ _('Event code', 'aether-proxy'), this.code ]), this.eventContent
 		]);
 		this.source = E('select', {}, model.sources().map(pair => E('option', { value: pair[0] }, pair[1])));
 		this.lines = E('select', {}, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
 		this.lines.value = '200';
 		this.rawContent = E('div', {});
 		this.rawPanel = E('div', { hidden: true }, [
-			E('label', {}, [ _('Source'), this.source ]), E('label', {}, [ _('Lines'), this.lines ]),
-			E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh')), this.rawContent
+			E('label', {}, [ _('Source', 'aether-proxy'), this.source ]), E('label', {}, [ _('Lines', 'aether-proxy'), this.lines ]),
+			E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')), this.rawContent
 		]);
 		this.showEvents(data[0]);
 		this.startPolling();
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Logs')),
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events')),
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs')),
+			E('h2', {}, _('Logs', 'aether-proxy')),
+			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
+			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy')),
 			this.eventPanel, this.rawPanel
 		]);
 	},

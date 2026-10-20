@@ -43,46 +43,46 @@ function option(section, tab, type, field, title, target) {
 
 return view.extend({
 	render: function() {
-		const m = new form.Map('aetherproxy', _('Advanced'), _('Interception, logging, boot and health-check settings.'));
-		const s = m.section(form.NamedSection, 'main', 'global', _('Advanced'));
+		const m = new form.Map('aetherproxy', _('Advanced', 'aether-proxy'), _('Interception, logging, boot and health-check settings.', 'aether-proxy'));
+		const s = m.section(form.NamedSection, 'main', 'global', _('Advanced', 'aether-proxy'));
 
-		s.tab('intercept', _('Interception'));
-		s.tab('log', _('Logging'));
-		s.tab('boot', _('Boot and health checks'));
-		s.tab('components', _('Components and DNS instance'));
+		s.tab('intercept', _('Interception', 'aether-proxy'));
+		s.tab('log', _('Logging', 'aether-proxy'));
+		s.tab('boot', _('Boot and health checks', 'aether-proxy'));
+		s.tab('components', _('Components and DNS instance', 'aether-proxy'));
 
 		let o;
 
-		o = option(s, 'intercept', widgets.DeviceSelect, 'lan_ifaces', _('Interfaces'));
+		o = option(s, 'intercept', widgets.DeviceSelect, 'lan_ifaces', _('Interfaces', 'aether-proxy'));
 		o.multiple = true;
 		o.rmempty = false;
 
-		option(s, 'intercept', form.Flag, 'quic_block', _('Block QUIC'));
-		option(s, 'intercept', form.Flag, 'dns_hijack', _('Hijack DNS'));
-		option(s, 'intercept', form.Flag, 'ipv6_filter', _('Filter IPv6'));
-		option(s, 'intercept', form.Flag, 'filter_https_rr', _('Filter HTTPS RR'));
-		option(s, 'intercept', form.Flag, 'fail_open', _('Fail open'));
-		option(s, 'intercept', form.Flag, 'sniffing', _('Sniffing'));
+		option(s, 'intercept', form.Flag, 'quic_block', _('Block QUIC', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'dns_hijack', _('Hijack DNS', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'ipv6_filter', _('Filter IPv6', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'filter_https_rr', _('Filter HTTPS RR', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'fail_open', _('Fail open', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'sniffing', _('Sniffing', 'aether-proxy'));
 
-		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level'));
+		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level', 'aether-proxy'));
 		model.log_level_choices().forEach((c) => o.value(c.value, c.label, c.description));
 
-		o = option(s, 'log', form.ListValue, 'xray_log_level', _('Xray log level'));
+		o = option(s, 'log', form.ListValue, 'xray_log_level', _('Xray log level', 'aether-proxy'));
 		model.xray_log_level_choices().forEach((c) => o.value(c.value, c.label));
 
-		option(s, 'boot', form.Value, 'boot_wait_timeout', _('Boot wait timeout'));
-		option(s, 'boot', form.DynamicList, 'boot_check_targets', _('Boot check targets'));
-		option(s, 'boot', form.Value, 'url', _('Health check URL'), 'probe');
-		option(s, 'boot', form.Value, 'expect_code', _('Expected status code'), 'probe');
-		option(s, 'boot', form.Value, 'timeout', _('Health check timeout'), 'probe');
-		option(s, 'boot', form.Value, 'fail_threshold', _('Fail threshold'), 'probe');
-		option(s, 'boot', form.Value, 'recover_threshold', _('Recover threshold'), 'probe');
-		option(s, 'boot', form.Value, 'node_timeout', _('Node probe timeout'), 'probe');
-		option(s, 'boot', form.Value, 'node_concurrency', _('Node probe concurrency'), 'probe');
+		option(s, 'boot', form.Value, 'boot_wait_timeout', _('Boot wait timeout', 'aether-proxy'));
+		option(s, 'boot', form.DynamicList, 'boot_check_targets', _('Boot check targets', 'aether-proxy'));
+		option(s, 'boot', form.Value, 'url', _('Health check URL', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'expect_code', _('Expected status code', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'timeout', _('Health check timeout', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'fail_threshold', _('Fail threshold', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'recover_threshold', _('Recover threshold', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'node_timeout', _('Node probe timeout', 'aether-proxy'), 'probe');
+		option(s, 'boot', form.Value, 'node_concurrency', _('Node probe concurrency', 'aether-proxy'), 'probe');
 
-		option(s, 'components', form.Value, 'xray_bin', _('Xray binary'));
-		option(s, 'components', form.Value, 'chinadns_bin', _('chinadns-ng binary'));
-		option(s, 'components', form.Value, 'dnsmasq_instance', _('dnsmasq instance'), 'dns');
+		option(s, 'components', form.Value, 'xray_bin', _('Xray binary', 'aether-proxy'));
+		option(s, 'components', form.Value, 'chinadns_bin', _('chinadns-ng binary', 'aether-proxy'));
+		option(s, 'components', form.Value, 'dnsmasq_instance', _('dnsmasq instance', 'aether-proxy'), 'dns');
 
 		return m.render();
 	}
