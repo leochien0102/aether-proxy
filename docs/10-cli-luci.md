@@ -639,6 +639,18 @@ r8 窗口（`h28k-test` 中的 r8 结论，前端第 1、2 条）。**与前几�
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
+- **确认框用 `ui.showModal`，不用 `window.confirm`**（2026-10-20 定，T10.14；跨页面问题 X10）：浏览器原生的确认框样式跟浏览器、不跟主题（r8 窗口在 proton2025 下截图）。
+  统一经 `common.js` 的 `ap.confirm({ title, text, ok, destructive })` → `Promise<boolean>`：用 `ui.showModal(title, [ E('p', text), 按钮行 ])` 显示，按钮行按 LuCI 自己的写法放在 `E('div', { class: 'right' })` 里，
+  依次是「取消」（`cbi-button`）与确认按钮（文字为 `ok`；`destructive` 为真时 `cbi-button-remove`，否则 `cbi-button-action`）；点任一按钮先 `ui.hideModal()` 再 resolve（取消为 `false`、确认为 `true`）。
+  页面中不得再出现 `confirm(`（静态检查）。各处的标题与按钮：
+  | 位置 | 标题 | 确认按钮 | 正文 |
+  |---|---|---|---|
+  | 概览页关闭「启用」 | 关闭「启用」 | 关闭（destructive） | 原 `disable_confirmation` |
+  | 概览页「停止」 | 停止服务 | 停止（destructive） | 原 `stop_confirmation` |
+  | 节点页删除 | 删除节点 | 删除（destructive） | 原「确定删除这个节点？」 |
+  | 订阅页删除 | 删除订阅 | 删除（destructive） | 原删除计划的确认文字 |
+  | 更新页回滚 | 回滚 <包名> | 回滚（destructive） | 原 `row.confirmation` |
+  确认框是异步的：调用处等 `ap.confirm` 的结果再继续；取消时的行为与原来相同（概览页关闭「启用」时取消 → 开关恢复为开、不改 UCI）。
 - 前端同时发出的请求不超过 2 个（为 uhttpd 的 `max_requests 3` 留出余量）。
 - **样式**（2026-10-20 定，T10.3 起；跨页面问题 X7）：页面要在用户的任意主题下可用（H28K 用第三方主题 `proton2025`，另装 bootstrap、argon-plus），所以：
   布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
