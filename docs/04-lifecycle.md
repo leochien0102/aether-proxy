@@ -21,6 +21,7 @@
 分别执行 `<xray> version` 与 `<chinadns-ng> -V`（各 5 秒超时），取输出**第一行的第二个字段**作为版本（实测 `Xray 26.9.30 (Xray, Penetrates Everything.) …`、
 `ChinaDNS-NG 2025.06.20 be347b5 | …`，[08](08-updates.md)「S7 探针结论」）。取不到（命令失败、超时、输出不符合格式）→ `version` 为 `null`，**不影响启动**，也不记事件。
 收到 SIGUSR2 重启 Xray 时（`xray-core` 软件包更新后，二进制可能换了）重新取一次 Xray 的版本并写回 `state.json`。版本解析是纯函数。
+**重载也要保留版本**（2026-10-20，backlog B13）：重载写回 `state.json` 时，组件路径没变就沿用原来的 `version`；路径变了（例如改了 `xray_bin`）就按上面的方法重新取。原来重载只写 `path`，第一次重载后版本就没了。
 
 ## 启动（`aether-proxy daemon [--boot]` 的前半段）
 

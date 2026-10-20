@@ -139,13 +139,20 @@ verdict-cache 4096
 ## 引导解析（节点域名）
 
 1. 渲染时把所有节点域名写入 `boot.txt`，chinadns-ng 对这些域名使用 `direct_dns`，不经过 Xray。
-2. 启动流程中，chinadns-ng 和 dnsmasq 片段就位之后，用 `resolveip -4 -t 5 <域名>` 解析当前节点的域名
-   （走系统解析器，最终落到 `boot` 组）。返回多个 IPv4 时取第一个合法地址，不做轮换或测速；
-   需要固定 IP 的用户直接把节点地址写成 IP。
+2. 启动流程中，chinadns-ng 和 dnsmasq 片段就位之后，用 `resolveip -4 -t 3 <域名>` 解析当前节点的域名
+   （走系统解析器，最终落到 `boot` 组）。**失败（退出码非 0 或没有合法 IPv4）就重试，最多 3 次**，第一次成功即停，最坏约 9 秒。
+   返回多个 IPv4 时取第一个合法地址，不做轮换或测速；需要固定 IP 的用户直接把节点地址写成 IP。
+   （2026-10-20 改，backlog B13：原来只试一次、`-t 5`。`boot` 组走 `direct_dns`，这个网络里直连境外 DNS 时好时坏，一次 TCP 重置就让切换节点失败。）
+   reload 切换节点、monitor 定时重新解析都用同一个函数，同样重试。
 3. 成功：把 IP 写进 Xray 出站的 `address`（域名保留在 `serverName` / `host` 中），并更新 LKG 文件
    `/etc/aether-proxy/state/node-ip.json`（值变化时才写）。
-4. 失败：使用 LKG 中的 IP，记 WARN `NODE_RESOLVE_FALLBACK`。LKG 也没有：节点不可用，进入降级状态（`NODE_RESOLVE_FAILED`）。
-   LKG 文件损坏（JSON 解析失败、地址不匹配、IP 不合法）**等同没有 LKG，不记事件**：它是可以重新生成的缓存，下一次成功解析就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
+   **LKG 按节点地址分别保存**（2026-10-20 改，backlog B13：原来只存最后一个节点的 `{address, ip}`，从没用过的节点没有兜底，切过去后原节点的也被覆盖）：
+   `{ "nodes": { "<地址>": "<IPv4>", … } }`，最多 64 条；写入时把该地址移到最后，超过 64 条删最前面的（最久没更新的）。
+   读到旧格式 `{ "address": …, "ip": … }` 时当作只有一条的表，下一次写入时换成新格式。
+   **节点检测（07）解析成功的地址也写入 LKG**（同样只在值变化时写；一次检测作业最多写一次文件）：用户检测过的节点，切换时即使直连 DNS 正好失败也有兜底。
+   作业进程与 daemon 可能同时写，`write_atomic` 保证文件完整，后写的覆盖先写的——它是缓存，丢一条只等于少一次兜底。
+4. 失败：使用 LKG 中该地址的 IP，记 WARN `NODE_RESOLVE_FALLBACK`。LKG 也没有：节点不可用，进入降级状态（`NODE_RESOLVE_FAILED`）。
+   LKG 文件损坏（JSON 解析失败、结构不对）**等同没有 LKG，不记事件**；单条的 IP 不合法只忽略那一条：它是可以重新生成的缓存，下一次成功解析就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
 5. monitor 每 10 分钟重新解析一次当前节点的域名。IP 变了就更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。
 
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
