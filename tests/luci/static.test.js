@@ -6,6 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const { createRpc, loadModule, parsePo } = require('./loader.js');
 
@@ -96,7 +97,9 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(), 'ACL sanity: exactly the current methods');
 
 	const rpc = createRpc();
-	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o } }, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o }, ui: {} }, {
+		window: {}, document: { addEventListener() {}, removeEventListener() {} }
+	});
 
 	const declared = {};
 	for (const d of rpc.declared)
@@ -204,4 +207,42 @@ test('handlers bound with extra createHandlerFn arguments take them before the e
 	}
 
 	assert.ok(checked >= 3, 'the bound handlers of the node and subscription pages are found');
+});
+
+/* Exercise only the declared hook against local copies. This is not an SDK
+ * build: its feed points at the main checkout, forbidden for this card. */
+test('T10.12 scenario 6: source placeholders and prepare hook stamp both package files', () => {
+	const common = read(COMMON);
+	const build = path.join(HTDOCS, 'aether-proxy', 'build.json');
+	assert.match(common, /var SCRIPT_VERSION = '@@VERSION@@';/);
+	assert.deepEqual(JSON.parse(read(build)), { version: '@@VERSION@@' });
+
+	const makefile = read(path.join(APP, 'Makefile'));
+	const hook = /^define Build\/Prepare\/luci-app-aether-proxy\n[\s\S]*?^endef$/m.exec(makefile)?.[0];
+	assert.ok(hook, 'the package-specific LuCI prepare hook is defined');
+	assert.match(hook, /\$\(PKG_VERSION\)-r\$\(PKG_RELEASE\)/);
+	assert.match(hook, /\$\(PKG_BUILD_DIR\)\/htdocs\/luci-static\/resources\/aether-proxy\/common\.js/);
+	assert.match(hook, /\$\(PKG_BUILD_DIR\)\/htdocs\/luci-static\/resources\/aether-proxy\/build\.json/);
+
+	const dir = fs.mkdtempSync(path.join(__dirname, '.stale-build-'));
+	try {
+		const resources = path.join(dir, 'htdocs', 'luci-static', 'resources', 'aether-proxy');
+		fs.mkdirSync(resources, { recursive: true });
+		fs.copyFileSync(COMMON, path.join(resources, 'common.js'));
+		fs.copyFileSync(build, path.join(resources, 'build.json'));
+		const driver = path.join(dir, 'Makefile');
+		fs.writeFileSync(driver, 'PKG_BUILD_DIR:=' + dir + '\n'
+			+ 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=42\n' + hook + '\n'
+			+ 'prepare:\n\t$(Build/Prepare/luci-app-aether-proxy)\n');
+		execFileSync('make', [ '--no-print-directory', '-f', driver, 'prepare' ], { cwd: dir });
+		const stamped = read(path.join(resources, 'common.js'));
+		assert.match(stamped, /var SCRIPT_VERSION = '1\.2\.3-r42';/);
+		assert.ok(!stamped.includes('@@VERSION@@'), 'built script contains no placeholder');
+		assert.deepEqual(JSON.parse(read(path.join(resources, 'build.json'))), { version: '1.2.3-r42' });
+		assert.match(read(COMMON), /var SCRIPT_VERSION = '@@VERSION@@';/, 'source script is untouched');
+		assert.deepEqual(JSON.parse(read(build)), { version: '@@VERSION@@' }, 'source metadata is untouched');
+	}
+	finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
 });
