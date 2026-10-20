@@ -6,7 +6,7 @@
 |---|---|---|
 | `xray-core` | **软件包**：发布仓库按 Makefile 从源码编译，**先过我们的测试再改 Makefile 的版本**，产物（ipk/apk）随签名清单发布；设备经包管理器安装 | `notify`：发现新版本只提示，用户点击后安装；可改为 `auto` |
 | `aether-proxy`、`luci-app-aether-proxy` | **软件包**：同上，由仓库所有者决定何时把新版本放进通道 | `notify`（不提供自动安装） |
-| `chinadns-ng` | **不进通道**，只随固件或软件源更新：DNS 出问题影响全网解析，代价远大于 Xray（2026-10-15 定，与 helloworld 一致） | — |
+| `chinadns-ng` | **不进更新流程**：DNS 出问题影响全网解析，代价远大于 Xray（2026-10-15 定，与 helloworld 一致）。但发布仓库**为没有它的固件打包上游的静态二进制**（wolfssl 版，按 `PKG_HASH` 固定；aarch64 用 `wolfssl_noasm`，x86_64 用基线版），随 Release 发布、写进签名清单，供用户手工安装；设备端只处理 `UPDATE_PACKAGES` 中的四个包，清单里的 `chinadns-ng` 被忽略（2026-10-20 定） | 手工安装、手工升级 |
 | 规则数据 | `gfwlist`、`chnlist`、`apple`、`chnroute4`、`gfw_static4`，经签名清单每天更新 | 每天自动 |
 
 （2026-10-15 改为软件包方案，取代此前的「下载官方预编译二进制、自管版本目录」。参照 helloworld 的发布方式——用官方 SDK 编译软件包发到 GitHub Release、设备下载后用包管理器安装——并补上它缺少的两点：**签名与哈希校验**（它直接安装下载的包，apk 还加了 `--allow-untrusted`）和**安装后检查与回滚**。）
@@ -18,7 +18,7 @@
 发布 CI 在**单独的发布仓库** `leochien0102/aether-proxy-channel`（见下方「发布仓库」）。生成发布目录与清单的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 负责编译、运行它、签名、发布：
 
 1. **软件包**：用 OpenWrt 官方 SDK 编译，矩阵为「SDK 版本 × 目标」——24.10（ipk）与 25.12（apk）各编 `aarch64_generic`、`x86_64`（首版范围，以后按需增加）。
-   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（取 aether-proxy 仓库的指定提交）。
+   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`chinadns-ng`（自己维护的 Makefile，打包上游发布的静态二进制，只供手工安装，见上方「范围」）、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（取 aether-proxy 仓库的指定提交）。
 2. **Xray 版本闸门**：定时任务发现上游有新版本（含 prerelease）时，在发布仓库开一个改 Makefile 版本与 `PKG_HASH` 的 PR；PR 的检查用新版本对 aether-proxy 仓库全部 golden 配置跑 `xray run -test`（用官方 linux-64 二进制或本次编译出的 x86_64 包中的二进制）。
    **检查通过、仓库所有者合并后**才进入发布。PR 上的检查拿不到签名私钥，也不发布。
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
@@ -240,4 +240,4 @@ daemon 内部计时，不修改 crontab：
 官方 OpenWrt 上安装 aether-proxy 后可能没有 Xray 或 chinadns-ng（`COMPONENT_MISSING`）。LuCI 首页提示：
 
 1. Xray：「从发布通道安装 `xray-core`」（`update package xray-core`，会依次尝试 `channel_urls` 中的镜像地址）；也可以在软件包页面从软件源安装。
-2. chinadns-ng：只能从软件源安装（不进通道）。显示本机的 `DISTRIB_ARCH`，方便用户找到对应的包。
+2. chinadns-ng：从软件源安装，或从发布页手工下载通道打包的 `chinadns-ng`（只有 `aarch64_generic`、`x86_64`）；设备不会替用户安装或更新它。显示本机的 `DISTRIB_ARCH`，方便用户找到对应的包。

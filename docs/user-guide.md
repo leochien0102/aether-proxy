@@ -12,7 +12,7 @@ aether-proxy 是 OpenWrt 上的透明代理：用 Xray 连接代理节点，用 
 | 固件 | OpenWrt 24.10（opkg，ipk 包）或 25.12（apk 包），以及基于它们的 ImmortalWrt 等；必须是 firewall4 |
 | 架构 | 本身与架构无关；发布通道里的 `xray-core` 目前只编译了 `aarch64_generic` 与 `x86_64` |
 | Xray | `xray-core` 26.3.27 或更新。可以从发布通道安装（见下文），也可以用软件源里的 |
-| ChinaDNS-NG | 2025.08.09 或更新，**只能从软件源安装**。官方 OpenWrt 的软件源里没有它，需要使用带有它的固件或第三方软件源 |
+| ChinaDNS-NG | 2025.08.09 或更新。可以用软件源里的；官方 OpenWrt 的软件源里没有它，可以从发布页下载 `chinadns-ng` 包手工安装（见下文） |
 
 **不要和 ssr-plus、passwall、OpenClash 同时启用。** 它们都会接管 dnsmasq 和透明代理规则。aether-proxy 启动前会检查，
 发现其中任何一个在运行就拒绝启动（事件 `PRECHECK_FAILED`，缺失项写着 `conflict:<名称>`）。可以同时安装，但同一时间只启用一个。
@@ -37,10 +37,14 @@ apk add --allow-untrusted /tmp/aether-proxy-*.apk /tmp/luci-app-aether-proxy-*.a
 ```
 
 依赖（nftables 的 TPROXY 模块、`ip-full`、`curl`、ucode 模块等）由包管理器从软件源自动安装。
+
+固件里没有 ChinaDNS-NG 时（官方 OpenWrt 就没有），从同一个发布页下载对应架构的 `chinadns-ng` 包（`aarch64_generic` 或 `x86_64`，
+本机架构见 `/etc/openwrt_release` 的 `DISTRIB_ARCH`），一起安装即可。它是上游发布的静态二进制，aether-proxy **不会**自动更新它：
+DNS 出问题会影响整个网络，所以只在你手工安装新版本时才变化。
 安装后刷新 LuCI，菜单出现在「服务 → aether-proxy」。装好时服务**没有启用**，不会影响现有网络。
 
 如果概览页提示缺少 Xray：可以在更新页从发布通道安装 `xray-core`（下载经过签名校验），或者从软件源安装。
-缺少 ChinaDNS-NG 时概览页会显示本机的包架构，方便到软件源里找对应的包。
+缺少 ChinaDNS-NG 时概览页会显示本机的包架构，按上一段手工安装。
 
 以后的更新都在 LuCI 的更新页完成，不需要再手工下载（见第 6 节）。
 

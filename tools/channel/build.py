@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 
 
-PACKAGE_NAMES = ("xray-core", "aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
+# chinadns-ng is published for manual installation only: devices update just their own
+# fixed package list (lib/const.uc UPDATE_PACKAGES) and ignore the other manifest entries.
+PACKAGE_NAMES = ("xray-core", "chinadns-ng", "aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 # Architecture-independent packages: their apk file names carry no architecture at all.
 ARCH_ALL = ("aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 DATA_NAMES = ("gfwlist", "chnlist", "apple", "chnroute4", "gfw_static4")

@@ -67,6 +67,7 @@ class ChannelBuilderTests(unittest.TestCase):
         # noarch packages collapse to "all"; xray-core keeps one entry per target
         self.assertEqual(set(manifest["packages"]["aether-proxy"]["current"]["assets"]), {"all"})
         self.assertEqual(set(manifest["packages"]["xray-core"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
+        self.assertEqual(set(manifest["packages"]["chinadns-ng"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
         asset = manifest["packages"]["aether-proxy"]["current"]["assets"]["all"]["ipk"]
         content = (self.out / asset["url"]).read_bytes()
         self.assertEqual(asset["size"], len(content))

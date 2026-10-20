@@ -91,8 +91,8 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 | `luci-app-aether-proxy` | JS 视图、rpcd 插件、ACL、菜单 | `all` | `aether-proxy`、`luci-base`、`rpcd-mod-ucode` |
 | `luci-i18n-aether-proxy-zh-cn` | 翻译（luci.mk 自动生成） | `all` | — |
 
-**不硬依赖** `xray-core` / `chinadns-ng`：官方 OpenWrt feed 里没有 chinadns-ng，aether-proxy 会自行下载
-（[08](08-updates.md)）。feed 里有的发行版（lede、ImmortalWrt）可以装上，当作基线兜底。
+**不硬依赖** `xray-core` / `chinadns-ng`：官方 OpenWrt feed 里没有 chinadns-ng，发布仓库打包了上游的静态二进制供手工安装
+（[08](08-updates.md)「范围」；`xray-core` 则可经发布通道安装）。feed 里有的发行版（lede、ImmortalWrt）可以装上，当作基线兜底。
 
 ucode 模块依赖：`ucode`、`ucode-mod-fs`、`ucode-mod-uci`、`ucode-mod-socket`、`ucode-mod-uloop`、`ucode-mod-log`（与 [12](12-ucode.md) 一致）。`ucode-mod-digest`、`ucode-mod-resolv` 不再依赖（2026-10-15）：文件哈希用 busybox `sha256sum`，DNS 解析与探测用 `resolveip`。
 官方 24.10.8 与 25.12.5 的 base feed 中均已提供（2026-10-14 核对下载目录）。`luci-app-aether-proxy` 另需 `rpcd-mod-ucode`。
