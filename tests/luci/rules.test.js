@@ -1,7 +1,8 @@
 'use strict';
 
-/* T8.8 scenarios 2,3,5-9. Real CLI in disposable directories, pure LuCI
- * model via the shared loader. Fixtures never need networking or system config. */
+/* T8.8 scenarios 2,3,5-9 and T10.10 progressive rules/DNS loading (docs/10).
+ * Real CLI in disposable directories; model/view via the shared LuCI loader.
+ * Deferred RPC and timer doubles prove that only the arriving region changes. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -192,4 +193,281 @@ test('T8.8 scenario 9: form, independent file saves, model validation, job API a
 	for (const name of ['direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip'])
 		assert.ok(view.includes("'" + name + "'"));
 	assert.match(view, /this\.show_save\(message, r\)/);
+});
+
+/* Minimal mutable DOM, including the properties used by native textareas and
+ * buttons. Replacements retain identity so tests detect whole-page redraws. */
+function element(tag, attrs = {}, children = []) {
+	return {
+		tag, attrs, value: '', disabled: false, ...attrs,
+		children: Array.isArray(children) ? children : [children],
+		replaceChildren(...nodes) { this.children = nodes; }
+	};
+}
+globalThis.E = element;
+function text(node) {
+	return typeof node == 'object' && node !== null ? node.children.map(text).join('') : String(node);
+}
+function deferred() {
+	let resolve;
+	const promise = new Promise(done => { resolve = done; });
+	return { promise, resolve };
+}
+function load_view() {
+	const calls = [], jobs = [], loads = [], timers = [], maps = [];
+	const form = {
+		NamedSection: 'named', ListValue: 'select', DynamicList: 'list', Flag: 'flag', Value: 'value'
+	};
+	form.Map = class {
+		constructor(config, title) {
+			this.config = config;
+			this.title = title;
+			this.sections = [];
+			maps.push(this);
+		}
+		section(type, name, section_type, title) {
+			const section = { type, name, section_type, title, options: [] };
+			section.option = (kind, key, label) => {
+				const option = { kind, key, label, values: [], value(k, v) { this.values.push([k, v]); } };
+				section.options.push(option);
+				return option;
+			};
+			this.sections.push(section);
+			return section;
+		}
+		render() {
+			return Promise.resolve(E('form', {}, this.sections.map(section =>
+				E('fieldset', { name: section.name }, section.options.map(option =>
+					E(option.kind, { name: option.key }, option.label))))));
+		}
+	};
+	const page = loadModule(path.join(RES, 'view/aether-proxy/rules.js'), {
+		view: { extend: o => o }, form,
+		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); } },
+		ui: { createHandlerFn: (ctx, fn) => (...args) => fn.apply(ctx, args) },
+		'aether-proxy.model.rules': model(),
+		'aether-proxy.common': {
+			call: (method, params) => {
+				const reply = deferred();
+				calls.push({ method, params, ...reply });
+				return reply.promise;
+			},
+			run_job: (kind, args) => {
+				const reply = deferred();
+				jobs.push({ kind, args, ...reply });
+				return reply.promise;
+			}
+		}
+	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
+	return { page, calls, jobs, loads, maps, timers,
+		start: () => {
+			assert.equal(timers.length, 1);
+			assert.equal(timers[0].delay, 0);
+			timers.shift().fn();
+		}
+	};
+}
+function regions(root) {
+	return {
+		form: root.children[0],
+		lists: root.children.slice(1, 5).map(node => ({
+			node, input: node.children[1], button: node.children[2], message: node.children[3]
+		})),
+		inventory: root.children[6], update: root.children[7], summary: root.children[8]
+	};
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+const list_names = ['direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip'];
+
+test('T10.10 scenario 1: load only loads UCI and never calls ap.call', async () => {
+	const h = load_view();
+	assert.equal(await h.page.load(), 'uci-loaded');
+	assert.deepEqual(h.loads, ['aetherproxy']);
+	assert.deepEqual(h.calls, []);
+	assert.deepEqual(h.timers, []);
+});
+test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editors or update button', async () => {
+	const h = load_view();
+	const root = await h.page.render();
+	assert.equal(h.calls.length, 0, 'RPC must start after render resolves');
+	const r = regions(root);
+	assert.equal(root.children.length, 9);
+	assert.equal(r.form.tag, 'form');
+	assert.equal(h.maps[0].config, 'aetherproxy');
+	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);
+	assert.deepEqual(r.form.children.flatMap(s => s.children.map(o => o.name)),
+		['mode', 'china_dns', 'trust_dns', 'direct_dns', 'allow_china_fallback', 'dns_probe_domain']);
+	const mode = h.maps[0].sections[0].options[0];
+	assert.deepEqual(mode.values, model().modes());
+	for (const option of h.maps[0].sections[1].options) {
+		assert.equal(option.rmempty, false);
+		const value = option.key == 'dns_probe_domain' ? 'bad..domain' : 'invalid';
+		assert.equal(option.validate('dns', value), model().validate(option.key, value));
+	}
+	assert.deepEqual(r.lists.map(l => text(l.node.children[0])),
+		['直连域名', '代理域名', '直连 IP', '代理 IP']);
+	for (const list of r.lists) {
+		assert.equal(list.input.disabled, true);
+		assert.equal(list.input.value, '');
+		assert.equal(list.input.placeholder, '读取中…');
+		assert.equal(list.button.disabled, true);
+		assert.equal(text(list.button), '保存名单');
+		assert.equal(text(list.message), '');
+	}
+	assert.equal(text(r.inventory), '读取中…');
+	assert.equal(text(r.update), '立即更新');
+	assert.equal(r.update.disabled, false);
+	h.start();
+	await settle(); // All five RPC promises stay pending forever.
+	assert.equal(h.calls.length, 5);
+	assert.equal(text(r.inventory), '读取中…');
+	assert.ok(r.lists.every(l => l.input.disabled && l.button.disabled));
+});
+test('T10.10 scenario 3: queue the four lists in page order before data_status', async () => {
+	const h = load_view();
+	await h.page.render();
+	h.start();
+	assert.deepEqual(h.calls.map(c => [c.method, c.params]), [
+		...list_names.map(name => ['list_file', { name }]), ['data_status', undefined]
+	]);
+});
+test('T10.10 scenario 4: each reply touches only its own editor; failures remain disabled', async () => {
+	const h = load_view();
+	const root = await h.page.render(), r = regions(root);
+	const nodes = [...root.children];
+	h.start();
+	// Resolve out of order to expose accidentally shared editor references.
+	h.calls[1].resolve({ ok: true, content: '# existing\nproxy.example\n' });
+	await settle();
+	assert.equal(r.lists[1].input.value, '# existing\nproxy.example\n');
+	assert.equal(r.lists[1].input.disabled, false);
+	assert.equal(r.lists[1].button.disabled, false);
+	assert.equal(r.lists[1].input.placeholder, '');
+	for (const i of [0, 2, 3]) {
+		assert.equal(r.lists[i].input.value, '');
+		assert.equal(r.lists[i].input.disabled, true);
+		assert.equal(r.lists[i].button.disabled, true);
+		assert.equal(r.lists[i].input.placeholder, '读取中…');
+		assert.equal(text(r.lists[i].message), '');
+	}
+	r.lists[1].input.value = 'user edit.example';
+	h.calls[2].resolve({ ok: false, code: 'RPC_FAILED', detail: 'offline',
+		errors: [{ line: 2, text: '<raw>' }] });
+	await settle();
+	assert.equal(r.lists[2].input.disabled, true);
+	assert.equal(r.lists[2].button.disabled, true);
+	assert.equal(r.lists[2].input.value, '');
+	assert.equal(text(r.lists[2].message), 'RPC_FAILED: offline第 2 行：<raw>');
+	assert.equal(r.lists[2].input.placeholder, '');
+	assert.equal(r.lists[1].input.value, 'user edit.example');
+	assert.equal(text(r.lists[1].message), '');
+	assert.equal(text(r.inventory), '读取中…');
+	h.calls[0].resolve({ ok: true, content: '' });
+	await settle();
+	assert.equal(r.lists[0].input.value, '');
+	assert.equal(r.lists[0].input.disabled, false, 'an empty list is still a successful read');
+	assert.equal(r.lists[0].button.disabled, false);
+	assert.equal(r.lists[3].input.disabled, true);
+	for (const [i, node] of nodes.entries())
+		assert.equal(root.children[i], node, 'no region or form may be replaced');
+});
+test('T10.10 scenario 5: data_status fills the original five-row table without touching edits', async () => {
+	const h = load_view();
+	const root = await h.page.render(), r = regions(root);
+	h.start();
+	h.calls[0].resolve({ ok: true, content: 'direct.example' });
+	await settle();
+	r.lists[0].input.value = 'unsaved.example';
+	const reply = { ok: true, checked: null, items: Object.fromEntries(names.map((name, i) => [name, {
+		source: i % 2 ? 'baseline' : 'downloaded', version: 'hash-' + i, lines: i,
+		updated_at: null, changed: i == 0 ? true : i == 1 ? false : null
+	}])) };
+	h.calls[4].resolve(reply);
+	await settle();
+	const vm = model().table(reply, Date.now() / 1000);
+	assert.equal(text(r.inventory.children[0]), '上次检查: ' + vm.checked);
+	const table = r.inventory.children[1];
+	assert.equal(table.tag, 'table');
+	assert.equal(table.children.length, 6);
+	assert.deepEqual(table.children.slice(1).map(row => row.children.map(text)),
+		vm.rows.map(row => row.map(String)));
+	assert.equal(text(r.inventory.children[2]), '');
+	assert.equal(r.lists[0].input.value, 'unsaved.example');
+	assert.equal(r.lists[0].input.disabled, false);
+	assert.ok(r.lists.slice(1).every(l => l.input.disabled && l.button.disabled));
+	assert.equal(root.children[0], r.form);
+	assert.equal(root.children[1], r.lists[0].node);
+});
+test('T10.10 scenarios 4-5: timeout and RPC failures keep lists locked and show original data errors', async () => {
+	for (const code of ['TIMEOUT', 'RPC_FAILED']) {
+		const h = load_view();
+		const r = regions(await h.page.render());
+		h.start();
+		for (const call of h.calls)
+			call.resolve({ ok: false, code, detail: 'read failed' });
+		await settle();
+		for (const list of r.lists) {
+			assert.equal(list.input.disabled, true);
+			assert.equal(list.button.disabled, true);
+			assert.equal(list.input.value, '');
+			assert.equal(text(list.message), code + ': read failed');
+		}
+		assert.equal(text(r.inventory.children[2]), code + ': read failed');
+		assert.equal(r.update.disabled, false);
+	}
+});
+test('T10.10 scenario 6: a loaded list saves its current text and retains all existing result messages', async () => {
+	const h = load_view();
+	const r = regions(await h.page.render());
+	h.start();
+	h.calls[3].resolve({ ok: true, content: '# original\n192.0.2.1\n' });
+	await settle();
+	const list = r.lists[3];
+	const results = [
+		{ ok: true, changed: true }, { ok: true, changed: false },
+		{ ok: true, changed: true, reload: 'failed' },
+		{ ok: false, code: 'CONFIG_INVALID', detail: 'invalid list', errors: [{ line: 3, text: '<bad>' }] },
+		{ ok: false, code: 'RPC_FAILED', detail: 'offline' }
+	];
+	for (const [i, result] of results.entries()) {
+		list.input.value = '# edited ' + i + '\n192.0.2.2\n';
+		const saving = list.button.click();
+		assert.equal(list.button.disabled, true);
+		const call = h.calls.at(-1);
+		assert.equal(call.method, 'save_file');
+		assert.deepEqual(call.params, { name: 'proxy_ip', content: list.input.value });
+		call.resolve(result);
+		await saving;
+		const vm = model().save_result(result);
+		assert.deepEqual(list.message.children.map(text), [vm.text, ...vm.errors]);
+		assert.equal(list.button.disabled, false);
+		assert.equal(list.input.value, call.params.content);
+		assert.ok(r.lists.slice(0, 3).every(l => l.button.disabled && text(l.message) == ''));
+		assert.equal(text(r.inventory), '读取中…');
+	}
+});
+test('T10.10 scenario 7: update job stays usable before reads finish and refreshes only rule data', async () => {
+	const h = load_view();
+	const root = await h.page.render(), r = regions(root);
+	h.start();
+	const updating = r.update.click();
+	assert.equal(r.update.disabled, true);
+	assert.equal(h.jobs.length, 1);
+	assert.equal(h.jobs[0].kind, 'update_data');
+	assert.deepEqual(h.jobs[0].args, []);
+	const job = { state: 'ok', result: {
+		updated: ['gfwlist'], unchanged: ['apple'], failed: { chnroute4: 'reason' }
+	} };
+	h.jobs[0].resolve(job);
+	await settle();
+	assert.deepEqual(r.summary.children.map(text), model().job_result(job));
+	assert.equal(h.calls.length, 6);
+	assert.equal(h.calls[5].method, 'data_status');
+	assert.equal(r.update.disabled, true, 'wait for the post-job inventory');
+	h.calls[5].resolve({ ok: true, checked: null, items: { gfwlist: { version: 'new-hash', lines: 42 } } });
+	await updating;
+	assert.equal(r.update.disabled, false);
+	assert.match(text(r.inventory), /new-hash42/);
+	assert.ok(r.lists.every(l => l.input.disabled && l.button.disabled));
+	assert.equal(root.children[0], r.form);
 });
