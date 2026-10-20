@@ -150,6 +150,18 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	}
 });
 
+/* T10.14 covers every shipped JS file, including future nested helpers,
+ * rather than only the four views that currently ask for confirmation. */
+test('T10.14 scenario 3: all htdocs JS uses ap.confirm instead of native confirm', () => {
+	const htdocs = path.join(APP, 'htdocs');
+	const files = fs.readdirSync(htdocs, { recursive: true }).filter(file => file.endsWith('.js'));
+	assert.ok(files.length > 10, 'the scan includes views, models and shared helpers');
+	for (const file of files) {
+		const source = read(path.join(htdocs, file)).replace(/\bap\.confirm\s*\(/g, '');
+		assert.doesNotMatch(source, /\bconfirm\s*\(/, file + ': confirmation must go through ap.confirm');
+	}
+});
+
 /* LuCI form options: `depends` is a method. Assigning to it (`o.depends = {…}`)
    replaces the method and registers no condition, so the option always shows;
    an array value (`{ key: [a, b] }`) never matches, because form.js isEqual()

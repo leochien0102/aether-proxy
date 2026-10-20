@@ -1631,3 +1631,39 @@ msgctxt "aether-proxy"
 msgid "Component versions"
 msgstr "组件版本"
 
+msgctxt "aether-proxy"
+msgid "Cancel"
+msgstr "取消"
+
+msgctxt "aether-proxy"
+msgid "Turn off Enable"
+msgstr "关闭「启用」"
+
+msgctxt "aether-proxy"
+msgid "Disable"
+msgstr "关闭"
+
+msgctxt "aether-proxy"
+msgid "Stop service"
+msgstr "停止服务"
+
+msgctxt "aether-proxy"
+msgid "Delete node"
+msgstr "删除节点"
+
+msgctxt "aether-proxy"
+msgid "Delete subscription"
+msgstr "删除订阅"
+
+msgctxt "aether-proxy"
+msgid "Delete"
+msgstr "删除"
+
+msgctxt "aether-proxy"
+msgid "Roll back %s"
+msgstr "回滚 %s"
+
+msgctxt "aether-proxy"
+msgid "Roll back"
+msgstr "回滚"
+

@@ -70,10 +70,15 @@ return view.extend({
 	   LuCI's standard save & apply with rollback confirmation, exactly like the
 	   node page's 「设为当前」 (docs/10 「节点页」). No `service` call is made:
 	   the reload trigger starts or stops the service. */
-	handleEnable: function(checked) {
+	handleEnable: async function(checked) {
 		/* Disabling is persistent and immediately stops traffic interception;
 		   cancelling must leave both the local setting and UCI untouched. */
-		if (this.enabled && !checked && !confirm(this.vm.disable_confirmation))
+		if (this.enabled && !checked && !await ap.confirm({
+			title: _('Turn off Enable', 'aether-proxy'),
+			text: this.vm.disable_confirmation,
+			ok: _('Disable', 'aether-proxy'),
+			destructive: true
+		}))
 			return;
 
 		this.enabled = (checked === true);
@@ -96,22 +101,26 @@ return view.extend({
 				'id': 'aetherproxy-enabled',
 				'title': note,
 				'checked': this.enabled ? 'checked' : null,
-				'change': ui.createHandlerFn(this, function(ev) {
-					const pending = self.handleEnable(ev.target.checked);
-					/* The browser already toggled it before firing change. */
+				'change': ui.createHandlerFn(this, async function(ev) {
+					await self.handleEnable(ev.target.checked);
+					/* Restore the browser's toggled checkbox after an async cancellation. */
 					ev.target.checked = self.enabled;
-					return pending;
 				})
 			})
 		]);
 	},
 
-	handleService: function(action) {
+	handleService: async function(action) {
 		const self = this;
 
 		/* The wording comes from the model so it stays in one place (docs/10
 		   「启用开关」). */
-		if (action == 'stop' && !confirm(this.vm.stop_confirmation))
+		if (action == 'stop' && !await ap.confirm({
+			title: _('Stop service', 'aether-proxy'),
+			text: this.vm.stop_confirmation,
+			ok: _('Stop', 'aether-proxy'),
+			destructive: true
+		}))
 			return;
 
 		return ap.call('service', { action: action }).then(function(res) {
