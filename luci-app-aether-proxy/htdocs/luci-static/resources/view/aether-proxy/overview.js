@@ -289,7 +289,7 @@ return view.extend({
 		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('aether-proxy', 'aether-proxy')),
+			E('h2', {}, _('Aether Proxy', 'aether-proxy')),
 			E('div', { 'class': 'cbi-map-descr' }, _('Service status, pending notices and start/stop controls.', 'aether-proxy')),
 			this.enableSwitch(vm.enabled_note),
 			this.dashboardControls(interval, data[2].node),

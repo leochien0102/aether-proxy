@@ -1,6 +1,6 @@
 {
 	"admin/services/aether-proxy": {
-		"title": "aether-proxy",
+		"title": "Aether Proxy",
 		"order": 60,
 		"action": {
 			"type": "firstchild"

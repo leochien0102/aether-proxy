@@ -1,6 +1,6 @@
 'use strict';
 
-/* Global translation gate for docs/tasks/m9.md T9.1, m10.md T10.1 and docs/10 UI rules.
+/* Global translation gate for docs/tasks/m9.md T9.1, m10.md T10.1/T10.2 and docs/10 UI rules.
  * Inspect source without executing app code; negative cases only alter in-memory
  * copies. Existing page tests still own event/skip-reason semantics and wording.
  */
@@ -19,6 +19,13 @@ const MENU_DIR = APP + '/root/usr/share/luci/menu.d';
  * why extraction cannot use literals. No current call needs an exception.
  */
 const NON_LITERAL_ALLOWLIST = new Map();
+
+/* Keys are exact source texts, values explain why the program name remains.
+ * Reject unused entries so this temporary allowance cannot outlive its page card.
+ */
+const DISPLAY_NAME_ALLOWLIST = new Map([
+	[ 'aether-proxy version', '随概览页的卡移除' ]
+]);
 
 function files_under(dir, suffix) {
 	return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })
@@ -323,6 +330,22 @@ function menu_entries(file, source) {
 	return entries;
 }
 
+function display_name_errors(entries, allowlist = DISPLAY_NAME_ALLOWLIST) {
+	const errors = [], used_exceptions = new Set();
+	for (const entry of entries) {
+		if (!/aether-proxy/i.test(entry.msgid))
+			continue;
+		if (allowlist.has(entry.msgid) && allowlist.get(entry.msgid).trim())
+			used_exceptions.add(entry.msgid);
+		else
+			errors.push(`${entry.file}:${entry.line} program name in UI text: ${JSON.stringify(entry.msgid)}`);
+	}
+	for (const key of allowlist.keys())
+		if (!used_exceptions.has(key))
+			errors.push('Unused display-name exception: ' + key);
+	return errors;
+}
+
 function missing_translations(entries, catalog) {
 	return entries.filter(entry => !catalog.has(catalog_key(entry)) || catalog.get(catalog_key(entry)).length === 0)
 		.map(entry => `${entry.file}:${entry.line} missing translation: ${JSON.stringify(entry.msgid)}`);
@@ -378,6 +401,50 @@ const po_entry = (id, str = '译文', context = 'aether-proxy') =>
 function assert_clean(result) {
 	assert.deepEqual(result.errors, [], result.errors.join('\n'));
 }
+
+test('T10.2 scenario 1: menu and overview titles use Aether Proxy with their own Chinese contexts', () => {
+	const menu_file = MENU_DIR + '/luci-app-aether-proxy.json';
+	const view_file = APP + '/htdocs/luci-static/resources/view/aether-proxy/overview.js';
+	const menu = JSON.parse(menus.get(menu_file));
+	assert.equal(menu['admin/services/aether-proxy'].title, 'Aether Proxy');
+	assert.match(sources.get(view_file), /E\('h2', \{\}, _\('Aether Proxy', 'aether-proxy'\)\)/);
+	const catalog = parse_po(real_po);
+	for (const [ file, context ] of [ [ menu_file, '' ], [ view_file, 'aether-proxy' ] ]) {
+		const entry = real.entries.find(item => item.file === file && item.msgid === 'Aether Proxy');
+		assert.ok(entry, file + ': must reference the display name');
+		assert.equal(entry.context, context);
+		assert.equal(catalog.get(catalog_key(entry)), '以太跃迁');
+		assert.equal(catalog.has(catalog_key({ context, msgid: 'aether-proxy' })), false);
+	}
+});
+
+test('T10.2 scenario 2: real UI texts pass the program-name gate with only the version exception', () => {
+	assert.deepEqual([ ...DISPLAY_NAME_ALLOWLIST.keys() ], [ 'aether-proxy version' ]);
+	assert.deepEqual(display_name_errors(real.entries), []);
+});
+
+test('T10.2 scenario 2: JS and menu program names fail once each with exact file and line', () => {
+	const js = js_entries('name.js', "// title\n_('About aether-' + 'proxy', 'aether-proxy');").entries;
+	const menu = menu_entries('name.json', '{\n"item": { "title": "Aether-Proxy" }\n}');
+	assert.deepEqual(display_name_errors([ ...js, ...menu ], new Map()), [
+		'name.js:2 program name in UI text: "About aether-proxy"',
+		'name.json:2 program name in UI text: "Aether-Proxy"'
+	]);
+});
+
+test('T10.2 scenario 2: display-name exceptions must appear, match exactly and explain why', () => {
+	assert.deepEqual(display_name_errors([]), [ 'Unused display-name exception: aether-proxy version' ]);
+	const entry = { file: 'version.js', line: 3, msgid: 'aether-proxy version' };
+	assert.deepEqual(display_name_errors([ entry ]), []);
+	assert.deepEqual(display_name_errors([ { ...entry, msgid: 'Aether-Proxy version' } ]), [
+		'version.js:3 program name in UI text: "Aether-Proxy version"',
+		'Unused display-name exception: aether-proxy version'
+	]);
+	assert.deepEqual(display_name_errors([ entry ], new Map([ [ entry.msgid, ' ' ] ])), [
+		'version.js:3 program name in UI text: "aether-proxy version"',
+		'Unused display-name exception: aether-proxy version'
+	]);
+});
 
 test('T9.1 scenario 1: all htdocs JS and menu titles have non-empty translations', t => {
 	assert.ok(sources.size > 0, 'must discover JS files');

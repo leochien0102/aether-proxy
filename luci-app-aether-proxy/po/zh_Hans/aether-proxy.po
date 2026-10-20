@@ -444,12 +444,12 @@ msgctxt "aether-proxy"
 msgid "Unable to read the version."
 msgstr "无法读取版本号。"
 
-msgid "aether-proxy"
-msgstr "aether-proxy"
+msgid "Aether Proxy"
+msgstr "以太跃迁"
 
 msgctxt "aether-proxy"
-msgid "aether-proxy"
-msgstr "aether-proxy"
+msgid "Aether Proxy"
+msgstr "以太跃迁"
 
 msgid "Overview"
 msgstr "概览"
@@ -564,8 +564,8 @@ msgid "The service is not enabled: turn on the switch above and it will start au
 msgstr "服务未启用：打开上方的『启用』后会自动启动"
 
 msgctxt "aether-proxy"
-msgid "Stopping aether-proxy leaves all traffic going out directly. This is only temporary: restarting the router or saving the settings of this service again starts it; to disable it for good, turn off Enable above."
-msgstr "停止后所有流量直连。这只是暂时停止：重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。"
+msgid "Stopping the service leaves all traffic going out directly. This is only temporary: restarting the router or saving the settings of this service again starts it; to disable it for good, turn off Enable above."
+msgstr "停止服务后所有流量直连。这只是暂时停止：重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。"
 
 msgctxt "aether-proxy"
 msgid "The service action failed: %s (%s)."
@@ -644,8 +644,8 @@ msgid "A global IPv6 address is present on %s: clients may still connect directl
 msgstr "在 %s 上检测到全局 IPv6 地址：客户端仍可能通过 IPv6 直连，建议关闭 LAN 的 IPv6 分配。"
 
 msgctxt "aether-proxy"
-msgid "dnsmasq configuration contains additional server= lines outside aether-proxy: %s."
-msgstr "dnsmasq 配置中存在 aether-proxy 之外的 server= 行：%s。"
+msgid "dnsmasq configuration contains server= lines that this service did not write: %s."
+msgstr "dnsmasq 配置中有不是本服务写入的 server= 行：%s。"
 
 msgctxt "aether-proxy"
 msgid "Unhandled notice: %s."
