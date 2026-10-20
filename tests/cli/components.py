@@ -127,6 +127,9 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
 source = (LIB / 'daemon.uc').read_text()
 check('daemon delegates both version reads without defining a duplicate',
       not re.search(r'function\s+read_component_version\s*\(', source)
-      and source.count('component_version.read_component_version(') == 2)
+      and source.count('components_cmd.read_component_version(') == 2)
 check('shared helper keeps daemon timeout and quiet behavior',
-      'timeout ?? C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true' in (LIB / 'component_version.uc').read_text())
+      'timeout ?? C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true' in (LIB / 'cmd/components.uc').read_text())
+# docs/12 rule 1: command execution only in cmd/*, daemon, sys, state, data.
+check('version parsing module stays free of commands',
+      'aetherproxy.sys' not in (LIB / 'component_version.uc').read_text())

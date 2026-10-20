@@ -19,7 +19,7 @@ import * as monitor from 'aetherproxy.monitor';
 import * as reload from 'aetherproxy.reload';
 import * as schedule from 'aetherproxy.schedule';
 import * as uci from 'uci';
-import * as component_version from 'aetherproxy.component_version';
+import * as components_cmd from 'aetherproxy.cmd.components';
 
 const BOOT_OPTS = {
 	'--confdir': 'confdir', '--data-dir': 'data_dir', '--baseline-dir': 'baseline_dir',
@@ -284,7 +284,7 @@ function restart_xray(ctx, children, service_state, done) {
 		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
 		children.xray.start();
 		service_state.components[C.XRAY_COMPONENT] = {
-			path: binary, version: component_version.read_component_version(binary, 'version')
+			path: binary, version: components_cmd.read_component_version(binary, 'version')
 		};
 		write_state(ctx, service_state);
 		done(children.xray.pid() == null ? `cannot restart ${C.XRAY_COMPONENT}` : null);
@@ -448,7 +448,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
 		let path = pre.components[name].path;
 		components[name] = {
-			path, version: component_version.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V')
+			path, version: components_cmd.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V')
 		};
 	}
 

@@ -5,6 +5,7 @@
 // not service failures. This must work even before the daemon has ever started.
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
+import * as sys from 'aetherproxy.sys';
 import * as check from 'aetherproxy.cmd.check';
 import * as component_version from 'aetherproxy.component_version';
 import * as pipeline from 'aetherproxy.pipeline';
@@ -12,6 +13,14 @@ import * as pipeline from 'aetherproxy.pipeline';
 function usage(args, detail) {
 	return pipeline.finish({ json: index(args, '--json') >= 0 },
 		{ ok: false, code: 'USAGE', detail }, 2, detail);
+};
+
+// Shared with the daemon (docs/04 "components" versions). Informational failures must not emit
+// CMD_FAILED or block startup. Keep the daemon's original timeout by default; the live
+// inventory uses its own shorter budget.
+export function read_component_version(binary, arg, timeout) {
+	let result = sys.run([ binary, arg ], { timeout: timeout ?? C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true });
+	return result.code == 0 ? component_version.parse_version(result.stdout) : null;
 };
 
 export function run(args) {
@@ -30,7 +39,7 @@ export function run(args) {
 	let components = {}, lines = [];
 	for (let name, key in { [C.XRAY_COMPONENT]: 'xray_bin', [C.CHINADNS_COMPONENT]: 'chinadns_bin' }) {
 		let found = check.find_component(name, cursor.get(C.UCI_PACKAGE, 'main', key), parsed.opts);
-		let version = found == null ? null : component_version.read_component_version(found.path,
+		let version = found == null ? null : read_component_version(found.path,
 			name == C.XRAY_COMPONENT ? 'version' : '-V', C.COMPONENTS_TIMEOUT_SECS);
 		components[name] = { found: found != null, path: found?.path ?? null, version };
 		push(lines, `${name}: ${found == null ? 'not found' : `${version ?? '–'} (${found.path})`}`);
