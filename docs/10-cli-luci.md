@@ -223,6 +223,26 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   T8.3 只建空页面（标题 + 「此页面尚未实现」），各页面的卡再填内容；概览保留现在的版本显示，改用 `ap.call('version')`。
 - 写法跟随 LuCI 自身代码（`'use strict'`、`'require …'`、`baseclass.extend`/`view.extend`）。界面文字一律 `_()`，中文翻译写进 `po/zh_Hans/aether-proxy.po`。
 
+### 页面脚本过期检测（2026-10-20 定，T10.12；跨页面问题 X9）
+
+**问题**：LuCI 给 `L.require` 的模块地址加 `?v=<资源版本>`，uhttpd 对静态文件不发 `Cache-Control`。官方主题的资源版本含包数据库的修改时间，装包后会变；
+第三方主题自己定这个参数（H28K 的 proton2025 写死主题版本，argon-plus 只用 luci 版本），**升级本应用后浏览器会继续用旧脚本**。
+r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「检查更新」一直置灰且请求没到 rpcd，都与旧脚本吻合（后端经 ubus 直接调用正常）。仓库所有者定（2026-10-20）：不绕过 LuCI 的缓存机制，**检测并提示**。
+
+- **版本写进两个文件**：`luci-app-aether-proxy/Makefile` 定义 `Build/Prepare/luci-app-aether-proxy`（luci.mk 在 `Build/Prepare` 中调用 `Build/Prepare/$(LUCI_NAME)`，24.10 与 25.12 的 luci.mk 都有，2026-10-20 核对），
+  在构建目录中把 `@@VERSION@@` 替换为 `$(PKG_VERSION)-r$(PKG_RELEASE)`，两个文件：`htdocs/luci-static/resources/aether-proxy/common.js`（模块常量）与新文件 `htdocs/luci-static/resources/aether-proxy/build.json`（`{ "version": "@@VERSION@@" }`）。
+  源码里保留占位符（与 `aether-proxy` 包的 `const.uc` 同一做法）。
+- **比较的是同一个包里的两个文件**，不和后端 `version` 比：更新页可以分别升级 `aether-proxy` 与 `luci-app-aether-proxy`，两者版本不同是正常的；而 `common.js` 与 `build.json` 总是一起安装，不一致只可能是浏览器缓存了旧的 `common.js`。
+- **检测**（`common.js` 在模块加载时做一次，每次打开页面都会经过它，各页面不用改）：
+  - 常量仍是占位符（源码直接拷贝、宿主机测试、开发预览）→ 不检测。
+  - 否则用 `fetch(<build.json 的地址>, { cache: 'no-store' })` 取 `build.json`（静态文件，不经 rpcd，不占 `ap.call` 的并发名额；地址用 `L.resource('aether-proxy/build.json')`）。
+  - 取不到、不是 JSON、没有 `version` → 不提示、不报错（只 `console.warn`）。
+  - 两个版本不同 → `ui.addNotification(null, E('p', …), 'warning')` 一次：
+    「页面脚本已过期：已安装 <build.json 的版本>，浏览器仍在使用 <常量的版本>。请清除浏览器缓存后刷新页面（部分第三方主题升级后不会自动更新页面脚本）。」
+- 更新页升级 luci 包成功后的提示（「页面文件可能已变化，请刷新浏览器」）不变；刷新后若仍是旧脚本，本检测会给出上面的横幅。
+- 检测代码本身在 `common.js` 里，所以**从带有它的版本开始**才有效：浏览器里缓存的若是 r8 及以前的 `common.js`，它没有这段代码，不会提示（这些版本升级时仍需手动清缓存）。
+- 这只能发现 `common.js` 本身过期的情况；其他脚本单独过期而 `common.js` 是新的，概率很低（同一次升级、同一个缓存策略），不另做。
+
 ### 页面卡的写法（2026-10-16 定，T8.4 起）
 
 - 页面要显示的内容由**纯函数**计算：每个页面一个模型模块 `resources/aether-proxy/model/<页面>.js`（`baseclass.extend`，不发请求、不碰 DOM），
