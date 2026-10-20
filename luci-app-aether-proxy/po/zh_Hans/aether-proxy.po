@@ -1556,8 +1556,20 @@ msgid "Download"
 msgstr "下载"
 
 msgctxt "aether-proxy"
-msgid "Total"
-msgstr "合计"
+msgid "Total (WAN)"
+msgstr "合计（WAN 口）"
+
+msgctxt "aether-proxy"
+msgid "All traffic on WAN interface %s, including the router itself."
+msgstr "WAN 接口 %s 的全部流量，含路由器自身"
+
+msgctxt "aether-proxy"
+msgid "All traffic on the WAN interface, including the router itself."
+msgstr "WAN 接口的全部流量，含路由器自身"
+
+msgctxt "aether-proxy"
+msgid "The service is not running; proxy and direct traffic cannot be distinguished."
+msgstr "服务未运行，无法区分代理与直连"
 
 msgctxt "aether-proxy"
 msgid "Traffic and connections"

@@ -1,6 +1,6 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.5).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -940,7 +940,7 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.ok(!findAll(blocks[1], 'span').some((n) => n.attrs.style === 'font-size: 1.2em'));
 	const table = findAll(blocks[2], 'table')[0];
 	assert.deepEqual(table.children.map((row) => row.children.map((cell) => cell.children)), [
-		[ '', '上传', '下载' ], [ '代理', '–', '–' ], [ '直连', '–', '–' ], [ '合计', '–', '–' ]
+		[ '', '上传', '下载' ], [ '代理', '–', '–' ], [ '直连', '–', '–' ], [ '合计（WAN 口）', '–', '–' ]
 	]);
 	const connections = findAll(blocks[2], 'span');
 	assert.equal(visibleText(connections[0]), '代理连接 3');
@@ -1243,12 +1243,14 @@ test('T10.5 scenario 2b: failed post-render inventory replaces all four loading 
 	}
 });
 
-test('T10.5 scenario 2c: two node rows use runtime selection, UCI fallback, explicit address and no large name', () => {
+test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallback, address and no large name', () => {
 	const { page, root } = renderStatus({ ok: true, state: 'running', node_id: 'n_b',
 		node_ip: '203.0.113.10', last_probe: { ok: true, latency_ms: 12, at: NOW - 30 } });
 	const nodeBlock = sections(root)[1];
-	assert.equal(nodeBlock.children.length, 3, 'heading plus exactly two rows');
-	const first = nodeBlock.children[1], second = nodeBlock.children[2];
+	assert.equal(nodeBlock.children.length, 2, 'heading plus exactly one outer row');
+	const row = nodeBlock.children[1];
+	assert.equal(row.children.length, 2, 'left selector group and right probe group');
+	const [first, second] = row.children;
 	const select = findAll(first, 'select')[0];
 	const button = findAll(first, 'button')[0];
 	assert.equal(select.value, 'n_b', 'runtime selection overrides configured n_a');
@@ -1258,7 +1260,7 @@ test('T10.5 scenario 2c: two node rows use runtime selection, UCI fallback, expl
 	select.attrs.change();
 	assert.equal(button.disabled, false, 'guard compares against runtime, not UCI');
 	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*测延迟/);
-	assert.ok(findAll(second, 'small')[0].children.includes('前'), 'probe age stays on second row');
+	assert.ok(findAll(second, 'small')[0].children.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => s.attrs.title));
@@ -1278,9 +1280,121 @@ test('T10.5 scenario 2d: no nodes renders guidance instead of selector and apply
 	const page = loadView();
 	const root = page.render(await page.load());
 	const block = sections(root).find((s) => s.children[0].children === '当前节点');
-	assert.equal(visibleText(block.children[1]), '还没有节点，请到节点页添加或导入');
+	assert.equal(visibleText(block.children[1].children[0]), '还没有节点，请到节点页添加或导入');
 	assert.equal(findAll(block, 'select').length, 0);
 	assert.deepEqual(findAll(block, 'button').map((b) => b.children), [ '测延迟' ]);
+	await page.componentRequest;
+});
+
+test('T10.6 scenario 1a: WAN label and tooltip include the device only when available', () => {
+	const model = dashboardModel();
+	for (const [wan, title] of [
+		[ { dev: 'pppoe-wan' }, 'WAN 接口 pppoe-wan 的全部流量，含路由器自身' ],
+		[ null, 'WAN 接口的全部流量，含路由器自身' ],
+		[ {}, 'WAN 接口的全部流量，含路由器自身' ],
+		[ { dev: '' }, 'WAN 接口的全部流量，含路由器自身' ]
+	]) {
+		const traffic = model.traffic(null, { wan });
+		assert.equal(traffic.total_label, '合计（WAN 口）');
+		assert.equal(traffic.total_title, title);
+	}
+	assert.equal(model.traffic(null, null).total_title, 'WAN 接口的全部流量，含路由器自身');
+});
+
+function trafficStatuses() {
+	return [
+		...['stopped', 'error', 'future', undefined].map((state) => [ { ok: true, state }, true ]),
+		[ { ok: false, code: 'TIMEOUT', state: 'running' }, true ],
+		[ null, true ],
+		...['starting', 'running', 'degraded', 'failsafe'].map((state) => [ { ok: true, state }, false ])
+	];
+}
+
+/* WAN still advances when the service's nft table is absent. In particular,
+   this must not turn other applications' proxy traffic into our direct rate. */
+function inactiveReadings(at_ms, tx, rx) {
+	return { ...readings(at_ms, 0, 0, tx, rx), proxy: null };
+}
+
+const TRAFFIC_NOTE = '服务未运行，无法区分代理与直连';
+
+test('T10.6 scenario 1b: inactive or failed status explains unavailable rates without treating WAN as direct', () => {
+	const model = dashboardModel();
+	for (const [status, inactive] of trafficStatuses()) {
+		assert.equal(build(status).traffic_note, inactive ? TRAFFIC_NOTE : null);
+		if (!inactive)
+			continue;
+		const traffic = model.traffic(inactiveReadings(1000, 100, 200), inactiveReadings(2000, 1124, 2248));
+		assert.deepEqual(traffic.total, { tx: '1.0 KB/s', rx: '2.0 KB/s' });
+		assert.deepEqual(traffic.proxy, { tx: '–', rx: '–' });
+		assert.deepEqual(traffic.direct, { tx: '–', rx: '–' });
+	}
+});
+
+test('T10.6 scenario 2a: WAN row title and small inactive explanation precede connections, absent when active', () => {
+	for (const [status, inactive] of trafficStatuses()) {
+		const { page, root } = renderStatus(status);
+		page.previousStats = inactiveReadings(1000, 100, 200);
+		page.refresh(status, inactiveReadings(2000, 1124, 2248));
+		const block = sections(root).find((s) => s.children[0].children === '流量与连接');
+		const table = block.children[1];
+		const total = table.children[3];
+		assert.deepEqual(total.children.map((c) => c.children), [ '合计（WAN 口）', '1.0 KB/s', '2.0 KB/s' ]);
+		assert.equal(total.children[0].attrs.title, 'WAN 接口 eth1 的全部流量，含路由器自身');
+		for (const row of table.children.slice(1, 3))
+			assert.deepEqual(row.children.slice(1).map((c) => c.children), [ '–', '–' ]);
+		assert.equal(block.children.length, inactive ? 4 : 3);
+		if (inactive) {
+			assert.equal(block.children[2].tag, 'p');
+			assert.equal(visibleText(block.children[2]), TRAFFIC_NOTE);
+			assert.match(block.children[2].attrs.style, /font-size:\s*0\.9em/);
+		}
+		assert.equal(visibleText(block.children.at(-1)), '代理连接 3总连接 10');
+		assert.equal(visibleText(block).includes(TRAFFIC_NOTE), inactive);
+	}
+});
+
+test('T10.6 scenario 2b: single wrapping outer node row contains left controls and ordered right probe group', () => {
+	const { root } = renderStatus({ ok: true, state: 'running', node_id: 'n_a', node_ip: '203.0.113.10',
+		last_probe: { ok: true, latency_ms: 12, at: NOW - 30 } });
+	const block = sections(root).find((s) => s.children[0].children === '当前节点');
+	assert.equal(block.children.length, 2, 'only heading and outer flex row');
+	const row = block.children[1];
+	for (const rule of [ /display:\s*flex/, /align-items:\s*center/, /justify-content:\s*space-between/,
+		/flex-wrap:\s*wrap/, /gap:\s*0\.5em\s+1em/ ])
+		assert.match(row.attrs.style, rule);
+	assert.equal(row.children.length, 2);
+	const [left, right] = row.children;
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'button' ]);
+	assert.equal(left.children[1].children, '使用此节点');
+	assert.equal(right.children.length, 4);
+	assert.equal(right.children[0].children, '节点地址 203.0.113.10');
+	assert.equal(right.children[1].children, '正常，12 ms');
+	assert.equal(right.children[1].attrs.style, 'color:var(--success-color-high, #2f855a)');
+	assert.equal(right.children[2].tag, 'small');
+	assert.match(right.children[2].children, /前$/);
+	assert.deepEqual(right.children[3].children.map((c) => c.tag), [ 'button', 'span' ]);
+	assert.equal(right.children[3].children[0].children, '测延迟');
+	assert.equal(right.children[3].children[1].attrs['aria-live'], 'polite');
+});
+
+test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address is omitted on the right', async () => {
+	const page = loadView();
+	const root = page.render(await page.load());
+	page.refresh({ ok: true, state: 'stopped', node_ip: 'stale', last_probe: { ok: false, at: NOW - 30 } });
+	const block = sections(root).find((s) => s.children[0].children === '当前节点');
+	assert.equal(block.children.length, 2);
+	const row = block.children[1];
+	assert.equal(row.children.length, 2);
+	assert.equal(visibleText(row.children[0]), '还没有节点，请到节点页添加或导入');
+	assert.equal(findAll(row.children[0], 'select').length, 0);
+	assert.equal(findAll(row.children[0], 'button').length, 0);
+	const right = row.children[1];
+	assert.equal(right.children.length, 3, 'result, relative time and probe controls without address');
+	assert.equal(right.children[0].children, '检测失败');
+	assert.equal(right.children[1].tag, 'small');
+	assert.equal(findAll(right, 'button')[0].children, '测延迟');
+	assert.doesNotMatch(visibleText(right), /节点地址|stale/);
 	await page.componentRequest;
 });
 
