@@ -160,6 +160,32 @@ for kind in nft chinadns dnsmasq xray; do
 		bad "render $kind exits 0 (got $rc)"
 	fi
 done
+# M10 regression (T10.7, T10.4): data status counts lines with one busybox `grep -H -c` call,
+# and components is a new subcommand; both must work on every firmware's busybox/ucode.
+# The line count is checked against an awk count of the same rule (05 list-file parsing).
+if "$ap" data status --json ${root:+--sys-root "$root"} > "$work/data.json"; then
+	want=$(awk '{ sub(/^[ \t\r]+/, "") } $0 != "" && substr($0, 1, 1) != "#"' \
+		"$root/usr/share/aether-proxy/data/chnlist.txt" | wc -l)
+	got=$(ucode -l fs -e "let v = json(fs.readfile('$work/data.json')); print(v?.ok === true && length(v.items) == 5 ? v.items.chnlist.lines : 'bad');")
+	if [ "$got" = "$want" ] && [ "$want" -gt 0 ]; then
+		ok "data status counts chnlist lines ($got)"
+	else
+		cat "$work/data.json"
+		bad "data status counts chnlist lines (got $got, want $want)"
+	fi
+else
+	rc=$?
+	cat "$work/data.json"
+	bad "data status exits 0 (got $rc)"
+fi
+if "$ap" components --json > "$work/components.json"; then
+	got=$(ucode -l fs -e "let v = json(fs.readfile('$work/components.json')); print(v?.ok === true && type(v.components?.xray) == 'object' && type(v.components?.['chinadns-ng']) == 'object' ? 'ok' : 'bad');")
+	if [ "$got" = ok ]; then ok 'components reports xray and chinadns-ng'; else cat "$work/components.json"; bad 'components reports xray and chinadns-ng'; fi
+else
+	rc=$?
+	cat "$work/components.json"
+	bad "components exits 0 (got $rc)"
+fi
 if run ucode -S "$root/usr/share/rpcd/ucode/aetherproxy.uc"; then
 	ok 'rpcd plugin loads without rpcd'
 else

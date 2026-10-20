@@ -106,6 +106,7 @@ if os.environ['STUB_FAULT'] != 'uninstall':
 '''
 
 CLI_STUB = '''#!/usr/bin/env python3
+import json
 import os
 from pathlib import Path
 import sys
@@ -121,6 +122,22 @@ if a[0] == 'check':
     assert '--no-precheck' in a, a
     sample = '--confdir' in a
     sys.exit(2 if fault == ('sample' if sample else 'default') else 0)
+if a[:3] == ['data', 'status', '--json']:
+    assert a[3:] == ['--sys-root', str(root)], a
+    lines = 0
+    for line in (root / 'usr/share/aether-proxy/data/chnlist.txt').read_text().splitlines():
+        line = line.lstrip(' \\t\\r')
+        lines += 1 if line and not line.startswith('#') else 0
+    items = {name: {'lines': 0} for name in ('gfwlist', 'apple', 'chnroute4', 'gfw_static4')}
+    items['chnlist'] = {'lines': lines + (1 if fault == 'data' else 0)}
+    print(json.dumps({'ok': True, 'items': items}))
+    sys.exit(0)
+if a == ['components', '--json']:
+    if fault == 'components':
+        print(json.dumps({'ok': False, 'code': 'CMD_FAILED'}))
+        sys.exit(1)
+    print(json.dumps({'ok': True, 'components': {'xray': {'found': False}, 'chinadns-ng': {'found': False}}}))
+    sys.exit(0)
 assert a[0] == 'render' and a[1] in ('nft', 'chinadns', 'dnsmasq', 'xray'), a
 assert a[2:] == ['--confdir', os.environ['STUB_REPO'] + '/tests/fixtures/sample'], a
 file = {'nft': 'aether-proxy.nft', 'chinadns': 'chinadns.conf',
@@ -198,6 +215,8 @@ def verify_scenarios(work, golden):
 		'version-content': 'FAIL  version contains package version',
 		'install': 'solver: missing dependency example-dependency',
 		'artifact': 'FAIL  exactly one aether-proxy artifact (found 0)',
+		'data': 'FAIL  data status counts chnlist lines',
+		'components': 'FAIL  components exits 0 (got 1)',
 	}
 	for manager in ('opkg', 'apk'):
 		result, root = run_scenario(work, golden, manager, '')
