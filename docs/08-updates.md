@@ -175,6 +175,13 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 版本比较：先按 `-r` 前的上游版本逐段比较数字，相同再比 `r` 后的数字（`26.10.10-r1` > `26.9.30-r5`）。release 后缀写成 `-rN` 或 `-N` 都认（不同固件与 SDK 两种都有：2026-10-19 H28K 上 ssr-plus 的 xray-core 为 `26.9.30-5`，之前被当成上游版本的一部分、release 记为 0，于是通道的 `26.9.30-r1` 被误判为更新，backlog B10）。
 - 包对本机架构不可用 → `available` 照常填、`newer: false`，记 `ARCH_UNSUPPORTED`。
 - 有包 `newer: true` 时记 `UPDATE_AVAILABLE`（每个包、每个新版本只记一次）。
+- **缓存过期**（2026-10-20 定，backlog B14 第 1 条）：`updates.json` 的 `installed` 是检查那一刻的。之后若有人用包管理器直接装、删包（opkg/apk 命令、LuCI 软件包页面），它就不再可信——
+  r8 窗口中缓存写于装着 r5 时，装回 r8 后更新页仍显示「已安装 r5」并给出「立即更新」到 r6 的按钮，点了会降级。
+  判断：包管理器数据库（`pm` 为 `opkg` 时 `/usr/lib/opkg/status`，`apk` 时 `/lib/apk/db/installed`）的修改时间**晚于** `checked` → 过期。
+  只做一次 `stat`，不运行包管理器（`status` 每次刷新都要读它）。数据库文件不存在或读不到修改时间 → 不算过期（无从判断时不隐藏）。任何包的变动都会让它过期（宁可多检查一次）。
+  过期的效果：`status` 的 `updates_available` 为 `null`、不产生 `UPDATE_AVAILABLE` 提示（LuCI 因此显示「尚未检查」、不给安装与回滚按钮）；`xray_auto=auto` 不据此自动安装。
+  不删除文件，下一次 `update check`（每天的调度或用户点「检查更新」）照常覆盖。`update package` 装完会重新检查并写 `updates.json`（T7.4），它写入的 `checked` 晚于这次安装，不会被判为过期。
+  `data status` 只用其中的 `data` 部分，与软件包无关，不受影响。判断写成一个函数，`status` 与 daemon 的自动安装共用。
 
 ### 软件包安装（`aether-proxy update package <包> [--previous]`，T7.4）
 
