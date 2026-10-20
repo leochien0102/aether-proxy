@@ -8,6 +8,7 @@
 
 /* Rules/DNS form and independent custom-file editors (docs/10 "规则与 DNS 页").
  * Lists deliberately bypass UCI: each save is validated by the CLI independently.
+ * Per docs/10 "先出页面", defer RPC until the form and disabled editors are rendered.
  */
 const LISTS = [
 	[ 'direct_domain', _('Direct domains', 'aether-proxy') ], [ 'proxy_domain', _('Proxy domains', 'aether-proxy') ],
@@ -15,16 +16,15 @@ const LISTS = [
 ];
 return view.extend({
 	load: function() {
-		return Promise.all([ uci.load('aetherproxy'), ap.call('data_status'),
-			Promise.all(LISTS.map(item => ap.call('list_file', { name: item[0] }))) ]);
+		return uci.load('aetherproxy');
 	},
-	list_editor: function(item, result) {
-		const input = E('textarea', { rows: 8, style: 'width:100%' });
-		input.value = result.content ?? '';
+	list_editor: function(item) {
+		const pending = model.list_state();
+		const input = E('textarea', { rows: 8, style: 'width:100%',
+			disabled: pending.disabled, placeholder: pending.placeholder });
 		const message = E('div');
-		if (!result.ok)
-			this.show_save(message, result);
 		const button = E('button', { class: 'cbi-button cbi-button-save', type: 'button',
+			disabled: pending.disabled,
 			click: ui.createHandlerFn(this, function() {
 				button.disabled = true;
 				return ap.call('save_file', { name: item[0], content: input.value }).then(r => {
@@ -32,11 +32,23 @@ return view.extend({
 					button.disabled = false;
 				});
 			}) }, _('Save list', 'aether-proxy'));
-		return E('div', { class: 'cbi-section' }, [ E('h3', {}, item[1]), input, button, message ]);
+		return {
+			node: E('div', { class: 'cbi-section' }, [ E('h3', {}, item[1]), input, button, message ]),
+			load: () => ap.call('list_file', { name: item[0] }).then(result => {
+				const vm = model.list_state(result);
+				input.value = vm.content;
+				input.placeholder = vm.placeholder;
+				input.disabled = button.disabled = vm.disabled;
+				if (vm.error)
+					this.show_message(message, vm.error);
+			})
+		};
+	},
+	show_message: function(target, vm) {
+		target.replaceChildren(E('p', {}, vm.text), ...vm.errors.map(text => E('p', {}, text)));
 	},
 	show_save: function(target, result) {
-		const vm = model.save_result(result);
-		target.replaceChildren(E('p', {}, vm.text), ...vm.errors.map(text => E('p', {}, text)));
+		this.show_message(target, model.save_result(result));
 	},
 	show_data: function(target, result) {
 		const vm = model.table(result, Date.now() / 1000);
@@ -48,7 +60,7 @@ return view.extend({
 				...vm.rows.map(row => E('tr', { class: 'tr' }, row.map(text => E('td', { class: 'td' }, text))))
 			]), E('p', {}, vm.error ?? ''));
 	},
-	render: function(data) {
+	render: function() {
 		const map = new form.Map('aetherproxy', _('Rules and DNS', 'aether-proxy'));
 		let section = map.section(form.NamedSection, 'main', 'global');
 		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
@@ -64,8 +76,7 @@ return view.extend({
 			o.rmempty = false;
 			o.validate = function(section_id, value) { return model.validate(field[0], value); };
 		});
-		const inventory = E('div'), summary = E('div');
-		this.show_data(inventory, data[1]);
+		const inventory = E('div', {}, model.loading_text), summary = E('div');
 		const update = E('button', { type: 'button', class: 'cbi-button cbi-button-action',
 			click: ui.createHandlerFn(this, function() {
 				update.disabled = true;
@@ -77,8 +88,17 @@ return view.extend({
 					update.disabled = false;
 				});
 			}) }, _('Update now', 'aether-proxy'));
-		return map.render().then(node => E('div', {}, [ node,
-			...LISTS.map((item, i) => this.list_editor(item, data[2][i])),
-			E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary ]));
+		return map.render().then(node => {
+			const editors = LISTS.map(item => this.list_editor(item));
+			const root = E('div', {}, [ node, ...editors.map(editor => editor.node),
+				E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary ]);
+			/* A new turn lets LuCI display the page before RPC starts. Enqueue in
+			 * page order; ap.call owns the shared two-request concurrency limit. */
+			window.setTimeout(() => {
+				editors.forEach(editor => editor.load());
+				ap.call('data_status').then(r => this.show_data(inventory, r));
+			}, 0);
+			return root;
+		});
 	}
 });

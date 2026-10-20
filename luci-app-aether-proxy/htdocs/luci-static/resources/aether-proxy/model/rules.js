@@ -82,6 +82,16 @@ function save_result(r) {
 		errors: (r?.errors ?? []).map(e => fmt(_('Line %s: %s', 'aether-proxy'), e.line, e.text))
 	};
 }
+const loading_text = _('Reading…', 'aether-proxy');
+/* Undefined means pending; a failed read must not expose a writable empty list. */
+function list_state(r) {
+	return {
+		disabled: !r?.ok,
+		content: r?.ok ? (r.content ?? '') : '',
+		placeholder: r === undefined ? loading_text : '',
+		error: r === undefined || r?.ok ? null : save_result(r)
+	};
+}
 function table(r, now) {
 	return {
 		error: r?.ok ? null : failure(r), checked: relative(now, r?.checked),
@@ -104,7 +114,7 @@ function job_result(job) {
 		lines.push(failure(job));
 	return lines;
 }
-return baseclass.extend({ validate, save_result, table, job_result, relative,
+return baseclass.extend({ validate, save_result, table, job_result, relative, loading_text, list_state,
 	modes: function() {
 		return [ [ 'bypass_cn', _('Bypass China — proxy destinations outside China.', 'aether-proxy') ],
 			[ 'gfw', _('Blocked sites — proxy only blocked domains.', 'aether-proxy') ],
