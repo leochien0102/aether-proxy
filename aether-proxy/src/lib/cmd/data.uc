@@ -4,6 +4,7 @@
 // Status failures are returned, never logged: opening this page must not add events.
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
+import * as sys from 'aetherproxy.sys';
 import * as update from 'aetherproxy.update';
 import * as pipeline from 'aetherproxy.pipeline';
 
@@ -20,9 +21,34 @@ function read_updates(path) {
 	}
 }
 
+function count_lines(paths) {
+	// One native scan avoids splitting the large chnlist into ucode strings (docs/10, T10.7).
+	// grep exits 1 when every count is zero; quiet keeps this read-only command event-free.
+	let result = sys.run([ 'grep', '-H', '-c', '-v', '-E', '^[ \t\r]*(#|$)', ...values(paths) ],
+		{ timeout: 5, quiet: true });
+	let failure = { ok: false, code: 'CMD_FAILED', detail: `grep exit ${result.code}` };
+	if (result.code != 0 && result.code != 1)
+		return failure;
+
+	let counts = {};
+	for (let line in split(rtrim(result.stdout, '\n'), '\n')) {
+		// Match the final colon: a test root (or a filename) may itself contain colons.
+		let row = match(line, /^(.*):([0-9]+)$/);
+		if (row == null || index(values(paths), row[1]) < 0)
+			return failure;
+		if (counts[row[1]] != null)
+			return failure;
+		counts[row[1]] = +row[2];
+	}
+	for (let name, path in paths)
+		if (counts[path] == null)
+			return failure;
+	return { ok: true, counts };
+}
+
 function inventory(root, run_dir) {
 	let records = read_updates(`${run_dir}/${C.UPDATE_FILE}`);
-	let items = {};
+	let items = {}, paths = {};
 	for (let name in C.DATA_STATUS_NAMES) {
 		let filename = C.DATA_DOMAIN_FILES[name] ?? C.DATA_IP_FILES[name];
 		let path = `${root}${C.DATA_DIR}/${filename}`;
@@ -32,25 +58,24 @@ function inventory(root, run_dir) {
 			path = `${root}${C.BASELINE_DATA_DIR}/${filename}`;
 			stat = fs.stat(path);
 		}
-		let text = fs.readfile(path);
 		let hash = update.local_data_hash(root, name, filename, true);
-		// TODO(design): missing/unreadable data has no specified status representation.
+		// TODO(design): missing data or unavailable hashes have no specified status representation.
 		// Return an explicit failure rather than fabricate an empty, healthy inventory.
-		if (text == null || stat == null || !hash.ok)
+		if (stat == null || !hash.ok)
 			return { ok: false, code: 'FS_FAILED', detail: `cannot inspect data ${name}` };
-		let lines = 0;
-		for (let line in split(text, '\n')) {
-			line = trim(line);
-			if (length(line) && substr(line, 0, 1) != '#')
-				lines++;
-		}
+		paths[name] = path;
 		let changed = records.data?.[name]?.changed;
 		items[name] = {
-			source: downloaded ? 'downloaded' : 'baseline', version: substr(hash.hash, 0, 12), lines,
+			source: downloaded ? 'downloaded' : 'baseline', version: substr(hash.hash, 0, 12), lines: null,
 			updated_at: downloaded ? stat.mtime : null,
 			changed: type(changed) == 'bool' ? changed : null
 		};
 	}
+	let counted = count_lines(paths);
+	if (!counted.ok)
+		return counted;
+	for (let name, path in paths)
+		items[name].lines = counted.counts[path];
 	return { ok: true, checked: records.checked ?? null, items };
 }
 
