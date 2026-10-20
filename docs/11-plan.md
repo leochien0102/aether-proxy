@@ -35,7 +35,7 @@ M2 实际做的范围比上表大：M3 的全部功能和 M4 的大部分功能�
 | M6 | 完成：T6.1 节点检测、T6.2 作业机制、T6.3 订阅定时更新 | — |
 | M7 | 完成：发布通道 channel-stable（2026-10-16 首发，数据每天更新）；验收 D 于 2026-10-20 用官方通道在真机上做（T7.7，[backlog](backlog.md) B12），篡改清单、Xray 更新、数据实际变化三项以宿主机测试为准，不另建测试通道 | — |
 | M8 | 完成：全部页面、rpcd 插件与 Dashboard；逐页手测在 2026-10-19 的两次真机窗口完成（问题见 backlog B10，已全部修复）；真机发现的问题修到 T8.23 | 前端加载体验（backlog B11）移入 M10 |
-| M9 | 未开始 | 事件翻译、用户文档、完整测试矩阵 |
+| M9 | 事件翻译已在 M8 完成（T8.10）并加全局闸门（T9.1）；CI 安装冒烟矩阵六格全绿（T9.3）；矩阵结果见下方「测试矩阵」（T9.4）；用户文档初稿已推送（T9.2） | 用户文档由仓库所有者审定 |
 | M10 | 进行中（2026-10-20 起）：T10.1 翻译上下文待发；概览页设计中 | 其余页面等仓库所有者的意见 |
 
 发布：0.2.0-r6 是当前版本（2026-10-20，channel-stable，上一版 0.2.0-r5）；许可证 GPL-3.0-or-later（D4，2026-10-19）。
@@ -129,6 +129,23 @@ CI 中额外执行：用真实 Xray 二进制对每个 `expected/xray.json` 执�
 | 架构 | x86_64、aarch64（如 rk3528）；mipsel 只做安装和渲染冒烟（如果有设备） |
 | 流量卸载 | 关闭、软件卸载、硬件卸载（仅支持的设备） |
 | 共存 | 同时装有 ssr-plus 但未启用；mwan3 已启用 |
+
+**结果（2026-10-20，T9.4）**：分两层。真机只有一台（H28K）；其余组合在 CI 中用官方 rootfs 容器做安装冒烟（T9.3，`.github/workflows/build.yml` 的 `smoke` 作业，每次改包或冒烟脚本都跑）。
+
+| 组合 | 方式 | 覆盖 | 结果 |
+|---|---|---|---|
+| 自建 lede：OpenWrt 24.10.5、rockchip/armv8（`aarch64_generic`）、opkg、内核 6.18 | 真机（H28K） | 数据面全部：验收 A–C（M2–M4）、逐页手测（T8.13）、更新与回滚（T7.7，服务运行与不启用两种） | 通过 |
+| OpenWrt 24.10.8 x86_64 / aarch64（qemu） | CI 容器 | 软件源解析全部依赖并安装三个包、版本、包内文件、默认配置与 sample 的 `check --no-precheck`、四个渲染产物与宿主机 golden 逐字节一致、rpcd 插件加载、卸载无残留文件 | 通过（各 33 项） |
+| OpenWrt 25.12.5 x86_64 / aarch64（qemu），apk | CI 容器 | 同上 | 通过 |
+| ImmortalWrt 24.10.6 x86_64 / aarch64（qemu） | CI 容器 | 同上 | 通过 |
+| 流量卸载：软件卸载开启 | 真机（H28K 一直开着 `flow_offloading`） | 上面的全部真机测试都在开启状态下通过 | 通过 |
+| 流量卸载：关闭 | — | 没有专门测；它是最简单的情况（02「已知限制」：卸载只影响直连转发） | 未测 |
+| 流量卸载：硬件卸载 | — | 没有支持硬件卸载的设备（H28K 设了 `flow_offloading_hw`，rockchip 实际没有硬件卸载） | 无环境 |
+| 共存：装有 ssr-plus 但未启用 | 真机 | H28K 上与 ssr-plus 交替启用（T8.13、T7.7 的窗口：停 ssr-plus → 启用 aether-proxy → 恢复 ssr-plus）；启用冲突时拒绝启动由宿主机测试覆盖 | 通过 |
+| 共存：mwan3 已启用 | — | 没有装 mwan3 的设备；设计上 `FWMARK` 与 `ip rule` 优先级已避开 mwan3 默认值（01「常量」） | 无环境 |
+| mipsel 等其他架构 | — | 没有设备；发布通道的 `xray-core`、`chinadns-ng` 只编 `aarch64_generic` 与 `x86_64`（aether-proxy 本身与架构无关） | 无环境 |
+
+容器覆盖不到的：procd/ubus/内核模块（服务启停、nft 与 TPROXY 的实际效果）与安装脚本（容器中按设计屏蔽，postinst/postrm 只在真机上跑过）。这些都只有 H28K 一台真机的证据。
 
 ssr-plus 与 aether-proxy **不得同时启用**（两者都会接管 dnsmasq 和 TPROXY）。aether-proxy 启动前检测到 ssr-plus、passwall、openclash
 处于运行状态时直接拒绝启动（`PRECHECK_FAILED missing=conflict:<名称>`）。
