@@ -245,7 +245,9 @@ return view.extend({
 
 	nodeControls: function(vm) {
 		const current = vm.current_node;
-		const nodes = E('select', {}, vm.node_options.map((option) => E('option', {
+		/* Themes size select at 100% (proton2025); inside a flex row that pushes the
+		   button to the next line (docs/10 「样式」). */
+		const nodes = E('select', { style: 'width:auto' }, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
 		const button = this.button(_('Use this node', 'aether-proxy'), () => this.handleNode(nodes.value));

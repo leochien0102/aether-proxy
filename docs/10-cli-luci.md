@@ -560,6 +560,7 @@ UI 规则：
   和**相对**字号（`em`），不写 `px` 字号；颜色只用主题的 CSS 变量，并带上回退值：`var(--success-color-high, #2f855a)`、`var(--warning-color, #b7791f)`、`var(--error-color-high, #c53030)`
   （bootstrap 与 proton2025 都定义了前两个 success/error 变量，warning 只有 proton2025 有，2026-10-20 核对）。**不要用 `label success` 之类的修饰类着色**：proton2025 只有 `.label`，没有这些修饰类。
   控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。flex 容器一律写 `align-items`（一般为 `center`）：默认的 `stretch` 会把按钮拉高（2026-10-20 真机发现，T10.4）。
+  放在 flex 行里的 `select` 写 `width:auto`：主题会把它设成 `width: 100%`（proton2025），在 flex 行里会占满整行、把同一行的按钮挤到下一行（2026-10-20 真机发现，T10.6 之后补）。
 - 翻译包 `luci-i18n-aether-proxy-zh-cn` 与功能包分开生成。修改 po 后两个包要一起安装。
 - **翻译一律带上下文 `aether-proxy`**（2026-10-20 定，T10.1）：界面文字写成 `_('Refresh', 'aether-proxy')`，po 中对应条目带 `msgctxt "aether-proxy"`。
   原因：LuCI 把设备上**所有**已安装应用的翻译目录（`/usr/lib/lua/luci/i18n/*.zh-cn.lmo`）并成一张表，按「上下文 + 原文」的哈希查找，

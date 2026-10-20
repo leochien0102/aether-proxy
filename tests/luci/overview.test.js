@@ -1367,6 +1367,8 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	const [left, right] = row.children;
 	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'button' ]);
 	assert.equal(left.children[1].children, '使用此节点');
+	/* themes give select width:100%, which wraps the button onto the next line */
+	assert.match(left.children[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
 	assert.equal(right.children[0].children, '节点地址 203.0.113.10');
 	assert.equal(right.children[1].children, '正常，12 ms');
