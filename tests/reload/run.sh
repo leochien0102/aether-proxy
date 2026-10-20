@@ -279,6 +279,25 @@ wait_field components.xray.version 26.11.1 \
 expect 'T9.5 path-only reload records discovered path' "$T/bin/xray" \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.xray.path < "$SYSROOT/var/run/aether-proxy/state.json")"
 
+# Live gfw4 elements make the rough plan differ only in nft; the export re-render then matches,
+# so the final plan is empty. A path change must still refresh metadata on that branch too.
+printf '["198.51.100.1"]\n' > "$SYSROOT/gfw4-elem"
+nft_before=$(count_calls "$LOG" 'nft -f ')
+sed -i "s/option mode 'bypass_cn'/option mode 'gfw'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_count "$LOG" 'nft -f ' "$((nft_before + 1))" \
+	&& ok 'T9.5 mode reload embeds live gfw4 elements' || bad 'T9.5 mode reload embeds live gfw4 elements'
+grep -Fq 'elements = { 198.51.100.1 }' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" \
+	&& ok 'T9.5 running nft carries the live element' || bad 'T9.5 running nft carries the live element'
+nft_before=$(count_calls "$LOG" 'nft -f ')
+rm "$T/bin/xray"
+sed -i "/config main 'main'/a\\\toption xray_bin '$T/bin/xray-alt'" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+wait_field components.xray.version 26.10.10 \
+	&& ok 'T9.5 path change refreshes version when only live set elements differ' \
+	|| bad 'T9.5 path change refreshes version when only live set elements differ'
+expect 'T9.5 live-element reload does not replace nft' "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
+
 # Disable: the pure plan returns stop alone and daemon follows the normal stop path.
 sed -i "s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"
