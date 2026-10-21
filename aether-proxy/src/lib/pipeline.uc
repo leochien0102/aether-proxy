@@ -1,8 +1,8 @@
 'use strict';
 
-// Steps shared by `check` and `render` (docs/04 "启动" steps 2 and 5): option parsing, reading
-// the configuration and rule data, building the render context and running the four renderers.
-// The daemon will reuse build() with its own runtime.
+// Shared configuration/data reading and deterministic rendering (docs/04 "启动" and "重载").
+// Reload reuses one read result with different runtimes; check/render and daemon startup
+// retain the combined build() API.
 
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
@@ -62,13 +62,9 @@ function static_runtime() {
 	return { node_ip: null, dns_tier: 'T2', restored: {} };
 }
 
-// Reads configuration and data, renders all four artifacts.
-//
-// Returns { ok: true, snapshot, ctx, artifacts: { nft, chinadns, dnsmasq, xray }, warnings }
-// or      { ok: false, code, detail, errors, exit }
-// where `exit` is the process exit code for the failure (docs/10: 1 runtime, 2 config).
-// Only reads; it never writes to the system.
-export function build(opts) {
+// Read once before node resolution, including warning events and all six list paths.
+// Failures retain build()'s { ok: false, code, detail, errors, exit } contract.
+export function read(opts) {
 	let cursor = uci.cursor(opts.confdir);
 	let cfg = config.load(cursor);
 
@@ -108,21 +104,35 @@ export function build(opts) {
 		direct_domain: custom_dir + '/' + C.CUSTOM_DOMAIN_FILES.direct_domain,
 		boot_list: run_dir(opts) + '/' + C.BOOT_LIST_FILE
 	};
-	let runtime = opts.runtime ?? static_runtime();
+	return { ok: true, snapshot: cfg.snapshot, data: d.data, paths, warnings };
+};
+
+// No file reads or warning events here. A fresh context leaves the read result reusable
+// after node resolution and sets export; selecting nft must not invoke other renderers.
+// The successful result has build()'s shape; artifacts contains only the selected output
+// when `only` is supplied (keys follow ARTIFACT_FILES: nft/chinadns/dnsmasq/xray).
+export function render(loaded, runtime, only) {
+	if (!loaded.ok)
+		return loaded;
+	if (only != null && RENDERERS[only] == null)
+		return { ok: false, exit: 1, code: 'RENDER_INVALID', detail: `unknown renderer ${only}`, errors: [] };
+	runtime ??= static_runtime();
 	let ctx = {
-		data: d.data,
+		data: loaded.data,
 		runtime: {
 			node_ip: runtime.node_ip ?? null,
 			dns_tier: runtime.dns_tier ?? 'T2',
 			restored: runtime.restored ?? {}
 		},
-		paths
+		paths: loaded.paths
 	};
 	let artifacts = {};
 
 	for (let name, mod in RENDERERS) {
+		if (only != null && name != only)
+			continue;
 		try {
-			artifacts[name] = mod.render(cfg.snapshot, ctx);
+			artifacts[name] = mod.render(loaded.snapshot, ctx);
 		}
 		catch (e) {
 			// A renderer exception is a bug, but the CLI must still answer in its documented format.
@@ -133,7 +143,12 @@ export function build(opts) {
 		}
 	}
 
-	return { ok: true, snapshot: cfg.snapshot, ctx, artifacts, warnings };
+	return { ok: true, snapshot: loaded.snapshot, ctx, artifacts, warnings: loaded.warnings };
+};
+
+// Compatibility entry point: same signature, defaults, errors and four artifacts.
+export function build(opts) {
+	return render(read(opts), opts.runtime);
 };
 
 // Prints the result: one JSON object on stdout with --json (human text goes to stderr),
