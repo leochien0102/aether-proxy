@@ -825,8 +825,9 @@ function scenario_node_probe() {
 		let r = methods[c.method].call({ args: c.args });
 		check(`T9.10 ${c.method}: valid args forwarded and CLI object preserved`,
 			deep_eq(argv_of(), c.argv) && deep_eq(r, { ok: true, preserved: [ 1, 2 ] }), show(r));
+		let expected_args = { node_use: { id: '' }, probe_url: { site: '' }, probe_sites: {} };
 		check(`T9.10 ${c.method}: declared args policy matches examples`,
-			deep_eq(sort(keys(methods[c.method].args)), sort(keys(c.args))), show(methods[c.method].args));
+			deep_eq(methods[c.method].args, expected_args[c.method]), show(methods[c.method].args));
 	}
 	let rejects = [
 		{ method: 'node_use', args: {} },
