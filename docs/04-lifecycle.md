@@ -120,6 +120,9 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 `elapsed_ms`（从收到 SIGHUP 起）、`steps`（步骤名 → 毫秒，形同 `SERVICE_STARTED`）。没有任何变化的重载不记（规则数据更新、保存未改动的页面都会触发重载）。
 原来重载成功不记任何事件，日志里看不出切换发生过、用了多久。
 `steps` 的步骤名（T9.8）：`config_render`（读一次配置与数据、渲染一次全部产物并写 staging；T9.9 起不再有解析后的重新渲染）、`resolve_node`、`validate`（两轮校验之和）、`sets_export_render`（导出集合并重新渲染 nft）、`actions`（发布与执行动作）。
+**细分**（2026-10-21 加，r10 窗口：重载约 11 秒中 `config_render` 4.6 秒、`validate` 1.9 秒、`actions` 1.8 秒，要先知道各自花在哪才能决定是否继续提速）：原有五个键保持不变（旧的读取方照常工作），另加 `detail` 对象：
+`read`（读配置与规则数据）、`render`（渲染全部产物）、`stage`（写 staging 与算哈希）、`precheck`、`nft_check`（两轮之和）、`xray_test`、`sets_export`（导出集合）、`nft_render`（带集合重新渲染 nft）、
+以及 `actions` 中每个动作各一个键（`nft_replace`、`restart_xray`、`restart_chinadns`……，键名即动作名）。没有发生的步骤不出现。单位毫秒，同其他步骤。
 `elapsed_ms` 还包括等待 monitor 本轮结束等开销，不等于各步之和。nft 要替换时（含只改模式）`nft -c` 做两次：第一轮与导出集合之后各一次。
 
 `chinadns.conf` 按路径引用域名名单（`gfwlist-file`、`chnlist-file`、`group-dnl`），名单内容变了配置文本却不变。所以它的哈希是「配置文件哈希 + 每个被引用文件的哈希」拼成的串；
