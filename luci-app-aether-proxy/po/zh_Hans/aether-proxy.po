@@ -628,8 +628,12 @@ msgid "Not found"
 msgstr "未找到"
 
 msgctxt "aether-proxy"
-msgid "Reading the status failed: %s."
-msgstr "读取状态失败：%s。"
+msgid "Reading the status failed (%s); will retry automatically later"
+msgstr "读取状态失败（%s），稍后自动重试"
+
+msgctxt "aether-proxy"
+msgid "Details"
+msgstr "详情"
 
 msgctxt "aether-proxy"
 msgid "The component %s is missing; install it before starting the service."
@@ -1662,6 +1666,10 @@ msgstr "读取失败"
 msgctxt "aether-proxy"
 msgid "Retry"
 msgstr "重试"
+
+msgctxt "aether-proxy"
+msgid "Reading component information failed (%s)"
+msgstr "读取组件信息失败（%s）"
 
 msgctxt "aether-proxy"
 msgid "Measuring latency…"

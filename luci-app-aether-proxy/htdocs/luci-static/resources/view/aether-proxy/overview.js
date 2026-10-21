@@ -18,6 +18,7 @@
  * status, stats, version and installed components fill their own regions after
  * rendering, without delaying the first screen (docs/10 T10.17).
  * Failed inventory calls can be explicitly retried without reloading the page (T10.13).
+ * Error summaries stay brief; raw diagnostics use tooltips or collapsed details (docs/10 T10.20).
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
  * registers a reload trigger for the aetherproxy config, so saving the UCI
@@ -355,11 +356,18 @@ return view.extend({
 	updateComponents: function() {
 		this.vm.components = model.component_rows(this.version, this.components);
 		const children = [ this.componentTable(this.vm.components) ];
-		if (model.components_failed(this.components))
-			children.push(E('button', {
-				'class': 'cbi-button cbi-button-action',
-				click: ui.createHandlerFn(this, this.loadComponents)
-			}, _('Retry', 'aether-proxy')));
+		const error = model.component_error(this.components);
+		if (error)
+			children.push(E('div', {
+				title: error.detail,
+				style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap'
+			}, [
+				E('span', {}, error.text),
+				E('button', {
+					'class': 'cbi-button cbi-button-action',
+					click: ui.createHandlerFn(this, this.loadComponents)
+				}, _('Retry', 'aether-proxy'))
+			]));
 		dom.content(this.componentContent, children);
 	},
 
@@ -492,7 +500,13 @@ return view.extend({
 		const vm = this.vm;
 		const parts = [];
 		if (vm.error)
-			parts.push(E('div', { 'class': 'alert-message error' }, vm.error));
+			parts.push(E('div', { 'class': 'alert-message error' }, [
+				vm.error,
+				...(vm.error_detail ? [ E('details', {}, [
+					E('summary', {}, _('Details', 'aether-proxy')),
+					E('pre', {}, vm.error_detail)
+				]) ] : [])
+			]));
 		if (vm.disabled_notice)
 			parts.push(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
 		if (vm.notices.length)
