@@ -720,10 +720,6 @@ msgid "Really delete the %s selected nodes? Save & Apply is required for deletio
 msgstr "确定删除选中的 %s 个节点？删除后需要「保存并应用」才生效。"
 
 msgctxt "aether-proxy"
-msgid "Reading node switch status failed: %s"
-msgstr "读取节点切换状态失败：%s"
-
-msgctxt "aether-proxy"
 msgid "Name"
 msgstr "名称"
 

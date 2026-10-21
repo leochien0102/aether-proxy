@@ -546,19 +546,17 @@ return view.extend({
 		const status = await ap.call('status');
 		if (epoch !== (this.switchEpoch ?? 0))
 			return;
-		if (!status || status.ok === false) {
-			/* TODO(design): status read failures have no specified lock policy.
-			   Retain an existing lock until its deadline; never infer completion. */
-			ui.addNotification(null, E('p', _('Reading node switch status failed: %s', 'aether-proxy')
-				.format(status?.code ?? 'RPC_FAILED')), 'warning');
-		}
-		else if (!this.switchPending) {
-			this.watchSwitch(status);
-			return;
-		}
-		else if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
-			this.stopSwitchWatch();
-			return;
+		/* A failed read proves nothing either way (design lead, 2026-10-22):
+		   keep an existing lock until its deadline, start none, notify nothing. */
+		if (status && status.ok !== false) {
+			if (!this.switchPending) {
+				this.watchSwitch(status);
+				return;
+			}
+			if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
+				this.stopSwitchWatch();
+				return;
+			}
 		}
 		if (this.switchPending)
 			this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);

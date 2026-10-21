@@ -740,7 +740,7 @@ test('T10.25 scenario 6: node_use success locks rebuilt actions and invalidates 
 	assertSwitchLocked(h, false);
 });
 
-test('T10.25 defensive: failed status retains an existing lock only to its deadline and warns', async () => {
+test('T10.25 defensive: failed status retains an existing lock only to its deadline, silently', async () => {
 	const h = await harness('nodes');
 	await render(h);
 	h.statusReads[0].resolve({ ok: true, state: 'failsafe', node_id: 'n_b' });
@@ -749,7 +749,7 @@ test('T10.25 defensive: failed status retains an existing lock only to its deadl
 	h.statusReads[1].resolve({ ok: false, code: 'TIMEOUT' });
 	await flush();
 	assertSwitchLocked(h, true);
-	assert.match(text(h.uciCalls.at(-1)[2]), /读取节点切换状态失败：TIMEOUT/);
+	assert.ok(!h.uciCalls.some(call => call[0] === 'notify'), 'a failed poll does not notify');
 	await h.tick(57000);
 	assertSwitchLocked(h, false);
 });
