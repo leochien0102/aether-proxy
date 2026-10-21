@@ -287,5 +287,9 @@ python3 "$ROOT/tests/probe/lkg.py" "$ROOT" "$T/lkg" "$OPEN_PORT" "$CLOSED_PORT" 
 	&& ok 'probe LKG job scenarios' || bad 'probe LKG job scenarios'
 
 echo
+# T9.10 probes use curl doubles, never an external network endpoint.
+python3 "$ROOT/tests/probe/url.py" "$ROOT" "$T/url" \
+	&& ok 'probe url and sites scenarios' || bad 'probe url and sites scenarios'
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

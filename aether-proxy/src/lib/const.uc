@@ -262,3 +262,15 @@ export const APK_INSTALLED_PATH = '/lib/apk/db/installed';
 export const CHILD_LOG_FILTER = '/usr/share/aether-proxy/logfilter.awk';
 export const CHILD_LOG_FIFO_SUFFIX = '.log.fifo';
 export const CHILD_LOG_FILTER_TEST_ENV = 'AETHER_PROXY_TEST_LOGFILTER';
+
+// T9.10 (docs/07 "真实延迟", docs/10 "切换节点"). Order defines the default site.
+export const PROBE_SITES = [
+	{ name: 'google', label: 'Google', url: 'https://www.gstatic.com/generate_204' },
+	{ name: 'cloudflare', label: 'Cloudflare', url: 'https://cp.cloudflare.com/generate_204' },
+	{ name: 'apple', label: 'Apple', url: 'https://captive.apple.com/hotspot-detect.html' },
+	{ name: 'youtube', label: 'YouTube', url: 'https://www.youtube.com/generate_204' },
+	{ name: 'github', label: 'GitHub', url: 'https://github.com/robots.txt' }
+];
+export const PROBE_SITE_RE = /^[a-z0-9]{1,16}$/;
+export const PROBE_URL_GRACE_SECS = 5;
+export const NODE_USE_TIMEOUT_SECS = 10;

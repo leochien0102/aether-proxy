@@ -8,6 +8,7 @@
 // in the CLI; none may grow here.
 
 import * as C from 'aetherproxy.const';
+import * as uci from 'uci';
 import * as schema from 'aetherproxy.schema';
 import * as sys from 'aetherproxy.sys';
 
@@ -169,9 +170,45 @@ const methods = {
 
 	components: {
 		call: function(req) {
-			if (length(keys(req?.args ?? {})))
+			if (length(filter(keys(req?.args ?? {}), key => key != 'ubus_rpc_session')))
 				return usage('components takes no arguments');
 			return call_cli([ 'components' ], COMPONENTS_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
+	// T9.10: these remain thin forwards; site membership is checked by the CLI.
+	node_use: {
+		call: function(req) {
+			let id = req?.args?.id;
+			if (type(id) != 'string' || match(id, schema.NODE_NAME_RE) == null)
+				return usage('id must match n_<32 lowercase hex>');
+			return call_cli([ 'node', 'use', id ], C.NODE_USE_TIMEOUT_SECS);
+		},
+		args: { id: '' }
+	},
+
+	probe_url: {
+		call: function(req) {
+			let site = req?.args?.site;
+			if (type(site) != 'string' || match(site, C.PROBE_SITE_RE) == null)
+				return usage('site must match [a-z0-9]{1,16}');
+			// Only the forwarding deadline is read here, not probe business logic.
+			let cursor = uci.cursor();
+			let raw = cursor.get(C.UCI_PACKAGE, 'probe', 'timeout');
+			let defaults = filter(schema.SCHEMA.probe, field => field.name == 'timeout')[0];
+			let timeout = type(raw) == 'string' && match(raw, /^[0-9]+$/) != null && +raw >= 1
+				? +raw : defaults.default;
+			return call_cli([ 'probe', 'url', site ], timeout + C.PROBE_URL_GRACE_SECS);
+		},
+		args: { site: '' }
+	},
+
+	probe_sites: {
+		call: function(req) {
+			if (length(filter(keys(req?.args ?? {}), key => key != 'ubus_rpc_session')))
+				return usage('probe_sites takes no arguments');
+			return call_cli([ 'probe', 'sites' ], DEFAULT_TIMEOUT_SECS);
 		},
 		args: {}
 	},

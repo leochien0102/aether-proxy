@@ -87,7 +87,7 @@ function deep_eq(a, b) {
 function stub_ctrl(values) {
 	let text = '';
 
-	for (let key in [ 'exit', 'stdout', 'stderr', 'sleep' ])
+	for (let key in [ 'exit', 'stdout', 'stderr', 'sleep', 'real_probe' ])
 		text += `${key}\t${values[key] ?? ''}\n`;
 
 	if (!fs.writefile(CTRL, text))
@@ -463,10 +463,10 @@ function scenario_10() {
 
 	expect_eq('10. ACL read methods match the read-only whitelist including stats',
 		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log',
-			'probe_results', 'stats', 'status', 'sub_status', 'version' ]),
+			'probe_results', 'probe_sites', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
-		show([ 'check', 'job_start', 'node_import', 'probe_now', 'save_file', 'service' ]),
+		show([ 'check', 'job_start', 'node_import', 'node_use', 'probe_now', 'probe_url', 'save_file', 'service' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -476,7 +476,8 @@ function scenario_10() {
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
-			'node_import', 'probe_now', 'probe_results', 'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
+			'node_import', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
+			'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('T10.4 components declares empty args', deep_eq(methods.components.args, {}), show(methods.components.args));
@@ -515,9 +516,9 @@ function scenario_10() {
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
-		data_status: 'read', stats: 'read', components: 'read',
+		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read',
 		service: 'write', check: 'write', job_start: 'write',
-		node_import: 'write', save_file: 'write', probe_now: 'write'
+		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
 
 	for (let name in names) {
@@ -772,6 +773,101 @@ function scenario_components() {
 		match(plugin_src, /const COMPONENTS_TIMEOUT_SECS = 15;/) != null, 'timeout policy');
 }
 
+// T9.10: session metadata must not become a business argument. Exercise every
+// method and compare actual argv (service is checked separately against init).
+function scenario_sessions() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"session_test":true}' });
+	let cases = {
+		version: { argv: [ 'version' ] },
+		status: { argv: [ 'status' ] },
+		components: { argv: [ 'components' ] },
+		check: { argv: [ 'check' ] },
+		job_start: { args: { kind: 'probe_nodes' }, argv: [ 'job', 'start', 'probe', 'nodes' ] },
+		job_status: { args: { id: 'j_1_2' }, argv: [ 'job', 'status', 'j_1_2' ] },
+		events: { args: { since: 0, level: 'warn' }, argv: [ 'events', '--since', '0', '--level', 'warn' ] },
+		stats: { argv: [ 'stats' ] },
+		data_status: { argv: [ 'data', 'status' ] },
+		sub_status: { argv: [ 'sub', 'status' ] },
+		probe_now: { argv: [ 'probe', 'now' ] },
+		probe_results: { argv: [ 'probe', 'results' ] },
+		probe_sites: { argv: [ 'probe', 'sites' ] },
+		probe_url: { args: { site: 'google' }, argv: [ 'probe', 'url', 'google' ] },
+		node_use: { args: { id: node_id(1) }, argv: [ 'node', 'use', node_id(1) ] },
+		log: { args: { source: 'dns', lines: 1 }, argv: [ 'log', '--source', 'dns', '--lines', '1' ] },
+		node_import: { args: { uri: 'vless://uuid@host:443' }, argv: [ 'node', 'import', 'vless://uuid@host:443' ] },
+		list_file: { args: { name: 'direct_ip' }, argv: [ 'custom', 'get', 'direct_ip' ] },
+		save_file: { args: { name: 'direct_ip', content: '1.2.3.4' },
+			argv: [ 'custom', 'set', 'direct_ip', '--content', '1.2.3.4' ] }
+	};
+	for (let name, c in cases) {
+		let argv_of = watch_cli();
+		let r = methods[name].call({ args: { ...(c.args ?? {}), ubus_rpc_session: 'session-token' } });
+		check(`T9.10 ${name} with ubus_rpc_session: success and exact business argv`,
+			r.ok === true && deep_eq(argv_of(), [ ...c.argv, '--json' ]), show(r));
+	}
+	let action_of = watch_init();
+	let r = methods.service.call({ args: { action: 'start', ubus_rpc_session: 'session-token' } });
+	check('T9.10 service with ubus_rpc_session: success and correct init action',
+		r.ok === true && wait_for(action_of, 3) == 'start', show(r));
+	check('T9.10 session scenarios cover every exposed method',
+		deep_eq(sort([ ...keys(cases), 'service' ]), sort(keys(methods))), show(keys(methods)));
+}
+
+function scenario_node_probe() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true,"preserved":[1,2]}' });
+	let cases = [
+		{ method: 'node_use', args: { id: node_id(1) }, argv: [ 'node', 'use', node_id(1), '--json' ] },
+		{ method: 'probe_url', args: { site: 'cloudflare' }, argv: [ 'probe', 'url', 'cloudflare', '--json' ] },
+		{ method: 'probe_sites', args: {}, argv: [ 'probe', 'sites', '--json' ] }
+	];
+	for (let c in cases) {
+		let argv_of = watch_cli();
+		let r = methods[c.method].call({ args: c.args });
+		check(`T9.10 ${c.method}: valid args forwarded and CLI object preserved`,
+			deep_eq(argv_of(), c.argv) && deep_eq(r, { ok: true, preserved: [ 1, 2 ] }), show(r));
+		let expected_args = { node_use: { id: '' }, probe_url: { site: '' }, probe_sites: {} };
+		check(`T9.10 ${c.method}: declared args policy matches examples`,
+			deep_eq(methods[c.method].args, expected_args[c.method]), show(methods[c.method].args));
+	}
+	let rejects = [
+		{ method: 'node_use', args: {} },
+		{ method: 'node_use', args: { id: 1 } },
+		{ method: 'node_use', args: { id: 'n_short' } },
+		{ method: 'node_use', args: { id: 'n_' + repeat_str('A', 32) } },
+		{ method: 'node_use', args: { id: node_id(1) + ';reboot' } },
+		{ method: 'probe_url', args: {} },
+		{ method: 'probe_url', args: { site: 1 } },
+		{ method: 'probe_url', args: { site: 'Google' } },
+		{ method: 'probe_url', args: { site: 'google;id' } },
+		{ method: 'probe_url', args: { site: repeat_str('a', 17) } },
+		{ method: 'probe_sites', args: { unexpected: true } }
+	];
+	for (let c in rejects) {
+		let argv_of = watch_cli();
+		let r = methods[c.method].call({ args: { ...c.args, ubus_rpc_session: 'token' } });
+		check(`T9.10 ${c.method} rejects ${show(c.args)}: USAGE without execution`,
+			r.code == 'USAGE' && argv_of() == null, show(r));
+	}
+	// Unknown names pass the syntax gate but must reach real CLI membership validation.
+	stub_ctrl({ real_probe: 1 });
+	let argv_of = watch_cli();
+	let r = methods.probe_url.call({ args: { site: 'unknown', ubus_rpc_session: 'token' } });
+	check('T9.10 probe_url unknown site: real CLI USAGE forwarded unchanged',
+		r.code == 'USAGE' && deep_eq(argv_of(), [ 'probe', 'url', 'unknown', '--json' ]), show(r));
+
+	// Isolate only UCI and execution for deadline inspection; production method stays unchanged.
+	for (let raw in [ '13', '1', null, 'bad', '0' ]) {
+		let src = replace(plugin_src, "import * as uci from 'uci';",
+			`const uci = { cursor: () => ({ get: () => ${show(raw)} }) };`);
+		src = replace(src, "import * as sys from 'aetherproxy.sys';",
+			"const sys = { run: (argv, opts) => ({ stdout: sprintf('%J', { argv, timeout: opts.timeout }) }) };");
+		let instrumented = loadstring(src)().aetherproxy;
+		let reply = instrumented.probe_url.call({ args: { site: 'google' } });
+		let expected = (raw == '13' ? 13 : raw == '1' ? 1 : 5) + 5;
+		expect_eq(`T9.10 probe_url timeout ${show(raw)}: configured/default timeout plus 5`, expected, reply.timeout);
+	}
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -793,6 +889,8 @@ scenario_16();
 scenario_17();
 scenario_18();
 scenario_components();
+scenario_sessions();
+scenario_node_probe();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);
