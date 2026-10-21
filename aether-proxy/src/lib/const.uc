@@ -257,3 +257,8 @@ export const NODE_LKG_MAX = 64;
 // T9.6 (docs/08 "缓存过期"): package database mtimes invalidate discovery results.
 export const OPKG_STATUS_PATH = '/usr/lib/opkg/status';
 export const APK_INSTALLED_PATH = '/lib/apk/db/installed';
+
+// T9.7 (docs/09 child output rate limiting).
+export const CHILD_LOG_FILTER = '/usr/share/aether-proxy/logfilter.awk';
+export const CHILD_LOG_FIFO_SUFFIX = '.log.fifo';
+export const CHILD_LOG_FILTER_TEST_ENV = 'AETHER_PROXY_TEST_LOGFILTER';

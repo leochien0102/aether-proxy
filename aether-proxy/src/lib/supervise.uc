@@ -17,6 +17,37 @@ function unlink_pid(path) {
 		log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot remove ${path}: ${fs.error() ?? 'unknown error'}` });
 };
 
+function fifo_path(run_dir, name) {
+	return `${run_dir}/${name}${C.CHILD_LOG_FIFO_SUFFIX}`;
+};
+
+function remove_fifo(path) {
+	if (fs.lstat(path) != null && !fs.unlink(path)) {
+		let detail = fs.error() ?? 'unknown error';
+		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail });
+		return { ok: false, detail };
+	}
+	return { ok: true };
+};
+
+function filtered_argv(opts, path) {
+	// Never interpolate names, paths or child arguments into shell source. exec keeps
+	// uloop's pid and exit status attached to the actual service, not a shell wrapper.
+	let removed = remove_fifo(path);
+	let made = removed.ok ? sys.run([ 'mkfifo', '-m', '0600', path ], { quiet: true }) : null;
+	if (made == null || made.code != 0) {
+		log.event('error', 'FS_FAILED', {
+			op: 'mkfifo', path, detail: removed.ok ? `mkfifo failed (${made.code}): ${made.stderr}` : removed.detail
+		});
+		return opts.argv;
+	}
+	// Host suites run uninstalled sources; production always uses the packaged path.
+	let filter = getenv(C.CHILD_LOG_FILTER_TEST_ENV) ?? C.CHILD_LOG_FILTER;
+	return [ '/bin/sh', '-c',
+		'fifo=$3; awk -v name="$1" -f "$2" <"$fifo" & shift 3; exec "$@" >"$fifo" 2>&1',
+		'aether-proxy-logfilter', opts.name, filter, path, ...opts.argv ];
+};
+
 function process_exists(pid) {
 	return pid != null && fs.stat(`${C.PROC_DIR}/${pid}`) != null;
 };
@@ -37,6 +68,7 @@ function create(opts) {
 
 	let cb = opts.on_event;
 	let pidfile = pid_path(opts.run_dir, opts.name);
+	let fifo = fifo_path(opts.run_dir, opts.name);
 	let delays = map(opts.backoff, d => max(+d, 0));
 	let stable_secs = max(+(opts.stable_secs ?? 300), 0);
 	let proc = null, pid = null, stopping = false, restart_index = 0, done_cb = null;
@@ -52,10 +84,11 @@ function create(opts) {
 			return;
 		}
 
-		// uloop.process inherits daemon output for procd/logd; popen plus uloop.handle can
-		// strand buffered lines on this ucode version (docs/09「子进程日志（S1 已定，2026-10-15）」).
-		proc = uloop.process(opts.argv[0], slice(opts.argv, 1), null, on_exit);
+		// A separate reader avoids the stdio buffering trap of popen + uloop.handle (09).
+		let argv = filtered_argv(opts, fifo);
+		proc = uloop.process(argv[0], slice(argv, 1), null, on_exit);
 		if (proc == null) {
+			remove_fifo(fifo);
 			log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot start ${opts.name}` });
 			return;
 		}
@@ -102,6 +135,7 @@ function create(opts) {
 			stable_timer.cancel();
 		stable_timer = null;
 		unlink_pid(pidfile);
+		remove_fifo(fifo);
 
 		// A signal-terminated child can report exit code zero, so code alone cannot distinguish
 		// intentional shutdown from a crash (docs/09「子进程日志（S1 已定，2026-10-15）」).
@@ -141,6 +175,7 @@ function create(opts) {
 		done_cb = done;
 		if (proc == null) {
 			unlink_pid(pidfile);
+			remove_fifo(fifo);
 			finish_stop(pid);
 			return;
 		}
@@ -157,6 +192,10 @@ function create(opts) {
 };
 
 function kill_stale(run_dir, name, command_match) {
+	// cleanup must remove even a FIFO whose child died before writing its pid file.
+	let removed = remove_fifo(fifo_path(run_dir, name));
+	if (!removed.ok)
+		return removed;
 	let path = pid_path(run_dir, name);
 	if (type(command_match) != 'string' || command_match == '')
 		return { ok: false, detail: 'command match must be non-empty' };
