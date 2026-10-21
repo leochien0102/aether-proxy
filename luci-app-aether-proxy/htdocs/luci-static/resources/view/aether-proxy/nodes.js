@@ -168,8 +168,10 @@ return view.extend({
 			if (row && row.can_set_current) {
 				const button = E('button', {
 					'class': 'btn cbi-button cbi-button-positive',
-					'click': ev => ui.createHandlerFn(self, 'handleSetCurrent', section_id)(ev)
-						.finally(() => self.updateSwitchButtons())
+					/* Not createHandlerFn: it returns nothing and re-enables the button
+					   when done, which would undo the switch lock. handleSetCurrent
+					   disables the buttons and restores them itself. */
+					'click': ev => self.handleSetCurrent(section_id, ev)
 				}, [ _('Set as current', 'aether-proxy') ]);
 				self.switchButtons.push(button);
 				self.updateSwitchButtons();

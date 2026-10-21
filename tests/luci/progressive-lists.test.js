@@ -152,8 +152,15 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const page = loadModule(path.join(RES, 'view/aether-proxy', name + '.js'), {
 		view: { extend: o => o }, form, uci,
 		ui: {
-			createHandlerFn: (self, fn, ...args) => (...rest) =>
-				(typeof fn === 'string' ? self[fn] : fn).apply(self, [...args, ...rest]),
+			/* Same contract as luci-base ui.js: bound arguments first, the event
+			   last; the button is disabled until fn settles and nothing is returned. */
+			createHandlerFn: (self, fn, ...args) => (...rest) => {
+				const target = [...args, ...rest][args.length]?.currentTarget;
+				if (target)
+					target.disabled = true;
+				Promise.resolve((typeof fn === 'string' ? self[fn] : fn).apply(self, [...args, ...rest]))
+					.finally(() => { if (target) target.disabled = false; });
+			},
 			changes: { apply: () => assert.fail('must not apply staged UCI changes') },
 			addNotification(...args) { uciCalls.push(['notify', ...args]); }
 		},
@@ -413,7 +420,7 @@ for (const all of [false, true]) {
 		const before = cells.map(text);
 		const button = all ? buttons(h.root).find(node => text(node) === '检测全部')
 			: buttons(actions(h, 'n_b')).find(node => text(node) === '检测');
-		const pending = button.click({ currentTarget: button });
+		button.click({ currentTarget: button });
 		assert.equal(h.reads.length, 1, 'no result poll needed for immediate feedback');
 		assert.equal(text(cells[1]), '检测中…');
 		assert.equal(text(cells[0]), all ? '检测中…' : before[0], 'unselected row stays unchanged');
@@ -430,7 +437,7 @@ for (const all of [false, true]) {
 		job.resolve({ state: 'ok' });
 		await flush();
 		h.reads[2].resolve(success('nodes'));
-		await pending;
+		await flush();
 		assert.equal(text(rerendered), '拒绝连接');
 		assert.equal(text(h.page.probeCells.n_a), '42 ms（3/3）');
 		assert.ok(h.page.probeButtons.every(node => !node.disabled));
