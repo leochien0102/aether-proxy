@@ -1,8 +1,9 @@
 'use strict';
 
-/* T8.8 scenarios 2,3,5-9 and T10.10 progressive rules/DNS loading (docs/10).
+/* T8.8 scenarios 2,3,5-9, T10.10 progressive loading and T10.21 tabs (docs/10).
  * Real CLI in disposable directories; model/view via the shared LuCI loader.
- * Deferred RPC and timer doubles prove that only the arriving region changes. */
+ * Deferred RPC and timer doubles prove that only the arriving tab/region changes.
+ * The tab double records panes and attachment without reimplementing LuCI tabs. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -282,8 +283,14 @@ function deferred() {
 	const promise = new Promise(done => { resolve = done; });
 	return { promise, resolve };
 }
+function descendants(node) {
+	if (node === null || typeof node != 'object')
+		return [];
+	return [node, ...node.children.flatMap(descendants)];
+}
 function load_view() {
-	const calls = [], jobs = [], loads = [], timers = [], maps = [];
+	const calls = [], jobs = [], loads = [], timers = [], maps = [], tab_groups = [];
+	const document = { body: E('body') };
 	const form = {
 		NamedSection: 'named', ListValue: 'select', DynamicList: 'list', Flag: 'flag', Value: 'value'
 	};
@@ -313,7 +320,11 @@ function load_view() {
 	const page = loadModule(path.join(RES, 'view/aether-proxy/rules.js'), {
 		view: { extend: o => o }, form,
 		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); } },
-		ui: { createHandlerFn: (ctx, fn) => (...args) => fn.apply(ctx, args) },
+		ui: {
+			createHandlerFn: (ctx, fn) => (...args) => fn.apply(ctx, args),
+			tabs: { initTabGroup: panes => tab_groups.push({ panes: [...panes],
+				attached: panes.every(pane => descendants(document.body).includes(pane)) }) }
+		},
 		'aether-proxy.model.rules': model(),
 		'aether-proxy.common': {
 			job_progress: () => ({ stop() {} }),
@@ -328,8 +339,8 @@ function load_view() {
 				return reply.promise;
 			}
 		}
-	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
-	return { page, calls, jobs, loads, maps, timers,
+	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document });
+	return { page, calls, jobs, loads, maps, timers, tab_groups, document,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -340,10 +351,11 @@ function load_view() {
 function regions(root) {
 	return {
 		form: root.children[0],
-		lists: root.children.slice(1, 5).map(node => ({
+		group: root.children[1],
+		lists: root.children[1].children.map(node => ({
 			node, input: node.children[1], button: node.children[2], message: node.children[3]
 		})),
-		inventory: root.children[6], update: root.children[7], summary: root.children[8]
+		inventory: root.children[3], update: root.children[4], summary: root.children[5]
 	};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -361,7 +373,7 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	const root = await h.page.render();
 	assert.equal(h.calls.length, 0, 'RPC must start after render resolves');
 	const r = regions(root);
-	assert.equal(root.children.length, 10);
+	assert.equal(root.children.length, 7);
 	assert.equal(r.form.tag, 'form');
 	assert.equal(h.maps[0].config, 'aetherproxy');
 	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);
@@ -480,7 +492,7 @@ test('T10.10 scenario 5: data_status fills the original five-row table without t
 	assert.equal(r.lists[0].input.disabled, false);
 	assert.ok(r.lists.slice(1).every(l => l.input.disabled && l.button.disabled));
 	assert.equal(root.children[0], r.form);
-	assert.equal(root.children[1], r.lists[0].node);
+	assert.equal(root.children[1].children[0], r.lists[0].node);
 });
 test('T10.10 scenarios 4-5: timeout and RPC failures keep lists locked and show original data errors', async () => {
 	for (const code of ['TIMEOUT', 'RPC_FAILED']) {
@@ -554,4 +566,102 @@ test('T10.10 scenario 7: update job stays usable before reads finish and refresh
 	assert.match(text(r.inventory), /new-hash42/);
 	assert.ok(r.lists.every(l => l.input.disabled && l.button.disabled));
 	assert.equal(root.children[0], r.form);
+});
+
+test('T10.21 scenario 1: initialize exactly the four ordered list tabs after attachment', async () => {
+	const h = load_view();
+	const root = await h.page.render(), r = regions(root);
+	const panes = r.lists.map(list => list.node);
+	assert.deepEqual(h.tab_groups, [], 'do not initialize detached panes during render');
+	assert.deepEqual(panes.map(pane => pane.attrs['data-tab']), list_names);
+	assert.deepEqual(panes.map(pane => pane.attrs['data-tab-title']),
+		['直连域名', '代理域名', '直连 IP', '代理 IP']);
+	assert.ok(panes.every(pane => pane.tag == 'div'));
+	assert.deepEqual(descendants(root).filter(node => node.attrs['data-tab'] != null), panes);
+	assert.deepEqual(r.group.children, panes, 'one group contains only the list panes');
+	for (const pane of panes) {
+		const contents = descendants(pane);
+		for (const outside of [r.form, r.inventory, r.update, r.summary])
+			assert.ok(!contents.includes(outside), 'forms, rule data and update remain outside tabs');
+	}
+	assert.ok(descendants(r.form).some(node => node.name == 'mode'));
+	assert.ok(descendants(r.form).some(node => node.name == 'china_dns'));
+	// Model LuCI attaching render()'s result before the scheduled next turn.
+	h.document.body.replaceChildren(root);
+	h.start();
+	assert.equal(h.tab_groups.length, 1);
+	assert.deepEqual(h.tab_groups[0], { panes, attached: true });
+	h.calls.forEach(call => call.resolve({ ok: true, content: 'loaded' }));
+	await settle();
+	assert.equal(h.tab_groups.length, 1, 'RPC replies must not initialize another group');
+});
+
+test('T10.21 scenario 2: saving the second tab uses only its text, file and result region', async () => {
+	const h = load_view();
+	const r = regions(await h.page.render());
+	h.start();
+	for (const [i, call] of h.calls.slice(0, 4).entries())
+		call.resolve({ ok: true, content: 'original-' + i });
+	await settle();
+	for (const [i, list] of r.lists.entries()) {
+		list.input.value = 'unsaved-' + i;
+		list.message.replaceChildren(E('p', {}, 'previous-' + i));
+	}
+	const second = r.lists[1];
+	const saving = second.button.click();
+	const saves = h.calls.filter(call => call.method == 'save_file');
+	assert.equal(saves.length, 1);
+	assert.deepEqual(saves[0].params, { name: 'proxy_domain', content: 'unsaved-1' });
+	assert.equal(second.button.disabled, true);
+	assert.ok(r.lists.filter(list => list !== second).every(list => !list.button.disabled));
+	saves[0].resolve({ ok: true, changed: true });
+	await saving;
+	assert.equal(second.button.disabled, false);
+	assert.equal(text(second.message), '已保存。');
+	assert.equal(h.calls.filter(call => call.method == 'save_file').length, 1);
+	for (const [i, list] of r.lists.entries()) {
+		assert.equal(list.input.value, 'unsaved-' + i);
+		assert.ok(descendants(list.node).includes(list.input));
+		assert.ok(descendants(list.node).includes(list.button));
+		assert.ok(descendants(list.node).includes(list.message));
+		if (i != 1)
+			assert.equal(text(list.message), 'previous-' + i);
+	}
+	assert.equal(text(r.inventory), '读取中…');
+	assert.equal(text(r.summary), '');
+});
+
+test('T10.21 scenario 4: update renders only nonempty categories and preserves job errors', async () => {
+	const categories = [
+		['updated', ['gfwlist'], '已更新：被墙域名'],
+		['unchanged', ['apple'], '未变化：苹果大陆域名'],
+		['failed', { chnroute4: 'hash mismatch' }, '失败：大陆 IPv4 路由: hash mismatch']
+	];
+	// All eight subsets cover three lines, Updated alone and every empty category.
+	for (let mask = 0; mask < 8; mask++) {
+		const h = load_view();
+		const r = regions(await h.page.render());
+		const result = { updated: [], unchanged: [], failed: {} }, expected = [];
+		for (const [i, [key, value, line]] of categories.entries()) {
+			if (mask & (1 << i)) {
+				result[key] = value;
+				expected.push(line);
+			}
+		}
+		const updating = r.update.click();
+		h.jobs[0].resolve({ state: 'ok', result });
+		await settle();
+		assert.deepEqual(r.summary.children.map(text), expected, 'visible lines for subset ' + mask);
+		assert.equal(h.calls.length, 1);
+		assert.equal(h.calls[0].method, 'data_status');
+		h.calls[0].resolve({ ok: true, items: {} });
+		await updating;
+		assert.equal(r.update.disabled, false);
+	}
+	const m = model();
+	assert.deepEqual(m.job_result({ state: 'ok', result: {} }), []);
+	assert.deepEqual(m.job_result({ ok: false, code: 'RPC_FAILED', detail: 'offline' }),
+		['RPC_FAILED: offline']);
+	assert.deepEqual(m.job_result({ ok: false, code: 'TIMEOUT', detail: 'late',
+		result: { updated: ['gfwlist'] } }), ['已更新：被墙域名', 'TIMEOUT: late']);
 });
