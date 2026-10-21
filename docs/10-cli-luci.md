@@ -99,7 +99,8 @@ init.d / hotplug / daemon ──────────────────
 - 与 `node import` 同一套解析（`lib/uri.uc` 的 `parse_line`），保证两边结果一致；**不读写配置、不拿锁、不记事件**（解析警告也不记）。
 - 成功：`{"ok": true, "node": { <05「config node」的选项名>: <值>, … } }`——只含解析得到的协议字段与 `label`（规则同 `node import`：`#名称`，没有就 `<地址>:<端口>`）；
   列表型选项为数组，其余为字符串；不含 `source`、`stale`、`match_*`。
-- 失败：与 `node import` 相同（`CONFIG_INVALID` + `detail` 为原因，退出码 2）。参数同 `node import`（≤ 4096 字节、以 `<协议>://` 开头）。
+- 失败：与 `node import` 相同（`CONFIG_INVALID` + `detail` 为原因，退出码 2）。参数限制（≤ 4096 字节、以 `<协议>://` 开头，否则 `USAGE`）与 rpcd `node_import` 的入口相同；这两项是 **rpcd 边界**的限制（防止被当作命令行选项），
+  `node parse` 在命令行也照样检查；命令行的 `node import` 维持原样（不带协议前缀的输入照旧报 `CONFIG_INVALID`），不为此改变它的行为（2026-10-21 T9.13 复核定）。
 - rpcd 方法 `node_parse`（`uri`，read，10 秒）；`common.js` 的方法表由 T10.26 加入。
 
 **`custom get <名称>` / `custom set <名称> --content <文本>`**
