@@ -12,7 +12,8 @@
  * the three reply kinds (new, duplicate, failed) are tallied here. Nothing in
  * this module issues requests or touches the DOM; every msgid used here must
  * have an entry in po/zh_Hans/aether-proxy.po. Undefined results mark the first
- * deferred read (docs/10 「其余页面先出页面」), not an unprobed node.
+ * deferred read (docs/10 「其余页面先出页面」), not an unprobed node. Local
+ * pending IDs cover the gap before the first job refresh (docs/10 「节点页修正」).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -86,7 +87,9 @@ function pending_of(results) {
    ok == 0 → the error text, no result → 未检测. Being pending wins over a stale
    result from a previous run (docs/07: unfinished nodes keep the old result,
    marked as probing). */
-function probe_column(id, results) {
+function probe_column(id, results, local_pending) {
+	if (local_pending?.includes(id))
+		return _('Probing…', 'aether-proxy');
 	if (results === undefined)
 		return _('Reading…', 'aether-proxy');
 	/* A failed read says so in each cell and gives the reason once, in the
@@ -120,9 +123,9 @@ return baseclass.extend({
 	probe_column,
 	/* sections: uci.sections('aetherproxy', 'node'), current: the value of
 	   aetherproxy.main.node, subs: uci.sections('aetherproxy', 'subscription'),
-	   results: the object resolved by ap.call('probe_results'). Returns the
-	   view model: one row per node plus the progress line. */
-	build: function(sections, current, subs, results) {
+	   results: the object resolved by ap.call('probe_results'), local_pending:
+	   IDs awaiting the first job refresh. Returns one row per node and progress. */
+	build: function(sections, current, subs, results, local_pending) {
 		const submap = {};
 
 		for (const s of sections_of(subs))
@@ -144,7 +147,7 @@ return baseclass.extend({
 				summary: summary_text(s),
 				source: source_text(s, submap),
 				marks: marks_for(s, current),
-				probe: probe_column(id, results),
+				probe: probe_column(id, results, local_pending),
 				/* docs/10: the current node can neither be deleted nor be
 				   made current, so both operations are unavailable. */
 				can_set_current: (current == null || id != current),

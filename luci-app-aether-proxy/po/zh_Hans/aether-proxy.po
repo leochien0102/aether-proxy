@@ -733,7 +733,7 @@ msgstr "已过期"
 
 msgctxt "aether-proxy"
 msgid "Probing…"
-msgstr "检测中"
+msgstr "检测中…"
 
 msgctxt "aether-proxy"
 msgid "Not probed"
