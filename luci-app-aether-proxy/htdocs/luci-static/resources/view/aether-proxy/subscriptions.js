@@ -1,6 +1,7 @@
 'use strict';
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
-// Design: docs/10「订阅页（2026-10-16 定，T8.6）」「作业机制」「UI 规则」.
+// Design: docs/10「订阅页」「作业机制」「UI 规则」「其余页面先出页面」.
+// The initial status read only fills result cells; never redraw an open edit modal for it.
 'require view';
 'require form';
 'require uci';
@@ -11,20 +12,43 @@
 
 return view.extend({
 	load: function() {
-		return Promise.all([uci.load('aetherproxy'), ap.call('sub_status')]);
+		return uci.load('aetherproxy');
 	},
-	render: function(data) {
-		this.status = data[1];
+	render: function() {
+		this.status = undefined;
 		this.busy = false;
 		this.root = E('div');
 		// Keep these nodes across redraws so the timer never targets a detached node.
 		this.progress = E('div');
 		this.summary = E('div');
-		return this.redraw().then(() => this.root);
+		return this.redraw().then(() => {
+			window.setTimeout(() => ap.call('sub_status').then(status => {
+				// A completed update may have already supplied fresher status.
+				if (this.status !== undefined)
+					return;
+				this.status = status ?? { ok: false, code: 'RPC_FAILED' };
+				this.show_results();
+			}), 0);
+			return this.root;
+		});
+	},
+	result_content: function(result) {
+		return [result.text, E('br'), result.time, E('br'), result.skipped];
+	},
+	show_results: function() {
+		const vm = model.build(uci.sections('aetherproxy', 'subscription'),
+			this.status, Date.now() / 1000, this.busy);
+		this.statusError.textContent = vm.error;
+		for (const row of vm.rows) {
+			if (this.resultCells[row.id])
+				dom.content(this.resultCells[row.id], this.result_content(row.result));
+		}
 	},
 	redraw: function() {
 		const self = this;
 		const jobButtons = [];
+		this.resultCells = {};
+		this.statusError = E('p');
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		const rows = Object.fromEntries(vm.rows.map(row => [row.id, row]));
@@ -72,7 +96,13 @@ return view.extend({
 			o.modalonly = false;
 			o.textvalue = function(id) {
 				const row = rows[id];
-				if (field === '_result') return E('span', {}, [row.result.text, E('br'), row.result.time, E('br'), row.result.skipped]);
+				if (field === '_result') {
+					// An edit can make GridSection render cells again on the same map.
+					const result = model.status_result(self.status, id, Date.now() / 1000);
+					const span = E('span', {}, self.result_content(result));
+					self.resultCells[id] = span;
+					return span;
+				}
 				return row[field.slice(1)];
 			};
 		}
@@ -90,12 +120,13 @@ return view.extend({
 			}, _('Update all', 'aether-proxy'));
 			jobButtons.push(updateAll);
 			dom.content(self.root, [
-				E('p', {}, vm.error),
+				self.statusError,
 				E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add') }, _('Add', 'aether-proxy')),
 				updateAll,
 				self.progress, self.summary, content
 			]);
 			self.jobButtons = jobButtons;
+			self.show_results();
 		});
 	},
 	add: function() {

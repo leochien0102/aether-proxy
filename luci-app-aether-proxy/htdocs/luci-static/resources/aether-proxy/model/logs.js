@@ -97,6 +97,7 @@ return baseclass.extend({
 	 * after a failed refresh, and code options never depend on the filter.
 	 */
 	events: function(res, previous, level, code) {
+		const pending = res === undefined;
 		const ok = res && res.ok !== false;
 		const data = ok ? res : (previous || { events: [], skipped: 0 });
 		const events = data.events || [];
@@ -111,7 +112,9 @@ return baseclass.extend({
 			}));
 		return {
 			data, rows, codes: Array.from(new Set(events.map(e => e.code))).sort(),
-			error: ok ? null : failure(res || {}),
+			loading: pending ? _('Reading…', 'aether-proxy') : null,
+			filters_disabled: pending,
+			error: pending || ok ? null : failure(res || {}),
 			skipped: data.skipped > 0 ? _('Skipped {n} damaged event lines', 'aether-proxy').replace('{n}', data.skipped) : null
 		};
 	},

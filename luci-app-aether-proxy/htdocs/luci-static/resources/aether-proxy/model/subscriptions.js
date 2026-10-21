@@ -1,7 +1,7 @@
 'use strict';
 'require baseclass';
 // Pure subscription presentation, ID generation and deletion plans for the LuCI view.
-// Design: docs/10「订阅页（2026-10-16 定，T8.6）」; keep URLs masked and the current node retained.
+// Design: docs/10「订阅页」「其余页面先出页面」; keep URLs masked and the current node retained.
 
 function fmt(text, ...args) {
 	for (const arg of args) text = text.replace('%s', String(arg));
@@ -47,7 +47,12 @@ function result(record, now) {
 		skipped: entries.length ? fmt(_('Skipped %s: %s', 'aether-proxy'), Object.values(counts).reduce((a, b) => a + b, 0), entries.join('、')) : ''
 	};
 }
+function status_result(status, id, now) {
+	return status === undefined ? { text: _('Reading…', 'aether-proxy'), time: '', skipped: '' } :
+		result(status?.subs?.[id], now);
+}
 return baseclass.extend({
+	status_result,
 	build: function(subscriptions, status, now, busy) {
 		return {
 			error: status && status.ok === false ? status.code + ': ' + (status.detail || '') : '',
@@ -55,7 +60,7 @@ return baseclass.extend({
 				id: s['.name'], name: s.name || s['.name'], address: mask(s.url),
 				enabled: s.enabled === '0' ? _('Disabled', 'aether-proxy') : _('Enabled', 'aether-proxy'),
 				interval: Number(s.interval_hours ?? 24) === 0 ? _('Manual only', 'aether-proxy') : fmt(_('%s hours', 'aether-proxy'), s.interval_hours || 24),
-				via: s.fetch_via || 'auto', result: result(status?.subs?.[s['.name']], now),
+				via: s.fetch_via || 'auto', result: status_result(status, s['.name'], now),
 				can_update: !busy
 			})), can_update: !busy
 		};

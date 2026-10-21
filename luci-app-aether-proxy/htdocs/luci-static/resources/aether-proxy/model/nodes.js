@@ -11,7 +11,8 @@
  * handle the URI import box: line splitting keeps the original line numbers and
  * the three reply kinds (new, duplicate, failed) are tallied here. Nothing in
  * this module issues requests or touches the DOM; every msgid used here must
- * have an entry in po/zh_Hans/aether-proxy.po.
+ * have an entry in po/zh_Hans/aether-proxy.po. Undefined results mark the first
+ * deferred read (docs/10 「其余页面先出页面」), not an unprobed node.
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -86,6 +87,13 @@ function pending_of(results) {
    result from a previous run (docs/07: unfinished nodes keep the old result,
    marked as probing). */
 function probe_column(id, results) {
+	if (results === undefined)
+		return _('Reading…', 'aether-proxy');
+	if (results?.ok === false) {
+		/* TODO(design): No node result-read error wording existed before deferred
+		 * loading. Show the RPC code/detail rather than claim the node was probed. */
+		return (results.code ?? 'RPC_FAILED') + (results.detail ? ': ' + results.detail : '');
+	}
 	if (results == null || typeof results != 'object')
 		return _('Not probed', 'aether-proxy');
 
@@ -109,6 +117,7 @@ function probe_column(id, results) {
 }
 
 return baseclass.extend({
+	probe_column,
 	/* sections: uci.sections('aetherproxy', 'node'), current: the value of
 	   aetherproxy.main.node, subs: uci.sections('aetherproxy', 'subscription'),
 	   results: the object resolved by ap.call('probe_results'). Returns the
@@ -155,7 +164,7 @@ return baseclass.extend({
 	progress: function(results) {
 		const r = (results && typeof results == 'object') ? results : null;
 
-		if (!r || r.finished)
+		if (!r || r.ok === false || r.finished)
 			return null;
 
 		return fmt(_('Probing %s/%s', 'aether-proxy'), r.done ?? 0, r.total ?? 0);
