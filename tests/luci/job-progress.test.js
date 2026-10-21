@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, createRpc } = require('./loader');
+const { loadModule, parsePo, createRpc, element } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -20,20 +20,6 @@ String.prototype.format = function(...args) {
 	let i = 0;
 	return this.replace(/%s/g, () => String(args[i++]));
 };
-function element(tag, attrs = {}, children = []) {
-	if (typeof attrs === 'string' || Array.isArray(attrs)) {
-		children = attrs;
-		attrs = {};
-	}
-	return {
-		tag, attrs, ...attrs, children: Array.isArray(children) ? children : [children],
-		get childNodes() { return this.children; },
-		get lastChild() { return this.children.at(-1); },
-		get textContent() { return this.children.map(text).join(''); },
-		set textContent(value) { this.children = [String(value)]; },
-		replaceChildren(...nodes) { this.children = nodes; }
-	};
-}
 globalThis.E = element;
 function text(node) {
 	return node == null ? '' : typeof node === 'object' ? node.textContent : String(node);

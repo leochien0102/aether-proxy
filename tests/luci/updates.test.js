@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo } = require('./loader');
+const { loadModule, parsePo, element } = require('./loader');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -164,8 +164,7 @@ async () => {
 			return status({ ...entry, installed: '3', newer: false });
 		}
 	};
-	globalThis.E = (tag, attrs, children) => ({ tag, attrs, children,
-		replaceChildren(...nodes) { this.children = nodes; } });
+	globalThis.E = element;
 	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
 		view: { extend: o => o }, form: {}, uci: {},
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
@@ -190,23 +189,16 @@ async () => {
 			(Array.isArray(node.children) ? node.children : []).flatMap(buttons));
 	};
 	assert.ok(buttons(page.inventory).length >= 3);
-	assert.ok(buttons(page.inventory).every(b => b.attrs.disabled));
+	assert.ok(buttons(page.inventory).every(b => b.disabled));
 	finish({ result: { ok: true, from: '2', to: '1' } });
 	await pending;
 	assert.equal(page.busy, false);
 	assert.deepEqual(calls[1], [ 'status' ]);
 	assert.equal(calls.length, 2);
-	assert.ok(buttons(page.inventory).every(b => !b.attrs.disabled));
+	assert.ok(buttons(page.inventory).every(b => !b.disabled));
 });
 /* Deferred RPC and zero-delay timer doubles let the page render while status
- * never settles. Mutable elements expose identity and unsaved form values. */
-function element(tag, attrs = {}, children = []) {
-	return {
-		tag, attrs, value: '', disabled: false, ...attrs,
-		children: Array.isArray(children) ? children : [ children ],
-		replaceChildren(...nodes) { this.children = nodes; }
-	};
-}
+ * never settles. Shared elements expose identity and unsaved form values. */
 function text(node) {
 	return node != null && typeof node == 'object' ? node.children.map(text).join('') : String(node ?? '');
 }
@@ -397,6 +389,29 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		assert.equal(form.children[4].value, 'https://unsaved/');
 	}
 });
+test('T10.18 scenario 2: settled update actions are enabled only while idle under the shared E', async () => {
+	const h = load_view();
+	await h.page.render();
+	h.start();
+	h.calls[0].resolve({ ok: true, ...status() });
+	await settle();
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '立即更新', '回滚到 1', '检查更新' ]);
+	assert.ok(buttons(h.page.inventory).every(button => button.disabled === false));
+	for (const busy of [ true, false ]) {
+		h.page.busy = busy;
+		h.page.show_inventory();
+		assert.ok(buttons(h.page.inventory).every(button => button.disabled === busy));
+	}
+	// The install-only state must share the same enabled/disabled rule.
+	h.page.status = { ok: true, ...status({ ...entry, installed: null, previous: null }) };
+	h.page.show_inventory();
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '安装', '检查更新' ]);
+	assert.ok(buttons(h.page.inventory).every(button => button.disabled === false));
+	h.page.busy = true;
+	h.page.show_inventory();
+	assert.ok(buttons(h.page.inventory).every(button => button.disabled === true));
+});
+
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {
 	const source = fs.readFileSync(path.join(RES, 'view/aether-proxy/updates.js'), 'utf8');
 	assert.match(source, /new form.Map\('aetherproxy'/);
@@ -408,8 +423,8 @@ test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and t
 	assert.match(source, /validate.*function[^\n]*model.validate_url/);
 	assert.doesNotMatch(source, /rpc.declare|cbi-button-reset|upload|\.depends\s*=/i);
 	assert.doesNotMatch(source, /ap.poll/);
-	assert.match(source, /disabled: row.disabled/);
-	assert.match(source, /disabled: !vm.can_check/);
+	assert.match(source, /disabled: row.disabled \|\| null/);
+	assert.match(source, /disabled: !vm.can_check \|\| null/);
 	for (const file of [ 'view/aether-proxy/updates.js', 'aether-proxy/model/updates.js' ]) {
 		const text = fs.readFileSync(path.join(RES, file), 'utf8');
 		for (const match of text.matchAll(/_\('([^']+)', 'aether-proxy'\)/g))

@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo } = require('./loader.js');
+const { loadModule, parsePo, element } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -31,19 +31,7 @@ globalThis._ = (s) => po[s] ?? s;
 
 const NOW = 1760400000;
 
-/* Lightweight E() double for the view tests (docs/tasks/m8.md T8.11a): stores
-   tag/attrs/children so a test can walk the returned tree. */
-globalThis.E = (tag, attrs, children) => {
-	const el = {
-		tag, attrs: attrs || {}, children: children ?? [],
-		addEventListener(event, fn) { this.attrs[event] = fn; }
-	};
-	if (tag === 'select') {
-		const options = children ?? [];
-		el.value = (options.find((o) => o.attrs.selected) ?? options[0])?.attrs.value ?? '';
-	}
-	return el;
-};
+globalThis.E = element;
 
 function findTag(node, tag) {
 	if (!node || typeof node != 'object')
@@ -605,7 +593,7 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	await page.initialRequest;
 	await page.componentRequest;
 	assert.ok(calls.indexOf('stats') > calls.indexOf('status'));
-	assert.equal(findTag(root, 'h2').children, '以太跃迁');
+	assert.equal(findTag(root, 'h2').textContent, '以太跃迁');
 	assert.equal(polls[0].ms, 5000);
 	const selects = findAll(root, 'select');
 	selects[0].attrs.change({ target: { value: '10' } });
@@ -617,7 +605,7 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	assert.deepEqual(writes, [ [ 'aether-proxy.refresh', '10' ], [ 'aether-proxy.refresh', '0' ] ]);
 	calls.length = 0;
 	release = true;
-	const manual = findAll(root, 'button').find((b) => b.children === '刷新');
+	const manual = findAll(root, 'button').find((b) => b.textContent === '刷新');
 	const first = manual.attrs.click();
 	const second = page.fetchRefresh();
 	assert.equal(first, second, 'manual and poll requests share the in-flight promise');
@@ -645,10 +633,10 @@ test('T8.12c scenario 4b: node selection switches via UCI save and rollback appl
 	});
 	const root = page.render(await page.load());
 	const nodes = findAll(root, 'select')[1];
-	assert.equal(nodes.children[0].children, 'Alpha（当前）');
+	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
 	assert.equal(nodes.children[0].attrs.selected, 'selected');
-	assert.equal(nodes.children[1].children, 'n_b');
-	const use = findAll(root, 'button').find((b) => b.children === '使用此节点');
+	assert.equal(nodes.children[1].textContent, 'n_b');
+	const use = findAll(root, 'button').find((b) => b.textContent === '使用此节点');
 	assert.equal(use.disabled, true, 'current node cannot be applied again');
 	nodes.value = 'n_b';
 	nodes.attrs.change();
@@ -663,7 +651,7 @@ test('T8.12c scenario 4b: node selection switches via UCI save and rollback appl
 
 	const emptyPage = loadView();
 	const emptyRoot = emptyPage.render(await emptyPage.load());
-	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.children === '使用此节点');
+	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.textContent === '使用此节点');
 	assert.equal(emptyUse, undefined, 'an empty node list has no apply button');
 	assert.equal(findAll(emptyRoot, 'select').length, 1, 'only the refresh selector remains');
 });
@@ -706,7 +694,7 @@ test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every 
 	page.content = E('div', {});
 	const controls = page.probeControls();
 	page.probeControl = controls;
-	const pending = findAll(controls, 'button').find((b) => b.children === '测延迟').attrs.click();
+	const pending = findAll(controls, 'button').find((b) => b.textContent === '测延迟').attrs.click();
 	assert.equal(page.probeButton.disabled, true);
 	await Promise.resolve();
 	await clock.run(1000);
@@ -877,7 +865,7 @@ function sections(root) {
 
 /* The node controls are the last row of the merged runtime section. */
 function nodeRow(root) {
-	return sections(root).find((s) => s.children[0].children === '运行状态').children.at(-1);
+	return sections(root).find((s) => s.children[0].textContent === '运行状态').children.at(-1);
 }
 
 function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
@@ -903,12 +891,12 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
 	] };
 	const { root } = renderStatus(status);
-	assert.deepEqual(sections(root).map((s) => s.children[0].children),
+	assert.deepEqual(sections(root).map((s) => s.children[0].textContent),
 		[ '运行状态', '流量与连接', '组件版本' ]);
 	const title = root.children[0];
-	assert.equal(findAll(title, 'h2')[0].children, '以太跃迁');
+	assert.equal(findAll(title, 'h2')[0].textContent, '以太跃迁');
 	assert.equal(findAll(title, 'select').length, 1);
-	assert.equal(findAll(title, 'button')[0].children, '刷新');
+	assert.equal(findAll(title, 'button')[0].textContent, '刷新');
 	assert.ok(visibleText(title).includes('自动刷新'));
 	const noticeItems = findAll(root, 'li');
 	assert.equal(noticeItems.length, 2);
@@ -917,7 +905,7 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	assert.doesNotMatch(visibleText(root), /更新订阅|服务状态、待处理提示与启停控制/);
 	assert.doesNotMatch(fs.readFileSync(VIEW, 'utf8'), /sub_update/);
 	const clean = renderStatus({ ok: true, state: 'running' }).root;
-	assert.deepEqual(sections(clean).map((s) => s.children[0].children),
+	assert.deepEqual(sections(clean).map((s) => s.children[0].textContent),
 		[ '运行状态', '流量与连接', '组件版本' ]);
 	const failure = renderStatus({ ok: false, code: 'TIMEOUT', detail: 'offline' }, undefined, false).root;
 	const pending = failure.children[1];
@@ -963,12 +951,12 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.equal(reason.attrs.style, 'color:var(--error-color-high, #c53030)');
 	const fallback = findAll(blocks[0], 'span').find((n) => visibleText(n) === 'DNS 已回退到原配置');
 	assert.equal(fallback.attrs.style, 'color:var(--warning-color, #b7791f)');
-	const address = findAll(nodeRow(root), 'span').find((n) => n.children === '节点地址 203.0.113.10');
+	const address = findAll(nodeRow(root), 'span').find((n) => n.textContent === '节点地址 203.0.113.10');
 	assert.ok(address);
 	assert.equal(address.attrs.title, undefined);
 	assert.ok(!findAll(nodeRow(root), 'span').some((n) => n.attrs.style === 'font-size: 1.2em'));
 	const table = findAll(blocks[1], 'table')[0];
-	assert.deepEqual(table.children.map((row) => row.children.map((cell) => cell.children)), [
+	assert.deepEqual(table.children.map((row) => row.children.map((cell) => cell.textContent)), [
 		[ '', '上传', '下载' ], [ '代理', '–', '–' ], [ '直连', '–', '–' ], [ '合计（WAN 口）', '–', '–' ]
 	]);
 	const connections = findAll(blocks[1], 'span');
@@ -978,7 +966,7 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.doesNotMatch(visibleText(root), /T[123]|conntrack|aether-proxy 版本/);
 	const componentTable = findAll(blocks[2], 'table')[0];
 	assert.equal(componentTable.attrs.style, 'font-size: 0.9em');
-	assert.deepEqual(componentTable.children[1].children.map((c) => c.children), [ 'aether-proxy', '–', '–' ]);
+	assert.deepEqual(componentTable.children[1].children.map((c) => c.textContent), [ 'aether-proxy', '–', '–' ]);
 	page.refresh({ ok: true, state: 'stopped', dns_tier: 'T2' });
 	assert.doesNotMatch(visibleText(root), /境外域名解析|原因：/);
 });
@@ -1003,7 +991,7 @@ test('T10.3 scenario 6d: polling preserves enable, node selection, probe button 
 	assert.equal(page.probeMessage, probeMessage);
 	assert.equal(probeMessage.content, '检测中');
 	const rows = findAll(sections(root)[1], 'table')[0].children;
-	assert.deepEqual(rows[1].children.map((c) => c.children), [ '代理', '1.0 KB/s', '2.0 KB/s' ]);
+	assert.deepEqual(rows[1].children.map((c) => c.textContent), [ '代理', '1.0 KB/s', '2.0 KB/s' ]);
 });
 
 test('T10.3 scenario 7: relative font sizes, theme-only colors and no theme-specific label modifiers', () => {
@@ -1065,7 +1053,7 @@ test('T10.4 scenario 4c: three installed-component rows, missing versions, missi
 		{ name: 'xray', version: null, path: '/usr/bin/xray' },
 		{ name: 'chinadns-ng', version: null, path: '未找到' }
 	]);
-	const cells = findAll(loadView().componentTable(rows), 'tr').map((row) => row.children.map((c) => c.children));
+	const cells = findAll(loadView().componentTable(rows), 'tr').map((row) => row.children.map((c) => c.textContent));
 	assert.deepEqual(cells.slice(1), [
 		[ 'aether-proxy', '0.1.0-r2', '–' ], [ 'xray', '–', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
 	]);
@@ -1115,7 +1103,7 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	const title = root.children[0];
 	assert.match(title.attrs.style, /margin-bottom:\s*1em/);
 	const label = findAll(title, 'label').find((el) => visibleText(el).includes('自动刷新'));
-	assert.ok(findAll(label, 'span').some((n) => n.children === '自动刷新'
+	assert.ok(findAll(label, 'span').some((n) => n.textContent === '自动刷新'
 		&& /white-space:\s*nowrap/.test(n.attrs.style)));
 	assert.equal(findAll(label, 'select').length, 1, 'label and select share the flex container');
 	assert.match(label.attrs.style, /gap:\s*0\.5em/);
@@ -1201,8 +1189,8 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 });
 
 function componentCells(root) {
-	const section = sections(root).find((s) => s.children[0].children === '组件版本');
-	return findAll(section, 'tr').slice(2).map((row) => row.children.map((cell) => cell.children));
+	const section = sections(root).find((s) => s.children[0].textContent === '组件版本');
+	return findAll(section, 'tr').slice(2).map((row) => row.children.map((cell) => cell.textContent));
 }
 
 test('T10.5 scenario 2a: post-render inventory updates only the table and is never reissued on refresh', async () => {
@@ -1291,20 +1279,20 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	const select = findAll(first, 'select')[0];
 	const button = findAll(first, 'button')[0];
 	assert.equal(select.value, 'n_b', 'runtime selection overrides configured n_a');
-	assert.equal(select.children[1].children, 'Beta（当前）');
+	assert.equal(select.children[1].textContent, 'Beta（当前）');
 	assert.equal(button.disabled, true);
 	select.value = 'n_a';
 	select.attrs.change();
 	assert.equal(button.disabled, false, 'guard compares against runtime, not UCI');
 	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*测延迟/);
-	assert.ok(findAll(second, 'small')[0].children.includes('前'), 'probe age stays in the right group');
+	assert.ok(findAll(second, 'small')[0].textContent.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => s.attrs.title));
 	page.refresh({ ok: true, state: 'stopped', node_id: 'n_b', node_ip: 'stale' });
 	let updated = nodeRow(root);
 	assert.equal(findAll(updated, 'select')[0].value, 'n_a');
-	assert.equal(findAll(updated, 'select')[0].children[0].children, 'Alpha（当前）');
+	assert.equal(findAll(updated, 'select')[0].children[0].textContent, 'Alpha（当前）');
 	assert.equal(findAll(updated, 'button')[0].disabled, true);
 	assert.doesNotMatch(visibleText(updated), /节点地址|stale/);
 	page.refresh({ ok: false, code: 'TIMEOUT' });
@@ -1319,7 +1307,7 @@ test('T10.5 scenario 2d: no nodes renders guidance instead of selector and apply
 	const block = nodeRow(root);
 	assert.equal(visibleText(block.children[0]), '还没有节点，请到节点页添加或导入');
 	assert.equal(findAll(block, 'select').length, 0);
-	assert.deepEqual(findAll(block, 'button').map((b) => b.children), [ '测延迟' ]);
+	assert.deepEqual(findAll(block, 'button').map((b) => b.textContent), [ '测延迟' ]);
 	await page.componentRequest;
 });
 
@@ -1373,14 +1361,14 @@ test('T10.6 scenario 2a: WAN row title and small inactive explanation precede co
 		const { page, root } = renderStatus(status);
 		page.previousStats = inactiveReadings(1000, 100, 200);
 		page.refresh(status, inactiveReadings(2000, 1124, 2248));
-		const block = sections(root).find((s) => s.children[0].children === '流量与连接');
+		const block = sections(root).find((s) => s.children[0].textContent === '流量与连接');
 		const table = block.children[1];
 		const total = table.children[3];
-		assert.deepEqual(total.children.slice(1).map((c) => c.children), [ '1.0 KB/s', '2.0 KB/s' ]);
+		assert.deepEqual(total.children.slice(1).map((c) => c.textContent), [ '1.0 KB/s', '2.0 KB/s' ]);
 		assert.equal(visibleText(total.children[0]), inactive ? '合计（WAN 口）' + TRAFFIC_NOTE : '合计（WAN 口）');
 		assert.equal(total.children[0].attrs.title, 'WAN 接口 eth1 的全部流量，含路由器自身');
 		for (const row of table.children.slice(1, 3))
-			assert.deepEqual(row.children.slice(1).map((c) => c.children), [ '–', '–' ]);
+			assert.deepEqual(row.children.slice(1).map((c) => c.textContent), [ '–', '–' ]);
 		/* the inactive note lives in the WAN row's label cell, not below the table */
 		assert.equal(block.children.length, 3);
 		if (inactive) {
@@ -1402,17 +1390,17 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
 	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'button' ]);
-	assert.equal(left.children[1].children, '使用此节点');
+	assert.equal(left.children[1].textContent, '使用此节点');
 	/* themes give select width:100%, which wraps the button onto the next line */
 	assert.match(left.children[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
-	assert.equal(right.children[0].children, '节点地址 203.0.113.10');
-	assert.equal(right.children[1].children, '正常，12 ms');
+	assert.equal(right.children[0].textContent, '节点地址 203.0.113.10');
+	assert.equal(right.children[1].textContent, '正常，12 ms');
 	assert.equal(right.children[1].attrs.style, 'color:var(--success-color-high, #2f855a)');
 	assert.equal(right.children[2].tag, 'small');
-	assert.match(right.children[2].children, /前$/);
+	assert.match(right.children[2].textContent, /前$/);
 	assert.deepEqual(right.children[3].children.map((c) => c.tag), [ 'button', 'span' ]);
-	assert.equal(right.children[3].children[0].children, '测延迟');
+	assert.equal(right.children[3].children[0].textContent, '测延迟');
 	assert.equal(right.children[3].children[1].attrs['aria-live'], 'polite');
 });
 
@@ -1427,9 +1415,9 @@ test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address
 	assert.equal(findAll(row.children[0], 'button').length, 0);
 	const right = row.children[1];
 	assert.equal(right.children.length, 3, 'result, relative time and probe controls without address');
-	assert.equal(right.children[0].children, '检测失败');
+	assert.equal(right.children[0].textContent, '检测失败');
 	assert.equal(right.children[1].tag, 'small');
-	assert.equal(findAll(right, 'button')[0].children, '测延迟');
+	assert.equal(findAll(right, 'button')[0].textContent, '测延迟');
 	assert.doesNotMatch(visibleText(right), /节点地址|stale/);
 	await page.componentRequest;
 });
@@ -1461,7 +1449,7 @@ test('T10.9 scenario 2: title left group has heading then tooltip-only enable; r
 	assert.equal(findAll(right, 'label').length, 1);
 	assert.equal(visibleText(findAll(right, 'span')[0]), '自动刷新');
 	assert.equal(findAll(right, 'select').length, 1);
-	assert.equal(findAll(right, 'button')[0].children, '刷新');
+	assert.equal(findAll(right, 'button')[0].textContent, '刷新');
 	assert.ok(!visibleText(root).includes(page.vm.enabled_note));
 	assert.equal(findAll(root, 'input').length, 1, 'only one enable switch, in the title');
 });
@@ -1542,7 +1530,7 @@ test('T10.9 scenario 5: one runtime block has state/buttons, optional details an
 		assert.deepEqual(blocks.map((n) => visibleText(n.children[0])), [ '运行状态', '流量与连接', '组件版本' ]);
 		const block = blocks[0];
 		const [left, right] = block.children[1].children;
-		assert.equal(findAll(left, 'strong')[0].children, '运行中');
+		assert.equal(findAll(left, 'strong')[0].textContent, '运行中');
 		assert.ok(visibleText(left).includes('已持续'));
 		assert.ok(visibleText(left).includes('DNS 已回退到原配置'));
 		assert.deepEqual(findAll(right, 'button').map(visibleText), [ '启动', '重启', '停止' ]);
@@ -1701,7 +1689,7 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 	await page.fetchRefresh();
 	assert.equal(calls.filter(([method]) => method === 'events').length, 0, 'equal refresh skips events');
 	runtime.node = 'n_a';
-	const manual = findAll(root, 'button').find((b) => b.children === '刷新');
+	const manual = findAll(root, 'button').find((b) => b.textContent === '刷新');
 	for (const refresh of [ () => manual.attrs.click(), polls[0] ]) {
 		now += 10;
 		calls.length = 0;
@@ -1714,7 +1702,7 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 		assert.equal(visibleText(parts[0]),
 			failedSwitchText('Beta', 'Alpha', logText(switchEvents()[0]), `${now - NOW + 30} 秒前`));
 		assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_a', 'runtime remains preselected');
-		assert.equal(findAll(nodeRow(root), 'option')[0].children, 'Alpha（当前）');
+		assert.equal(findAll(nodeRow(root), 'option')[0].textContent, 'Alpha（当前）');
 	}
 	runtime.node = 'n_b';
 	calls.length = 0;
@@ -1756,7 +1744,7 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 			assert.doesNotMatch(visibleText(root), /RPC_FAILED|TIMEOUT|offline/);
 			assert.deepEqual(sections(root).map((s) => visibleText(s.children[0])),
 				[ '运行状态', '流量与连接', '组件版本' ]);
-			assert.equal(findAll(root, 'strong')[0].children, '运行中');
+			assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
 			assert.ok(visibleText(nodeRow(root)).includes('节点地址 203.0.113.10'));
 			assert.equal(componentCells(root).length, 2);
 			await page.fetchRefresh();
@@ -1892,7 +1880,7 @@ test('T10.13 scenario 3: inventory failures carry code/detail; unknown version s
 	const inventory = { ok: true, components: { xray: { found: true, version: null, path: '/usr/bin/xray' } } };
 	assert.equal(model.components_failed(inventory), false);
 	const cells = findAll(loadView().componentTable(model.component_rows(null, inventory)), 'tr');
-	assert.deepEqual(cells[2].children.map((c) => c.children), [ 'xray', '–', '/usr/bin/xray' ]);
+	assert.deepEqual(cells[2].children.map((c) => c.textContent), [ 'xray', '–', '/usr/bin/xray' ]);
 });
 
 function retryButtons(root) {
@@ -2017,7 +2005,7 @@ function deferredPage(interval = '5') {
 }
 
 function disabled(button) {
-	return !!(button.disabled || button.attrs.disabled);
+	return button.disabled;
 }
 
 function serviceButtons(root) {
@@ -2025,7 +2013,7 @@ function serviceButtons(root) {
 }
 
 function ownVersion(root) {
-	return findAll(sections(root)[2], 'tr')[1].children[1].children;
+	return findAll(sections(root)[2], 'tr')[1].children[1].textContent;
 }
 
 test('T10.17 scenario 1: load reads only UCI and never starts RPC or polling', async () => {
@@ -2043,13 +2031,13 @@ test('T10.17 scenario 2: all RPCs pending still renders complete placeholders an
 	assert.deepEqual(calls, [], 'all requests are deferred beyond synchronous render');
 	assert.deepEqual(sections(root).map((section) => visibleText(section.children[0])),
 		[ '运行状态', '流量与连接', '组件版本' ]);
-	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.equal(findAll(root, 'strong')[0].textContent, '读取中…');
 	assert.doesNotMatch(visibleText(sections(root)[0]), /原因：|境外域名解析：|已持续|节点地址|DNS 已回退/);
 	assert.equal(page.vm.error, null, 'pending status is not a failed status');
 	assert.equal(page.vm.traffic_note, null, 'pending does not falsely claim the service is stopped');
 	const rows = findAll(sections(root)[1], 'tr').slice(1);
 	for (const row of rows)
-		assert.deepEqual(row.children.slice(1).map((cell) => cell.children), [ '–', '–' ]);
+		assert.deepEqual(row.children.slice(1).map((cell) => cell.textContent), [ '–', '–' ]);
 	assert.deepEqual(findAll(sections(root)[1], 'span').map(visibleText), [ '代理连接 –', '总连接 –' ]);
 	assert.equal(ownVersion(root), '读取中…');
 	assert.deepEqual(componentCells(root), [
@@ -2062,7 +2050,7 @@ test('T10.17 scenario 2: all RPCs pending still renders complete placeholders an
 	assert.equal(typeof enable.attrs.change, 'function');
 	const nodes = findAll(nodeRow(root), 'select')[0];
 	assert.equal(nodes.value, 'n_a');
-	assert.equal(nodes.children[0].children, 'Alpha（当前）');
+	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
 	assert.equal(disabled(nodes), false);
 	await Promise.resolve();
 	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components' ]);
@@ -2073,7 +2061,7 @@ test('T10.17 scenario 2: all RPCs pending still renders complete placeholders an
 	assert.deepEqual(uciOps.slice(1), [
 		[ 'set', 'aetherproxy', 'main', 'enabled', '1' ], [ 'save' ], [ 'apply', true ]
 	]);
-	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.equal(findAll(root, 'strong')[0].textContent, '读取中…');
 	assert.deepEqual(polls, []);
 });
 
@@ -2093,11 +2081,11 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.deepEqual(writes, [ page.componentContent ]);
 	assert.equal(sections(root)[0], runtime);
 	assert.equal(sections(root)[1], traffic);
-	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.equal(findAll(root, 'strong')[0].textContent, '读取中…');
 	assert.deepEqual(polls, []);
 	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a', dns_tier: 'T1',
 		last_error: 'CONFIG_INVALID', last_probe: { ok: true, latency_ms: 42, at: NOW } });
-	assert.equal(findAll(root, 'strong')[0].children, '运行中');
+	assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
 	assert.match(visibleText(sections(root)[0]), /原因：配置无效.*境外域名解析：经节点解析（正常）/);
 	assert.deepEqual(serviceButtons(root).map(disabled), [ true, false, false ]);
 	assert.equal(page.probeButton.disabled, false);
@@ -2122,7 +2110,7 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.deepEqual(serviceButtons(root).map(disabled), [ false, true, true ]);
 	await h.reply('stats', readings(2000, 1024, 2048, 4096, 8192));
 	await next;
-	assert.deepEqual(findAll(sections(root)[1], 'tr')[1].children.slice(1).map((cell) => cell.children),
+	assert.deepEqual(findAll(sections(root)[1], 'tr')[1].children.slice(1).map((cell) => cell.textContent),
 		[ '1.0 KB/s', '2.0 KB/s' ]);
 	assert.equal(calls.filter((call) => call.method === 'version').length, 1);
 	assert.equal(calls.filter((call) => call.method === 'components').length, 1);
@@ -2161,7 +2149,7 @@ test('T10.17 scenario 4: status failure clears loading, keeps controls disabled 
 		const root = page.render(await page.load());
 		await Promise.resolve();
 		await h.reply('status', failure);
-		assert.equal(findAll(root, 'strong')[0].children, '–');
+		assert.equal(findAll(root, 'strong')[0].textContent, '–');
 		assert.match(visibleText(page.noticeContent),
 			new RegExp('读取状态失败：' + (failure?.code ?? 'RPC_FAILED')));
 		assert.ok(serviceButtons(root).every(disabled));
@@ -2177,7 +2165,7 @@ test('T10.17 scenario 4: status failure clears loading, keeps controls disabled 
 		assert.doesNotMatch(visibleText(root), /读取中…/);
 		const retry = polls[0].fn();
 		await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-		assert.equal(findAll(root, 'strong')[0].children, '运行中');
+		assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
 		assert.doesNotMatch(visibleText(page.noticeContent), /读取状态失败/);
 		assert.deepEqual(serviceButtons(root).map(disabled), [ true, false, false ]);
 		assert.equal(page.probeButton.disabled, false);
@@ -2231,7 +2219,7 @@ test('T10.17 scenario 3c: pending interval changes wait for status; Off keeps ma
 		await h.reply('status', { ok: true, state: 'running' });
 		await h.reply('stats', readings(2000, 1024, 1024, 2048, 2048));
 		await refresh;
-		assert.equal(findAll(root, 'strong')[0].children, '运行中');
+		assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
 	}
 });
 

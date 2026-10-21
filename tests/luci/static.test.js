@@ -180,6 +180,87 @@ test('T10.14 scenario 3: all htdocs JS uses ap.confirm instead of native confirm
 	}
 });
 
+/* T10.18: inspect boolean object properties without running view code. Scan
+ * all view object literals, including attrs built separately before E(), so
+ * moving an unsafe value into a local object cannot hide it from the gate.
+ * Quoted strings/comments are opaque; balanced delimiters retain calls and
+ * nested expressions instead of stopping at their first comma.
+ */
+function booleanAttributeErrors(file, source) {
+	const tokens = [];
+	const patterns = [
+		/\s+/, /\/\/[^\n]*/, /\/\*[\s\S]*?\*\//,
+		/'(?:\\[\s\S]|[^'\\])*'/, /"(?:\\[\s\S]|[^"\\])*"/, /`(?:\\[\s\S]|[^`\\])*`/,
+		/[\w$]+/, /\|\|/, /[^\s]/
+	];
+	const lexer = new RegExp(patterns.map(pattern => pattern.source).join('|'), 'g');
+	for (const match of source.matchAll(lexer)) {
+		if (/^(?:\s|\/\/|\/\*)/.test(match[0]))
+			continue;
+		tokens.push({ raw: match[0], offset: match.index });
+	}
+	const errors = [];
+	const keys = new Set([ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ]);
+	for (let i = 0; i < tokens.length; i++) {
+		const key = tokens[i].raw.replace(/^(['"])(.*)\1$/, '$2');
+		if (!keys.has(key) || tokens[i + 1]?.raw !== ':')
+			continue;
+		if (![ '{', ',' ].includes(tokens[i - 1]?.raw))
+			continue;
+		const value = [];
+		let depth = 0;
+		for (let j = i + 2; j < tokens.length; j++) {
+			const raw = tokens[j].raw;
+			if (depth === 0 && [ ',', '}' ].includes(raw))
+				break;
+			value.push({ raw, depth });
+			if ([ '(', '[', '{' ].includes(raw))
+				depth++;
+			if ([ ')', ']', '}' ].includes(raw))
+				depth--;
+		}
+		const top = value.filter(token => token.depth === 0).map(token => token.raw);
+		const literal = value.length === 1 && [ 'true', 'null' ].includes(value[0].raw);
+		const fallback = top.at(-2) === '||' && top.at(-1) === 'null'
+			&& !top.some(raw => [ '?', ':', '=' ].includes(raw));
+		const quoted = raw => /^'(?:\\[\s\S]|[^'\\])+'$|^"(?:\\[\s\S]|[^"\\])+"$/.test(raw ?? '');
+		const ternary = top.at(-4) === '?' && quoted(top.at(-3)) && top.at(-2) === ':'
+			&& top.at(-1) === 'null' && top.filter(raw => raw === '?').length === 1;
+		if (!literal && !fallback && !ternary) {
+			const line = source.slice(0, tokens[i].offset).split('\n').length;
+			errors.push(`${file}:${line}: ${key} must use true, null, condition || null or condition ? 'value' : null`);
+		}
+	}
+	return errors;
+}
+
+test('T10.18 scenario 4: all views use safe boolean attribute values', () => {
+	const sources = viewSources();
+	assert.equal(sources.size, 8, 'all eight views are scanned');
+	assert.deepEqual([...sources].flatMap(([file, source]) => booleanAttributeErrors(file, source)), []);
+});
+
+test('T10.18 scenario 4: unsafe boolean attributes report file and line', () => {
+	for (const key of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ]) {
+		const unsafe = [ 'x', 'false', '!vm.ready', 'row.disabled', 'x ? true : false', 'x || false',
+			'x ? false : y || null', 'x ? false : y ? "yes" : null' ];
+		for (const value of unsafe) {
+			const errors = booleanAttributeErrors('bad.js', `// header\nE('button', {\n '${key}': ${value}\n});`);
+			assert.equal(errors.length, 1, `${key}: ${value} is unsafe`);
+			assert.match(errors[0], new RegExp(`^bad\\.js:3: ${key} `));
+		}
+	}
+	assert.deepEqual(booleanAttributeErrors('safe.js', `
+		// E('button', { disabled: false });
+		const decoy = "E('button', { disabled: false })";
+		E('input', { disabled: check(a, b) || null, checked: true,
+			selected: choice === current ? 'selected' : null, readonly: null,
+			hidden: !ready || null, multiple: options.length > 1 || null });
+	`), []);
+	assert.match(booleanAttributeErrors('attrs.js', 'const attrs = { disabled: x };\nE("button", attrs);')[0],
+		/^attrs\.js:1: disabled /);
+});
+
 /* LuCI form options: `depends` is a method. Assigning to it (`o.depends = {…}`)
    replaces the method and registers no condition, so the option always shows;
    an array value (`{ key: [a, b] }`) never matches, because form.js isEqual()
