@@ -78,8 +78,12 @@ return baseclass.extend({
 			name, version: status.components?.[name]?.version ?? _('Unknown', 'aether-proxy'),
 			path: status.components?.[name]?.path ?? '–',
 			note: name == 'chinadns-ng' ?
-				_('Not in the release channel; install or update from feeds on the Software page.', 'aether-proxy') +
-				(status.updates_available ? ' (' + status.updates_available.arch + ')' : '') : ''
+				_('Not automatically updated through the release channel: '
+					+ 'install or update from feeds on the Software page, '
+					+ 'or download the chinadns-ng package%s from the release page and install it manually.',
+					'aether-proxy')
+					.format(status.updates_available ?
+						_(' (device architecture %s)', 'aether-proxy').format(status.updates_available.arch) : '') : ''
 		}));
 	},
 	job_result: function(kind, name, job) {

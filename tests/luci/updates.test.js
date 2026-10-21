@@ -112,7 +112,7 @@ test('T8.9b scenario 5: running versions, paths and optional architecture note',
 	assert.match(rows[1].note, /软件包页面.*test_arch/);
 	s.updates_available = null;
 	// Without a check there is no arch at all, not an empty or undefined one.
-	assert.doesNotMatch(model.components(s)[1].note, /test_arch|\(/);
+	assert.doesNotMatch(model.components(s)[1].note, /test_arch|本机架构/);
 	assert.equal(model.components({})[1].version, '未知');
 });
 test('T8.9b scenario 6: every channel URL fixture agrees with real CLI validation', () => {
@@ -152,6 +152,7 @@ test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm
 	let confirmed = false;
 	const ap = {
 		confirm: async () => confirmed,
+		job_progress: () => ({ stop() {} }),
 		run_job: (kind, args) => {
 			calls.push([ kind, args ]);
 			return new Promise(resolve => { finish = resolve; });
@@ -171,6 +172,7 @@ test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm
 	page.status = status();
 	page.inventory = E('div');
 	page.summary = E('p');
+	page.progress = E('p');
 	const button = page.package_button(row(status()), 'rollback', true);
 	await button.attrs.click();
 	assert.deepEqual(calls, []);

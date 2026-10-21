@@ -247,6 +247,7 @@ function load_view() {
 		ui: { createHandlerFn: (ctx, fn) => (...args) => fn.apply(ctx, args) },
 		'aether-proxy.model.rules': model(),
 		'aether-proxy.common': {
+			job_progress: () => ({ stop() {} }),
 			call: (method, params) => {
 				const reply = deferred();
 				calls.push({ method, params, ...reply });
@@ -291,7 +292,7 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	const root = await h.page.render();
 	assert.equal(h.calls.length, 0, 'RPC must start after render resolves');
 	const r = regions(root);
-	assert.equal(root.children.length, 9);
+	assert.equal(root.children.length, 10);
 	assert.equal(r.form.tag, 'form');
 	assert.equal(h.maps[0].config, 'aetherproxy');
 	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);

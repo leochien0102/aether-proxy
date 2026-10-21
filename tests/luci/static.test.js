@@ -206,7 +206,7 @@ test('handlers bound with extra createHandlerFn arguments take them before the e
 	for (const [ file, src ] of viewSources()) {
 		for (const m of src.matchAll(/createHandlerFn\(\s*(?:self|this)\s*,\s*'(\w+)'\s*,\s*([^)]+)\)/g)) {
 			const name = m[1];
-			const def = new RegExp('\\b' + name + ':\\s*function\\s*\\(([^)]*)\\)').exec(src);
+			const def = new RegExp('\\b' + name + ':\\s*(?:async\\s+)?function\\s*\\(([^)]*)\\)').exec(src);
 
 			assert.ok(def, `${file}: handler ${name} is defined in the view`);
 
