@@ -174,7 +174,7 @@ return view.extend({
 		/* Delete requires a confirmation (docs/10 「UI 规则」); the built-in
 		   handler removes silently, so it is wrapped here. The model decides
 		   whether the row may be deleted at all. */
-		s.handleRemove = function(section_id, ev) {
+		s.handleRemove = async function(section_id, ev) {
 			const row = rowMap[section_id];
 
 			if (row && !row.can_delete) {
@@ -182,7 +182,12 @@ return view.extend({
 				return;
 			}
 
-			if (!confirm(_('Really delete this node?', 'aether-proxy')))
+			if (!await ap.confirm({
+				title: _('Delete node', 'aether-proxy'),
+				text: _('Really delete this node?', 'aether-proxy'),
+				ok: _('Delete', 'aether-proxy'),
+				destructive: true
+			}))
 				return;
 
 			return this.super('handleRemove', [ section_id, ev ]);

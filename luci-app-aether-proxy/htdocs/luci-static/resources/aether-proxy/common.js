@@ -13,6 +13,7 @@
  * further calls wait in a FIFO queue (docs/10 「UI 规则」: 为 uhttpd 的
  * max_requests 3 留出余量). Module loading also checks for a stale browser
  * copy of this script (docs/10 「页面脚本过期检测」), independently of RPC.
+ * Confirmations use a shared themed modal (docs/10 「UI 规则」).
  */
 
 var SCRIPT_VERSION = '@@VERSION@@';
@@ -202,6 +203,34 @@ var ap = baseclass.extend({
 	TIMEOUTS: TIMEOUTS,
 
 	call: call,
+
+	/* docs/10 「UI 规则」: keep confirmations in the active LuCI theme and
+	   close the modal before allowing the caller to perform its action. */
+	confirm: function(options) {
+		return new Promise(function(resolve) {
+			const finish = function(answer) {
+				ui.hideModal();
+				resolve(answer);
+			};
+
+			ui.showModal(options.title, [
+				E('p', options.text),
+				E('div', { 'class': 'right' }, [
+					E('button', {
+						'type': 'button',
+						'class': 'cbi-button',
+						'click': function() { finish(false); }
+					}, _('Cancel', 'aether-proxy')),
+					' ',
+					E('button', {
+						'type': 'button',
+						'class': 'cbi-button ' + (options.destructive ? 'cbi-button-remove' : 'cbi-button-action'),
+						'click': function() { finish(true); }
+					}, options.ok)
+				])
+			]);
+		});
+	},
 
 	/* Call fn (which returns a promise) every interval_ms, but at most every
 	   2000ms. A tick is skipped while the previous run has not settled and

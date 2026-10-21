@@ -42,10 +42,19 @@ return view.extend({
 			return td;
 		};
 		// GridSection's built-in cbi-button-remove dispatches here.
-		s.handleRemove = function(id) {
-			const plan = model.delete_plan(id, uci.sections('aetherproxy', 'node'), uci.get('aetherproxy', 'main', 'node'));
-			if (!confirm(plan.confirm)) return;
-			for (const node of plan.remove) uci.remove('aetherproxy', node);
+		s.handleRemove = async function(id) {
+			const plan = model.delete_plan(id,
+				uci.sections('aetherproxy', 'node'), uci.get('aetherproxy', 'main', 'node'));
+			if (!await ap.confirm({
+				title: _('Delete subscription', 'aether-proxy'),
+				text: plan.confirm,
+				ok: _('Delete', 'aether-proxy'),
+				destructive: true
+			}))
+				return;
+
+			for (const node of plan.remove)
+				uci.remove('aetherproxy', node);
 			for (const node of plan.manual) {
 				uci.set('aetherproxy', node, 'source', 'manual');
 				uci.set('aetherproxy', node, 'stale', '0');

@@ -100,7 +100,9 @@ try {
   assert.match(source,/uci\.add\('aetherproxy', 'subscription', id\)/);
   assert.match(source,/renderMoreOptionsModal\(id\)/);
   assert.match(source,/'url', _\('Subscription URL', 'aether-proxy'\)\).*o\.password = true/);
-  assert.match(source,/cbi-button-remove/); assert.match(source,/if \(!confirm\(plan.confirm\)\) return/);
+  assert.match(source,/cbi-button-remove/);
+  assert.match(source,/if \(!await ap\.confirm\(/);
+  assert.match(source,/text: plan.confirm/);
   assert.match(source,/ap\.run_job\('sub_update', ids\)/);
   assert.match(source,/uci\.set\('aetherproxy', node, 'source', 'manual'\)/);
   assert.match(source,/uci\.set\('aetherproxy', node, 'stale', '0'\)/);

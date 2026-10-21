@@ -151,6 +151,7 @@ test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm
 	let finish;
 	let confirmed = false;
 	const ap = {
+		confirm: async () => confirmed,
 		run_job: (kind, args) => {
 			calls.push([ kind, args ]);
 			return new Promise(resolve => { finish = resolve; });
@@ -166,15 +167,16 @@ test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm
 		view: { extend: o => o }, form: {}, uci: {},
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
 		'aether-proxy.common': ap, 'aether-proxy.model.updates': model
-	}, { window: { confirm: () => confirmed }, document: {} });
+	}, { window: {}, document: {} });
 	page.status = status();
 	page.inventory = E('div');
 	page.summary = E('p');
 	const button = page.package_button(row(status()), 'rollback', true);
-	button.attrs.click();
+	await button.attrs.click();
 	assert.deepEqual(calls, []);
 	confirmed = true;
 	const pending = button.attrs.click();
+	await Promise.resolve();
 	assert.equal(page.busy, true);
 	assert.deepEqual(calls, [ [ 'update_package', [ 'xray-core', '--previous' ] ] ]);
 	const buttons = node => {
@@ -198,7 +200,8 @@ test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and t
 	assert.match(source, /ap.run_job\('update_check', \[\]/);
 	assert.match(source, /ap.run_job\('update_package', previous \? \[ name, '--previous' \]/);
 	assert.match(source, /cbi-button-remove/);
-	assert.match(source, /window.confirm\(row.confirmation\)/);
+	assert.match(source, /previous && !await ap\.confirm\(/);
+	assert.match(source, /text: row.confirmation/);
 	assert.match(source, /validate.*function[^\n]*model.validate_url/);
 	assert.doesNotMatch(source, /rpc.declare|cbi-button-reset|upload|\.depends\s*=/i);
 	assert.doesNotMatch(source, /ap.poll/);

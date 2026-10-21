@@ -74,6 +74,7 @@ function build(status, version, labels, now, enabled, configuredNode, components
 function loadView(overrides = {}) {
 	const rpcCalls = overrides.rpcCalls ?? [];
 	const ap = overrides.ap ?? {
+		confirm: overrides.confirm ?? (async () => true),
 		call: (method) => {
 			rpcCalls.push(method);
 
@@ -336,10 +337,7 @@ test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts
 	}
 });
 
-test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, and never calls service', async (t) => {
-	const saved = globalThis.confirm;
-	globalThis.confirm = () => true;
-	t.after(() => { globalThis.confirm = saved; });
+test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, and never calls service', async () => {
 	const order = [];
 	const rpcCalls = [];
 	const page = loadView({
@@ -374,7 +372,7 @@ test('T8.11a scenario 4: static checks — switch wiring, no service from the sw
 	assert.match(src, /ui\.changes\.apply\(true\)/);
 
 	/* the toggle handler must not call the service method itself */
-	const handler = /handleEnable: function[\s\S]*?\n\t},/.exec(src);
+	const handler = /handleEnable: async function[\s\S]*?\n\t},/.exec(src);
 
 	assert.ok(handler, 'handleEnable exists');
 	assert.doesNotMatch(handler[0], /ap\.call\(/);
@@ -419,7 +417,7 @@ test('scenario 9: static view checks — model only, stop button negative and co
 
 	/* stop: cbi-button-negative plus a confirm(); start/restart the normal buttons */
 	assert.match(src, /_\('Stop'\),\s*'cbi-button-negative'/);
-	assert.match(src, /'stop' && !confirm\(/);
+	assert.match(src, /action == 'stop' && !await ap\.confirm\(/);
 	assert.doesNotMatch(src, /cbi-button-reset/);
 
 	/* 5s poll, service via ap.call, notification on failure */
@@ -455,33 +453,26 @@ test('T8.11a review: service buttons are clickable and stop asks with the model 
 	const rpcCalls = [];
 	const asked = [];
 	let answer = false;
-	const saved = globalThis.confirm;
-	globalThis.confirm = (text) => { asked.push(text); return answer; };
-	try {
-		const page = loadView({ rpcCalls });
-		page.content = E('div', {}, []);
-		page.labels = {};
-		page.enabled = true;
-		page.refresh({ ok: true, state: 'running' });
-		const buttons = findAll(page.buttonBar(page.vm.buttons), 'button');
-		// Order and classes from buttonBar: start, restart (cbi-button-apply), stop (cbi-button-negative).
-		assert.equal(buttons.length, 3);
-		const restart = buttons[1];
-		const stop = buttons.find(b => b.attrs.class.includes('cbi-button-negative'));
-		assert.equal(typeof restart.attrs.click, 'function', 'restart has a click handler');
-		assert.equal(typeof stop.attrs.click, 'function', 'stop has a click handler');
+	const page = loadView({ rpcCalls, confirm: async (options) => { asked.push(options.text); return answer; } });
+	page.content = E('div', {}, []);
+	page.labels = {};
+	page.enabled = true;
+	page.refresh({ ok: true, state: 'running' });
+	const buttons = findAll(page.buttonBar(page.vm.buttons), 'button');
+	// Order and classes from buttonBar: start, restart (cbi-button-apply), stop (cbi-button-negative).
+	assert.equal(buttons.length, 3);
+	const restart = buttons[1];
+	const stop = buttons.find(b => b.attrs.class.includes('cbi-button-negative'));
+	assert.equal(typeof restart.attrs.click, 'function', 'restart has a click handler');
+	assert.equal(typeof stop.attrs.click, 'function', 'stop has a click handler');
 
-		await stop.attrs.click();
-		assert.deepEqual(asked, [ page.vm.stop_confirmation ]);
-		assert.ok(!rpcCalls.includes('service'), 'cancelled stop calls nothing');
+	await stop.attrs.click();
+	assert.deepEqual(asked, [ page.vm.stop_confirmation ]);
+	assert.ok(!rpcCalls.includes('service'), 'cancelled stop calls nothing');
 
-		answer = true;
-		await stop.attrs.click();
-		assert.ok(rpcCalls.includes('service'), 'confirmed stop calls service');
-	}
-	finally {
-		globalThis.confirm = saved;
-	}
+	answer = true;
+	await stop.attrs.click();
+	assert.ok(rpcCalls.includes('service'), 'confirmed stop calls service');
 });
 
 function readings(at_ms, proxy_tx, proxy_rx, wan_tx, wan_rx, dev = 'eth1') {
@@ -1459,13 +1450,16 @@ test('T10.9 scenario 2: title left group has heading then tooltip-only enable; r
 });
 
 test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm saves 0; enable skips confirm',
-	async (t) => {
-	const saved = globalThis.confirm;
-	t.after(() => { globalThis.confirm = saved; });
+	async () => {
 	for (const [initial, answer] of [ [ true, false ], [ true, true ], [ false, false ] ]) {
 		const order = [], asked = [], calls = [];
 		const page = loadView({
 			rpcCalls: calls,
+			confirm: async (options) => {
+				asked.push(options.text);
+				assert.deepEqual(order, [], 'confirmation precedes any UCI change');
+				return answer;
+			},
 			uci: {
 				set: (...args) => order.push([ 'set', ...args ]),
 				save: async () => { order.push([ 'save' ]); }
@@ -1476,11 +1470,6 @@ test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm
 			{ labels: {}, enabled: initial } ]);
 		/* A sentinel proves the handler uses the model field, not copied wording. */
 		page.vm.disable_confirmation = 'model confirmation';
-		globalThis.confirm = (text) => {
-			asked.push(text);
-			assert.deepEqual(order, [], 'confirmation precedes any UCI change');
-			return answer;
-		};
 		const box = findAll(root, 'input')[0];
 		box.checked = !initial;
 		await box.attrs.change({ target: box });

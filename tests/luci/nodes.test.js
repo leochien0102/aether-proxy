@@ -211,7 +211,7 @@ test('scenario 9: static view checks — GridSection, no rpc.declare, confirmed 
 	assert.match(src, /form\.GridSection/);
 	assert.match(src, /renderRowActions/);
 	assert.match(src, /cbi-button-remove/);
-	assert.match(src, /confirm\(/);
+	assert.match(src, /await ap\.confirm\(/);
 	assert.match(src, /cbi-button-remove/);
 
 	/* set as current stages the UCI change and applies with rollback */

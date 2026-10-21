@@ -30,8 +30,13 @@ return view.extend({
 	package_button: function(row, label, previous) {
 		return E('button', { type: 'button', disabled: row.disabled,
 			class: 'cbi-button ' + (previous ? 'cbi-button-remove' : 'cbi-button-action'),
-			click: ui.createHandlerFn(this, function() {
-				if (previous && !window.confirm(row.confirmation))
+			click: ui.createHandlerFn(this, async function() {
+				if (previous && !await ap.confirm({
+					title: _('Roll back %s', 'aether-proxy').replace('%s', row.name),
+					text: row.confirmation,
+					ok: _('Roll back', 'aether-proxy'),
+					destructive: true
+				}))
 					return;
 				return this.run('update_package', row.name, previous);
 			}) }, label);
