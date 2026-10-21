@@ -16,9 +16,9 @@
  * operations are all decided in the model. Probing runs through ap.run_job()
  * (docs/10 「作业机制」); after every job status update the probe results are
  * fetched once and the probe column and progress line are refreshed. Setting a
- * node as current stages the UCI change and goes through LuCI's standard
- * save & apply with rollback confirmation; node edits use the GridSection
- * modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
+ * node as current uses node_use without applying session changes, then rereads
+ * UCI and runtime status (docs/10 「检测真实延迟与切换节点」). Node edits use the
+ * GridSection modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
  * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
  * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
  */
@@ -497,14 +497,39 @@ return view.extend({
 		dom.content(this.progressEl, [ vm.progress ]);
 	},
 
-	/* 设为当前: stage the UCI change and go through LuCI's standard save &
-	   apply with rollback confirmation (docs/10 「节点页」). */
-	handleSetCurrent: function(section_id, ev) {
-		uci.set('aetherproxy', 'main', 'node', section_id);
-
-		return uci.save().then(function() {
-			return ui.changes.apply(true);
-		});
+	/* Direct switching must not commit unrelated staged session changes. */
+	handleSetCurrent: async function(section_id, ev) {
+		if (this.switching)
+			return;
+		this.switching = true;
+		const button = ev.currentTarget;
+		button.disabled = true;
+		try {
+			const reply = await ap.call('node_use', { id: section_id });
+			let status;
+			if (reply.ok) {
+				await uci.unload('aetherproxy');
+				await uci.load('aetherproxy');
+				status = await ap.call('status');
+				const content = await this.buildPage();
+				dom.content(this.root, content);
+				this.updateProbeColumns();
+			}
+			const text = model.node_use_message(reply, status,
+				uci.get('aetherproxy', 'main', 'node'), uci.sections('aetherproxy', 'node'));
+			if (text)
+				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
+		}
+		catch (e) {
+			/* TODO(design): refresh failures after node_use are unspecified; notify without retrying writes. */
+			ui.addNotification(null, E('p', {}, model.node_use_message({
+				ok: false, code: 'RPC_FAILED', detail: e?.message ?? String(e)
+			})), 'error');
+		}
+		finally {
+			this.switching = false;
+			button.disabled = false;
+		}
 	},
 
 	handleImport: function(ev) {

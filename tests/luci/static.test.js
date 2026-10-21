@@ -61,6 +61,9 @@ const PLUGIN_METHODS = {
 	events: [ 'since', 'level' ],
 	probe_results: [],
 	probe_now: [],
+	node_use: [ 'id' ],
+	probe_url: [ 'site' ],
+	probe_sites: [],
 	sub_status: [],
 	data_status: [],
 	stats: [],
@@ -68,14 +71,6 @@ const PLUGIN_METHODS = {
 	node_import: [ 'uri' ],
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
-};
-
-/* T9.10: shipped in the plugin and ACL, but not yet wired into the frontend.
-   Move these into PLUGIN_METHODS when the frontend card adds their declarations. */
-const BACKEND_ONLY_METHODS = {
-	node_use: [ 'id' ],
-	probe_url: [ 'site' ],
-	probe_sites: []
 };
 
 test('scenario 9: static checks — shared RPC method set, page requires, no reset buttons, po complete', async (t) => {
@@ -102,8 +97,8 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 		...acl['luci-app-aether-proxy'].write.ubus.aetherproxy
 	].sort();
 
-	assert.deepEqual(aclMethods, [ ...Object.keys(PLUGIN_METHODS), ...Object.keys(BACKEND_ONLY_METHODS) ].sort(),
-		'ACL sanity: exactly the frontend methods plus backend-only methods');
+	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(),
+		'ACL sanity: exactly the frontend methods');
 
 	const rpc = createRpc();
 	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o }, ui: {} }, {
@@ -123,16 +118,13 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 		assert.deepEqual(declared[method].params, params, `declaration of ${method} carries the documented params`);
 
 	const plugin = read(PLUGIN);
-	for (const method of Object.keys(PLUGIN_METHODS))
-		assert.match(plugin, new RegExp(`^\\s*${method}:\\s*\\{`, 'm'), `the plugin implements ${method}`);
-
-	for (const [ method, params ] of Object.entries(BACKEND_ONLY_METHODS)) {
+	for (const [ method, params ] of Object.entries(PLUGIN_METHODS)) {
 		const block = plugin.match(new RegExp(`^\\t${method}:\\s*\\{([\\s\\S]*?)^\\t\\}`, 'm'));
-		assert.ok(block, `the plugin implements backend-only ${method}`);
+		assert.ok(block, `the plugin implements ${method}`);
 		const args = block[1].match(/^\s*args:\s*\{([^}]*)\}/m);
-		assert.ok(args, `backend-only ${method} declares args`);
+		assert.ok(args, `${method} declares args`);
 		const names = [ ...args[1].matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*:/g) ].map(match => match[1]);
-		assert.deepEqual(names, params, `backend-only ${method} carries the documented params`);
+		assert.deepEqual(names, params, `${method} carries the documented params`);
 	}
 
 	/* docs/10 「UI 规则」: never use cbi-button-reset */

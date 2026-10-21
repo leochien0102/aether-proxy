@@ -9,7 +9,8 @@
 /*
  * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
- * rates and completion messages, while this view owns requests and timers.
+ * rates and result messages, while this view owns requests and timers.
+ * Real latency and direct node switching follow docs/10 「检测真实延迟与切换节点」.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -52,8 +53,7 @@ return view.extend({
 	},
 
 	/* Toggle handler for the enable switch: stage the UCI value and go through
-	   LuCI's standard save & apply with rollback confirmation, exactly like the
-	   node page's 「设为当前」 (docs/10 「节点页」). No `service` call is made:
+	   LuCI's standard save & apply with rollback confirmation. No `service` call is made:
 	   the reload trigger starts or stops the service. */
 	handleEnable: async function(checked) {
 		/* Disabling is persistent and immediately stops traffic interception;
@@ -171,7 +171,8 @@ return view.extend({
 		this.refreshing = ap.call('status').then((reply) => {
 			/* A slow stats/events read must not hold the runtime controls hostage.
 			   Even a failed first status starts the normal retry cadence. */
-			this.refresh(reply ?? null);
+			this.status = reply ?? null;
+			this.refresh(this.status);
 			if (this.initialReading) {
 				this.initialReading = false;
 				this.startPolling(this.interval);
@@ -216,54 +217,74 @@ return view.extend({
 		this.poller = !this.initialReading && interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
 	},
 
-	handleNode: function(node) {
-		uci.set('aetherproxy', 'main', 'node', node);
-		return uci.save().then(function() { return ui.changes.apply(true); });
+	handleNode: async function(node) {
+		if (this.switching)
+			return;
+		this.switching = true;
+		this.updateNodeButton?.();
+		try {
+			const reply = await ap.call('node_use', { id: node });
+			if (reply.ok) {
+				await uci.unload('aetherproxy');
+				const data = await this.load();
+				this.currentNode = data.node;
+				this.labels = data.labels;
+				this.enabled = data.enabled;
+				/* An older in-flight read cannot stand in for the post-switch status. */
+				await this.refreshing;
+				await this.fetchRefresh();
+			}
+			const text = model.node_use_message(reply, this.status);
+			if (text)
+				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
+		}
+		catch (e) {
+			/* TODO(design): UCI refresh failure after node_use is unspecified; notify, never retry writes. */
+			ui.addNotification(null, E('p', {}, model.node_use_message({
+				ok: false, code: 'RPC_FAILED', detail: e?.message ?? String(e)
+			})), 'error');
+		}
+		finally {
+			this.switching = false;
+			this.updateNodeButton?.();
+		}
 	},
 
 	handleProbe: function() {
-		const button = this.probeButton;
+		if (this.probing || this.probeButton.disabled)
+			return;
+		const site = this.probeSites.value;
+		const label = this.siteOptions.find(option => option.value === site).text;
 		this.probing = true;
-		button.disabled = true;
-		dom.content(this.probeMessage, _('Measuring latency…', 'aether-proxy'));
-		return ap.call('probe_now').then((reply) => {
-			if (!reply.ok)
-				return { text: model.probe_result(reply) };
-			/* The deadline also covers a slow status RPC. Late replies must not
-			   start another poll or overwrite the displayed timeout. */
-			return new Promise((resolve) => {
-				let finished = false, next;
-				const finish = (completion) => {
-					if (finished)
-						return;
-					finished = true;
-					window.clearTimeout(deadline);
-					window.clearTimeout(next);
-					resolve(completion);
-				};
-				const deadline = window.setTimeout(() => {
-					finish({ text: model.probe_result({ code: 'TIMEOUT' }) });
-				}, 15000);
-				const poll = () => ap.call('status').then((status) => {
-					if (finished)
-						return;
-					const completion = model.probe_completion(status, reply.requested_at);
-					if (completion.done)
-						finish(completion);
-					else
-						next = window.setTimeout(poll, 1000);
-				});
-				next = window.setTimeout(poll, 1000);
-			});
-		}).then((completion) => {
-			dom.content(this.probeMessage, completion.text);
-			/* A normal poll may still carry an older status. Finish it first so
-			   the health item is populated by a new read even with auto-refresh off. */
-			if (completion.refresh)
-				return Promise.resolve(this.refreshing).then(() => this.fetchRefresh());
+		this.updateProbeButton();
+		dom.content(this.probeButton, _('Measuring latency…', 'aether-proxy'));
+		dom.content(this.probeMessage, '');
+		/* This one-shot request must not poll or overwrite monitor health. */
+		return ap.call('probe_url', { site: site }).then((reply) => {
+			dom.content(this.probeMessage, model.probe_result(reply, label));
 		}).finally(() => {
 			this.probing = false;
-			button.disabled = this.vm?.probe_disabled ?? false;
+			dom.content(this.probeButton, _('Test real latency', 'aether-proxy'));
+			this.updateProbeButton();
+		});
+	},
+
+	updateProbeButton: function() {
+		this.probeButton.disabled = !this.siteOptions?.length || this.vm?.probe_disabled !== false || !!this.probing;
+	},
+
+	loadProbeSites: function() {
+		return ap.call('probe_sites').then((reply) => {
+			const sites = model.probe_sites(reply);
+			this.siteOptions = sites.options;
+			dom.content(this.probeSites, sites.options.map((option, index) => E('option', {
+				value: option.value, selected: index === 0 ? 'selected' : null
+			}, option.text)));
+			if (sites.options.length)
+				this.probeSites.value = sites.options[0].value;
+			this.probeSites.disabled = !sites.options.length;
+			dom.content(this.probeMessage, sites.error ?? '');
+			this.updateProbeButton();
 		});
 	},
 
@@ -295,10 +316,16 @@ return view.extend({
 	},
 
 	probeControls: function() {
-		this.probeButton = this.button(_('Measure latency', 'aether-proxy'), () => this.handleProbe());
+		this.probeSites = E('select', { disabled: true, style: 'width:auto',
+			'aria-label': _('Probe site', 'aether-proxy') });
+		/* Own the disabled state: createHandlerFn unconditionally enables on completion. */
+		this.probeButton = E('button', {
+			'class': 'cbi-button cbi-button-apply', click: () => this.handleProbe()
+		}, _('Test real latency', 'aether-proxy'));
+		this.probeButton.disabled = true;
 		this.probeMessage = E('span', { 'aria-live': 'polite' });
 		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-			this.probeButton, this.probeMessage
+			this.probeSites, this.probeButton, this.probeMessage
 		]);
 	},
 
@@ -309,8 +336,12 @@ return view.extend({
 		const nodes = E('select', { style: 'width:auto' }, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
-		const button = this.button(_('Use this node', 'aether-proxy'), () => this.handleNode(nodes.value));
-		const update = () => { button.disabled = !model.can_switch(nodes.value, current); };
+		const button = E('button', {
+			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value)
+		}, _('Use this node', 'aether-proxy'));
+		const update = this.updateNodeButton = () => {
+			button.disabled = !!this.switching || !model.can_switch(nodes.value, current);
+		};
 		nodes.addEventListener('change', update);
 		update();
 		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [ nodes, button ]);
@@ -432,6 +463,7 @@ return view.extend({
 			this.updateComponents();
 		});
 		this.loadComponents();
+		this.sitesRequest = Promise.resolve().then(() => this.loadProbeSites());
 
 		return root;
 	},
@@ -444,7 +476,7 @@ return view.extend({
 		this.vm = vm;
 
 		this.probeControl ??= this.probeControls();
-		this.probeButton.disabled = vm.probe_disabled || !!this.probing;
+		this.updateProbeButton();
 		/* Reuse controls when moving them into fresh sections: polling must not
 		   reset an edited selection, the enable switch or an in-flight probe. */
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
