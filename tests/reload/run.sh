@@ -113,9 +113,11 @@ assert_applied() {
 	if python3 "$ROOT/tests/reload/assert-event.py" "$EVENTS" "$from" "$to" "$actions" "${5:-0}" \
 		> "$T/$label-event.json"; then
 		ok "T9.8 $label event nodes actions notice and nonnegative integer timings"
+		ok "T9.12 $label detail keys match operations and integer sums fit parent timings"
 		printf 'TRACE T9.8 %s: %s\n' "$label" "$(< "$T/$label-event.json")"
 	else
 		bad "T9.8 $label event nodes actions notice and nonnegative integer timings"
+		bad "T9.12 $label detail keys match operations and integer sums fit parent timings"
 	fi
 	local nft_delta=0 xray_delta=0 dns_delta=0
 	case ",$actions," in *,nft_replace,*) nft_delta=1 ;; esac

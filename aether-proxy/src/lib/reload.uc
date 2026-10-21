@@ -113,17 +113,29 @@ function elapsed_ms(started) {
 	return started == null || ended == null ? 0 : max(int(ended - started + 0.5), 0);
 };
 
-function validate_nft(daemon, stage) {
+// Truncate detail intervals rather than rounding each independently: disjoint detail
+// sums must fit the existing rounded parent timers, even on very fast host reloads.
+function record_detail(detail, key, started) {
+	let ended = monotonic_ms();
+	let duration = started == null || ended == null ? 0 : max(int(ended - started), 0);
+	detail[key] = (detail[key] ?? 0) + duration;
+};
+
+function validate_nft(daemon, stage, detail) {
 	let bin = daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/nft` : 'nft';
+	let started = monotonic_ms();
 	let nft = sys.run([ bin, '-c', '-f', `${stage}/${C.ARTIFACT_FILES.nft}` ], { timeout: 10, quiet: true });
+	record_detail(detail, 'nft_check', started);
 	if (nft.code != 0)
 		return { ok: false, code: 'RENDER_INVALID',
 			detail: `nft -c -f failed (${nft.code}): ${nft.stderr}`, artifact: 'nft' };
 	return { ok: true };
 };
 
-function validate(daemon, snapshot, stage, validate_xray) {
+function validate(daemon, snapshot, stage, validate_xray, detail) {
+	let started = monotonic_ms();
 	let pre = check.precheck(snapshot, stage, { sys_root: daemon.ctx.root, bin_dir: daemon.ctx.bin_dir });
+	record_detail(detail, 'precheck', started);
 	let missing = map(filter(pre.items, item => !item.ok), item => item.item);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
 		if (!pre.components[name]?.found)
@@ -131,11 +143,13 @@ function validate(daemon, snapshot, stage, validate_xray) {
 	if (length(missing))
 		return { ok: false, code: 'PRECHECK_FAILED', missing };
 	let components = pre.components;
-	let nft = validate_nft(daemon, stage);
+	let nft = validate_nft(daemon, stage, detail);
 	if (!nft.ok)
 		return nft;
 	if (validate_xray) {
+		started = monotonic_ms();
 		let xray = sys.run([ components[C.XRAY_COMPONENT].path, 'run', '-test', '-c', `${stage}/${C.ARTIFACT_FILES.xray}` ], { timeout: 10, quiet: true });
+		record_detail(detail, 'xray_test', started);
 		if (xray.code != 0)
 			return { ok: false, code: 'RENDER_INVALID', detail: `xray run -test failed (${xray.code}): ${xray.stderr}`, artifact: 'xray' };
 	}
@@ -278,7 +292,8 @@ function retain_components(daemon, components) {
 	return { ok: true };
 };
 
-function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components, old_lan_ifaces, new_lan_ifaces, new_node_id) {
+function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components,
+	old_lan_ifaces, new_lan_ifaces, new_node_id, detail) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let previous = `${run_dir(daemon)}/${C.DAEMON_PREVIOUS_DIR}`;
@@ -293,7 +308,9 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 		// Include the attempted action before executing it: restart may stop the old child
 		// and then fail to start the replacement, so that action also needs rollback.
 		push(done, action);
+		let started = monotonic_ms();
 		let result = execute_action(daemon, action, artifacts, components);
+		record_detail(detail, action, started);
 		if (!result.ok) {
 			daemon.ctx.lan_ifaces = old_lan_ifaces;
 			rollback_actions(daemon, done, previous, current, publication.had_current, old_artifacts, old_components);
@@ -321,9 +338,12 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 function run(daemon, started_ms) {
 	started_ms ??= monotonic_ms();
 	let step_started = monotonic_ms();
-	let steps = { config_render: 0, resolve_node: 0, validate: 0, sets_export_render: 0, actions: 0 };
+	let detail = {};
+	let steps = { config_render: 0, resolve_node: 0, validate: 0, sets_export_render: 0, actions: 0, detail };
 	setup_log(daemon);
+	let detail_started = monotonic_ms();
 	let loaded = pipeline.read(daemon.opts);
+	record_detail(detail, 'read', detail_started);
 	if (!loaded.ok)
 		return config_failure(daemon, loaded);
 	let snapshot = loaded.snapshot;
@@ -346,9 +366,12 @@ function run(daemon, started_ms) {
 	// Resolve first, then render once from the same snapshot/data. Rereading here could
 	// mix configurations or duplicate warnings as well as wasting a full render pass.
 	let runtime = { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} };
+	detail_started = monotonic_ms();
 	let built = pipeline.render(loaded, runtime);
+	record_detail(detail, 'render', detail_started);
 	if (!built.ok)
 		return config_failure(daemon, built);
+	detail_started = monotonic_ms();
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let clean = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
 	if (clean.code != 0)
@@ -365,6 +388,7 @@ function run(daemon, started_ms) {
 		discard_stage(daemon, stage);
 		return failure(daemon, 'hash', rough_hashes.detail);
 	}
+	record_detail(detail, 'stage', detail_started);
 	let rough_plan = plan(
 		{ hashes: daemon.state.render_hash ?? {}, enabled: daemon.snapshot.main.enabled == true },
 		{ hashes: rough_hashes.hashes, enabled: snapshot.main.enabled == true }
@@ -381,7 +405,7 @@ function run(daemon, started_ms) {
 	// The daemon refreshes render_hash from current/ before entering reload, so this
 	// compares installed output, including monitor edits, rather than startup hashes.
 	let xray_changed = rough_hashes.hashes.xray != daemon.state.render_hash?.xray;
-	let validated = validate(daemon, snapshot, stage, xray_changed);
+	let validated = validate(daemon, snapshot, stage, xray_changed, detail);
 	steps.validate = elapsed_ms(step_started);
 	if (!validated.ok) {
 		discard_stage(daemon, stage);
@@ -423,12 +447,17 @@ function run(daemon, started_ms) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'sets_export', table.detail);
 		}
+		detail_started = monotonic_ms();
 		let restored = table.exists ? apply.sets_export(daemon.ctx) : { ok: true, sets: { gfw4: [], udirect4: [], uproxy4: [] } };
+		if (table.exists)
+			record_detail(detail, 'sets_export', detail_started);
 		if (!restored.ok) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'sets_export', restored.detail);
 		}
+		detail_started = monotonic_ms();
 		let with_sets = pipeline.render(loaded, { ...runtime, restored: restored.sets }, 'nft');
+		record_detail(detail, 'nft_render', detail_started);
 		if (!with_sets.ok) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'render', with_sets.detail);
@@ -443,7 +472,7 @@ function run(daemon, started_ms) {
 		step_started = monotonic_ms();
 		// Only nft was rewritten; precheck and the Xray test already covered this candidate.
 		// Both nft passes run whenever nft changes, mode-only reloads included (docs/04).
-		let checked = validate_nft(daemon, stage);
+		let checked = validate_nft(daemon, stage, detail);
 		steps.validate += elapsed_ms(step_started);
 		if (!checked.ok) {
 			discard_stage(daemon, stage);
@@ -478,7 +507,7 @@ function run(daemon, started_ms) {
 	daemon.state = { ...daemon.state, node_ip };
 	step_started = monotonic_ms();
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
-		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node);
+		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, detail);
 	if (!applied.ok) {
 		daemon.state = old_state;
 		daemon.ctx.dnsmasq_instance = old_instance;
