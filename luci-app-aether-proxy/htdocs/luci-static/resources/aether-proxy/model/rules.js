@@ -108,8 +108,14 @@ function job_result(job) {
 	const r = job?.result ?? job;
 	const names = list => (list ?? []).map(n => NAMES[n] ?? n).join(', ');
 	const failures = Object.keys(r?.failed ?? {}).map(n => (NAMES[n] ?? n) + ': ' + r.failed[n]);
-	const lines = [ fmt(_('Updated: %s', 'aether-proxy'), names(r?.updated)), fmt(_('Unchanged: %s', 'aether-proxy'), names(r?.unchanged)),
-		fmt(_('Failed: %s', 'aether-proxy'), failures.join('; ')) ];
+	/* docs/10 "名单改为标签页": omit empty categories, not their headings alone. */
+	const lines = [];
+	if (r?.updated?.length)
+		lines.push(fmt(_('Updated: %s', 'aether-proxy'), names(r.updated)));
+	if (r?.unchanged?.length)
+		lines.push(fmt(_('Unchanged: %s', 'aether-proxy'), names(r.unchanged)));
+	if (failures.length)
+		lines.push(fmt(_('Failed: %s', 'aether-proxy'), failures.join('; ')));
 	if (job?.ok === false || job?.error)
 		lines.push(failure(job));
 	return lines;

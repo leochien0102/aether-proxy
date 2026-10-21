@@ -8,6 +8,7 @@
 
 /* Rules/DNS form and independent custom-file editors (docs/10 "规则与 DNS 页").
  * Lists deliberately bypass UCI: each save is validated by the CLI independently.
+ * Per docs/10 "名单改为标签页", group only the editors in standard LuCI tabs.
  * Per docs/10 "先出页面", defer RPC until the form and disabled editors are rendered.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  */
@@ -34,7 +35,8 @@ return view.extend({
 				});
 			}) }, _('Save list', 'aether-proxy'));
 		return {
-			node: E('div', { class: 'cbi-section' }, [ E('h3', {}, item[1]), input, button, message ]),
+			node: E('div', { class: 'cbi-section', 'data-tab': item[0], 'data-tab-title': item[1] },
+				[ E('h3', {}, item[1]), input, button, message ]),
 			load: () => ap.call('list_file', { name: item[0] }).then(result => {
 				const vm = model.list_state(result);
 				input.value = vm.content;
@@ -101,11 +103,14 @@ return view.extend({
 			}) }, _('Update now', 'aether-proxy'));
 		return map.render().then(node => {
 			const editors = LISTS.map(item => this.list_editor(item));
-			const root = E('div', {}, [ node, ...editors.map(editor => editor.node),
+			const panes = editors.map(editor => editor.node);
+			const root = E('div', {}, [ node, E('div', {}, panes),
 				E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary, progress ]);
-			/* A new turn lets LuCI display the page before RPC starts. Enqueue in
-			 * page order; ap.call owns the shared two-request concurrency limit. */
+			/* A new turn lets LuCI attach the panes before tab initialization and
+			 * display the page before RPC starts. Enqueue in page order; ap.call
+			 * owns the shared two-request concurrency limit. */
 			window.setTimeout(() => {
+				ui.tabs.initTabGroup(panes);
 				editors.forEach(editor => editor.load());
 				ap.call('data_status').then(r => this.show_data(inventory, r));
 			}, 0);
