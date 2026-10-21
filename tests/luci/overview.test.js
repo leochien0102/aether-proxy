@@ -1,6 +1,7 @@
 'use strict';
 
-/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c; m10.md T10.3–T10.6, T10.9, T10.11, T10.13).
+/* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c;
+ * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -111,6 +112,7 @@ function loadView(overrides = {}) {
 		dom: { content: (el, node) => {
 			el.children = Array.isArray(node) ? node : [];
 			el.content = Array.isArray(node) ? undefined : node;
+			overrides.onContent?.(el);
 		} },
 		'aether-proxy.common': ap,
 		'aether-proxy.model.overview': modelMod
@@ -325,9 +327,9 @@ test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts
 		const page = loadView({ uci: { get: () => raw } });
 		const data = await page.load();
 
-		assert.equal(data[2].enabled, expected, `main.enabled=${raw} loads as ${expected}`);
+		assert.equal(data.enabled, expected, `main.enabled=${raw} loads as ${expected}`);
 
-		page.enabled = data[2].enabled;
+		page.enabled = data.enabled;
 		const box = findTag(page.enableSwitch('note'), 'input');
 		/* The compact switch now sits beside the title, without a visible note. */
 		assert.match(page.enableSwitch('note').attrs.style, /align-items:\s*center/);
@@ -421,7 +423,7 @@ test('scenario 9: static view checks — model only, stop button negative and co
 	assert.doesNotMatch(src, /cbi-button-reset/);
 
 	/* 5s poll, service via ap.call, notification on failure */
-	assert.match(src, /this\.startPolling\(interval\)/);
+	assert.match(src, /this\.startPolling\(this\.interval\)/);
 	assert.equal(loadView().readInterval(), 5000, 'default remains the original 5s poll');
 	assert.match(src, /ap\.call\('service', \{ action: action \}\)/);
 	assert.match(src, /ui\.addNotification\(/);
@@ -598,9 +600,11 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 		window: { localStorage: { getItem: () => null, setItem: (...args) => writes.push(args) } }
 	});
 	const data = await page.load();
-	assert.ok(calls.indexOf('stats') > calls.indexOf('status'));
+	assert.deepEqual(calls, [], 'load reads only UCI');
 	const root = page.render(data);
+	await page.initialRequest;
 	await page.componentRequest;
+	assert.ok(calls.indexOf('stats') > calls.indexOf('status'));
 	assert.equal(findTag(root, 'h2').children, '以太跃迁');
 	assert.equal(polls[0].ms, 5000);
 	const selects = findAll(root, 'select');
@@ -877,10 +881,20 @@ function nodeRow(root) {
 }
 
 function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
-	const page = loadView();
-	const root = page.render([ { reply: status, stats: readings(1000, 0, 0, 0, 0) }, version,
-		{ labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', enabled } ]);
+	/* Inject settled data after the skeleton; pending background reads cannot
+	   overwrite the snapshot used by the existing presentation assertions. */
+	const page = loadView({ ap: { call: () => new Promise(() => {}) } });
+	const root = page.render({ labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', enabled });
+	page.version = version;
+	page.updateComponents();
+	page.refresh(status, readings(1000, 0, 0, 0, 0));
 	return { page, root };
+}
+
+/* Banner assertions ignore the stable region wrappers, not their order. */
+function pageParts(page) {
+	return page.content.children.flatMap((region) =>
+		region === page.noticeContent ? region.children : sections(region));
 }
 
 test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notices and removed subscriptions', () => {
@@ -977,6 +991,7 @@ test('T10.3 scenario 6d: polling preserves enable, node selection, probe button 
 	const probeMessage = page.probeMessage;
 	nodes.value = 'n_b';
 	nodes.attrs.change();
+	page.probing = true;
 	probeButton.disabled = true;
 	probeMessage.content = '检测中';
 	page.refresh({ ok: true, state: 'degraded' }, readings(2000, 1024, 2048, 4096, 8192));
@@ -1090,6 +1105,7 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	assert.equal(calls.filter((m) => m === 'components').length, 0);
 	const root = page.render(data);
 	await page.componentRequest;
+	await page.initialRequest;
 	assert.equal(calls.filter((m) => m === 'components').length, 1);
 	assert.equal(page.vm.current_node, 'n_a', 'view passes UCI main.node to the model');
 	await polls[0]();
@@ -1217,6 +1233,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	assert.deepEqual(componentCells(root), [
 		[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
 	]);
+	await page.initialRequest;
 	const blocks = sections(root).slice(0, -1);
 	const tables = findAll(root, 'table');
 	const nodes = findAll(blocks[0], 'select')[0];
@@ -1466,14 +1483,13 @@ test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm
 			},
 			ui: { changes: { apply: (rollback) => order.push([ 'apply', rollback ]) } }
 		});
-		const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
-			{ labels: {}, enabled: initial } ]);
+		const root = page.render({ labels: {}, enabled: initial });
 		/* A sentinel proves the handler uses the model field, not copied wording. */
 		page.vm.disable_confirmation = 'model confirmation';
 		const box = findAll(root, 'input')[0];
 		box.checked = !initial;
 		await box.attrs.change({ target: box });
-		assert.deepEqual(asked, initial ? [ page.vm.disable_confirmation ] : []);
+		assert.deepEqual(asked, initial ? [ 'model confirmation' ] : []);
 		const cancelled = initial && !answer;
 		assert.equal(box.checked, cancelled ? true : !initial);
 		assert.equal(page.enabled, box.checked);
@@ -1492,7 +1508,7 @@ test('T10.9 scenario 4: banners follow title before first section with original 
 	const { page, root } = renderStatus({ ok: false, code: 'TIMEOUT' }, undefined, false);
 	assert.equal(root.children[0].children[0].children[0].tag, 'h2');
 	assert.equal(root.children[1], page.content, 'banners occupy the content immediately after the title');
-	let parts = page.content.content.children;
+	let parts = pageParts(page);
 	assert.deepEqual(parts.map((n) => n.attrs.class), [
 		'alert-message error', 'alert-message warning', 'cbi-section', 'cbi-section', 'cbi-section'
 	]);
@@ -1502,7 +1518,7 @@ test('T10.9 scenario 4: banners follow title before first section with original 
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
 		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
 	] });
-	parts = page.content.content.children;
+	parts = pageParts(page);
 	assert.equal(parts[0].attrs.class, 'alert-message warning', 'disabled banner remains first');
 	assert.equal(parts[1].tag, 'ul');
 	assert.ok(visibleText(parts[1].children[0]).includes('xray'));
@@ -1511,7 +1527,7 @@ test('T10.9 scenario 4: banners follow title before first section with original 
 	assert.equal(parts[2], sections(root)[0]);
 	assert.doesNotMatch(visibleText(root), /待处理提示/);
 	const clean = renderStatus({ ok: true, state: 'running' });
-	assert.equal(clean.page.content.content.children[0], sections(clean.root)[0]);
+	assert.equal(pageParts(clean.page)[0], sections(clean.root)[0]);
 	assert.equal(visibleText(sections(clean.root)[0].children[0]), '运行状态');
 	assert.equal(findAll(clean.root, 'div').filter((n) => /alert-message/.test(n.attrs.class ?? '')).length, 0);
 });
@@ -1680,6 +1696,7 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 	const { page, calls, polls, runtime } = switchPage({ ok: true, events: switchEvents() });
 	const root = page.render(await page.load());
 	await page.componentRequest;
+	await page.initialRequest;
 	assert.equal(calls.filter(([method]) => method === 'events').length, 0, 'initial equal nodes skip events');
 	await page.fetchRefresh();
 	assert.equal(calls.filter(([method]) => method === 'events').length, 0, 'equal refresh skips events');
@@ -1691,7 +1708,7 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 		await refresh();
 		assert.deepEqual(calls, [ [ 'status', undefined ], [ 'stats', undefined ],
 			[ 'events', { since: now - 600, level: 'error' } ] ]);
-		const parts = page.content.content.children;
+		const parts = pageParts(page);
 		assert.equal(parts[0].attrs.class, 'alert-message warning');
 		assert.equal(parts[1], sections(root)[0], 'banner is before runtime section');
 		assert.equal(visibleText(parts[0]),
@@ -1704,19 +1721,20 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 	await page.fetchRefresh();
 	assert.deepEqual(calls.map(([method]) => method), [ 'status', 'stats' ]);
 	assert.equal(page.vm.switch_notice, null);
-	assert.equal(page.content.content.children[0], sections(root)[0]);
+	assert.equal(pageParts(page)[0], sections(root)[0]);
 	assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_b');
 });
 
-test('T10.11 scenario 4b: initial mismatch fetches one events response before rendering the warning', async (t) => {
+test('T10.11 scenario 4b: initial mismatch fetches one events response after rendering the skeleton', async (t) => {
 	t.mock.method(Date, 'now', () => NOW * 1000);
 	const { page, calls, runtime } = switchPage({ ok: true, events: switchEvents() });
 	runtime.node = 'n_a';
 	const root = page.render(await page.load());
 	await page.componentRequest;
+	await page.initialRequest;
 	assert.deepEqual(calls.filter(([method]) => method === 'events'),
 		[ [ 'events', { since: NOW - 600, level: 'error' } ] ]);
-	assert.equal(page.content.content.children[0].attrs.class, 'alert-message warning');
+	assert.equal(pageParts(page)[0].attrs.class, 'alert-message warning');
 	assert.ok(visibleText(root).includes('切换到「Beta」未生效'));
 });
 
@@ -1729,8 +1747,9 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 		runtime.node = 'n_a';
 		const root = page.render(await page.load());
 		await page.componentRequest;
+		await page.initialRequest;
 		for (let refresh = 0; refresh < 2; refresh++) {
-			const banner = page.content.content.children[0];
+			const banner = pageParts(page)[0];
 			assert.equal(banner.attrs.class, 'alert-message warning');
 			assert.equal(visibleText(banner), '正在切换到「Beta」…');
 			assert.deepEqual(notifications, []);
@@ -1767,10 +1786,11 @@ for (const ok of [ true, false ]) {
 			},
 			poll: () => ({ stop() {} })
 		} });
-		const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
-			{ labels: {}, enabled: true } ]);
+		const root = page.render({ labels: {}, enabled: true });
 		page.startPolling(0);
+		await page.initialRequest;
 		await page.componentRequest;
+		statusReads = 0;
 		calls.length = 0;
 		const pending = page.probeButton.attrs.click();
 		assert.equal(page.probeButton.disabled, true);
@@ -1832,11 +1852,10 @@ test('T10.13 scenario 1: completion waits out an older refresh before issuing a 
 		},
 		poll: () => ({ stop() {} })
 	} });
-	const root = page.render([ { reply: { ok: true, state: 'running' } }, null,
-		{ labels: {}, enabled: true } ]);
+	const root = page.render({ labels: {}, enabled: true });
 	await page.componentRequest;
-	calls.length = 0;
-	const oldRefresh = page.fetchRefresh();
+	/* The deferred first status itself is the older in-flight refresh. */
+	const oldRefresh = page.initialRequest;
 	const pending = page.handleProbe();
 	await Promise.resolve();
 	await clock.run(1000);
@@ -1844,7 +1863,8 @@ test('T10.13 scenario 1: completion waits out an older refresh before issuing a 
 	releaseOld({ ok: true, state: 'running', last_probe: { at: 9, ok: false } });
 	await oldRefresh;
 	await pending;
-	assert.deepEqual(calls, [ 'status', 'probe_now', 'status', 'stats', 'status', 'stats' ]);
+	assert.deepEqual(calls, [ 'status', 'version', 'components',
+		'probe_now', 'status', 'stats', 'status', 'stats' ]);
 	assert.equal(visibleText(page.probeMessage), '');
 	assert.equal(page.vm.probe_text, '正常，42 ms');
 	assert.ok(visibleText(nodeRow(root)).includes('正常，42 ms'));
@@ -1950,6 +1970,268 @@ test('T10.13 scenario 4: successful initial inventory has no retry; a failed ret
 				[ 'xray', '读取失败', 'TIMEOUT' ], [ 'chinadns-ng', '读取失败', 'TIMEOUT' ]
 			]);
 		}
+	}
+});
+
+/* Explicitly released RPC promises prove the skeleton and each independent
+   region work even when every other backend response remains outstanding. */
+function deferredPage(interval = '5') {
+	const calls = [], polls = [], writes = [], uciOps = [];
+	const page = loadView({
+		ap: {
+			call: (method, params) => new Promise((resolve) => { calls.push({ method, params, resolve }); }),
+			poll: (fn, ms) => {
+				const poll = { fn, ms, stopped: false, stop() { this.stopped = true; } };
+				polls.push(poll);
+				return poll;
+			}
+		},
+		onContent: (el) => writes.push(el),
+		uci: {
+			load: async (config) => { uciOps.push([ 'load', config ]); },
+			sections: (config, type, cb) => {
+				if (type === 'node') {
+					cb({ '.name': 'n_a', label: 'Alpha' });
+					cb({ '.name': 'n_b', label: 'Beta' });
+				}
+			},
+			get: (config, section, option) => option === 'node' ? 'n_a' : '1',
+			set: (...args) => uciOps.push([ 'set', ...args ]),
+			save: async () => { uciOps.push([ 'save' ]); }
+		},
+		ui: { changes: { apply: (rollback) => uciOps.push([ 'apply', rollback ]) } },
+		window: { localStorage: { getItem: () => interval, setItem: () => {} } }
+	});
+	return {
+		page, calls, polls, writes, uciOps,
+		reply: async (method, reply) => {
+			const call = calls.find((call) => call.method === method && !call.settled);
+			assert.ok(call, `outstanding ${method} request exists`);
+			call.settled = true;
+			call.resolve(reply);
+			/* Drain the promise-only request chains without using wall-clock timers. */
+			for (let i = 0; i < 12; i++)
+				await Promise.resolve();
+		}
+	};
+}
+
+function disabled(button) {
+	return !!(button.disabled || button.attrs.disabled);
+}
+
+function serviceButtons(root) {
+	return findAll(sections(root)[0].children[1], 'button');
+}
+
+function ownVersion(root) {
+	return findAll(sections(root)[2], 'tr')[1].children[1].children;
+}
+
+test('T10.17 scenario 1: load reads only UCI and never starts RPC or polling', async () => {
+	const { page, calls, polls, uciOps } = deferredPage();
+	const data = await page.load();
+	assert.deepEqual(uciOps, [ [ 'load', 'aetherproxy' ] ]);
+	assert.deepEqual(calls, []);
+	assert.deepEqual(polls, []);
+	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', enabled: true });
+});
+
+test('T10.17 scenario 2: all RPCs pending still renders complete placeholders and safe UCI controls', async () => {
+	const { page, calls, polls, uciOps } = deferredPage();
+	const root = page.render(await page.load());
+	assert.deepEqual(calls, [], 'all requests are deferred beyond synchronous render');
+	assert.deepEqual(sections(root).map((section) => visibleText(section.children[0])),
+		[ '运行状态', '流量与连接', '组件版本' ]);
+	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.doesNotMatch(visibleText(sections(root)[0]), /原因：|境外域名解析：|已持续|节点地址|DNS 已回退/);
+	assert.equal(page.vm.error, null, 'pending status is not a failed status');
+	assert.equal(page.vm.traffic_note, null, 'pending does not falsely claim the service is stopped');
+	const rows = findAll(sections(root)[1], 'tr').slice(1);
+	for (const row of rows)
+		assert.deepEqual(row.children.slice(1).map((cell) => cell.children), [ '–', '–' ]);
+	assert.deepEqual(findAll(sections(root)[1], 'span').map(visibleText), [ '代理连接 –', '总连接 –' ]);
+	assert.equal(ownVersion(root), '读取中…');
+	assert.deepEqual(componentCells(root), [
+		[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+	]);
+	assert.ok(serviceButtons(root).every(disabled));
+	assert.equal(page.probeButton.disabled, true);
+	const enable = findAll(root, 'input')[0];
+	assert.equal(disabled(enable), false);
+	assert.equal(typeof enable.attrs.change, 'function');
+	const nodes = findAll(nodeRow(root), 'select')[0];
+	assert.equal(nodes.value, 'n_a');
+	assert.equal(nodes.children[0].children, 'Alpha（当前）');
+	assert.equal(disabled(nodes), false);
+	await Promise.resolve();
+	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components' ]);
+	assert.deepEqual(polls, [], 'no poll starts while the first status is pending');
+	/* UCI-only enable remains a real action even with all three RPCs stuck. */
+	page.enabled = false;
+	await enable.attrs.change({ target: { checked: true } });
+	assert.deepEqual(uciOps.slice(1), [
+		[ 'set', 'aetherproxy', 'main', 'enabled', '1' ], [ 'save' ], [ 'apply', true ]
+	]);
+	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.deepEqual(polls, []);
+});
+
+test('T10.17 scenario 3a: independent version, status and stats replies update only their own regions', async () => {
+	const h = deferredPage('10');
+	const { page, calls, polls, writes } = h;
+	const root = page.render(await page.load());
+	await Promise.resolve();
+	const enable = findAll(root, 'input')[0];
+	const nodes = findAll(nodeRow(root), 'select')[0];
+	nodes.value = 'n_b';
+	nodes.attrs.change();
+	const runtime = sections(root)[0], traffic = sections(root)[1];
+	writes.length = 0;
+	await h.reply('version', { ok: true, version: '0.2.0-r10' });
+	assert.equal(ownVersion(root), '0.2.0-r10');
+	assert.deepEqual(writes, [ page.componentContent ]);
+	assert.equal(sections(root)[0], runtime);
+	assert.equal(sections(root)[1], traffic);
+	assert.equal(findAll(root, 'strong')[0].children, '读取中…');
+	assert.deepEqual(polls, []);
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a', dns_tier: 'T1',
+		last_error: 'CONFIG_INVALID', last_probe: { ok: true, latency_ms: 42, at: NOW } });
+	assert.equal(findAll(root, 'strong')[0].children, '运行中');
+	assert.match(visibleText(sections(root)[0]), /原因：配置无效.*境外域名解析：经节点解析（正常）/);
+	assert.deepEqual(serviceButtons(root).map(disabled), [ true, false, false ]);
+	assert.equal(page.probeButton.disabled, false);
+	assert.equal(polls.length, 1, 'first status starts polling without waiting for slower stats');
+	assert.equal(polls[0].ms, 10000);
+	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components', 'stats' ]);
+	assert.equal(findAll(nodeRow(root), 'select')[0], nodes);
+	assert.equal(nodes.value, 'n_b', 'first status preserves edits when the effective node is unchanged');
+	assert.equal(findAll(root, 'input')[0], enable);
+	const settledRuntime = sections(root)[0];
+	writes.length = 0;
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await page.initialRequest;
+	assert.equal(sections(root)[0], settledRuntime);
+	assert.equal(findAll(nodeRow(root), 'select')[0], nodes);
+	assert.ok(writes.includes(page.trafficContainer));
+	assert.ok(!writes.includes(page.runtimeContent));
+	assert.ok(!writes.includes(page.componentContent));
+	assert.equal(visibleText(findAll(sections(root)[1], 'span')[0]), '代理连接 3');
+	const next = polls[0].fn();
+	await h.reply('status', { ok: true, state: 'stopped', node_id: 'n_a' });
+	assert.deepEqual(serviceButtons(root).map(disabled), [ false, true, true ]);
+	await h.reply('stats', readings(2000, 1024, 2048, 4096, 8192));
+	await next;
+	assert.deepEqual(findAll(sections(root)[1], 'tr')[1].children.slice(1).map((cell) => cell.children),
+		[ '1.0 KB/s', '2.0 KB/s' ]);
+	assert.equal(calls.filter((call) => call.method === 'version').length, 1);
+	assert.equal(calls.filter((call) => call.method === 'components').length, 1);
+});
+
+test('T10.17 scenario 3b: deferred mismatch events follow T10.11 and update only the warning region', async (t) => {
+	t.mock.method(Date, 'now', () => NOW * 1000);
+	const h = deferredPage();
+	const { page, calls, writes } = h;
+	const root = page.render(await page.load());
+	await Promise.resolve();
+	assert.ok(!calls.some((call) => call.method === 'events'));
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_b' });
+	assert.equal(page.vm.switch_notice, '正在切换到「Alpha」…');
+	assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_b');
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	const eventCall = calls.find((call) => call.method === 'events');
+	assert.deepEqual(eventCall.params, { since: NOW - 600, level: 'error' });
+	const blocks = sections(root);
+	writes.length = 0;
+	const event = { ts: NOW - 30, code: 'NODE_RESOLVE_FAILED', args: { domain: 'node.example' } };
+	await h.reply('events', { ok: true, events: [ event ] });
+	await page.initialRequest;
+	assert.deepEqual(writes, [ page.noticeContent ]);
+	assert.equal(visibleText(page.noticeContent),
+		failedSwitchText('Alpha', 'Beta', logText(event), '30 秒前'));
+	sections(root).forEach((section, i) => assert.equal(section, blocks[i]));
+});
+
+test('T10.17 scenario 4: status failure clears loading, keeps controls disabled and polling retries successfully',
+	async () => {
+	for (const failure of [ { ok: false, code: 'TIMEOUT', detail: 'offline' },
+		{ ok: false, code: 'RPC_FAILED', detail: 'offline' }, null ]) {
+		const h = deferredPage('2');
+		const { page, polls } = h;
+		const root = page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('status', failure);
+		assert.equal(findAll(root, 'strong')[0].children, '–');
+		assert.match(visibleText(page.noticeContent),
+			new RegExp('读取状态失败：' + (failure?.code ?? 'RPC_FAILED')));
+		assert.ok(serviceButtons(root).every(disabled));
+		assert.equal(page.probeButton.disabled, true);
+		assert.equal(disabled(findAll(root, 'input')[0]), false);
+		assert.equal(polls.length, 1);
+		assert.equal(polls[0].ms, 2000);
+		await h.reply('version', failure);
+		assert.equal(ownVersion(root), '–', 'failed version is no longer pending');
+		await h.reply('components', failure);
+		await h.reply('stats', failure);
+		await page.initialRequest;
+		assert.doesNotMatch(visibleText(root), /读取中…/);
+		const retry = polls[0].fn();
+		await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+		assert.equal(findAll(root, 'strong')[0].children, '运行中');
+		assert.doesNotMatch(visibleText(page.noticeContent), /读取状态失败/);
+		assert.deepEqual(serviceButtons(root).map(disabled), [ true, false, false ]);
+		assert.equal(page.probeButton.disabled, false);
+		await h.reply('stats', readings(1000, 0, 0, 0, 0));
+		await retry;
+		assert.equal(polls.length, 1, 'recovery reuses the existing polling cadence');
+	}
+});
+
+test('T10.17 scenario 4b: refreshing during a probe never enables it early or after a failed status', async () => {
+	const h = deferredPage('0');
+	const { page } = h;
+	page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('status', { ok: true, state: 'running' });
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await page.initialRequest;
+	const probe = page.probeButton.attrs.click();
+	assert.equal(page.probeButton.disabled, true);
+	const refresh = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running' });
+	assert.equal(page.probeButton.disabled, true, 'successful refresh cannot enable a busy probe');
+	await h.reply('stats', readings(2000, 0, 0, 0, 0));
+	await refresh;
+	const failed = page.fetchRefresh();
+	await h.reply('status', { ok: false, code: 'RPC_FAILED' });
+	await h.reply('stats', { ok: false, code: 'RPC_FAILED' });
+	await failed;
+	await h.reply('probe_now', { ok: false, code: 'NOT_RUNNING' });
+	await probe;
+	assert.equal(visibleText(page.probeMessage), '服务未运行');
+	assert.equal(page.probeButton.disabled, true, 'probe finalizer respects the latest failed status');
+});
+
+test('T10.17 scenario 3c: pending interval changes wait for status; Off keeps manual refresh usable', async () => {
+	for (const value of [ '0', '2', '30' ]) {
+		const h = deferredPage();
+		const { page, polls } = h;
+		const root = page.render(await page.load());
+		findAll(root, 'select')[0].attrs.change({ target: { value } });
+		assert.deepEqual(polls, []);
+		await Promise.resolve();
+		await h.reply('status', { ok: true, state: 'stopped' });
+		assert.equal(polls.length, value === '0' ? 0 : 1);
+		if (value !== '0')
+			assert.equal(polls[0].ms, Number(value) * 1000);
+		await h.reply('stats', readings(1000, 0, 0, 0, 0));
+		await page.initialRequest;
+		const manual = findAll(root, 'button').find((button) => visibleText(button) === '刷新');
+		const refresh = manual.attrs.click();
+		await h.reply('status', { ok: true, state: 'running' });
+		await h.reply('stats', readings(2000, 1024, 1024, 2048, 2048));
+		await refresh;
+		assert.equal(findAll(root, 'strong')[0].children, '运行中');
 	}
 });
 

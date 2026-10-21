@@ -3,7 +3,7 @@
 'require aether-proxy.model.logs as logs';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「概览页第五轮修正」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -185,7 +185,8 @@ function components_failed(inventory) {
 function component_rows(version, inventory) {
 	const components = [{
 		name: 'aether-proxy',
-		version: (version && version.ok && typeof version.version == 'string') ? version.version : null,
+		version: version === undefined ? _('Reading…', 'aether-proxy')
+			: ((version && version.ok && typeof version.version == 'string') ? version.version : null),
 		path: null
 	}];
 	/* Inventory is independent of runtime status, including failed status reads. */
@@ -338,8 +339,8 @@ return baseclass.extend({
 		return !!selected && selected !== current;
 	},
 
-	/* status: the object resolved by ap.call('status'), version: the object
-	   resolved by ap.call('version'), labels: node section name -> label from
+	/* status/version: undefined while pending, null or ok:false on failure,
+	   otherwise the objects resolved by ap.call. labels: node section name -> label from
 	   UCI, now: current unix time in seconds. configured_node is read at load;
 	   inventory is undefined while pending, null/ok:false on failure, and is
 	   fetched after rendering or on explicit retry (docs/10 「概览页第五轮修正」). events contains
@@ -368,7 +369,7 @@ return baseclass.extend({
 		const state = (status?.ok === false ? null : status?.state) ?? 'unknown';
 		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
 		/* WAN counters also include other services; missing proxy counters cannot imply direct traffic. */
-		const traffic_note = active ? null
+		const traffic_note = active || status === undefined ? null
 			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
@@ -382,13 +383,18 @@ return baseclass.extend({
 
 		/* docs/10: a failed status read shows the error and disables every button. */
 		if (!status || status.ok === false) {
+			/* Undefined is the initial read, not an RPC failure. Keep UCI-only
+			   controls usable without inventing any runtime state (docs/10 T10.17). */
+			const pending = status === undefined;
 			const code = (status && typeof status.code == 'string') ? status.code : 'RPC_FAILED';
 			const detail = (status && typeof status.detail == 'string' && status.detail != '') ? status.detail : null;
 
 			return {
 				ok: false,
-				error: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
-				state_text: null,
+				error: pending ? null
+					: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
+				state_text: pending ? _('Reading…', 'aether-proxy') : null,
+				probe_disabled: true,
 				traffic_note,
 				dns_failsafe: false,
 				state_level: 'neutral',
@@ -415,6 +421,7 @@ return baseclass.extend({
 		return {
 			ok: true,
 			error: null,
+			probe_disabled: false,
 			state_text: state_text(state, status.waiting_network === true),
 			traffic_note,
 			dns_failsafe: status.dns_failsafe === true,
