@@ -57,12 +57,7 @@ reload_service() {
 		return $?
 	fi
 
-	"$AETHER_PROXY" check
-	rc=$?
-	if [ "$rc" -ne 0 ]; then
-		logger -t aether-proxy "aether-proxy check failed during reload (rc=$rc); daemon unchanged"
-		return 1
-	fi
+	# The daemon validates once and records failures for the node-switch UI (docs/04 reload).
 	procd_send_signal aether-proxy '*' HUP
 	rc=$?
 	if [ "$rc" -ne 0 ]; then

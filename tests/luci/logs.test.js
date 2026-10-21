@@ -46,6 +46,26 @@ test('T8.10 scenario 1: every catalog event has a template using only documented
 	assert.equal(model.templates.CMD_RUN, undefined);
 });
 
+test('T9.8 scenario 7: RELOAD_APPLIED uses only docs/04 fields and shows Chinese nodes and duration', () => {
+	globalThis._ = s => s;
+	const english = loadModule(modelFile, { baseclass: { extend: o => o } }, { window: {}, document: {} });
+	globalThis._ = s => po[s] ?? s;
+	const doc = fs.readFileSync(path.join(ROOT, 'docs/04-lifecycle.md'), 'utf8');
+	const contract = doc.split('**完成后记 `RELOAD_APPLIED`**')[1].split('原来重载成功')[0];
+	const fields = Array.from(contract.matchAll(/`([a-z_]+)`/g), m => m[1]);
+	assert.deepEqual(fields, [ 'from_node', 'to_node', 'actions', 'elapsed_ms', 'steps' ]);
+	for (const templates of [ english.templates, model.templates ]) {
+		assert.ok(templates.RELOAD_APPLIED);
+		for (const match of templates.RELOAD_APPLIED.matchAll(/\{(\w+)\}/g))
+			assert.ok(fields.includes(match[1]), 'undocumented field ' + match[1]);
+	}
+	assert.ok(po[english.templates.RELOAD_APPLIED], 'translation must exist');
+	assert.equal(model.message(event('RELOAD_APPLIED', 'notice', 1, {
+		from_node: 'n_old', to_node: 'n_new', elapsed_ms: 123,
+		actions: [ 'restart_xray' ], steps: { validate: 50 }
+	})), '已从节点 n_old 重载到 n_new，耗时 123 毫秒');
+});
+
 test('T8.10 scenario 2: parameter values, unknown codes and compact SERVICE_STARTED', () => {
 	assert.equal(model.value_text(undefined), '?');
 	assert.equal(model.value_text([ 'a', 'b' ]), 'a、b');

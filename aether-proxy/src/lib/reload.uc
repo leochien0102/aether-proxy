@@ -52,6 +52,9 @@ function log_failure(daemon, step, detail) {
 
 function failure(daemon, step, detail, code) {
 	setup_log(daemon);
+	// Resolve/action errors are strings, not validation result objects; strict ucode
+	// rejects property reads on them and would kill the daemon instead of logging.
+	let message = type(detail) == 'object' ? detail.message : null;
 	if (code == 'CONFIG_INVALID') {
 		log.event('error', code, { field: detail.field ?? '-', reason: detail.reason ?? detail.message ?? 'invalid configuration' });
 		return { ok: false, code, detail: detail.message ?? detail.reason ?? 'configuration invalid', errors: detail.errors };
@@ -61,8 +64,8 @@ function failure(daemon, step, detail, code) {
 	else if (code == 'RENDER_INVALID')
 		log.event('error', code, { artifact: detail.artifact ?? 'reload', detail: detail.detail ?? detail.message ?? `${detail}` });
 	else
-		log.event('error', 'START_FAILED', { step: `reload:${step}`, detail: detail.message ?? detail });
-	return { ok: false, code: code ?? 'START_FAILED', detail: detail.message ?? detail };
+		log.event('error', 'START_FAILED', { step: `reload:${step}`, detail: message ?? detail });
+	return { ok: false, code: code ?? 'START_FAILED', detail: message ?? detail };
 };
 
 function write_artifacts(dir, artifacts) {
@@ -90,7 +93,26 @@ function discard_stage(daemon, stage) {
 	return true;
 };
 
-function validate(daemon, snapshot, stage, components, validate_xray) {
+function monotonic_ms() {
+	let now = clock(true);
+	return now == null ? null : now[0] * 1000 + now[1] / 1000000;
+};
+
+function elapsed_ms(started) {
+	let ended = monotonic_ms();
+	return started == null || ended == null ? 0 : max(int(ended - started + 0.5), 0);
+};
+
+function validate_nft(daemon, stage) {
+	let bin = daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/nft` : 'nft';
+	let nft = sys.run([ bin, '-c', '-f', `${stage}/${C.ARTIFACT_FILES.nft}` ], { timeout: 10, quiet: true });
+	if (nft.code != 0)
+		return { ok: false, code: 'RENDER_INVALID',
+			detail: `nft -c -f failed (${nft.code}): ${nft.stderr}`, artifact: 'nft' };
+	return { ok: true };
+};
+
+function validate(daemon, snapshot, stage, validate_xray) {
 	let pre = check.precheck(snapshot, stage, { sys_root: daemon.ctx.root, bin_dir: daemon.ctx.bin_dir });
 	let missing = map(filter(pre.items, item => !item.ok), item => item.item);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
@@ -98,11 +120,10 @@ function validate(daemon, snapshot, stage, components, validate_xray) {
 			push(missing, `component:${name}`);
 	if (length(missing))
 		return { ok: false, code: 'PRECHECK_FAILED', missing };
-	components ??= pre.components;
-
-	let nft = sys.run([ daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/nft` : 'nft', '-c', '-f', `${stage}/${C.ARTIFACT_FILES.nft}` ], { timeout: 10, quiet: true });
-	if (nft.code != 0)
-		return { ok: false, code: 'RENDER_INVALID', detail: `nft -c -f failed (${nft.code}): ${nft.stderr}`, artifact: 'nft' };
+	let components = pre.components;
+	let nft = validate_nft(daemon, stage);
+	if (!nft.ok)
+		return nft;
 	if (validate_xray) {
 		let xray = sys.run([ components[C.XRAY_COMPONENT].path, 'run', '-test', '-c', `${stage}/${C.ARTIFACT_FILES.xray}` ], { timeout: 10, quiet: true });
 		if (xray.code != 0)
@@ -287,7 +308,10 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	return { ok: true, state: updated };
 };
 
-function run(daemon) {
+function run(daemon, started_ms) {
+	started_ms ??= monotonic_ms();
+	let step_started = monotonic_ms();
+	let steps = { config_render: 0, resolve_node: 0, validate: 0, sets_export_render: 0, actions: 0 };
 	setup_log(daemon);
 	let built = pipeline.build({ ...daemon.opts, runtime: {
 		node_ip: daemon.state.node_ip ?? null,
@@ -301,6 +325,7 @@ function run(daemon) {
 			reason: built.errors?.[0]?.code ?? built.detail
 		}, 'CONFIG_INVALID');
 	let snapshot = built.snapshot;
+	steps.config_render = elapsed_ms(step_started);
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
 	// running one belongs to the old node and also feeds node_ip4 in the nft table.
 	let node_ip = daemon.state.node_ip ?? null;
@@ -308,15 +333,20 @@ function run(daemon) {
 	let new_node = snapshot.nodes?.[snapshot.main.node];
 	if (snapshot.main.enabled == true && new_node != null &&
 	    (snapshot.main.node != daemon.snapshot.main.node || new_node.address != old_node?.address)) {
+		step_started = monotonic_ms();
 		let resolved = apply.resolve_node(daemon.ctx, new_node.address);
+		steps.resolve_node = elapsed_ms(step_started);
 		if (!resolved.ok)
 			return failure(daemon, 'resolve_node', resolved.detail);
 		node_ip = resolved.ip;
+		step_started = monotonic_ms();
 		built = pipeline.build({ ...daemon.opts, runtime: { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} } });
 		if (!built.ok)
 			return failure(daemon, 'render', built.detail);
 		snapshot = built.snapshot;
+		steps.config_render += elapsed_ms(step_started);
 	}
+	step_started = monotonic_ms();
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let clean = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
 	if (clean.code != 0)
@@ -344,7 +374,13 @@ function run(daemon) {
 	}
 	// Even a no-change plan must pass validation before returning success; a hash match
 	// alone does not establish that the current prerequisites are still available.
-	let validated = validate(daemon, snapshot, stage, null, true);
+	steps.config_render += elapsed_ms(step_started);
+	step_started = monotonic_ms();
+	// The daemon refreshes render_hash from current/ before entering reload, so this
+	// compares installed output, including monitor edits, rather than startup hashes.
+	let xray_changed = rough_hashes.hashes.xray != daemon.state.render_hash?.xray;
+	let validated = validate(daemon, snapshot, stage, xray_changed);
+	steps.validate = elapsed_ms(step_started);
 	if (!validated.ok) {
 		discard_stage(daemon, stage);
 		return failure(daemon, 'validation', validated, validated.code);
@@ -377,6 +413,7 @@ function run(daemon) {
 	}
 
 	if (index(rough_plan, 'nft_replace') >= 0) {
+		step_started = monotonic_ms();
 		// A candidate nft diff may be only the live dynamic elements; export and re-render before
 		// final planning so identical config does not flush/recreate those sets.
 		let table = apply.nft_table_exists(daemon.ctx);
@@ -403,7 +440,14 @@ function run(daemon) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'nft_stage', sys.error());
 		}
-		let checked = validate(daemon, snapshot, stage, components, true);
+		steps.sets_export_render = elapsed_ms(step_started);
+		step_started = monotonic_ms();
+		// Only nft was rewritten; precheck and the Xray test already covered this candidate.
+		// TODO(design): T9.8 scenario 2 asks for one nft check on a mode change, but
+		// docs/04 and requirements 2/3 require both passes whenever nft changes. Keep
+		// both artifact checks; precheck also runs its separate kernel-feature probe.
+		let checked = validate_nft(daemon, stage);
+		steps.validate += elapsed_ms(step_started);
 		if (!checked.ok) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'validation', checked, checked.code);
@@ -435,6 +479,7 @@ function run(daemon) {
 	let old_instance = daemon.ctx.dnsmasq_instance;
 	daemon.ctx.dnsmasq_instance = snapshot.dns?.dnsmasq_instance ?? null;
 	daemon.state = { ...daemon.state, node_ip };
+	step_started = monotonic_ms();
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
 		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node);
 	if (!applied.ok) {
@@ -442,7 +487,15 @@ function run(daemon) {
 		daemon.ctx.dnsmasq_instance = old_instance;
 		return failure(daemon, 'actions', applied.detail);
 	}
+	steps.actions = elapsed_ms(step_started);
 	daemon.snapshot = snapshot;
+	log.event(null, 'RELOAD_APPLIED', {
+		from_node: old_state.node_id,
+		to_node: snapshot.main.node,
+		actions,
+		elapsed_ms: elapsed_ms(started_ms),
+		steps
+	});
 	return { ok: true, actions, snapshot, state: applied.state };
 };
 

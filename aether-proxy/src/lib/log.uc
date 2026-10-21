@@ -9,7 +9,7 @@ import * as C from 'aetherproxy.const';
 // Event catalog from docs/09-logging.md. Codes are a machine protocol: only append.
 // The value is the default level, used when the caller passes level == null.
 const EVENTS = {
-	SERVICE_STARTED: 'notice', SERVICE_STOPPED: 'notice',
+	SERVICE_STARTED: 'notice', SERVICE_STOPPED: 'notice', RELOAD_APPLIED: 'notice',
 	BUSY: 'warn',
 	CONFIG_INVALID: 'error',
 	PRECHECK_FAILED: 'error',
