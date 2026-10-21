@@ -66,7 +66,10 @@ function inventory(root, run_dir) {
 		if (stat == null || !hash.ok)
 			return { ok: false, code: 'FS_FAILED', detail: `cannot inspect data ${name}` };
 		paths[name] = path;
-		let changed = records.data?.[name]?.changed;
+		let record = records.data?.[name];
+		// Reuse the version hash: cached changed describes check time, not the current data.
+		// Old caches have no content hash and keep their original boolean/null behavior (docs/10).
+		let changed = record?.sha256 != null ? hash.hash != record.sha256 : record?.changed;
 		items[name] = {
 			source: downloaded ? 'downloaded' : 'baseline', version: substr(hash.hash, 0, 12), lines: null,
 			updated_at: downloaded ? stat.mtime : null,

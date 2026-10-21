@@ -89,6 +89,84 @@ test('T8.8 scenario 3: cache fields or null, with no added events', () => sandbo
 	assert.equal(fs.readFileSync(events, 'utf8'), 'sentinel\n');
 }));
 
+// Inspect the real CLI while proving status does not write data, cache, state or events.
+function read_only_status(dir, d) {
+	const files = [path.join(d.run, 'updates.json'), path.join(d.run, 'events.jsonl'),
+		path.join(d.run, 'state.json'), ...names.flatMap(name => [
+			path.join(d.base, name + '.txt'), path.join(d.downloaded, name + '.txt'),
+			path.join(d.downloaded, name + '.sha256')
+		])];
+	const snapshot = () => files.map(file => fs.existsSync(file) ?
+		[fs.readFileSync(file, 'utf8'), fs.statSync(file).mtimeMs] : null);
+	const before = snapshot();
+	const r = cli(['data', 'status', '--sys-root', dir]);
+	assert.equal(r.status, 0);
+	assert.deepEqual(snapshot(), before, 'data status is read-only and event-free');
+	return r.value;
+}
+const sha256 = text => crypto.createHash('sha256').update(text).digest('hex');
+
+test('T9.11 scenario 2: live downloaded hashes detect manual changes and restoration for all five items',
+	() => sandbox(dir => {
+		const d = data_fixture(dir);
+		const records = { checked: 123, data: {} };
+		for (const name of names) {
+			const content = fs.readFileSync(path.join(d.base, name + '.txt'));
+			fs.writeFileSync(path.join(d.downloaded, name + '.txt'), content);
+			fs.writeFileSync(path.join(d.downloaded, name + '.sha256'), sha256(content) + '\n');
+			records.data[name] = { changed: true, sha256: sha256(content) };
+		}
+		fs.writeFileSync(path.join(d.run, 'updates.json'), JSON.stringify(records));
+		fs.writeFileSync(path.join(d.run, 'events.jsonl'), 'sentinel\n');
+		fs.writeFileSync(path.join(d.run, 'state.json'), '{"state":"stopped"}\n');
+		let status = read_only_status(dir, d);
+		assert.equal(status.checked, 123);
+		for (const name of names) {
+			assert.equal(status.items[name].source, 'downloaded');
+			assert.equal(status.items[name].changed, false, 'live hash overrides cached true: ' + name);
+		}
+		for (const name of names) {
+			const file = path.join(d.downloaded, name + '.txt');
+			const original = fs.readFileSync(file);
+			const modified = name.includes('4') ? '198.51.100.0/24\n' : 'modified.example\n';
+			fs.writeFileSync(file, modified);
+			// docs/08 makes the sidecar authoritative, not the downloaded text itself.
+			assert.equal(read_only_status(dir, d).items[name].changed, false);
+			fs.writeFileSync(path.join(d.downloaded, name + '.sha256'), sha256(modified) + '\n');
+			status = read_only_status(dir, d);
+			assert.equal(status.items[name].changed, true, 'manual local hash differs: ' + name);
+			assert.equal(status.items[name].version, sha256(modified).slice(0, 12));
+			fs.writeFileSync(file, original);
+			fs.writeFileSync(path.join(d.downloaded, name + '.sha256'), sha256(original) + '\n');
+			assert.equal(read_only_status(dir, d).items[name].changed, false, 'restored hash: ' + name);
+		}
+	}));
+
+test('T9.11 scenario 4: live baseline hashes override cached booleans without downloaded data', () => sandbox(dir => {
+	const d = data_fixture(dir);
+	const records = { checked: 456, data: {} };
+	for (const name of names) {
+		const content = fs.readFileSync(path.join(d.base, name + '.txt'));
+		records.data[name] = { changed: true, sha256: sha256(content) };
+	}
+	fs.writeFileSync(path.join(d.run, 'updates.json'), JSON.stringify(records));
+	let status = read_only_status(dir, d);
+	assert.equal(status.checked, 456);
+	for (const name of names) {
+		assert.equal(status.items[name].source, 'baseline');
+		assert.equal(status.items[name].updated_at, null);
+		assert.equal(status.items[name].changed, false, 'baseline equals manifest: ' + name);
+		const file = path.join(d.base, name + '.txt');
+		const original = fs.readFileSync(file);
+		fs.writeFileSync(file, '# modified baseline\n' + original);
+		status = read_only_status(dir, d);
+		assert.equal(status.items[name].changed, true, 'baseline differs: ' + name);
+		assert.equal(status.items[name].version, sha256(fs.readFileSync(file)).slice(0, 12));
+		fs.writeFileSync(file, original);
+		assert.equal(read_only_status(dir, d).items[name].changed, false, 'baseline restored: ' + name);
+	}
+}));
+
 const good_upstreams = [ '192.0.2.53', '192.0.2.53#5353', 'tcp://192.0.2.53',
 	'udp://192.0.2.53#53', 'tls://resolver.example@192.0.2.53', 'tls://_dns.example@192.0.2.53#853' ];
 const bad_upstreams = [ 'https://192.0.2.53', '192.0.2.053', '192.0.2.256', 'resolver.example',

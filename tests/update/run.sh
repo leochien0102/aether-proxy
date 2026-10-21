@@ -647,6 +647,23 @@ python3 - "$T/run/state.json" <<'PY'
 import json,sys
 json.dump({'state':'running'},open(sys.argv[1],'w'))
 PY
+# T9.11: use all five files so data status can inspect the complete inventory.
+for name in chnlist apple gfw_static4; do
+	: > "$T/root/usr/share/aether-proxy/data/$name.txt"
+done
+data_status() { ap data status --json --run-dir "$T/run" --sys-root "$T/root" 2>"$T/stderr"; }
+manifest_hash=$(python3 -c 'import json,sys
+print(json.load(open(sys.argv[1]))["data"]["chnroute4"]["content_sha256"])' "$T/ch1/manifest.json")
+out=$(run_check)
+expect 'T9.11 check succeeds before data update' 0 "$?"
+expect 'T9.11 check reports changed before data update' true "$(get "$out" data.chnroute4.changed)"
+expect 'T9.11 check saves manifest content hash' "$manifest_hash" "$(get "$out" data.chnroute4.sha256)"
+expect 'T9.11 updates.json saves manifest content hash' "$manifest_hash" \
+	"$(get "$(< "$T/run/updates.json")" data.chnroute4.sha256)"
+cp "$T/run/updates.json" "$T/live-cache-before"
+status=$(data_status)
+expect 'T9.11 pre-update data status succeeds' 0 "$?"
+expect 'T9.11 pre-update data status changed true' true "$(get "$status" items.chnroute4.changed)"
 # 12 one changed item writes validated text/hash, requests one reload, and emits DATA_UPDATED.
 : > "$UPDATE_INIT_CALLS"; out=$(data_update); expect 'changed rule data update succeeds' 0 "$?"
 expect 'changed item appears in updated list' chnroute4 "$(get "$out" updated.0)"
@@ -654,6 +671,20 @@ expect 'updated text is exact' "$(printf '10.0.0.0/8\n192.168.0.0/16')" "$(cat "
 expect 'content hash file is exact' "$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$T/root/etc/aether-proxy/data/chnroute4.txt")" "$(tr -d '\n' < "$T/root/etc/aether-proxy/data/chnroute4.sha256")"
 expect 'running service reloaded once' reload "$(cat "$UPDATE_INIT_CALLS")"
 grep -q '"code": "DATA_UPDATED"' "$T/run/events.jsonl" && ok 'DATA_UPDATED event logged' || bad 'DATA_UPDATED event logged'
+# Do not check again: the cached boolean must still be true while live status is false.
+cp "$T/run/events.jsonl" "$T/live-events-before"
+status=$(data_status)
+expect 'T9.11 post-update data status succeeds' 0 "$?"
+expect 'T9.11 post-update data status immediately changed false' false "$(get "$status" items.chnroute4.changed)"
+expect 'T9.11 data status stderr empty' '' "$(< "$T/stderr")"
+expect 'T9.11 cached changed remains true without another check' true \
+	"$(get "$(< "$T/run/updates.json")" data.chnroute4.changed)"
+cmp -s "$T/live-cache-before" "$T/run/updates.json" \
+	&& ok 'T9.11 update and status preserve check cache bytes' \
+	|| bad 'T9.11 update and status preserve check cache bytes'
+cmp -s "$T/live-events-before" "$T/run/events.jsonl" \
+	&& ok 'T9.11 data status adds no events' \
+	|| bad 'T9.11 data status adds no events'
 # 13 no change preserves file mtimes and does not reload.
 text_mtime=$(stat -c %y "$T/root/etc/aether-proxy/data/chnroute4.txt"); hash_mtime=$(stat -c %y "$T/root/etc/aether-proxy/data/chnroute4.sha256")
 : > "$UPDATE_INIT_CALLS"; sleep 1; out=$(data_update); expect 'unchanged data update succeeds' 0 "$?"
@@ -733,6 +764,8 @@ expect 'data: unknown future item not reported' '{}' "$(get "$out" failed)"
 # hashing a nonexistent baseline (no CMD_FAILED for it)
 : >| "$T/run/events.jsonl"
 out=$(run_check); expect 'check: unknown future item reported changed' true "$(get "$out" data.chnroute6.changed)"
+expect 'T9.11 unknown future item retains manifest content hash' "$manifest_hash" \
+	"$(get "$out" data.chnroute6.sha256)"
 grep -q 'sha256sum' "$T/run/events.jsonl" && bad 'check: unknown future item hashes nothing' || ok 'check: unknown future item hashes nothing'
 # a .sha256 with garbage content: update data refuses the item, update check reports changed
 make_data_manifest single
