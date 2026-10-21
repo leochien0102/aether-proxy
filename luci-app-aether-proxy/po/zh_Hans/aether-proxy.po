@@ -704,6 +704,26 @@ msgid "The current node cannot be deleted."
 msgstr "当前节点不能删除。"
 
 msgctxt "aether-proxy"
+msgid "Edit"
+msgstr "编辑"
+
+msgctxt "aether-proxy"
+msgid "Delete selected"
+msgstr "删除所选"
+
+msgctxt "aether-proxy"
+msgid "Select all deletable nodes"
+msgstr "全选可删除的节点"
+
+msgctxt "aether-proxy"
+msgid "Really delete the %s selected nodes? Save & Apply is required for deletion to take effect."
+msgstr "确定删除选中的 %s 个节点？删除后需要「保存并应用」才生效。"
+
+msgctxt "aether-proxy"
+msgid "Reading node switch status failed: %s"
+msgstr "读取节点切换状态失败：%s"
+
+msgctxt "aether-proxy"
 msgid "Name"
 msgstr "名称"
 
@@ -720,8 +740,8 @@ msgid "Source"
 msgstr "来源"
 
 msgctxt "aether-proxy"
-msgid "Marks"
-msgstr "标记"
+msgid "In use"
+msgstr "选用"
 
 msgctxt "aether-proxy"
 msgid "TCP reachability / latency"
@@ -732,8 +752,8 @@ msgid "Manual"
 msgstr "手动"
 
 msgctxt "aether-proxy"
-msgid "Stale"
-msgstr "已过期"
+msgid "(stale)"
+msgstr "（已失效）"
 
 msgctxt "aether-proxy"
 msgid "Probing…"

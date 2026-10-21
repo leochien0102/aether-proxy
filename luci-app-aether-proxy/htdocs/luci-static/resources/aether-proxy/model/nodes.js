@@ -15,6 +15,7 @@
  * deferred read (docs/10 「其余页面先出页面」), not an unprobed node. Local
  * pending IDs cover the gap before the first job refresh (docs/10 「节点页修正」).
  * Direct switch feedback follows docs/10 「检测真实延迟与切换节点」 (T10.23).
+ * Selection marks, stale names and switch locking follow 「节点页第二轮修正」 (T10.25).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -44,13 +45,6 @@ function summary_text(s) {
 	return [ s.protocol ?? '–', s.transport ?? 'raw', s.security ?? 'none' ].join(' / ');
 }
 
-function address_text(s) {
-	if (s.address == null || s.address === '')
-		return '–';
-
-	return (s.port == null || s.port === '') ? String(s.address) : `${s.address}:${s.port}`;
-}
-
 /* docs/10: 「手动」 or the subscription's name; a source naming a subscription
    that no longer exists shows the raw section name. */
 function source_text(s, subs) {
@@ -62,18 +56,6 @@ function source_text(s, subs) {
 	const sub = subs ? subs[source] : null;
 
 	return (sub && sub.name != null && sub.name !== '') ? sub.name : source;
-}
-
-function marks_for(s, current) {
-	const marks = [];
-
-	if (current != null && s['.name'] == current)
-		marks.push(_('Current node', 'aether-proxy'));
-
-	if (s.stale == '1')
-		marks.push(_('Stale', 'aether-proxy'));
-
-	return marks;
 }
 
 function nodes_of(results) {
@@ -123,6 +105,16 @@ function probe_column(id, results, local_pending) {
 return baseclass.extend({
 	probe_column,
 
+	/* A stopped service uses the configured node on its next start. */
+	switch_pending: function(status, current) {
+		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
+		if (status?.ok === false || !active)
+			return false;
+		if (!current || !status.node_id)
+			return false;
+		return current !== status.node_id;
+	},
+
 	node_use_message: function(reply, status, current, sections) {
 		if (reply?.ok !== true)
 			return fmt(_('Switching nodes failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED')
@@ -159,11 +151,12 @@ return baseclass.extend({
 
 			rows.push({
 				id,
-				name: (s.label != null && s.label !== '') ? s.label : id,
-				address: address_text(s),
+				name: ((s.label != null && s.label !== '') ? s.label : id)
+					+ (s.stale == '1' ? _('(stale)', 'aether-proxy') : ''),
+				stale: s.stale == '1',
+				current: id === current,
 				summary: summary_text(s),
 				source: source_text(s, submap),
-				marks: marks_for(s, current),
 				probe: probe_column(id, results, local_pending),
 				/* docs/10: the current node can neither be deleted nor be
 				   made current, so both operations are unavailable. */

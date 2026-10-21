@@ -21,6 +21,7 @@
  * GridSection modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
  * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
  * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
+ * Editing, multi-delete and bounded switch locking follow 「节点页第二轮修正」 (T10.25).
  */
 
 return view.extend({
@@ -33,6 +34,7 @@ return view.extend({
 		this.resultsRequest = 0;
 		this.probing = false;
 		this.pendingProbes = [];
+		this.selectedNodes = new Set();
 
 		const root = E('div', { 'class': 'cbi-map' });
 		this.root = root;
@@ -41,7 +43,10 @@ return view.extend({
 		return this.buildPage().then(function(content) {
 			dom.content(root, content);
 			self.updateProbeColumns();
-			window.setTimeout(() => self.refreshResults(), 0);
+			window.setTimeout(() => {
+				self.refreshResults();
+				self.refreshSwitchStatus();
+			}, 0);
 			return root;
 		});
 	},
@@ -82,6 +87,8 @@ return view.extend({
 
 		this.probeCells = {};
 		this.probeButtons = [];
+		this.switchButtons = [];
+		this.selectionBoxes = {};
 
 		this.progressEl = E('div', { 'class': 'cbi-map-descr' });
 
@@ -108,11 +115,19 @@ return view.extend({
 		}, [ _('Probe all', 'aether-proxy') ]);
 		this.probeButtons.push(probeAll);
 
-		const controls = E('div', { 'class': 'cbi-map-descr' }, [ probeAll, ' ', importBox ]);
+		this.deleteSelected = E('button', {
+			'class': 'btn cbi-button cbi-button-remove',
+			'disabled': true,
+			// Keep the selection-dependent disabled state after the promise settles.
+			'click': () => self.handleDeleteSelected()
+		}, _('Delete selected', 'aether-proxy'));
+		const controls = E('div', { 'class': 'cbi-map-descr' },
+			[ probeAll, ' ', this.deleteSelected, ' ', importBox ]);
 
 		const mapNodePromise = this.buildMap().render();
 
 		return mapNodePromise.then(function(mapNode) {
+			self.updateSelection();
 			return E('div', {}, [
 				E('h2', {}, _('Nodes', 'aether-proxy')),
 				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
@@ -129,6 +144,7 @@ return view.extend({
 		let m, s, o;
 
 		m = new form.Map('aetherproxy');
+		this.nodeMap = m;
 
 		s = m.section(form.GridSection, 'node');
 		s.addremove = true;
@@ -145,16 +161,19 @@ return view.extend({
 		/* The per-row operations: 设为当前 / 检测 come first, then the built-in
 		   Edit and Delete buttons of the grid section. */
 		s.renderRowActions = function(section_id) {
-			const tdEl = this.super('renderRowActions', [ section_id ]);
+			const tdEl = this.super('renderRowActions', [ section_id, _('Edit', 'aether-proxy') ]);
 			const row = rowMap[section_id];
 			const extra = [];
 
 			if (row && row.can_set_current) {
-				extra.push(E('button', {
+				const button = E('button', {
 					'class': 'btn cbi-button cbi-button-positive',
-					'title': _('Set this node as the current node', 'aether-proxy'),
-					'click': ui.createHandlerFn(self, 'handleSetCurrent', section_id)
-				}, [ _('Set as current', 'aether-proxy') ]));
+					'click': ev => ui.createHandlerFn(self, 'handleSetCurrent', section_id)(ev)
+						.finally(() => self.updateSwitchButtons())
+				}, [ _('Set as current', 'aether-proxy') ]);
+				self.switchButtons.push(button);
+				self.updateSwitchButtons();
+				extra.push(button);
 			}
 
 			const probeBtn = E('button', {
@@ -171,6 +190,9 @@ return view.extend({
 			const keep = Array.from(tdEl.lastChild.childNodes).filter(node =>
 				!(row && !row.can_delete && node.classList?.contains('cbi-button-remove')));
 
+			// Keep Edit ahead of Delete even if the parent adds actions in another order.
+			keep.sort((a, b) => Number(a.classList?.contains('cbi-button-remove'))
+				- Number(b.classList?.contains('cbi-button-remove')));
 			const actions = [ ...extra, ...keep ];
 			// Set nowrap on each button too, so theme rules cannot override inheritance.
 			for (const button of actions)
@@ -202,7 +224,12 @@ return view.extend({
 			}))
 				return;
 
-			return this.super('handleRemove', [ section_id, ev ]);
+			self.selectedNodes?.delete(section_id);
+			return Promise.resolve(this.super('handleRemove', [ section_id, ev ]))
+				.finally(() => {
+					if (self.deleteSelected)
+						self.updateSelection();
+				});
 		};
 
 		/* Subscription nodes warn about being overwritten before the modal is
@@ -214,19 +241,48 @@ return view.extend({
 				modalSection.description = row.modal_hint;
 		};
 
+		/* A DummyValue title may be a DOM node in LuCI. This keeps the checkbox
+		   header and body aligned without changing GridSection's column layout. */
+		this.selectAll = E('input', {
+			'type': 'checkbox',
+			'title': _('Select all deletable nodes', 'aether-proxy'),
+			'change': ev => {
+				for (const row of Object.values(rowMap)) {
+					if (row.can_delete && ev.currentTarget.checked)
+						self.selectedNodes.add(row.id);
+					else
+						self.selectedNodes.delete(row.id);
+				}
+				self.updateSelection();
+			}
+		});
+		o = s.option(form.DummyValue, '_select', this.selectAll);
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			const row = rowMap[section_id];
+			const box = E('input', {
+				'type': 'checkbox',
+				'disabled': (!row?.can_delete) || null,
+				'title': row?.can_delete ? row.name : _('The current node cannot be deleted.', 'aether-proxy'),
+				'checked': (row?.can_delete && self.selectedNodes.has(section_id)) || null,
+				'change': ev => {
+					if (row?.can_delete && ev.currentTarget.checked)
+						self.selectedNodes.add(section_id);
+					else
+						self.selectedNodes.delete(section_id);
+					self.updateSelection();
+				}
+			});
+			self.selectionBoxes[section_id] = box;
+			return box;
+		};
+
 		/* Table columns; all computed by the model, none editable in the table. */
 		o = s.option(form.DummyValue, '_label', _('Name', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
-			return row ? row.name : section_id;
-		};
-
-		o = s.option(form.DummyValue, '_address', _('Address', 'aether-proxy'));
-		o.modalonly = false;
-		o.textvalue = function(section_id) {
-			const row = rowMap[section_id];
-			return row ? row.address : '–';
+			return E('span', { 'style': row?.stale ? 'opacity:0.6' : null }, row ? row.name : section_id);
 		};
 
 		o = s.option(form.DummyValue, '_summary', _('Protocol / Transport / Security', 'aether-proxy'));
@@ -243,11 +299,14 @@ return view.extend({
 			return row ? row.source : '–';
 		};
 
-		o = s.option(form.DummyValue, '_marks', _('Marks', 'aether-proxy'));
+		o = s.option(form.DummyValue, '_current', _('In use', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
-			return (row && row.marks.length) ? row.marks.join(', ') : '–';
+			return row?.current ? E('span', {
+				'title': _('Current node', 'aether-proxy'),
+				'style': 'color:var(--success-color-high, #2f855a)'
+			}, '✔') : E([]);
 		};
 
 		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency', 'aether-proxy'));
@@ -390,6 +449,119 @@ return view.extend({
 		return m;
 	},
 
+	/* Recompute against live UCI: removal or switching may have invalidated a
+	   selection while a modal or an RPC was open. Never select the current node. */
+	updateSelection: function() {
+		const current = uci.get('aetherproxy', 'main', 'node');
+		const available = uci.sections('aetherproxy', 'node')
+			.map(node => node['.name']).filter(id => id !== current);
+		for (const id of this.selectedNodes) {
+			if (!available.includes(id))
+				this.selectedNodes.delete(id);
+		}
+		for (const [id, box] of Object.entries(this.selectionBoxes)) {
+			box.disabled = !available.includes(id);
+			box.checked = this.selectedNodes.has(id);
+		}
+		this.selectAll.checked = available.length > 0 && this.selectedNodes.size === available.length;
+		this.selectAll.indeterminate = this.selectedNodes.size > 0 && !this.selectAll.checked;
+		this.deleteSelected.disabled = this.deleting || !this.selectedNodes.size;
+	},
+
+	handleDeleteSelected: async function() {
+		if (this.deleting)
+			return;
+		this.updateSelection();
+		const ids = Array.from(this.selectedNodes);
+		if (!ids.length)
+			return;
+		this.deleting = true;
+		this.updateSelection();
+		try {
+			if (!await ap.confirm({
+				title: _('Delete node', 'aether-proxy'),
+				text: _('Really delete the %s selected nodes? Save & Apply is required for deletion to take effect.',
+					'aether-proxy').format(ids.length),
+				ok: _('Delete', 'aether-proxy'),
+				destructive: true
+			}))
+				return;
+			this.updateSelection();
+			for (const id of ids) {
+				if (this.selectedNodes.has(id)) {
+					uci.remove('aetherproxy', id);
+					this.selectedNodes.delete(id);
+				}
+			}
+			// Match GridSection.handleRemove: stage and redraw, never apply changes.
+			await this.nodeMap.save(null, true);
+		}
+		catch (e) {
+			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e))));
+		}
+		finally {
+			this.deleting = false;
+			this.updateSelection();
+		}
+	},
+
+	updateSwitchButtons: function() {
+		for (const button of this.switchButtons ?? []) {
+			button.disabled = !!(this.switching || this.switchPending);
+			button.title = this.switchPending
+				? _('Switching nodes, please wait', 'aether-proxy')
+				: _('Set this node as the current node', 'aether-proxy');
+		}
+	},
+
+	stopSwitchWatch: function() {
+		this.switchEpoch = (this.switchEpoch ?? 0) + 1;
+		if (this.switchPoll != null)
+			window.clearTimeout(this.switchPoll);
+		if (this.switchDeadline != null)
+			window.clearTimeout(this.switchDeadline);
+		this.switchPoll = this.switchDeadline = null;
+		this.switchPending = false;
+		this.updateSwitchButtons();
+	},
+
+	/* The deadline is independent of RPC completion, so even an in-flight read
+	   cannot keep the controls locked beyond 60 seconds. Epochs discard late
+	   replies from the initial read or a previous node_use. */
+	watchSwitch: function(status) {
+		this.stopSwitchWatch();
+		if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node')))
+			return;
+		this.switchPending = true;
+		this.updateSwitchButtons();
+		const epoch = this.switchEpoch;
+		this.switchDeadline = window.setTimeout(() => this.stopSwitchWatch(), 60000);
+		this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);
+	},
+
+	refreshSwitchStatus: async function(epoch = this.switchEpoch ?? 0) {
+		const status = await ap.call('status');
+		if (epoch !== (this.switchEpoch ?? 0))
+			return;
+		if (!status || status.ok === false) {
+			/* TODO(design): status read failures have no specified lock policy.
+			   Retain an existing lock until its deadline; never infer completion. */
+			ui.addNotification(null, E('p', _('Reading node switch status failed: %s', 'aether-proxy')
+				.format(status?.code ?? 'RPC_FAILED')), 'warning');
+		}
+		else if (!this.switchPending) {
+			this.watchSwitch(status);
+			return;
+		}
+		else if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
+			this.stopSwitchWatch();
+			return;
+		}
+		if (this.switchPending)
+			this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);
+	},
+
 	/* 「检测全部」 / per-row 「检测」: run the probe as a background job and
 	   refresh the results and the progress line after every status update
 	   (docs/10 「节点页」). Both probe buttons are unavailable while the job
@@ -494,14 +666,17 @@ return view.extend({
 			dom.content(span, [ row ? row.probe : '–' ]);
 		}
 
-		dom.content(this.progressEl, [ vm.progress ]);
+		// LuCI stringifies null children; an absent progress line must stay empty.
+		dom.content(this.progressEl, vm.progress == null ? [] : [ vm.progress ]);
+		this.progressEl.hidden = vm.progress == null;
 	},
 
 	/* Direct switching must not commit unrelated staged session changes. */
 	handleSetCurrent: async function(section_id, ev) {
-		if (this.switching)
+		if (this.switching || this.switchPending)
 			return;
 		this.switching = true;
+		this.stopSwitchWatch();
 		const button = ev.currentTarget;
 		button.disabled = true;
 		try {
@@ -511,6 +686,7 @@ return view.extend({
 				await uci.unload('aetherproxy');
 				await uci.load('aetherproxy');
 				status = await ap.call('status');
+				this.watchSwitch(status);
 				const content = await this.buildPage();
 				dom.content(this.root, content);
 				this.updateProbeColumns();
@@ -531,6 +707,7 @@ return view.extend({
 		finally {
 			this.switching = false;
 			button.disabled = false;
+			this.updateSwitchButtons();
 		}
 	},
 

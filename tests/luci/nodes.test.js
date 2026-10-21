@@ -62,7 +62,7 @@ const RESULTS = {
 	pending: []
 };
 
-test('scenario 6: rows — name, address, summary with defaults, source, marks, allowed operations', () => {
+test('scenario 6: rows — stale name, summary with defaults, source, current mark, allowed operations', () => {
 	const sections = [
 		section('n_ok', { label: 'Edge Node', transport: 'ws', security: 'tls' }),
 		section('n_defaults', { protocol: 'trojan', source: 'manual' }),
@@ -79,10 +79,10 @@ test('scenario 6: rows — name, address, summary with defaults, source, marks, 
 	assert.deepEqual(vm.rows.map((r) => r.id), [ 'n_ok', 'n_defaults', 'n_sub', 'n_ghostsub' ]);
 
 	assert.equal(rows.n_ok.name, 'Edge Node');
-	assert.equal(rows.n_ok.address, '203.0.113.10:443');
 	assert.equal(rows.n_ok.summary, 'vless / ws / tls');
 	assert.equal(rows.n_ok.source, tr('Manual'));
-	assert.deepEqual(rows.n_ok.marks, [ tr('Current node') ]);
+	assert.equal(rows.n_ok.current, true);
+	assert.equal(rows.n_ok.stale, false);
 	assert.equal(rows.n_ok.can_set_current, false);
 	assert.equal(rows.n_ok.can_delete, false);
 
@@ -96,7 +96,9 @@ test('scenario 6: rows — name, address, summary with defaults, source, marks, 
 	assert.equal(rows.n_ghostsub.source, 's_deadbeef');
 
 	/* stale is marked, subscription nodes carry the overwrite hint */
-	assert.deepEqual(rows.n_sub.marks, [ tr('Stale') ]);
+	assert.equal(rows.n_sub.name, 'n_sub（已失效）');
+	assert.equal(rows.n_sub.stale, true);
+	assert.equal(rows.n_sub.current, false);
 	assert.equal(rows.n_sub.modal_hint, po['This node comes from a subscription; edits will be overwritten at the next subscription update.']);
 	assert.equal(rows.n_defaults.modal_hint, null);
 
@@ -287,7 +289,8 @@ function loadNodesView(calls, overrides = {}) {
 			run_job: (kind, args) => { calls.push([ 'run_job', kind, args ]); return Promise.resolve({ state: 'ok' }); }
 		},
 		'aether-proxy.model.nodes': modelMod
-	}, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
+	}, { window: { setTimeout: () => 1, clearTimeout() {} },
+		document: { addEventListener() {}, removeEventListener() {} } });
 	view.probeButtons = [];
 	view.probeCells = {};
 	view.progressEl = {};
