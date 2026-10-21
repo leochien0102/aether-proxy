@@ -5,7 +5,7 @@
 			"ubus": {
 				"aetherproxy": [
 					"version", "status", "events", "job_status", "log", "list_file",
-					"probe_results", "sub_status", "data_status", "stats", "components"
+					"probe_results", "sub_status", "data_status", "stats", "components", "probe_sites"
 				],
 				"luci-rpc": [ "getHostHints" ]
 			},
@@ -13,7 +13,9 @@
 		},
 		"write": {
 			"ubus": {
-				"aetherproxy": [ "service", "check", "job_start", "node_import", "save_file", "probe_now" ]
+				"aetherproxy": [
+					"service", "check", "job_start", "node_import", "save_file", "probe_now", "node_use", "probe_url"
+				]
 			},
 			"uci": [ "aetherproxy" ]
 		}

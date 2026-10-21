@@ -1,6 +1,6 @@
 'use strict';
 
-// Node probe results (docs/07 「节点可达性检测」) and immediate monitor requests
+// Node probe results and independent real-latency requests (docs/07), and immediate monitor requests
 // (docs/10 「Dashboard：概览页升级」 part 2).
 //
 // `probe nodes` runs the TCP probes and records the outcome incrementally:
@@ -21,7 +21,8 @@ import * as state from 'aetherproxy.state';
 
 const USAGE = 'Usage: aether-proxy probe nodes [<node-id>...] [--json] [--confdir <dir>] [--run-dir <dir>]\n'
 	+ '       aether-proxy probe results [--json] [--run-dir <dir>]\n'
-	+ '       aether-proxy probe now [--json] [--run-dir <dir>] [--bin-dir <dir>]';
+	+ '       aether-proxy probe now [--json] [--run-dir <dir>] [--bin-dir <dir>]\n'
+	+ '       aether-proxy probe url <site> | probe sites [--json]';
 
 function usage(detail, json) {
 	return pipeline.finish({ json }, { ok: false, code: 'USAGE', detail, errors: [] }, 2, `${detail}\n${USAGE}`);
@@ -224,6 +225,57 @@ function probe_now_cmd(opts, parsed, json) {
 	return pipeline.finish(opts, { ok: true, requested_at }, 0, 'Health check requested');
 };
 
+function url_reply(opts, value, exit_code) {
+	let human = value.ok ? `${value.site}: ${value.latency_ms} ms (HTTP ${value.code})`
+		: `${value.code}: ${value.detail ?? value.site}`;
+	return pipeline.finish(opts, value, exit_code, human);
+}
+
+function probe_url_cmd(opts, positional, json_output) {
+	if (length(positional) != 2)
+		return usage('expected `probe url <site>`', json_output);
+	let site = null;
+	for (let entry in C.PROBE_SITES)
+		if (entry.name == positional[1])
+			site = entry;
+	if (site == null)
+		return usage(`unknown probe site '${positional[1]}'`, json_output);
+
+	let root = replace(opts.sys_root ?? '', /\/$/, '');
+	// TODO(design): T9.10 says not to read state.json, but docs/07 requires a
+	// running/degraded gate. Read it only for this check; never write it or emit events.
+	let current = state.read(opts.run_dir ?? (root + C.RUN_DIR));
+	if (index([ 'running', 'degraded' ], current?.state) < 0)
+		return url_reply(opts, {
+			ok: false, code: 'NOT_RUNNING', detail: state.error() ?? 'service is not running'
+		}, 1);
+
+	let loaded = config.load(uci.cursor(opts.confdir ?? (root + C.CONFIG_DIR)));
+	// TODO(design): docs/07 does not specify invalid configuration during a live probe.
+	// Return CONFIG_INVALID without events or a request rather than inventing a timeout.
+	if (!loaded.ok)
+		return url_reply(opts, { ok: false, code: 'CONFIG_INVALID', detail: 'cannot load probe configuration' }, 2);
+	let timeout = loaded.snapshot.probe.timeout;
+	let curl = opts.bin_dir ? opts.bin_dir + '/curl' : 'curl';
+	let res = sys.run([ curl, '--silent', '--output', C.DEV_NULL,
+		'--write-out', '%{http_code} %{time_starttransfer}', '--max-time', `${timeout}`,
+		'-x', `http://${C.HTTP_LISTEN}:${C.HTTP_PORT}`, site.url
+	], { timeout: timeout + C.PROBE_URL_GRACE_SECS, quiet: true });
+	if (res.timed_out || res.code == 28)
+		return url_reply(opts, { ok: false, code: 'PROBE_TIMEOUT', site: site.name }, 1);
+
+	let fields = match(trim(res.stdout), /^([0-9]{3}) ([0-9]+(\.[0-9]+)?)$/);
+	let code = fields == null ? 0 : +fields[1];
+	if (res.code != 0 || fields == null || code < 200 || code > 399)
+		return url_reply(opts, {
+			ok: false, code: 'PROBE_FAILED', site: site.name, http_code: code,
+			detail: `curl exit ${res.code}: ${trim(res.stderr) || trim(res.stdout)}`
+		}, 1);
+	return url_reply(opts, {
+		ok: true, site: site.name, url: site.url, code, latency_ms: int(+fields[2] * 1000)
+	}, 0);
+}
+
 export function run(args) {
 	let parsed = pipeline.parse_args(args);
 	let json = !!(parsed.opts?.json || index(args, '--json') >= 0);
@@ -238,6 +290,16 @@ export function run(args) {
 
 	if (!length(parsed.positional))
 		return usage('expected `probe nodes`, `probe results` or `probe now`', json);
+
+	if (parsed.positional[0] == 'sites') {
+		if (length(parsed.positional) != 1)
+			return usage('probe sites takes no arguments', json);
+		return pipeline.finish(opts, { ok: true, sites: C.PROBE_SITES }, 0,
+			join('\n', map(C.PROBE_SITES, site => `${site.name}: ${site.label} (${site.url})`)));
+	}
+
+	if (parsed.positional[0] == 'url')
+		return probe_url_cmd(opts, parsed.positional, json);
 
 	if (parsed.positional[0] == 'now')
 		return probe_now_cmd(opts, parsed, json);

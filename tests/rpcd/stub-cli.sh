@@ -30,6 +30,13 @@ for arg do
 done
 printf -- '---\n' >> "$LOG"
 
+# T9.10 optionally sends probe membership checks through the real host CLI.
+# Other scenarios retain the original configurable stub behavior.
+if [ "$(value real_probe)" = 1 ]; then
+	ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+	exec "$ROOT/tests/host/ucode" -S "$ROOT/aether-proxy/src/aether-proxy" -- "$@"
+fi
+
 delay="$(value sleep)"
 [ -n "$delay" ] && sleep "$delay"
 

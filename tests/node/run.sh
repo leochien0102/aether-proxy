@@ -439,5 +439,9 @@ expect "custom set without --content: exit code 2" 2 "$rc"
 expect "custom set without --content: code USAGE" USAGE "$(echo "$out" | jget code)"
 
 echo
+# T9.10 uses real libuci plus an isolated init script/session savedir.
+python3 "$ROOT/tests/node/use.py" "$ROOT" "$T/use" \
+	&& ok 'node use committed selection scenarios' || bad 'node use committed selection scenarios'
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
