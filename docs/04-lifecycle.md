@@ -118,7 +118,8 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 **完成后记 `RELOAD_APPLIED`**（notice，2026-10-21 加，B14 第 3 条）：有动作执行成功时记一条，`from_node`、`to_node`（节点 ID；没换节点时两者相同）、`actions`（执行了的动作）、
 `elapsed_ms`（从收到 SIGHUP 起）、`steps`（步骤名 → 毫秒，形同 `SERVICE_STARTED`）。没有任何变化的重载不记（规则数据更新、保存未改动的页面都会触发重载）。
 原来重载成功不记任何事件，日志里看不出切换发生过、用了多久。
-（T9.8 合并时加进 [09](09-logging.md)「事件码目录」：日志页的测试要求目录中的每个事件码都已有模板，先写进目录会让 main 的测试失败。）
+`steps` 的步骤名（T9.8）：`config_render`（读配置、渲染，含解析后的重新渲染与写 staging）、`resolve_node`、`validate`（两轮校验之和）、`sets_export_render`（导出集合并重新渲染 nft）、`actions`（发布与执行动作）。
+`elapsed_ms` 还包括等待 monitor 本轮结束等开销，不等于各步之和。nft 要替换时（含只改模式）`nft -c` 做两次：第一轮与导出集合之后各一次。
 
 `chinadns.conf` 按路径引用域名名单（`gfwlist-file`、`chnlist-file`、`group-dnl`），名单内容变了配置文本却不变。所以它的哈希是「配置文件哈希 + 每个被引用文件的哈希」拼成的串；
 比对时配置文件部分用 `current/` 中现在的文件（monitor 切 DNS 级别会重写它），名单部分用上次生效时（启动或上一次 reload）记在 `render_hash` 里的值——名单不在 `current/` 里，现读只会读到已经改过的内容。
