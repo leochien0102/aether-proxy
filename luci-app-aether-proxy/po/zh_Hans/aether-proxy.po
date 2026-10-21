@@ -1532,10 +1532,6 @@ msgid "Off"
 msgstr "关闭"
 
 msgctxt "aether-proxy"
-msgid "The service is not running."
-msgstr "服务未运行"
-
-msgctxt "aether-proxy"
 msgid "Proxy connections"
 msgstr "代理连接"
 
@@ -1740,20 +1736,28 @@ msgid "Reading the site list failed (%s)"
 msgstr "读取站点列表失败（%s）"
 
 msgctxt "aether-proxy"
-msgid "%s %s ms"
-msgstr "%s %s ms"
+msgid "Healthy, %s ms (%s, manual)"
+msgstr "正常，%s ms（%s，手动）"
 
 msgctxt "aether-proxy"
-msgid "%s timed out"
-msgstr "%s 超时"
+msgid "Probe timed out (%s, manual)"
+msgstr "检测超时（%s，手动）"
 
 msgctxt "aether-proxy"
-msgid "%s returned HTTP %s"
-msgstr "%s 返回 HTTP %s"
+msgid "Returned HTTP %s (%s, manual)"
+msgstr "返回 HTTP %s（%s，手动）"
 
 msgctxt "aether-proxy"
-msgid "%s connection failed"
-msgstr "%s 连接失败"
+msgid "Probe failed (%s, manual)"
+msgstr "检测失败（%s，手动）"
+
+msgctxt "aether-proxy"
+msgid "Testing real latency failed (%s)"
+msgstr "检测真实延迟失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Switching nodes, please wait"
+msgstr "正在切换节点，请稍候"
 
 msgctxt "aether-proxy"
 msgid "Switching nodes failed (%s)"
