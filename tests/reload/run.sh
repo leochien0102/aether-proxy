@@ -2,6 +2,8 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# The daemon filters child output with the packaged script (docs/09); point it at the source copy.
+export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
 UCODE="$ROOT/tests/host/ucode"
 ENTRY="$ROOT/aether-proxy/src/aether-proxy"
 FIX="$ROOT/tests/fixtures/sample"
