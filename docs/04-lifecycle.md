@@ -89,13 +89,17 @@
 ## 重载（`aether-proxy reload`，UCI 变更触发）
 
 init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service` 先看两种状态切换：`enabled` 变为 0 时执行 `stop`；
-服务没在运行（刚启用，或之前启动失败）时执行 `start`。其余情况先执行 `aether-proxy check`，
-失败就不做任何改动（错误留在事件里）；通过则向 daemon 发 `SIGHUP`，由 daemon 执行下面的流程：
+服务没在运行（刚启用，或之前启动失败）时执行 `start`。其余情况直接向 daemon 发 `SIGHUP`，由 daemon 执行下面的流程。
+（2026-10-21 改，backlog B14 第 3 条：原来发信号前先同步跑一次 `aether-proxy check`，H28K 上约 10 秒，而 daemon 收到信号后把同样的读取、渲染、校验又做一遍；
+check 失败时只写一行 syslog、不记事件，概览页的「切换未生效」提示（10，T10.11）反而找不到原因。现在只由 daemon 做，失败照样不做任何改动，并按下面各步记事件。）
 
 1. 重新读取配置并校验，失败则不做任何改动。
-2. 把全部产物渲染到 staging，逐个与当前产物比对哈希。
+2. 把全部产物渲染到 staging，逐个与当前产物比对哈希。校验（前置检查、`nft -c`）每次都做；**`xray run -test` 只在 `xray.json` 与 `current/` 中的不同时做**
+   （H28K 上约 6 秒；只改模式、名单时 Xray 配置不变，不必重测）。
 3. 节点或节点地址变了：先对新节点做一次引导解析（[03](03-dns.md)），失败则不做任何改动；成功后以新 IP 重新渲染
    （`node_ip4` 随之变化，nft 也要替换）。运行中的 DNS 级别沿用 monitor 当前的值。
+   nft 要替换时先导出动态集合、带着它们重新渲染 nft（下表第一行），**这一轮只重写了 nft，只做 `nft -c`**，不重做前置检查与 `xray run -test`
+   （2026-10-21 改，B14 第 3 条：原来整套校验再做一遍，切换节点时 Xray 配置被测了两次）。
 4. 先把 staging 提交为 current（旧的保留为 `previous/`），再执行动作。这样子进程的命令行始终指向固定的 `current/` 路径；
    任一动作失败时恢复 `previous/`，并逆序撤销已完成的动作。比对的基准是 `current/` 里实际的文件，不是启动时记下的哈希，
    因为 monitor 切换 DNS 级别、刷新节点 IP 时也会重写其中的文件。
@@ -110,6 +114,10 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 | 启用状态变为关闭 | 等同 `stop` |
 
 **比对的是输出而不是输入**：生成器自身升级后输出变了，也会被检测到（避免 ssr-plus U8 那类问题）。
+
+**完成后记 `RELOAD_APPLIED`**（notice，2026-10-21 加，B14 第 3 条）：有动作执行成功时记一条，`from_node`、`to_node`（节点 ID；没换节点时两者相同）、`actions`（执行了的动作）、
+`elapsed_ms`（从收到 SIGHUP 起）、`steps`（步骤名 → 毫秒，形同 `SERVICE_STARTED`）。没有任何变化的重载不记（规则数据更新、保存未改动的页面都会触发重载）。
+原来重载成功不记任何事件，日志里看不出切换发生过、用了多久。
 
 `chinadns.conf` 按路径引用域名名单（`gfwlist-file`、`chnlist-file`、`group-dnl`），名单内容变了配置文本却不变。所以它的哈希是「配置文件哈希 + 每个被引用文件的哈希」拼成的串；
 比对时配置文件部分用 `current/` 中现在的文件（monitor 切 DNS 级别会重写它），名单部分用上次生效时（启动或上一次 reload）记在 `render_hash` 里的值——名单不在 `current/` 里，现读只会读到已经改过的内容。

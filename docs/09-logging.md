@@ -29,6 +29,17 @@ Xray 的 access 日志固定关闭（隐私和 CPU 开销），error 日志等�
 不再有 `aether-proxy-xray` / `aether-proxy-dns` 两个独立标签——两者的输出格式本身可以区分（Xray 为 `[Info]`/`[Warning]` 前缀，chinadns-ng 为 `[main.zig:…]` 之类的源码位置），
 LuCI 原始日志页按内容过滤即可。上方「来源与标签」表中这两行以本节为准。
 
+**限流**（2026-10-21 定，backlog B14 第 2 条）：r8 窗口中 Xray 重启的那一秒，chinadns-ng 连不上 Xray 的 DNS 入站，同一秒写了 1336 行警告，logd 缓冲区里之前的记录全被挤掉。
+chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），daemon 又读不到子进程的输出（见上），所以在子进程与 procd 之间加一个过滤进程：
+
+- daemon 为每个子进程建一个 FIFO（`/var/run/aether-proxy/<名称>.log.fifo`，启动前先删掉旧的再建），用 `uloop.process` 启动 `/bin/sh -c`：先在后台启动过滤进程（从 FIFO 读、写到继承来的 stdout），
+  再 `exec` 子进程并把 stdout/stderr 重定向到 FIFO。**`exec` 保持 pid 不变**，监管、停止、退出码判断都照旧针对这个 pid。子进程退出后 FIFO 的写端关闭，过滤进程读到 EOF，输出汇总行后退出。
+- 过滤进程是 busybox `awk`（`systime()`、`fflush()`；H28K 上实测可用），脚本随包安装。每行读入后立即 `fflush`，不缓冲正常日志。
+- 规则：每个子进程**每秒最多 20 行、每分钟最多 120 行**，超出的丢弃并计数；之后第一次又有行可输出时（以及 EOF 时）先输出一行
+  `aether-proxy: <名称> output rate limited, dropped N lines between HH:MM:SS and HH:MM:SS`（与子进程的输出同样进 syslog，不记事件：过滤进程不连事件日志）。
+  数字的依据：logd 默认缓冲区约 64 KB，按每行 150 字节约 400 行；每分钟 120 行时，即使持续刷屏，最早的记录也能保留约 3 分钟以上，日常的启动、切换日志远低于这个量。
+- FIFO 建不了（例如没有 `mkfifo`）→ 退回原来的直接继承，记一次 `FS_FAILED`（`op: mkfifo`），不影响启动。
+
 注意：被信号结束的子进程在 `uloop.process` 回调里报告的退出码也是 0，与正常退出无法区分。daemon 必须自己记录「这次是主动停止」，
 凡不是主动停止的退出一律视为崩溃并按退避重启。
 
@@ -73,6 +84,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | 代码 | 等级 | 参数 |
 |---|---|---|
 | `SERVICE_STARTED` / `SERVICE_STOPPED` | notice | `mode`、`node`；`SERVICE_STARTED` 另有 `elapsed_ms`、`steps`（步骤名 → 毫秒） |
+| `RELOAD_APPLIED` | notice | `from_node`、`to_node`、`actions`、`elapsed_ms`、`steps`（[04](04-lifecycle.md)「重载」，有动作执行成功时才记） |
 | `BUSY` | warn | `holder` |
 | `CONFIG_INVALID` | error | `field`、`reason` |
 | `PRECHECK_FAILED` | error | `missing` |
