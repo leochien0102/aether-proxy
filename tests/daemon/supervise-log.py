@@ -64,14 +64,14 @@ def exercise(work, mode):
 	for tool in ('sh', 'bash', 'mktemp', 'rm', 'kill'):
 		(bin_dir / tool).symlink_to(shutil.which(tool))
 	# PATH really has no mkfifo in fallback mode; no failing fake mkfifo is substituted.
-	if mode != 'missing':
+	if mode not in ('missing', 'nofilter'):
 		executable(bin_dir / 'mkfifo', '#!/bin/sh\nprintf "mkfifo\\n" >> "$CASE/mkfifos"\nexec "' +
 			shutil.which('mkfifo') + '" "$@"\n')
 	(bin_dir / 'awk').symlink_to(shutil.which('awk'))
 	child = root / 'child.py'
 	child.write_text(CHILD)
 	env = dict(os.environ, PATH=str(bin_dir), CASE=str(root), TZ='UTC',
-		AETHER_PROXY_TEST_LOGFILTER=str(FILTER))
+		AETHER_PROXY_TEST_LOGFILTER=str(root / 'absent.awk') if mode == 'nofilter' else str(FILTER))
 	argv = [str(ROOT / 'tests/host/ucode'), str(ROOT / 'tests/daemon/supervise-log.uc'),
 		'--', str(root), mode, sys.executable, str(child)]
 	# tests/host/ucode itself needs dirname and readlink before it reaches ucode.
@@ -86,13 +86,13 @@ def exercise(work, mode):
 		stale_inode = fifo.stat().st_ino
 	with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, cwd=root) as p:
 		deadline = time.monotonic() + 5
-		while mode != 'missing' and time.monotonic() < deadline:
+		while mode not in ('missing', 'nofilter') and time.monotonic() < deadline:
 			if p.poll() is not None:
 				break
 			if fifo.exists() and fifo.stat().st_ino != stale_inode:
 				break
 			time.sleep(0.01)
-		if mode != 'missing':
+		if mode not in ('missing', 'nofilter'):
 			check(fifo.exists() and stat.S_ISFIFO(fifo.stat().st_mode) and
 				stat.S_IMODE(fifo.stat().st_mode) == 0o600, f'{mode}: private FIFO created',
 				p.stderr.read().decode() if p.poll() is not None else '')
@@ -118,7 +118,7 @@ def exercise(work, mode):
 
 
 def verify_output(root, mode, fifo, filter_pids, out, err):
-	check(err == (b'launch-1 line-1\n' if mode == 'missing' else b''),
+	check(err == (b'launch-1 line-1\n' if mode in ('missing', 'nofilter') else b''),
 		f'{mode}: no unexpected child or filter errors', err.decode())
 	observed = json.loads((root / 'observed.json').read_text())
 	started = [e for e in observed if e['kind'] == 'started']
@@ -131,7 +131,7 @@ def verify_output(root, mode, fifo, filter_pids, out, err):
 	check(not fifo.exists() and not list(fifo.parent.glob('*.pid')),
 		f'{mode}: stop and cleanup leave no FIFO or pid file')
 	live = []
-	if mode != 'missing':
+	if mode not in ('missing', 'nofilter'):
 		pids = list(filter_pids)
 		check(len(pids) == len(started), f'{mode}: one FIFO reader observed for each launch')
 		for _ in range(100):
@@ -158,19 +158,22 @@ def verify_output(root, mode, fifo, filter_pids, out, err):
 			'crash: both EOF summaries retain all 480 dropped lines')
 	else:
 		check(not crashes, f'{mode}: active stop emits no CHILD_CRASHED')
-		want = [f'launch-1 line-{i}' for i in ((0, 2) if mode == 'missing' else (0, 1, 2))]
+		want = [f'launch-1 line-{i}' for i in ((0, 2) if mode in ('missing', 'nofilter') else (0, 1, 2))]
 		check(lines == want, f'{mode}: stdout and stderr inherited in order without changes')
-	if mode == 'missing':
+	if mode in ('missing', 'nofilter'):
 		failures = [e for e in events if e['code'] == 'FS_FAILED']
-		check(len(failures) == 1 and failures[0]['args']['op'] == 'mkfifo',
-			'missing: exactly one FS_FAILED with op mkfifo')
-		check(not filter_pids, 'missing: direct inheritance starts no filter')
+		op = 'mkfifo' if mode == 'missing' else 'read'
+		check(len(failures) == 1 and failures[0]['args']['op'] == op,
+			f'{mode}: exactly one FS_FAILED with op {op}')
+		check(not filter_pids, f'{mode}: direct inheritance starts no filter')
+		if mode == 'nofilter':
+			check(not (root / 'mkfifos').exists(), 'nofilter: no FIFO is made without a filter script')
 
 
 if __name__ == '__main__':
 	libc = ctypes.CDLL(None, use_errno=True)
 	check(libc.prctl(36, 1, 0, 0, 0) == 0, 'test harness reaps orphan filters as subreaper')
 	with tempfile.TemporaryDirectory(prefix='supervise-log-') as temp:
-		for mode in ('normal', 'crash', 'missing'):
+		for mode in ('normal', 'crash', 'missing', 'nofilter'):
 			exercise(Path(temp), mode)
 	print('supervise-log: all assertions passed')

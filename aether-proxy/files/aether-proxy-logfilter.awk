@@ -8,8 +8,7 @@ BEGIN {
 function summary() {
 	if (!dropped)
 		return
-	# TODO(design): summary lines are not specified as part of the quota; keep them
-	# outside it so a saturated minute cannot hide the loss notification.
+	# Summaries sit outside the quota so a saturated minute cannot hide the loss (docs/09).
 	printf "aether-proxy: %s output rate limited, dropped %d lines between %s and %s\n", \
 		name, dropped, strftime("%H:%M:%S", first_drop), strftime("%H:%M:%S", last_drop)
 	fflush()
@@ -22,10 +21,14 @@ function summary() {
 		now = $0 + 0
 		sub(/^[0-9]+ /, "")
 	}
-	# TODO(design): window alignment and clock rollback are unspecified. A rolling
-	# 60-second window prevents boundary bursts; clamp rollback to avoid new quota.
-	if (now < previous)
-		now = previous
+	# Rolling 60-second window (docs/09). A clock that went back (NTP correction, manual
+	# change) restarts the counts: clamping to the last time would admit only one second's
+	# quota until the clock caught up, silencing the child for as long as the jump.
+	if (now < previous) {
+		for (second in accepted)
+			delete accepted[second]
+		minute_count = 0
+	}
 	previous = now
 	for (second in accepted) {
 		if (second + 0 <= now - WINDOW_SECONDS) {

@@ -49,9 +49,12 @@ def exercise(awk):
 	lines += ['159 dropped-a', '159 dropped-b', '160 recovered']
 	check(run(lines)[-2:] == [summary(2, '00:02:39', '00:02:39'), 'recovered'],
 		f'{label}: rolling window boundary recovers at exactly 60 seconds')
-	lines = ['100 ' + str(i) for i in range(25)] + ['100 another-drop', '99 rollback', '101 next']
-	check(run(lines)[-2:] == [summary(7, '00:01:40', '00:01:40'), 'next'],
-		f'{label}: clock rollback cannot grant extra quota')
+	lines = ['100 ' + str(i) for i in range(25)] + ['100 another-drop', '99 rollback', '99 again']
+	check(run(lines)[-3:] == [summary(6, '00:01:40', '00:01:40'), 'rollback', 'again'],
+		f'{label}: clock rollback restarts the counts instead of silencing the child')
+	lines = ['5000 ' + str(i) for i in range(25)] + [f'1400 back {i}' for i in range(20)]
+	check(run(lines)[20:] == [summary(5, '01:23:20', '01:23:20')] + [f'back {i}' for i in range(20)],
+		f'{label}: an hour-long rollback admits a full second at once')
 	long_line = 'x' * 131072 + '\t  tail  '
 	check(run(['100 ', '100 ' + long_line]) == ['', long_line],
 		f'{label}: empty and very long lines preserved byte-for-byte')

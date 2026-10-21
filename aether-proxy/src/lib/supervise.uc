@@ -33,6 +33,13 @@ function remove_fifo(path) {
 function filtered_argv(opts, path) {
 	// Never interpolate names, paths or child arguments into shell source. exec keeps
 	// uloop's pid and exit status attached to the actual service, not a shell wrapper.
+	// Host suites run uninstalled sources; production always uses the packaged path.
+	let filter = getenv(C.CHILD_LOG_FILTER_TEST_ENV) ?? C.CHILD_LOG_FILTER;
+	// Without the script awk exits at once and the child dies of SIGPIPE on its first line.
+	if (!fs.access(filter, 'r')) {
+		log.event('error', 'FS_FAILED', { op: 'read', path: filter, detail: 'log filter script missing' });
+		return opts.argv;
+	}
 	let removed = remove_fifo(path);
 	let made = removed.ok ? sys.run([ 'mkfifo', '-m', '0600', path ], { quiet: true }) : null;
 	if (made == null || made.code != 0) {
@@ -41,8 +48,6 @@ function filtered_argv(opts, path) {
 		});
 		return opts.argv;
 	}
-	// Host suites run uninstalled sources; production always uses the packaged path.
-	let filter = getenv(C.CHILD_LOG_FILTER_TEST_ENV) ?? C.CHILD_LOG_FILTER;
 	return [ '/bin/sh', '-c',
 		'fifo=$3; awk -v name="$1" -f "$2" <"$fifo" & shift 3; exec "$@" >"$fifo" 2>&1',
 		'aether-proxy-logfilter', opts.name, filter, path, ...opts.argv ];
