@@ -197,7 +197,7 @@ function file_sha256(path, quiet) {
 
 // The one local-data hash of 08 "本机数据的哈希": the downloaded .sha256 if present,
 // otherwise the packaged baseline file's sha256. `update check` (changed), `update data`
-// (download decision) and `data status` (version) must all compare through this function,
+// (download decision) and `data status` (version and changed) must all compare through this function,
 // so a freshly installed device without .sha256 files does not report its baseline data
 // as changed forever. Returns { ok, hash } or { ok: false, kind, detail } with kind
 // 'read' (unexpected I/O error), 'invalid' (garbage in .sha256) or 'baseline' (baseline
@@ -234,7 +234,7 @@ function data_status(ctx, manifest) {
 		// hash; report it as changed without running sha256sum on a nonexistent file
 		// (and without the CMD_FAILED event that would log), as before the shared hash.
 		if (filename == null) {
-			result[name] = { changed: true };
+			result[name] = { changed: true, sha256: manifest.data[name].content_sha256 };
 			continue;
 		}
 		let local = local_data_hash(ctx.root, name, filename);
@@ -243,7 +243,11 @@ function data_status(ctx, manifest) {
 		// An undeterminable local hash keeps reporting changed (the previous behavior
 		// whenever no comparison was possible); only the missing-.sha256 case was fixed
 		// to consult the baseline (08 "本机数据的哈希").
-		result[name] = { changed: !local.ok || local.hash != manifest.data[name].content_sha256 };
+		// Retain the content hash so status can compare again after a data update (docs/08 "检查").
+		result[name] = {
+			changed: !local.ok || local.hash != manifest.data[name].content_sha256,
+			sha256: manifest.data[name].content_sha256
+		};
 	}
 	return result;
 }
