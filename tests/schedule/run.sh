@@ -282,6 +282,8 @@ for _ in {1..40}; do
 done
 if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 400; then
 	ok "auto policy starts xray package job while running"
+	# The stub logs before the daemon persists the record (same race as the T9.6 case below).
+	wait_for_text "$R/etc/aether-proxy/state/update-schedule.json" '26.10-r1' 200
 	version=$(jget auto_install.version < "$R/etc/aether-proxy/state/update-schedule.json")
 	[ "$version" = '26.10-r1' ] && ok "auto install version is recorded" || bad "auto install version is recorded" "$version"
 	sleep 0.4
