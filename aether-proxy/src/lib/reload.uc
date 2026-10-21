@@ -443,9 +443,7 @@ function run(daemon, started_ms) {
 		steps.sets_export_render = elapsed_ms(step_started);
 		step_started = monotonic_ms();
 		// Only nft was rewritten; precheck and the Xray test already covered this candidate.
-		// TODO(design): T9.8 scenario 2 asks for one nft check on a mode change, but
-		// docs/04 and requirements 2/3 require both passes whenever nft changes. Keep
-		// both artifact checks; precheck also runs its separate kernel-feature probe.
+		// Both nft passes run whenever nft changes, mode-only reloads included (docs/04).
 		let checked = validate_nft(daemon, stage);
 		steps.validate += elapsed_ms(step_started);
 		if (!checked.ok) {
