@@ -3,7 +3,7 @@
 'require aether-proxy.model.logs as logs';
 
 /*
- * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」).
+ * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」「概览页第六轮修正」).
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
@@ -181,13 +181,23 @@ function components_failed(inventory) {
 	return inventory !== undefined && inventory?.ok !== true;
 }
 
+/* Keep diagnostics out of path cells; the view shows one retryable explanation. */
+function component_error(inventory) {
+	if (!components_failed(inventory))
+		return null;
+	return {
+		text: fmt(_('Reading component information failed (%s)', 'aether-proxy'), inventory?.code ?? 'RPC_FAILED'),
+		detail: inventory?.detail || null
+	};
+}
+
 /* Own version comes from a separate RPC, even when reading status failed. */
 function component_rows(version, inventory) {
 	const components = [{
 		name: 'aether-proxy',
 		version: version === undefined ? _('Reading…', 'aether-proxy')
 			: ((version && version.ok && typeof version.version == 'string') ? version.version : null),
-		path: null
+		path: '/usr/bin/aether-proxy'
 	}];
 	/* Inventory is independent of runtime status, including failed status reads. */
 	for (const name of [ 'xray', 'chinadns-ng' ]) {
@@ -196,7 +206,7 @@ function component_rows(version, inventory) {
 			continue;
 		}
 		if (components_failed(inventory)) {
-			components.push({ name, version: _('Reading failed', 'aether-proxy'), path: failure_text(inventory) });
+			components.push({ name, version: _('Reading failed', 'aether-proxy'), path: '' });
 			continue;
 		}
 		const c = inventory.components?.[name];
@@ -271,6 +281,7 @@ return baseclass.extend({
 	switch_pending: switch_pending,
 	component_rows: component_rows,
 	components_failed: components_failed,
+	component_error: component_error,
 	refresh_options: function() {
 		return [
 			{ value: '2', text: _('2 seconds', 'aether-proxy') },
@@ -392,7 +403,8 @@ return baseclass.extend({
 			return {
 				ok: false,
 				error: pending ? null
-					: fmt(_('Reading the status failed: %s.', 'aether-proxy'), detail ? code + ': ' + detail : code),
+					: fmt(_('Reading the status failed (%s); will retry automatically later', 'aether-proxy'), code),
+				error_detail: pending ? null : detail,
 				state_text: pending ? _('Reading…', 'aether-proxy') : null,
 				probe_disabled: true,
 				traffic_note,
@@ -421,6 +433,7 @@ return baseclass.extend({
 		return {
 			ok: true,
 			error: null,
+			error_detail: null,
 			probe_disabled: false,
 			state_text: state_text(state, status.waiting_network === true),
 			traffic_note,

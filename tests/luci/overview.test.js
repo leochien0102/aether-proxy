@@ -1,7 +1,7 @@
 'use strict';
 
 /* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c;
- * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17).
+ * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -245,7 +245,8 @@ test('scenario 8c: status failure -> error message, all buttons disabled', () =>
 
 	assert.equal(vm.ok, false);
 	assert.ok(vm.error.includes('RPC_FAILED'), vm.error);
-	assert.ok(vm.error.includes('boom'), vm.error);
+	assert.equal(vm.error_detail, 'boom');
+	assert.ok(!vm.error.includes('boom'), 'raw diagnostics stay out of the summary');
 	assert.deepEqual(vm.buttons, { start: false, restart: false, stop: false });
 	assert.deepEqual(vm.notices, []);
 	assert.equal(vm.state_text, null);
@@ -838,15 +839,15 @@ test('T10.3 scenario 5 / T10.4: own component first, version failure null, insta
 	} };
 	const vm = build({ ok: true }, null, null, null, null, null, inventory);
 	assert.deepEqual(vm.components, [
-		{ name: 'aether-proxy', version: '0.1.0-r2', path: null },
+		{ name: 'aether-proxy', version: '0.1.0-r2', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' },
 		{ name: 'chinadns-ng', version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
 	]);
 	assert.equal(build({ ok: true }, { ok: false }).components[0].version, null);
 	assert.deepEqual(build({ ok: false }, { ok: false }, null, NOW, true, null, { ok: false }).components, [
-		{ name: 'aether-proxy', version: null, path: null },
-		{ name: 'xray', version: '读取失败', path: 'RPC_FAILED' },
-		{ name: 'chinadns-ng', version: '读取失败', path: 'RPC_FAILED' }
+		{ name: 'aether-proxy', version: null, path: '/usr/bin/aether-proxy' },
+		{ name: 'xray', version: '读取失败', path: '' },
+		{ name: 'chinadns-ng', version: '读取失败', path: '' }
 	]);
 });
 
@@ -911,7 +912,8 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	const pending = failure.children[1];
 	assert.doesNotMatch(visibleText(pending), /待处理提示/);
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message error'
-		&& visibleText(n).includes('TIMEOUT: offline')));
+		&& n.children[0] === '读取状态失败（TIMEOUT），稍后自动重试'
+		&& findTag(n, 'pre').textContent === 'offline'));
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message warning'
 		&& visibleText(n).includes('服务未启用')));
 });
@@ -966,7 +968,8 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.doesNotMatch(visibleText(root), /T[123]|conntrack|aether-proxy 版本/);
 	const componentTable = findAll(blocks[2], 'table')[0];
 	assert.equal(componentTable.attrs.style, 'font-size: 0.9em');
-	assert.deepEqual(componentTable.children[1].children.map((c) => c.textContent), [ 'aether-proxy', '–', '–' ]);
+	assert.deepEqual(componentTable.children[1].children.map((c) => c.textContent),
+		[ 'aether-proxy', '–', '/usr/bin/aether-proxy' ]);
 	page.refresh({ ok: true, state: 'stopped', dns_tier: 'T2' });
 	assert.doesNotMatch(visibleText(root), /境外域名解析|原因：/);
 });
@@ -1049,21 +1052,22 @@ test('T10.4 scenario 4c: three installed-component rows, missing versions, missi
 	} };
 	const rows = build({ ok: false }, null, null, NOW, true, null, inventory).components;
 	assert.deepEqual(rows, [
-		{ name: 'aether-proxy', version: '0.1.0-r2', path: null },
+		{ name: 'aether-proxy', version: '0.1.0-r2', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: null, path: '/usr/bin/xray' },
 		{ name: 'chinadns-ng', version: null, path: '未找到' }
 	]);
 	const cells = findAll(loadView().componentTable(rows), 'tr').map((row) => row.children.map((c) => c.textContent));
 	assert.deepEqual(cells.slice(1), [
-		[ 'aether-proxy', '0.1.0-r2', '–' ], [ 'xray', '–', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
+		[ 'aether-proxy', '0.1.0-r2', '/usr/bin/aether-proxy' ],
+		[ 'xray', '–', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
 	]);
 	for (const failure of [ null, { ok: false, code: 'TIMEOUT' } ]) {
 		const result = build({ ok: true, components: inventory.components },
 			null, null, NOW, true, null, failure).components;
 		assert.equal(result.length, 3);
 		assert.deepEqual(result.slice(1), [
-			{ name: 'xray', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' },
-			{ name: 'chinadns-ng', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' }
+			{ name: 'xray', version: '读取失败', path: '' },
+			{ name: 'chinadns-ng', version: '读取失败', path: '' }
 		]);
 	}
 });
@@ -1169,7 +1173,7 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 	const model = dashboardModel();
 	const pending = model.component_rows({ ok: true, version: '0.2.0-r6' }, undefined);
 	assert.deepEqual(pending, [
-		{ name: 'aether-proxy', version: '0.2.0-r6', path: null },
+		{ name: 'aether-proxy', version: '0.2.0-r6', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: '读取中…', path: '读取中…' },
 		{ name: 'chinadns-ng', version: '读取中…', path: '读取中…' }
 	]);
@@ -1183,8 +1187,8 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 	]);
 	for (const failure of [ null, { ok: false, code: 'RPC_FAILED' }, { ok: false, code: 'TIMEOUT' } ])
 		assert.deepEqual(model.component_rows(null, failure).slice(1), [
-			{ name: 'xray', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' },
-			{ name: 'chinadns-ng', version: '读取失败', path: failure?.code ?? 'RPC_FAILED' }
+			{ name: 'xray', version: '读取失败', path: '' },
+			{ name: 'chinadns-ng', version: '读取失败', path: '' }
 		]);
 });
 
@@ -1263,8 +1267,8 @@ test('T10.5 scenario 2b / T10.13: failed post-render inventory shows failures in
 		]);
 		await page.componentRequest;
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '读取失败', failure?.code ?? 'RPC_FAILED' ],
-			[ 'chinadns-ng', '读取失败', failure?.code ?? 'RPC_FAILED' ]
+			[ 'xray', '读取失败', '' ],
+			[ 'chinadns-ng', '读取失败', '' ]
 		]);
 	}
 });
@@ -1865,16 +1869,20 @@ const INVENTORY_FAILURES = [
 	[ null, 'RPC_FAILED' ]
 ];
 
-test('T10.13 scenario 3: inventory failures carry code/detail; unknown version stays a dash', () => {
+test('T10.13 scenario 3: inventory failures carry code/detail below table; unknown version stays a dash', () => {
 	const model = dashboardModel();
 	for (const [failure, text] of INVENTORY_FAILURES) {
 		const rows = model.component_rows({ ok: true, version: '0.2.0-r8' }, failure);
 		assert.equal(model.components_failed(failure), true);
 		assert.deepEqual(rows.slice(1), [
-			{ name: 'xray', version: '读取失败', path: text },
-			{ name: 'chinadns-ng', version: '读取失败', path: text }
+			{ name: 'xray', version: '读取失败', path: '' },
+			{ name: 'chinadns-ng', version: '读取失败', path: '' }
 		]);
-		assert.deepEqual(rows[0], { name: 'aether-proxy', version: '0.2.0-r8', path: null });
+		const error = model.component_error(failure);
+		assert.equal(error.text, `读取组件信息失败（${failure?.code ?? 'RPC_FAILED'}）`);
+		assert.equal(error.detail, failure?.detail ?? null);
+		assert.equal(text, (failure?.code ?? 'RPC_FAILED') + (error.detail ? ': ' + error.detail : ''));
+		assert.deepEqual(rows[0], { name: 'aether-proxy', version: '0.2.0-r8', path: '/usr/bin/aether-proxy' });
 	}
 	assert.equal(model.components_failed(undefined), false, 'pending is not a failure');
 	const inventory = { ok: true, components: { xray: { found: true, version: null, path: '/usr/bin/xray' } } };
@@ -1889,7 +1897,7 @@ function retryButtons(root) {
 
 test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds without touching other controls',
 	async () => {
-	for (const [failure, text] of INVENTORY_FAILURES) {
+	for (const [failure] of INVENTORY_FAILURES) {
 		let requests = 0, resolveInventory;
 		const page = loadView({ ap: {
 			call: async (method) => {
@@ -1903,7 +1911,7 @@ test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds wi
 		const root = page.render(await page.load());
 		assert.equal(retryButtons(root).length, 0, 'no retry while initially reading');
 		await page.componentRequest;
-		assert.deepEqual(componentCells(root), [ [ 'xray', '读取失败', text ], [ 'chinadns-ng', '读取失败', text ] ]);
+		assert.deepEqual(componentCells(root), [ [ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ] ]);
 		const [retry] = retryButtons(root);
 		assert.ok(retry);
 		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
@@ -1955,7 +1963,7 @@ test('T10.13 scenario 4: successful initial inventory has no retry; a failed ret
 			assert.equal(requests, 2);
 			assert.equal(retryButtons(root).length, 1);
 			assert.deepEqual(componentCells(root), [
-				[ 'xray', '读取失败', 'TIMEOUT' ], [ 'chinadns-ng', '读取失败', 'TIMEOUT' ]
+				[ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ]
 			]);
 		}
 	}
@@ -2150,8 +2158,8 @@ test('T10.17 scenario 4: status failure clears loading, keeps controls disabled 
 		await Promise.resolve();
 		await h.reply('status', failure);
 		assert.equal(findAll(root, 'strong')[0].textContent, '–');
-		assert.match(visibleText(page.noticeContent),
-			new RegExp('读取状态失败：' + (failure?.code ?? 'RPC_FAILED')));
+		assert.equal(page.noticeContent.children[0].children[0],
+			`读取状态失败（${failure?.code ?? 'RPC_FAILED'}），稍后自动重试`);
 		assert.ok(serviceButtons(root).every(disabled));
 		assert.equal(page.probeButton.disabled, true);
 		assert.equal(disabled(findAll(root, 'input')[0]), false);
@@ -2222,6 +2230,116 @@ test('T10.17 scenario 3c: pending interval changes wait for status; Off keeps ma
 		assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
 	}
 });
+
+const COMPONENT_ERRORS = [
+	{ ok: false, code: 'USAGE', detail: 'components takes no arguments' },
+	{ ok: false, code: 'TIMEOUT' },
+	null
+];
+
+for (const failure of COMPONENT_ERRORS) {
+	const code = failure?.code ?? 'RPC_FAILED';
+	test(`T10.20 scenario 1: ${code} component failure has empty paths, one tooltip reason and recoverable retry`,
+		async () => {
+		const h = deferredPage();
+		const { page } = h;
+		const root = page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('components', failure);
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ]
+		]);
+		assert.equal(page.componentContent.children.length, 2, 'one explanation row follows the table');
+		const [table, reason] = page.componentContent.children;
+		assert.equal(table.tag, 'table');
+		assert.equal(reason.tag, 'div');
+		assert.deepEqual(reason.children.map((child) => child.tag), [ 'span', 'button' ]);
+		assert.equal(reason.children[0].textContent, `读取组件信息失败（${code}）`);
+		assert.equal(reason.attrs.title, failure?.detail ?? null);
+		assert.ok(!visibleText(table).includes(code), 'diagnostics never occupy a table cell');
+		if (failure?.detail)
+			assert.ok(!visibleText(page.componentContent).includes(failure.detail), 'detail is tooltip-only');
+		const [retry] = retryButtons(root);
+		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
+		const request = retry.attrs.click();
+		assert.equal(page.componentContent.children.length, 1, 'reason and retry disappear while reading');
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+		]);
+		await Promise.resolve();
+		await h.reply('components', { ok: true, components: {
+			xray: { found: true, version: '26.9.30', path: '/usr/bin/xray' },
+			'chinadns-ng': { found: true, version: '2025.08.09', path: '/usr/bin/chinadns-ng' }
+		} });
+		await request;
+		assert.equal(page.componentContent.children.length, 1, 'successful retry removes the entire reason row');
+		assert.equal(retryButtons(root).length, 0);
+		assert.deepEqual(componentCells(root), [
+			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'chinadns-ng', '2025.08.09', '/usr/bin/chinadns-ng' ]
+		]);
+	});
+}
+
+test('T10.20 scenario 2: own executable path is fixed while reading, after failure and after success', () => {
+	const { page } = renderStatus({ ok: true, state: 'running' });
+	for (const [version, inventory, text] of [
+		[ undefined, undefined, '读取中…' ],
+		[ { ok: false, code: 'TIMEOUT' }, null, '–' ],
+		[ { ok: true, version: '0.2.0-r10' }, { ok: true, components: {} }, '0.2.0-r10' ]
+	]) {
+		page.version = version;
+		page.components = inventory;
+		page.updateComponents();
+		const row = findAll(page.componentContent, 'tr')[1];
+		assert.deepEqual(row.children.map((cell) => cell.textContent),
+			[ 'aether-proxy', text, '/usr/bin/aether-proxy' ]);
+	}
+});
+
+const STATUS_ERRORS = [
+	{
+		ok: false, code: 'CMD_FAILED',
+		detail: 'Syntax error: Unexpected token\n at <script>alert(1)</script>\n  line 2'
+	},
+	{ ok: false, code: 'TIMEOUT' },
+	{ ok: false, code: 'RPC_FAILED' }
+];
+
+for (const failure of STATUS_ERRORS) {
+	test(`T10.20 scenario 3: ${failure.code} status failure has one summary and optional collapsed raw details`,
+		async () => {
+		const h = deferredPage();
+		const { page, polls } = h;
+		page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('status', failure);
+		assert.equal(page.noticeContent.children.length, 1);
+		const banner = page.noticeContent.children[0];
+		assert.equal(banner.attrs.class, 'alert-message error');
+		assert.equal(banner.children[0], `读取状态失败（${failure.code}），稍后自动重试`);
+		assert.equal(banner.children.length, failure.detail ? 2 : 1);
+		const details = findAll(banner, 'details');
+		assert.equal(details.length, failure.detail ? 1 : 0);
+		if (failure.detail) {
+			assert.equal(banner.children[1], details[0], 'detail stays inside the banner');
+			assert.equal(Object.hasOwn(details[0].attrs, 'open'), false, 'native details starts collapsed');
+			assert.deepEqual(details[0].children.map((child) => child.tag), [ 'summary', 'pre' ]);
+			assert.equal(details[0].children[0].textContent, '详情');
+			assert.equal(details[0].children[1].textContent, failure.detail, 'multiline detail stays verbatim');
+			assert.equal(findAll(details[0], 'script').length, 0, 'diagnostics are text, not markup');
+		}
+		else
+			assert.equal(findAll(banner, 'pre').length, 0);
+		await h.reply('stats', { ok: false, code: 'TIMEOUT' });
+		await page.initialRequest;
+		const retry = polls[0].fn();
+		await h.reply('status', { ok: true, state: 'running' });
+		assert.equal(page.noticeContent.children.length, 0, 'automatic recovery removes summary and details');
+		assert.equal(page.vm.error_detail, null);
+		await h.reply('stats', readings(1000, 0, 0, 0, 0));
+		await retry;
+	});
+}
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
 	const src = fs.readFileSync(VIEW, 'utf8');
