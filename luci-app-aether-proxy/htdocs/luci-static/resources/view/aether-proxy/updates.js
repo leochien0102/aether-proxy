@@ -7,12 +7,13 @@
 'require aether-proxy.model.updates as model';
 
 /* Update inventory, job controls and policy form (docs/10 "更新页").
- * Refresh only after jobs, leaving unsaved policy edits intact.
+ * Defer the initial status read until render returns (docs/10 "其余页面先出页面").
+ * Refresh only the inventory, leaving unsaved policy edits intact.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  */
 return view.extend({
 	load: function() {
-		return Promise.all([ uci.load('aetherproxy'), ap.call('status') ]);
+		return uci.load('aetherproxy');
 	},
 	run: async function(kind, name, previous) {
 		this.busy = true;
@@ -70,7 +71,8 @@ return view.extend({
 		const jobButtons = [check];
 		this.inventory.replaceChildren(E('p', {}, vm.error ?? ''), E('table', { class: 'table' }, [
 			E('tr', { class: 'tr table-titles' },
-				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Latest', 'aether-proxy'), _('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
+				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Latest', 'aether-proxy'),
+					_('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
 					.map(text => E('th', { class: 'th' }, text))),
 			...vm.rows.map(row => {
 				const actions = [];
@@ -93,8 +95,8 @@ return view.extend({
 			[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])));
 		this.jobButtons = jobButtons;
 	},
-	render: function(data) {
-		this.status = data[1];
+	render: function() {
+		this.status = undefined;
 		this.busy = false;
 		this.inventory = E('div');
 		this.summary = E('p');
@@ -105,7 +107,8 @@ return view.extend({
 		let option = section.option(form.ListValue, 'xray_auto', _('Xray update policy', 'aether-proxy'));
 		option.value('off', _('Off — do not notify', 'aether-proxy'));
 		option.value('notify', _('Notify — do not install automatically', 'aether-proxy'));
-		option.value('auto', _('Auto — install only while healthy; try each version once; roll back on check failure', 'aether-proxy'));
+		option.value('auto',
+			_('Auto — install only while healthy; try each version once; roll back on check failure', 'aether-proxy'));
 		option.default = 'notify';
 		option = section.option(form.Flag, 'data_auto', _('Automatically update rule data', 'aether-proxy'));
 		option.default = '1';
@@ -118,6 +121,16 @@ return view.extend({
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
 		option.validate = function(section_id, value) { return model.validate_url(value); };
-		return map.render().then(node => E('div', {}, [ node, this.inventory, this.summary ]));
+		return map.render().then(node => {
+			const root = E('div', {}, [ node, this.inventory, this.summary ]);
+			// A new turn lets LuCI display the complete page before starting RPC.
+			window.setTimeout(() => {
+				ap.call('status').then(status => {
+					this.status = status;
+					this.show_inventory();
+				});
+			}, 0);
+			return root;
+		});
 	}
 });

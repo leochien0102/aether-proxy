@@ -19,18 +19,17 @@
  * node as current stages the UCI change and goes through LuCI's standard
  * save & apply with rollback confirmation; node edits use the GridSection
  * modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
+ * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
  */
 
 return view.extend({
 	load: function() {
-		return Promise.all([
-			uci.load('aetherproxy'),
-			ap.call('probe_results')
-		]);
+		return uci.load('aetherproxy');
 	},
 
-	render: function(data) {
-		this.results = data[1];
+	render: function() {
+		this.results = undefined;
+		this.resultsRequest = 0;
 		this.probing = false;
 
 		const root = E('div', { 'class': 'cbi-map' });
@@ -40,6 +39,7 @@ return view.extend({
 		return this.buildPage().then(function(content) {
 			dom.content(root, content);
 			self.updateProbeColumns();
+			window.setTimeout(() => self.refreshResults(), 0);
 			return root;
 		});
 	},
@@ -48,13 +48,15 @@ return view.extend({
 	   the whole page in place. */
 	rebuild: function() {
 		const self = this;
+		// Import can finish while the initial read is still in flight.
+		this.resultsRequest = (this.resultsRequest ?? 0) + 1;
 
 		return Promise.all([
 			uci.unload('aetherproxy').then(function() { return uci.load('aetherproxy'); }),
 			ap.call('probe_results')
 		]).then(function(res) {
-			if (res[1] && res[1].ok !== false)
-				self.results = res[1];
+			if ((res[1] && res[1].ok !== false) || self.results === undefined)
+				self.results = res[1] ?? { ok: false, code: 'RPC_FAILED' };
 
 			return self.buildPage().then(function(content) {
 				dom.content(self.root, content);
@@ -245,8 +247,8 @@ return view.extend({
 			   while a probe job is running. */
 			const span = E('span', {});
 			self.probeCells[section_id] = span;
-			const row = rowMap[section_id];
-			dom.content(span, [ row ? row.probe : '–' ]);
+			// GridSection may render again after an edit without rebuilding the map.
+			dom.content(span, [ model.probe_column(section_id, self.results) ]);
 			return span;
 		};
 
@@ -442,12 +444,15 @@ return view.extend({
 
 	refreshResults: function() {
 		const self = this;
+		const request = this.resultsRequest = (this.resultsRequest ?? 0) + 1;
 
 		return ap.call('probe_results').then(function(res) {
-			/* ok is the reply envelope, not a business field: a failed call
-			   must not clobber the results already on display. */
-			if (res && res.ok !== false)
-				self.results = res;
+			/* Probing is usable before the first read returns. An older read must
+			 * not overwrite a newer job refresh, nor discard successful results. */
+			if (request != self.resultsRequest)
+				return;
+			if ((res && res.ok !== false) || self.results === undefined)
+				self.results = res ?? { ok: false, code: 'RPC_FAILED' };
 
 			self.updateProbeColumns();
 		});

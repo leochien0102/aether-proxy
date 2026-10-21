@@ -1,6 +1,7 @@
 'use strict';
 
-/* T8.9b update-page contracts: pure model, CLI URL parity and view wiring.
+/* T8.9b update-page contracts and T10.16 progressive status loading.
+ * Cover pure decisions, CLI URL parity and actual view rendering/clicks.
  * Translations are loaded so assertions cover the text actually shown to users.
  */
 const test = require('node:test');
@@ -146,7 +147,8 @@ test('T8.9b scenario 6: every channel URL fixture agrees with real CLI validatio
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
-test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm rollback before dispatch', async () => {
+test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm rollback before dispatch',
+async () => {
 	const calls = [];
 	let finish;
 	let confirmed = false;
@@ -195,6 +197,205 @@ test('T8.9b job lifecycle: disable all actions, refresh status once, and confirm
 	assert.deepEqual(calls[1], [ 'status' ]);
 	assert.equal(calls.length, 2);
 	assert.ok(buttons(page.inventory).every(b => !b.attrs.disabled));
+});
+/* Deferred RPC and zero-delay timer doubles let the page render while status
+ * never settles. Mutable elements expose identity and unsaved form values. */
+function element(tag, attrs = {}, children = []) {
+	return {
+		tag, attrs, value: '', disabled: false, ...attrs,
+		children: Array.isArray(children) ? children : [ children ],
+		replaceChildren(...nodes) { this.children = nodes; }
+	};
+}
+function text(node) {
+	return node != null && typeof node == 'object' ? node.children.map(text).join('') : String(node ?? '');
+}
+function buttons(node) {
+	if (!node || typeof node != 'object')
+		return [];
+	return (node.tag == 'button' ? [ node ] : []).concat(node.children.flatMap(buttons));
+}
+function load_view() {
+	globalThis.E = element;
+	const calls = [], loads = [], timers = [], maps = [], jobs = [];
+	const form = { NamedSection: 'named', ListValue: 'select', Flag: 'checkbox',
+		Value: 'input', DynamicList: 'list' };
+	form.Map = class {
+		constructor(config, title) {
+			this.config = config;
+			this.title = title;
+			this.options = [];
+			maps.push(this);
+		}
+		section(type, name, section_type, title) {
+			this.section_info = { type, name, section_type, title };
+			return { option: (kind, key, label) => {
+				const option = { kind, key, label, values: [], value(k, v) { this.values.push([ k, v ]); } };
+				this.options.push(option);
+				return option;
+			} };
+		}
+		render() {
+			this.node = E('form', {}, this.options.map(o => E(o.kind, { name: o.key }, o.label)));
+			return Promise.resolve(this.node);
+		}
+	};
+	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
+		view: { extend: o => o }, form,
+		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); } },
+		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
+		'aether-proxy.model.updates': model,
+		'aether-proxy.common': {
+			call: method => {
+				let resolve;
+				const promise = new Promise(done => { resolve = done; });
+				calls.push({ method, resolve });
+				return promise;
+			},
+			run_job: async (kind, args) => {
+				jobs.push({ kind, args });
+				return { state: 'ok', result: { ok: true, packages: {} } };
+			},
+			job_progress: () => ({ stop() {} })
+		}
+	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
+	return { page, calls, loads, timers, maps, jobs,
+		start: () => {
+			assert.equal(timers.length, 1);
+			assert.equal(timers[0].delay, 0);
+			timers.shift().fn();
+		}
+	};
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('T10.16 updates model: pending placeholders disable actions and settled failures clear them', () => {
+	const vm = model.table(undefined, false, 160);
+	assert.equal(vm.error, null);
+	assert.equal(vm.checked, '读取中…');
+	assert.equal(vm.can_check, false);
+	assert.deepEqual(vm.rows.map(r => r.name), names);
+	for (const r of vm.rows) {
+		assert.deepEqual([ r.installed, r.available, r.previous, r.status ], Array(4).fill('读取中…'));
+		assert.deepEqual([ r.install, r.update, r.rollback ], [ false, false, false ]);
+		assert.equal(r.disabled, true);
+	}
+	for (const r of model.components(undefined)) {
+		assert.equal(r.version, '读取中…');
+		assert.equal(r.path, '读取中…');
+		assert.equal(r.note, '');
+	}
+	for (const code of [ 'TIMEOUT', 'RPC_FAILED', 'UPDATE_FETCH_FAILED' ]) {
+		const result = { ok: false, code, detail: 'offline' };
+		const failed = model.table(result, false, 160);
+		assert.equal(failed.error, (code == 'UPDATE_FETCH_FAILED' ? '连不上发布通道' : code) + ': offline');
+		assert.equal(failed.can_check, true);
+		assert.equal(model.table(result, true, 160).can_check, false);
+		assert.doesNotMatch(JSON.stringify([ failed, model.components(result) ]), /读取中…/);
+	}
+});
+test('T10.16 updates scenario 1: load only calls uci.load without RPC or timers', async () => {
+	const h = load_view();
+	assert.equal(await h.page.load(), 'uci-loaded');
+	assert.deepEqual(h.loads, [ 'aetherproxy' ]);
+	assert.deepEqual(h.calls, []);
+	assert.deepEqual(h.timers, []);
+});
+test('T10.16 updates scenario 2: complete form and disabled inventory render before pending status', async () => {
+	const h = load_view();
+	const root = await h.page.render();
+	assert.deepEqual(h.calls, [], 'RPC must wait until render resolves');
+	assert.equal(root.children.length, 3);
+	assert.equal(root.children[0], h.maps[0].node);
+	assert.equal(root.children[1], h.page.inventory);
+	assert.equal(root.children[2], h.page.summary);
+	const map = h.maps[0];
+	assert.equal(map.config, 'aetherproxy');
+	assert.equal(map.section_info.name, 'update');
+	assert.deepEqual(map.options.map(o => o.key),
+		[ 'xray_auto', 'data_auto', 'data_hour', 'data_minute', 'channel_urls' ]);
+	assert.ok(map.node.children.every(o => !o.disabled));
+	assert.deepEqual(map.options[0].values.map(v => v[0]), [ 'off', 'notify', 'auto' ]);
+	assert.equal(map.options[3].placeholder, '30');
+	assert.equal(map.options[4].validate('update', 'https://channel/'), true);
+	assert.equal(map.options[4].validate('update', 'bad url'), model.validate_url('bad url'));
+	const table = h.page.inventory.children.find(n => n.tag == 'table');
+	assert.equal(table.children.length, 5);
+	for (const row of table.children.slice(1))
+		assert.deepEqual(row.children.slice(1, 5).map(text), Array(4).fill('读取中…'));
+	for (const name of [ 'xray', 'chinadns-ng' ])
+		assert.ok(h.page.inventory.children.some(n => text(n) == name + ': 读取中… — 读取中… '));
+	assert.equal(buttons(h.page.inventory).length, 1, 'no package actions before status');
+	assert.equal(text(buttons(h.page.inventory)[0]), '检查更新');
+	assert.equal(buttons(h.page.inventory)[0].disabled, true);
+	const original = text(root);
+	h.start();
+	await settle(); // No RPC promise is resolved.
+	assert.deepEqual(h.calls.map(c => c.method), [ 'status' ]);
+	assert.equal(text(root), original);
+	assert.equal(buttons(h.page.inventory)[0].disabled, true);
+});
+test('T10.16 updates scenario 3: status fills only inventory and preserves unsaved policy controls', async () => {
+	const h = load_view();
+	const root = await h.page.render();
+	const nodes = [ ...root.children ];
+	const inputs = [ ...nodes[0].children ];
+	inputs[0].value = 'off';
+	inputs[4].value = 'https://unsaved/';
+	h.start();
+	const reply = { ok: true, ...status(), components: {
+		xray: { version: 'XRAY', path: '/running/xray' },
+		'chinadns-ng': { version: 'DNS', path: '/running/dns' }
+	} };
+	h.calls[0].resolve(reply);
+	await settle();
+	const table = h.page.inventory.children.find(n => n.tag == 'table');
+	const vm = model.table(reply, false, Date.now() / 1000);
+	assert.deepEqual(table.children.slice(1).map(r => r.children.slice(0, 5).map(text)),
+		vm.rows.map(r => [ r.name, r.installed, r.available, r.previous, r.status ]));
+	for (const row of model.components(reply))
+		assert.ok(h.page.inventory.children.some(n => text(n) ==
+			row.name + ': ' + row.version + ' — ' + row.path + ' ' + row.note));
+	assert.doesNotMatch(text(root), /读取中…/);
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '立即更新', '回滚到 1', '检查更新' ]);
+	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+	for (const [i, node] of nodes.entries())
+		assert.equal(root.children[i], node, 'only inventory contents may be replaced');
+	for (const [i, input] of inputs.entries())
+		assert.equal(nodes[0].children[i], input, 'form controls retain identity');
+	assert.equal(inputs[0].value, 'off');
+	assert.equal(inputs[4].value, 'https://unsaved/');
+	assert.equal(h.maps.length, 1);
+	assert.equal(h.calls.length, 1);
+	assert.deepEqual(h.timers, []);
+});
+test('T10.16 updates scenario 3: failed status clears placeholders and Check can start a recovery job', async () => {
+	for (const code of [ 'TIMEOUT', 'RPC_FAILED' ]) {
+		const h = load_view();
+		const root = await h.page.render();
+		const form = root.children[0];
+		form.children[4].value = 'https://unsaved/';
+		h.start();
+		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
+		await settle();
+		assert.equal(text(h.page.inventory.children[0]), code + ': offline');
+		assert.doesNotMatch(text(root), /读取中…/);
+		const actions = buttons(h.page.inventory);
+		assert.equal(actions.length, 1);
+		assert.equal(actions[0].disabled, false);
+		const running = actions[0].click();
+		assert.equal(h.page.busy, true);
+		assert.ok(buttons(h.page.inventory).every(b => b.disabled));
+		await settle();
+		assert.deepEqual(h.jobs, [ { kind: 'update_check', args: [] } ]);
+		assert.deepEqual(h.calls.map(c => c.method), [ 'status', 'status' ]);
+		h.calls[1].resolve({ ok: true, ...status() });
+		await running;
+		assert.equal(h.page.busy, false);
+		assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+		assert.equal(root.children[0], form);
+		assert.equal(form.children[4].value, 'https://unsaved/');
+	}
 });
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {
 	const source = fs.readFileSync(path.join(RES, 'view/aether-proxy/updates.js'), 'utf8');

@@ -1,7 +1,7 @@
 'use strict';
 
-/* T8.10 contracts: catalog-driven templates, pure presentation, and real view
- * controller exercised with text-only DOM and request/poll doubles.
+/* T8.10/T10.16 contracts: catalog templates, progressive loading, and the real
+ * controller exercised with text-only DOM and request/poll/timer doubles.
  */
 process.env.TZ = 'UTC';
 const test = require('node:test');
@@ -111,7 +111,8 @@ test('T8.10 scenario 5: raw source/line parameters, debug-only hint and error de
  * rendered descendants rather than accepting the model's safe string alone.
  */
 function element(tag, attrs = {}, children = []) {
-	const node = { tag, attrs, value: '', checked: !!attrs.checked, children: [], hidden: !!attrs.hidden };
+	const node = { tag, attrs, value: '', checked: !!attrs.checked, children: [],
+		hidden: !!attrs.hidden, disabled: !!attrs.disabled };
 	if ('value' in attrs)
 		node.value = attrs.value;
 	setContent(node, children);
@@ -128,7 +129,7 @@ function descendants(node) {
 }
 
 test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and text-node safety', async () => {
-	const calls = [], polls = [];
+	const calls = [], polls = [], timers = [];
 	const malicious = '<img src=x onerror=alert(1)>';
 	const data = payload([ event('NEW', 'warn', 1, { text: malicious }) ]);
 	const ap = {
@@ -146,8 +147,13 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 	const view = loadModule(viewFile, {
 		view: { extend: o => o }, uci: { load: async () => {}, get: () => 'debug' },
 		dom: { content: setContent }, 'aether-proxy.common': ap, 'aether-proxy.model.logs': model
-	}, { window: {}, document: {} });
+	}, { window: { setTimeout: (fn, delay) => timers.push({ fn, delay }) }, document: {} });
 	const root = view.render(await view.load());
+	assert.deepEqual(calls, [], 'render returns before the initial events request');
+	assert.equal(timers.length, 1);
+	assert.equal(timers[0].delay, 0);
+	timers[0].fn();
+	await Promise.resolve();
 	assert.equal(view.tab, 'events');
 	assert.equal(view.eventPanel.hidden, false);
 	assert.equal(view.rawPanel.hidden, true);
@@ -182,6 +188,221 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 	assert.equal(pre.children[0].text, malicious);
 	assert.ok(!nodes.some(n => n.tag == 'img'));
 	view.stopPolling();
+});
+
+function text(node) {
+	return descendants(node).filter(n => n.tag == '#text').map(n => n.text).join('');
+}
+function load_view() {
+	const calls = [], polls = [], timers = [], loads = [], writes = [];
+	globalThis.E = element;
+	const page = loadModule(viewFile, {
+		view: { extend: o => o },
+		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); }, get: () => 'debug' },
+		dom: { content: (node, children) => { writes.push(node); setContent(node, children); } },
+		'aether-proxy.model.logs': model,
+		'aether-proxy.common': {
+			call: (method, params) => {
+				let resolve;
+				const promise = new Promise(done => { resolve = done; });
+				calls.push({ method, params, resolve });
+				return promise;
+			},
+			poll: (fn, interval) => {
+				const poll = { fn, interval, stopped: false, stop() { this.stopped = true; } };
+				polls.push(poll);
+				return poll;
+			}
+		}
+	}, { window: { setTimeout: (fn, delay) => timers.push({ fn, delay }) }, document: {} });
+	return { page, calls, polls, timers, loads, writes,
+		start: () => {
+			assert.equal(timers.length, 1);
+			assert.equal(timers[0].delay, 0);
+			timers.shift().fn();
+		}
+	};
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('T10.16 logs scenario 1: load only loads UCI and never calls ap.call', async () => {
+	const h = load_view();
+	assert.equal(await h.page.load(), 'uci-loaded');
+	assert.deepEqual(h.loads, [ 'aetherproxy' ]);
+	assert.deepEqual(h.calls, []);
+	assert.deepEqual(h.timers, []);
+	assert.deepEqual(h.polls, []);
+});
+
+test('T10.16 logs scenario 2: model owns pending text and enables filters after success or failure', () => {
+	const pending = model.events();
+	assert.equal(pending.loading, '读取中…');
+	assert.equal(pending.filters_disabled, true);
+	assert.equal(pending.error, null);
+	assert.deepEqual(pending.rows, []);
+	for (const reply of [ payload([]), { ok: false, code: 'TIMEOUT' } ]) {
+		const vm = model.events(reply);
+		assert.equal(vm.loading, null);
+		assert.equal(vm.filters_disabled, false);
+		assert.equal(vm.error, reply.ok ? null : 'TIMEOUT');
+	}
+});
+
+test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with only filters disabled', async () => {
+	const h = load_view(), v = h.page;
+	const root = v.render(await v.load());
+	assert.equal(root.tag, 'div');
+	assert.equal(root.attrs.class, 'cbi-map');
+	assert.deepEqual(root.children.slice(0, 3).map(text), [ '日志', '事件', '原始日志' ]);
+	assert.equal(root.children[3], v.eventPanel);
+	assert.equal(root.children[4], v.rawPanel);
+	assert.equal(v.eventPanel.hidden, false);
+	assert.equal(v.rawPanel.hidden, true);
+	assert.equal(text(v.eventContent), '读取中…');
+	assert.equal(v.level.disabled, true);
+	assert.equal(v.code.disabled, true);
+	assert.deepEqual(v.level.children.map(n => n.value), [ '', 'error', 'warn', 'notice' ]);
+	assert.equal(text(v.code), '全部');
+	assert.equal(v.auto.checked, true);
+	assert.equal(v.auto.disabled, false);
+	assert.equal(v.source.disabled, false);
+	assert.equal(v.lines.disabled, false);
+	assert.deepEqual(v.source.children.map(n => n.value), model.sources().map(s => s[0]));
+	assert.deepEqual(v.lines.children.map(n => Number(n.value)), model.line_counts());
+	assert.equal(v.lines.value, '200');
+	assert.equal(text(v.rawPanel.children[2]), '刷新');
+	assert.ok(descendants(root).filter(n => n.tag == 'button').every(n => !n.disabled));
+	assert.deepEqual(h.calls, []);
+	assert.deepEqual(h.polls, []);
+	h.start();
+	await settle(); // The events promise intentionally never settles.
+	assert.deepEqual(h.calls.map(c => [ c.method, c.params ]), [ [ 'events', {} ] ]);
+	assert.equal(h.polls[0].interval, 5000);
+	assert.equal(text(v.eventContent), '读取中…');
+	assert.equal(v.level.disabled, true);
+	assert.equal(v.code.disabled, true);
+	v.stopPolling();
+});
+
+test('T10.16 logs scenario 4: success replaces only event data and preserves controls and edits', async () => {
+	const h = load_view(), v = h.page;
+	const root = v.render(await v.load());
+	const nodes = descendants(root).filter(n => n.tag != '#text' && n.tag != 'option');
+	h.start();
+	v.auto.checked = false;
+	v.auto.attrs.change();
+	v.source.value = 'dns';
+	v.lines.value = '1000';
+	h.writes.length = 0;
+	const data = { ...payload([ event('DNS_RECOVERED'), event('XRAY_DOWN', 'error') ]), skipped: 2 };
+	h.calls[0].resolve(data);
+	await settle();
+	assert.deepEqual(h.writes, [ v.code, v.eventContent ]);
+	assert.ok(nodes.every(n => descendants(root).includes(n)), 'existing panels and controls must stay mounted');
+	assert.equal(v.level.disabled, false);
+	assert.equal(v.code.disabled, false);
+	assert.equal(v.auto.checked, false);
+	assert.equal(v.poller, null);
+	assert.equal(v.source.value, 'dns');
+	assert.equal(v.lines.value, '1000');
+	assert.equal(text(v.rawContent), '');
+	assert.equal(text(v.eventContent).includes('读取中…'), false);
+	assert.ok(text(v.eventContent).includes('有 2 行记录损坏，已跳过'));
+	assert.deepEqual(v.code.children.map(n => n.value), [ '', 'DNS_RECOVERED', 'XRAY_DOWN' ]);
+	assert.deepEqual(descendants(v.eventContent).filter(n => n.tag == 'tr').slice(1)
+		.map(row => text(row.children[2])), [ 'XRAY_DOWN', 'DNS_RECOVERED' ]);
+	v.level.value = 'error';
+	v.code.value = 'XRAY_DOWN';
+	v.code.attrs.change();
+	assert.equal(h.calls.length, 1, 'filter changes must not fetch again');
+	assert.equal(v.level.value, 'error');
+	assert.equal(v.code.value, 'XRAY_DOWN');
+	assert.equal(text(v.eventContent).includes('DNS_RECOVERED'), false);
+});
+
+test('T10.16 logs scenario 5: failures clear placeholders, restore filters and allow poll recovery', async () => {
+	for (const code of [ 'TIMEOUT', 'RPC_FAILED' ]) {
+		const h = load_view(), v = h.page;
+		const root = v.render(await v.load());
+		h.start();
+		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
+		await settle();
+		assert.ok(text(v.eventContent).includes(code + ': offline'));
+		assert.equal(text(root).includes('读取中…'), false);
+		assert.equal(v.level.disabled, false);
+		assert.equal(v.code.disabled, false);
+		assert.equal(h.polls[0].stopped, false);
+		const refresh = h.polls[0].fn();
+		h.calls[1].resolve(payload([ event('DNS_RECOVERED') ]));
+		await refresh;
+		assert.ok(text(v.eventContent).includes('DNS_RECOVERED'));
+		assert.equal(text(v.eventContent).includes('offline'), false);
+		v.code.value = 'DNS_RECOVERED';
+		const failed_refresh = h.polls[0].fn();
+		h.calls[2].resolve({ ok: false, code, detail: 'again' });
+		await failed_refresh;
+		assert.ok(text(v.eventContent).includes(code + ': again'));
+		assert.ok(text(v.eventContent).includes('DNS_RECOVERED'), 'failed refresh keeps the last successful list');
+		assert.equal(v.code.value, 'DNS_RECOVERED');
+		assert.equal(v.level.disabled, false);
+		assert.equal(v.code.disabled, false);
+		v.stopPolling();
+	}
+});
+
+test('T10.16 logs scenario 6: tab switches during the initial read preserve raw data and polling', async () => {
+	const h = load_view(), v = h.page;
+	v.render(await v.load());
+	h.start();
+	const raw = v.switchTab('raw');
+	assert.equal(h.polls[0].stopped, true);
+	h.calls[1].resolve({ ok: true, lines: [ { text: 'raw content' } ] });
+	await raw;
+	const raw_nodes = [ ...v.rawContent.children ];
+	h.calls[0].resolve(payload([ event('DNS_RECOVERED') ]));
+	await settle();
+	assert.equal(v.tab, 'raw');
+	assert.equal(v.eventPanel.hidden, true);
+	assert.equal(v.rawPanel.hidden, false);
+	assert.deepEqual(v.rawContent.children, raw_nodes);
+	assert.ok(text(v.rawContent).includes('raw content'));
+	assert.equal(h.polls.length, 1, 'an events reply must not restart polling on the raw tab');
+	const back = v.switchTab('events');
+	assert.equal(h.polls.length, 2);
+	assert.equal(h.polls[1].interval, 5000);
+	h.calls[2].resolve(payload([]));
+	await back;
+	assert.equal(v.eventPanel.hidden, false);
+	assert.equal(v.rawPanel.hidden, true);
+	assert.equal(text(v.eventContent).includes('读取中…'), false);
+	v.stopPolling();
+});
+
+test('T10.16 logs: late initial replies cannot overwrite newer tab or poll results and filters', async () => {
+	for (const trigger of ['tab', 'poll']) {
+		for (const stale of [payload([event('DNS_RECOVERED')]), { ok: false, code: 'TIMEOUT' }]) {
+			const h = load_view(), v = h.page;
+			v.render(await v.load());
+			h.start();
+			const pending = trigger == 'tab' ? v.switchTab('events') : h.polls[0].fn();
+			assert.equal(h.calls.length, 2);
+			h.calls[1].resolve(payload([event('XRAY_DOWN', 'error')]));
+			await pending;
+			v.level.value = 'error';
+			v.code.value = 'XRAY_DOWN';
+			v.code.attrs.change();
+			h.calls[0].resolve(stale);
+			await settle();
+			assert.ok(text(v.eventContent).includes('XRAY_DOWN'));
+			assert.equal(text(v.eventContent).includes('DNS_RECOVERED'), false);
+			assert.equal(text(v.eventContent).includes('TIMEOUT'), false);
+			assert.equal(v.level.value, 'error');
+			assert.equal(v.code.value, 'XRAY_DOWN');
+			assert.equal(v.level.disabled, false);
+			assert.equal(v.code.disabled, false);
+			v.stopPolling();
+		}
+	}
 });
 
 test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete translations', () => {

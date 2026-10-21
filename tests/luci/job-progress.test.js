@@ -106,7 +106,7 @@ function formDouble(uci) {
 	} };
 }
 async function harness(t, name) {
-	const jobs = [], calls = [], notifications = [], uciCalls = [];
+	const jobs = [], calls = [], notifications = [], uciCalls = [], initialReads = [];
 	const ap = common(t), vm = model(name);
 	const uci = {
 		sections: (config, type) => type === 'subscription' ? [{ '.name': 's_a', name: 'Alpha' }] :
@@ -142,8 +142,15 @@ async function harness(t, name) {
 			target.replaceChildren(...(Array.isArray(content) ? content : [content]));
 		} },
 		'aether-proxy.common': ap, ['aether-proxy.model.' + name]: vm
-	}, { window: { setTimeout() {} } });
-	const root = await page.render([null, name === 'updates' ? status() : { ok: true, subs: {}, nodes: {} }]);
+	}, { window: { setTimeout: fn => initialReads.push(fn) } });
+	const root = await page.render();
+	// These lifecycle scenarios start after the deferred initial read; their
+	// call assertions still count only job-driven refreshes, as before T10.16.
+	if (name !== 'rules') {
+		initialReads.forEach(fn => fn());
+		await flush();
+		calls.length = 0;
+	}
 	return { page, root, ap, vm, jobs, calls, uciCalls, notifications };
 }
 function activeButtons(h, name) {

@@ -10,7 +10,7 @@
  */
 return view.extend({
 	load: function() {
-		return Promise.all([ ap.call('events', {}), uci.load('aetherproxy') ]);
+		return uci.load('aetherproxy');
 	},
 
 	stopPolling: function() {
@@ -26,17 +26,27 @@ return view.extend({
 	},
 
 	fetchEvents: function() {
-		return ap.call('events', {}).then(res => this.showEvents(res));
+		const request = this.eventsRequest = (this.eventsRequest ?? 0) + 1;
+		return ap.call('events', {}).then(res => {
+			// Tabs and polling can fetch while the first deferred read is in flight.
+			if (request == this.eventsRequest)
+				this.showEvents(res);
+		});
 	},
 
 	showEvents: function(res) {
 		this.eventsReply = res;
 		const vm = model.events(res, this.lastEvents, this.level.value, this.code.value);
 		this.lastEvents = vm.data;
+		this.level.disabled = this.code.disabled = vm.filters_disabled;
 		const selected = this.code.value;
 		dom.content(this.code, [ E('option', { value: '' }, _('All', 'aether-proxy')) ].concat(
 			vm.codes.map(code => E('option', { value: code }, code))));
 		this.code.value = vm.codes.indexOf(selected) >= 0 ? selected : '';
+		if (vm.loading) {
+			dom.content(this.eventContent, vm.loading);
+			return;
+		}
 		const parts = [];
 		if (vm.error)
 			parts.push(E('p', { 'class': 'alert-message error' }, vm.error));
@@ -72,7 +82,8 @@ return view.extend({
 		return tab == 'raw' ? this.fetchLog() : this.fetchEvents();
 	},
 
-	render: function(data) {
+	render: function() {
+		this.eventsRequest = 0;
 		this.tab = 'events';
 		this.auto = E('input', { type: 'checkbox', checked: true, change: () => this.startPolling() });
 		const refilter = () => this.showEvents(this.eventsReply);
@@ -95,14 +106,19 @@ return view.extend({
 			E('label', {}, [ _('Source', 'aether-proxy'), this.source ]), E('label', {}, [ _('Lines', 'aether-proxy'), this.lines ]),
 			E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')), this.rawContent
 		]);
-		this.showEvents(data[0]);
-		this.startPolling();
-		return E('div', { 'class': 'cbi-map' }, [
+		this.showEvents();
+		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
 			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
 			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy')),
 			this.eventPanel, this.rawPanel
 		]);
+		/* Give LuCI a turn to display the complete page before fetching events. */
+		window.setTimeout(() => {
+			this.fetchEvents();
+			this.startPolling();
+		}, 0);
+		return root;
 	},
 
 	handleSave: null,
