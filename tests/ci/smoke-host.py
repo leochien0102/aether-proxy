@@ -47,6 +47,7 @@ def make_root(root):
 		'aether-proxy/src/aether-proxy': '/usr/bin/aether-proxy',
 		'aether-proxy/files/aether-proxy.init': '/etc/init.d/aether-proxy',
 		'aether-proxy/files/aether-proxy.config': '/etc/config/aetherproxy',
+		'aether-proxy/files/aether-proxy-logfilter.awk': '/usr/share/aether-proxy/logfilter.awk',
 		'aether-proxy/files/30-aether-proxy.nft':
 			'/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft',
 	}
@@ -192,6 +193,10 @@ def run_scenario(work, golden, manager, fault):
 	executable(bin_dir / 'ucode', '#!/bin/sh\nexec "' + str(UCODE) + '" "$@"\n')
 	if fault == 'missing':
 		(root / 'usr/share/aether-proxy/data/apple.txt').unlink()
+	elif fault == 'filter-missing':
+		(root / 'usr/share/aether-proxy/logfilter.awk').unlink()
+	elif fault == 'filter-bypass':
+		(root / 'usr/share/aether-proxy/logfilter.awk').write_text('{ print }\n')
 	elif fault == 'plugin':
 		(root / 'usr/share/rpcd/ucode/aetherproxy.uc').write_text('invalid syntax !!!')
 	elif fault == 'artifact':
@@ -217,11 +222,15 @@ def verify_scenarios(work, golden):
 		'artifact': 'FAIL  exactly one aether-proxy artifact (found 0)',
 		'data': 'FAIL  data status counts chnlist lines',
 		'components': 'FAIL  components exits 0 (got 1)',
+		'filter-missing': 'FAIL  file /usr/share/aether-proxy/logfilter.awk',
+		'filter-bypass': 'FAIL  firmware awk limits 500 lines to 20 plus EOF summary',
 	}
 	for manager in ('opkg', 'apk'):
 		result, root = run_scenario(work, golden, manager, '')
 		expect(result.returncode == 0 and '0 failed' in result.stdout,
 			f'{manager}: complete smoke PASS', result.stdout)
+		expect('PASS  firmware awk limits 500 lines to 20 plus EOF summary' in result.stdout,
+			f'{manager}: installed filter and mkfifo exercised', result.stdout)
 		for kind in ARTIFACTS:
 			expect(f'PASS  render {kind} matches host golden' in result.stdout,
 				f'{manager}: {kind} compared byte-for-byte', result.stdout)

@@ -59,6 +59,7 @@ define Package/aether-proxy/install
 	$(foreach key,$(wildcard ./files/keys/*),$(INSTALL_DATA) $(key) $(1)/etc/aether-proxy/keys/;)
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
 	$(INSTALL_DATA) ./files/data/*.txt $(1)/usr/share/aether-proxy/data/
+	$(INSTALL_DATA) ./files/aether-proxy-logfilter.awk $(1)/usr/share/aether-proxy/logfilter.awk
 	# Upstream sources and licenses of the bundled lists (gfwlist is LGPL-2.1, docs/08).
 	$(INSTALL_DATA) ./files/data/SOURCES.md $(1)/usr/share/aether-proxy/data/SOURCES.md
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input

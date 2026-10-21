@@ -110,6 +110,7 @@ file_present() {
 	if [ -s "$root$1" ]; then ok "file $1"; else bad "file $1"; fi
 }
 for file in /usr/bin/aether-proxy /etc/init.d/aether-proxy /etc/config/aetherproxy \
+	/usr/share/aether-proxy/logfilter.awk \
 	/usr/share/nftables.d/chain-pre/input/30-aether-proxy.nft \
 	/usr/share/rpcd/ucode/aetherproxy.uc /usr/share/rpcd/acl.d/luci-app-aether-proxy.json \
 	/usr/share/luci/menu.d/luci-app-aether-proxy.json; do
@@ -125,6 +126,23 @@ done
 for view in overview nodes subscriptions access rules updates logs advanced; do
 	file_present "/www/luci-static/resources/view/aether-proxy/$view.js"
 done
+
+# T9.7: each matrix cell exercises its own firmware awk, not a host-generated result.
+if command -v mkfifo >/dev/null 2>&1 && mkfifo "$work/log.fifo" && [ -p "$work/log.fifo" ]; then
+	ok 'mkfifo available and creates FIFO'
+else
+	bad 'mkfifo available and creates FIFO'
+fi
+awk 'BEGIN { for (i = 1; i <= 500; i++) printf "100 sample %d\n", i }' > "$work/flood"
+awk 'BEGIN { for (i = 1; i <= 20; i++) printf "sample %d\n", i }' > "$work/filtered.expected"
+printf '%s\n' 'aether-proxy: smoke output rate limited, dropped 480 lines between 00:01:40 and 00:01:40' \
+	>> "$work/filtered.expected"
+if TZ=UTC0 awk -v test_clock=1 -v name=smoke -f "$root/usr/share/aether-proxy/logfilter.awk" \
+	"$work/flood" > "$work/filtered" && cmp -s "$work/filtered.expected" "$work/filtered"; then
+	ok 'firmware awk limits 500 lines to 20 plus EOF summary'
+else
+	bad 'firmware awk limits 500 lines to 20 plus EOF summary'
+fi
 
 # docs/05 "校验规则" rule 1: a node is required only when enabled=1. The packaged
 # default is disabled, so both it and tests/fixtures/sample must pass (exit 0).

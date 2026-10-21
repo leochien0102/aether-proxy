@@ -21,4 +21,12 @@ printf 'chinadns-ng %s\n' "$argv" >> "$STUB_LOG"
 echo "$$" > "$SYSROOT/chinadns.pid"
 cleanup() { rm -f "$SYSROOT/chinadns.pid"; exit 0; }
 trap cleanup TERM INT
+# T9.7 opt-in burst, aligned to a second boundary to make quota assertions deterministic.
+if [ -f "$SYSROOT/child-log-lines" ]; then
+	read -r lines < "$SYSROOT/child-log-lines"
+	awk -v name=chinadns-ng -v lines="$lines" 'BEGIN {
+		start = systime(); while (systime() == start) {};
+		for (i = 1; i <= lines; i++) printf "%s log %d %d\n", name, systime(), i;
+	}'
+fi
 while :; do sleep 1 & wait $!; done

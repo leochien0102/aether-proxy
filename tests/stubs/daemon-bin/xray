@@ -35,6 +35,14 @@ if [ "$1" = run ] && [ "$2" = -c ]; then
 		exit 0
 	}
 	trap cleanup TERM INT
+	# T9.7 opt-in burst; absent control file preserves every existing fixture's behaviour.
+	if [ -f "$SYSROOT/child-log-lines" ]; then
+		read -r lines < "$SYSROOT/child-log-lines"
+		awk -v name=xray -v lines="$lines" 'BEGIN {
+			start = systime(); while (systime() == start) {};
+			for (i = 1; i <= lines; i++) printf "%s log %d %d\n", name, systime(), i;
+		}'
+	fi
 	while :; do sleep 1 & wait $!; done
 fi
 printf 'xray %s\n' "$*" >> "$STUB_LOG"

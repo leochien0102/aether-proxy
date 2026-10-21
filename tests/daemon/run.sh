@@ -9,6 +9,9 @@ ENTRY="$ROOT/aether-proxy/src/aether-proxy"
 JGET="$ROOT/tests/cli/jget.uc"
 FIX="$ROOT/tests/fixtures/sample"
 STUB_SRC="$ROOT/tests/stubs/daemon-bin"
+export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
+python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
+python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
 T="$(mktemp -d)"
 QUIET="$T/cleanup.stderr"
 DAEMON_PID=''
@@ -707,6 +710,25 @@ for mode in fail malformed delay; do
 	stop_daemon
 	expect "version $mode daemon stops" 0 "$?"
 	assert_no_children "$RV"
+done
+
+# T9.7: use the full daemon/startup/T1-restart path, not only a filter unit harness.
+for amount in 3 500; do
+	RL="$T/sys-log-$amount"; LL="$RL/calls.log"
+	make_root "$RL"
+	printf '%s\n' "$amount" > "$RL/child-log-lines"
+	start_daemon "$RL" "$LL"
+	wait_for "$RL/var/run/aether-proxy/state.json" '"state": "running"' \
+		&& ok "log $amount: daemon starts" || bad "log $amount: daemon starts"
+	wait_for "$RL/daemon.stdout" 'xray log ' \
+		&& ok "log $amount: Xray output arrives" || bad "log $amount: Xray output arrives"
+	stop_daemon
+	expect "log $amount: daemon stops" 0 "$?"
+	if python3 "$ROOT/tests/daemon/check-output.py" "$RL" "$amount"; then
+		ok "log $amount: daemon output and filter lifecycle"
+	else
+		bad "log $amount: daemon output and filter lifecycle"
+	fi
 done
 
 echo "daemon: $pass passed, $fail failed"

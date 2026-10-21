@@ -8,6 +8,7 @@ UCODE="$ROOT/tests/host/ucode"
 DRIVER="$ROOT/tests/monitor/driver.uc"
 FIX="$ROOT/tests/fixtures/sample"
 STUB_SRC="$ROOT/tests/stubs/daemon-bin"
+export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
 T="$(mktemp -d)"
 CHILD_ROOTS=()
 
