@@ -59,9 +59,19 @@ return view.extend({
 		/* Disabling is persistent and immediately stops traffic interception;
 		   cancelling must leave both the local setting and UCI untouched. */
 		if (this.enabled && !checked) {
-			/* TODO(design): no wording is specified for a failed changes read.
-			   Propagate the error; never apply an unread session. */
-			const staged = model.staged_confirmation(await uci.changes());
+			/* A failed changes read must never apply an unread session; say so
+			   instead of failing silently (design lead, T10.22 TODO, 2026-10-21). */
+			let changes;
+			try {
+				changes = await uci.changes();
+			}
+			catch (e) {
+				ui.addNotification(null, E('p', {},
+					_('Reading unapplied changes failed, so Enable was not turned off: %s', 'aether-proxy')
+						.replace('%s', e?.message ?? String(e))), 'error');
+				return;
+			}
+			const staged = model.staged_confirmation(changes);
 			if (staged && !await ap.confirm(staged))
 				return;
 			if (!await ap.confirm({

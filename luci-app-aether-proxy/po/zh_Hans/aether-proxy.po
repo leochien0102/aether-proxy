@@ -1730,3 +1730,7 @@ msgstr "回滚"
 msgctxt "aether-proxy"
 msgid "Reading probe results failed: %s"
 msgstr "读取检测结果失败：%s"
+
+msgctxt "aether-proxy"
+msgid "Reading unapplied changes failed, so Enable was not turned off: %s"
+msgstr "读取未应用的更改失败，没有关闭『启用』：%s"

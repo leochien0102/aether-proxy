@@ -2414,8 +2414,9 @@ test('T10.22 scenario 3: enabling never reads changes or asks for confirmation',
 	]);
 });
 
-test('T10.22 defensive: failed changes read propagates without writes and restores the switch', async () => {
+test('T10.22 defensive: failed changes read notifies, writes nothing and restores the switch', async () => {
 	const error = new Error('uci changes failed');
+	const notes = [];
 	const page = loadView({
 		uci: {
 			changes: async () => { throw error; },
@@ -2423,14 +2424,21 @@ test('T10.22 defensive: failed changes read propagates without writes and restor
 			save: () => assert.fail('failed read must not save UCI')
 		},
 		confirm: () => assert.fail('failed read must not offer to apply'),
-		ui: { changes: { apply: () => assert.fail('failed read must not apply') } }
+		ui: {
+			changes: { apply: () => assert.fail('failed read must not apply') },
+			addNotification: (title, body, kind) => notes.push({ body, kind })
+		}
 	});
 	page.enabled = true;
 	const box = findTag(page.enableSwitch('note'), 'input');
 	box.checked = false;
-	await assert.rejects(box.attrs.change({ target: box }), caught => caught === error);
+	await box.attrs.change({ target: box });
 	assert.equal(page.enabled, true);
 	assert.equal(box.checked, true);
+	/* the user is told why nothing happened, with the reason */
+	assert.equal(notes.length, 1);
+	assert.equal(notes[0].kind, 'error');
+	assert.equal(notes[0].body.textContent, '读取未应用的更改失败，没有关闭『启用』：uci changes failed');
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
