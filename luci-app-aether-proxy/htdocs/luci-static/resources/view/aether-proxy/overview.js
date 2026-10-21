@@ -239,10 +239,12 @@ return view.extend({
 				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
 		}
 		catch (e) {
-			/* TODO(design): UCI refresh failure after node_use is unspecified; notify, never retry writes. */
-			ui.addNotification(null, E('p', {}, model.node_use_message({
-				ok: false, code: 'RPC_FAILED', detail: e?.message ?? String(e)
-			})), 'error');
+			/* ap.call never rejects, so reaching here means node_use already
+			   succeeded and only the page refresh failed: never call it a failed
+			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
+			ui.addNotification(null, E('p', {},
+				_('The node was switched, but refreshing the page data failed: %s. Reload the page.', 'aether-proxy')
+					.replace('%s', e?.message ?? String(e))), 'warning');
 		}
 		finally {
 			this.switching = false;

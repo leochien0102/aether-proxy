@@ -2458,7 +2458,8 @@ test('T10.23 defensive: overview UCI refresh rejection notifies and restores swi
 	await button.attrs.click();
 	assert.equal(button.disabled, false);
 	assert.equal(page.switching, false);
-	assert.deepEqual(notes, [['切换节点失败（RPC_FAILED）: UCI unavailable', 'error']]);
+	/* node_use succeeded; only the refresh failed, so it must not read as a failed switch */
+	assert.deepEqual(notes, [['已切换节点，但刷新页面数据失败：UCI unavailable。请刷新页面。', 'warning']]);
 	assert.deepEqual(calls, ['node_use']);
 });
 

@@ -1762,3 +1762,7 @@ msgstr "切换节点失败（%s）"
 msgctxt "aether-proxy"
 msgid "Set as the current node; it will be used on the next start."
 msgstr "已设为当前节点，下次启动时使用"
+
+msgctxt "aether-proxy"
+msgid "The node was switched, but refreshing the page data failed: %s. Reload the page."
+msgstr "已切换节点，但刷新页面数据失败：%s。请刷新页面。"

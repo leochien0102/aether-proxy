@@ -349,8 +349,9 @@ test('T10.23 defensive: node row rebuild rejection notifies and restores button 
 	await view.handleSetCurrent('n_b', { currentTarget: button });
 	assert.equal(button.disabled, false);
 	assert.equal(view.switching, false);
-	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（RPC_FAILED）: form unavailable');
-	assert.equal(calls.at(-1)[3], 'error');
+	/* node_use succeeded; only the rebuild failed, so it must not read as a failed switch */
+	assert.equal(calls.at(-1)[2].textContent, '已切换节点，但刷新页面数据失败：form unavailable。请刷新页面。');
+	assert.equal(calls.at(-1)[3], 'warning');
 	assert.equal(calls.filter(call => call[0] === 'call' && call[1] === 'node_use').length, 1);
 });
 

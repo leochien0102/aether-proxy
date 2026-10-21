@@ -359,7 +359,8 @@ return baseclass.extend({
 			typeof site?.name === 'string' && site.name && typeof site.label === 'string' && site.label);
 		if (valid)
 			return { options: sites.map(site => ({ value: site.name, text: site.label })), error: null };
-		/* TODO(design): empty/malformed successful lists are unspecified; keep probing disabled. */
+		/* An empty or malformed list counts as a failed read: probing stays disabled and no
+		   site is guessed (docs/10 「检测真实延迟与切换节点」, settled 2026-10-21). */
 		return { options: [], error: fmt(_('Reading the site list failed (%s)', 'aether-proxy'),
 			reply?.ok === false ? (reply.code ?? 'RPC_FAILED') : 'RPC_FAILED') };
 	},
