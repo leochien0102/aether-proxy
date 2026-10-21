@@ -103,9 +103,8 @@ function use_node(opts, id) {
 }
 
 function parse_node(opts, line) {
-	// TODO(design): legacy CLI import accepts bare/oversized input, unlike its RPC
-	// boundary and docs/10. Enforce the specified parse boundary without changing
-	// import's existing error contract; unifying that legacy behavior needs a decision.
+	// The rpcd boundary's limits, checked on the CLI too; `node import` keeps its
+	// existing CLI contract (docs/10 "node parse").
 	if (length(line) > URI_MAX_BYTES || match(line, URI_SCHEME_RE) == null)
 		return pipeline.finish(opts,
 			{ ok: false, code: 'USAGE', detail: `uri must be a node share URI (at most ${URI_MAX_BYTES} bytes)` },

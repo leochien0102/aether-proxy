@@ -116,10 +116,8 @@ export function import_node(ctx, line) {
 	if (parsed?.node == null)
 		return { ...result(false, 'CONFIG_INVALID', null, false, parsed?.skip ?? 'malformed'), exit: 2 };
 
-	// The subscription lock is shared on purpose (TODO(design): docs/10 specifies no lock
-	// for `node import`; both commands atomically replace the same configuration file, so
-	// they must not run interleaved). Contention is the documented busy case: BUSY,
-	// exit 3, nothing written.
+	// Shared with subscription updates: both atomically replace the same configuration
+	// file (docs/10 "node import"). Contention: BUSY, exit 3, nothing written.
 	let lock = sys.lock(sub.system_path(ctx.root, C.SUB_LOCK_FILE));
 	if (lock == null) {
 		log.event('warn', 'BUSY', { holder: 'node import' });
