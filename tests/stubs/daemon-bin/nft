@@ -5,6 +5,8 @@ case " $* " in
 		# Arm a numbered artifact check only; the precheck kernel probe is separate.
 		case "$*" in
 			*/aether-proxy.nft)
+				# T9.12 review: a measurable artifact check, so two passes must add up.
+				if [ -f "$SYSROOT/nft-check-sleep" ]; then sleep 0.3; fi
 				if [ -f "$SYSROOT/nft-check-fail-after" ]; then
 					read -r left < "$SYSROOT/nft-check-fail-after"
 					left=$((left - 1))
