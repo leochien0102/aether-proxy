@@ -716,6 +716,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 **与前几节冲突处以本节为准。**
 1. **「测延迟」改为「检测真实延迟」，可选站点**（仓库所有者提出）：语义见 07「真实延迟」——经代理请求所选站点一次、只报告耗时，与健康检测互不影响。
    - 按钮左侧加站点下拉：页面渲染后调用一次 `ap.call('probe_sites')`，选项为 `label`，值为 `name`，第一项预选；取到之前下拉与按钮不可用；失败 → 下拉不可用，按钮旁显示「读取站点列表失败（<code>）」。
+     返回 `ok: true` 但列表为空或格式不对（缺 `name`/`label`）按读取失败处理（`RPC_FAILED`），不猜测站点、不发请求（T10.23 的 `TODO(design)`，2026-10-21 定）。
    - 按钮常态文字「检测真实延迟」；点击后按钮不可用、文字变为「检测中…」，调用 `ap.call('probe_url', { site })`；结束后恢复文字与可用状态。
    - 结果显示在按钮旁：成功「<label> <latency_ms> ms」；`PROBE_TIMEOUT`「<label> 超时」；`PROBE_FAILED`「<label> 连接失败」（有 `http_code` 时「<label> 返回 HTTP <http_code>」）；`NOT_RUNNING`「服务未运行」；其他「<code>: <detail>」。
    - 健康检测那一项照旧显示 monitor 的结果；不再像原「测延迟」那样等 `last_probe` 更新（T10.13 的完成判断随之删除），也不额外刷新状态。
@@ -723,6 +724,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 2. **「使用此节点」与节点页「设为当前」改调 `node_use`**（10「切换节点（`node use`）」）：不再 `uci.set`/`uci.save`/`ui.changes.apply`。
    - 点击后按钮不可用，调用 `ap.call('node_use', { id })`；返回 `ok: true` → 重新 `uci.load('aetherproxy')`（先 `uci.unload`）并立即刷新一次 `status`，T10.11 的「正在切换到…」随即出现；`reload: false` 且服务没在运行时提示「已设为当前节点，下次启动时使用」。
    - 返回 `ok: false` → `ui.addNotification` 显示「切换节点失败（<code>）」与 `detail`；按钮恢复。
+   - `node_use` 已成功、之后刷新 UCI 或页面出错（T10.23 的 `TODO(design)`，2026-10-21 定）→ 警告「已切换节点，但刷新页面数据失败：<原因>。请刷新页面。」——后端已经切换，不能说成切换失败；不重试写操作，按钮恢复。概览页与节点页相同。
    - 会话里暂存的 UCI 改动不受影响，也不提示（`node use` 不碰它们）。
 3. `common.js` 的方法表加入 `node_use`（`id`）、`probe_url`（`site`）、`probe_sites`（无参数）；`probe_url` 归入长超时档（与 `check`、`save_file` 相同的 35 秒）：插件超时是 `probe.timeout` + 5 秒，`probe.timeout` 默认 5 秒（05）但可以调大，固定的短超时会先于插件到期。
 
