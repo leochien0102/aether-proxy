@@ -79,6 +79,30 @@ reload_checkpoint() {
 	xray_starts_before=$(count_calls "$SYSROOT/calls.log" 'xray run -c ')
 	dns_starts_before=$(count_calls "$SYSROOT/calls.log" 'chinadns-ng -C ')
 	hups_before=$(count_calls "$LOG" 'killall -HUP dnsmasq')
+	resolves_before=$(count_calls "$LOG" 'resolveip ')
+	for hook in config_load data_load domain_paths render_nft render_chinadns render_dnsmasq render_xray; do
+		budget_before[$hook]=$(count_calls "$T/daemon.stderr" "TRACE T9.9 $hook")
+	done
+}
+# Entry traces come from real functions in a temporary module copy, not mocked renderers.
+# Regressing to build() after resolution or sets export increments these counts.
+declare -A budget_before
+assert_budget() {
+	local label="$1" extra_nft="$2" hook expected
+	for hook in config_load data_load domain_paths render_nft render_chinadns render_dnsmasq render_xray; do
+		expected=1
+		[ "$hook" = render_nft ] && expected=$((1 + extra_nft))
+		expect "T9.9 $label $hook budget $expected" "$((budget_before[$hook] + expected))" \
+			"$(count_calls "$T/daemon.stderr" "TRACE T9.9 $hook")"
+	done
+}
+assert_build_bytes() {
+	local label="$1" restored="$2"
+	if "$UCODE" "$ROOT/tests/reload/compare-build.uc" -- "$label" "$restored" "${args[@]}"; then
+		ok "T9.9 $label all four installed artifacts match build"
+	else
+		bad "T9.9 $label all four installed artifacts match build"
+	fi
 }
 assert_applied() {
 	local label="$1" from="$2" to="$3" actions="$4"
@@ -158,8 +182,11 @@ printf '  1: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 000000
 
 args=(--sys-root "$SYSROOT" --bin-dir "$T/bin" --confdir "$T/conf" \
 	--data-dir "$T/data" --baseline-dir "$T/base" --custom-dir "$T/custom")
+# Use only the isolated instrumented modules; production has no counter or test switch.
+python3 "$ROOT/tests/reload/instrument.py" "$ROOT/aether-proxy/src/lib" "$T/modules/aetherproxy" || exit 1
 STUB_LOG="$LOG" SYSROOT="$SYSROOT" HOST_SHA256="$HOST_SHA256" PATH="$T/bin:$PATH" \
-	"$UCODE" -S "$ENTRY" -- daemon "${args[@]}" >"$T/daemon.stdout" 2>"$T/daemon.stderr" &
+	LD_LIBRARY_PATH="$ROOT/tests/host/prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+	"$ROOT/tests/host/prefix/bin/ucode" -L "$T/modules/*.uc" -S "$ENTRY" -- daemon "${args[@]}" >"$T/daemon.stdout" 2>"$T/daemon.stderr" &
 DAEMON_PID=$!
 for _ in {1..200}; do
 	if [ -s "$SYSROOT/var/run/aether-proxy/state.json" ] && grep -q '"state": "starting"' "$SYSROOT/var/run/aether-proxy/state.json" && \
@@ -208,6 +235,9 @@ done
 xray_after=$(cat "$SYSROOT/xray.pid")
 expect "mode reload leaves xray pid unchanged" "$xray_before" "$xray_after"
 assert_applied mode "$NODE_A" "$NODE_A" nft_replace,restart_chinadns
+assert_budget mode 1
+expect 'T9.9 mode reload never resolves a node' "$resolves_before" "$(count_calls "$LOG" 'resolveip ')"
+assert_build_bytes mode '{}'
 expect 'T9.8 mode reload skips Xray test' "$tests_before" "$(count_calls "$LOG" 'xray run -test')"
 expect 'T9.8 mode reload prechecks exactly once' "$((pre_before + 1))" "$(count_calls "$LOG" 'ip rule help')"
 # See TODO(design) at the second validation: mode changes nft, so both passes are mandatory.
@@ -235,6 +265,9 @@ expect "node-only reload does not restart chinadns" "$dns_before" "$(count_calls
 
 # Custom list content only: chinadns.conf names the list by path, so the text is unchanged;
 # the artifact hash covers the list content and chinadns-ng must still restart (04).
+# Wait for the preceding port-only reload to commit before measuring this transaction.
+wait_count "$EVENTS" 'RELOAD_APPLIED' "$((applied_before + 2))"
+reload_checkpoint
 nft_before=$(count_calls "$LOG" 'nft -f ')
 dns_before=$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')
 xray_before=$(cat "$SYSROOT/xray.pid")
@@ -247,6 +280,10 @@ done
 [ "$(count_calls "$SYSROOT/calls.log" 'chinadns-ng ')" -gt "$dns_before" ] && ok "list-only reload restarts chinadns" || bad "list-only reload restarts chinadns"
 expect "list-only reload does not replace nft" "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
 expect "list-only reload leaves xray pid unchanged" "$xray_before" "$(cat "$SYSROOT/xray.pid")"
+assert_applied list "$NODE_A" "$NODE_A" restart_chinadns
+assert_budget list 0
+expect 'T9.9 list reload never resolves a node' "$resolves_before" "$(count_calls "$LOG" 'resolveip ')"
+assert_build_bytes list '{}'
 
 # Node address change: the bootstrap IP is re-resolved, so node_ip4 (nft) and Xray both change.
 nft_before=$(count_calls "$LOG" 'nft -f ')
@@ -284,6 +321,7 @@ config node 'n_00000000000000000000000000000002'
 	option address 'new-node.example'
 	option port '443'
 	option password 'new-secret'
+	option stale '1'
 CONF
 sed -i "s/option address '198.51.100.7'/option address 'node.example.com'/;\
 	s/option node 'n_00000000000000000000000000000001'/option node 'n_00000000000000000000000000000002'/" \
@@ -303,6 +341,10 @@ expect 'T9.5 transient DNS failure emits no resolve events' 0 \
 	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_')"
 
 assert_applied node "$NODE_A" "$NODE_B" nft_replace,restart_xray
+assert_budget node 1
+assert_build_bytes node '{}'
+expect 'T9.9 node configuration warning emitted once not per render' 1 \
+	"$(count_calls "$EVENTS" 'NODE_STALE_IN_USE')"
 expect 'T9.8 node switch tests Xray exactly once' "$((tests_before + 1))" "$(count_calls "$LOG" 'xray run -test')"
 expect 'T9.8 node switch prechecks exactly once' "$((pre_before + 1))" "$(count_calls "$LOG" 'ip rule help')"
 expect 'T9.8 node switch validates nft exactly twice' "$((checks_before + 2))" "$(artifact_checks)"
@@ -381,6 +423,7 @@ grep -Fq 'elements = { 198.51.100.1 }' "$SYSROOT/var/run/aether-proxy/current/ae
 # nft is installed before the state and event commit; do not sample the next baseline early.
 wait_count "$EVENTS" 'RELOAD_APPLIED' "$((applied_before + 1))" \
 	&& ok 'T9.8 live-set setup has committed' || bad 'T9.8 live-set setup has committed'
+assert_build_bytes live-sets '{"gfw4":["198.51.100.1"],"udirect4":[],"uproxy4":[]}'
 nft_before=$(count_calls "$LOG" 'nft -f ')
 reload_checkpoint
 rm "$T/bin/xray"

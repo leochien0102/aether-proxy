@@ -68,6 +68,16 @@ function failure(daemon, step, detail, code) {
 	return { ok: false, code: code ?? 'START_FAILED', detail: message ?? detail };
 };
 
+// The first build used to report both read and renderer failures as CONFIG_INVALID.
+// Splitting it must not change the event consumed by the pending-node UI.
+function config_failure(daemon, result) {
+	return failure(daemon, 'config', {
+		message: result.detail, errors: result.errors,
+		field: result.errors?.[0]?.field ?? result.errors?.[0]?.file ?? '-',
+		reason: result.errors?.[0]?.code ?? result.detail
+	}, 'CONFIG_INVALID');
+};
+
 function write_artifacts(dir, artifacts) {
 	for (let name, file in C.ARTIFACT_FILES)
 		if (!sys.write_atomic(`${dir}/${file}`, artifacts[name]))
@@ -313,18 +323,10 @@ function run(daemon, started_ms) {
 	let step_started = monotonic_ms();
 	let steps = { config_render: 0, resolve_node: 0, validate: 0, sets_export_render: 0, actions: 0 };
 	setup_log(daemon);
-	let built = pipeline.build({ ...daemon.opts, runtime: {
-		node_ip: daemon.state.node_ip ?? null,
-		dns_tier: daemon.state.dns_tier ?? 'T2',
-		restored: {}
-	} });
-	if (!built.ok)
-		return failure(daemon, 'config', {
-			message: built.detail, errors: built.errors,
-			field: built.errors?.[0]?.field ?? built.errors?.[0]?.file ?? '-',
-			reason: built.errors?.[0]?.code ?? built.detail
-		}, 'CONFIG_INVALID');
-	let snapshot = built.snapshot;
+	let loaded = pipeline.read(daemon.opts);
+	if (!loaded.ok)
+		return config_failure(daemon, loaded);
+	let snapshot = loaded.snapshot;
 	steps.config_render = elapsed_ms(step_started);
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
 	// running one belongs to the old node and also feeds node_ip4 in the nft table.
@@ -339,14 +341,14 @@ function run(daemon, started_ms) {
 		if (!resolved.ok)
 			return failure(daemon, 'resolve_node', resolved.detail);
 		node_ip = resolved.ip;
-		step_started = monotonic_ms();
-		built = pipeline.build({ ...daemon.opts, runtime: { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} } });
-		if (!built.ok)
-			return failure(daemon, 'render', built.detail);
-		snapshot = built.snapshot;
-		steps.config_render += elapsed_ms(step_started);
 	}
 	step_started = monotonic_ms();
+	// Resolve first, then render once from the same snapshot/data. Rereading here could
+	// mix configurations or duplicate warnings as well as wasting a full render pass.
+	let runtime = { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} };
+	let built = pipeline.render(loaded, runtime);
+	if (!built.ok)
+		return config_failure(daemon, built);
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let clean = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
 	if (clean.code != 0)
@@ -426,16 +428,13 @@ function run(daemon, started_ms) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'sets_export', restored.detail);
 		}
-		let with_sets = pipeline.build({ ...daemon.opts, runtime: {
-			node_ip,
-			dns_tier: daemon.state.dns_tier ?? 'T2',
-			restored: restored.sets
-		} });
+		let with_sets = pipeline.render(loaded, { ...runtime, restored: restored.sets }, 'nft');
 		if (!with_sets.ok) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'render', with_sets.detail);
 		}
-		artifacts = with_sets.artifacts;
+		// Keep the already validated non-nft artifacts; only nft depends on live sets.
+		artifacts.nft = with_sets.artifacts.nft;
 		if (!sys.write_atomic(`${stage}/${C.ARTIFACT_FILES.nft}`, artifacts.nft)) {
 			discard_stage(daemon, stage);
 			return failure(daemon, 'nft_stage', sys.error());
