@@ -2755,6 +2755,15 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 			assert.equal(use.disabled, false);
 			assert.equal(nodes.title, '');
 			assert.equal(use.title, '');
+			const poll = page.fetchRefresh();
+			await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+			assert.equal(page.nodeControl.children[0].disabled, false,
+				'next poll keeps the known failure reason until its own events arrive');
+			assert.ok(page.vm.switch_notice.includes('未生效'));
+			await h.reply('stats', readings(2000, 0, 0, 0, 0));
+			await h.reply('events', { ok: true, events: [event] });
+			await poll;
+			assert.equal(page.nodeControl.children[0].disabled, false);
 		}
 		else {
 			assert.equal(nodes.disabled, true, 'no failure reason means switch is still pending');
@@ -2772,6 +2781,67 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 		}
 		assert.deepEqual(serviceButtons(root).map(disabled), [true, false, false]);
 	}
+});
+
+test('T10.24 review: retrying with another node ignores the reason found for the previous target', async () => {
+	const calls = [];
+	let configured = 'n_b';
+	const page = loadView({
+		ap: {
+			call: (method, params) => new Promise((resolve) => { calls.push({ method, params, resolve }); }),
+			poll: () => ({ stop() {} })
+		},
+		uci: {
+			load: async () => {},
+			unload: async () => {},
+			sections: (config, type, cb) => {
+				if (type === 'node')
+					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta'], ['n_c', 'Gamma']])
+						cb({ '.name': name, label });
+			},
+			get: (config, section, option) => option === 'node' ? configured : '1'
+		},
+		ui: { addNotification: () => {} },
+		window: { localStorage: { getItem: () => '0', setItem: () => {} } }
+	});
+	const reply = async (method, value) => {
+		const call = calls.find((c) => c.method === method && !c.settled);
+		assert.ok(call, `outstanding ${method} request exists`);
+		call.settled = true;
+		call.resolve(value);
+		for (let i = 0; i < 12; i++)
+			await Promise.resolve();
+	};
+	page.render(await page.load());
+	await Promise.resolve();
+	const event = { ts: NOW, code: 'NODE_RESOLVE_FAILED', args: { domain: 'node.example' } };
+	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+	await reply('stats', readings(1000, 0, 0, 0, 0));
+	await reply('events', { ok: true, events: [event] });
+	await page.initialRequest;
+	assert.ok(page.vm.switch_notice.includes('未生效'), 'failure reason for Beta is shown');
+	const [nodes] = page.nodeControl.children;
+	assert.equal(nodes.disabled, false, 'failure reason unlocks the selector for a retry');
+	const switching = page.handleNode('n_c');
+	configured = 'n_c';
+	await reply('node_use', { ok: true, node: 'n_c', previous: 'n_b', reload: true });
+	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+	assert.equal(page.vm.switch_notice, '正在切换到「Gamma」…', 'the old reason is not reported for Gamma');
+	assert.equal(page.vm.switch_busy, true, 'controls stay locked for the new switch');
+	await reply('stats', readings(2000, 0, 0, 0, 0));
+	await reply('events', { ok: true, events: [event] });
+	await switching;
+	assert.equal(page.vm.switch_notice, '正在切换到「Gamma」…', 'Beta\'s failure event is older than the retry');
+	assert.equal(page.nodeControl.children[0].disabled, true);
+	const later = { ts: NOW + 5, code: 'CONFIG_INVALID', args: {} };
+	const poll = page.fetchRefresh();
+	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+	await reply('stats', readings(3000, 0, 0, 0, 0));
+	await reply('events', { ok: true, events: [event, later] });
+	await poll;
+	assert.ok(page.vm.switch_notice.includes('Gamma') && page.vm.switch_notice.includes('未生效'),
+		'a newer failure is reported for Gamma');
+	assert.equal(page.nodeControl.children[0].disabled, false);
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {

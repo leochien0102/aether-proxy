@@ -181,7 +181,9 @@ return view.extend({
 				}
 				this.lastMarkers = markers;
 			}
-			this.refresh(this.status);
+			/* Until this poll's events arrive, keep the previous switch reason:
+			   otherwise every poll briefly relocks the node controls. */
+			this.refresh(this.status, undefined, this.latestEvents);
 			if (this.initialReading) {
 				this.initialReading = false;
 				this.startPolling(this.interval);
@@ -189,6 +191,7 @@ return view.extend({
 			return ap.call('stats').then((stats) => {
 				this.updateTraffic(stats);
 				return this.switchEvents(reply, this.currentNode).then((events) => {
+					events = model.newer_events(events, this.reasonFloor);
 					this.latestEvents = events;
 					const next = model.build(reply, this.version, this.labels,
 						Math.floor(Date.now() / 1000), this.enabled, this.currentNode, this.components, events);
@@ -242,6 +245,9 @@ return view.extend({
 				this.currentNode = data.node;
 				this.labels = data.labels;
 				this.enabled = data.enabled;
+				/* A reason found for the previous target is not about this switch. */
+				this.reasonFloor = model.switch_floor(this.latestEvents, this.reasonFloor);
+				this.latestEvents = null;
 				/* An older in-flight read cannot stand in for the post-switch status. */
 				await this.refreshing;
 				await this.fetchRefresh();

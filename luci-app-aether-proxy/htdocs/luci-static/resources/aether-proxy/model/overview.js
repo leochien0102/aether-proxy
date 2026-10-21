@@ -278,6 +278,19 @@ function switch_notice(status, configured_node, labels, reply, now) {
 
 return baseclass.extend({
 	switch_pending: switch_pending,
+
+	/* A retry with another node must not inherit the reason the previous target
+	   failed with: the events window is ten minutes. floor is that reason's ts
+	   (router time, compared only with other event timestamps). */
+	switch_floor: function(reply, floor) {
+		return switch_reason(reply)?.ts ?? floor;
+	},
+
+	newer_events: function(reply, floor) {
+		if (floor == null || !reply || reply.ok === false || !Array.isArray(reply.events))
+			return reply;
+		return { ...reply, events: reply.events.filter((event) => event.ts > floor) };
+	},
 	component_rows: component_rows,
 	components_failed: components_failed,
 	component_error: component_error,
