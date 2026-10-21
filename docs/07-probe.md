@@ -79,6 +79,7 @@ LuCI 中节点检测的列名叫「**TCP 可达**／延迟」，不要写成「�
   失败：超时 → `{ "ok": false, "code": "PROBE_TIMEOUT", "site" }`；连接失败或状态码不在范围内 → `{ "ok": false, "code": "PROBE_FAILED", "site", "http_code", "detail" }`；退出码 1，都不记事件（`PROBE_TIMEOUT`、`PROBE_FAILED` 是结果码，同 `JOB_NOT_FOUND`，不进 09 的事件码目录）。
   站点名不在表中 → `USAGE`（退出码 2）。服务不在 `running`/`degraded` → `NOT_RUNNING`（退出码 1；`failsafe` 时代理不可用，同样 `NOT_RUNNING`）。
 - 一次只请求一次，不重试：它测的是用户点下去那一刻的延迟。
+- 只读 `state.json` 判断服务状态，不写；配置无效（读 `probe.timeout` 时）→ `CONFIG_INVALID`，退出码 2，不发请求、不记事件（2026-10-21 T9.10 复核定）。
 
 ## 首版明确不做
 

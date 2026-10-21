@@ -149,6 +149,8 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
   服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`/`failsafe`）时执行 `/etc/init.d/aether-proxy reload`（init 只发 SIGHUP，04「重载」），**不等重载完成**就返回
   `{ "ok": true, "node": <id>, "previous": <原值>, "reload": true }`；服务没在运行时只写配置，`reload: false`（下次启动用新节点）。不记事件（重载本身记 `RELOAD_APPLIED`，失败照 04 记）。
 - 写配置失败 → `FS_FAILED`（`op: uci-commit`），退出码 1；发重载失败 → `CMD_FAILED`，退出码 1（配置已改，下次重载或启动会生效）。
+  `state.json` 读不了或损坏 → `FS_FAILED`（`op: read`），退出码 1，**不改配置**：猜成「服务没在运行」会悄悄漏掉该做的重载（2026-10-21 T9.10 复核定）。
+  只读 `/etc/config/aetherproxy` 本身，不带上 `/tmp/.uci` 或会话里暂存的改动（libuci 用绝对路径加载时不回放暂存改动）。
 - 页面（前端）：概览「使用此节点」、节点页「设为当前」改调 rpcd `node_use`，返回后重新读 UCI 与 `status`，「正在切换到…」的提示（「切换节点未生效时提示」）立即出现。
 
 ## rpcd 插件
