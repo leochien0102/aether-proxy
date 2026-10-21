@@ -9,6 +9,7 @@
 /* Rules/DNS form and independent custom-file editors (docs/10 "规则与 DNS 页").
  * Lists deliberately bypass UCI: each save is validated by the CLI independently.
  * Per docs/10 "先出页面", defer RPC until the form and disabled editors are rendered.
+ * Job progress and unconditional recovery follow docs/10 "UI 规则".
  */
 const LISTS = [
 	[ 'direct_domain', _('Direct domains', 'aether-proxy') ], [ 'proxy_domain', _('Proxy domains', 'aether-proxy') ],
@@ -76,22 +77,32 @@ return view.extend({
 			o.rmempty = false;
 			o.validate = function(section_id, value) { return model.validate(field[0], value); };
 		});
-		const inventory = E('div', {}, model.loading_text), summary = E('div');
+		const inventory = E('div', {}, model.loading_text), summary = E('div'), progress = E('div');
 		const update = E('button', { type: 'button', class: 'cbi-button cbi-button-action',
-			click: ui.createHandlerFn(this, function() {
+			click: ui.createHandlerFn(this, async function() {
 				update.disabled = true;
-				return ap.run_job('update_data', []).then(job => {
+				let timer;
+				try {
+					summary.replaceChildren();
+					timer = ap.job_progress(progress, _('Updating rule data…', 'aether-proxy'));
+					const job = await ap.run_job('update_data', []);
+					timer.stop();
 					summary.replaceChildren(...model.job_result(job).map(text => E('p', {}, text)));
-					return ap.call('data_status');
-				}).then(r => {
-					this.show_data(inventory, r);
+					this.show_data(inventory, await ap.call('data_status'));
+				}
+				catch (e) {
+					summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
+				}
+				finally {
+					if (timer)
+						timer.stop();
 					update.disabled = false;
-				});
+				}
 			}) }, _('Update now', 'aether-proxy'));
 		return map.render().then(node => {
 			const editors = LISTS.map(item => this.list_editor(item));
 			const root = E('div', {}, [ node, ...editors.map(editor => editor.node),
-				E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary ]);
+				E('h3', {}, _('Rule data', 'aether-proxy')), inventory, update, summary, progress ]);
 			/* A new turn lets LuCI display the page before RPC starts. Enqueue in
 			 * page order; ap.call owns the shared two-request concurrency limit. */
 			window.setTimeout(() => {

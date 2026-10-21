@@ -152,6 +152,7 @@ for (const answer of [ true, false ]) {
 				save: async () => { effects.push([ 'save' ]); }
 			};
 			const ap = {
+				job_progress: () => ({ stop() {} }),
 				confirm: options => { asked.push(options); return gate.promise; },
 				call: async (...args) => { effects.push([ 'call', ...args ]); return { ok: true }; },
 				run_job: async (...args) => {
@@ -211,6 +212,7 @@ for (const answer of [ true, false ]) {
 			else {
 				page.inventory = E('div');
 				page.summary = E('p');
+				page.progress = E('p');
 				page.status = {};
 				const row = { name: 'xray-core', confirmation: model('updates').confirmation('xray-core', '2', '1') };
 				pending = page.package_button(row, 'rollback', true).attrs.click();

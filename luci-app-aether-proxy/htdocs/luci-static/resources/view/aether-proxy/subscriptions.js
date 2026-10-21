@@ -1,6 +1,6 @@
 'use strict';
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
-// Design: docs/10「订阅页（2026-10-16 定，T8.6）」「作业机制」.
+// Design: docs/10「订阅页（2026-10-16 定，T8.6）」「作业机制」「UI 规则」.
 'require view';
 'require form';
 'require uci';
@@ -17,10 +17,14 @@ return view.extend({
 		this.status = data[1];
 		this.busy = false;
 		this.root = E('div');
+		// Keep these nodes across redraws so the timer never targets a detached node.
+		this.progress = E('div');
+		this.summary = E('div');
 		return this.redraw().then(() => this.root);
 	},
 	redraw: function() {
 		const self = this;
+		const jobButtons = [];
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		const rows = Object.fromEntries(vm.rows.map(row => [row.id, row]));
@@ -38,6 +42,7 @@ return view.extend({
 				'disabled': !rows[id].can_update || null,
 				'click': ui.createHandlerFn(self, 'update', [id])
 			}, _('Update now', 'aether-proxy'));
+			jobButtons.push(button);
 			dom.content(td.lastChild, [button, ...Array.from(td.lastChild.childNodes)]);
 			return td;
 		};
@@ -79,12 +84,18 @@ return view.extend({
 		o.value('auto', _('Automatic', 'aether-proxy')); o.value('direct', _('Direct', 'aether-proxy')); o.value('proxy', _('Proxy', 'aether-proxy'));
 		o = s.option(form.Value, 'user_agent', _('User agent', 'aether-proxy')); o.modalonly = true;
 		return m.render().then(content => {
+			const updateAll = E('button', {
+				'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null,
+				'click': ui.createHandlerFn(self, 'update', [])
+			}, _('Update all', 'aether-proxy'));
+			jobButtons.push(updateAll);
 			dom.content(self.root, [
 				E('p', {}, vm.error),
 				E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add') }, _('Add', 'aether-proxy')),
-				E('button', { 'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null, 'click': ui.createHandlerFn(self, 'update', []) }, _('Update all', 'aether-proxy')),
-				content
+				updateAll,
+				self.progress, self.summary, content
 			]);
+			self.jobButtons = jobButtons;
 		});
 	},
 	add: function() {
@@ -92,18 +103,42 @@ return view.extend({
 		uci.add('aetherproxy', 'subscription', id);
 		return this.redraw().then(() => this.grid.renderMoreOptionsModal(id));
 	},
-	update: function(ids) {
-		const self = this;
+	update: async function(ids) {
 		this.busy = true;
-		const names = Object.fromEntries(model.build(uci.sections('aetherproxy', 'subscription'), this.status, Date.now() / 1000, true).rows.map(r => [r.id, r.name]));
-		return this.redraw().then(() => ap.run_job('sub_update', ids)).then(job => {
-			ui.addNotification(null, E('div', {}, model.job_result(job, names).map(text => E('p', {}, text))));
-			return Promise.all([uci.unload('aetherproxy').then(() => uci.load('aetherproxy')), ap.call('sub_status')]);
-		}).then(data => {
-			self.status = data[1];
-		}).finally(() => {
-			self.busy = false;
-			return self.redraw();
-		});
+		let timer;
+		try {
+			this.summary.replaceChildren();
+			timer = ap.job_progress(this.progress, _('Updating subscriptions…', 'aether-proxy'));
+			const rows = model.build(uci.sections('aetherproxy', 'subscription'),
+				this.status, Date.now() / 1000, true).rows;
+			const names = Object.fromEntries(rows.map(r => [r.id, r.name]));
+			await this.redraw();
+			const job = await ap.run_job('sub_update', ids);
+			timer.stop();
+			const lines = model.job_result(job, names);
+			this.summary.replaceChildren(...lines.map(text => E('p', {}, text)));
+			ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, text))));
+			const data = await Promise.all([
+				uci.unload('aetherproxy').then(() => uci.load('aetherproxy')), ap.call('sub_status')
+			]);
+			this.status = data[1];
+		}
+		catch (e) {
+			this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
+		}
+		finally {
+			this.busy = false;
+			if (timer)
+				timer.stop();
+			// A rendering error must not strand the previously rendered buttons.
+			for (const button of this.jobButtons ?? [])
+				button.disabled = false;
+			try {
+				await this.redraw();
+			}
+			catch (e) {
+				this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
+			}
+		}
 	}
 });

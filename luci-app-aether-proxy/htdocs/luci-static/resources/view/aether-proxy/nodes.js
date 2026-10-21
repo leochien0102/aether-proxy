@@ -18,7 +18,7 @@
  * fetched once and the probe column and progress line are refreshed. Setting a
  * node as current stages the UCI change and goes through LuCI's standard
  * save & apply with rollback confirmation; node edits use the GridSection
- * modal and form.Map's standard save flow.
+ * modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
  */
 
 return view.extend({
@@ -382,26 +382,43 @@ return view.extend({
 	   refresh the results and the progress line after every status update
 	   (docs/10 「节点页」). Both probe buttons are unavailable while the job
 	   is running. */
-	handleProbe: function(ev, ids) {
-		const self = this;
-
+	handleProbe: async function(ev, ids) {
 		if (this.probing)
 			return;
 
-		this.setProbing(true);
-
-		return ap.run_job('probe_nodes', ids ?? [], function() {
-			self.refreshResults();
-		}).then(function(job) {
-			return self.refreshResults().then(function() {
-				self.setProbing(false);
-
-				const text = model.job_failure_text(job);
-
-				if (text)
-					ui.addNotification(null, E('p', text));
+		let refresh = Promise.resolve(), refresh_error, refresh_failed = false;
+		try {
+			this.setProbing(true);
+			const job = await ap.run_job('probe_nodes', ids ?? [], () => {
+				/* run_job does not await on_update: retain failures for the job chain
+				 * and serialize refreshes so none reject unobserved or outlive cleanup. */
+				refresh = refresh.then(() => this.refreshResults()).catch(e => {
+					refresh_failed = true;
+					refresh_error = e;
+				});
 			});
-		});
+			await refresh;
+			if (refresh_failed)
+				throw refresh_error;
+			await this.refreshResults();
+			const text = model.job_failure_text(job);
+			if (text)
+				ui.addNotification(null, E('p', text));
+		}
+		catch (e) {
+			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e))));
+		}
+		finally {
+			await refresh;
+			try {
+				this.setProbing(false);
+			}
+			catch (e) {
+				ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
+					.format(e?.message ?? String(e))));
+			}
+		}
 	},
 
 	handleProbeAll: function(ev) {

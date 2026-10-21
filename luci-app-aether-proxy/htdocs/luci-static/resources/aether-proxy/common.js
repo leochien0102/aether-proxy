@@ -13,7 +13,7 @@
  * further calls wait in a FIFO queue (docs/10 「UI 规则」: 为 uhttpd 的
  * max_requests 3 留出余量). Module loading also checks for a stale browser
  * copy of this script (docs/10 「页面脚本过期检测」), independently of RPC.
- * Confirmations use a shared themed modal (docs/10 「UI 规则」).
+ * Confirmations and elapsed job progress follow docs/10 「UI 规则」.
  */
 
 var SCRIPT_VERSION = '@@VERSION@@';
@@ -203,6 +203,26 @@ var ap = baseclass.extend({
 	TIMEOUTS: TIMEOUTS,
 
 	call: call,
+
+	/* Use elapsed wall time, not tick counts: background tabs can delay timers. */
+	job_progress: function(target, text) {
+		const started = Date.now();
+		let stopped = false;
+		const update = function() {
+			if (!stopped)
+				target.textContent = _('%s (elapsed %s seconds)', 'aether-proxy')
+					.format(text, Math.floor((Date.now() - started) / 1000));
+		};
+		update();
+		const timer = setInterval(update, 1000);
+		return {
+			stop: function() {
+				stopped = true;
+				clearInterval(timer);
+				target.textContent = '';
+			}
+		};
+	},
 
 	/* docs/10 「UI 规则」: keep confirmations in the active LuCI theme and
 	   close the modal before allowing the caller to perform its action. */

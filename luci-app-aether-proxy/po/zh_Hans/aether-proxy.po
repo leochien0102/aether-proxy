@@ -1148,8 +1148,44 @@ msgid "The service will restart."
 msgstr "服务会重启。"
 
 msgctxt "aether-proxy"
-msgid "Not in the release channel; install or update from feeds on the Software page."
-msgstr "不进发布通道，请在软件包页面从软件源安装或更新。"
+msgid "Not automatically updated through the release channel: install or update from feeds on the Software page, or download the chinadns-ng package%s from the release page and install it manually."
+msgstr "不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包%s手工安装。"
+
+msgctxt "aether-proxy"
+msgid " (device architecture %s)"
+msgstr "（本机架构 %s）"
+
+msgctxt "aether-proxy"
+msgid "Or download the chinadns-ng package from the release page and install it manually."
+msgstr "或从发布页下载 chinadns-ng 包手工安装。"
+
+msgctxt "aether-proxy"
+msgid "%s (elapsed %s seconds)"
+msgstr "%s（已用 %s 秒）"
+
+msgctxt "aether-proxy"
+msgid "Updating rule data…"
+msgstr "正在更新规则数据…"
+
+msgctxt "aether-proxy"
+msgid "Checking for updates…"
+msgstr "正在检查更新…"
+
+msgctxt "aether-proxy"
+msgid "Installing %s…"
+msgstr "正在安装 %s…"
+
+msgctxt "aether-proxy"
+msgid "Rolling back %s…"
+msgstr "正在回滚 %s…"
+
+msgctxt "aether-proxy"
+msgid "Updating subscriptions…"
+msgstr "正在更新订阅…"
+
+msgctxt "aether-proxy"
+msgid "Operation failed: %s"
+msgstr "操作失败：%s"
 
 msgctxt "aether-proxy"
 msgid "Check complete: %s packages have updates"

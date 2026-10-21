@@ -126,7 +126,10 @@ function notice_text(n) {
 
 	switch (n.code) {
 		case 'COMPONENT_MISSING':
-			return fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'), args.component ?? '?');
+			return fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'),
+				args.component ?? '?') + (args.component == 'chinadns-ng' ? ' ' +
+				_('Or download the chinadns-ng package from the release page and install it manually.',
+					'aether-proxy') : '');
 
 		case 'UPDATE_AVAILABLE':
 			return fmt(_('An update for %s is available (%s).', 'aether-proxy'), args.package ?? '?', args.available ?? '?');
