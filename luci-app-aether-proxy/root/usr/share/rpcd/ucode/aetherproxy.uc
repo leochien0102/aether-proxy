@@ -363,6 +363,17 @@ const methods = {
 		args: { source: '', lines: 0 }
 	},
 
+	// T9.13 (docs/10 "node parse"): read-only, with the same URI gate as import.
+	node_parse: {
+		call: function(req) {
+			let uri = req?.args?.uri;
+			if (type(uri) != 'string' || length(uri) > URI_MAX_BYTES || match(uri, URI_SCHEME_RE) == null)
+				return usage(`uri must be a node share URI (at most ${URI_MAX_BYTES} bytes)`);
+			return call_cli([ 'node', 'parse', uri ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: { uri: '' }
+	},
+
 	node_import: {
 		call: function(req) {
 			let uri = req?.args?.uri;

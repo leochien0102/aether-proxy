@@ -462,7 +462,7 @@ function scenario_10() {
 	let app = acl?.['luci-app-aether-proxy'];
 
 	expect_eq('10. ACL read methods match the read-only whitelist including stats',
-		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log',
+		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log', 'node_parse',
 			'probe_results', 'probe_sites', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
@@ -476,7 +476,7 @@ function scenario_10() {
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
-			'node_import', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
+			'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
 			'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
@@ -516,7 +516,7 @@ function scenario_10() {
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
-		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read',
+		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
 		service: 'write', check: 'write', job_start: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
@@ -795,6 +795,7 @@ function scenario_sessions() {
 		node_use: { args: { id: node_id(1) }, argv: [ 'node', 'use', node_id(1) ] },
 		log: { args: { source: 'dns', lines: 1 }, argv: [ 'log', '--source', 'dns', '--lines', '1' ] },
 		node_import: { args: { uri: 'vless://uuid@host:443' }, argv: [ 'node', 'import', 'vless://uuid@host:443' ] },
+		node_parse: { args: { uri: 'trojan://pw@host:443' }, argv: [ 'node', 'parse', 'trojan://pw@host:443' ] },
 		list_file: { args: { name: 'direct_ip' }, argv: [ 'custom', 'get', 'direct_ip' ] },
 		save_file: { args: { name: 'direct_ip', content: '1.2.3.4' },
 			argv: [ 'custom', 'set', 'direct_ip', '--content', '1.2.3.4' ] }
@@ -868,6 +869,41 @@ function scenario_node_probe() {
 	}
 }
 
+// T9.13 docs/10: node_parse is a read-only, ten-second forward with the import gate.
+function scenario_node_parse() {
+	let data = { ok: true, node: { protocol: 'trojan', port: '443', alpn: [ 'h2', 'http/1.1' ] } };
+	stub_ctrl({ exit: 0, stdout: show(data) });
+	for (let uri in [ 'trojan://pw@host:443', 'ss://encoded@host:443#x;$(id)',
+		'trojan://' + repeat_str('a', 4087) ]) {
+		let argv_of = watch_cli();
+		let r = methods.node_parse.call({ args: { uri, ubus_rpc_session: 'token' } });
+		check('T9.13 node_parse valid/session/boundary: exact argv and unchanged JSON',
+			deep_eq(argv_of(), [ 'node', 'parse', uri, '--json' ]) && deep_eq(r, data), show(r));
+	}
+	let rejects = [ {}, { uri: '' }, { uri: 1 }, { uri: [] }, { uri: null },
+		{ uri: 'foo' }, { uri: '-vless://host' }, { uri: '1bad://host' },
+		{ uri: 'trojan://' + repeat_str('a', 4088) },
+		{ uri: 'trojan://' + repeat_str('中', 1400) } ];
+	for (let args in rejects) {
+		let argv_of = watch_cli();
+		let r = methods.node_parse.call({ args: { ...args, ubus_rpc_session: 'token' } });
+		check('T9.13 node_parse invalid value: USAGE without CLI execution',
+			r.ok === false && r.code == 'USAGE' && argv_of() == null, show(r));
+	}
+	check('T9.13 node_parse declares uri string', deep_eq(methods.node_parse.args, { uri: '' }));
+	let failure = { ok: false, code: 'CONFIG_INVALID', detail: 'unsupported_scheme' };
+	stub_ctrl({ exit: 2, stdout: show(failure) });
+	check('T9.13 node_parse failure: CLI JSON forwarded unchanged',
+		deep_eq(methods.node_parse.call({ args: { uri: 'unknown://host' } }), failure));
+
+	// Inspect the actual execution options without waiting another ten seconds.
+	let src = replace(plugin_src, "import * as sys from 'aetherproxy.sys';",
+		"const sys = { run: (argv, opts) => ({ stdout: sprintf('%J', { timeout: opts.timeout }) }) };");
+	let instrumented = loadstring(src)().aetherproxy;
+	expect_eq('T9.13 node_parse forwarding timeout is 10 seconds', 10,
+		instrumented.node_parse.call({ args: { uri: 'trojan://pw@host:443' } }).timeout);
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -891,6 +927,7 @@ scenario_18();
 scenario_components();
 scenario_sessions();
 scenario_node_probe();
+scenario_node_parse();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

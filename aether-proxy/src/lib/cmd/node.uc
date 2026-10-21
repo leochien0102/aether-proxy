@@ -1,6 +1,6 @@
 'use strict';
 
-// Node import and committed node selection (docs/10 "node import" and "切换节点").
+// Node parse/import and committed node selection (docs/10 "node parse" and "切换节点").
 // Selection only changes main.node; session/global UCI deltas must never be committed here.
 
 import * as fs from 'fs';
@@ -13,7 +13,10 @@ import * as sys from 'aetherproxy.sys';
 import * as node from 'aetherproxy.node';
 import * as pipeline from 'aetherproxy.pipeline';
 
-const USAGE = 'Usage: aether-proxy node import <uri> | node use <id> [--json] [--confdir <dir>]';
+const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--json] [--confdir <dir>]';
+// Match the node_import RPC boundary (docs/10); these are input limits, not system paths.
+const URI_MAX_BYTES = 4096;
+const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const CONTEXT_OPTIONS = { '--confdir': 'confdir', '--run-dir': 'run_dir', '--sys-root': 'sys_root' };
 
 function parse_args(args) {
@@ -99,12 +102,28 @@ function use_node(opts, id) {
 	return pipeline.finish(opts, { ok: true, node: id, previous, reload }, 0, `selected ${id}`);
 }
 
+function parse_node(opts, line) {
+	// TODO(design): legacy CLI import accepts bare/oversized input, unlike its RPC
+	// boundary and docs/10. Enforce the specified parse boundary without changing
+	// import's existing error contract; unifying that legacy behavior needs a decision.
+	if (length(line) > URI_MAX_BYTES || match(line, URI_SCHEME_RE) == null)
+		return pipeline.finish(opts,
+			{ ok: false, code: 'USAGE', detail: `uri must be a node share URI (at most ${URI_MAX_BYTES} bytes)` },
+			2, USAGE);
+	let value = node.parse_node(line);
+	return pipeline.finish(opts, value, value.ok ? 0 : 2,
+		value.ok ? sprintf('%.J', value) : `${value.code}: ${value.detail}`);
+}
+
 export function run(args) {
 	let parsed = parse_args(args);
 	if (parsed.error)
 		return pipeline.finish({ json: index(args, '--json') >= 0 },
 			{ ok: false, code: 'USAGE', detail: parsed.error }, 2,
 			`${parsed.error}\n${USAGE}`);
+
+	if (parsed.positional[0] == 'parse' && length(parsed.positional) == 2)
+		return parse_node(parsed.opts, parsed.positional[1]);
 
 	if (parsed.positional[0] == 'use' && length(parsed.positional) == 2)
 		return use_node(parsed.opts, parsed.positional[1]);

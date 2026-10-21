@@ -1,9 +1,9 @@
 'use strict';
 
-// Manual node import (docs/10 "`log`、`node import`、`custom`", 2026-10-16).
+// Manual node import and read-only parsing (docs/10 "`log`、`node import`、`custom`").
 //
-// plan_changes() and strong_keys() are pure (docs/12 rule 1): they map one parsed node to
-// the ordered UCI operations for a new manual section. import_node() owns all I/O and
+// node_options(), parse_node(), plan_changes() and strong_keys() are pure (docs/12
+// rule 1): parsing and planning never touch configuration. import_node() owns all I/O and
 // reuses the subscription write path from sub.uc: stage under a renamed package, then
 // replace the original only when it is unchanged in the meantime (docs/06 "原子应用"
 // steps 3 and 5). Unlike a subscription update it never reloads: a new node is never the
@@ -30,32 +30,41 @@ function fs_error() {
 	return fs.error() ?? 'unknown error';
 }
 
-// Pure: the UCI changes that create one manual node section. The label falls back to
-// "<address>:<port>" when the URI carried no name (docs/10).
+// Pure: share exactly the UCI value conversion between parse and import (docs/10).
+// Metadata belongs to the writer, never to the form populated by `node parse`.
+export function node_options(node) {
+	let desired = { ...node, label: node.label ?? `${node.address}:${node.port}` };
+	let options = {};
+	for (let field in NODE_OPTION_FIELDS) {
+		if (index([ 'source', 'match_strong', 'match_weak' ], field) >= 0)
+			continue;
+		let value = desired[field];
+		if (value == null || (field == 'alpn' && type(value) == 'array' && !length(value)))
+			continue;
+		// UCI stores strings; parsed ports arrive as numbers. Lists stay arrays.
+		options[field] = type(value) == 'array' ? [ ...value ] : `${value}`;
+	}
+	return options;
+};
+
+// Pure: warnings are intentionally discarded here, not recorded as events (docs/10).
+export function parse_node(line) {
+	let parsed = uri.parse_line(line ?? '');
+	if (parsed?.node == null)
+		return { ok: false, code: 'CONFIG_INVALID', detail: parsed?.skip ?? 'malformed' };
+	return { ok: true, node: node_options(parsed.node) };
+};
+
+// Pure: retain the import operation order while adding writer-only metadata.
 export function plan_changes(node, id) {
 	let keys = identity.keys(node);
 	let desired = {
-		...node,
-		label: node.label ?? `${node.address}:${node.port}`,
-		source: 'manual',
-		match_strong: keys.strong,
-		match_weak: keys.weak
+		...node_options(node), source: 'manual', match_strong: keys.strong, match_weak: keys.weak
 	};
 	let changes = [ { op: 'add', section: id, value: 'node' } ];
-
-	for (let field in NODE_OPTION_FIELDS) {
-		let value = desired[field];
-
-		if (field == 'alpn' && type(value) == 'array' && !length(value))
-			continue;
-
-		if (value == null)
-			continue;
-
-		// UCI stores strings; parsed ports arrive as numbers.
-		push(changes, { op: 'set', section: id, option: field, value: type(value) == 'int' ? `${value}` : value });
-	}
-
+	for (let field in NODE_OPTION_FIELDS)
+		if (desired[field] != null)
+			push(changes, { op: 'set', section: id, option: field, value: desired[field] });
 	return { id, changes, keys };
 };
 
