@@ -71,6 +71,7 @@ var METHODS = {
 	stats: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
+	node_parse: [ 'uri' ],
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
 };

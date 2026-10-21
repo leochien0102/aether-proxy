@@ -69,13 +69,9 @@ const PLUGIN_METHODS = {
 	stats: [],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
+	node_parse: [ 'uri' ],
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
-};
-
-/* T9.13: backend methods awaiting their frontend card (T10.26). */
-const BACKEND_ONLY_METHODS = {
-	node_parse: [ 'uri' ]
 };
 
 test('scenario 9: static checks — shared RPC method set, page requires, no reset buttons, po complete', async (t) => {
@@ -102,8 +98,8 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 		...acl['luci-app-aether-proxy'].write.ubus.aetherproxy
 	].sort();
 
-	assert.deepEqual(aclMethods, Object.keys({ ...PLUGIN_METHODS, ...BACKEND_ONLY_METHODS }).sort(),
-		'ACL sanity: exactly the frontend and backend-only methods');
+	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(),
+		'ACL sanity: exactly the frontend methods');
 
 	const rpc = createRpc();
 	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o }, ui: {} }, {
@@ -123,7 +119,7 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 		assert.deepEqual(declared[method].params, params, `declaration of ${method} carries the documented params`);
 
 	const plugin = read(PLUGIN);
-	for (const [ method, params ] of Object.entries({ ...PLUGIN_METHODS, ...BACKEND_ONLY_METHODS })) {
+	for (const [ method, params ] of Object.entries(PLUGIN_METHODS)) {
 		const block = plugin.match(new RegExp(`^\\t${method}:\\s*\\{([\\s\\S]*?)^\\t\\}`, 'm'));
 		assert.ok(block, `the plugin implements ${method}`);
 		const args = block[1].match(/^\s*args:\s*\{([^}]*)\}/m);

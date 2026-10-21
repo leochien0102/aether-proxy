@@ -62,7 +62,7 @@ const RESULTS = {
 	pending: []
 };
 
-test('scenario 6: rows — stale name, summary with defaults, source, current mark, allowed operations', () => {
+test('scenario 6: rows — stale name, protocol and transport defaults, source, current mark, allowed operations', () => {
 	const sections = [
 		section('n_ok', { label: 'Edge Node', transport: 'ws', security: 'tls' }),
 		section('n_defaults', { protocol: 'trojan', source: 'manual' }),
@@ -79,7 +79,8 @@ test('scenario 6: rows — stale name, summary with defaults, source, current ma
 	assert.deepEqual(vm.rows.map((r) => r.id), [ 'n_ok', 'n_defaults', 'n_sub', 'n_ghostsub' ]);
 
 	assert.equal(rows.n_ok.name, 'Edge Node');
-	assert.equal(rows.n_ok.summary, 'vless / ws / tls');
+	assert.equal(rows.n_ok.protocol, 'VLESS');
+	assert.equal(rows.n_ok.transport_security, 'ws / tls');
 	assert.equal(rows.n_ok.source, tr('Manual'));
 	assert.equal(rows.n_ok.current, true);
 	assert.equal(rows.n_ok.stale, false);
@@ -87,7 +88,8 @@ test('scenario 6: rows — stale name, summary with defaults, source, current ma
 	assert.equal(rows.n_ok.can_delete, false);
 
 	/* missing transport/security fall back to raw/none (docs/05 defaults) */
-	assert.equal(rows.n_defaults.summary, 'trojan / raw / none');
+	assert.equal(rows.n_defaults.protocol, 'Trojan');
+	assert.equal(rows.n_defaults.transport_security, 'raw / none');
 	assert.equal(rows.n_defaults.can_set_current, true);
 	assert.equal(rows.n_defaults.can_delete, true);
 
@@ -231,7 +233,8 @@ test('scenario 9: static view checks — GridSection, confirmed remove, node_use
 
 	/* Direct switching leaves unrelated session changes untouched (T10.23). */
 	assert.match(src, /ap\.call\('node_use', \{ id: section_id \}\)/);
-	assert.doesNotMatch(src, /uci\.(set|save)\(|ui\.changes\.apply\(/);
+	const switchSource = src.slice(src.indexOf('handleSetCurrent: async'), src.indexOf('handleImport: function'));
+	assert.doesNotMatch(switchSource, /uci\.(set|save)\(|ui\.changes\.apply\(/);
 
 	/* probing is a background job; results refresh through probe_results */
 	assert.match(src, /ap\.run_job\(/);

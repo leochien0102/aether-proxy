@@ -16,6 +16,7 @@
  * pending IDs cover the gap before the first job refresh (docs/10 「节点页修正」).
  * Direct switch feedback follows docs/10 「检测真实延迟与切换节点」 (T10.23).
  * Selection marks, stale names and switch locking follow 「节点页第二轮修正」 (T10.25).
+ * Protocol columns and manual node IDs follow 「节点表的协议列」「添加节点」 (T10.26).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -39,10 +40,18 @@ function sections_of(sections) {
 	return Array.isArray(sections) ? sections : [];
 }
 
-/* docs/10 「节点页」: `protocol / transport / security`, with the config defaults
-   raw / none filled in for missing values (docs/05 「config node」). */
-function summary_text(s) {
-	return [ s.protocol ?? '–', s.transport ?? 'raw', s.security ?? 'none' ].join(' / ');
+/* docs/10 「节点表的协议列」: protocol names are separate from the transport
+   diagnostics, with defaults from docs/05 「config node」. */
+const PROTOCOL_NAMES = {
+	vless: _('VLESS', 'aether-proxy'),
+	vmess: _('VMess', 'aether-proxy'),
+	trojan: _('Trojan', 'aether-proxy'),
+	shadowsocks: _('Shadowsocks', 'aether-proxy')
+};
+
+function protocol_text(protocol) {
+	return Object.prototype.hasOwnProperty.call(PROTOCOL_NAMES, protocol)
+		? PROTOCOL_NAMES[protocol] : (protocol || '–');
 }
 
 /* docs/10: 「手动」 or the subscription's name; a source naming a subscription
@@ -102,8 +111,32 @@ function probe_column(id, results, local_pending) {
 	return text ?? String(res.error ?? '?');
 }
 
+/* Only these fields come from node_parse (docs/05 「config node」). Clearing
+   them prevents credentials/transport settings from a previous URI leaking
+   into the next one; source, stale and match_* are not protocol fields. */
+const NODE_FIELDS = [
+	'label', 'protocol', 'address', 'port', 'uuid', 'password', 'method', 'flow', 'encryption',
+	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
+	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
+	'reality_pbk', 'reality_sid', 'reality_spx'
+];
+
 return baseclass.extend({
 	probe_column,
+	node_fields: NODE_FIELDS,
+
+	/* Random bytes are injected by the view, keeping UUID/collision tests pure.
+	   Work on a copy so setting UUID bits never changes the caller's buffer. */
+	new_id: function(existing, bytes) {
+		let id;
+		do {
+			const random = Array.from(bytes());
+			random[6] = (random[6] & 0x0f) | 0x40;
+			random[8] = (random[8] & 0x3f) | 0x80;
+			id = 'n_' + random.map(b => b.toString(16).padStart(2, '0')).join('');
+		} while (existing.includes(id));
+		return id;
+	},
 
 	/* A stopped service uses the configured node on its next start. */
 	switch_pending: function(status, current) {
@@ -155,7 +188,8 @@ return baseclass.extend({
 					+ (s.stale == '1' ? _('(stale)', 'aether-proxy') : ''),
 				stale: s.stale == '1',
 				current: id === current,
-				summary: summary_text(s),
+				protocol: protocol_text(s.protocol),
+				transport_security: [ s.transport || 'raw', s.security || 'none' ].join(' / '),
 				source: source_text(s, submap),
 				probe: probe_column(id, results, local_pending),
 				/* docs/10: the current node can neither be deleted nor be

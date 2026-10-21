@@ -539,7 +539,7 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 	await render(h);
 	const section = h.maps[0].sections[0];
 	const headers = find(h.root, node => node.tag === 'th').map(text);
-	assert.deepEqual(headers, ['', '名称', '协议 / 传输 / 安全层', '来源', '选用', 'TCP 可达／延迟']);
+	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', 'TCP 可达／延迟']);
 	assert.ok(!section.options.some(option => option.field === '_address'));
 	for (const id of ['n_a', 'n_b']) {
 		const edit = buttons(actions(h, id)).find(node => text(node) === '编辑');

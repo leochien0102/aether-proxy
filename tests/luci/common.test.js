@@ -168,6 +168,24 @@ test('T10.23 scenario 5: node_use/probe_sites parameters and probe_url 35s settl
 	assert.equal(seen.length, 1);
 });
 
+test('T10.26 scenario 5: node_parse passes uri unchanged and uses the shared 15s timeout', async (t) => {
+	const { ap, rpc } = setup(t);
+	const uri = 'vless://opaque@edge.example:443#Name';
+	const reply = { ok: true, node: { label: 'Name', alpn: ['h2'] } };
+	rpc.setHandler(() => reply);
+	assert.deepEqual(await ap.call('node_parse', { uri }), reply);
+	assert.deepEqual(rpc.calls, [{ object: 'aetherproxy', method: 'node_parse', params: { uri } }]);
+	const late = deferred();
+	rpc.setHandler(() => late.promise);
+	const pending = ap.call('node_parse', { uri });
+	t.mock.timers.tick(15000);
+	await flush();
+	assert.deepEqual(await pending, { ok: false, code: 'TIMEOUT', detail: 'node_parse did not answer in 15s' });
+	late.resolve(reply);
+	await flush();
+	assert.equal(rpc.calls.length, 2);
+});
+
 test('T10.4 components: declared without parameters, 20s hard timeout ignores late reply', async (t) => {
 	const { ap, rpc } = setup(t);
 	assert.equal(ap.TIMEOUTS.components, 20);

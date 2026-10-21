@@ -22,6 +22,7 @@
  * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
  * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
  * Editing, multi-delete and bounded switch locking follow 「节点页第二轮修正」 (T10.25).
+ * Manual additions and separate protocol columns follow 「添加节点」「节点表的协议列」 (T10.26).
  */
 
 return view.extend({
@@ -121,8 +122,17 @@ return view.extend({
 			// Keep the selection-dependent disabled state after the promise settles.
 			'click': () => self.handleDeleteSelected()
 		}, _('Delete selected', 'aether-proxy'));
-		const controls = E('div', { 'class': 'cbi-map-descr' },
-			[ probeAll, ' ', this.deleteSelected, ' ', importBox ]);
+		const addNode = E('button', {
+			'class': 'btn cbi-button cbi-button-add',
+			'click': ui.createHandlerFn(self, 'handleAddNode')
+		}, _('Add node', 'aether-proxy'));
+		const controls = E('div', { 'class': 'cbi-map-descr' }, [
+			E('div', {
+				'style': 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+			}, [ probeAll, this.deleteSelected, addNode ]),
+			importBox
+		]);
 
 		const mapNodePromise = this.buildMap().render();
 
@@ -147,13 +157,13 @@ return view.extend({
 		this.nodeMap = m;
 
 		s = m.section(form.GridSection, 'node');
+		this.nodeGrid = s;
 		s.addremove = true;
 		// Keep the named UCI IDs, but do not expose a redundant section-name column.
 		s.anonymous = true;
 
-		/* Nodes are named sections (n_<32 hex digits>, docs/05 「config node」)
-		   and are added via the URI import, so the grid's generic add button
-		   (which would create an anonymous section) is not rendered. */
+		/* Both manual addition and URI import create named node IDs. The grid's
+		   generic add button would create an anonymous section instead. */
 		s.renderSectionAdd = function() {
 			return E([]);
 		};
@@ -234,13 +244,48 @@ return view.extend({
 				});
 		};
 
-		/* Subscription nodes warn about being overwritten before the modal is
-		   entered (docs/10 「节点页」). */
+		/* Call the captured GridSection handlers, not this.super(): an instance
+		   override's super would skip GridSection and lose addedSection cleanup.
+		   Its Cancel removes a new section; isSaving preserves it after Save.
+		   Never unload UCI here: that would discard unrelated session edits. */
+		const cancelModal = s.handleModalCancel;
+		const saveModal = s.handleModalSave;
+		s.handleModalCancel = function(modalMap, ev, isSaving) {
+			const added = self.pendingAdd;
+			self.pendingAdd = null;
+			return Promise.resolve(cancelModal.call(this, modalMap, ev, isSaving))
+				.then(async () => {
+					if (added && isSaving) {
+						// Refresh the row model without losing unrelated bulk-import input.
+						const importText = self.importText.value;
+						dom.content(self.root, await self.buildPage());
+						self.importText.value = importText;
+						self.updateProbeColumns();
+					}
+				});
+		};
+		s.handleModalSave = function(...args) {
+			const added = self.pendingAdd;
+			if (added)
+				added.saving = true;
+			return Promise.resolve(saveModal.apply(this, args)).finally(() => {
+				if (added)
+					added.saving = false;
+			});
+		};
+
+		/* Subscription hints remain first on existing nodes. Only a new manual
+		   node gets the share-link widget, before the cloned protocol fields. */
 		s.addModalOptions = function(modalSection, section_id) {
 			const row = rowMap[section_id];
-
 			if (row && row.modal_hint)
 				modalSection.description = row.modal_hint;
+			if (self.pendingAdd?.id === section_id) {
+				const share = modalSection.option(form.DummyValue, '_share',
+					_('Fill from share link', 'aether-proxy'));
+				share.renderWidget = () => self.shareLinkWidget(self.pendingAdd);
+				modalSection.children.unshift(modalSection.children.pop());
+			}
 		};
 
 		/* A DummyValue title may be a DOM node in LuCI. This keeps the checkbox
@@ -287,11 +332,16 @@ return view.extend({
 			return E('span', { 'style': row?.stale ? 'opacity:0.6' : null }, row ? row.name : section_id);
 		};
 
-		o = s.option(form.DummyValue, '_summary', _('Protocol / Transport / Security', 'aether-proxy'));
+		o = s.option(form.DummyValue, '_protocol', _('Protocol', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
-			const row = rowMap[section_id];
-			return row ? row.summary : '–';
+			return rowMap[section_id]?.protocol ?? '–';
+		};
+
+		o = s.option(form.DummyValue, '_transport_security', _('Transport / Security', 'aether-proxy'));
+		o.modalonly = false;
+		o.textvalue = function(section_id) {
+			return rowMap[section_id]?.transport_security ?? 'raw / none';
 		};
 
 		o = s.option(form.DummyValue, '_source', _('Source', 'aether-proxy'));
@@ -330,10 +380,10 @@ return view.extend({
 
 		o = s.option(form.ListValue, 'protocol', _('Protocol', 'aether-proxy'));
 		o.modalonly = true;
-		o.value('vless', 'VLESS');
-		o.value('vmess', 'VMess');
-		o.value('trojan', 'Trojan');
-		o.value('shadowsocks', 'Shadowsocks');
+		o.value('vless', _('VLESS', 'aether-proxy'));
+		o.value('vmess', _('VMess', 'aether-proxy'));
+		o.value('trojan', _('Trojan', 'aether-proxy'));
+		o.value('shadowsocks', _('Shadowsocks', 'aether-proxy'));
 
 		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
@@ -449,6 +499,68 @@ return view.extend({
 		o.depends('security', 'reality');
 
 		return m;
+	},
+
+	/* Follow GridSection.handleAdd without its anonymous section creation.
+	   Do not redraw the table until Save: Cancel must leave the table intact. */
+	handleAddNode: async function() {
+		if (this.pendingAdd)
+			return;
+		const id = model.new_id(uci.sections('aetherproxy').map(s => s['.name']),
+			() => window.crypto.getRandomValues(new Uint8Array(16)));
+		try {
+			uci.add('aetherproxy', 'node', id);
+			uci.set('aetherproxy', id, 'source', 'manual');
+			this.pendingAdd = { id, uri: '' };
+			this.nodeMap.addedSection = id;
+			await this.nodeGrid.renderMoreOptionsModal(id);
+		}
+		catch (e) {
+			uci.remove('aetherproxy', id);
+			delete this.nodeMap.addedSection;
+			this.pendingAdd = null;
+			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e))));
+		}
+	},
+
+	shareLinkWidget: function(added) {
+		const input = E('input', {
+			'type': 'text', 'class': 'cbi-input-text', 'value': added.uri
+		});
+		const error = E('div');
+		return E('div', {}, [
+			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+				input,
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, () => this.handleParseNode(added, input, error))
+				}, _('Parse', 'aether-proxy'))
+			]),
+			error
+		]);
+	},
+
+	handleParseNode: async function(added, input, error) {
+		added.uri = input.value;
+		const reply = await ap.call('node_parse', { uri: added.uri });
+		// A late reply after Cancel must not recreate the removed section.
+		if (this.pendingAdd !== added)
+			return;
+		/* TODO(design): Save racing with Parse is unspecified. Ignore the reply
+		   during Save rather than mutate the data while LuCI is validating it. */
+		if (added.saving)
+			return;
+		if (!reply.ok) {
+			error.textContent = _('Unable to parse: %s', 'aether-proxy').format(reply.detail || reply.code);
+			return;
+		}
+		for (const field of model.node_fields)
+			uci.unset('aetherproxy', added.id, field);
+		for (const [field, value] of Object.entries(reply.node))
+			uci.set('aetherproxy', added.id, field, value);
+		// Same parent and section: LuCI replaces this modal without saving its old widgets.
+		return this.nodeGrid.renderMoreOptionsModal(added.id);
 	},
 
 	/* Recompute against live UCI: removal or switching may have invalidated a
