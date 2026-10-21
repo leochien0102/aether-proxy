@@ -357,6 +357,8 @@ sed -i "s/option node 'n_00000000000000000000000000000002'/option node 'n_000000
 old_calls=$(count_calls "$LOG" 'resolveip -4 -t 3 node.example.com')
 reload_checkpoint
 touch "$SYSROOT/delay-live-hash"
+# T9.12 review: no live table (nothing to export) and a measurable nft check.
+rm -f "$SYSROOT/nft-table"; touch "$SYSROOT/nft-check-sleep"
 kill -HUP "$DAEMON_PID"
 wait_field node_id n_00000000000000000000000000000001 \
 	&& ok 'T9.5 switches back to original node using retained LKG during DNS outage' \
@@ -370,7 +372,8 @@ expect 'T9.5 switch back records exactly one fallback' 1 \
 expect 'T9.5 switch back never records resolve failure' 0 \
 	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_FAILED')"
 
-assert_applied signal-timing "$NODE_B" "$NODE_A" nft_replace,restart_xray 900
+EXPECT_NO_EXPORT=1 NFT_CHECK_MIN=550 assert_applied signal-timing "$NODE_B" "$NODE_A" nft_replace,restart_xray 900
+rm -f "$SYSROOT/nft-check-sleep"
 [ ! -e "$SYSROOT/delay-live-hash" ] \
 	&& ok 'T9.8 elapsed includes delayed live hashing after SIGHUP' \
 	|| bad 'T9.8 elapsed includes delayed live hashing after SIGHUP'

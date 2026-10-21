@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate the latest committed reload event against docs/04's public contract."""
 import json
+import os
 import sys
 
 path, from_node, to_node, actions = sys.argv[1:5]
@@ -36,10 +37,16 @@ groups = {
 if "restart_xray" in args["actions"]:
     groups["validate"].add("xray_test")
 if "nft_replace" in args["actions"]:
-    groups["sets_export_render"].update({"sets_export", "nft_render"})
+    groups["sets_export_render"].add("nft_render")
+    # No live table means nothing was exported, so no sets_export key either.
+    if os.environ.get("EXPECT_NO_EXPORT") != "1":
+        groups["sets_export_render"].add("sets_export")
 assert type(detail) is dict, args
 assert set(detail) == set().union(*groups.values()), args
 assert all(type(ms) is int and ms >= 0 for ms in detail.values()), args
 for parent, children in groups.items():
     assert sum(detail[key] for key in children) <= steps[parent], (parent, args)
+# Both nft passes accumulate into nft_check (the stub can make each one take 0.3 s).
+if os.environ.get("NFT_CHECK_MIN"):
+    assert detail["nft_check"] >= int(os.environ["NFT_CHECK_MIN"]), args
 print(json.dumps(args, ensure_ascii=False, sort_keys=True))
