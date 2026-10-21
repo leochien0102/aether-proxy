@@ -163,6 +163,18 @@ test('scenario 7: probe column — pending, latency, the five errors, unprobed; 
 	assert.equal(vm3.rows[0].probe, tr('%s ms (%s/3)', 90, 1));
 });
 
+test('T10.19 scenario 3: local pending overrides unread, failed and stale results only for selected IDs', () => {
+	const model = loadModule(MODEL, { baseclass: { extend: o => o } }, {});
+	for (const results of [undefined, { ok: false, code: 'TIMEOUT' }, RESULTS]) {
+		assert.equal(model.probe_column('n_ok', results, ['n_ok']), tr('Probing…'));
+		assert.equal(model.probe_column('n_fail', results, ['n_ok']),
+			model.probe_column('n_fail', results));
+		const rows = model.build([section('n_ok'), section('n_fail')], null, [], results, ['n_ok']).rows;
+		assert.equal(rows[0].probe, tr('Probing…'));
+		assert.equal(rows[1].probe, model.probe_column('n_fail', results));
+	}
+});
+
 test('scenario 8: import — split keeps line numbers, the three reply kinds are tallied', () => {
 	const model = loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: { addEventListener() {}, removeEventListener() {} } });
 

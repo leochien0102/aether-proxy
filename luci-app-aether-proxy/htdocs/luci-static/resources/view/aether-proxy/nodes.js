@@ -20,6 +20,7 @@
  * save & apply with rollback confirmation; node edits use the GridSection
  * modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
  * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
+ * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
  */
 
 return view.extend({
@@ -31,6 +32,7 @@ return view.extend({
 		this.results = undefined;
 		this.resultsRequest = 0;
 		this.probing = false;
+		this.pendingProbes = [];
 
 		const root = E('div', { 'class': 'cbi-map' });
 		this.root = root;
@@ -130,6 +132,8 @@ return view.extend({
 
 		s = m.section(form.GridSection, 'node');
 		s.addremove = true;
+		// Keep the named UCI IDs, but do not expose a redundant section-name column.
+		s.anonymous = true;
 
 		/* Nodes are named sections (n_<32 hex digits>, docs/05 「config node」)
 		   and are added via the URI import, so the grid's generic add button
@@ -162,13 +166,19 @@ return view.extend({
 			self.probeButtons.push(probeBtn);
 			extra.push(probeBtn);
 
-			/* builtins: [0] is Edit, [1] the Delete button (cbi-button-remove).
-			   The current node cannot be deleted (docs/10 「节点页」), so its
-			   delete button is not rendered at all. */
-			const builtins = tdEl.lastChild.childNodes;
-			const keep = row && !row.can_delete ? [ builtins[0] ] : [ builtins[0], builtins[1] ];
+			/* LuCI may supply only Delete, or Edit and Delete. Select by class,
+			   not position; keep the original nodes and their event handlers. */
+			const keep = Array.from(tdEl.lastChild.childNodes).filter(node =>
+				!(row && !row.can_delete && node.classList?.contains('cbi-button-remove')));
 
-			dom.content(tdEl.lastChild, [ ...extra, ...keep ]);
+			const actions = [ ...extra, ...keep ];
+			// Set nowrap on each button too, so theme rules cannot override inheritance.
+			for (const button of actions)
+				button.style = (button.style?.cssText ?? '') + ';white-space:nowrap';
+
+			dom.content(tdEl, E('div', {
+				'style': 'display:flex; flex-wrap:nowrap; gap:0.25em; align-items:center'
+			}, actions));
 
 			return tdEl;
 		};
@@ -248,7 +258,7 @@ return view.extend({
 			const span = E('span', {});
 			self.probeCells[section_id] = span;
 			// GridSection may render again after an edit without rebuilding the map.
-			dom.content(span, [ model.probe_column(section_id, self.results) ]);
+			dom.content(span, [ model.probe_column(section_id, self.results, self.pendingProbes) ]);
 			return span;
 		};
 
@@ -390,6 +400,10 @@ return view.extend({
 
 		let refresh = Promise.resolve(), refresh_error, refresh_failed = false;
 		try {
+			// Invalidate the initial read: it predates this job and can erase feedback.
+			this.resultsRequest = (this.resultsRequest ?? 0) + 1;
+			this.pendingProbes = ids?.length ? ids.slice()
+				: uci.sections('aetherproxy', 'node').map(node => node['.name']);
 			this.setProbing(true);
 			const job = await ap.run_job('probe_nodes', ids ?? [], () => {
 				/* run_job does not await on_update: retain failures for the job chain
@@ -414,6 +428,7 @@ return view.extend({
 		finally {
 			await refresh;
 			try {
+				this.pendingProbes = [];
 				this.setProbing(false);
 			}
 			catch (e) {
@@ -453,6 +468,9 @@ return view.extend({
 				return;
 			if ((res && res.ok !== false) || self.results === undefined)
 				self.results = res ?? { ok: false, code: 'RPC_FAILED' };
+			// Once available, the backend's pending list is authoritative.
+			if (res && res.ok !== false)
+				self.pendingProbes = [];
 
 			self.updateProbeColumns();
 		});
@@ -463,7 +481,8 @@ return view.extend({
 			uci.sections('aetherproxy', 'node'),
 			uci.get('aetherproxy', 'main', 'node'),
 			uci.sections('aetherproxy', 'subscription'),
-			this.results
+			this.results,
+			this.pendingProbes
 		);
 		const rows = {};
 
