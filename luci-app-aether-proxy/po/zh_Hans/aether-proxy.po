@@ -21,6 +21,10 @@ msgid "Service started in {elapsed_ms} ms"
 msgstr "服务已启动，耗时 {elapsed_ms} 毫秒"
 
 msgctxt "aether-proxy"
+msgid "Reloaded from node {from_node} to {to_node} in {elapsed_ms} ms"
+msgstr "已从节点 {from_node} 重载到 {to_node}，耗时 {elapsed_ms} 毫秒"
+
+msgctxt "aether-proxy"
 msgid "Service stopped (mode {mode}, node {node})"
 msgstr "服务已停止（模式 {mode}，节点 {node}）"
 

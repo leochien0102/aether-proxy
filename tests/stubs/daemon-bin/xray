@@ -18,6 +18,11 @@ if [ "$1" = version ]; then
 fi
 if [ "$1" = run ] && [ "$2" = -test ]; then
 	printf 'xray %s\n' "$*" >> "$STUB_LOG"
+	# Opt-in controls for failures after a daemon has already started.
+	if [ -f "$SYSROOT/xray-test-rc" ]; then
+		read -r rc < "$SYSROOT/xray-test-rc"
+		exit "$rc"
+	fi
 	exit "${STUB_XRAY_TEST_RC:-0}"
 fi
 if [ "$1" = run ] && [ "$2" = -c ]; then

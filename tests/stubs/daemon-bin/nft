@@ -1,8 +1,25 @@
 #!/bin/sh
 printf 'nft %s\n' "$*" >> "$STUB_LOG"
 case " $* " in
-	*" -c -f "*) exit "${STUB_NFT_CHECK_RC:-0}" ;;
+	*" -c -f "*)
+		# Arm a numbered artifact check only; the precheck kernel probe is separate.
+		case "$*" in
+			*/aether-proxy.nft)
+				if [ -f "$SYSROOT/nft-check-fail-after" ]; then
+					read -r left < "$SYSROOT/nft-check-fail-after"
+					left=$((left - 1))
+					printf '%s\n' "$left" > "$SYSROOT/nft-check-fail-after"
+					[ "$left" -eq 0 ] && { echo 'stub artifact validation failure' >&2; exit 1; }
+				fi
+				;;
+		esac
+		exit "${STUB_NFT_CHECK_RC:-0}"
+		;;
 	*" -f "*)
+		if [ -f "$SYSROOT/nft-load-fail" ]; then
+			echo 'stub armed load failure' >&2
+			exit 1
+		fi
 		if [ "${STUB_NFT_FAIL_ONCE:-0}" = 1 ] && [ ! -e "$SYSROOT/nft-failed-once" ]; then
 			touch "$SYSROOT/nft-failed-once"
 			echo 'stub nft load fails on the first runtime application' >&2

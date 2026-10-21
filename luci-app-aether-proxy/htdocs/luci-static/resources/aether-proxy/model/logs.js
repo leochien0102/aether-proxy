@@ -6,6 +6,7 @@
  */
 const TEMPLATES = {
 	SERVICE_STARTED: _('Service started in {elapsed_ms} ms', 'aether-proxy'),
+	RELOAD_APPLIED: _('Reloaded from node {from_node} to {to_node} in {elapsed_ms} ms', 'aether-proxy'),
 	SERVICE_STOPPED: _('Service stopped (mode {mode}, node {node})', 'aether-proxy'),
 	BUSY: _('Operation locked by {holder}', 'aether-proxy'),
 	CONFIG_INVALID: _('Invalid configuration: {field}, {reason}', 'aether-proxy'),

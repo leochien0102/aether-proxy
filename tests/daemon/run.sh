@@ -415,11 +415,12 @@ printf 'TRACE delayed IP reload: xray_down_count=%s state=%s\n' \
 	"$(jget state < "$RP/var/run/aether-proxy/state.json")"
 
 probe_count=$(count_calls "$LP" 'curl ')
-validation_count=$(count_calls "$LP" 'xray run -test')
+validation_count=$(count_calls "$LP" 'nft -c -f ')
+# Unchanged Xray output is no longer re-tested; nft validation remains mandatory.
 sed -i "/option mode 'gfw'/a\\\toption log_level 'debug'" "$P_CONF/aetherproxy"
 kill -HUP "$DAEMON_PID"
 # Wait for validation rather than merely sleeping before the reload could have started.
-wait_count "$LP" 'xray run -test' "$((validation_count + 1))" \
+wait_count "$LP" 'nft -c -f ' "$((validation_count + 1))" \
 	&& ok 'probe reload: unrelated reload validated' || bad 'probe reload: unrelated reload validated'
 sleep 1
 expect 'probe reload: unrelated reload adds no probe' "$probe_count" "$(count_calls "$LP" 'curl ')"

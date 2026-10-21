@@ -982,6 +982,7 @@ function run(args) {
 		return 1;
 	}
 	let signal = null, stopping = false;
+	let reload_started_ms = null;
 	let signals = {};
 	let monitor_daemon = null;
 	let tick = () => monitor_daemon == null ? null : monitor.tick(monitor_daemon);
@@ -989,8 +990,11 @@ function run(args) {
 	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ], [ 'SIGUSR2', 'xray_restart' ] ]) {
 		let name = item[0], kind = item[1];
 		signals[kind + name] = uloop.signal(name, () => {
-			if (signal == null)
+			if (signal == null) {
 				signal = kind;
+				if (kind == 'reload')
+					reload_started_ms = monotonic_ms();
+			}
 			uloop.end();
 		});
 	}
@@ -1056,6 +1060,7 @@ function run(args) {
 				continue;
 			}
 			if (signal == 'reload') {
+				let started_ms = reload_started_ms;
 				signal = null;
 				while (monitor_daemon?.busy)
 					uloop.run(C.DAEMON_POLL_MS);
@@ -1077,7 +1082,8 @@ function run(args) {
 				// Reload pumps uloop while stopping/starting children. Timer callbacks must
 				// not sample the intentional listener gap or mutate current/ mid-transaction.
 				monitor_daemon.busy = true;
-				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children });
+				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children },
+					started_ms);
 				monitor_daemon.busy = false;
 				if (changed.stop) {
 					stopping = true;

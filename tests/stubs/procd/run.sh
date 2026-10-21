@@ -77,9 +77,17 @@ run_init start 1 7 init-check-fail; rc=$?
 expect "failed check aborts start" 1 "$rc"
 ! contains "$T/init-check-fail.log" 'open aether-proxy' && ok "failed check registers no instance" || bad "failed check registers no instance"
 
+# A failing check substitute proves the running branch never invokes it at all.
 run_init reload 1 7 init-reload-fail; rc=$?
-expect "failed reload check is rejected" 1 "$rc"
-! contains "$T/init-reload-fail.log" 'signal aether-proxy' && ok "failed reload sends no signal" || bad "failed reload sends no signal"
+expect "running reload bypasses check even when it would fail" 0 "$rc"
+! contains "$T/init-reload-fail.log" 'aether-proxy check' \
+	&& ok "running reload never invokes check" || bad "running reload never invokes check"
+grep -Fxq 'signal aether-proxy * HUP' "$T/init-reload-fail.log" \
+	&& ok "running reload sends HUP without check" || bad "running reload sends HUP without check"
+SIGNAL_RC=9 run_init reload 1 0 init-signal-fail; rc=$?
+expect "reload returns HUP delivery failure" 9 "$rc"
+contains "$T/init-signal-fail.log" 'procd_send_signal HUP failed (rc=9)' \
+	&& ok "reload logs HUP delivery failure" || bad "reload logs HUP delivery failure"
 run_init reload 1 0 init-reload; rc=$?
 expect "valid reload succeeds" 0 "$rc"
 grep -Fxq "signal aether-proxy * HUP" "$T/init-reload.log" && ok "reload sends HUP" || bad "reload sends HUP"
