@@ -89,11 +89,11 @@ function pending_of(results) {
 function probe_column(id, results) {
 	if (results === undefined)
 		return _('Reading…', 'aether-proxy');
-	if (results?.ok === false) {
-		/* TODO(design): No node result-read error wording existed before deferred
-		 * loading. Show the RPC code/detail rather than claim the node was probed. */
-		return (results.code ?? 'RPC_FAILED') + (results.detail ? ': ' + results.detail : '');
-	}
+	/* A failed read says so in each cell and gives the reason once, in the
+	   progress line (design lead's decision on the T10.16 TODO, 2026-10-21):
+	   repeating the RPC code in every row is noise. */
+	if (results?.ok === false)
+		return _('Reading failed', 'aether-proxy');
 	if (results == null || typeof results != 'object')
 		return _('Not probed', 'aether-proxy');
 
@@ -164,7 +164,11 @@ return baseclass.extend({
 	progress: function(results) {
 		const r = (results && typeof results == 'object') ? results : null;
 
-		if (!r || r.ok === false || r.finished)
+		if (r?.ok === false)
+			return fmt(_('Reading probe results failed: %s', 'aether-proxy'),
+				(r.code ?? 'RPC_FAILED') + (r.detail ? ': ' + r.detail : ''));
+
+		if (!r || r.finished)
 			return null;
 
 		return fmt(_('Probing %s/%s', 'aether-proxy'), r.done ?? 0, r.total ?? 0);

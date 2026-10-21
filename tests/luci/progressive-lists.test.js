@@ -226,8 +226,12 @@ for (const name of ['nodes', 'subscriptions']) {
 			assert.doesNotMatch(text(h.root), /读取中…/);
 			assert.match(text(h.root), reply ? /TIMEOUT: read failed/ : /RPC_FAILED/);
 			assert.ok(controls.every(node => !node.disabled));
-			if (name === 'nodes')
-				assert.equal(text(h.page.progressEl), '');
+			/* nodes: each cell says 读取失败, the reason appears once in the progress line */
+			if (name === 'nodes') {
+				assert.ok(cells.every(cell => /读取失败/.test(text(cell))));
+				assert.match(text(h.page.progressEl), reply ? /^读取检测结果失败：TIMEOUT: read failed$/ : /^读取检测结果失败：RPC_FAILED$/);
+				assert.ok(cells.every(cell => !/TIMEOUT|RPC_FAILED/.test(text(cell))));
+			}
 		});
 	}
 }
@@ -253,11 +257,13 @@ test('T10.16 nodes: failed import rebuild settles pending cells and discards the
 	h.reads[1].resolve({ ok: false, code: 'TIMEOUT', detail: 'rebuild failed' });
 	await pending;
 	assert.doesNotMatch(text(h.root), /读取中…/);
-	assert.match(text(resultCells(h)[0]), /TIMEOUT: rebuild failed/);
+	assert.match(text(resultCells(h)[0]), /读取失败/);
+	assert.match(text(h.page.progressEl), /^读取检测结果失败：TIMEOUT: rebuild failed$/);
 	h.reads[0].resolve(success('nodes'));
 	await flush();
-	assert.match(text(resultCells(h)[0]), /TIMEOUT: rebuild failed/);
-	assert.equal(text(h.page.progressEl), '');
+	/* the older initial reply is still discarded */
+	assert.match(text(resultCells(h)[0]), /读取失败/);
+	assert.match(text(h.page.progressEl), /^读取检测结果失败：TIMEOUT: rebuild failed$/);
 });
 test('T10.16 nodes: failed later refresh preserves successful results', async () => {
 	const h = await harness('nodes');

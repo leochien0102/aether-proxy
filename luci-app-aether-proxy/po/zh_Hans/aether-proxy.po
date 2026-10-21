@@ -1703,3 +1703,6 @@ msgctxt "aether-proxy"
 msgid "Roll back"
 msgstr "回滚"
 
+msgctxt "aether-proxy"
+msgid "Reading probe results failed: %s"
+msgstr "读取检测结果失败：%s"
