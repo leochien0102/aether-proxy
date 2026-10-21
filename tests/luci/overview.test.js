@@ -1,7 +1,7 @@
 'use strict';
 
 /* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c;
- * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20, T10.22).
+ * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20, T10.22–T10.24).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -554,19 +554,19 @@ test('T8.12c scenario 2: refresh options and storage parsing including exception
 	}
 });
 
-test('T10.23 scenario 2: real latency model wording replaces health freshness detection', () => {
+test('T10.23 scenario 2 / T10.24: real latency model distinguishes results from request errors', () => {
 	const model = dashboardModel();
 	const cases = [
-		[{ ok: true, code: 204, latency_ms: 12 }, 'GitHub 12 ms'],
-		[{ ok: false, code: 'PROBE_TIMEOUT' }, 'GitHub 超时'],
-		[{ ok: false, code: 'PROBE_FAILED' }, 'GitHub 连接失败'],
-		[{ ok: false, code: 'PROBE_FAILED', http_code: 503 }, 'GitHub 返回 HTTP 503'],
-		[{ ok: false, code: 'NOT_RUNNING' }, '服务未运行'],
-		[{ ok: false, code: 'TIMEOUT', detail: '35s' }, 'TIMEOUT: 35s'],
-		[{ ok: false, code: 'CMD_FAILED', detail: 'ubus' }, 'CMD_FAILED: ubus']
+		[{ ok: true, code: 204, latency_ms: 12 }, '正常，12 ms（GitHub，手动）'],
+		[{ ok: false, code: 'PROBE_TIMEOUT' }, '检测超时（GitHub，手动）'],
+		[{ ok: false, code: 'PROBE_FAILED' }, '检测失败（GitHub，手动）'],
+		[{ ok: false, code: 'PROBE_FAILED', http_code: 503 }, '返回 HTTP 503（GitHub，手动）'],
+		[{ ok: false, code: 'NOT_RUNNING' }, null],
+		[{ ok: false, code: 'TIMEOUT', detail: '35s' }, null],
+		[{ ok: false, code: 'CMD_FAILED', detail: 'ubus' }, null]
 	];
 	for (const [reply, text] of cases)
-		assert.equal(model.probe_result(reply, 'GitHub'), text);
+		assert.equal(model.manual_probe(reply, 'GitHub', {}, NOW)?.text ?? null, text);
 	assert.equal(model.probe_completion, undefined, 'no last_probe completion logic remains');
 });
 
@@ -670,7 +670,8 @@ test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refr
 		['load', 'aetherproxy'], ['status', undefined], ['stats', undefined],
 		['events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' }] ]);
 	assert.equal(page.vm.switch_notice, '正在切换到「n_b」…');
-	assert.equal(use.disabled, false);
+	assert.equal(use.disabled, true, 'pending switch stays locked after node_use completes');
+	assert.equal(nodes.disabled, true);
 
 	const emptyPage = loadView();
 	const emptyRoot = emptyPage.render(await emptyPage.load());
@@ -728,7 +729,7 @@ test('T10.23 scenario 1: sites load after render, stay disabled until reply, lab
 	assert.equal(calls.filter(call => call.method === 'probe_sites').length, 1);
 });
 
-test('T10.23 scenario 1: site failure keeps both controls disabled with one inline error', async () => {
+test('T10.23 scenario 1 / T10.24: site failure keeps controls disabled with error and retry', async () => {
 	for (const reply of [{ ok: false, code: 'TIMEOUT' }, { ok: true, sites: [] },
 		{ ok: true, sites: [null] }, { ok: true, sites: [{ name: 'github' }] }, null]) {
 		const h = deferredPage('0');
@@ -739,7 +740,9 @@ test('T10.23 scenario 1: site failure keeps both controls disabled with one inli
 		await h.reply('probe_sites', reply);
 		assert.equal(page.probeSites.disabled, true);
 		assert.equal(page.probeButton.disabled, true);
-		assert.equal(visibleText(page.probeMessage), `读取站点列表失败（${reply?.code ?? 'RPC_FAILED'}）`);
+		assert.equal(visibleText(page.probeMessage), `读取站点列表失败（${reply?.code ?? 'RPC_FAILED'}）重试`);
+		assert.equal(visibleText(page.probeSites), '读取失败');
+		assert.equal(findAll(page.probeMessage, 'button').length, 1);
 	}
 });
 
@@ -1310,7 +1313,8 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	assert.equal(button.disabled, true);
 	select.value = 'n_a';
 	select.attrs.change();
-	assert.equal(button.disabled, false, 'guard compares against runtime, not UCI');
+	assert.equal(button.disabled, true, 'T10.24 locks a runtime/configured mismatch without a failure reason');
+	assert.equal(select.disabled, true);
 	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*检测真实延迟/);
 	assert.ok(findAll(second, 'small')[0].textContent.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
@@ -1427,6 +1431,7 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	assert.equal(right.children[2].tag, 'small');
 	assert.match(right.children[2].textContent, /前$/);
 	assert.deepEqual(right.children[3].children.map((c) => c.tag), [ 'select', 'button', 'span' ]);
+	assert.equal(visibleText(right.children[3].children[2]), '', 'no separate result beside the button');
 	assert.equal(right.children[3].children[1].textContent, '检测真实延迟');
 	assert.equal(right.children[3].children[2].attrs['aria-live'], 'polite');
 });
@@ -1782,22 +1787,24 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 	}
 });
 
-/* T10.23 replaces T10.13 freshness/deadline tests: latency never changes health. */
+/* T10.24 merges display only; no status request or backend health mutation. */
 const LATENCY_RESULTS = [
-	[{ ok: true, code: 204, latency_ms: 208 }, 'GitHub 208 ms'],
-	[{ ok: false, code: 'PROBE_TIMEOUT' }, 'GitHub 超时'],
-	[{ ok: false, code: 'PROBE_FAILED' }, 'GitHub 连接失败'],
-	[{ ok: false, code: 'PROBE_FAILED', http_code: 500 }, 'GitHub 返回 HTTP 500'],
-	[{ ok: false, code: 'NOT_RUNNING' }, '服务未运行'],
-	[{ ok: false, code: 'RPC_FAILED', detail: 'disconnected' }, 'RPC_FAILED: disconnected'],
-	[{ ok: false, code: 'TIMEOUT', detail: '35s' }, 'TIMEOUT: 35s']
+	[{ ok: true, code: 204, latency_ms: 208 }, '正常，208 ms（GitHub，手动）'],
+	[{ ok: false, code: 'PROBE_TIMEOUT' }, '检测超时（GitHub，手动）'],
+	[{ ok: false, code: 'PROBE_FAILED' }, '检测失败（GitHub，手动）'],
+	[{ ok: false, code: 'PROBE_FAILED', http_code: 500 }, '返回 HTTP 500（GitHub，手动）'],
+	[{ ok: false, code: 'NOT_RUNNING' }, null],
+	[{ ok: false, code: 'RPC_FAILED', detail: 'disconnected' }, null],
+	[{ ok: false, code: 'TIMEOUT', detail: '35s' }, null]
 ];
 
 for (const [reply, text] of LATENCY_RESULTS) {
-	test(`T10.23 scenario 2/6: ${text} stays beside button, leaves health unchanged and never reads status`,
-		async () => {
+	test(`T10.23 scenario 2/6 / T10.24: ${text ?? reply.code} updates only health display or notification`,
+		async (t) => {
+		let now = NOW + 999999;
+		t.mock.method(Date, 'now', () => now * 1000);
 		const h = deferredPage('0');
-		const { page, calls } = h;
+		const { page, calls, notifications } = h;
 		const root = page.render(await page.load());
 		await Promise.resolve();
 		await h.reply('status', { ok: true, state: 'running',
@@ -1816,13 +1823,28 @@ for (const [reply, text] of LATENCY_RESULTS) {
 		page.probeSites.value = 'google';
 		await h.reply('probe_url', reply);
 		await pending;
-		assert.equal(visibleText(page.probeMessage), text);
+		assert.equal(visibleText(page.probeMessage), '', 'no result beside the button');
 		assert.equal(visibleText(page.probeButton), '检测真实延迟');
 		assert.equal(page.probeButton.disabled, false);
-		assert.equal(page.vm.probe_text, health);
-		assert.equal(findAll(nodeRow(root), 'span').filter(el => visibleText(el) === '正常，42 ms').length, 1);
+		assert.equal(page.vm.probe_text, text ?? health);
+		assert.equal(page.vm.probe_level, text ? (reply.ok ? 'ok' : 'error') : 'ok');
+		const displayed = findAll(nodeRow(root), 'span').filter(el => visibleText(el) === (text ?? health));
+		assert.equal(displayed.length, 1, 'exactly one health result');
+		assert.equal(displayed[0].attrs.style, page.colorStyle(page.vm.probe_level));
+		assert.deepEqual(notifications, text ? [] : [
+			{ text: `检测真实延迟失败（${reply.code}）`, kind: 'error' }
+		]);
+		assert.equal(page.status.last_probe.latency_ms, 42, 'backend health snapshot is untouched');
 		assert.deepEqual(calls.map(call => call.method), ['probe_url'], 'completion does not read status/stats');
 		assert.equal(page.poller, null);
+		now += 12;
+		page.refresh({ ok: true, state: 'running', last_probe: { at: NOW, ok: true, latency_ms: 42 } });
+		assert.equal(page.vm.probe_text, text ?? health, 'same monitor generation retains manual result');
+		if (text)
+			assert.equal(page.vm.probe_since_text, '12 秒前', 'manual age uses browser arrival time');
+		page.refresh({ ok: true, state: 'running', last_probe: { at: NOW + 1, ok: false } });
+		assert.equal(page.vm.probe_text, '检测失败', 'changed monitor generation replaces manual result');
+		assert.equal(page.vm.probe_level, 'error');
 	});
 }
 
@@ -1856,7 +1878,9 @@ test('T10.13 scenario 3: inventory failures carry code/detail below table; unkno
 });
 
 function retryButtons(root) {
-	return findAll(root, 'button').filter((button) => visibleText(button) === '重试');
+	/* Site-list retries are independent of component retries (T10.24). */
+	const components = sections(root).find(section => visibleText(section.children[0]) === '组件版本');
+	return findAll(components, 'button').filter((button) => visibleText(button) === '重试');
 }
 
 test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds without touching other controls',
@@ -1936,7 +1960,7 @@ test('T10.13 scenario 4: successful initial inventory has no retry; a failed ret
 /* Explicitly released RPC promises prove the skeleton and each independent
    region work even when every other backend response remains outstanding. */
 function deferredPage(interval = '5') {
-	const calls = [], polls = [], writes = [], uciOps = [];
+	const calls = [], polls = [], writes = [], uciOps = [], notifications = [];
 	const page = loadView({
 		ap: {
 			call: (method, params) => new Promise((resolve) => { calls.push({ method, params, resolve }); }),
@@ -1959,11 +1983,14 @@ function deferredPage(interval = '5') {
 			set: (...args) => uciOps.push([ 'set', ...args ]),
 			save: async () => { uciOps.push([ 'save' ]); }
 		},
-		ui: { changes: { apply: (rollback) => uciOps.push([ 'apply', rollback ]) } },
+		ui: {
+			changes: { apply: (rollback) => uciOps.push([ 'apply', rollback ]) },
+			addNotification: (title, body, kind) => notifications.push({ text: visibleText(body), kind })
+		},
 		window: { localStorage: { getItem: () => interval, setItem: () => {} } }
 	});
 	return {
-		page, calls, polls, writes, uciOps,
+		page, calls, polls, writes, uciOps, notifications,
 		reply: async (method, reply) => {
 			const call = calls.find((call) => call.method === method && !call.settled);
 			assert.ok(call, `outstanding ${method} request exists`);
@@ -2171,7 +2198,8 @@ test('T10.17 scenario 4b: refreshing during a probe never enables it early or af
 	await failed;
 	await h.reply('probe_url', { ok: false, code: 'NOT_RUNNING' });
 	await probe;
-	assert.equal(visibleText(page.probeMessage), '服务未运行');
+	assert.equal(visibleText(page.probeMessage), '', 'NOT_RUNNING is a notification, not a result');
+	assert.deepEqual(h.notifications, [{ text: '检测真实延迟失败（NOT_RUNNING）', kind: 'error' }]);
 	assert.equal(page.probeButton.disabled, true, 'probe finalizer respects the latest failed status');
 });
 
@@ -2507,6 +2535,243 @@ test('T10.23 scenario 4: node switch waits out older refresh and issues a new po
 	await h.reply('stats', readings(2000, 0, 0, 0, 0));
 	await pending;
 	assert.equal(page.switching, false);
+});
+
+test('T10.24 scenario 1: first since is baseline; changed since rereads versions once with loading cells',
+	async () => {
+	const h = deferredPage('0');
+	const { page, calls } = h;
+	const root = page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('status', { ok: true, state: 'running', since: 10 });
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await h.reply('version', { ok: true, version: 'old' });
+	await h.reply('components', { ok: true, components: {
+		xray: { found: true, version: 'old-xray', path: '/usr/bin/xray' }
+	} });
+	await page.initialRequest;
+	const counts = () => ['version', 'components'].map(method => calls.filter(c => c.method === method).length);
+	assert.deepEqual(counts(), [1, 1], 'first since does not rediscover versions');
+	const unchanged = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running', since: 10 });
+	await h.reply('stats', readings(2000, 0, 0, 0, 0));
+	await unchanged;
+	assert.deepEqual(counts(), [1, 1], 'unchanged since does not rediscover versions');
+	const restart = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running', since: 20 });
+	assert.deepEqual(counts(), [2, 2], 'changed since reissues each request once');
+	assert.equal(ownVersion(root), '读取中…');
+	assert.deepEqual(componentCells(root), [
+		['xray', '读取中…', '读取中…'], ['chinadns-ng', '读取中…', '读取中…']
+	]);
+	await h.reply('stats', readings(3000, 0, 0, 0, 0));
+	await restart;
+	await h.reply('version', { ok: true, version: 'new' });
+	await h.reply('components', { ok: true, components: {
+		xray: { found: true, version: 'new-xray', path: '/usr/bin/xray' }
+	} });
+	assert.equal(ownVersion(root), 'new');
+	assert.equal(componentCells(root)[0][1], 'new-xray');
+	const again = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running', since: 20 });
+	await h.reply('stats', readings(4000, 0, 0, 0, 0));
+	await again;
+	assert.deepEqual(counts(), [2, 2]);
+});
+
+test('T10.24 scenario 1: failed status does not reset since; pre-restart inventory cannot overwrite new replies',
+	async () => {
+	const h = deferredPage('0');
+	const { page } = h;
+	const root = page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('status', { ok: true, state: 'running', since: 1 });
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await page.initialRequest;
+	const failure = page.fetchRefresh();
+	await h.reply('status', { ok: false, code: 'RPC_FAILED' });
+	await h.reply('stats', null);
+	await failure;
+	assert.equal(h.calls.filter(c => c.method === 'version').length, 1);
+	const restart = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running', since: 2 });
+	const currentVersion = page.versionRequest, currentComponents = page.componentRequest;
+	for (const [method, reply] of [
+		['version', { ok: true, version: 'new' }],
+		['components', { ok: true, components: { xray: { found: true, version: 'new' } } }]
+	]) {
+		const call = h.calls.filter(c => c.method === method).at(-1);
+		call.settled = true;
+		call.resolve(reply);
+	}
+	await Promise.all([currentVersion, currentComponents]);
+	await h.reply('version', { ok: true, version: 'stale' });
+	await h.reply('components', { ok: false, code: 'TIMEOUT' });
+	assert.equal(ownVersion(root), 'new');
+	assert.equal(componentCells(root)[0][1], 'new');
+	await h.reply('stats', readings(2000, 0, 0, 0, 0));
+	await restart;
+});
+
+test('T10.24 scenario 2: capture monitor generation on arrival; later RPC errors preserve manual result',
+	async () => {
+	const h = deferredPage('0');
+	const { page } = h;
+	page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('status', { ok: true, state: 'running' });
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await h.reply('probe_sites', SITES);
+	await page.initialRequest;
+	const first = page.handleProbe();
+	/* The monitor advances while the request is in flight. The result must
+	   remember the generation at arrival, not the one at button click. */
+	page.refresh({ ok: true, state: 'running', last_probe: { at: NOW, ok: false } });
+	await h.reply('probe_url', { ok: true, latency_ms: 17 });
+	await first;
+	page.refresh({ ok: true, state: 'running', last_probe: { at: NOW, ok: false } });
+	assert.equal(page.vm.probe_text, '正常，17 ms（Google，手动）');
+	for (const code of ['NOT_RUNNING', 'RPC_FAILED']) {
+		const pending = page.handleProbe();
+		await h.reply('probe_url', { ok: false, code });
+		await pending;
+		assert.equal(page.vm.probe_text, '正常，17 ms（Google，手动）');
+		assert.equal(page.vm.probe_level, 'ok');
+	}
+	assert.deepEqual(h.notifications.map(note => note.text), [
+		'检测真实延迟失败（NOT_RUNNING）', '检测真实延迟失败（RPC_FAILED）'
+	]);
+});
+
+test('T10.24 scenario 3: pending site list contains only disabled Reading option', async () => {
+	const { page } = deferredPage('0');
+	page.render(await page.load());
+	assert.equal(page.probeSites.children.length, 1);
+	const option = page.probeSites.children[0];
+	assert.equal(visibleText(option), '读取中…');
+	assert.equal(option.disabled, true);
+	assert.equal(page.probeSites.disabled, true);
+	assert.equal(page.probeButton.disabled, true);
+});
+
+test('T10.24 scenario 3: valid saved site is selected; invalid or blocked storage falls back; changes persist',
+	async (t) => {
+	const warnings = [];
+	t.mock.method(console, 'warn', (...args) => warnings.push(args));
+	for (const saved of ['github', 'missing', null, 'throw']) {
+		const writes = [];
+		const page = loadView({
+			ap: { call: async method => method === 'probe_sites' ? SITES
+				: { ok: true, state: 'running' }, poll: () => ({ stop() {} }) },
+			window: { localStorage: {
+				getItem: key => {
+					if (key !== 'aether-proxy.probe-site')
+						return '0';
+					if (saved === 'throw')
+						throw new Error('blocked read');
+					return saved;
+				},
+				setItem: (key, value) => {
+					writes.push([key, value]);
+					if (saved === 'throw')
+						throw new Error('blocked write');
+				}
+			} }
+		});
+		page.render(await page.load());
+		await page.sitesRequest;
+		await page.initialRequest;
+		assert.equal(page.probeSites.value, saved === 'github' ? 'github' : 'google');
+		assert.equal(page.probeSites.children.filter(o => o.attrs.selected).length, 1);
+		page.probeSites.value = 'github';
+		page.probeSites.attrs.change({ target: page.probeSites });
+		assert.deepEqual(writes, [['aether-proxy.probe-site', 'github']]);
+		assert.equal(page.probeSites.disabled, false);
+		assert.equal(page.probeButton.disabled, false, 'storage exceptions do not disable probing');
+	}
+	assert.equal(warnings.length, 2, 'both read and write exceptions are reported');
+});
+
+test('T10.24 scenario 3: failed, empty and malformed site lists can retry successfully without duplicate calls',
+	async () => {
+	for (const failure of [{ ok: false, code: 'TIMEOUT' }, { ok: true, sites: [] },
+		{ ok: true, sites: [{ name: 'google' }] }]) {
+		const h = deferredPage('0');
+		const { page, calls } = h;
+		page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('status', { ok: true, state: 'running' });
+		await h.reply('probe_sites', failure);
+		assert.equal(visibleText(page.probeSites), '读取失败');
+		assert.equal(page.probeButton.disabled, true);
+		const retry = findAll(page.probeMessage, 'button')[0];
+		assert.equal(visibleText(retry), '重试');
+		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
+		const pending = retry.attrs.click();
+		assert.equal(retry.attrs.click(), pending, 'stale repeated clicks share the request');
+		assert.equal(visibleText(page.probeSites), '读取中…');
+		assert.equal(page.probeSites.disabled, true);
+		assert.equal(visibleText(page.probeMessage), '');
+		await Promise.resolve();
+		assert.equal(calls.filter(c => c.method === 'probe_sites').length, 2);
+		await h.reply('probe_sites', SITES);
+		await pending;
+		assert.equal(page.probeSites.value, 'google');
+		assert.equal(page.probeSites.disabled, false);
+		assert.equal(page.probeButton.disabled, false);
+		assert.equal(visibleText(page.probeMessage), '');
+		assert.equal(findAll(page.probeMessage, 'button').length, 0);
+	}
+});
+
+test('T10.24 scenario 4: pending switch locks both controls; failure or completion restores them, not service actions',
+	async () => {
+	for (const recovery of ['failure', 'complete']) {
+		const h = deferredPage('0');
+		const { page, calls } = h;
+		page.currentNode = 'n_b';
+		const data = await page.load();
+		const root = page.render({ ...data, node: 'n_b' });
+		await Promise.resolve();
+		await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+		const [nodes, use] = page.nodeControl.children;
+		nodes.value = 'n_b';
+		nodes.attrs.change();
+		assert.equal(page.vm.switch_notice, '正在切换到「Beta」…');
+		assert.equal(nodes.disabled, true);
+		assert.equal(use.disabled, true);
+		assert.equal(nodes.title, '正在切换节点，请稍候');
+		assert.equal(use.title, '正在切换节点，请稍候');
+		assert.deepEqual(serviceButtons(root).map(disabled), [true, false, false]);
+		await use.attrs.click();
+		assert.ok(!calls.some(c => c.method === 'node_use'), 'locked handler cannot submit another switch');
+		await h.reply('stats', readings(1000, 0, 0, 0, 0));
+		const event = { ts: NOW, code: 'NODE_RESOLVE_FAILED', args: { domain: 'node.example' } };
+		await h.reply('events', { ok: true, events: recovery === 'failure' ? [event] : [] });
+		await page.initialRequest;
+		if (recovery === 'failure') {
+			assert.ok(page.vm.switch_notice.includes('未生效'));
+			assert.equal(nodes.disabled, false, 'late failure unlocks existing selector without recreating it');
+			assert.equal(use.disabled, false);
+			assert.equal(nodes.title, '');
+			assert.equal(use.title, '');
+		}
+		else {
+			assert.equal(nodes.disabled, true, 'no failure reason means switch is still pending');
+			const refresh = page.fetchRefresh();
+			await h.reply('status', { ok: true, state: 'running', node_id: 'n_b' });
+			await h.reply('stats', readings(2000, 0, 0, 0, 0));
+			await refresh;
+			const [selected, button] = page.nodeControl.children;
+			assert.equal(page.vm.switch_notice, null);
+			assert.equal(selected.disabled, false);
+			assert.equal(selected.title, '');
+			selected.value = 'n_a';
+			selected.attrs.change();
+			assert.equal(button.disabled, false, 'another node is selectable after completion');
+		}
+		assert.deepEqual(serviceButtons(root).map(disabled), [true, false, false]);
+	}
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {

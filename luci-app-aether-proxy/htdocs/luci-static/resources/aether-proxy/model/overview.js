@@ -9,7 +9,8 @@
  * already translated through _() (every msgid used here must have an entry in
  * po/zh_Hans/aether-proxy.po), and button availability is decided per state.
  * T10.22 also summarizes staged session changes before disabling the service;
- * T10.23 keeps real latency independent of monitor health and switches via node_use;
+ * T10.23 switches via node_use; T10.24 merges manual latency into the displayed
+ * health result without changing monitor health, and locks pending node switches;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -160,10 +161,6 @@ function byte_rate(previous, current, direction, elapsed) {
 	if (!Number.isFinite(before) || !Number.isFinite(after) || after < before)
 		return null;
 	return (after - before) * 1000 / elapsed;
-}
-
-function failure_text(reply) {
-	return (reply?.code ?? 'RPC_FAILED') + (reply?.detail ? ': ' + reply.detail : '');
 }
 
 function rate_text(rate) {
@@ -365,18 +362,29 @@ return baseclass.extend({
 			reply?.ok === false ? (reply.code ?? 'RPC_FAILED') : 'RPC_FAILED') };
 	},
 
-	probe_result: function(reply, label) {
+	/* Compare monitor generations, never router timestamps against browser time. */
+	status_markers: function(status) {
+		return status && status.ok !== false
+			? { since: status.since, probe_at: status.last_probe?.at } : null;
+	},
+
+	manual_probe: function(reply, label, status, now) {
+		let text;
 		if (reply?.ok === true)
-			return fmt(_('%s %s ms', 'aether-proxy'), label, reply.latency_ms);
-		if (reply?.code === 'PROBE_TIMEOUT')
-			return fmt(_('%s timed out', 'aether-proxy'), label);
-		if (reply?.code === 'PROBE_FAILED')
-			return reply.http_code != null
-				? fmt(_('%s returned HTTP %s', 'aether-proxy'), label, reply.http_code)
-				: fmt(_('%s connection failed', 'aether-proxy'), label);
-		if (reply?.code === 'NOT_RUNNING')
-			return _('The service is not running.', 'aether-proxy');
-		return failure_text(reply);
+			text = fmt(_('Healthy, %s ms (%s, manual)', 'aether-proxy'), reply.latency_ms, label);
+		else if (reply?.code === 'PROBE_TIMEOUT')
+			text = fmt(_('Probe timed out (%s, manual)', 'aether-proxy'), label);
+		else if (reply?.code === 'PROBE_FAILED')
+			text = reply.http_code != null
+				? fmt(_('Returned HTTP %s (%s, manual)', 'aether-proxy'), reply.http_code, label)
+				: fmt(_('Probe failed (%s, manual)', 'aether-proxy'), label);
+		else
+			return null;
+		return { text, ok: reply.ok === true, at: now, monitor_at: status?.last_probe?.at };
+	},
+
+	probe_error: function(reply) {
+		return fmt(_('Testing real latency failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED');
 	},
 
 	node_use_message: function(reply, status) {
@@ -401,7 +409,7 @@ return baseclass.extend({
 	   inventory is undefined while pending, null/ok:false on failure, and is
 	   fetched after rendering or on explicit retry (docs/10 「概览页第五轮修正」). events contains
 	   recent errors only while a node switch is pending (docs/10 T10.11). */
-	build: function(status, version, labels, now, enabled, configured_node, inventory, events) {
+	build: function(status, version, labels, now, enabled, configured_node, inventory, events, manual) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
 
@@ -429,7 +437,10 @@ return baseclass.extend({
 			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
+		const switching = switch_pending(status, configured_node) && !switch_reason(events);
 		const nodes = {
+			switch_busy: switching,
+			switch_title: switching ? _('Switching nodes, please wait', 'aether-proxy') : null,
 			switch_notice: switch_notice(status, configured_node, labels, events, now),
 			current_node,
 			node_options: node_options(labels, current_node),
@@ -491,7 +502,11 @@ return baseclass.extend({
 			node_ip: (active && status.node_ip) ? String(status.node_ip) : null,
 			node_address_text: (active && status.node_ip)
 				? fmt(_('Node address %s', 'aether-proxy'), status.node_ip) : null,
-			...probe_fields(status.last_probe, now),
+			...(manual && manual.monitor_at === status.last_probe?.at ? {
+				probe_text: manual.text,
+				probe_since_text: rel_time(now, manual.at),
+				probe_level: manual.ok ? 'ok' : 'error'
+			} : probe_fields(status.last_probe, now)),
 			components,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),
 			enabled: is_enabled,

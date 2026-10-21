@@ -10,7 +10,8 @@
  * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and result messages, while this view owns requests and timers.
- * Real latency and direct node switching follow docs/10 「检测真实延迟与切换节点」.
+ * T10.24 follows docs/10 「概览页第七轮修正」: restart-aware inventory,
+ * manual health display, remembered/retryable sites and pending-switch guards.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -172,6 +173,14 @@ return view.extend({
 			/* A slow stats/events read must not hold the runtime controls hostage.
 			   Even a failed first status starts the normal retry cadence. */
 			this.status = reply ?? null;
+			const markers = model.status_markers(this.status);
+			if (markers) {
+				if (this.lastMarkers && markers.since !== this.lastMarkers.since) {
+					this.loadVersion(true);
+					this.loadComponents(true);
+				}
+				this.lastMarkers = markers;
+			}
 			this.refresh(this.status);
 			if (this.initialReading) {
 				this.initialReading = false;
@@ -180,9 +189,12 @@ return view.extend({
 			return ap.call('stats').then((stats) => {
 				this.updateTraffic(stats);
 				return this.switchEvents(reply, this.currentNode).then((events) => {
-					this.vm.switch_notice = model.build(reply, this.version, this.labels,
-						Math.floor(Date.now() / 1000), this.enabled, this.currentNode,
-						this.components, events).switch_notice;
+					this.latestEvents = events;
+					const next = model.build(reply, this.version, this.labels,
+						Math.floor(Date.now() / 1000), this.enabled, this.currentNode, this.components, events);
+					for (const key of ['switch_notice', 'switch_busy', 'switch_title'])
+						this.vm[key] = next[key];
+					this.updateNodeButton?.();
 					this.updateNotices();
 				});
 			});
@@ -218,7 +230,7 @@ return view.extend({
 	},
 
 	handleNode: async function(node) {
-		if (this.switching)
+		if (this.switching || this.vm?.switch_busy)
 			return;
 		this.switching = true;
 		this.updateNodeButton?.();
@@ -260,10 +272,15 @@ return view.extend({
 		this.probing = true;
 		this.updateProbeButton();
 		dom.content(this.probeButton, _('Measuring latency…', 'aether-proxy'));
-		dom.content(this.probeMessage, '');
-		/* This one-shot request must not poll or overwrite monitor health. */
+		/* Display only: this one-shot result never writes monitor health or polls. */
 		return ap.call('probe_url', { site: site }).then((reply) => {
-			dom.content(this.probeMessage, model.probe_result(reply, label));
+			const result = model.manual_probe(reply, label, this.status, Math.floor(Date.now() / 1000));
+			if (result) {
+				this.manualProbe = result;
+				this.refresh(this.status, undefined, this.latestEvents);
+			}
+			else
+				ui.addNotification(null, E('p', {}, model.probe_error(reply)), 'error');
 		}).finally(() => {
 			this.probing = false;
 			dom.content(this.probeButton, _('Test real latency', 'aether-proxy'));
@@ -275,19 +292,58 @@ return view.extend({
 		this.probeButton.disabled = !this.siteOptions?.length || this.vm?.probe_disabled !== false || !!this.probing;
 	},
 
+	probeSitePlaceholder: function(text) {
+		dom.content(this.probeSites, [ E('option', { disabled: true, selected: true }, text) ]);
+		this.probeSites.disabled = true;
+	},
+
+	readProbeSite: function() {
+		try {
+			return window.localStorage.getItem('aether-proxy.probe-site');
+		}
+		catch (e) {
+			console.warn('Unable to read probe site preference:', e);
+			return null;
+		}
+	},
+
+	saveProbeSite: function(value) {
+		try {
+			window.localStorage.setItem('aether-proxy.probe-site', value);
+		}
+		catch (e) {
+			console.warn('Unable to save probe site preference:', e);
+		}
+	},
+
 	loadProbeSites: function() {
-		return ap.call('probe_sites').then((reply) => {
+		if (this.siteRequest)
+			return this.siteRequest;
+		this.siteOptions = [];
+		this.probeSitePlaceholder(_('Reading…', 'aether-proxy'));
+		dom.content(this.probeMessage, '');
+		this.updateProbeButton();
+		this.siteRequest = Promise.resolve().then(() => ap.call('probe_sites')).then((reply) => {
 			const sites = model.probe_sites(reply);
 			this.siteOptions = sites.options;
-			dom.content(this.probeSites, sites.options.map((option, index) => E('option', {
-				value: option.value, selected: index === 0 ? 'selected' : null
-			}, option.text)));
-			if (sites.options.length)
-				this.probeSites.value = sites.options[0].value;
-			this.probeSites.disabled = !sites.options.length;
-			dom.content(this.probeMessage, sites.error ?? '');
+			if (sites.error) {
+				this.probeSitePlaceholder(_('Reading failed', 'aether-proxy'));
+				dom.content(this.probeMessage, [ E('span', {}, sites.error), E('button', {
+					'class': 'cbi-button cbi-button-action', click: () => this.loadProbeSites()
+				}, _('Retry', 'aether-proxy')) ]);
+			}
+			else {
+				const saved = this.readProbeSite();
+				const selected = sites.options.find(option => option.value === saved) ?? sites.options[0];
+				dom.content(this.probeSites, sites.options.map((option) => E('option', {
+					value: option.value, selected: option === selected ? 'selected' : null
+				}, option.text)));
+				this.probeSites.value = selected.value;
+				this.probeSites.disabled = false;
+			}
 			this.updateProbeButton();
-		});
+		}).finally(() => { this.siteRequest = null; });
+		return this.siteRequest;
 	},
 
 	button: function(text, fn) {
@@ -319,7 +375,9 @@ return view.extend({
 
 	probeControls: function() {
 		this.probeSites = E('select', { disabled: true, style: 'width:auto',
-			'aria-label': _('Probe site', 'aether-proxy') });
+			'aria-label': _('Probe site', 'aether-proxy'),
+			change: (ev) => this.saveProbeSite(ev.target.value) });
+		this.probeSitePlaceholder(_('Reading…', 'aether-proxy'));
 		/* Own the disabled state: createHandlerFn unconditionally enables on completion. */
 		this.probeButton = E('button', {
 			'class': 'cbi-button cbi-button-apply', click: () => this.handleProbe()
@@ -342,7 +400,11 @@ return view.extend({
 			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value)
 		}, _('Use this node', 'aether-proxy'));
 		const update = this.updateNodeButton = () => {
-			button.disabled = !!this.switching || !model.can_switch(nodes.value, current);
+			const busy = !!this.switching || !!this.vm.switch_busy;
+			nodes.disabled = busy;
+			button.disabled = busy || !model.can_switch(nodes.value, current);
+			for (const control of [nodes, button])
+				control.title = this.vm.switch_title ?? '';
 		};
 		nodes.addEventListener('change', update);
 		update();
@@ -426,18 +488,43 @@ return view.extend({
 		dom.content(this.componentContent, children);
 	},
 
-	/* Only explicit retries reissue inventory calls; ordinary status polls never
-	   do. Reset cells synchronously, and share an in-flight request on repeated clicks. */
-	loadComponents: function() {
-		if (this.componentRequest)
+	/* A restart invalidates even an in-flight pre-restart reply. Ordinary polls
+	   share requests; generation identity prevents stale versions winning a race. */
+	loadVersion: function(restarted) {
+		if (this.versionRequest && !restarted)
+			return this.versionRequest;
+		this.version = undefined;
+		this.updateComponents();
+		const request = Promise.resolve().then(() => ap.call('version')).then((reply) => {
+			if (this.versionRequest === request) {
+				this.version = reply ?? null;
+				this.updateComponents();
+			}
+		}).finally(() => {
+			if (this.versionRequest === request)
+				this.versionRequest = null;
+		});
+		this.versionRequest = request;
+		return request;
+	},
+
+	loadComponents: function(restarted) {
+		/* createHandlerFn passes a click event; only a literal true forces a new generation. */
+		if (this.componentRequest && restarted !== true)
 			return this.componentRequest;
 		this.components = undefined;
 		this.updateComponents();
-		this.componentRequest = Promise.resolve().then(() => ap.call('components')).then((reply) => {
-			this.components = reply ?? null;
-			this.updateComponents();
-		}).finally(() => { this.componentRequest = null; });
-		return this.componentRequest;
+		const request = Promise.resolve().then(() => ap.call('components')).then((reply) => {
+			if (this.componentRequest === request) {
+				this.components = reply ?? null;
+				this.updateComponents();
+			}
+		}).finally(() => {
+			if (this.componentRequest === request)
+				this.componentRequest = null;
+		});
+		this.componentRequest = request;
+		return request;
 	},
 
 	render: function(data) {
@@ -460,19 +547,20 @@ return view.extend({
 		/* Microtasks run after render returns its complete, UCI-backed skeleton.
 		   Enqueue requests in page order; common.js owns the concurrency limit. */
 		this.initialRequest = Promise.resolve().then(() => this.fetchRefresh());
-		this.versionRequest = Promise.resolve().then(() => ap.call('version')).then((reply) => {
-			this.version = reply ?? null;
-			this.updateComponents();
-		});
+		this.loadVersion();
 		this.loadComponents();
-		this.sitesRequest = Promise.resolve().then(() => this.loadProbeSites());
+		this.sitesRequest = this.loadProbeSites();
 
 		return root;
 	},
 
 	refresh: function(status, stats, events) {
+		this.status = status;
+		const markers = model.status_markers(status);
+		if (markers && this.manualProbe && markers.probe_at !== this.manualProbe.monitor_at)
+			this.manualProbe = null;
 		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
-			this.enabled, this.currentNode, this.components, events);
+			this.enabled, this.currentNode, this.components, events, this.manualProbe);
 
 		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;
@@ -488,6 +576,7 @@ return view.extend({
 			this.nodeControl = vm.node_options.length ? this.nodeControls(vm) : null;
 			this.controlNode = vm.current_node;
 		}
+		this.updateNodeButton?.();
 		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);
 		this.componentSection ??= this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]);
 		if (!this.noticeContent) {
