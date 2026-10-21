@@ -443,5 +443,9 @@ echo
 python3 "$ROOT/tests/node/use.py" "$ROOT" "$T/use" \
 	&& ok 'node use committed selection scenarios' || bad 'node use committed selection scenarios'
 
+# T9.13 reuses protocol fixtures and real libuci for parse/import parity.
+python3 "$ROOT/tests/node/parse.py" "$ROOT" "$T/parse" \
+	&& ok 'node parse read-only sharing scenarios' || bad 'node parse read-only sharing scenarios'
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
