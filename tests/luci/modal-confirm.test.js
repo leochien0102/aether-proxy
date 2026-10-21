@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, createRpc } = require('./loader');
+const { loadModule, parsePo, createRpc, element } = require('./loader');
 
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -17,16 +17,7 @@ globalThis._ = (text, context) => {
 	assert.ok(po[text], 'translation exists: ' + text);
 	return po[text];
 };
-globalThis.E = (tag, attrs, children) => {
-	if (typeof attrs === 'string' || Array.isArray(attrs)) {
-		children = attrs;
-		attrs = {};
-	}
-	return {
-		tag, attrs: attrs ?? {}, children: children ?? [],
-		replaceChildren(...nodes) { this.children = nodes; }
-	};
-};
+globalThis.E = element;
 String.prototype.format = function(...args) {
 	let i = 0;
 	return this.replace(/%s/g, () => String(args[i++]));
@@ -79,12 +70,12 @@ for (const destructive of [ true, false, undefined ]) {
 			pending.then(value => outcomes.push(value));
 			assert.equal(modal.title, 'Title');
 			assert.equal(modal.children[0].tag, 'p');
-			assert.equal(modal.children[0].children, '<plain body>');
+			assert.equal(modal.children[0].textContent, '<plain body>');
 			const row = modal.children[1];
 			assert.equal(row.tag, 'div');
 			assert.equal(row.attrs.class, 'right');
 			const buttons = row.children.filter(child => child.tag === 'button');
-			assert.deepEqual(buttons.map(button => button.children), [ '取消', 'Proceed' ]);
+			assert.deepEqual(buttons.map(button => button.textContent), [ '取消', 'Proceed' ]);
 			assert.equal(buttons[0].attrs.class, 'cbi-button');
 			assert.equal(buttons[1].attrs.class,
 				'cbi-button ' + (destructive ? 'cbi-button-remove' : 'cbi-button-action'));

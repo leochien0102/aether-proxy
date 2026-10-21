@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo } = require('./loader');
+const { loadModule, parsePo, element } = require('./loader');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -130,22 +130,14 @@ test('T8.10 scenario 5: raw source/line parameters, debug-only hint and error de
 /* Strings become text nodes, never interpreted markup. The test traverses
  * rendered descendants rather than accepting the model's safe string alone.
  */
-function element(tag, attrs = {}, children = []) {
-	const node = { tag, attrs, value: '', checked: !!attrs.checked, children: [],
-		hidden: !!attrs.hidden, disabled: !!attrs.disabled };
-	if ('value' in attrs)
-		node.value = attrs.value;
-	setContent(node, children);
-	return node;
-}
 function setContent(node, children) {
 	const flat = (Array.isArray(children) ? children : [ children ]).flat(Infinity);
-	node.children = flat.map(c => typeof c == 'string' ? { tag: '#text', text: c } : c);
+	node.replaceChildren(...flat);
 	if (node.tag == 'select')
 		node.value = node.children[0]?.value ?? '';
 }
 function descendants(node) {
-	return [ node ].concat((node.children || []).flatMap(descendants));
+	return [ node ].concat((node.childNodes || []).flatMap(descendants));
 }
 
 test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and text-node safety', async () => {
@@ -204,8 +196,8 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 	const nodes = descendants(root);
 	assert.ok(nodes.some(n => n.tag == '#text' && n.text.includes('NEW') && n.text.includes(malicious)));
 	const pre = nodes.find(n => n.tag == 'pre');
-	assert.equal(pre.children[0].tag, '#text');
-	assert.equal(pre.children[0].text, malicious);
+	assert.equal(pre.childNodes[0].tag, '#text');
+	assert.equal(pre.childNodes[0].text, malicious);
 	assert.ok(!nodes.some(n => n.tag == 'img'));
 	view.stopPolling();
 });

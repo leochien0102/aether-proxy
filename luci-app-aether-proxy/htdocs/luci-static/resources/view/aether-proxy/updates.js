@@ -49,7 +49,7 @@ return view.extend({
 		}
 	},
 	package_button: function(row, label, previous) {
-		return E('button', { type: 'button', disabled: row.disabled,
+		return E('button', { type: 'button', disabled: row.disabled || null,
 			class: 'cbi-button ' + (previous ? 'cbi-button-remove' : 'cbi-button-action'),
 			click: ui.createHandlerFn(this, async function() {
 				if (previous && !await ap.confirm({
@@ -65,7 +65,7 @@ return view.extend({
 	show_inventory: function() {
 		const vm = model.table(this.status, this.busy, Date.now() / 1000);
 		const check = E('button', {
-			type: 'button', class: 'cbi-button cbi-button-action', disabled: !vm.can_check,
+			type: 'button', class: 'cbi-button cbi-button-action', disabled: !vm.can_check || null,
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
 		}, _('Check for updates', 'aether-proxy'));
 		const jobButtons = [check];

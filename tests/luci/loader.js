@@ -7,7 +7,9 @@
  * and 'require x [as y]', the source is wrapped in
  * (function(window, document, L, <alias>…) { … }) and evaluated with the
  * requested module instances as arguments. The doubles for rpc / baseclass /
- * view live in the test files. Only node built-ins are used.
+ * view live in the test files. element() supplies their shared mutable E()
+ * with LuCI boolean-attribute semantics (docs/10 UI rules, T10.18).
+ * Only node built-ins are used.
  */
 
 const fs = require('node:fs');
@@ -164,4 +166,46 @@ function parsePo(text) {
 	return entries;
 }
 
-module.exports = { scanRequires, createDocument, createRpc, loadModule, parsePo };
+/* Shared mutable E() double (docs/10 UI rules, T10.18). LuCI skips only
+ * null/undefined attributes: even false creates a boolean HTML attribute.
+ * Keep raw attrs for source-level assertions, but read runtime state through
+ * DOM properties so a later `button.disabled = false` takes effect.
+ * Children stay inspectable without a browser; childNodes exposes text nodes
+ * for the log-page injection tests, never parses strings as HTML.
+ */
+function element(tag, attrs = {}, children = []) {
+	if (Array.isArray(tag)) {
+		children = tag;
+		tag = 'fragment';
+	}
+	if (typeof attrs === 'string' || Array.isArray(attrs)) {
+		children = attrs;
+		attrs = {};
+	}
+	attrs ??= {};
+	const node = {
+		tag, attrs, ...attrs, value: attrs.value ?? '',
+		children: Array.isArray(children) ? children : [children],
+		get childNodes() {
+			return this.children.map(child => typeof child === 'string'
+				? { tag: '#text', text: child, textContent: child, childNodes: [] } : child);
+		},
+		get lastChild() { return this.children.at(-1); },
+		get textContent() {
+			return this.children.map(child => child != null && typeof child === 'object'
+				? child.textContent : String(child ?? '')).join('');
+		},
+		set textContent(value) { this.children = [String(value)]; },
+		replaceChildren(...nodes) { this.children = nodes; },
+		addEventListener(event, fn) { this.attrs[event] = fn; this[event] = fn; }
+	};
+	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ])
+		node[name] = attrs[name] != null;
+	if (tag === 'select') {
+		const options = node.children;
+		node.value = (options.find(option => option?.selected) ?? options[0])?.value ?? '';
+	}
+	return node;
+}
+
+module.exports = { scanRequires, createDocument, createRpc, loadModule, parsePo, element };

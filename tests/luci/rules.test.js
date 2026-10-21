@@ -10,7 +10,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo } = require('./loader');
+const { loadModule, parsePo, element } = require('./loader');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -273,15 +273,6 @@ test('T8.8 scenario 9: form, independent file saves, model validation, job API a
 	assert.match(view, /this\.show_save\(message, r\)/);
 });
 
-/* Minimal mutable DOM, including the properties used by native textareas and
- * buttons. Replacements retain identity so tests detect whole-page redraws. */
-function element(tag, attrs = {}, children = []) {
-	return {
-		tag, attrs, value: '', disabled: false, ...attrs,
-		children: Array.isArray(children) ? children : [children],
-		replaceChildren(...nodes) { this.children = nodes; }
-	};
-}
 globalThis.E = element;
 function text(node) {
 	return typeof node == 'object' && node !== null ? node.children.map(text).join('') : String(node);
@@ -450,6 +441,20 @@ test('T10.10 scenario 4: each reply touches only its own editor; failures remain
 	for (const [i, node] of nodes.entries())
 		assert.equal(root.children[i], node, 'no region or form may be replaced');
 });
+test('T10.18 scenario 3: all four loaded lists enable their textareas and Save list buttons', async () => {
+	const h = load_view();
+	const r = regions(await h.page.render());
+	h.start();
+	for (let i = 0; i < list_names.length; i++)
+		h.calls[i].resolve({ ok: true, content: 'loaded-' + i });
+	await settle();
+	for (const [i, list] of r.lists.entries()) {
+		assert.equal(list.input.value, 'loaded-' + i);
+		assert.equal(list.input.disabled, false);
+		assert.equal(list.button.disabled, false);
+	}
+});
+
 test('T10.10 scenario 5: data_status fills the original five-row table without touching edits', async () => {
 	const h = load_view();
 	const root = await h.page.render(), r = regions(root);

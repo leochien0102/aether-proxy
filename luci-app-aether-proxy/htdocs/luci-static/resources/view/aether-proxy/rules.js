@@ -22,10 +22,10 @@ return view.extend({
 	list_editor: function(item) {
 		const pending = model.list_state();
 		const input = E('textarea', { rows: 8, style: 'width:100%',
-			disabled: pending.disabled, placeholder: pending.placeholder });
+			disabled: pending.disabled || null, placeholder: pending.placeholder });
 		const message = E('div');
 		const button = E('button', { class: 'cbi-button cbi-button-save', type: 'button',
-			disabled: pending.disabled,
+			disabled: pending.disabled || null,
 			click: ui.createHandlerFn(this, function() {
 				button.disabled = true;
 				return ap.call('save_file', { name: item[0], content: input.value }).then(r => {

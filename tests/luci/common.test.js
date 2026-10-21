@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const { createDocument, createRpc, loadModule, parsePo } = require('./loader.js');
+const { createDocument, createRpc, loadModule, parsePo, element } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const COMMON = path.join(APP, 'htdocs', 'luci-static', 'resources', 'aether-proxy', 'common.js');
@@ -534,7 +534,7 @@ function setupScriptCheck(t, version, fetchReply) {
 		assert.ok(po[text], 'the notification has a Chinese translation');
 		return po[text];
 	};
-	globalThis.E = (tag, attrs, children) => ({ tag, attrs, children });
+	globalThis.E = element;
 	String.prototype.format = function(...args) {
 		let i = 0;
 		return this.replace(/%s/g, () => String(args[i++]));
