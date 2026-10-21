@@ -75,6 +75,7 @@ function loadView(overrides = {}) {
 	};
 	const uciDouble = Object.assign({
 		load: () => Promise.resolve(),
+		unload: () => Promise.resolve(),
 		sections: () => {},
 		get: () => undefined,
 		set: () => {},
@@ -553,17 +554,20 @@ test('T8.12c scenario 2: refresh options and storage parsing including exception
 	}
 });
 
-test('T8.12c scenario 3: probe wording and freshness', () => {
+test('T10.23 scenario 2: real latency model wording replaces health freshness detection', () => {
 	const model = dashboardModel();
-	assert.equal(model.probe_result({ ok: true, latency_ms: 12 }), tr('Healthy, %s ms', 12));
-	assert.equal(model.probe_result({ ok: false }), tr('Probe failed'));
-	assert.equal(model.probe_result({ code: 'TIMEOUT' }), '检测未在 15 秒内完成');
-	assert.equal(model.probe_result({ code: 'NOT_RUNNING' }), '服务未运行');
-	assert.equal(model.probe_result({ code: 'CMD_FAILED', detail: 'ubus' }), 'CMD_FAILED: ubus');
-	assert.deepEqual(model.probe_completion({ last_probe: { at: 9, ok: true } }, 10), { done: false });
-	assert.deepEqual(model.probe_completion({}, 10), { done: false });
-	assert.deepEqual(model.probe_completion({ last_probe: { at: 10, ok: false } }, 10),
-		{ done: true, text: '', refresh: true });
+	const cases = [
+		[{ ok: true, code: 204, latency_ms: 12 }, 'GitHub 12 ms'],
+		[{ ok: false, code: 'PROBE_TIMEOUT' }, 'GitHub 超时'],
+		[{ ok: false, code: 'PROBE_FAILED' }, 'GitHub 连接失败'],
+		[{ ok: false, code: 'PROBE_FAILED', http_code: 503 }, 'GitHub 返回 HTTP 503'],
+		[{ ok: false, code: 'NOT_RUNNING' }, '服务未运行'],
+		[{ ok: false, code: 'TIMEOUT', detail: '35s' }, 'TIMEOUT: 35s'],
+		[{ ok: false, code: 'CMD_FAILED', detail: 'ubus' }, 'CMD_FAILED: ubus']
+	];
+	for (const [reply, text] of cases)
+		assert.equal(model.probe_result(reply, 'GitHub'), text);
+	assert.equal(model.probe_completion, undefined, 'no last_probe completion logic remains');
 });
 
 test('T8.12c scenario 4a: render, sequential serialized refresh, interval replacement, storage and manual refresh',
@@ -617,9 +621,16 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	assert.deepEqual(calls, [ 'status', 'stats' ]);
 });
 
-test('T8.12c scenario 4b: node selection switches via UCI save and rollback apply', async () => {
+test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refreshes status', async () => {
 	const order = [];
 	const page = loadView({
+		ap: {
+			call: async (method, params) => {
+				order.push([method, params]);
+				return method === 'status' ? { ok: true, state: 'running', node_id: 'n_a' } : { ok: true };
+			},
+			poll: () => ({ stop() {} })
+		},
 		uci: {
 			sections: (cfg, type, cb) => {
 				if (type === 'node') {
@@ -627,13 +638,19 @@ test('T8.12c scenario 4b: node selection switches via UCI save and rollback appl
 					cb({ '.name': 'n_b' });
 				}
 			},
-			get: (cfg, sec, opt) => opt === 'node' ? 'n_a' : '1',
-			set: (...args) => order.push([ 'set', ...args ]),
-			save: async () => { order.push([ 'save' ]); }
+			get: (cfg, sec, opt) => opt === 'node' ? (order.some(c => c[0] === 'node_use') ? 'n_b' : 'n_a') : '1',
+			load: async config => { order.push(['load', config]); },
+			unload: async config => { order.push(['unload', config]); },
+			set: () => assert.fail('node switch must not set session UCI'),
+			save: () => assert.fail('node switch must not save session UCI'),
+			changes: () => assert.fail('node switch must not inspect staged changes')
 		},
-		ui: { changes: { apply: (rollback) => order.push([ 'apply', rollback ]) } }
+		ui: { changes: { apply: () => assert.fail('node switch must not apply session UCI') } }
 	});
 	const root = page.render(await page.load());
+	await page.initialRequest;
+	await page.sitesRequest;
+	order.length = 0;
 	const nodes = findAll(root, 'select')[1];
 	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
 	assert.equal(nodes.children[0].attrs.selected, 'selected');
@@ -649,13 +666,17 @@ test('T8.12c scenario 4b: node selection switches via UCI save and rollback appl
 	nodes.value = 'n_b';
 	nodes.attrs.change();
 	await use.attrs.click();
-	assert.deepEqual(order, [ [ 'set', 'aetherproxy', 'main', 'node', 'n_b' ], [ 'save' ], [ 'apply', true ] ]);
+	assert.deepEqual(order, [ ['node_use', { id: 'n_b' }], ['unload', 'aetherproxy'],
+		['load', 'aetherproxy'], ['status', undefined], ['stats', undefined],
+		['events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' }] ]);
+	assert.equal(page.vm.switch_notice, '正在切换到「n_b」…');
+	assert.equal(use.disabled, false);
 
 	const emptyPage = loadView();
 	const emptyRoot = emptyPage.render(await emptyPage.load());
 	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.textContent === '使用此节点');
 	assert.equal(emptyUse, undefined, 'an empty node list has no apply button');
-	assert.equal(findAll(emptyRoot, 'select').length, 1, 'only the refresh selector remains');
+	assert.equal(findAll(emptyRoot, 'select').length, 2, 'refresh and site selectors remain');
 });
 
 function timerQueue() {
@@ -677,67 +698,72 @@ function timerQueue() {
 	};
 }
 
-test('T8.12c scenario 4c: latency button waits for a fresh probe, repeats every second and disables while busy',
-	async () => {
-	const clock = timerQueue(), calls = [];
-	let count = 0;
-	const page = loadView({ window: clock, ap: {
-		call: async (method) => {
-			calls.push(method);
-			if (method === 'probe_now')
-				return { ok: true, requested_at: 10 };
-			if (method === 'stats')
-				return readings(1000, 1, 2, 3, 4);
-			return { ok: true, state: 'running',
-				last_probe: { at: ++count === 1 ? 9 : 10, ok: true, latency_ms: 42 } };
-		}
-	} });
-	page.labels = {};
-	page.content = E('div', {});
-	const controls = page.probeControls();
-	page.probeControl = controls;
-	const pending = findAll(controls, 'button').find((b) => b.textContent === '测延迟').attrs.click();
+const SITES = { ok: true, sites: [
+	{ name: 'google', label: 'Google' }, { name: 'github', label: 'GitHub' }
+] };
+
+test('T10.23 scenario 1: sites load after render, stay disabled until reply, labels and first default', async () => {
+	const h = deferredPage('0');
+	const { page, calls } = h;
+	const root = page.render(await page.load());
+	assert.deepEqual(calls, []);
+	assert.equal(page.probeSites.disabled, true);
 	assert.equal(page.probeButton.disabled, true);
 	await Promise.resolve();
-	await clock.run(1000);
-	assert.equal(page.probeMessage.content, '检测中…', 'stale result cannot finish the probe');
-	await clock.run(1000);
-	await pending;
-	assert.deepEqual(calls, [ 'probe_now', 'status', 'status', 'status', 'stats' ]);
-	assert.equal(page.probeMessage.content, '');
-	assert.equal(page.vm.probe_text, tr('Healthy, %s ms', 42));
+	await h.reply('status', { ok: true, state: 'running' });
+	assert.equal(page.probeButton.disabled, true, 'running alone is insufficient without sites');
+	await h.reply('probe_sites', SITES);
+	assert.deepEqual(page.probeSites.children.map(option => [option.value, option.textContent]),
+		[['google', 'Google'], ['github', 'GitHub']]);
+	assert.equal(page.probeSites.value, 'google');
+	assert.equal(page.probeSites.disabled, false);
 	assert.equal(page.probeButton.disabled, false);
-	assert.ok(clock.timers.every((t) => t.cleared));
+	assert.ok(visibleText(root).includes('检测真实延迟'));
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await page.initialRequest;
+	const refresh = page.fetchRefresh();
+	await h.reply('status', { ok: true, state: 'running' });
+	await h.reply('stats', readings(2000, 0, 0, 0, 0));
+	await refresh;
+	assert.equal(calls.filter(call => call.method === 'probe_sites').length, 1);
 });
 
-test('T8.12c scenario 4d: latency deadline wins over a late RPC; NOT_RUNNING and other errors are shown', async () => {
-	const clock = timerQueue();
-	let release;
-	const page = loadView({ window: clock, ap: {
-		call: (method) => method === 'probe_now' ? Promise.resolve({ ok: true, requested_at: 10 })
-			: new Promise((resolve) => { release = resolve; })
-	} });
-	page.labels = {};
-	page.probeControls();
-	const pending = page.handleProbe();
-	await Promise.resolve();
-	const rpc = clock.run(1000);
-	await clock.run(15000);
-	await pending;
-	assert.equal(page.probeMessage.content, '检测未在 15 秒内完成');
-	assert.equal(page.probeButton.disabled, false);
-	release({ ok: true, last_probe: { at: 10, ok: true, latency_ms: 1 } });
-	await rpc;
-	assert.equal(page.probeMessage.content, '检测未在 15 秒内完成', 'late reply cannot overwrite timeout');
-	assert.ok(clock.timers.every((t) => t.cleared));
-	for (const [code, text] of [ [ 'NOT_RUNNING', '服务未运行' ], [ 'CMD_FAILED', 'CMD_FAILED: ubus' ] ]) {
-		const errorPage = loadView({ ap: { call: async () => ({ ok: false, code, detail: 'ubus' }) } });
-		errorPage.labels = {};
-		errorPage.probeControls();
-		await errorPage.handleProbe();
-		assert.equal(errorPage.probeMessage.content, text);
-		assert.equal(errorPage.probeButton.disabled, false);
+test('T10.23 scenario 1: site failure keeps both controls disabled with one inline error', async () => {
+	for (const reply of [{ ok: false, code: 'TIMEOUT' }, { ok: true, sites: [] },
+		{ ok: true, sites: [null] }, { ok: true, sites: [{ name: 'github' }] }, null]) {
+		const h = deferredPage('0');
+		const { page } = h;
+		page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('status', { ok: true, state: 'running' });
+		await h.reply('probe_sites', reply);
+		assert.equal(page.probeSites.disabled, true);
+		assert.equal(page.probeButton.disabled, true);
+		assert.equal(visibleText(page.probeMessage), `读取站点列表失败（${reply?.code ?? 'RPC_FAILED'}）`);
 	}
+});
+
+test('T10.23 scenario 1: sites arriving before status cannot enable the probe early', async () => {
+	const h = deferredPage('0');
+	const { page } = h;
+	page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('probe_sites', SITES);
+	assert.equal(page.probeSites.disabled, false);
+	assert.equal(page.probeButton.disabled, true);
+	await h.reply('status', { ok: true, state: 'degraded' });
+	assert.equal(page.probeButton.disabled, false);
+});
+
+test('T10.23 scenario 3: only running/degraded with sites enables real latency', async () => {
+	const { page } = renderStatus({ ok: true, state: 'running' });
+	page.siteOptions = dashboardModel().probe_sites(SITES).options;
+	for (const state of ['running', 'degraded', 'starting', 'failsafe', 'stopped', 'error', 'unknown']) {
+		page.refresh({ ok: true, state });
+		assert.equal(page.probeButton.disabled, !['running', 'degraded'].includes(state), state);
+	}
+	page.refresh({ ok: false, code: 'TIMEOUT' });
+	assert.equal(page.probeButton.disabled, true);
 });
 
 test('T8.12c service refresh: action schedules serialized status/stats even with automatic refresh off', async () => {
@@ -1033,17 +1059,13 @@ test('T10.4 scenario 4b: probe phrases without full stops, disabled notice and e
 	for (const [probe, text] of [ [ { ok: true, latency_ms: 12 }, '正常，12 ms' ],
 		[ { ok: false }, '检测失败' ], [ null, '尚未检测' ] ]) {
 		assert.equal(build({ ok: true, last_probe: probe }).probe_text, text);
-		if (probe) {
-			assert.equal(model.probe_result(probe), text);
-			assert.deepEqual(model.probe_completion({ last_probe: { ...probe, at: 10 } }, 10),
-				{ done: true, text: '', refresh: true });
-		}
+		/* Monitor health retains its wording, independently of real latency. */
 	}
 	assert.equal(build({ ok: true }, null, null, NOW, false).disabled_notice,
 		'服务未启用：打开『启用』开关后会自动启动');
 	for (const empty of [ undefined, null, '' ])
 		assert.equal(model.can_switch(empty, 'n_a'), false);
-	assert.doesNotMatch(fs.readFileSync(MODEL, 'utf8'), /TODO\(design\)/);
+	assert.doesNotMatch(fs.readFileSync(MODEL, 'utf8'), /probe_completion/);
 });
 
 test('T10.4 scenario 4c: three installed-component rows, missing versions, missing binaries and failed calls', () => {
@@ -1289,7 +1311,7 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	select.value = 'n_a';
 	select.attrs.change();
 	assert.equal(button.disabled, false, 'guard compares against runtime, not UCI');
-	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*测延迟/);
+	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*检测真实延迟/);
 	assert.ok(findAll(second, 'small')[0].textContent.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
@@ -1311,8 +1333,8 @@ test('T10.5 scenario 2d: no nodes renders guidance instead of selector and apply
 	const root = page.render(await page.load());
 	const block = nodeRow(root);
 	assert.equal(visibleText(block.children[0]), '还没有节点，请到节点页添加或导入');
-	assert.equal(findAll(block, 'select').length, 0);
-	assert.deepEqual(findAll(block, 'button').map((b) => b.textContent), [ '测延迟' ]);
+	assert.equal(findAll(block, 'select').length, 1, 'the site selector remains');
+	assert.deepEqual(findAll(block, 'button').map((b) => b.textContent), [ '检测真实延迟' ]);
 	await page.componentRequest;
 });
 
@@ -1404,9 +1426,9 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	assert.equal(right.children[1].attrs.style, 'color:var(--success-color-high, #2f855a)');
 	assert.equal(right.children[2].tag, 'small');
 	assert.match(right.children[2].textContent, /前$/);
-	assert.deepEqual(right.children[3].children.map((c) => c.tag), [ 'button', 'span' ]);
-	assert.equal(right.children[3].children[0].textContent, '测延迟');
-	assert.equal(right.children[3].children[1].attrs['aria-live'], 'polite');
+	assert.deepEqual(right.children[3].children.map((c) => c.tag), [ 'select', 'button', 'span' ]);
+	assert.equal(right.children[3].children[1].textContent, '检测真实延迟');
+	assert.equal(right.children[3].children[2].attrs['aria-live'], 'polite');
 });
 
 test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address is omitted on the right', async () => {
@@ -1422,7 +1444,7 @@ test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address
 	assert.equal(right.children.length, 3, 'result, relative time and probe controls without address');
 	assert.equal(right.children[0].textContent, '检测失败');
 	assert.equal(right.children[1].tag, 'small');
-	assert.equal(findAll(right, 'button')[0].textContent, '测延迟');
+	assert.equal(findAll(right, 'button')[0].textContent, '检测真实延迟');
 	assert.doesNotMatch(visibleText(right), /节点地址|stale/);
 	await page.componentRequest;
 });
@@ -1664,6 +1686,8 @@ function switchPage(reply) {
 					return { ok: true, version: '0.2.0-r7' };
 				if (method === 'events')
 					return reply;
+				if (method === 'probe_sites')
+					return SITES;
 				return { ok: true, components: {} };
 			},
 			poll: (fn) => { polls.push(fn); return { stop() {} }; }
@@ -1758,110 +1782,49 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 	}
 });
 
-/* Render the whole page so completion must update the health item, not just
-   a detached message node. Automatic refresh stays off throughout. */
-for (const ok of [ true, false ]) {
-	test(`T10.13 scenario 1/2: ${ok ? 'healthy' : 'failed'} probe clears message and refreshes health once`,
+/* T10.23 replaces T10.13 freshness/deadline tests: latency never changes health. */
+const LATENCY_RESULTS = [
+	[{ ok: true, code: 204, latency_ms: 208 }, 'GitHub 208 ms'],
+	[{ ok: false, code: 'PROBE_TIMEOUT' }, 'GitHub 超时'],
+	[{ ok: false, code: 'PROBE_FAILED' }, 'GitHub 连接失败'],
+	[{ ok: false, code: 'PROBE_FAILED', http_code: 500 }, 'GitHub 返回 HTTP 500'],
+	[{ ok: false, code: 'NOT_RUNNING' }, '服务未运行'],
+	[{ ok: false, code: 'RPC_FAILED', detail: 'disconnected' }, 'RPC_FAILED: disconnected'],
+	[{ ok: false, code: 'TIMEOUT', detail: '35s' }, 'TIMEOUT: 35s']
+];
+
+for (const [reply, text] of LATENCY_RESULTS) {
+	test(`T10.23 scenario 2/6: ${text} stays beside button, leaves health unchanged and never reads status`,
 		async () => {
-		const clock = timerQueue(), calls = [];
-		const probe = { at: 10, ok, latency_ms: 208 };
-		let statusReads = 0;
-		const page = loadView({ window: clock, ap: {
-			call: async (method) => {
-				calls.push(method);
-				if (method === 'probe_now')
-					return { ok: true, requested_at: 10 };
-				if (method === 'status') {
-					statusReads++;
-					return { ok: true, state: 'running', last_probe: statusReads === 1 ? null : probe };
-				}
-				return method === 'stats' ? readings(1000, 1, 2, 3, 4) : { ok: true, components: {} };
-			},
-			poll: () => ({ stop() {} })
-		} });
-		const root = page.render({ labels: {}, enabled: true });
-		page.startPolling(0);
+		const h = deferredPage('0');
+		const { page, calls } = h;
+		const root = page.render(await page.load());
+		await Promise.resolve();
+		await h.reply('status', { ok: true, state: 'running',
+			last_probe: { at: NOW, ok: true, latency_ms: 42 } });
+		await h.reply('stats', readings(1000, 1, 2, 3, 4));
+		await h.reply('probe_sites', SITES);
 		await page.initialRequest;
-		await page.componentRequest;
-		statusReads = 0;
 		calls.length = 0;
+		page.probeSites.value = 'github';
+		const health = page.vm.probe_text;
 		const pending = page.probeButton.attrs.click();
 		assert.equal(page.probeButton.disabled, true);
-		assert.equal(visibleText(page.probeMessage), '检测中…');
-		await Promise.resolve();
-		await clock.run(1000);
-		assert.equal(page.probeButton.disabled, true, 'no fresh probe yet');
-		assert.equal(visibleText(page.probeMessage), '检测中…');
-		await clock.run(1000);
-		await pending;
-		assert.deepEqual(calls, [ 'probe_now', 'status', 'status', 'status', 'stats' ]);
-		assert.equal(visibleText(page.probeMessage), '');
-		assert.equal(page.probeButton.disabled, false);
-		assert.equal(page.poller, null);
-		const text = ok ? '正常，208 ms' : '检测失败';
-		const matches = findAll(nodeRow(root), 'span').filter((el) => visibleText(el) === text);
-		assert.equal(matches.length, 1, 'only the health item contains the result');
-		assert.equal(matches[0].attrs.style, ok ? 'color:var(--success-color-high, #2f855a)'
-			: 'color:var(--error-color-high, #c53030)');
-		assert.ok(clock.timers.every((timer) => timer.cleared));
-	});
-}
-
-test('T10.13 scenario 2: status polling errors keep original text and restore the latency button', async () => {
-	for (const [code, text] of [ [ 'NOT_RUNNING', '服务未运行' ],
-		[ 'TIMEOUT', '检测未在 15 秒内完成' ], [ 'RPC_FAILED', 'RPC_FAILED: disconnected' ] ]) {
-		const clock = timerQueue(), calls = [];
-		const page = loadView({ window: clock, ap: { call: async (method) => {
-			calls.push(method);
-			return method === 'probe_now' ? { ok: true, requested_at: 10 }
-				: { ok: false, code, detail: 'disconnected' };
-		} } });
-		page.probeControls();
-		const pending = page.handleProbe();
-		assert.equal(visibleText(page.probeMessage), '检测中…');
-		await Promise.resolve();
-		await clock.run(1000);
+		assert.equal(visibleText(page.probeButton), '检测中…');
+		assert.equal(page.probeButton.attrs.click(), undefined, 'busy clicks do not send a second request');
+		assert.deepEqual(calls.map(({ method, params }) => [method, params]), [['probe_url', { site: 'github' }]]);
+		page.probeSites.value = 'google';
+		await h.reply('probe_url', reply);
 		await pending;
 		assert.equal(visibleText(page.probeMessage), text);
+		assert.equal(visibleText(page.probeButton), '检测真实延迟');
 		assert.equal(page.probeButton.disabled, false);
-		assert.deepEqual(calls, [ 'probe_now', 'status' ], 'no success refresh after an RPC error');
-	}
-});
-
-test('T10.13 scenario 1: completion waits out an older refresh before issuing a new status read', async () => {
-	const clock = timerQueue(), calls = [];
-	let releaseOld, statusReads = 0;
-	const page = loadView({ window: clock, ap: {
-		call: async (method) => {
-			calls.push(method);
-			if (method === 'probe_now')
-				return { ok: true, requested_at: 10 };
-			if (method === 'status') {
-				if (++statusReads === 1)
-					return new Promise((resolve) => { releaseOld = resolve; });
-				return { ok: true, state: 'running', last_probe: { at: 10, ok: true, latency_ms: 42 } };
-			}
-			return readings(1000, 1, 2, 3, 4);
-		},
-		poll: () => ({ stop() {} })
-	} });
-	const root = page.render({ labels: {}, enabled: true });
-	await page.componentRequest;
-	/* The deferred first status itself is the older in-flight refresh. */
-	const oldRefresh = page.initialRequest;
-	const pending = page.handleProbe();
-	await Promise.resolve();
-	await clock.run(1000);
-	assert.equal(visibleText(page.probeMessage), '');
-	releaseOld({ ok: true, state: 'running', last_probe: { at: 9, ok: false } });
-	await oldRefresh;
-	await pending;
-	assert.deepEqual(calls, [ 'status', 'version', 'components',
-		'probe_now', 'status', 'stats', 'status', 'stats' ]);
-	assert.equal(visibleText(page.probeMessage), '');
-	assert.equal(page.vm.probe_text, '正常，42 ms');
-	assert.ok(visibleText(nodeRow(root)).includes('正常，42 ms'));
-});
+		assert.equal(page.vm.probe_text, health);
+		assert.equal(findAll(nodeRow(root), 'span').filter(el => visibleText(el) === '正常，42 ms').length, 1);
+		assert.deepEqual(calls.map(call => call.method), ['probe_url'], 'completion does not read status/stats');
+		assert.equal(page.poller, null);
+	});
+}
 
 const INVENTORY_FAILURES = [
 	[ { ok: false, code: 'RPC_FAILED', detail: 'disconnected' }, 'RPC_FAILED: disconnected' ],
@@ -2062,7 +2025,7 @@ test('T10.17 scenario 2: all RPCs pending still renders complete placeholders an
 	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
 	assert.equal(disabled(nodes), false);
 	await Promise.resolve();
-	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components' ]);
+	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components', 'probe_sites' ]);
 	assert.deepEqual(polls, [], 'no poll starts while the first status is pending');
 	/* UCI-only enable remains a real action even with all three RPCs stuck. */
 	page.enabled = false;
@@ -2092,6 +2055,7 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.equal(sections(root)[1], traffic);
 	assert.equal(findAll(root, 'strong')[0].textContent, '读取中…');
 	assert.deepEqual(polls, []);
+	await h.reply('probe_sites', SITES);
 	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a', dns_tier: 'T1',
 		last_error: 'CONFIG_INVALID', last_probe: { ok: true, latency_ms: 42, at: NOW } });
 	assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
@@ -2100,7 +2064,7 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.equal(page.probeButton.disabled, false);
 	assert.equal(polls.length, 1, 'first status starts polling without waiting for slower stats');
 	assert.equal(polls[0].ms, 10000);
-	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components', 'stats' ]);
+	assert.deepEqual(calls.map((call) => call.method), [ 'status', 'version', 'components', 'probe_sites', 'stats' ]);
 	assert.equal(findAll(nodeRow(root), 'select')[0], nodes);
 	assert.equal(nodes.value, 'n_b', 'first status preserves edits when the effective node is unchanged');
 	assert.equal(findAll(root, 'input')[0], enable);
@@ -2169,6 +2133,7 @@ test('T10.17 scenario 4: status failure clears loading, keeps controls disabled 
 		await h.reply('version', failure);
 		assert.equal(ownVersion(root), '–', 'failed version is no longer pending');
 		await h.reply('components', failure);
+		await h.reply('probe_sites', SITES);
 		await h.reply('stats', failure);
 		await page.initialRequest;
 		assert.doesNotMatch(visibleText(root), /读取中…/);
@@ -2191,6 +2156,7 @@ test('T10.17 scenario 4b: refreshing during a probe never enables it early or af
 	await Promise.resolve();
 	await h.reply('status', { ok: true, state: 'running' });
 	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await h.reply('probe_sites', SITES);
 	await page.initialRequest;
 	const probe = page.probeButton.attrs.click();
 	assert.equal(page.probeButton.disabled, true);
@@ -2203,7 +2169,7 @@ test('T10.17 scenario 4b: refreshing during a probe never enables it early or af
 	await h.reply('status', { ok: false, code: 'RPC_FAILED' });
 	await h.reply('stats', { ok: false, code: 'RPC_FAILED' });
 	await failed;
-	await h.reply('probe_now', { ok: false, code: 'NOT_RUNNING' });
+	await h.reply('probe_url', { ok: false, code: 'NOT_RUNNING' });
 	await probe;
 	assert.equal(visibleText(page.probeMessage), '服务未运行');
 	assert.equal(page.probeButton.disabled, true, 'probe finalizer respects the latest failed status');
@@ -2439,6 +2405,107 @@ test('T10.22 defensive: failed changes read notifies, writes nothing and restore
 	assert.equal(notes.length, 1);
 	assert.equal(notes[0].kind, 'error');
 	assert.equal(notes[0].body.textContent, '读取未应用的更改失败，没有关闭『启用』：uci changes failed');
+});
+
+test('T10.23 scenario 4: overview node_use failure restores button, reports code/detail and never touches UCI',
+	async () => {
+	const calls = [], notes = [];
+	const failedPage = loadView({
+		ap: { call: (method, params) => new Promise(resolve => calls.push({ method, params, resolve })) },
+		uci: {
+			set: () => assert.fail('must not set UCI'), save: () => assert.fail('must not save UCI'),
+			unload: () => assert.fail('failed switch must not unload UCI'),
+			changes: () => assert.fail('must not inspect session changes')
+		},
+		ui: {
+			addNotification: (title, body, kind) => notes.push({ body, kind }),
+			changes: { apply: () => assert.fail('must not apply session changes') }
+		}
+	});
+	failedPage.labels = { n_a: 'Alpha', n_b: 'Beta' };
+	failedPage.content = E('div');
+	failedPage.currentNode = 'n_a';
+	failedPage.refresh({ ok: true, state: 'running', node_id: 'n_a' });
+	const [select, button] = failedPage.nodeControl.children;
+	select.value = 'n_b';
+	select.attrs.change();
+	const pending = button.attrs.click();
+	assert.equal(button.disabled, true);
+	assert.equal(await button.attrs.click(), undefined, 'duplicate switch is ignored');
+	assert.equal(calls.length, 1);
+	calls[0].resolve({ ok: false, code: 'FS_FAILED', detail: 'uci-commit' });
+	await pending;
+	assert.equal(button.disabled, false);
+	assert.equal(notes[0].body.textContent, '切换节点失败（FS_FAILED）: uci-commit');
+	assert.equal(notes[0].kind, 'error');
+	assert.equal(failedPage.switching, false);
+});
+
+test('T10.23 defensive: overview UCI refresh rejection notifies and restores switch button without retry',
+	async () => {
+	const notes = [], calls = [];
+	const page = loadView({
+		ap: { call: async method => { calls.push(method); return { ok: true, reload: true }; } },
+		uci: { unload: async () => { throw new Error('UCI unavailable'); } },
+		ui: { addNotification: (title, body, kind) => notes.push([body.textContent, kind]) }
+	});
+	page.content = E('div');
+	page.labels = { n_a: 'Alpha', n_b: 'Beta' };
+	page.refresh({ ok: true, state: 'running', node_id: 'n_a' });
+	const [select, button] = page.nodeControl.children;
+	select.value = 'n_b';
+	select.attrs.change();
+	await button.attrs.click();
+	assert.equal(button.disabled, false);
+	assert.equal(page.switching, false);
+	assert.deepEqual(notes, [['切换节点失败（RPC_FAILED）: UCI unavailable', 'error']]);
+	assert.deepEqual(calls, ['node_use']);
+});
+
+test('T10.23 scenario 4: overview reload:false only notifies when refreshed service is stopped/error', async () => {
+	for (const state of ['stopped', 'error', 'running', 'degraded', 'starting', 'failsafe']) {
+		const notes = [], order = [];
+		let current = 'n_a';
+		const page = loadView({
+			ap: {
+				call: async method => {
+					order.push(method);
+					if (method === 'node_use') {
+						current = 'n_b';
+						return { ok: true, reload: false };
+					}
+					return { ok: true, state, node_id: 'n_b' };
+				}
+			},
+			uci: { get: (config, section, option) => option === 'node' ? current : '1' },
+			ui: { addNotification: (title, body) => notes.push(body.textContent) }
+		});
+		page.labels = {};
+		page.content = E('div');
+		await page.handleNode('n_b');
+		assert.equal(order[0], 'node_use');
+		assert.ok(order.includes('status'));
+		assert.deepEqual(notes, ['stopped', 'error'].includes(state) ? ['已设为当前节点，下次启动时使用'] : []);
+	}
+});
+
+test('T10.23 scenario 4: node switch waits out older refresh and issues a new post-UCI status read', async () => {
+	const h = deferredPage('0');
+	const { page, calls } = h;
+	page.render(await page.load());
+	await Promise.resolve();
+	const pending = page.handleNode('n_b');
+	/* The original status is still pending when node_use succeeds. */
+	await h.reply('node_use', { ok: true, reload: true });
+	assert.equal(calls.filter(call => call.method === 'status').length, 1);
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	await page.initialRequest;
+	assert.equal(calls.filter(call => call.method === 'status').length, 2);
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
+	await h.reply('stats', readings(2000, 0, 0, 0, 0));
+	await pending;
+	assert.equal(page.switching, false);
 });
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {

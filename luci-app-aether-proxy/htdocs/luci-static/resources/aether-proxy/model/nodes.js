@@ -14,6 +14,7 @@
  * have an entry in po/zh_Hans/aether-proxy.po. Undefined results mark the first
  * deferred read (docs/10 「其余页面先出页面」), not an unprobed node. Local
  * pending IDs cover the gap before the first job refresh (docs/10 「节点页修正」).
+ * Direct switch feedback follows docs/10 「检测真实延迟与切换节点」 (T10.23).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -121,6 +122,22 @@ function probe_column(id, results, local_pending) {
 
 return baseclass.extend({
 	probe_column,
+
+	node_use_message: function(reply, status, current, sections) {
+		if (reply?.ok !== true)
+			return fmt(_('Switching nodes failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED')
+				+ (reply?.detail ? ': ' + reply.detail : '');
+		if (status?.ok === false)
+			return null;
+		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
+		if (reply.reload === false && ['stopped', 'error'].includes(status?.state))
+			return _('Set as the current node; it will be used on the next start.', 'aether-proxy');
+		if (active && current && status.node_id && current !== status.node_id) {
+			const node = sections.find(section => section['.name'] === current);
+			return fmt(_('Switching to “%s”…', 'aether-proxy'), node?.label || current);
+		}
+		return null;
+	},
 	/* sections: uci.sections('aetherproxy', 'node'), current: the value of
 	   aetherproxy.main.node, subs: uci.sections('aetherproxy', 'subscription'),
 	   results: the object resolved by ap.call('probe_results'), local_pending:

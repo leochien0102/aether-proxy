@@ -50,7 +50,7 @@ function check_script_version() {
 
 check_script_version();
 
-/* docs/10 「rpcd 插件」: all 12 ubus methods of the aetherproxy object with
+/* docs/10 「rpcd 插件」: all ubus methods of the aetherproxy object with
    their named parameters, in declaration order. */
 var METHODS = {
 	version: [],
@@ -63,6 +63,9 @@ var METHODS = {
 	events: [ 'since', 'level' ],
 	probe_results: [],
 	probe_now: [],
+	node_use: [ 'id' ],
+	probe_url: [ 'site' ],
+	probe_sites: [],
 	sub_status: [],
 	data_status: [],
 	stats: [],
@@ -72,8 +75,8 @@ var METHODS = {
 	save_file: [ 'name', 'content' ]
 };
 
-/* docs/10 「公共模块与菜单」: check and save_file get the long hard-timeout
-   tier, every other method the normal one (35s/15s vs the plugin's 30s/10s). */
+/* docs/10 「检测真实延迟与切换节点」: probe_url uses the long tier because
+   its plugin timeout follows the configurable probe.timeout rather than 10s. */
 /* Hard timeouts in seconds (docs/10 「公共模块与菜单」). call/long are the
    ap.call tiers; job is the total budget for one background job (the job
    itself caps at 600s); job_poll is the job_status polling cadence required
@@ -86,7 +89,7 @@ var TIMEOUTS = {
 	job_poll: 2
 };
 
-var LONG_CALLS = [ 'check', 'save_file' ];
+var LONG_CALLS = [ 'check', 'save_file', 'probe_url' ];
 
 /* docs/10 「公共模块与菜单」: ap.poll() intervals below 2000ms count as 2000ms. */
 var MIN_POLL_INTERVAL_MS = 2000;

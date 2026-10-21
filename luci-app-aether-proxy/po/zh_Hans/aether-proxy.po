@@ -1532,16 +1532,8 @@ msgid "Off"
 msgstr "关闭"
 
 msgctxt "aether-proxy"
-msgid "The probe did not finish within 15 seconds."
-msgstr "检测未在 15 秒内完成"
-
-msgctxt "aether-proxy"
 msgid "The service is not running."
 msgstr "服务未运行"
-
-msgctxt "aether-proxy"
-msgid "Measure latency"
-msgstr "测延迟"
 
 msgctxt "aether-proxy"
 msgid "Proxy connections"
@@ -1734,3 +1726,39 @@ msgstr "读取检测结果失败：%s"
 msgctxt "aether-proxy"
 msgid "Reading unapplied changes failed, so Enable was not turned off: %s"
 msgstr "读取未应用的更改失败，没有关闭『启用』：%s"
+
+msgctxt "aether-proxy"
+msgid "Test real latency"
+msgstr "检测真实延迟"
+
+msgctxt "aether-proxy"
+msgid "Probe site"
+msgstr "检测站点"
+
+msgctxt "aether-proxy"
+msgid "Reading the site list failed (%s)"
+msgstr "读取站点列表失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "%s %s ms"
+msgstr "%s %s ms"
+
+msgctxt "aether-proxy"
+msgid "%s timed out"
+msgstr "%s 超时"
+
+msgctxt "aether-proxy"
+msgid "%s returned HTTP %s"
+msgstr "%s 返回 HTTP %s"
+
+msgctxt "aether-proxy"
+msgid "%s connection failed"
+msgstr "%s 连接失败"
+
+msgctxt "aether-proxy"
+msgid "Switching nodes failed (%s)"
+msgstr "切换节点失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Set as the current node; it will be used on the next start."
+msgstr "已设为当前节点，下次启动时使用"

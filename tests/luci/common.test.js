@@ -141,6 +141,33 @@ test('scenario 2: settle-once — hard timeout wins over a late reply; check use
 	}
 });
 
+test('T10.23 scenario 5: node_use/probe_sites parameters and probe_url 35s settle-once timeout', async (t) => {
+	const { ap, rpc } = setup(t);
+	const id = 'n_' + 'a'.repeat(32);
+	rpc.setHandler(() => ({ ok: true }));
+	await ap.call('node_use', { id });
+	await ap.call('probe_sites');
+	assert.deepEqual(rpc.calls, [
+		{ object: 'aetherproxy', method: 'node_use', params: { id } },
+		{ object: 'aetherproxy', method: 'probe_sites', params: {} }
+	]);
+	const late = deferred(), seen = [];
+	rpc.setHandler(() => late.promise);
+	ap.call('probe_url', { site: 'github' }).then(reply => seen.push(reply));
+	assert.deepEqual(rpc.calls.at(-1), {
+		object: 'aetherproxy', method: 'probe_url', params: { site: 'github' }
+	});
+	t.mock.timers.tick(34000);
+	await flush();
+	assert.deepEqual(seen, []);
+	t.mock.timers.tick(1000);
+	await flush();
+	assert.deepEqual(seen, [{ ok: false, code: 'TIMEOUT', detail: 'probe_url did not answer in 35s' }]);
+	late.resolve({ ok: true, latency_ms: 1 });
+	await flush();
+	assert.equal(seen.length, 1);
+});
+
 test('T10.4 components: declared without parameters, 20s hard timeout ignores late reply', async (t) => {
 	const { ap, rpc } = setup(t);
 	assert.equal(ap.TIMEOUTS.components, 20);

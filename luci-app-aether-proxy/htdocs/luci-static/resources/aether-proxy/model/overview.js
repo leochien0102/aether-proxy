@@ -9,6 +9,7 @@
  * already translated through _() (every msgid used here must have an entry in
  * po/zh_Hans/aether-proxy.po), and button availability is decided per state.
  * T10.22 also summarizes staged session changes before disabling the service;
+ * T10.23 keeps real latency independent of monitor health and switches via node_use;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -352,26 +353,39 @@ return baseclass.extend({
 		return result;
 	},
 
-	probe_result: function(reply) {
-		if (reply?.code == 'TIMEOUT')
-			return _('The probe did not finish within 15 seconds.', 'aether-proxy');
-		if (reply?.code == 'NOT_RUNNING')
-			return _('The service is not running.', 'aether-proxy');
-		if (!reply || reply.code)
-			return failure_text(reply);
-		return reply.ok ? fmt(_('Healthy, %s ms', 'aether-proxy'), reply.latency_ms ?? '?')
-			: _('Probe failed', 'aether-proxy');
+	probe_sites: function(reply) {
+		const sites = reply?.ok === true && Array.isArray(reply.sites) ? reply.sites : [];
+		const valid = sites.length && sites.every(site =>
+			typeof site?.name === 'string' && site.name && typeof site.label === 'string' && site.label);
+		if (valid)
+			return { options: sites.map(site => ({ value: site.name, text: site.label })), error: null };
+		/* TODO(design): empty/malformed successful lists are unspecified; keep probing disabled. */
+		return { options: [], error: fmt(_('Reading the site list failed (%s)', 'aether-proxy'),
+			reply?.ok === false ? (reply.code ?? 'RPC_FAILED') : 'RPC_FAILED') };
 	},
 
-	/* Keep completion detection here: the view must not interpret last_probe. */
-	probe_completion: function(reply, requested_at) {
-		if (reply?.ok === false)
-			return { done: true, text: this.probe_result(reply) };
-		const probe = reply?.last_probe;
-		if (!probe || probe.at < requested_at || typeof probe.at != 'number')
-			return { done: false };
-		/* Completed measurements belong only in the health item, including failed probes. */
-		return { done: true, text: '', refresh: true };
+	probe_result: function(reply, label) {
+		if (reply?.ok === true)
+			return fmt(_('%s %s ms', 'aether-proxy'), label, reply.latency_ms);
+		if (reply?.code === 'PROBE_TIMEOUT')
+			return fmt(_('%s timed out', 'aether-proxy'), label);
+		if (reply?.code === 'PROBE_FAILED')
+			return reply.http_code != null
+				? fmt(_('%s returned HTTP %s', 'aether-proxy'), label, reply.http_code)
+				: fmt(_('%s connection failed', 'aether-proxy'), label);
+		if (reply?.code === 'NOT_RUNNING')
+			return _('The service is not running.', 'aether-proxy');
+		return failure_text(reply);
+	},
+
+	node_use_message: function(reply, status) {
+		if (reply?.ok !== true)
+			return fmt(_('Switching nodes failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED')
+				+ (reply?.detail ? ': ' + reply.detail : '');
+		if (reply.reload === false && status?.ok !== false
+			&& ['stopped', 'error'].includes(status?.state))
+			return _('Set as the current node; it will be used on the next start.', 'aether-proxy');
+		return null;
 	},
 
 	node_options: node_options,
@@ -464,7 +478,7 @@ return baseclass.extend({
 			ok: true,
 			error: null,
 			error_detail: null,
-			probe_disabled: false,
+			probe_disabled: !['running', 'degraded'].includes(state),
 			state_text: state_text(state, status.waiting_network === true),
 			traffic_note,
 			dns_failsafe: status.dns_failsafe === true,

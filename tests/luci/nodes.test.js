@@ -7,7 +7,7 @@
  * the assertions check the documented Chinese wording end to end. 9 holds the
  * static source checks on the view: form.GridSection, no rpc.declare, the
  * delete button is a confirmed cbi-button-remove, set-current goes through
- * ui.changes.apply, probing goes through ap.run_job, no cbi-button-reset.
+ * node_use, probing goes through ap.run_job, no cbi-button-reset.
  */
 
 const test = require('node:test');
@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo } = require('./loader.js');
+const { loadModule, parsePo, element } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -28,6 +28,7 @@ const po = parsePo(fs.readFileSync(PO, 'utf8'));
 /* The model goes through the browser-global _(); resolve it from the real po
    so the tests also fail when a translation goes missing. */
 globalThis._ = (s) => po[s] ?? s;
+globalThis.E = element;
 
 function tr(msgid, ...args) {
 	let s = po[msgid] ?? msgid;
@@ -211,7 +212,7 @@ test('scenario 8: import — split keeps line numbers, the three reply kinds are
 	assert.equal(model.job_failure_text({ state: 'ok', exit: 0 }), null);
 });
 
-test('scenario 9: static view checks — GridSection, no rpc.declare, confirmed remove, ui.changes.apply, ap.run_job, no cbi-button-reset', () => {
+test('scenario 9: static view checks — GridSection, confirmed remove, node_use, ap.run_job, safe buttons', () => {
 	const src = fs.readFileSync(VIEW, 'utf8');
 
 	/* the view goes through ap and the model, never through rpc */
@@ -226,10 +227,9 @@ test('scenario 9: static view checks — GridSection, no rpc.declare, confirmed 
 	assert.match(src, /await ap\.confirm\(/);
 	assert.match(src, /cbi-button-remove/);
 
-	/* set as current stages the UCI change and applies with rollback */
-	assert.match(src, /uci\.set\('aetherproxy', 'main', 'node', section_id\)/);
-	assert.match(src, /uci\.save\(\)/);
-	assert.match(src, /ui\.changes\.apply\(/);
+	/* Direct switching leaves unrelated session changes untouched (T10.23). */
+	assert.match(src, /ap\.call\('node_use', \{ id: section_id \}\)/);
+	assert.doesNotMatch(src, /uci\.(set|save)\(|ui\.changes\.apply\(/);
 
 	/* probing is a background job; results refresh through probe_results */
 	assert.match(src, /ap\.run_job\(/);
@@ -258,7 +258,7 @@ function luciCreateHandlerFn(ctx, fn, ...bound) {
 	};
 }
 
-function loadNodesView(calls) {
+function loadNodesView(calls, overrides = {}) {
 	const modelMod = loadModule(MODEL, { baseclass: { extend: (o) => o } },
 		{ window: {}, document: { addEventListener() {}, removeEventListener() {} } });
 	const view = loadModule(VIEW, {
@@ -266,18 +266,24 @@ function loadNodesView(calls) {
 		form: {},
 		uci: {
 			sections: () => [],
-			get: () => undefined,
-			set: (...args) => calls.push([ 'uci.set', ...args ]),
-			save: () => { calls.push([ 'uci.save' ]); return Promise.resolve(); }
+			get: () => 'n_' + 'b'.repeat(32),
+			unload: async config => { calls.push(['unload', config]); },
+			load: async config => { calls.push(['load', config]); },
+			set: () => assert.fail('must not set session UCI'),
+			save: () => assert.fail('must not save session UCI'),
+			changes: () => assert.fail('must not inspect staged changes')
 		},
 		ui: {
 			createHandlerFn: luciCreateHandlerFn,
-			changes: { apply: (...args) => { calls.push([ 'apply', ...args ]); } },
+			changes: { apply: () => assert.fail('must not apply session UCI') },
 			addNotification: (...args) => calls.push([ 'notify', ...args ])
 		},
 		dom: { content: () => {} },
 		'aether-proxy.common': {
-			call: (method) => { calls.push([ 'call', method ]); return Promise.resolve({ ok: true, nodes: {} }); },
+			call: async (method, params) => {
+				calls.push([ 'call', method, params ]);
+				return overrides.call ? overrides.call(method, params) : { ok: true, nodes: {} };
+			},
 			run_job: (kind, args) => { calls.push([ 'run_job', kind, args ]); return Promise.resolve({ state: 'ok' }); }
 		},
 		'aether-proxy.model.nodes': modelMod
@@ -285,6 +291,7 @@ function loadNodesView(calls) {
 	view.probeButtons = [];
 	view.probeCells = {};
 	view.progressEl = {};
+	view.buildPage = async () => { calls.push(['build']); return E('div'); };
 	return view;
 }
 
@@ -299,16 +306,64 @@ test('row 「检测」 click sends only that node id to probe_nodes', async () =
 		[ 'run_job', 'probe_nodes', [ 'n_0123456789abcdef0123456789abcdef' ] ]);
 });
 
-test('row 「设为当前」 click writes the node id into main.node, saves and applies with rollback', async () => {
+test('T10.23 scenario 4: row click sends correct node_use id, unload/load then status, without session apply',
+	async () => {
+	const calls = [];
+	let release;
+	const id = 'n_' + 'b'.repeat(32);
+	const view = loadNodesView(calls, { call: method => method === 'node_use'
+		? new Promise(resolve => { release = resolve; })
+		: { ok: true, state: 'running', node_id: 'n_old' } });
+	const click = luciCreateHandlerFn(view, 'handleSetCurrent', id);
+	const button = {};
+	const pending = click({ currentTarget: button });
+	assert.equal(button.disabled, true);
+	assert.deepEqual(calls, [['call', 'node_use', { id }]]);
+	release({ ok: true, reload: true });
+	await pending;
+	assert.deepEqual(calls.slice(0, 5), [
+		['call', 'node_use', { id }], ['unload', 'aetherproxy'], ['load', 'aetherproxy'],
+		['call', 'status', undefined], ['build']
+	]);
+	assert.equal(calls.at(-1)[1], null);
+	assert.equal(calls.at(-1)[2].textContent, `正在切换到「${id}」…`);
+	assert.equal(button.disabled, false);
+});
+
+test('T10.23 scenario 4: node row failure notifies with code/detail, restores button and does not reload', async () => {
+	const calls = [];
+	const view = loadNodesView(calls, { call: async () => ({ ok: false, code: 'CMD_FAILED', detail: 'reload' }) });
+	const button = {};
+	await luciCreateHandlerFn(view, 'handleSetCurrent', 'n_b')({ currentTarget: button });
+	assert.equal(button.disabled, false);
+	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（CMD_FAILED）: reload');
+	assert.equal(calls.at(-1)[3], 'error');
+	assert.ok(!calls.some(call => ['unload', 'load', 'build'].includes(call[0])));
+});
+
+test('T10.23 defensive: node row rebuild rejection notifies and restores button without retry', async () => {
 	const calls = [];
 	const view = loadNodesView(calls);
-	const click = luciCreateHandlerFn(view, 'handleSetCurrent', 'n_0123456789abcdef0123456789abcdef');
+	view.buildPage = async () => { throw new Error('form unavailable'); };
+	const button = {};
+	await view.handleSetCurrent('n_b', { currentTarget: button });
+	assert.equal(button.disabled, false);
+	assert.equal(view.switching, false);
+	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（RPC_FAILED）: form unavailable');
+	assert.equal(calls.at(-1)[3], 'error');
+	assert.equal(calls.filter(call => call[0] === 'call' && call[1] === 'node_use').length, 1);
+});
 
-	await click({ currentTarget: {} });
-
-	assert.deepEqual(calls, [
-		[ 'uci.set', 'aetherproxy', 'main', 'node', 'n_0123456789abcdef0123456789abcdef' ],
-		[ 'uci.save' ],
-		[ 'apply', true ]
-	]);
+test('T10.23 scenario 4: stopped row switch reports next-start; active reload:false does not', async () => {
+	for (const state of ['stopped', 'error', 'running', 'degraded', 'starting', 'failsafe']) {
+		const calls = [];
+		const id = 'n_' + 'b'.repeat(32);
+		const view = loadNodesView(calls, { call: async method => method === 'node_use'
+			? { ok: true, reload: false } : { ok: true, state, node_id: id } });
+		await view.handleSetCurrent(id, { currentTarget: {} });
+		const notes = calls.filter(call => call[0] === 'notify');
+		assert.equal(notes.length, ['stopped', 'error'].includes(state) ? 1 : 0);
+		if (notes.length)
+			assert.equal(notes[0][2].textContent, '已设为当前节点，下次启动时使用');
+	}
 });
