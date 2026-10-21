@@ -163,10 +163,12 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
     "xray-core": { "installed": "26.9.30-r1", "available": "26.10.10-r1", "newer": true },
     "aether-proxy": { "installed": "0.1.0-r1", "available": "0.2.0-r1", "newer": true }
   },
-  "data": { "chnroute4": { "changed": true }, "gfwlist": { "changed": false } }
+  "data": { "chnroute4": { "changed": true, "sha256": "<清单的 content_sha256>" }, "gfwlist": { "changed": false, "sha256": "…" } }
 }
 ```
 
+- `data.<名称>.sha256`（2026-10-21 加，r9 窗口）：检查时清单中该项的 `content_sha256`。`data status` 用它**现场**判断是否有更新（见 10「`data status`」），
+  不再只看检查时算好的 `changed`——那个值在 `update data` 写入新数据后不会变，r9 窗口中刚更新完的数据项仍显示「有更新」。`changed` 照旧保留，供旧版本读取。
 - `packages.<包>.asset`：本机架构与包管理器对应的资产文件名，包对本机不可用时为 `null`。
 - `packages.<包>.previous`：清单中 `previous` 对本机可用时为它的版本，否则为 `null`（2026-10-16 加，T8.9b；更新页据此显示回滚按钮）。
 - `channel_urls` 为空 → `CONFIG_INVALID`（退出码 2）。至少一个地址返回了清单但都没通过验签 → `MANIFEST_BAD_SIGNATURE`（退出码 4）；所有地址都连不上 → `UPDATE_FETCH_FAILED`（退出码 1）。

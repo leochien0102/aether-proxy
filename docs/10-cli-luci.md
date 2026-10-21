@@ -368,7 +368,8 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 
 **`data status`**：只读，不记事件。输出 `{ "ok": true, "checked": <updates.json 的 checked，没有为 null>, "items": { "<名称>": { … } } }`，五个数据项（[08](08-updates.md)「数据格式」）各一项：
 `source`（`downloaded`：`/etc/aether-proxy/data/<名称>.txt` 存在；否则 `baseline`）、`version`（本机内容哈希的前 12 位，哈希按 08「本机数据的哈希」）、`lines`（非空、非注释行数）、
-`updated_at`（`downloaded` 时为数据文件的修改时间，`baseline` 时为 `null`）、`changed`（`updates.json` 中该项的 `changed`，没有检查过为 `null`）。
+`updated_at`（`downloaded` 时为数据文件的修改时间，`baseline` 时为 `null`）、`changed`（`updates.json` 中该项有 `sha256` 时，**现场**比较本机数据的哈希（08「本机数据的哈希」那个函数）与它，不同为 `true`；
+没有 `sha256`（旧版本写的文件）时退回该项的 `changed`；没有检查过为 `null`。2026-10-21 改，r9 窗口：原来只用检查时算好的 `changed`，数据更新后仍显示「有更新」）。
 
 **先出页面**（2026-10-20 定，T10.10；按「页面卡的写法」中的「先出页面，后填数据」）：
 - `load()` 只 `uci.load('aetherproxy')`。模式、DNS 表单照常渲染。
