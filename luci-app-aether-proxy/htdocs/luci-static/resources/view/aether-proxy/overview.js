@@ -7,16 +7,16 @@
 'require aether-proxy.model.overview as model';
 
 /*
- * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「概览页第五轮修正」).
+ * Overview view (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」).
  * Dashboard controls keep DOM state across refreshes; the model calculates
  * rates and completion messages, while this view owns requests and timers.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
  * availability and the stop confirmation are all decided there. status is
- * refreshed at the selected interval via ap.poll; version and the UCI node labels plus
- * main.enabled are read at load; installed components are read once after rendering
- * and update only their table, without delaying the first screen (docs/10 T10.5).
+ * refreshed at the selected interval via ap.poll. Only UCI is read at load;
+ * status, stats, version and installed components fill their own regions after
+ * rendering, without delaying the first screen (docs/10 T10.17).
  * Failed inventory calls can be explicitly retried without reloading the page (T10.13).
  *
  * The 「启用」 switch never calls the `service` rpcd method: the init script
@@ -27,35 +27,18 @@
 
 return view.extend({
 	load: function() {
-		return Promise.all([
-			ap.call('status').then(function(reply) {
-				return ap.call('stats').then(function(stats) { return { reply: reply, stats: stats }; });
-			}),
-			ap.call('version'),
-			uci.load('aetherproxy').then(function() {
-				const labels = {}, subscriptions = {};
-
-				uci.sections('aetherproxy', 'node', function(s) {
-					labels[s['.name']] = s.label || s['.name'];
-				});
-
-				uci.sections('aetherproxy', 'subscription', function(s) {
-					subscriptions[s['.name']] = s.name || s['.name'];
-				});
-
-				/* docs/10 「启用开关」: the switch reflects main.enabled at page
-				   load; an unset option means 0, the schema default. */
-				return {
-					labels: labels,
-					subscriptions: subscriptions,
-					node: uci.get('aetherproxy', 'main', 'node'),
-					enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
-				};
-			})
-		]).then((data) => this.switchEvents(data[0].reply, data[2].node).then((events) => {
-			data[0].events = events;
-			return data;
-		}));
+		return uci.load('aetherproxy').then(function() {
+			const labels = {};
+			uci.sections('aetherproxy', 'node', function(s) {
+				labels[s['.name']] = s.label || s['.name'];
+			});
+			/* An unset enabled option means 0, the schema default. */
+			return {
+				labels: labels,
+				node: uci.get('aetherproxy', 'main', 'node'),
+				enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
+			};
+		});
 	},
 
 	/* Only mismatched runtime/configured nodes need diagnostic events. ap.call
@@ -163,9 +146,20 @@ return view.extend({
 		if (this.refreshing)
 			return this.refreshing;
 		this.refreshing = ap.call('status').then((reply) => {
+			/* A slow stats/events read must not hold the runtime controls hostage.
+			   Even a failed first status starts the normal retry cadence. */
+			this.refresh(reply ?? null);
+			if (this.initialReading) {
+				this.initialReading = false;
+				this.startPolling(this.interval);
+			}
 			return ap.call('stats').then((stats) => {
+				this.updateTraffic(stats);
 				return this.switchEvents(reply, this.currentNode).then((events) => {
-					this.refresh(reply, stats, events);
+					this.vm.switch_notice = model.build(reply, this.version, this.labels,
+						Math.floor(Date.now() / 1000), this.enabled, this.currentNode,
+						this.components, events).switch_notice;
+					this.updateNotices();
 				});
 			});
 		}).finally(() => { this.refreshing = null; });
@@ -195,7 +189,8 @@ return view.extend({
 	startPolling: function(interval) {
 		if (this.poller)
 			this.poller.stop();
-		this.poller = interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
+		this.interval = interval;
+		this.poller = !this.initialReading && interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
 	},
 
 	handleNode: function(node) {
@@ -205,6 +200,7 @@ return view.extend({
 
 	handleProbe: function() {
 		const button = this.probeButton;
+		this.probing = true;
 		button.disabled = true;
 		dom.content(this.probeMessage, _('Measuring latency…', 'aether-proxy'));
 		return ap.call('probe_now').then((reply) => {
@@ -242,7 +238,10 @@ return view.extend({
 			   the health item is populated by a new read even with auto-refresh off. */
 			if (completion.refresh)
 				return Promise.resolve(this.refreshing).then(() => this.fetchRefresh());
-		}).finally(() => { button.disabled = false; });
+		}).finally(() => {
+			this.probing = false;
+			button.disabled = this.vm?.probe_disabled ?? false;
+		});
 	},
 
 	button: function(text, fn) {
@@ -379,14 +378,14 @@ return view.extend({
 	},
 
 	render: function(data) {
-		this.version = data[1];
-		this.labels = data[2].labels;
-		this.currentNode = data[2].node;
-		this.enabled = data[2].enabled;
+		this.labels = data.labels;
+		this.currentNode = data.node;
+		this.enabled = data.enabled;
+		this.initialReading = true;
 
 		this.content = E('div', {});
 
-		this.refresh(data[0].reply, data[0].stats, data[0].events);
+		this.refresh(undefined);
 		const interval = this.readInterval();
 
 		const root = E('div', { 'class': 'cbi-map' }, [
@@ -394,7 +393,14 @@ return view.extend({
 			this.content
 		]);
 
-		this.startPolling(interval);
+		this.interval = interval;
+		/* Microtasks run after render returns its complete, UCI-backed skeleton.
+		   Enqueue requests in page order; common.js owns the concurrency limit. */
+		this.initialRequest = Promise.resolve().then(() => this.fetchRefresh());
+		this.versionRequest = Promise.resolve().then(() => ap.call('version')).then((reply) => {
+			this.version = reply ?? null;
+			this.updateComponents();
+		});
 		this.loadComponents();
 
 		return root;
@@ -407,8 +413,8 @@ return view.extend({
 		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;
 
-		const traffic = model.traffic(this.previousStats, stats);
-		this.previousStats = stats;
+		this.probeControl ??= this.probeControls();
+		this.probeButton.disabled = vm.probe_disabled || !!this.probing;
 		/* Reuse controls when moving them into fresh sections: polling must not
 		   reset an edited selection, the enable switch or an in-flight probe. */
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
@@ -418,21 +424,16 @@ return view.extend({
 			this.nodeControl = vm.node_options.length ? this.nodeControls(vm) : null;
 			this.controlNode = vm.current_node;
 		}
-		this.probeControl ??= this.probeControls();
 		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);
-
-		const parts = [];
-		const notices = [];
-		if (vm.error)
-			notices.push(E('div', { 'class': 'alert-message error' }, vm.error));
-		if (vm.disabled_notice)
-			notices.push(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
-		if (vm.notices.length)
-			notices.push(E('ul', {}, vm.notices.map((text) =>
-				E('li', { 'class': 'alert-message warning' }, text))));
-		if (vm.switch_notice)
-			notices.push(E('div', { 'class': 'alert-message warning' }, vm.switch_notice));
-		parts.push(...notices);
+		this.componentSection ??= this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]);
+		if (!this.noticeContent) {
+			this.noticeContent = E('div', {});
+			this.runtimeContent = E('div', {});
+			this.trafficContainer = E('div', {});
+			dom.content(this.content, [
+				this.noticeContent, this.runtimeContent, this.trafficContainer, this.componentSection
+			]);
+		}
 
 		const stateRows = [ E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
@@ -467,13 +468,39 @@ return view.extend({
 				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
 			])
 		]));
-		parts.push(this.section(_('Runtime status', 'aether-proxy'), stateRows));
-		parts.push(this.trafficSection(traffic, vm.traffic_note));
-		parts.push(this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]));
-
-		dom.content(this.content, E('div', {}, parts));
+		dom.content(this.runtimeContent, this.section(_('Runtime status', 'aether-proxy'), stateRows));
+		/* Status may change the WAN explanation, but it must not consume a
+			second counter sample or replace the independent component table. */
+		if (stats !== undefined || !this.traffic)
+			this.updateTraffic(stats);
+		else
+			dom.content(this.trafficContainer, this.trafficSection(this.traffic, vm.traffic_note));
+		this.updateNotices();
 
 		return vm;
+	},
+
+	updateTraffic: function(stats) {
+		this.traffic = model.traffic(this.previousStats, stats);
+		this.previousStats = stats;
+		dom.content(this.trafficContainer, this.trafficSection(this.traffic, this.vm.traffic_note));
+	},
+
+	/* Each late reply writes only its own region; diagnostics cannot recreate
+	   runtime controls or move an edited selection out of the live document. */
+	updateNotices: function() {
+		const vm = this.vm;
+		const parts = [];
+		if (vm.error)
+			parts.push(E('div', { 'class': 'alert-message error' }, vm.error));
+		if (vm.disabled_notice)
+			parts.push(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
+		if (vm.notices.length)
+			parts.push(E('ul', {}, vm.notices.map((text) =>
+				E('li', { 'class': 'alert-message warning' }, text))));
+		if (vm.switch_notice)
+			parts.push(E('div', { 'class': 'alert-message warning' }, vm.switch_notice));
+		dom.content(this.noticeContent, parts);
 	},
 
 	handleSave: null,
