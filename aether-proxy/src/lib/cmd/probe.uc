@@ -242,8 +242,7 @@ function probe_url_cmd(opts, positional, json_output) {
 		return usage(`unknown probe site '${positional[1]}'`, json_output);
 
 	let root = replace(opts.sys_root ?? '', /\/$/, '');
-	// TODO(design): T9.10 says not to read state.json, but docs/07 requires a
-	// running/degraded gate. Read it only for this check; never write it or emit events.
+	// Read state only for the running/degraded gate; never write it or emit events (docs/07).
 	let current = state.read(opts.run_dir ?? (root + C.RUN_DIR));
 	if (index([ 'running', 'degraded' ], current?.state) < 0)
 		return url_reply(opts, {
@@ -251,8 +250,7 @@ function probe_url_cmd(opts, positional, json_output) {
 		}, 1);
 
 	let loaded = config.load(uci.cursor(opts.confdir ?? (root + C.CONFIG_DIR)));
-	// TODO(design): docs/07 does not specify invalid configuration during a live probe.
-	// Return CONFIG_INVALID without events or a request rather than inventing a timeout.
+	// Invalid configuration: CONFIG_INVALID, no request and no events (docs/07).
 	if (!loaded.ok)
 		return url_reply(opts, { ok: false, code: 'CONFIG_INVALID', detail: 'cannot load probe configuration' }, 2);
 	let timeout = loaded.snapshot.probe.timeout;

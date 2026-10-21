@@ -83,8 +83,7 @@ function use_node(opts, id) {
 		return pipeline.finish(opts, { ok: true, node: id, previous, reload: false }, 0, `already using ${id}`);
 
 	let current = state.read(opts.run_dir ?? (root + C.RUN_DIR));
-	// TODO(design): docs/10 does not define selection with unreadable/corrupt state.
-	// Refuse before committing: guessing "stopped" could silently skip a required reload.
+	// Refuse before committing: guessing "stopped" could silently skip a required reload (docs/10).
 	if (current == null)
 		return use_failure(opts, 'FS_FAILED', state.error(), 'read');
 	if (!cursor.set(C.UCI_PACKAGE, 'main', 'node', id) || !cursor.commit(C.UCI_PACKAGE))
