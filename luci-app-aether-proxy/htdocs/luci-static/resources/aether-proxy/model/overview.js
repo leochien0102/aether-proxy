@@ -7,7 +7,8 @@
  *
  * build() turns the raw rpc results into everything the view renders: texts are
  * already translated through _() (every msgid used here must have an entry in
- * po/zh_Hans/aether-proxy.po), button availability is decided per state, and
+ * po/zh_Hans/aether-proxy.po), and button availability is decided per state.
+ * T10.22 also summarizes staged session changes before disabling the service;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -282,6 +283,35 @@ return baseclass.extend({
 	component_rows: component_rows,
 	components_failed: components_failed,
 	component_error: component_error,
+
+	/* docs/10 T10.22: apply commits the entire session, not just this switch.
+	   Only an option set/removal is superseded; section edits still matter. */
+	staged_confirmation: function(changes) {
+		let count = 0;
+		const configs = [];
+		for (const [config, records] of Object.entries(changes)) {
+			const others = records.filter((record) => {
+				const enabled_option = config === 'aetherproxy'
+					&& record[1] === 'main' && record[2] === 'enabled';
+				const replaced = (record[0] === 'set' && record.length === 4)
+					|| (record[0] === 'remove' && record.length === 3);
+				return !enabled_option || !replaced;
+			});
+			if (others.length) {
+				count += others.length;
+				configs.push(config);
+			}
+		}
+		if (!count)
+			return null;
+		return {
+			title: _('Unapplied changes remain', 'aether-proxy'),
+			text: fmt(_('%s unapplied changes remain (%s) and will be applied together with this operation.',
+				'aether-proxy'), count, configs.join('、')),
+			ok: _('Apply together', 'aether-proxy'),
+			destructive: false
+		};
+	},
 	refresh_options: function() {
 		return [
 			{ value: '2', text: _('2 seconds', 'aether-proxy') },
