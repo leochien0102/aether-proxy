@@ -1,7 +1,7 @@
 'use strict';
 
 /* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c;
- * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20).
+ * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20, T10.22).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -78,7 +78,8 @@ function loadView(overrides = {}) {
 		sections: () => {},
 		get: () => undefined,
 		set: () => {},
-		save: () => Promise.resolve()
+		save: () => Promise.resolve(),
+		changes: async () => ({})
 	}, overrides.uci ?? {});
 	const uiDouble = Object.assign({
 		// Same contract as LuCI's ui.createHandlerFn(ctx, fn, ...args): a missing fn yields null.
@@ -2340,6 +2341,97 @@ for (const failure of STATUS_ERRORS) {
 		await retry;
 	});
 }
+
+test('T10.22 scenario 1: empty or enabled-only changes go straight to the original disable confirmation',
+	async () => {
+	for (const changes of [ {}, { aetherproxy: [] },
+		{ aetherproxy: [ [ 'set', 'main', 'enabled', '1' ] ] },
+		{ aetherproxy: [ [ 'remove', 'main', 'enabled' ] ] } ]) {
+		const asked = [], effects = [];
+		const page = loadView({
+			uci: {
+				changes: async () => changes,
+				set: (...args) => effects.push([ 'set', ...args ]),
+				save: async () => { effects.push([ 'save' ]); }
+			},
+			confirm: async options => { asked.push(options); return true; },
+			ui: { changes: { apply: rollback => effects.push([ 'apply', rollback ]) } }
+		});
+		page.enabled = true;
+		page.vm = build({ ok: true, state: 'running' });
+		await page.handleEnable(false);
+		assert.deepEqual(asked, [ {
+			title: '关闭「启用」', text: page.vm.disable_confirmation, ok: '关闭', destructive: true
+		} ]);
+		assert.deepEqual(effects, [
+			[ 'set', 'aetherproxy', 'main', 'enabled', '0' ], [ 'save' ], [ 'apply', true ]
+		]);
+	}
+});
+
+test('T10.22 scenario 2: count records across configurations but exclude only the replaced enabled option', () => {
+	const model = dashboardModel();
+	assert.deepEqual(model.staged_confirmation({
+		aetherproxy: [ [ 'set', 'main', 'enabled', '1' ], [ 'set', 'main', 'mode', 'global' ] ],
+		network: [ [ 'set', 'wan', 'proto', 'dhcp' ], [ 'remove', 'lan', 'ipaddr' ] ],
+		firewall: []
+	}), {
+		title: '还有未应用的更改',
+		text: '还有 3 项未应用的更改（aetherproxy、network），会和本次操作一起应用。',
+		ok: '一起应用', destructive: false
+	});
+	/* Section operations can have "enabled" in slot 2 without targeting that option. */
+	for (const record of [ [ 'set', 'main', 'enabled' ], [ 'rename', 'main', 'enabled' ],
+		[ 'remove', 'main' ], [ 'set', 'other', 'enabled', '1' ] ]) {
+		assert.equal(model.staged_confirmation({ aetherproxy: [ record ] }).text,
+			'还有 1 项未应用的更改（aetherproxy），会和本次操作一起应用。');
+	}
+	assert.equal(model.staged_confirmation({
+		aetherproxy: [ [ 'set', 'main', 'enabled', '0' ] ],
+		network: [ [ 'set', 'main', 'enabled', '1' ] ]
+	}).text, '还有 1 项未应用的更改（network），会和本次操作一起应用。');
+});
+
+test('T10.22 scenario 3: enabling never reads changes or asks for confirmation', async () => {
+	const effects = [];
+	const page = loadView({
+		uci: {
+			changes: () => assert.fail('enabling must not read staged changes'),
+			set: (...args) => effects.push([ 'set', ...args ]),
+			save: async () => { effects.push([ 'save' ]); }
+		},
+		confirm: () => assert.fail('enabling must not ask for confirmation'),
+		ui: { changes: { apply: rollback => effects.push([ 'apply', rollback ]) } }
+	});
+	page.enabled = false;
+	const box = findTag(page.enableSwitch('note'), 'input');
+	box.checked = true;
+	await box.attrs.change({ target: box });
+	assert.equal(box.checked, true);
+	assert.equal(page.enabled, true);
+	assert.deepEqual(effects, [
+		[ 'set', 'aetherproxy', 'main', 'enabled', '1' ], [ 'save' ], [ 'apply', true ]
+	]);
+});
+
+test('T10.22 defensive: failed changes read propagates without writes and restores the switch', async () => {
+	const error = new Error('uci changes failed');
+	const page = loadView({
+		uci: {
+			changes: async () => { throw error; },
+			set: () => assert.fail('failed read must not set UCI'),
+			save: () => assert.fail('failed read must not save UCI')
+		},
+		confirm: () => assert.fail('failed read must not offer to apply'),
+		ui: { changes: { apply: () => assert.fail('failed read must not apply') } }
+	});
+	page.enabled = true;
+	const box = findTag(page.enableSwitch('note'), 'input');
+	box.checked = false;
+	await assert.rejects(box.attrs.change({ target: box }), caught => caught === error);
+	assert.equal(page.enabled, true);
+	assert.equal(box.checked, true);
+});
 
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
 	const src = fs.readFileSync(VIEW, 'utf8');

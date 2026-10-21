@@ -17,6 +17,7 @@
  * refreshed at the selected interval via ap.poll. Only UCI is read at load;
  * status, stats, version and installed components fill their own regions after
  * rendering, without delaying the first screen (docs/10 T10.17).
+ * Before disabling, warn about other staged session changes (docs/10 T10.22).
  * Failed inventory calls can be explicitly retried without reloading the page (T10.13).
  * Error summaries stay brief; raw diagnostics use tooltips or collapsed details (docs/10 T10.20).
  *
@@ -57,13 +58,20 @@ return view.extend({
 	handleEnable: async function(checked) {
 		/* Disabling is persistent and immediately stops traffic interception;
 		   cancelling must leave both the local setting and UCI untouched. */
-		if (this.enabled && !checked && !await ap.confirm({
-			title: _('Turn off Enable', 'aether-proxy'),
-			text: this.vm.disable_confirmation,
-			ok: _('Disable', 'aether-proxy'),
-			destructive: true
-		}))
-			return;
+		if (this.enabled && !checked) {
+			/* TODO(design): no wording is specified for a failed changes read.
+			   Propagate the error; never apply an unread session. */
+			const staged = model.staged_confirmation(await uci.changes());
+			if (staged && !await ap.confirm(staged))
+				return;
+			if (!await ap.confirm({
+				title: _('Turn off Enable', 'aether-proxy'),
+				text: this.vm.disable_confirmation,
+				ok: _('Disable', 'aether-proxy'),
+				destructive: true
+			}))
+				return;
+		}
 
 		this.enabled = (checked === true);
 
@@ -86,9 +94,13 @@ return view.extend({
 				'title': note,
 				'checked': this.enabled ? 'checked' : null,
 				'change': ui.createHandlerFn(this, async function(ev) {
-					await self.handleEnable(ev.target.checked);
-					/* Restore the browser's toggled checkbox after an async cancellation. */
-					ev.target.checked = self.enabled;
+					try {
+						await self.handleEnable(ev.target.checked);
+					}
+					finally {
+						/* Restore after cancellation or a failed staged-changes read. */
+						ev.target.checked = self.enabled;
+					}
 				})
 			})
 		]);

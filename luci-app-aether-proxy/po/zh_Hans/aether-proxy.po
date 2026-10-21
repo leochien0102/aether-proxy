@@ -1692,6 +1692,18 @@ msgid "Disable"
 msgstr "关闭"
 
 msgctxt "aether-proxy"
+msgid "Unapplied changes remain"
+msgstr "还有未应用的更改"
+
+msgctxt "aether-proxy"
+msgid "%s unapplied changes remain (%s) and will be applied together with this operation."
+msgstr "还有 %s 项未应用的更改（%s），会和本次操作一起应用。"
+
+msgctxt "aether-proxy"
+msgid "Apply together"
+msgstr "一起应用"
+
+msgctxt "aether-proxy"
 msgid "Stop service"
 msgstr "停止服务"
 

@@ -2,7 +2,8 @@
 
 /* T10.14: themed confirmations and the five asynchronous action boundaries
  * from docs/10 「UI 规则」. Deferred answers catch both missing awaits and
- * cancellation paths that accidentally mutate UCI or dispatch a job. */
+ * cancellation paths that accidentally mutate UCI or dispatch a job.
+ * T10.22 checks the additional staged-changes modal through the real ap.confirm. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -140,7 +141,8 @@ for (const answer of [ true, false ]) {
 				get: () => 'current',
 				set: (...args) => effects.push([ 'set', ...args ]),
 				remove: (...args) => effects.push([ 'remove', ...args ]),
-				save: async () => { effects.push([ 'save' ]); }
+				save: async () => { effects.push([ 'save' ]); },
+				changes: async () => ({})
 			};
 			const ap = {
 				job_progress: () => ({ stop() {} }),
@@ -212,8 +214,9 @@ for (const answer of [ true, false ]) {
 				ok = '回滚';
 				expected = [ [ 'job', 'update_package', [ 'xray-core', '--previous' ] ], [ 'call', 'status' ] ];
 			}
-			assert.deepEqual(asked, [ { title, text, ok, destructive: true } ]);
+			/* Disabling first reads the session's staged changes (T10.22). */
 			await Promise.resolve();
+			assert.deepEqual(asked, [ { title, text, ok, destructive: true } ]);
 			assert.deepEqual(effects, [], 'pending confirmation has no side effects');
 			gate.resolve(answer);
 			await pending;
@@ -224,4 +227,78 @@ for (const answer of [ true, false ]) {
 			}
 		});
 	}
+}
+
+/* Exercise the actual themed modal buttons, not just the options passed to ap.
+   Keep the UCI read pending too: neither confirmation nor writes may race it. */
+for (const answers of [ [ false ], [ true, false ], [ true, true ] ]) {
+	test(`T10.22 scenario 2: staged then disable modals, answers=${answers.join('/')}`, async () => {
+		const effects = [], modals = [], changes = deferred();
+		let reads = 0, active = null;
+		const Module = loadModule(path.join(RES, 'aether-proxy/common.js'), {
+			rpc: createRpc(),
+			baseclass: { extend: props => {
+				function Class() {}
+				Class.prototype = props;
+				return Class;
+			} },
+			ui: {
+				showModal: (title, children) => {
+					assert.equal(active, null, 'the preceding modal was hidden');
+					active = { title, children };
+					modals.push(active);
+				},
+				hideModal: () => { active = null; }
+			}
+		}, {});
+		const page = view('overview', new Module(), {
+			changes: () => { reads++; return changes.promise; },
+			set: (...args) => effects.push([ 'set', ...args ]),
+			save: async () => { effects.push([ 'save' ]); }
+		}, effects);
+		page.enabled = true;
+		page.vm = model('overview').build({ ok: true, state: 'running' });
+		const box = page.enableSwitch('note').children.find(child => child.tag === 'input');
+		box.checked = false;
+		const pending = box.attrs.change({ target: box });
+		assert.equal(reads, 1);
+		assert.deepEqual(modals, [], 'no confirmation before the session read settles');
+		assert.deepEqual(effects, []);
+		changes.resolve({
+			aetherproxy: [ [ 'set', 'main', 'mode', 'global' ], [ 'set', 'main', 'enabled', '1' ] ],
+			network: [ [ 'set', 'wan', 'proto', 'dhcp' ], [ 'remove', 'lan', 'ipaddr' ] ]
+		});
+		await Promise.resolve();
+		assert.equal(modals.length, 1);
+		assert.equal(active.title, '还有未应用的更改');
+		assert.equal(active.children[0].textContent,
+			'还有 3 项未应用的更改（aetherproxy、network），会和本次操作一起应用。');
+		const buttons = active.children[1].children.filter(child => child.tag === 'button');
+		assert.deepEqual(buttons.map(button => button.textContent), [ '取消', '一起应用' ]);
+		assert.equal(buttons[1].attrs.class, 'cbi-button cbi-button-action', 'non-destructive apply');
+		assert.deepEqual(effects, [], 'the first pending confirmation never writes UCI');
+		assert.equal(page.enabled, true);
+		buttons[answers[0] ? 1 : 0].attrs.click();
+		await Promise.resolve();
+		if (answers[0]) {
+			assert.equal(modals.length, 2);
+			assert.equal(active.title, '关闭「启用」');
+			assert.equal(active.children[0].textContent, page.vm.disable_confirmation);
+			const disable = active.children[1].children.filter(child => child.tag === 'button');
+			assert.equal(disable[1].textContent, '关闭');
+			assert.equal(disable[1].attrs.class, 'cbi-button cbi-button-remove');
+			assert.deepEqual(effects, [], 'even accepting the first modal must not write yet');
+			assert.equal(page.enabled, true);
+			disable[answers[1] ? 1 : 0].attrs.click();
+		}
+		await pending;
+		const applied = answers[0] && answers[1];
+		assert.equal(modals.length, answers[0] ? 2 : 1, 'cancel skips any remaining confirmation');
+		assert.equal(active, null, 'the final modal is hidden');
+		assert.equal(page.enabled, !applied);
+		assert.equal(box.checked, !applied, 'either cancellation restores the switch to on');
+		assert.deepEqual(effects, applied ? [
+			[ 'set', 'aetherproxy', 'main', 'enabled', '0' ], [ 'save' ], [ 'apply', true ]
+		] : [], 'only accepting both modals may save and apply');
+	});
 }
