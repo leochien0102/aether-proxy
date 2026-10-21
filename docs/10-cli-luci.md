@@ -32,6 +32,9 @@ init.d / hotplug / daemon ──────────────────
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
 | `sub status` | 读取各订阅最近一次更新的记录（`sub.json`） | 否 |
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
+| `node use <id>` | 切换当前节点：写 `main.node` 并提交，服务在运行时立即触发重载，**不等重载完成**（见下方「切换节点」，2026-10-21） | 否 |
+| `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
+| `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |
 | `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本（[08](08-updates.md)） | 是 |
 | `update data` | 更新规则数据 | 是 |
@@ -136,10 +139,24 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 - **清理**：每次 `job start` 删除 `finished` 早于 1 小时的作业文件；内容损坏的作业文件（原子写入下只可能来自外部破坏）记 `FS_FAILED` 后删除，不阻止新作业。
 - `job status <id>`：输出作业文件（`--json` 时原样，否则人读格式）；ID 格式不对 → `USAGE`（退出码 2）；文件不存在 → `JOB_NOT_FOUND`（退出码 2，不是事件码）。
 
+### 切换节点（`node use`，2026-10-21 定，r9 窗口）
+
+r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 LuCI 的「应用」（`ui.changes.apply(true)`，带回滚确认，转圈约 10 秒），之后 daemon 重载约 15–18 秒。
+切换节点不会让局域网连不上设备，LuCI 的回滚保护在这里没有作用；而 LuCI 的应用还会把会话里**所有**暂存的改动一起提交。所以改为由后端直接切换：
+
+- `node use <id>`：`<id>` 必须是已存在的 `node` 段，否则 `USAGE`（退出码 2）。读当前 `main.node`；相同 → `{ "ok": true, "node": <id>, "previous": <id>, "reload": false }`，什么都不做。
+  不同 → 用 `uci` 写 `main.node` 并 `commit aetherproxy`（只改这一个选项；LuCI 会话中暂存的改动在 rpcd 的会话目录里，不会被带上），
+  服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`/`failsafe`）时执行 `/etc/init.d/aether-proxy reload`（init 只发 SIGHUP，04「重载」），**不等重载完成**就返回
+  `{ "ok": true, "node": <id>, "previous": <原值>, "reload": true }`；服务没在运行时只写配置，`reload: false`（下次启动用新节点）。不记事件（重载本身记 `RELOAD_APPLIED`，失败照 04 记）。
+- 写配置失败 → `FS_FAILED`（`op: uci-commit`），退出码 1；发重载失败 → `CMD_FAILED`，退出码 1（配置已改，下次重载或启动会生效）。
+- 页面（前端）：概览「使用此节点」、节点页「设为当前」改调 rpcd `node_use`，返回后重新读 UCI 与 `status`，「正在切换到…」的提示（「切换节点未生效时提示」）立即出现。
+
 ## rpcd 插件
 
 形式：`/usr/share/rpcd/ucode/aetherproxy.uc`（rpcd 的 ucode 插件机制，与后端语言选择无关，24.10 起可用）。
 插件只做两件事：校验参数（白名单 + 正则），然后执行 `aether-proxy … --json` 并原样返回。
+**判断参数时一律忽略 `ubus_rpc_session`**：经 uhttpd 从 LuCI 发来的调用，uhttpd 会在参数里自动加上这个键（2026-10-21 r9 窗口发现：`components` 因「参数不为空」拒绝了页面的每一次调用，
+概览页组件表从 T10.4 起就没显示过；测试和窗口脚本都只用 `'{}'` 调，没发现）。测试中每个方法都要有一条带 `ubus_rpc_session` 的调用。
 
 | ubus 方法 | 参数 | 对应命令 |
 |---|---|---|
@@ -152,6 +169,9 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
 | `components` | — | `components`（read，超时 15 秒，T10.4） |
+| `node_use` | `id`（正则 `^n_[0-9a-f]{32}$`） | `node use <id>`（write，10 秒） |
+| `probe_url` | `site`（`probe sites` 列出的名称之一，正则 `^[a-z0-9]{1,16}$`） | `probe url <site>`（write，超时 = `probe.timeout` + 5 秒） |
+| `probe_sites` | — | `probe sites`（read） |
 | `sub_status` | — | `sub status`（read） |
 | `data_status` | — | `data status`（read） |
 | `log` | `source: all\|aether-proxy\|xray\|dns`、`lines`（1–2000），都可省略 | `log` |

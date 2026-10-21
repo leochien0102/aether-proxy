@@ -59,6 +59,27 @@ LuCI 中节点检测的列名叫「**TCP 可达**／延迟」，不要写成「�
 - 请求经 Xray 发出，域名由节点在远端解析，不依赖本地 DNS 级别。所以无论当前处于 T1、T2 还是 T3，
   这个检测都能独立判断节点是否可用。
 
+## 真实延迟（`aether-proxy probe url <站点>`，2026-10-21 定，r9 窗口）
+
+概览页「检测真实延迟」用：经当前节点请求一个**预设站点**一次，只报告耗时。与上一节的健康检测**互不影响**——不改 `last_probe`、不计入滞回计数、不记事件、不影响 DNS 级别与服务状态。
+
+- 预设站点（写在 `const.uc`，只能从中选，不接受任意地址）：
+
+  | 名称 | 显示名 | 地址 |
+  |---|---|---|
+  | `google` | Google | `https://www.gstatic.com/generate_204` |
+  | `cloudflare` | Cloudflare | `https://cp.cloudflare.com/generate_204` |
+  | `apple` | Apple | `https://captive.apple.com/hotspot-detect.html` |
+  | `youtube` | YouTube | `https://www.youtube.com/generate_204` |
+  | `github` | GitHub | `https://github.com/robots.txt` |
+
+  `probe sites` 输出 `{ "ok": true, "sites": [ { "name", "label", "url" }, … ] }`（按上表顺序，第一项为默认）。
+- 请求与健康检测相同（`curl … -x http://127.0.0.1:31081`，超时 `probe.timeout`），但取 `%{http_code} %{time_starttransfer}`：耗时按**收到响应头**计，不同站点的响应体大小不影响结果。
+- 成功：HTTP 状态码 200–399 → `{ "ok": true, "site", "url", "code", "latency_ms" }`（毫秒取整）。
+  失败：超时 → `{ "ok": false, "code": "PROBE_TIMEOUT", "site" }`；连接失败或状态码不在范围内 → `{ "ok": false, "code": "PROBE_FAILED", "site", "http_code", "detail" }`；退出码 1，都不记事件（`PROBE_TIMEOUT`、`PROBE_FAILED` 是结果码，同 `JOB_NOT_FOUND`，不进 09 的事件码目录）。
+  站点名不在表中 → `USAGE`（退出码 2）。服务不在 `running`/`degraded` → `NOT_RUNNING`（退出码 1；`failsafe` 时代理不可用，同样 `NOT_RUNNING`）。
+- 一次只请求一次，不重试：它测的是用户点下去那一刻的延迟。
+
 ## 首版明确不做
 
 - 多节点自动切换（检测结果只展示）。
