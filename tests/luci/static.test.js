@@ -378,3 +378,18 @@ test('X3: no msgid starts or ends with whitespace', () => {
 		.filter(id => id !== '' && id !== ', ' && id.trim() !== id);
 	assert.deepEqual(bad, []);
 });
+
+/* The install smoke test (tests/ci/smoke.sh, CI only) checks that every page
+   view is installed. Keep its list equal to the views in the package, so
+   adding or removing a page fails here first, not after a push (T10.37
+   removed subscriptions.js and only CI noticed, 2026-10-22). */
+test('smoke.sh lists exactly the packaged page views', () => {
+	const root = path.join(__dirname, '../..');
+	const smoke = fs.readFileSync(path.join(root, 'tests/ci/smoke.sh'), 'utf8');
+	const match = smoke.match(/^for view in ([a-z0-9_ -]+); do$/m);
+	assert.ok(match, 'smoke.sh has the view loop');
+	const listed = match[1].trim().split(/\s+/).sort();
+	const dir = path.join(root, 'luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy');
+	const views = fs.readdirSync(dir).filter(f => f.endsWith('.js')).map(f => f.slice(0, -3)).sort();
+	assert.deepEqual(listed, views);
+});
