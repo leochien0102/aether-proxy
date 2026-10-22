@@ -30,7 +30,7 @@
 
 | 先 | 目的地址命中用户代理 `proxy_ip4` / `uproxy4` → 代理 |
 |---|---|
-| `gfw` | 命中 `gfw4`（DNS 动态填充）或 `gfw_static4` → 代理；否则直连 |
+| `gfw` | 命中 `gfw4`（DNS 动态填充）或 `gfw_static4` → 代理；否则直连。`gfw_static4` 含 Telegram 网段与常见境外公共 DNS 的 IP（08「数据格式」）：局域网设备写死 IP 的 DoH/DoT（如 `1.1.1.1`）不经 DNS 填充，GFW 模式下要靠它走代理（2026-10-22，对照 helloworld 默认「WAN 强制代理 IP」中的 8.8.8.8、1.1.1.1） |
 | `bypass_cn` | 命中 `chnroute4` → 直连；否则代理 |
 | `global` | 代理 |
 

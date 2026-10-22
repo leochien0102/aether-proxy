@@ -49,7 +49,7 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 | `NFT_TABLE` | `inet aetherproxy` | 唯一的 nft 表 |
 | `TPROXY_PORT` | `31080` | Xray tunnel 透明代理入站（TCP+UDP） |
 | `HTTP_PORT` | `31081` | Xray HTTP 入站，仅 127.0.0.1，供 aether-proxy 自身下载与健康检测 |
-| `DNS_TUNNEL_PORTS` | `31082`、`31083` | Xray tunnel 入站，分别固定转发到 trust_dns[0]、trust_dns[1] 的 53/TCP |
+| `DNS_TUNNEL_PORTS` | `31082`、`31083` | Xray tunnel 入站（TCP 与 UDP），分别固定转发到 trust_dns[0]、trust_dns[1] 的 53 端口；chinadns-ng 按该项的协议（03）连它 |
 | `CHINADNS_PORT` | `31053` | chinadns-ng 监听 127.0.0.1 |
 | `FWMARK` | `0x00080000/0x00080000` | TPROXY 标记（单独一位，避开 mwan3 默认的 `0x3F00`） |
 | `QUIC_MARK` | `0x00100000` | 待拒绝的 QUIC 包（prerouting 打标记，forward 中 reject） |

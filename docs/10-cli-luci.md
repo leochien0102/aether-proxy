@@ -34,6 +34,7 @@ init.d / hotplug / daemon ──────────────────
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
 | `node use <id> [--mode <模式>]` | 切换当前节点：写 `main.node` 并提交，服务在运行时立即触发重载，**不等重载完成**（见下方「切换节点」，2026-10-21）；带 `--mode` 时同时改默认模式，只重载一次（2026-10-22） | 否 |
 | `mode use <模式>` | 只切换默认模式（`main.mode`），做法同 `node use`（见下方「切换默认模式」，2026-10-22） | 否 |
+| `dns sync-wan` | 运营商下发的 DNS 变了且服务在运行时触发重载（由 hotplug 调用，[03](03-dns.md)「运营商下发的 DNS」，2026-10-22）；输出 `{ "ok": true, "wan_dns": [...], "reload": <bool> }` | 否 |
 | `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
 | `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |

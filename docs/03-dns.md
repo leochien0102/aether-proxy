@@ -49,9 +49,13 @@ Apple 域名在全局模式下放进 chnlist，用国内 DNS 解析，但**不�
 
 | 级别 | trust 组上游 | 进入条件 |
 |---|---|---|
-| T1 代理 | `tcp://127.0.0.1#31082`、`tcp://127.0.0.1#31083`（Xray tunnel，固定转发到 `trust_dns[0..1]`:53，出站走节点） | 代理健康 |
+| T1 代理 | `tcp://127.0.0.1#31082`、`tcp://127.0.0.1#31083`（Xray tunnel，固定转发到 `trust_dns[0..1]`:53，出站走节点）；某项写成 `udp://` 时对应端口改为 `udp://127.0.0.1#3108x` | 代理健康 |
 | T2 直连 | `direct_dns` 列表（默认 `tcp://9.9.9.9`、`tcp://8.8.8.8`）。2026-10-19 H28K 实测：直连 `tcp://9.9.9.9` 9 次成功 8 次（有重置，重试后多数成功，应答与经节点查到的同属正确的地址段），`tcp://8.8.8.8` 1/9、`tcp://1.1.1.1` 0/9，DoT 全部不通；所以 9.9.9.9 排第一。网络环境不同时用户可自行修改 | 启动预热中，或代理不健康 |
 | T3 国内 | `china_dns` 列表 | T2 也失败，且 `allow_china_fallback=1` |
+
+**可信 DNS 的协议**（2026-10-22 定）：「TCP / UDP」只决定**节点到可信 DNS** 这一段；路由器到节点之间始终是节点的代理连接，查询经加密隧道送到节点，再由节点向可信 DNS 发起（所以这一段不会被抢答污染）。
+TCP 要求可信 DNS 支持 TCP 查询（标准要求，主流公共 DNS 都支持）；UDP 要求节点支持 UDP 转发。默认 TCP。两项协议可以不同：节点不支持 UDP 时 TCP 那一项仍可用。
+Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 chinadns-ng 的上游写法选择。对照：helloworld 的「UDP 上游」由路由器本机直接发出 UDP，它的 output 链只把 TCP 送进代理，所以 UDP 查询实际直连出去、会被污染；我们是显式发给本机 Xray，不经 nft，不存在这个问题。
 
 切换规则（由 monitor 执行，见 [04](04-lifecycle.md)、[07](07-probe.md)）：
 
@@ -72,6 +76,17 @@ Apple 域名在全局模式下放进 chnlist，用国内 DNS 解析，但**不�
 
 为什么接受 T3：T3 只在代理和直连境外 DNS 都不可用时才会进入，此时境外站点本来就打不开。T3 的作用是让
 **国内站点照常解析**。
+
+## 运营商下发的 DNS（`china_dns` 中的 `wan`，2026-10-22 定）
+
+- **取值**：读配置时（`pipeline.read`，与读规则数据同一阶段；渲染仍是纯函数）执行 `ubus call network.interface dump`，取 `up` 为真、且路由表中有默认路由（`target` 为 `0.0.0.0`、`mask` 为 0）的接口，收集它们 `dns-server` 中的 IPv4 地址，按接口名排序、保持原有顺序并去重。
+  `wan` 展开为这些地址（不带前缀，即 UDP，与国内 DNS 一致）；整个 `china_dns` 展开后再去重（运营商下发的可能正好是 114）。
+- **取不到**（WAN 还没拨上、`ubus` 失败或超时 3 秒、没有 IPv4 DNS）：`wan` 展开为 `223.5.5.5`（常量 `WAN_DNS_FALLBACK`），不记事件；国内解析照常可用。
+- 用到 `china_dns` 的三处（china 组、udirect 组、T3）都用展开后的列表。`check`、`render chinadns` 输出展开后的结果。
+- `state.json` 增加 `wan_dns`：本次渲染实际用到的运营商 DNS（取不到时为 `[]`）；`china_dns` 不含 `wan` 时为 `null`。
+- **WAN 变化**：随包安装 `/etc/hotplug.d/iface/80-aether-proxy`，在 `ifup`、`ifupdate` 时后台执行 `aether-proxy dns sync-wan`：服务在运行、`china_dns` 含 `wan`，且现在取到的运营商 DNS 与 `state.json` 的 `wan_dns` 不同 → 执行一次重载（`/etc/init.d/aether-proxy reload`）；否则什么都不做。
+  开机时 daemon 常常先于 WAN 拨号完成启动，此时用 `223.5.5.5`，WAN 上线后由这一步换成运营商 DNS。重载只在 chinadns-ng 配置变化时重启它（04「重载」）。
+- 说明（写进页面）：部分运营商 DNS 会把不存在的域名解析到广告页；介意的用户改用公共 DNS。
 
 ## chinadns-ng 配置模板
 

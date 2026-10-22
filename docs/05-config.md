@@ -30,8 +30,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `china_dns` | list chinadns-ng 上游写法 | `223.5.5.5` `114.114.114.114` | 2026-10-15 起不再默认使用 `119.29.29.29`：真机上 chinadns-ng 走 TCP 访问它时被反复重置（[03](03-dns.md)「真机验证」） |
-| `trust_dns` | list IPv4，**最多 2 个** | `8.8.8.8` `1.1.1.1` | T1：经节点访问，固定 53/TCP |
+| `china_dns` | list：chinadns-ng 上游写法，或字面值 `wan` | `wan` `114.114.114.114` | `wan` = 运营商下发的 DNS（WAN 口取得的 IPv4 DNS，[03](03-dns.md)「运营商下发的 DNS」）。2026-10-22 起默认值由 `223.5.5.5` `114.114.114.114` 改为此值（仓库所有者定：运营商 DNS 离用户最近，国内 CDN 更准）；已安装设备的配置文件保留原值，不自动改。2026-10-15 起不再默认使用 `119.29.29.29`：真机上 chinadns-ng 走 TCP 访问它时被反复重置（03「真机验证」） |
+| `trust_dns` | list：IPv4，可带 `tcp://` 或 `udp://` 前缀，**最多 2 个** | `8.8.8.8` `1.1.1.1` | T1：经节点访问 53 端口。不带前缀 = `tcp://`（默认，任何节点都能用）；`udp://` 用于不支持 TCP 查询的 DNS，**要求节点支持 UDP 转发**（节点那一端替你发出 UDP，客户端无法代替）。两项可以协议不同，互为备份（2026-10-22 定，[03](03-dns.md)「DNS 级别」） |
 | `direct_dns` | list chinadns-ng 上游写法 | `tcp://9.9.9.9` `tcp://8.8.8.8` | T2 与节点引导解析。默认值依据 2026-10-19 H28K 实测（[03](03-dns.md)「DNS 级别」）：直连 `tcp://9.9.9.9` 9 次成功 8 次且应答未被污染，`tcp://8.8.8.8` 1/9、`tcp://1.1.1.1` 0/9，DoT（8.8.8.8、1.1.1.1、9.9.9.9）全部不通 |
 | `allow_china_fallback` | bool | `1` | 是否允许降到 T3 |
 | `dns_probe_domain` | 域名 | `www.google.com` | T2/T3 探测用 |
@@ -167,7 +167,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 
 1. `enabled=1` 时 `node` 必须指向存在的节点。指向 stale 节点**允许**，但要在结果的 `warnings` 中返回 `NODE_STALE_IN_USE`，由调用方记录。
 2. host：`ip` 和 `mac` 至少一个；`direct` + `udp=1` 报错；不同 host 之间 IP、CIDR、MAC 完全相同报错。
-3. `trust_dns` 1–2 个合法 IPv4。
+3. `trust_dns` 1–2 项，每项为合法 IPv4，可带 `tcp://` 或 `udp://` 前缀（不接受端口与其他协议）；`china_dns` 每项为上游写法或字面值 `wan`。
 4. 所有 list 中的 IPv4/CIDR/MAC/域名语法合法。
 5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）。
 6. 节点字段按协议检查必填项：vless/vmess 需要 `uuid`；trojan/ss 需要 `password`；ss 需要 `method` 在 Xray 支持列表内；
