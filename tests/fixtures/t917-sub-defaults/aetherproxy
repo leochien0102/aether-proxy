@@ -1,0 +1,20 @@
+config global 'main'
+	option enabled '0'
+
+config sub 'sub'
+	option interval_hours '12'
+	option fetch_via 'direct'
+	option user_agent 'x'
+
+config subscription 's_00000001'
+	option url 'https://sub-a.example/list'
+
+config subscription 's_00000002'
+	option url 'https://sub-b.example/list'
+	option interval_hours '0'
+
+config subscription 's_00000003'
+	option url 'https://sub-c.example/list'
+	option interval_hours '24'
+	option fetch_via 'auto'
+	option user_agent 'legacy UA'

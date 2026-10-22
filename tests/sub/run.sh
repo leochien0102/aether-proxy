@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Subscription atomic updates and effective download settings (docs/06, docs/05).
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -41,9 +42,10 @@ options_for() { echo --sys-root "$R" --confdir "$R/etc/config" --run-dir "$R/var
 
 setup_tools() {
 	mkdir -p "$T/bin"
-	cp "$STUBS/curl" "$T/bin/curl"
+	cp "$STUBS/curl" "$T/bin/curl-body"
+	cp "$ROOT/tests/sub/curl-record.sh" "$T/bin/curl"
 	cp "$STUBS/xray" "$T/bin/xray"
-	chmod +x "$T/bin/curl" "$T/bin/xray"
+	chmod +x "$T/bin/curl" "$T/bin/curl-body" "$T/bin/xray"
 }
 
 make_root() {
@@ -381,6 +383,92 @@ expect "sub.json stores last_ok" true "$("$UCODE" -e "import * as fs from 'fs'; 
 expect "sub.json stores node count" 1 "$(jget s_00000001.nodes < "$state")"
 has_line "$R/var/run/aether-proxy/events.jsonl" '"code": "SUB_UPDATED"' \
 	&& ok "successful update emits SUB_UPDATED" || bad "successful update emits SUB_UPDATED"
+
+# T9.17: check exact curl argv from the committed-package read path, not just normalization.
+assert_fetch_args() {
+	local label="$1" ua="$2" proxies="$3" calls="$4" i ua_count=0 proxy_count=0 valid=1
+	local -a args=()
+	if [ ! -f "$R/curl-argv.log" ]; then bad "$label" 'no curl argv recorded'; return; fi
+	mapfile -t args < "$R/curl-argv.log"
+	for ((i=0; i<${#args[@]}; i++)); do
+		case "${args[i]}" in
+		-A)
+			ua_count=$((ua_count + 1))
+			[ "${args[i+1]:-}" = "$ua" ] || valid=0 ;;
+		-x)
+			proxy_count=$((proxy_count + 1))
+			[ "${args[i+1]:-}" = 'http://127.0.0.1:31081' ] || valid=0 ;;
+		esac
+	done
+	if [ "$valid" = 1 ] && [ "$ua_count" = "$calls" ] && [ "$proxy_count" = "$proxies" ]; then
+		ok "$label"
+	else
+		bad "$label" "UA count=$ua_count proxy count=$proxy_count valid=$valid"
+	fi
+}
+
+for mode in direct proxy auto; do
+	make_root "$T/root-defaults-$mode"
+	cp "$ROOT/tests/fixtures/t917-sub-defaults/aetherproxy" "$R/etc/config/aetherproxy"
+	# The listener is available even in the direct case, so absence of -x is meaningful.
+	printf '{"state":"running"}\n' > "$R/var/run/aether-proxy/state.json"
+	printf '0: 0100007F:7969 00000000:0000 0A\n' >> "$R/proc/net/tcp"
+	"$UCODE" -e 'import * as uci from "uci";
+		let c = uci.cursor(ARGV[0]);
+		if (!c.set("aetherproxy", "sub", "fetch_via", ARGV[1]) || !c.commit("aetherproxy"))
+			die(c.error() ?? "cannot set common fetch mode");' -- "$R/etc/config" "$mode"
+	BODY="$FIX/one-node.txt"
+	if [ "$mode" = auto ]; then export STUB_CURL_DIRECT_RC=22; fi
+	out=$(ap s_00000001 --json 2>"$T/defaults-$mode.stderr"); rc=$?
+	unset STUB_CURL_DIRECT_RC
+	expect "T9.17 inherited $mode download succeeds" 0 "$rc"
+	case "$mode" in
+	direct) assert_fetch_args 'T9.17 inherited direct uses common UA without proxy' x 0 1 ;;
+	proxy) assert_fetch_args 'T9.17 inherited proxy uses common UA and current-node proxy' x 1 1 ;;
+	auto) assert_fetch_args 'T9.17 inherited auto retries with common UA through proxy' x 1 2 ;;
+	esac
+	if [ "$mode" = proxy ]; then
+		: > "$R/curl-argv.log"
+		# s_00000003 explicitly retained auto/UA/24 before this feature. They must win.
+		out=$(ap s_00000003 --json 2>"$T/defaults-override.stderr"); rc=$?
+		expect 'T9.17 explicit download override succeeds' 0 "$rc"
+		assert_fetch_args 'T9.17 explicit UA and auto override common proxy' 'legacy UA' 0 1
+	fi
+done
+
+make_root "$T/root-defaults-packaged"
+cp "$ROOT/aether-proxy/files/aether-proxy.config" "$R/etc/config/aetherproxy"
+if "$UCODE" -e 'import * as uci from "uci";
+	import * as config from "aetherproxy.config";
+	import * as C from "aetherproxy.const";
+	let c = uci.cursor(ARGV[0]);
+	let raw = config.read_raw(c, C.UCI_PACKAGE);
+	let r = config.load(c);
+	let s = r.snapshot?.sub;
+	exit(raw.sub != null && r.ok && s.user_agent == C.PROG + "/" + C.VERSION
+		&& s.fetch_via == "auto" && s.interval_hours == 24 ? 0 : 1);' -- "$R/etc/config"; then
+	ok 'T9.17 packaged sub defaults include the running version UA'
+else
+	bad 'T9.17 packaged sub defaults include the running version UA'
+fi
+
+for field in interval_hours fetch_via; do
+	make_root "$T/root-defaults-invalid-$field"
+	cp "$ROOT/tests/fixtures/t917-sub-defaults/aetherproxy" "$R/etc/config/aetherproxy"
+	if [ "$field" = interval_hours ]; then value=-1; else value=foo; fi
+	"$UCODE" -e 'import * as uci from "uci";
+		let c = uci.cursor(ARGV[0]);
+		if (!c.set("aetherproxy", "sub", ARGV[1], ARGV[2]) || !c.commit("aetherproxy"))
+			die(c.error() ?? "cannot set invalid common value");' -- "$R/etc/config" "$field" "$value"
+	out=$(ap s_00000001 --json 2>"$T/defaults-invalid.stderr"); rc=$?
+	expect "T9.17 invalid sub.$field exits CONFIG_INVALID" 2 "$rc"
+	expect "T9.17 invalid sub.$field reports CONFIG_INVALID" CONFIG_INVALID "$(printf '%s\n' "$out" | jget code)"
+	grep -Fq -- "\"field\": \"sub.$field\"" "$R/var/run/aether-proxy/events.jsonl" \
+		&& ok "T9.17 invalid sub.$field event has correct field" \
+		|| bad "T9.17 invalid sub.$field event has correct field"
+	[ ! -f "$R/curl-argv.log" ] && ok "T9.17 invalid sub.$field prevents download" \
+		|| bad "T9.17 invalid sub.$field prevents download"
+done
 
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
