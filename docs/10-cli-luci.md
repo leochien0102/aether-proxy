@@ -935,7 +935,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 
 - 日志页载入时读 UCI（已经在读），建两张对照表：节点段名 → `label`（没有 `label` 用段名），订阅段名 → `name`（没有用段名）。
 - `model/logs.js` 的 `message(event, names)` 填模板时，`node`、`from_node`、`to_node` 换成节点名称，`sub` 换成订阅名称；涉及 `RELOAD_APPLIED`、`SERVICE_STOPPED`、`NODE_RESOLVE_*`、`NODE_IP_CHANGED`、`NODE_STALE*`、`NODE_INSECURE_IGNORED` 与全部 `SUB_*` 模板。
-  名称的取法：事件自带 `label` 时优先用它（事件发生时的名称）；否则查对照表；都查不到（节点或订阅已删除）→「已删除的节点」/「已删除的订阅」。参数缺失时照旧显示「–」。
+  名称的取法：`node` 有事件自带的 `label` 时优先用它（事件发生时的名称；09 中只有节点事件带 `label`，它不用于 `sub`、`from_node`、`to_node`）；否则查对照表；都查不到（节点或订阅已删除）→「已删除的节点」/「已删除的订阅」。参数缺失时照旧显示「?」（2026-10-22 T10.39 复审定）。
 - 「节点 {node}（{label}）」一类模板改成只显示一次名称：`NODE_STALE`「节点 {node} 已失效」、`NODE_STALE_IN_USE`「当前节点 {node} 已失效」、`NODE_INSECURE_IGNORED`「已忽略节点 {node} 的不安全设置」。
 - 悬停（`title`）照旧是原始参数的 JSON（含 ID），方便排查。
 - `names` 省略时行为与现在相同（显示 ID），模型保持纯函数。概览页「切换未生效」横幅里的原因（`logs.message(reason)`）也传入它已有的节点名称表（订阅表为空）。
