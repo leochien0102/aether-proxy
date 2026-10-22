@@ -34,34 +34,50 @@ def test_hotplug(t):
     command = hook_bin / 'aether-proxy'
     command.write_text('''#!/bin/sh
 printf '%s\\n' "$*" >> "$HOOK_CALLS"
+printf 'background stdout\\n'
+printf 'background stderr\\n' >&2
 # A foreground hook would never return before the harness releases this gate.
 while [ -f "$HOOK_GATE" ]; do sleep 0.05; done
 printf 'done\\n' >> "$HOOK_DONE"
+exit 7
 ''')
     command.chmod(0o755)
+    # Like the procd suite, substitute only the two target-only library imports.
+    # The disabled-service substitute leaves every packaged hook branch intact and
+    # proves DNS synchronization starts before enabled/DEVICE/LAN/service checks.
+    source = (ROOT / 'aether-proxy/files/aether-proxy.hotplug').read_text()
+    imports = {'. /lib/functions.sh', '. /lib/functions/procd.sh'}
+    assert sum(line in imports for line in source.splitlines()) == 2
+    hook_script = t / 'hotplug.test.sh'
+    hook_script.write_text('#!/bin/sh\nconfig_load() { :; }\n'
+                           'config_get_bool() { eval "$1=0"; }\n' +
+                           '\n'.join(line for line in source.splitlines() if line not in imports) + '\n')
     for action in ('ifup', 'ifupdate'):
         calls, gate, done = (t / (action + suffix) for suffix in ('.calls', '.gate', '.done'))
         gate.touch()
-        env = {**os.environ, 'ACTION': action, 'HOOK_CALLS': str(calls),
+        env = {**os.environ, 'ACTION': action, 'DEVICE': 'pppoe-wan', 'HOOK_CALLS': str(calls),
                'HOOK_GATE': str(gate), 'HOOK_DONE': str(done),
                'PATH': str(hook_bin) + ':' + os.environ['PATH']}
-        hook = subprocess.Popen(['sh', str(ROOT / 'aether-proxy/files/aether-proxy.hotplug')],
-                                env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        try:
-            check(f'hotplug {action} returns while sync-wan is blocked', hook.wait(timeout=3) == 0)
-        finally:
-            gate.unlink()
-            if hook.poll() is None:
-                hook.kill()
-                hook.wait()
+        output, errors = t / (action + '.stdout'), t / (action + '.stderr')
+        with output.open('w') as stdout, errors.open('w') as stderr:
+            hook = subprocess.Popen(['sh', str(hook_script)], env=env, stdout=stdout, stderr=stderr)
+            try:
+                check(f'hotplug {action} returns while sync-wan is blocked', hook.wait(timeout=3) == 0)
+            finally:
+                gate.unlink()
+                if hook.poll() is None:
+                    hook.kill()
+                    hook.wait()
         deadline = time.monotonic() + 3
         while not done.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
         check(f'hotplug {action} calls sync-wan exactly once in background',
               done.exists() and calls.read_text() == 'dns sync-wan\n')
+        check(f'hotplug {action} suppresses background stdout and stderr',
+              output.read_text() == '' and errors.read_text() == '')
     makefile = (ROOT / 'aether-proxy/Makefile').read_text()
-    check('package installs hotplug as 80-aether-proxy',
-          './files/aether-proxy.hotplug $(1)/etc/hotplug.d/iface/80-aether-proxy' in makefile)
+    check('package installs hotplug as 90-aether-proxy',
+          './files/aether-proxy.hotplug $(1)/etc/hotplug.d/iface/90-aether-proxy' in makefile)
 
 
 def run_suite(t):
