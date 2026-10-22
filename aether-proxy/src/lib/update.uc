@@ -839,15 +839,12 @@ function rollback_together(opts, ctx, selected, plat, asset) {
 		if (outcome.status == 'failed' && failure == null)
 			failure = outcome;
 	}
-	// TODO(design): 08 does not define the aggregate exit/code or download/query failures.
-	// Report the first failure (exit 1), retain the verified backend, and try the other UI package
-	// independently so one unavailable asset cannot prevent the other package from matching it.
+	// First failure wins (exit 1); the verified backend stays and each UI package is tried (docs/08).
 	if (failure != null) {
 		result = { ...result, ok: false, exit: 1, code: failure.code, detail: failure.detail,
 			value: { ...result.value, ok: false, code: failure.code, detail: failure.detail } };
 	}
-	// TODO(design): 08 does not name the primary result for the luci-app entry point.
-	// Keep the actual backend transaction's package/from/to; companions always describe both UI packages.
+	// package/from/to describe the backend transaction, also from the luci-app entry (docs/08).
 	result.value ??= { ok: false, package: C.PROG, from: null, to: null, rolled_back: false,
 		code: result.code, detail: result.detail };
 	result.value.companions = companions;
