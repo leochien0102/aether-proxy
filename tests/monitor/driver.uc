@@ -280,6 +280,10 @@ else if (scenario == 'immediate-locked') {
 	check(held != null, 'immediate-locked: test holds the global lock');
 	let events_path = `${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/events.jsonl`;
 	let busy_before = count(fs.readfile(events_path), '"BUSY"');
+	// Wait for the one-shot round itself (a loaded host can fire it after 300 ms), then
+	// keep running long enough that a retry loop would add a second BUSY.
+	for (let i = 0; i < 30 && count(fs.readfile(events_path), '"BUSY"') == busy_before; i++)
+		uloop.run(100);
 	uloop.run(300);
 	let busy_after = count(fs.readfile(events_path), '"BUSY"');
 	check(automatic_rounds == 0 && busy_after - busy_before == 1 && d.immediate == null,
