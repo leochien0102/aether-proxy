@@ -6,7 +6,7 @@
 //
 // Field descriptor keys:
 //   name      UCI option name
-//   type      bool | int | string | enum | path | domain | url | address | list
+//   type      bool | int | string | json_object (UCI string) | enum | path | domain | url | address | list
 //   default   value used when the option is unset or empty (null = no default)
 //   enum      allowed values (type enum)
 //   min, max  inclusive bounds (type int)
@@ -16,6 +16,8 @@
 //             required; with `protocols` set, true means "for those protocols"
 //   protocols node only: the field belongs to these protocols; a default or a
 //             requirement applies only to a node using one of them
+//   transports, securities  node only: owning transport/security layer (renderer gates output)
+//   omit_unset  leave absent optional extensions out of the snapshot for byte compatibility
 //   proto_default  node only: per-protocol default, wins over `default`
 //   requires_when  node only: { field, value } the field is required when the other one has this value
 
@@ -114,7 +116,24 @@ const node = [
 	{ name: 'verify_name', type: 'string', default: null },
 	{ name: 'reality_pbk', type: 'string', default: null, requires_when: { field: 'security', value: 'reality' } },
 	{ name: 'reality_sid', type: 'string', default: null },
-	{ name: 'reality_spx', type: 'string', default: null }
+	{ name: 'reality_spx', type: 'string', default: null },
+	// docs/05 extensions have no materialized defaults: absent must stay absent (T9.14).
+	// TODO(design): 05 does not say whether inactive-layer fields invalidate a node.
+	// Retain typed values, as for existing fields; the renderer gates by transport/security.
+	// TODO(design): 05 gives no ECH/PQV encoding validation rules; keep them opaque strings.
+	{ name: 'reality_pqv', type: 'string', securities: [ 'reality' ], default: null, omit_unset: true },
+	{ name: 'ech_config_list', type: 'string', securities: [ 'tls' ], default: null, omit_unset: true },
+	{ name: 'grpc_multi_mode', type: 'bool', transports: [ 'grpc' ], default: null, omit_unset: true },
+	{ name: 'ws_heartbeat', type: 'int', min: 1, max: 3600,
+	  transports: [ 'ws' ], default: null, omit_unset: true },
+	{ name: 'xhttp_extra', type: 'json_object', transports: [ 'xhttp' ], default: null, omit_unset: true },
+	{ name: 'mux', type: 'bool', default: null, omit_unset: true },
+	{ name: 'mux_concurrency', type: 'int', min: -1, max: 1024, default: null, omit_unset: true },
+	{ name: 'mux_xudp_concurrency', type: 'int', min: -1, max: 1024, default: null, omit_unset: true },
+	{ name: 'mux_xudp_udp443', type: 'enum', enum: [ 'reject', 'allow', 'skip' ],
+	  default: null, omit_unset: true },
+	{ name: 'tcp_fast_open', type: 'bool', default: null, omit_unset: true },
+	{ name: 'tcp_mptcp', type: 'bool', default: null, omit_unset: true }
 ];
 
 const update = [

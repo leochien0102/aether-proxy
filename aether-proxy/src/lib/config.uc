@@ -97,6 +97,17 @@ const INVALID_CODE = {
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'
 };
 
+// Pure shared predicate: malformed JSON becomes a validation error, never an exception.
+export function is_json_object(value) {
+	try {
+		return type(json(value)) == 'object';
+	}
+	catch (e) {
+		// The caller reports invalid_value (config errors or URI skip reason).
+		return false;
+	}
+};
+
 // ------------------------------------------------------------------ field normalization
 
 function applies(f, proto) {
@@ -192,6 +203,14 @@ function normalize_field(f, raw, field, proto, errors) {
 
 		return +v;
 
+	case 'json_object':
+		// Keep the UCI string intact; only the outbound renderer decodes the object.
+		if (is_json_object(v))
+			return v;
+
+		push(errors, { field, code: 'invalid_value', detail: 'must be a JSON object' });
+		return null;
+
 	case 'enum':
 		if (index(f.enum, v) >= 0)
 			return v;
@@ -224,8 +243,11 @@ function normalize_section(fields, raw, prefix, errors) {
 			proto = (length(probe_errors) == 0) ? p : null;
 		}
 
-	for (let f in fields)
-		out[f.name] = normalize_field(f, raw, `${prefix}.${f.name}`, proto, errors);
+	for (let f in fields) {
+		let value = normalize_field(f, raw, `${prefix}.${f.name}`, proto, errors);
+		if (value != null || !f.omit_unset)
+			out[f.name] = value;
+	}
 
 	// Fields required because another field has a given value (reality needs pbk and sni).
 	for (let f in fields) {
@@ -286,6 +308,9 @@ function check_hosts(hosts, raw_hosts, errors) {
 
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
+	if (n.mux && n.flow == 'xtls-rprx-vision')
+		push(errors, { field: at + '.mux', code: 'conflict', detail: 'Mux is incompatible with xtls-rprx-vision' });
+
 	if (n.protocol == 'shadowsocks' && n.method != null && index(SS_METHODS, n.method) < 0)
 		push(errors, { field: at + '.method', code: 'unsupported_method',
 			detail: `"${n.method}" is not a supported shadowsocks method` });
