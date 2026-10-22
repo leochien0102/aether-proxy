@@ -204,7 +204,7 @@ return view.extend({
 		return mapNodePromise.then(function(mapNode) {
 			self.updateSelection();
 			return E('div', {}, [
-				E('h2', {}, _('Nodes', 'aether-proxy')),
+				E('h3', {}, _('Nodes', 'aether-proxy')),
 				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
 				controls,
 				mapNode,

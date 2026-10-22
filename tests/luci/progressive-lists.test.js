@@ -1539,6 +1539,9 @@ test('T10.37 scenario 2: expanded subscriptions precede node tools/table and col
 	const region = find(page.root, node => node.children.includes(page.nodeMap.node))[0];
 	assert.deepEqual(region.children.slice(-3), [tools, page.nodeMap.node, page.importDetails]);
 	assert.equal(page.importDetails.open, false);
+	assert.deepEqual(find(h.fullRoot, node => node.tag === 'h2').map(text), ['节点与订阅'],
+		'one page heading; the node region uses a section heading');
+	assert.deepEqual(find(page.root, node => node.tag === 'h3').map(text).slice(0, 1), ['节点']);
 	assert.deepEqual(find(h.fullRoot, node => node.class === 'cbi-map').map(node => node.map),
 		[subMap, page.nodeMap], 'no extra wrapper is mistaken for a form by the footer');
 	assert.deepEqual(h.allCalls.map(call => call[0]), ['version', 'sub_status', 'probe_results', 'status'],
