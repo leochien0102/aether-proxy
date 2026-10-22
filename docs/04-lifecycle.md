@@ -74,8 +74,10 @@
 - `/etc/init.d/aether-proxy`：
   - `start_service`：先同步执行 `aether-proxy check`（第 1–3 步加第 5 步，只校验不改动；失败就不注册实例，
     LuCI 能立即看到错误），然后注册 `aether-proxy daemon` 实例（开机时 `boot()` 带 `--boot`）。
-  - `service_stopped`：执行 `aether-proxy cleanup`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、
+  - `service_stopped`：执行 `aether-proxy cleanup --wait 35`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、
     杀掉残留子进程），兜底 daemon 被 SIGKILL 时来不及清理的情况。
+    procd 的停止是异步的：`service_stopped` 运行时 daemon 往往还在自己的有序退出中（最多 `term_timeout` 30 秒）并持有锁。`--wait <秒>` 让 cleanup 在锁被占用时每秒重试、最多等这么久，拿到锁再清理；等满仍拿不到才按原来的 `BUSY` 处理。
+    （2026-10-22 定，r12 窗口：运行中用 opkg 重装时 cleanup 撞上 daemon 的锁，记了一条 `BUSY {holder: daemon}` warn，backlog B15 第 2 条。）
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
 - 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。
@@ -124,6 +126,11 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 `read`（读配置与规则数据）、`render`（渲染全部产物）、`stage`（写 staging 与算哈希）、`precheck`、`nft_check`（两轮之和）、`xray_test`、`sets_export`（导出集合）、`nft_render`（带集合重新渲染 nft）、
 以及 `actions` 中每个动作各一个键（`nft_replace`、`restart_xray`、`restart_chinadns`……，键名即动作名）。没有发生的步骤不出现。单位毫秒，同其他步骤。
 `elapsed_ms` 还包括等待 monitor 本轮结束等开销，不等于各步之和。nft 要替换时（含只改模式）`nft -c` 做两次：第一轮与导出集合之后各一次。
+
+**规则数据缓存**（2026-10-22 定，r11/r12 实测 `read` ≈ 2.7 s、`render` ≈ 1.8 s、`nft_render` ≈ 1.75 s，占切换节点约 11 s 的六成）：规则数据一天最多变一次，每次重载却都从头解析 `chnroute4`（约 8000 个网段）并在两次 nft 渲染中各排序一次。
+- `data.load` 在**模块内**缓存每个文件的解析结果，键为路径，同时记下文件的 `size`、`mtime`、`inode`；下次读取时先 `stat`，三者都相同就直接复用，任一不同（或文件不见了）就重新读取解析。只有常驻的 daemon 进程会用到缓存，一次性的命令行进程照常每次读。
+- nft 渲染里对同一份数据的排序结果同样缓存（键为数据数组本身；数组来自上面的缓存，未变时是同一个对象）。
+- 输出与不缓存时**逐字节相同**；缓存只影响耗时。缓存不跨进程、不落盘。宿主机先测出热点：大头若不在这两处，先停下来改设计。
 
 `chinadns.conf` 按路径引用域名名单（`gfwlist-file`、`chnlist-file`、`group-dnl`），名单内容变了配置文本却不变。所以它的哈希是「配置文件哈希 + 每个被引用文件的哈希」拼成的串；
 比对时配置文件部分用 `current/` 中现在的文件（monitor 切 DNS 级别会重写它），名单部分用上次生效时（启动或上一次 reload）记在 `render_hash` 里的值——名单不在 `current/` 里，现读只会读到已经改过的内容。
