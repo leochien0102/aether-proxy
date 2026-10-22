@@ -453,6 +453,78 @@ msgid "Direct DNS"
 msgstr "直连 DNS"
 
 msgctxt "aether-proxy"
+msgid "ISP-provided DNS"
+msgstr "运营商下发的 DNS"
+
+msgctxt "aether-proxy"
+msgid "AliDNS"
+msgstr "阿里"
+
+msgctxt "aether-proxy"
+msgid "114 DNS"
+msgstr "114 DNS"
+
+msgctxt "aether-proxy"
+msgid "Baidu"
+msgstr "百度"
+
+msgctxt "aether-proxy"
+msgid "Google"
+msgstr "Google"
+
+msgctxt "aether-proxy"
+msgid "Cloudflare"
+msgstr "Cloudflare"
+
+msgctxt "aether-proxy"
+msgid "Quad9"
+msgstr "Quad9"
+
+msgctxt "aether-proxy"
+msgid "OpenDNS"
+msgstr "OpenDNS"
+
+msgctxt "aether-proxy"
+msgid ","
+msgstr "、"
+
+msgctxt "aether-proxy"
+msgid "ISP-provided DNS is currently %s"
+msgstr "运营商下发的 DNS 当前为 %s"
+
+msgctxt "aether-proxy"
+msgid "ISP-provided DNS is not available yet; temporarily using 223.5.5.5."
+msgstr "运营商下发的 DNS 暂未取得，临时使用 223.5.5.5"
+
+msgctxt "aether-proxy"
+msgid "Trust DNS 1"
+msgstr "可信 DNS 1"
+
+msgctxt "aether-proxy"
+msgid "Trust DNS 2 (optional)"
+msgstr "可信 DNS 2（可选）"
+
+msgctxt "aether-proxy"
+msgid "TCP (default)"
+msgstr "TCP（默认）"
+
+msgctxt "aether-proxy"
+msgid "UDP"
+msgstr "UDP"
+
+msgctxt "aether-proxy"
+msgid "UDP is for DNS servers without TCP query support and requires UDP forwarding on the node; the two entries can use different protocols as backups."
+msgstr "UDP 用于不支持 TCP 查询的 DNS，需要节点支持 UDP 转发；两项可以用不同协议互为备份。"
+
+msgctxt "aether-proxy"
+msgid "Some ISP DNS servers resolve nonexistent domains to advertising pages; use public DNS if this concerns you."
+msgstr "部分运营商 DNS 会把不存在的域名解析到广告页；介意的话改用公共 DNS。"
+
+msgctxt "aether-proxy"
+msgid "TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; try tcp://9.9.9.9 first."
+msgstr "部分网络里 8.8.8.8、1.1.1.1 的 TCP 查询会被重置，可优先试 tcp://9.9.9.9"
+
+msgctxt "aether-proxy"
 msgid "Allow China fallback"
 msgstr "允许国内兜底"
 

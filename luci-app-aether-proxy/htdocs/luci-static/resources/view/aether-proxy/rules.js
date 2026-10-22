@@ -11,11 +11,65 @@
  * Per docs/10 "名单改为标签页", group only the editors in standard LuCI tabs.
  * Per docs/10 "先出页面", defer RPC until the form and disabled editors are rendered.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
+ * Composite trust rows and deferred WAN hints follow docs/10 "DNS 常用地址与协议".
  */
 const LISTS = [
 	[ 'direct_domain', _('Direct domains', 'aether-proxy') ], [ 'proxy_domain', _('Proxy domains', 'aether-proxy') ],
 	[ 'direct_ip', _('Direct IPv4 addresses', 'aether-proxy') ], [ 'proxy_ip', _('Proxy IPv4 addresses', 'aether-proxy') ]
 ];
+/* One form option owns both rows and the UCI list: independent options could
+ * overwrite each other or leave temporary UI-only keys in the configuration. */
+function trust_option(section) {
+	const option = section.option(form.Value, 'trust_dns', _('Trust DNS', 'aether-proxy'));
+	option.rmempty = false;
+	option.description = _('UDP is for DNS servers without TCP query support and requires UDP forwarding '
+		+ 'on the node; the two entries can use different protocols as backups.', 'aether-proxy');
+	option.widgets = {};
+	option.renderWidget = function(section_id, option_index, cfgvalue) {
+		const labels = [ _('Trust DNS 1', 'aether-proxy'), _('Trust DNS 2 (optional)', 'aether-proxy') ];
+		const choices = Object.fromEntries(model.presets('trust_dns'));
+		this.widgets[section_id] = model.trust_rows(cfgvalue).map((row, i) => {
+			const id = this.cbid(section_id) + '.' + i;
+			const address = new ui.Combobox(row.address, choices, {
+				id: id + '.address', sort: Object.keys(choices),
+				validate: value => model.trust_input(value, i == 1),
+				disabled: (this.readonly ?? this.map.readonly) || null
+			});
+			const protocol = new ui.Select(row.protocol, {
+				tcp: _('TCP (default)', 'aether-proxy'), udp: _('UDP', 'aether-proxy')
+			}, { id: id + '.protocol', disabled: (this.readonly ?? this.map.readonly) || null });
+			const select = protocol.render();
+			select.querySelector('select').style.width = 'auto';
+			return { address, protocol, node: E('div', {
+				style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; margin:0.5em 0'
+			}, [ E('label', { for: 'widget.' + id + '.address' }, labels[i]), address.render(), select ]) };
+		});
+		return E('div', { id: this.cbid(section_id) }, this.widgets[section_id].map(row => row.node));
+	};
+	option.formvalue = function(section_id) {
+		return model.trust_values(this.widgets[section_id].map(row => ({
+			address: row.address.getValue() ?? '', protocol: row.protocol.getValue()
+		})));
+	};
+	option.write = function(section_id, value) {
+		return this.map.data.set(this.map.config, section_id, 'trust_dns', value);
+	};
+	option.validate = function(section_id, value) { return model.validate('trust_dns', value); };
+	option.getValidationError = function(section_id) {
+		const rows = this.widgets[section_id];
+		for (const [i, row] of rows.entries()) {
+			const result = model.trust_input(row.address.getValue() ?? '', i == 1);
+			if (result !== true)
+				return result;
+		}
+		const result = this.validate(section_id, this.formvalue(section_id));
+		return result === true ? '' : result;
+	};
+	/* Combobox is always optional in LuCI. Aggregate validation must still
+	 * reject an empty first address when AbstractValue.parse() saves the map. */
+	option.isValid = function(section_id) { return this.getValidationError(section_id) == ''; };
+	return option;
+}
 return view.extend({
 	load: function() {
 		return uci.load('aetherproxy');
@@ -73,9 +127,28 @@ return view.extend({
 		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
 		model.modes().forEach(item => option.value(item[0], item[1]));
 		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings', 'aether-proxy'));
-		const fields = [ [ 'china_dns', _('China DNS', 'aether-proxy'), form.DynamicList ],
-			[ 'trust_dns', _('Trust DNS', 'aether-proxy'), form.DynamicList ],
-			[ 'direct_dns', _('Direct DNS', 'aether-proxy'), form.DynamicList ],
+		const wan_hint = E('div');
+		const china = section.option(form.DynamicList, 'china_dns', _('China DNS', 'aether-proxy'));
+		china.rmempty = false;
+		model.presets('china_dns').forEach(item => china.value(item[0], item[1]));
+		china.validate = function(section_id, value) { return model.validate('china_dns', value); };
+		china.renderWidget = function(section_id, option_index, cfgvalue) {
+			/* form.Value only renders string descriptions; keep the asynchronous
+			 * hint in a DOM description owned by this widget instead. */
+			return E('div', {}, [ form.DynamicList.prototype.renderWidget.call(this,
+				section_id, option_index, cfgvalue), E('div', { class: 'cbi-value-description' }, [
+					E('div', {}, _('Some ISP DNS servers resolve nonexistent domains to advertising pages; '
+						+ 'use public DNS if this concerns you.', 'aether-proxy')), wan_hint
+				]) ]);
+		};
+		trust_option(section);
+		const direct = section.option(form.DynamicList, 'direct_dns', _('Direct DNS', 'aether-proxy'));
+		direct.rmempty = false;
+		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
+		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };
+		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
+			+ 'try tcp://9.9.9.9 first.', 'aether-proxy');
+		const fields = [
 			[ 'allow_china_fallback', _('Allow China fallback', 'aether-proxy'), form.Flag ],
 			[ 'dns_probe_domain', _('DNS probe domain', 'aether-proxy'), form.Value ] ];
 		fields.forEach(field => {
@@ -121,6 +194,12 @@ return view.extend({
 				ui.tabs.initTabGroup(panes);
 				editors.forEach(editor => editor.load());
 				ap.call('data_status').then(r => this.show_data(inventory, r));
+				/* Optional runtime context never blocks the form or changes UCI. A
+				 * failed read intentionally leaves this hint absent (docs/10). */
+				ap.call('status').then(r => {
+					const message = model.wan_dns_text(r);
+					wan_hint.replaceChildren(...(message == null ? [] : [ E('div', {}, message) ]));
+				}, () => wan_hint.replaceChildren());
 			}, 0);
 			return root;
 		});

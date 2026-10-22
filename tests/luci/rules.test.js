@@ -3,7 +3,9 @@
 /* T8.8 scenarios 2,3,5-9, T10.10 progressive loading and T10.21 tabs (docs/10).
  * Real CLI in disposable directories; model/view via the shared LuCI loader.
  * Deferred RPC and timer doubles prove that only the arriving tab/region changes.
- * The tab double records panes and attachment without reimplementing LuCI tabs. */
+ * The tab double records panes and attachment without reimplementing LuCI tabs.
+ * T10.35 uses editable widget doubles and recorded UCI writes to exercise the
+ * composite trust option; status remains deferred and independent of list reads. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -184,6 +186,10 @@ for (const field of [ 'china_dns', 'direct_dns' ]) {
 fixtures.push(
 	{ field: 'trust_dns', value: [], ok: false },
 	{ field: 'trust_dns', value: ['192.0.2.1'], ok: true },
+	{ field: 'trust_dns', value: ['tcp://8.8.8.8', 'udp://1.1.1.1'], ok: true },
+	{ field: 'trust_dns', value: ['8.8.8.8#53'], ok: false },
+	{ field: 'trust_dns', value: ['udp://1.1.1.1:53'], ok: false },
+	{ field: 'trust_dns', value: ['tls://8.8.8.8'], ok: false },
 	{ field: 'trust_dns', value: ['192.0.2.1', '198.51.100.1'], ok: true },
 	{ field: 'trust_dns', value: ['192.0.2.1', '198.51.100.1', '203.0.113.1'], ok: false },
 	{ field: 'trust_dns', value: ['resolver.example'], ok: false },
@@ -280,32 +286,60 @@ function text(node) {
 	return typeof node == 'object' && node !== null ? node.children.map(text).join('') : String(node);
 }
 function deferred() {
-	let resolve;
-	const promise = new Promise(done => { resolve = done; });
-	return { promise, resolve };
+	let resolve, reject;
+	const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+	return { promise, resolve, reject };
 }
 function descendants(node) {
 	if (node === null || typeof node != 'object')
 		return [];
 	return [node, ...node.children.flatMap(descendants)];
 }
-function load_view() {
-	const calls = [], jobs = [], loads = [], timers = [], maps = [], tab_groups = [];
+function load_view(dns_config = {}) {
+	const calls = [], jobs = [], loads = [], timers = [], maps = [], tab_groups = [], writes = [], actions = [];
 	const document = { body: E('body') };
 	const form = {
-		NamedSection: 'named', ListValue: 'select', DynamicList: 'list', Flag: 'flag', Value: 'value'
+		NamedSection: 'named', ListValue: 'select', Flag: 'flag', Value: 'value',
+		DynamicList: class {
+			renderWidget(section_id, index, value) {
+				return E('list', { name: this.key, value }, this.label);
+			}
+		}
 	};
+	/* LuCI widget values are read through getValue(), not input DOM shortcuts.
+	 * Select renders a wrapper around a native select; Combobox permits custom text. */
+	class Widget {
+		constructor(value, choices, options) {
+			this.value = value;
+			this.choices = choices;
+			this.options = options;
+		}
+		getValue() { return this.value; }
+		render() { return E('combobox', { id: this.options.id, value: this.value }); }
+	}
+	class Select extends Widget {
+		render() {
+			const select = E('select', { style: {} }, Object.entries(this.choices).map(([value, label]) =>
+				E('option', { value, selected: value == this.value || null }, label)));
+			const wrapper = E('div', { id: this.options.id }, [select]);
+			wrapper.querySelector = selector => selector == 'select' ? select : null;
+			return wrapper;
+		}
+	}
 	form.Map = class {
 		constructor(config, title) {
 			this.config = config;
 			this.title = title;
 			this.sections = [];
+			this.data = { set: (...args) => writes.push(args) };
 			maps.push(this);
 		}
 		section(type, name, section_type, title) {
 			const section = { type, name, section_type, title, options: [] };
 			section.option = (kind, key, label) => {
-				const option = { kind, key, label, values: [], value(k, v) { this.values.push([k, v]); } };
+				const option = { kind, key, label, map: this, values: [],
+					cbid: section_id => 'cbid.aetherproxy.' + section_id + '.' + key,
+					value(k, v) { this.values.push([k, v]); } };
 				section.options.push(option);
 				return option;
 			};
@@ -314,15 +348,28 @@ function load_view() {
 		}
 		render() {
 			return Promise.resolve(E('form', {}, this.sections.map(section =>
-				E('fieldset', { name: section.name }, section.options.map(option =>
-					E(option.kind, { name: option.key }, option.label))))));
+				E('fieldset', { name: section.name }, section.options.map((option, i) => {
+					const value = dns_config[option.key];
+					const widget = option.renderWidget ? option.renderWidget(section.name, i, value) :
+						E(option.kind == form.DynamicList ? 'list' : option.kind,
+							{ name: option.key, value }, option.label);
+					return E('div', { name: option.key }, [widget, option.description ?? '']);
+				})))));
 		}
 	};
 	const page = loadModule(path.join(RES, 'view/aether-proxy/rules.js'), {
 		view: { extend: o => o }, form,
 		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); } },
 		ui: {
-			createHandlerFn: (ctx, fn) => (...args) => fn.apply(ctx, args),
+			Combobox: Widget, Select,
+			/* Like LuCI, handlers return nothing and restore the event target.
+			 * Keep tasks separately so assertions never depend on a handler return value. */
+			createHandlerFn: (ctx, fn) => event => {
+				event.currentTarget.disabled = true;
+				actions.push(Promise.resolve(fn.call(ctx, event)).finally(() => {
+					event.currentTarget.disabled = false;
+				}));
+			},
 			tabs: { initTabGroup: panes => tab_groups.push({ panes: [...panes],
 				attached: panes.every(pane => descendants(document.body).includes(pane)) }) }
 		},
@@ -341,7 +388,7 @@ function load_view() {
 			}
 		}
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document });
-	return { page, calls, jobs, loads, maps, timers, tab_groups, document,
+	return { page, calls, jobs, loads, maps, timers, tab_groups, document, writes, actions,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -404,16 +451,16 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	assert.equal(r.update.disabled, false);
 	h.start();
 	await settle(); // All five RPC promises stay pending forever.
-	assert.equal(h.calls.length, 5);
+	assert.equal(h.calls.length, 6);
 	assert.equal(text(r.inventory), '读取中…');
 	assert.ok(r.lists.every(l => l.input.disabled && l.button.disabled));
 });
-test('T10.10 scenario 3: queue the four lists in page order before data_status', async () => {
+test('T10.10 scenario 3: queue the four lists in page order before data_status and optional status', async () => {
 	const h = load_view();
 	await h.page.render();
 	h.start();
 	assert.deepEqual(h.calls.map(c => [c.method, c.params]), [
-		...list_names.map(name => ['list_file', { name }]), ['data_status', undefined]
+		...list_names.map(name => ['list_file', { name }]), ['data_status', undefined], ['status', undefined]
 	]);
 });
 test('T10.10 scenario 4: each reply touches only its own editor; failures remain disabled', async () => {
@@ -530,7 +577,8 @@ test('T10.10 scenario 6: a loaded list saves its current text and retains all ex
 	];
 	for (const [i, result] of results.entries()) {
 		list.input.value = '# edited ' + i + '\n192.0.2.2\n';
-		const saving = list.button.click();
+		assert.equal(list.button.click({ currentTarget: list.button }), undefined);
+		const saving = h.actions.at(-1);
 		assert.equal(list.button.disabled, true);
 		const call = h.calls.at(-1);
 		assert.equal(call.method, 'save_file');
@@ -549,7 +597,8 @@ test('T10.10 scenario 7: update job stays usable before reads finish and refresh
 	const h = load_view();
 	const root = await h.page.render(), r = regions(root);
 	h.start();
-	const updating = r.update.click();
+	r.update.click({ currentTarget: r.update });
+	const updating = h.actions.at(-1);
 	assert.equal(r.update.disabled, true);
 	assert.equal(h.jobs.length, 1);
 	assert.equal(h.jobs[0].kind, 'update_data');
@@ -560,10 +609,10 @@ test('T10.10 scenario 7: update job stays usable before reads finish and refresh
 	h.jobs[0].resolve(job);
 	await settle();
 	assert.deepEqual(r.summary.children.map(text), model().job_result(job));
-	assert.equal(h.calls.length, 6);
-	assert.equal(h.calls[5].method, 'data_status');
+	assert.equal(h.calls.length, 7);
+	assert.equal(h.calls[6].method, 'data_status');
 	assert.equal(r.update.disabled, true, 'wait for the post-job inventory');
-	h.calls[5].resolve({ ok: true, checked: null, items: { gfwlist: { version: 'new-hash', lines: 42 } } });
+	h.calls[6].resolve({ ok: true, checked: null, items: { gfwlist: { version: 'new-hash', lines: 42 } } });
 	await updating;
 	assert.equal(r.update.disabled, false);
 	assert.match(text(r.inventory), /new-hash42/);
@@ -627,7 +676,8 @@ test('T10.21 scenario 2: saving the second tab uses only its text, file and resu
 		list.message.replaceChildren(E('p', {}, 'previous-' + i));
 	}
 	const second = r.lists[1];
-	const saving = second.button.click();
+	second.button.click({ currentTarget: second.button });
+	const saving = h.actions.at(-1);
 	const saves = h.calls.filter(call => call.method == 'save_file');
 	assert.equal(saves.length, 1);
 	assert.deepEqual(saves[0].params, { name: 'proxy_domain', content: 'unsaved-1' });
@@ -667,7 +717,8 @@ test('T10.21 scenario 4: update renders only nonempty categories and preserves j
 				expected.push(line);
 			}
 		}
-		const updating = r.update.click();
+		r.update.click({ currentTarget: r.update });
+		const updating = h.actions.at(-1);
 		h.jobs[0].resolve({ state: 'ok', result });
 		await settle();
 		assert.deepEqual(r.summary.children.map(text), expected, 'visible lines for subset ' + mask);
@@ -683,4 +734,164 @@ test('T10.21 scenario 4: update renders only nonempty categories and preserves j
 		['RPC_FAILED: offline']);
 	assert.deepEqual(m.job_result({ ok: false, code: 'TIMEOUT', detail: 'late',
 		result: { updated: ['gfwlist'] } }), ['已更新：被墙域名', 'TIMEOUT: late']);
+});
+
+function dns_option(h, key) {
+	return h.maps[0].sections[1].options.find(option => option.key == key);
+}
+
+test('T10.35 scenario 1: all three preset groups have exact values and translated labels', async () => {
+	const m = model();
+	const expected = {
+		china_dns: [
+			['wan', '运营商下发的 DNS'], ['223.5.5.5', '阿里（223.5.5.5）'],
+			['223.6.6.6', '阿里（223.6.6.6）'], ['114.114.114.114', '114 DNS（114.114.114.114）'],
+			['114.114.115.115', '114 DNS（114.114.115.115）'], ['180.76.76.76', '百度（180.76.76.76）']
+		],
+		trust_dns: [
+			['8.8.8.8', 'Google（8.8.8.8）'], ['8.8.4.4', 'Google（8.8.4.4）'],
+			['1.1.1.1', 'Cloudflare（1.1.1.1）'], ['1.0.0.1', 'Cloudflare（1.0.0.1）'],
+			['9.9.9.9', 'Quad9（9.9.9.9）'], ['208.67.222.222', 'OpenDNS（208.67.222.222）']
+		],
+		direct_dns: [
+			['tcp://9.9.9.9', 'Quad9（tcp://9.9.9.9）'], ['tcp://8.8.8.8', 'Google（tcp://8.8.8.8）'],
+			['tcp://1.1.1.1', 'Cloudflare（tcp://1.1.1.1）']
+		]
+	};
+	const h = load_view({ trust_dns: ['8.8.8.8'] });
+	await h.page.render();
+	for (const [field, choices] of Object.entries(expected)) {
+		assert.deepEqual(m.presets(field), choices);
+		const option = dns_option(h, field);
+		if (field == 'trust_dns') {
+			assert.equal(option.kind, 'value', 'fixed rows, not DynamicList');
+			for (const row of option.widgets.dns)
+				assert.deepEqual(Object.entries(row.address.choices), choices);
+		}
+		else {
+			assert.deepEqual(option.values, choices, 'DynamicList keeps its free-entry widget');
+		}
+	}
+	assert.equal(m.validate('china_dns', ['198.51.100.53']), true, 'custom domestic address');
+	assert.equal(m.validate('direct_dns', ['tls://dns.example@198.51.100.53#853']), true, 'custom upstream');
+	const trust = dns_option(h, 'trust_dns');
+	trust.widgets.dns[0].address.value = '198.51.100.53';
+	assert.equal(trust.isValid('dns'), true, 'custom trusted address');
+	assert.deepEqual(trust.formvalue('dns'), ['198.51.100.53']);
+});
+
+test('T10.35 scenario 2: domestic wan validation and existing configuration stay unchanged on render', async () => {
+	const existing = ['223.5.5.5', 'tcp://1.1.1.1#53'];
+	const h = load_view({ china_dns: existing, trust_dns: ['8.8.8.8'] });
+	const root = await h.page.render();
+	const option = dns_option(h, 'china_dns');
+	for (const value of ['wan', '223.5.5.5', 'tcp://1.1.1.1#53'])
+		assert.equal(option.validate('dns', [value]), true, value);
+	for (const value of ['wan2', 'udp://wan', 'bad', '999.1.1.1'])
+		assert.notEqual(option.validate('dns', [value]), true, value);
+	assert.deepEqual(descendants(root).find(node => node.tag == 'list' && node.name == 'china_dns').value,
+		existing, 'the original list reaches the LuCI widget verbatim');
+	assert.match(text(root), /部分运营商 DNS 会把不存在的域名解析到广告页；介意的话改用公共 DNS。/);
+	h.start();
+	h.calls.find(call => call.method == 'status').resolve({ ok: true, state: 'running', wan_dns: ['10.0.0.1'] });
+	await settle();
+	assert.deepEqual(h.writes, [], 'rendering and runtime hints cannot write UCI');
+	assert.deepEqual(existing, ['223.5.5.5', 'tcp://1.1.1.1#53']);
+});
+
+test('T10.35 scenario 3: deferred status shows current WAN DNS or fallback only while active', async () => {
+	const cases = [
+		[{ ok: true, state: 'running', wan_dns: ['10.0.0.1', '10.0.0.2'] },
+			'运营商下发的 DNS 当前为 10.0.0.1、10.0.0.2'],
+		[{ ok: true, state: 'running', wan_dns: [] }, '运营商下发的 DNS 暂未取得，临时使用 223.5.5.5'],
+		[{ ok: true, state: 'degraded', wan_dns: ['10.0.0.1'] }, '运营商下发的 DNS 当前为 10.0.0.1'],
+		[{ ok: true, state: 'running', wan_dns: null }, null],
+		[{ ok: true, state: 'stopped', wan_dns: ['10.0.0.1'] }, null],
+		[{ ok: true, state: 'error', wan_dns: [] }, null],
+		[{ ok: false, code: 'RPC_FAILED', wan_dns: ['10.0.0.1'] }, null],
+		[{ ok: true, state: 'running' }, null],
+		[new Error('offline'), null]
+	];
+	for (const [reply, expected] of cases) {
+		const h = load_view();
+		await h.page.load();
+		const root = await h.page.render();
+		assert.deepEqual(h.calls, [], 'status must not delay the page framework');
+		h.document.body.replaceChildren(root);
+		h.start();
+		const calls = h.calls.filter(call => call.method == 'status');
+		assert.equal(calls.length, 1, 'read status once, after attachment');
+		if (reply instanceof Error)
+			calls[0].reject(reply);
+		else
+			calls[0].resolve(reply);
+		await settle();
+		const current = descendants(root).filter(node => node.tag == 'div' &&
+			node.children.length == 1 && typeof node.children[0] == 'string' &&
+			node.children[0].startsWith('运营商下发的 DNS '));
+		assert.deepEqual(current.map(text), expected == null ? [] : [expected]);
+		assert.equal(text(regions(root).inventory), '读取中…', 'hint is independent of other pending reads');
+		assert.deepEqual(h.writes, []);
+	}
+});
+
+test('T10.35 scenario 4: trusted rows read TCP aliases and UDP, then serialize a single UCI list', async () => {
+	for (const first of ['8.8.8.8', 'tcp://8.8.8.8']) {
+		const h = load_view({ trust_dns: [first, 'udp://1.1.1.1'] });
+		const root = await h.page.render();
+		const option = dns_option(h, 'trust_dns');
+		const rows = option.widgets.dns;
+		assert.deepEqual(rows.map(row => [row.address.getValue(), row.protocol.getValue()]),
+			[['8.8.8.8', 'tcp'], ['1.1.1.1', 'udp']]);
+		assert.match(text(root), /可信 DNS 1/);
+		assert.match(text(root), /可信 DNS 2（可选）/);
+		assert.match(text(root), /UDP 用于不支持 TCP 查询的 DNS，需要节点支持 UDP 转发；两项可以用不同协议互为备份。/);
+		assert.deepEqual(Object.entries(rows[0].protocol.choices), [['tcp', 'TCP（默认）'], ['udp', 'UDP']]);
+		assert.ok(descendants(root).filter(node => node.tag == 'select' && typeof node.style == 'object')
+			.every(node => node.style.width == 'auto'), 'protocol selects do not fill a flex row');
+		assert.deepEqual(h.writes, [], 'reading a TCP alias never rewrites it during render');
+		assert.equal(option.isValid('dns'), true);
+		option.write('dns', option.formvalue('dns'));
+		assert.deepEqual(h.writes.at(-1), ['aetherproxy', 'dns', 'trust_dns', ['8.8.8.8', 'udp://1.1.1.1']]);
+		rows[0].protocol.value = 'udp';
+		rows[1].protocol.value = 'tcp';
+		assert.deepEqual(option.formvalue('dns'), ['udp://8.8.8.8', '1.1.1.1'], 'each protocol is independent');
+		rows[1].address.value = '';
+		assert.equal(option.isValid('dns'), true);
+		option.write('dns', option.formvalue('dns'));
+		assert.deepEqual(h.writes.at(-1), ['aetherproxy', 'dns', 'trust_dns', ['udp://8.8.8.8']]);
+	}
+});
+
+test('T10.35 scenario 4: empty first row, ports, TLS and non-IPv4 cannot pass form validation', async () => {
+	const h = load_view({ trust_dns: ['8.8.8.8', '1.1.1.1'] });
+	await h.page.render();
+	const option = dns_option(h, 'trust_dns'), rows = option.widgets.dns;
+	for (const i of [0, 1]) {
+		const invalid = ['8.8.8.8#53', '8.8.8.8:53', 'tls://8.8.8.8', 'resolver.example', '::1', '256.0.0.1'];
+		if (i == 0)
+			invalid.push('');
+		for (const value of invalid) {
+			rows[i].address.value = value;
+			assert.notEqual(rows[i].address.options.validate(value), true, value);
+			assert.equal(option.isValid('dns'), false, 'AbstractValue.parse rejects: ' + value);
+			assert.equal(option.getValidationError('dns'), 'IPv4 地址无效。');
+		}
+		rows[i].address.value = i == 0 ? '8.8.8.8' : '1.1.1.1';
+	}
+	rows[0].address.value = '';
+	assert.deepEqual(option.formvalue('dns'), ['', '1.1.1.1'], 'second row must not replace missing first');
+	assert.notEqual(option.validate('dns', option.formvalue('dns')), true);
+	assert.deepEqual(h.writes, [], 'invalid form checks never write configuration');
+});
+
+test('T10.35 scenario 5: direct presets retain upstream editing and explain the preferred TCP resolver', async () => {
+	const h = load_view();
+	const root = await h.page.render();
+	const option = dns_option(h, 'direct_dns');
+	assert.deepEqual(option.values.map(item => item[0]), ['tcp://9.9.9.9', 'tcp://8.8.8.8', 'tcp://1.1.1.1']);
+	assert.equal(option.description, '部分网络里 8.8.8.8、1.1.1.1 的 TCP 查询会被重置，可优先试 tcp://9.9.9.9');
+	assert.ok(text(root).includes(option.description));
+	assert.equal(option.validate('dns', ['udp://198.51.100.53#5353']), true);
+	assert.notEqual(option.validate('dns', ['wan']), true, 'wan is domestic-only');
 });
