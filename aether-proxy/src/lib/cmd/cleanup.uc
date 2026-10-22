@@ -6,9 +6,11 @@
 import * as daemon from 'aetherproxy.daemon';
 
 export function run(args) {
-	let parsed = daemon.parse_options(args, false);
+	let parsed = daemon.parse_options(args, false, true);
 	if (parsed.error) {
-		warn(`cleanup: ${parsed.error}\nUsage: aether-proxy cleanup [--sys-root <dir>] [--bin-dir <dir>] [--confdir <dir>]\n`);
+		warn(`cleanup: ${parsed.error}\n`
+			+ 'Usage: aether-proxy cleanup [--wait <seconds>] [--sys-root <dir>] '
+			+ '[--bin-dir <dir>] [--confdir <dir>]\n');
 		return 2;
 	}
 	let result = daemon.cleanup_run(parsed.opts);

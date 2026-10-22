@@ -68,7 +68,8 @@ reload_service() {
 }
 
 service_stopped() {
-	"$AETHER_PROXY" cleanup
+	# procd's asynchronous stop may leave the daemon holding its lock for term_timeout (docs/04).
+	"$AETHER_PROXY" cleanup --wait 35
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
 		logger -t aether-proxy "aether-proxy cleanup failed (rc=$rc)"
