@@ -821,7 +821,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
   `mux` 开时显示：`mux_concurrency`（「Mux 并发数」，占位 8）、`mux_xudp_concurrency`（「XUDP 并发数」，占位 16），两者 `range(-1,1024)`；`mux_xudp_udp443`（ListValue「XUDP 处理 UDP/443」：空 = 默认（拒绝）、`reject` 拒绝、`allow` 允许、`skip` 不经多路复用）。
 - 所有协议：`tcp_fast_open`（Flag「TCP Fast Open」）、`tcp_mptcp`（Flag「MPTCP」）。
 - 不提供 Shadowsocks「UDP over TCP」（05：Xray 的 SS 出站没有这一项）。
-- 添加节点的「解析」先清掉的字段清单（`model` 的节点字段表）加上这十个字段。节点表的列不变。
+- 添加节点的「解析」先清掉的字段清单（`model` 的节点字段表）加上这些字段（05 的十行展开为 11 个选项）。节点表的列不变。
 
 ### 更新页：回滚一起回滚（2026-10-22 定，T10.31；r11 窗口前端第 5 条；依赖后端 T9.16）
 
