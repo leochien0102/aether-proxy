@@ -102,7 +102,12 @@ grep -Fxq start "$T/init-reload-start.log" && grep -Fxq 'open aether-proxy' "$T/
 	&& ok "reload of a stopped service starts it" || bad "reload of a stopped service starts it"
 run_init stop 1 0 init-stop; rc=$?
 expect "service_stopped cleanup succeeds" 0 "$rc"
-grep -Fxq 'aether-proxy cleanup' "$T/init-stop.log" && ok "service_stopped runs cleanup" || bad "service_stopped runs cleanup"
+grep -Fxq 'aether-proxy cleanup --wait 35' "$T/init-stop.log" \
+	&& ok "service_stopped runs cleanup --wait 35" || bad "service_stopped runs cleanup --wait 35"
+run_init stop 1 3 init-stop-busy; rc=$?
+expect "service_stopped preserves cleanup failure status" 3 "$rc"
+contains "$T/init-stop-busy.log" 'aether-proxy cleanup failed (rc=3)' \
+	&& ok "service_stopped logs cleanup failure" || bad "service_stopped logs cleanup failure"
 run_init triggers 1 0 init-triggers; rc=$?
 expect "service_triggers succeeds" 0 "$rc"
 grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger registered" || bad "reload trigger registered"

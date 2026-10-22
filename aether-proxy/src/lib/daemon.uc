@@ -27,12 +27,19 @@ const BOOT_OPTS = {
 	'--custom-dir': 'custom_dir', '--run-dir': 'run_dir', '--sys-root': 'sys_root', '--bin-dir': 'bin_dir'
 };
 
-function parse_options(args, allow_boot) {
+function parse_options(args, allow_boot, allow_wait) {
 	let opts = {}, positional = [];
 	for (let i = 0; i < length(args); i++) {
 		let a = args[i];
 		if (a == '--boot' && allow_boot) {
 			opts.boot = true;
+			continue;
+		}
+		if (a == '--wait' && allow_wait) {
+			let value = args[++i];
+			if (value == null || !match(value, /^[0-9]+$/) || +value > 120)
+				return { error: 'option --wait needs an integer from 0 to 120' };
+			opts.wait = +value;
 			continue;
 		}
 		if (BOOT_OPTS[a] != null) {
@@ -367,6 +374,13 @@ function cleanup_run(parsed_opts) {
 	setup_log(ctx);
 	let lock_path = root_path(opts, C.LOCK_FILE);
 	let lock = sys.lock(lock_path);
+	// procd stops asynchronously: let the daemon finish before the fallback touches its state (docs/04).
+	// TODO(design): sys.lock does not distinguish contention from I/O failures. Keep its existing
+	// BUSY semantics for both, including bounded retries, rather than inventing a new error result.
+	for (let remaining = opts.wait ?? 0; lock == null && remaining > 0; remaining--) {
+		sleep(1000);
+		lock = sys.lock(lock_path);
+	}
 	if (lock == null) {
 		log.event('warn', 'BUSY', { holder: 'daemon' });
 		return { ok: false, code: 3, detail: `BUSY: ${sys.error()}` };

@@ -582,6 +582,13 @@ else
 	bad 'T10.8 lazy subcommand CLI scenarios'
 fi
 
+# T9.25: bounded cleanup lock waits, silent retries and unchanged immediate BUSY behavior.
+if python3 "$ROOT/tests/cli/cleanup-wait.py"; then
+	ok 'T9.25 cleanup wait CLI scenarios'
+else
+	bad 'T9.25 cleanup wait CLI scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
