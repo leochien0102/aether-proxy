@@ -12,6 +12,7 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element } = require('./loader');
+const { actionRow } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -353,9 +354,11 @@ function regions(root) {
 		form: root.children[0],
 		group: root.children[1],
 		lists: root.children[1].children.map(node => ({
-			node, input: node.children[1], button: node.children[2], message: node.children[3]
+			node, input: node.children[1], button: node.children[2].children[1],
+			message: node.children[2].children[0]
 		})),
-		inventory: root.children[3], update: root.children[4], summary: root.children[5]
+		inventory: root.children[3], update: root.children[4].children[2],
+		summary: root.children[4].children[0], progress: root.children[4].children[1]
 	};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -373,7 +376,7 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	const root = await h.page.render();
 	assert.equal(h.calls.length, 0, 'RPC must start after render resolves');
 	const r = regions(root);
-	assert.equal(root.children.length, 7);
+	assert.equal(root.children.length, 5);
 	assert.equal(r.form.tag, 'form');
 	assert.equal(h.maps[0].config, 'aetherproxy');
 	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);
@@ -566,6 +569,22 @@ test('T10.10 scenario 7: update job stays usable before reads finish and refresh
 	assert.match(text(r.inventory), /new-hash42/);
 	assert.ok(r.lists.every(l => l.input.disabled && l.button.disabled));
 	assert.equal(root.children[0], r.form);
+});
+
+test('T10.27 scenario 1: four list saves and rule update have spaced right-aligned rows with text first', async () => {
+	const h = load_view();
+	const root = await h.page.render(), r = regions(root);
+	for (const list of r.lists) {
+		const row = actionRow(list.node, ['保存名单'], [list.message]);
+		list.message.textContent = 'save result';
+		assert.equal(list.node.children.at(-1), row, 'save row is below the textarea');
+		assert.equal(list.node.children.at(-2), list.input);
+	}
+	r.summary.textContent = 'update result';
+	r.progress.textContent = 'elapsed';
+	const row = actionRow(root, ['立即更新'], [r.summary, r.progress]);
+	assert.equal(root.children.at(-1), row, 'update row is at the bottom of the rule-data block');
+	assert.equal(root.children.at(-2), r.inventory);
 });
 
 test('T10.21 scenario 1: initialize exactly the four ordered list tabs after attachment', async () => {

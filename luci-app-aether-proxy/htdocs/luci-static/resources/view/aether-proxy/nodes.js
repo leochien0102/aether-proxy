@@ -102,11 +102,13 @@ return view.extend({
 		const importBox = E('div', { 'class': 'cbi-map-descr' }, [
 			E('h3', {}, _('Import URIs', 'aether-proxy')),
 			this.importText,
-			' ',
-			E('button', {
+			E('div', {
+				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+			}, [ E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(self, 'handleImport')
-			}, [ _('Import', 'aether-proxy') ])
+			}, [ _('Import', 'aether-proxy') ]) ])
 		]);
 
 		const probeAll = E('button', {
@@ -126,13 +128,10 @@ return view.extend({
 			'class': 'btn cbi-button cbi-button-add',
 			'click': ui.createHandlerFn(self, 'handleAddNode')
 		}, _('Add node', 'aether-proxy'));
-		const controls = E('div', { 'class': 'cbi-map-descr' }, [
-			E('div', {
-				'style': 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-			}, [ probeAll, this.deleteSelected, addNode ]),
-			importBox
-		]);
+		const controls = E('div', {
+			'style': 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+		}, [ this.progressEl, probeAll, this.deleteSelected, addNode ]);
 
 		const mapNodePromise = this.buildMap().render();
 
@@ -141,7 +140,7 @@ return view.extend({
 			return E('div', {}, [
 				E('h2', {}, _('Nodes', 'aether-proxy')),
 				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
-				self.progressEl,
+				importBox,
 				controls,
 				mapNode
 			]);

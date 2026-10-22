@@ -7,6 +7,7 @@
 
 /* Log-page controller (docs/10 「日志页」). Only events are polled; raw logs
  * can be large and are fetched on demand. All untrusted content is text.
+ * Block action rows follow docs/10 "UI 规则" (T10.27).
  */
 return view.extend({
 	load: function() {
@@ -104,7 +105,12 @@ return view.extend({
 		this.rawContent = E('div', {});
 		this.rawPanel = E('div', { hidden: true }, [
 			E('label', {}, [ _('Source', 'aether-proxy'), this.source ]), E('label', {}, [ _('Lines', 'aether-proxy'), this.lines ]),
-			E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')), this.rawContent
+			this.rawContent,
+			E('div', {
+				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+			}, [ E('button', { 'class': 'cbi-button', click: () => this.fetchLog() },
+				_('Refresh', 'aether-proxy')) ])
 		]);
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [

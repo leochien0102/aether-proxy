@@ -161,6 +161,13 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	}
 });
 
+test('T10.27 scenario 3: all views avoid cbi-page-actions for block controls', () => {
+	const sources = viewSources();
+	assert.equal(sources.size, 8, 'scan all shipped views');
+	for (const [name, source] of sources)
+		assert.ok(!source.includes('cbi-page-actions'), name + ': no theme footer-action class');
+});
+
 /* T10.14 covers every shipped JS file, including future nested helpers,
  * rather than only the four views that currently ask for confirmation. */
 test('T10.14 scenario 3: all htdocs JS uses ap.confirm instead of native confirm', () => {

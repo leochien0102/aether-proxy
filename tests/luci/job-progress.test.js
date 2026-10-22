@@ -146,12 +146,12 @@ function activeButtons(h, name) {
 		['安装', '立即更新', '回滚到 1', '检查更新'];
 	return buttons(h.root).filter(node => labels.includes(text(node)));
 }
-// Rules ends with inventory, update, summary, progress; T10.21 groups its editors.
+// T10.27 groups result/progress before the update button in the final action row.
 function progress(h, name) {
-	return name === 'rules' ? h.root.children.at(-1) : h.page.progress;
+	return name === 'rules' ? h.root.children.at(-1).children[1] : h.page.progress;
 }
 function summary(h, name) {
-	return name === 'rules' ? h.root.children.at(-2) : h.page.summary;
+	return name === 'rules' ? h.root.children.at(-1).children[0] : h.page.summary;
 }
 
 test('T10.15 scenario 1: progress starts at zero, reaches three seconds, stop clears and never updates again', t => {
@@ -226,7 +226,7 @@ for (const s of scenarios) {
 			assert.deepEqual(h.notifications, [s.result]);
 		}
 		if (s.name === 'rules')
-			assert.match(text(h.root.children.at(-4)), /new-hash/);
+			assert.match(text(h.root.children.at(-2)), /new-hash/);
 		t.mock.timers.tick(10000);
 		assert.equal(text(progress(h, s.name)), '');
 		assert.ok(text(summary(h, s.name)).includes(s.result));

@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
+const { actionRow, beforeTable } = require('./button-layout');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -369,6 +370,36 @@ test('T10.16 subscriptions: late initial status cannot overwrite a completed upd
 	assert.match(text(resultCells(h)[0]), /成功，7 个节点/);
 	assert.equal(h.page.busy, false);
 	assert.ok(buttons(h.root).filter(node => text(node) !== '删除所选').every(node => !node.disabled));
+});
+
+test('T10.27 scenarios 1/2: node actions share progress before the table; Import has its own bottom row', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const row = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
+	beforeTable(h.root, row, h.maps[0].node);
+	const parent = find(h.root, node => node.children.includes(row))[0];
+	assert.equal(parent.children[parent.children.indexOf(row) + 1], h.maps[0].node,
+		'no import block separates the table toolbar from its table');
+	const importRow = actionRow(h.root, ['导入']);
+	const importBox = find(h.root, node => node.children.includes(h.page.importText))[0];
+	assert.equal(importBox.children.at(-1), importRow);
+	assert.equal(importBox.children.at(-2), h.page.importText);
+});
+
+test('T10.27 scenarios 1/2: subscription Update all and Add share text-first row above the table after redraw',
+async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	for (const busy of [false, true, false]) {
+		h.page.busy = busy;
+		await h.page.redraw();
+		h.page.summary.textContent = 'update result';
+		h.page.progress.textContent = 'elapsed';
+		const row = actionRow(h.root, ['全部更新', '添加'],
+			[h.page.statusError, h.page.progress, h.page.summary]);
+		beforeTable(h.root, row, h.maps.at(-1).node);
+		assert.deepEqual(h.root.children, [row, h.maps.at(-1).node]);
+	}
 });
 
 function gridRow(h, id) {

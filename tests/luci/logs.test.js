@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
+const { actionRow } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -181,7 +182,7 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 	assert.equal(polls.length, 1, 'raw logs never poll');
 	view.source.value = 'xray';
 	view.lines.value = '1000';
-	const refresh = view.rawPanel.children.find(c => c.tag == 'button');
+	const refresh = descendants(view.rawPanel).find(c => c.tag == 'button');
 	await refresh.attrs.click();
 	assert.deepEqual(calls[3], { method: 'log', params: { source: 'xray', lines: 1000 } });
 	await view.switchTab('events');
@@ -282,7 +283,7 @@ test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with o
 	assert.deepEqual(v.source.children.map(n => n.value), model.sources().map(s => s[0]));
 	assert.deepEqual(v.lines.children.map(n => Number(n.value)), model.line_counts());
 	assert.equal(v.lines.value, '200');
-	assert.equal(text(v.rawPanel.children[2]), '刷新');
+	assert.equal(text(descendants(v.rawPanel).find(n => n.tag == 'button')), '刷新');
 	assert.ok(descendants(root).filter(n => n.tag == 'button').every(n => !n.disabled));
 	assert.deepEqual(h.calls, []);
 	assert.deepEqual(h.polls, []);
@@ -415,6 +416,14 @@ test('T10.16 logs: late initial replies cannot overwrite newer tab or poll resul
 			v.stopPolling();
 		}
 	}
+});
+
+test('T10.27 scenario 1: raw-log Refresh has a spaced right-aligned row below log content', async () => {
+	const h = load_view();
+	const root = h.page.render(await h.page.load());
+	const row = actionRow(root, ['刷新']);
+	assert.equal(h.page.rawPanel.children.at(-1), row);
+	assert.equal(h.page.rawPanel.children.at(-2), h.page.rawContent);
 });
 
 test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete translations', () => {

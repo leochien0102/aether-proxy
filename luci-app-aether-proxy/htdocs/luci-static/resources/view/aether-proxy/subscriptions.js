@@ -120,10 +120,14 @@ return view.extend({
 			}, _('Update all', 'aether-proxy'));
 			jobButtons.push(updateAll);
 			dom.content(self.root, [
-				self.statusError,
-				E('button', { 'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add') }, _('Add', 'aether-proxy')),
-				updateAll,
-				self.progress, self.summary, content
+				E('div', {
+					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+				}, [ self.statusError, self.progress, self.summary, updateAll,
+					E('button', {
+						'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add')
+					}, _('Add', 'aether-proxy')) ]),
+				content
 			]);
 			self.jobButtons = jobButtons;
 			self.show_results();
