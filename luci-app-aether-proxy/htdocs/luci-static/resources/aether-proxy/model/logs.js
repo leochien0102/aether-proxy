@@ -2,6 +2,7 @@
 'require baseclass';
 
 /* Pure log-page presentation, per docs/10 「日志页」 and docs/09 event catalog.
+ * T10.39 optionally resolves IDs using { nodes, subscriptions } name maps.
  * Templates use only catalog parameters; raw args remain available for hover.
  */
 const TEMPLATES = {
@@ -21,9 +22,9 @@ const TEMPLATES = {
 	NODE_RESOLVE_FALLBACK: _('Node {node}: using {lkg_ip} for {domain}', 'aether-proxy'),
 	NODE_RESOLVE_FAILED: _('Node {node}: could not resolve {domain}', 'aether-proxy'),
 	NODE_IP_CHANGED: _('Node {node} IP changed from {old} to {new}', 'aether-proxy'),
-	NODE_STALE: _('Node {node} ({label}) is stale', 'aether-proxy'),
-	NODE_STALE_IN_USE: _('Current node {node} ({label}) is stale', 'aether-proxy'),
-	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node} ({label})', 'aether-proxy'),
+	NODE_STALE: _('Node {node} is stale', 'aether-proxy'),
+	NODE_STALE_IN_USE: _('Current node {node} is stale', 'aether-proxy'),
+	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node}', 'aether-proxy'),
 	PROXY_HEALTHY: _('Proxy healthy: {latency_ms} ms', 'aether-proxy'),
 	PROXY_UNHEALTHY: _('Proxy unhealthy: {fails} failures', 'aether-proxy'),
 	DNS_TIER_CHANGED: _('DNS changed from {from} to {to} (reason: {reason})', 'aether-proxy'),
@@ -58,6 +59,12 @@ const TEMPLATES = {
 	CMD_FAILED: _('Command {cmd} exited with {rc}: {stderr}', 'aether-proxy'),
 	FS_FAILED: _('File operation {op} failed for {path}: {detail}', 'aether-proxy')
 };
+/* Callers without name maps retain their exact pre-T10.39 output. */
+const LEGACY_TEMPLATES = {
+	NODE_STALE: _('Node {node} ({label}) is stale', 'aether-proxy'),
+	NODE_STALE_IN_USE: _('Current node {node} ({label}) is stale', 'aether-proxy'),
+	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node} ({label})', 'aether-proxy')
+};
 const RANK = { error: 0, warn: 1, notice: 2 };
 const LEVELS = { error: _('Error', 'aether-proxy'), warn: _('Warning', 'aether-proxy'), notice: _('Notice', 'aether-proxy') };
 const CLASSES = { error: 'label danger', warn: 'label warning', notice: 'label notice' };
@@ -72,11 +79,30 @@ function value_text(value) {
 	return String(value);
 }
 
-function message(event) {
+function name_text(args, key, names) {
+	// A missing reference keeps the page-wide “?” (design lead, 2026-10-22).
+	if (args[key] == null || args[key] === '')
+		return value_text(null);
+	// Only node events carry label (docs/09), and it names that node.
+	if (key === 'node' && args.label != null && args.label !== '')
+		return value_text(args.label);
+	const table = (key === 'sub' ? names.subscriptions : names.nodes) || {};
+	if (Object.prototype.hasOwnProperty.call(table, args[key]) && table[args[key]])
+		return value_text(table[args[key]]);
+	return key === 'sub' ? _('Deleted subscription', 'aether-proxy') : _('Deleted node', 'aether-proxy');
+}
+
+function message(event, names) {
 	const args = event.args || {};
 	if (!Object.prototype.hasOwnProperty.call(TEMPLATES, event.code))
 		return event.code + ' ' + JSON.stringify(args);
-	return TEMPLATES[event.code].replace(/\{(\w+)\}/g, (match, key) => value_text(args[key]));
+	const template = !names && Object.prototype.hasOwnProperty.call(LEGACY_TEMPLATES, event.code)
+		? LEGACY_TEMPLATES[event.code] : TEMPLATES[event.code];
+	return template.replace(/\{(\w+)\}/g, (match, key) => {
+		if (names && ['node', 'from_node', 'to_node', 'sub'].includes(key))
+			return name_text(args, key, names);
+		return value_text(args[key]);
+	});
 }
 
 function timestamp(ts) {
@@ -97,7 +123,7 @@ return baseclass.extend({
 	/* Keep the last successful payload, not filtered rows: filters still work
 	 * after a failed refresh, and code options never depend on the filter.
 	 */
-	events: function(res, previous, level, code) {
+	events: function(res, previous, level, code, names) {
 		const pending = res === undefined;
 		const ok = res && res.ok !== false;
 		const data = ok ? res : (previous || { events: [], skipped: 0 });
@@ -109,7 +135,7 @@ return baseclass.extend({
 			.map(({ event }) => ({
 				time: timestamp(event.ts), level: LEVELS[event.level] || event.level,
 				class_name: CLASSES[event.level] || 'label', code: event.code,
-				text: message(event), title: JSON.stringify(event.args || {})
+				text: message(event, names), title: JSON.stringify(event.args || {})
 			}));
 		return {
 			data, rows, codes: Array.from(new Set(events.map(e => e.code))).sort(),

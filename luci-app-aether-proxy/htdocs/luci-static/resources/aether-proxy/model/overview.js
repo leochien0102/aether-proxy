@@ -11,6 +11,7 @@
  * T10.22 also summarizes staged session changes before disabling the service;
  * T10.23 switches via node_use; T10.24 merges manual latency into the displayed
  * health result without changing monitor health, and locks pending node switches;
+ * T10.39 resolves switch failure reasons with the same node names as logs;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -273,7 +274,8 @@ function switch_notice(status, configured_node, labels, reply, now) {
 	return fmt(_('Switching to “%s” did not take effect; the service is still using “%s”. '
 		+ 'Reason: %s (%s). Click Restart to start with the configured node '
 		+ '(this briefly interrupts proxy traffic), or see the logs page for details.', 'aether-proxy'),
-		configured, labels[status.node_id] || status.node_id, logs.message(reason), rel_time(now, reason.ts));
+		configured, labels[status.node_id] || status.node_id,
+		logs.message(reason, { nodes: labels, subscriptions: {} }), rel_time(now, reason.ts));
 }
 
 return baseclass.extend({

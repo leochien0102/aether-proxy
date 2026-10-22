@@ -158,7 +158,7 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 	};
 	globalThis.E = element;
 	const view = loadModule(viewFile, {
-		view: { extend: o => o }, uci: { load: async () => {}, get: () => 'debug' },
+		view: { extend: o => o }, uci: { load: async () => {}, get: () => 'debug', sections: () => [] },
 		dom: { content: setContent }, 'aether-proxy.common': ap, 'aether-proxy.model.logs': model
 	}, { window: { setTimeout: (fn, delay) => timers.push({ fn, delay }) }, document: {} });
 	const root = view.render(await view.load());
@@ -211,7 +211,10 @@ function load_view() {
 	globalThis.E = element;
 	const page = loadModule(viewFile, {
 		view: { extend: o => o },
-		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); }, get: () => 'debug' },
+		uci: {
+			load: name => { loads.push(name); return Promise.resolve('uci-loaded'); },
+			get: () => 'debug', sections: () => []
+		},
 		dom: { content: (node, children) => { writes.push(node); setContent(node, children); } },
 		'aether-proxy.model.logs': model,
 		'aether-proxy.common': {

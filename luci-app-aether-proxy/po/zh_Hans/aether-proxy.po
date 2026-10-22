@@ -101,6 +101,26 @@ msgid "Ignored insecure setting for node {node} ({label})"
 msgstr "已忽略节点 {node}（{label}）的不安全设置"
 
 msgctxt "aether-proxy"
+msgid "Node {node} is stale"
+msgstr "节点 {node} 已失效"
+
+msgctxt "aether-proxy"
+msgid "Current node {node} is stale"
+msgstr "当前节点 {node} 已失效"
+
+msgctxt "aether-proxy"
+msgid "Ignored insecure setting for node {node}"
+msgstr "已忽略节点 {node} 的不安全设置"
+
+msgctxt "aether-proxy"
+msgid "Deleted node"
+msgstr "已删除的节点"
+
+msgctxt "aether-proxy"
+msgid "Deleted subscription"
+msgstr "已删除的订阅"
+
+msgctxt "aether-proxy"
 msgid "Proxy healthy: {latency_ms} ms"
 msgstr "代理正常：{latency_ms} 毫秒"
 
