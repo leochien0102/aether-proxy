@@ -28,7 +28,8 @@ job_env() {
 	env JOB_UCODE="$UCODE" JOB_ENTRY="$ENTRY" JOB_STUB_LOG="$T/stub.log" \
 		JOB_STUB_MODE="${JOB_STUB_MODE:-json}" JOB_STUB_EXIT="${JOB_STUB_EXIT:-0}" \
 		JOB_STUB_JSON="${JOB_STUB_JSON:-}" JOB_STUB_OUTPUT="${JOB_STUB_OUTPUT:-not-json output}" \
-		JOB_STUB_SLEEP="${JOB_STUB_SLEEP:-1}" "$@"
+		JOB_STUB_SLEEP="${JOB_STUB_SLEEP:-1}" JOB_BASE_STUB="$STUB" \
+		JOB_STUB_STDERR="${JOB_STUB_STDERR:-}" "$@"
 }
 
 ap() { job_env "$UCODE" -S "$ENTRY" -- "$@"; }
@@ -271,6 +272,83 @@ grep -Fq "ARG=--confdir" "$T/stub.log" \
 	&& grep -Fq "ARG=$ALT_RUN" "$T/stub.log" \
 	&& grep -Fq 'ARG=--json' "$T/stub.log" \
 	&& ok "test options and --json reach the child unchanged" || bad "test options and --json reach the child unchanged"
+
+# T9.15: use a fresh event log per case, and compare the entire CMD_FAILED args.
+cp "$ROOT/tests/job/stderr-stub.sh" "$T/bin/aether-proxy"
+chmod +x "$T/bin/aether-proxy"
+check_child_event() {
+	local name="$1" expected="$2" want="$3" output id result
+	make_root "$T/event-$name"
+	EVENT_RESULT='{}'
+	if ! output=$(start_sub); then
+		bad "$name job starts" "$output"
+		return
+	fi
+	id=$(get_json "$output" job)
+	if ! result=$(wait_terminal "$id" "$want"); then
+		bad "$name reaches $want" "$result"
+		return
+	fi
+	if "$UCODE" "$ROOT/tests/job/assert-event.uc" -- \
+		"$RUN/events.jsonl" "$RUN/jobs/$id.json" "$T/bin/aether-proxy" "$expected"; then
+		ok "$name CMD_FAILED matches exactly"
+	else
+		bad "$name CMD_FAILED matches exactly"
+	fi
+	EVENT_RESULT="$result"
+}
+
+export JOB_STUB_EXIT=2
+export JOB_STUB_JSON="{\"ok\":false,\"code\":\"USAGE\",\"detail\":\"unknown subscription 's_x'\"}"
+check_child_event usage \
+	"{\"rc\":2,\"stderr\":\"\",\"code\":\"USAGE\",\"detail\":\"unknown subscription 's_x'\"}" failed
+expect "usage job keeps child exit" 2 "$(get_json "$EVENT_RESULT" exit)"
+expect "usage job keeps original detail in result" "unknown subscription 's_x'" \
+	"$(get_json "$EVENT_RESULT" result.detail)"
+expect "usage job keeps terminal detail null" '<missing>' "$(get_json "$EVENT_RESULT" detail)"
+expect "usage job keeps error code" USAGE "$(get_json "$EVENT_RESULT" error)"
+unset JOB_STUB_JSON
+
+export JOB_STUB_MODE=invalid JOB_STUB_OUTPUT='not JSON'
+export JOB_STUB_STDERR=$'  child failed\nsecond stderr line\n'
+check_child_event non-json '{"rc":2,"stderr":"child failed"}' failed
+expect "non-JSON job keeps raw stdout detail" 'not JSON' "$(get_json "$EVENT_RESULT" detail)"
+expect "non-JSON job keeps null result" '<missing>' "$(get_json "$EVENT_RESULT" result)"
+unset JOB_STUB_MODE JOB_STUB_OUTPUT JOB_STUB_STDERR
+
+# Preserve the full result; only event summaries use stderr's first-line/200-char rule.
+long_text=$(printf '%220s' '' | tr ' ' x)
+export JOB_STUB_JSON="{\"ok\":false,\"code\":\"USAGE\",\"detail\":\"  $long_text\\nsecond detail line  \"}"
+export JOB_STUB_STDERR="$long_text"$'\nsecond stderr line'
+summary=${long_text:0:200}
+check_child_event truncated \
+	"{\"rc\":2,\"stderr\":\"$summary\",\"code\":\"USAGE\",\"detail\":\"$summary\"}" failed
+expect "event truncation leaves result detail untouched" "  $long_text"$'\nsecond detail line  ' \
+	"$(get_json "$EVENT_RESULT" result.detail)"
+unset JOB_STUB_STDERR
+
+export JOB_STUB_JSON="{\"ok\":false,\"code\":\"$long_text\"}"
+check_child_event truncated-code "{\"rc\":2,\"stderr\":\"\",\"code\":\"$summary\"}" failed
+expect "event truncation leaves job error untouched" "$long_text" "$(get_json "$EVENT_RESULT" error)"
+export JOB_STUB_JSON='{"ok":false,"code":"USAGE","detail":"  first line\nsecond line  "}'
+check_child_event first-line '{"rc":2,"stderr":"","code":"USAGE","detail":"first line"}' failed
+export JOB_STUB_JSON='{"ok":false,"code":"USAGE"}'
+check_child_event missing-detail '{"rc":2,"stderr":"","code":"USAGE"}' failed
+export JOB_STUB_JSON='{"ok":false,"detail":"no code"}'
+check_child_event missing-code '{"rc":2,"stderr":""}' failed
+export JOB_STUB_JSON='{"ok":false,"code":{"bad":true},"detail":"not a string code"}'
+check_child_event malformed-code '{"rc":2,"stderr":""}' failed
+export JOB_STUB_JSON='{"ok":false,"code":"USAGE","detail":{"bad":true}}'
+check_child_event malformed-detail '{"rc":2,"stderr":"","code":"USAGE"}' failed
+export JOB_STUB_JSON='["not an object"]'
+check_child_event non-object '{"rc":2,"stderr":""}' failed
+unset JOB_STUB_EXIT JOB_STUB_JSON
+
+export JOB_STUB_JSON='["not an object"]'
+check_child_event invalid-zero '{"rc":0,"stderr":"child stdout is not a JSON object"}' failed
+export JOB_STUB_JSON='{"ok":true,"code":"IGNORED","detail":"not a failure"}'
+check_child_event success null ok
+unset JOB_STUB_JSON
 
 echo "job: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

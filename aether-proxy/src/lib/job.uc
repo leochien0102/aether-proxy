@@ -1,6 +1,7 @@
 'use strict';
 
 // Long-running commands are detached as job workers; all job-file I/O lives here.
+// Worker results and failure events follow docs/10 "Jobs" and docs/09 CMD_FAILED.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
@@ -355,6 +356,35 @@ function worker_context() {
 	});
 };
 
+// Match sys.run's stderr summary without truncating the stored child result.
+function first_line(text) {
+	return substr(split(trim(text ?? ''), '\n')[0], 0, 200);
+}
+
+function report_child_failure(argv, ran, parsed, parse_error) {
+	let valid_result = type(parsed) == 'object';
+	if (ran.code == 0 && valid_result)
+		return;
+
+	let args = {
+		cmd: join(' ', argv), rc: ran.code,
+		stderr: first_line(ran.stderr)
+	};
+	// Invalid JSON on exit 0 is still a failed job; preserve its diagnostic event.
+	if (ran.code == 0)
+		args.stderr = first_line(parse_error ?? 'child stdout is not a JSON object');
+	if (ran.timed_out)
+		args.timed_out = true;
+	// TODO(design): docs/09 assumes string error fields but does not define malformed
+	// types. Omit them rather than inventing codes or stringifying objects as reasons.
+	if (valid_result && type(parsed.code) == 'string') {
+		args.code = first_line(parsed.code);
+		if (type(parsed.detail) == 'string')
+			args.detail = first_line(parsed.detail);
+	}
+	log.event('error', 'CMD_FAILED', args);
+}
+
 export function run_worker(id) {
 	let ctx = worker_context();
 	log.set_run_dir(ctx.run_dir);
@@ -400,7 +430,8 @@ export function run_worker(id) {
 	let argv = [ executable, ...job.argv ];
 	if (index(job.argv, '--json') < 0)
 		push(argv, '--json');
-	let ran = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS });
+	// The worker owns CMD_FAILED so parsed JSON can enrich the same event, not a second one.
+	let ran = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS, quiet: true });
 	let parsed = null, parse_error = null;
 	try {
 		parsed = json(ran.stdout);
@@ -408,16 +439,13 @@ export function run_worker(id) {
 	catch (e) {
 		parse_error = e.message ?? `${e}`;
 	}
+	report_child_failure(argv, ran, parsed, parse_error);
 	let valid_result = type(parsed) == 'object';
 	let state = ran.code == 0 && valid_result ? 'ok' : 'failed';
 	let error = null, result = valid_result ? parsed : null, detail = null;
 	if (!valid_result) {
 		error = 'CMD_FAILED';
 		detail = length(ran.stdout) ? substr(ran.stdout, 0, 200) : `child produced no JSON (exit ${ran.code})`;
-		log.event('error', 'CMD_FAILED', {
-			cmd: join(' ', argv), rc: ran.code,
-			stderr: parse_error ?? 'child stdout is not a JSON object'
-		});
 	}
 	else if (ran.code != 0) {
 		error = type(parsed.code) == 'string' ? parsed.code : null;
