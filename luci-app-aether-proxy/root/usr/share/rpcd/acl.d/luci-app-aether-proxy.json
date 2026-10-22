@@ -14,7 +14,7 @@
 		"write": {
 			"ubus": {
 				"aetherproxy": [
-					"service", "check", "job_start", "node_import", "save_file", "probe_now", "node_use", "probe_url"
+					"service", "check", "job_start", "node_import", "save_file", "probe_now", "node_use", "mode_use", "probe_url"
 				]
 			},
 			"uci": [ "aetherproxy" ]

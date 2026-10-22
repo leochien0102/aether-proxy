@@ -466,7 +466,7 @@ function scenario_10() {
 			'probe_results', 'probe_sites', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
-		show([ 'check', 'job_start', 'node_import', 'node_use', 'probe_now', 'probe_url', 'save_file', 'service' ]),
+		show([ 'check', 'job_start', 'mode_use', 'node_import', 'node_use', 'probe_now', 'probe_url', 'save_file', 'service' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -475,7 +475,7 @@ function scenario_10() {
 
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
-		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
+		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'mode_use',
 			'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
 			'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
@@ -517,7 +517,7 @@ function scenario_10() {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
 		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
-		service: 'write', check: 'write', job_start: 'write',
+		service: 'write', check: 'write', job_start: 'write', mode_use: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
 
@@ -792,7 +792,8 @@ function scenario_sessions() {
 		probe_results: { argv: [ 'probe', 'results' ] },
 		probe_sites: { argv: [ 'probe', 'sites' ] },
 		probe_url: { args: { site: 'google' }, argv: [ 'probe', 'url', 'google' ] },
-		node_use: { args: { id: node_id(1) }, argv: [ 'node', 'use', node_id(1) ] },
+		node_use: { args: { id: node_id(1), mode: 'global' }, argv: [ 'node', 'use', node_id(1), '--mode', 'global' ] },
+		mode_use: { args: { mode: 'gfw' }, argv: [ 'mode', 'use', 'gfw' ] },
 		log: { args: { source: 'dns', lines: 1 }, argv: [ 'log', '--source', 'dns', '--lines', '1' ] },
 		node_import: { args: { uri: 'vless://uuid@host:443' }, argv: [ 'node', 'import', 'vless://uuid@host:443' ] },
 		node_parse: { args: { uri: 'trojan://pw@host:443' }, argv: [ 'node', 'parse', 'trojan://pw@host:443' ] },
@@ -826,7 +827,7 @@ function scenario_node_probe() {
 		let r = methods[c.method].call({ args: c.args });
 		check(`T9.10 ${c.method}: valid args forwarded and CLI object preserved`,
 			deep_eq(argv_of(), c.argv) && deep_eq(r, { ok: true, preserved: [ 1, 2 ] }), show(r));
-		let expected_args = { node_use: { id: '' }, probe_url: { site: '' }, probe_sites: {} };
+		let expected_args = { node_use: { id: '', mode: '' }, probe_url: { site: '' }, probe_sites: {} };
 		check(`T9.10 ${c.method}: declared args policy matches examples`,
 			deep_eq(methods[c.method].args, expected_args[c.method]), show(methods[c.method].args));
 	}
@@ -904,6 +905,45 @@ function scenario_node_parse() {
 		instrumented.node_parse.call({ args: { uri: 'trojan://pw@host:443' } }).timeout);
 }
 
+// T9.20: both mode entry points remain validated, ten-second thin forwards.
+function scenario_mode_use() {
+	let data = { ok: true, mode: 'gfw', previous: 'bypass_cn', reload: true };
+	stub_ctrl({ exit: 0, stdout: show(data) });
+	for (let mode in [ 'gfw', 'bypass_cn', 'global' ]) {
+		for (let method in [ 'mode_use', 'node_use' ]) {
+			let args = { mode, ubus_rpc_session: 'token' };
+			let argv = [ 'mode', 'use', mode, '--json' ];
+			if (method == 'node_use') {
+				args.id = node_id(1);
+				argv = [ 'node', 'use', node_id(1), '--mode', mode, '--json' ];
+			}
+			let argv_of = watch_cli();
+			let r = methods[method].call({ args });
+			check(`T9.20 ${method} ${mode} with session: exact argv and unchanged JSON`,
+				deep_eq(argv_of(), argv) && deep_eq(r, data), show(r));
+		}
+	}
+	for (let mode in [ 'foo', 'GFW', '', '--json', 'gfw;reboot', 1, true, [], {} ]) {
+		for (let method in [ 'mode_use', 'node_use' ]) {
+			let argv_of = watch_cli();
+			let r = methods[method].call({ args: { id: node_id(1), mode, ubus_rpc_session: 'token' } });
+			check(`T9.20 ${method} invalid mode ${show(mode)}: USAGE without execution`,
+				r.ok === false && r.code == 'USAGE' && argv_of() == null, show(r));
+		}
+	}
+	let argv_of = watch_cli();
+	let r = methods.mode_use.call({ args: { ubus_rpc_session: 'token' } });
+	check('T9.20 mode_use missing mode: USAGE without execution',
+		r.code == 'USAGE' && argv_of() == null, show(r));
+	check('T9.20 mode_use declares mode string', deep_eq(methods.mode_use.args, { mode: '' }));
+	let src = replace(plugin_src, "import * as sys from 'aetherproxy.sys';",
+		"const sys = { run: (argv, opts) => ({ stdout: sprintf('%J', { timeout: opts.timeout }) }) };");
+	let instrumented = loadstring(src)().aetherproxy;
+	for (let method in [ 'mode_use', 'node_use' ])
+		expect_eq(`T9.20 ${method} forwarding timeout is 10 seconds`, 10,
+			instrumented[method].call({ args: { id: node_id(1), mode: 'gfw' } }).timeout);
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -928,6 +968,7 @@ scenario_components();
 scenario_sessions();
 scenario_node_probe();
 scenario_node_parse();
+scenario_mode_use();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

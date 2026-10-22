@@ -443,6 +443,10 @@ echo
 python3 "$ROOT/tests/node/use.py" "$ROOT" "$T/use" \
 	&& ok 'node use committed selection scenarios' || bad 'node use committed selection scenarios'
 
+# T9.20 checks shared node/mode transactions with a private libuci savedir.
+python3 "$ROOT/tests/node/mode.py" "$ROOT" "$T/mode" \
+	&& ok 'node and mode shared selection scenarios' || bad 'node and mode shared selection scenarios'
+
 # T9.13 reuses protocol fixtures and real libuci for parse/import parity.
 python3 "$ROOT/tests/node/parse.py" "$ROOT" "$T/parse" \
 	&& ok 'node parse read-only sharing scenarios' || bad 'node parse read-only sharing scenarios'
