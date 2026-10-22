@@ -1,0 +1,38 @@
+config global 'main'
+	option enabled '1'
+	option mode 'bypass_cn'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option unlisted_policy 'follow'
+	option quic_block '1'
+	option dns_hijack '1'
+
+config dns 'dns'
+
+config update 'update'
+
+config probe 'probe'
+
+config host
+	option name 'work'
+	list ip '10.1.0.0/16'
+	option policy 'direct'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'shadowsocks'
+	option address '203.0.113.7'
+	option port '8388'
+	option password 'pw'
+	option method 'aes-256-gcm'
+
+
+config host
+	option policy 'gfw'
+	option udp '1'
+	list mac 'AA-BB-CC-DD-EE-19'
+	option enabled '0'
+
+config host
+	option policy 'bypass_cn'
+	option udp '1'
+	list ip '192.168.19.0/24'
+	option enabled '0'

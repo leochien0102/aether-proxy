@@ -70,7 +70,7 @@ const host = [
 	{ name: 'name', type: 'string', default: null },
 	{ name: 'ip', type: 'list', item: 'ip_or_cidr', default: [] },
 	{ name: 'mac', type: 'list', item: 'mac', default: [] },
-	{ name: 'policy', type: 'enum', enum: [ 'follow', 'direct', 'proxy' ], default: 'follow' },
+	{ name: 'policy', type: 'enum', enum: [ 'follow', 'direct', 'bypass_cn', 'gfw', 'proxy' ], default: 'follow' },
 	{ name: 'udp', type: 'bool', default: false }
 ];
 
