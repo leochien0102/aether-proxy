@@ -69,16 +69,30 @@ try {
   assert.equal(row({}, {nodes: 12, error: null}).result.text, '成功，12 个节点');
   const errors = {SUB_FETCH_FAILED:'下载失败',SUB_DECODE_FAILED:'解码失败',SUB_FORMAT_UNSUPPORTED:'格式不支持',SUB_NO_VALID_NODES:'没有可用节点',SUB_APPLY_INVALID:'应用后配置无效',SUB_PROXY_UNAVAILABLE:'代理不可用',SUB_SHRANK:'节点数骤减',UNKNOWN:'UNKNOWN'};
   for (const [error, text] of Object.entries(errors)) assert.equal(row({}, {error}).result.text, text);
-  const reasons = {malformed:'格式错误',unsupported_scheme:'不支持的协议',unsupported_transport:'不支持的传输',unsupported_security:'不支持的安全层',ss_plugin:'带插件的 SS',vmess_alterid:'VMess alterId 非 0',new_reason:'new_reason'};
+  const reasons = {malformed:'格式错误',unsupported_scheme:'不支持的协议',unsupported_transport:'不支持的传输',unsupported_security:'不支持的安全层',ss_plugin:'带插件的 SS',vmess_alterid:'VMess alterId 非 0',ipv6_address:'IPv6 地址',missing_field:'缺少必填项',duplicate:'重复',insecure_transport:'不安全的传输',invalid_value:'取值无效',new_reason:'new_reason'};
   const skipped = Object.fromEntries(Object.keys(reasons).map(k => [k, 2]));
   const text = row({}, {skipped}).result.skipped;
-  assert.ok(text.startsWith('跳过 14 个：'));
+  assert.ok(text.startsWith('跳过 24 个：'));
   for (const reason of Object.values(reasons)) assert.ok(text.includes(reason + ' 2'), text);
   for (const [delta, text] of [[5,'5 秒前'],[120,'2 分钟前'],[7200,'2 小时前'],[172800,'2 天前']]) assert.equal(row({}, {last_attempt:200000-delta}).result.time, text);
  });
- check('6. job summaries include all five counts per subscription and failure code', () => {
+ check('6. job summaries include all five counts per subscription and translated failure', () => {
   const lines = model.job_result({result:{subs:{s_a:{ok:true,added:1,updated:2,stale:3,revived:4,removed:5},s_b:{ok:false,code:'SUB_FETCH_FAILED'}}}}, {s_a:'Alpha',s_b:'Beta'});
-  assert.deepEqual(lines, ['Alpha: 新增 1 / 更新 2 / 失效 3 / 恢复 4 / 移除 5', 'Beta: SUB_FETCH_FAILED']);
+  assert.deepEqual(lines, ['Alpha: 新增 1 / 更新 2 / 失效 3 / 恢复 4 / 移除 5', 'Beta: 下载失败']);
+ });
+ check('T10.28 scenario 4. job failure fallback covers USAGE, other codes, optional detail and empty success', () => {
+  assert.deepEqual(model.job_result({ok:false,code:'USAGE',detail:'not committed'}),
+   ['订阅尚未应用，请先保存并应用']);
+  assert.deepEqual(model.job_result({ok:false,code:'FS_FAILED',detail:'disk'}), ['更新失败：FS_FAILED（disk）']);
+  assert.deepEqual(model.job_result({ok:false,code:'BUSY'}), ['更新失败：BUSY']);
+  assert.deepEqual(model.job_result({state:'failed',error:'JOB_LOST'}), ['更新失败：JOB_LOST']);
+  assert.deepEqual(model.job_result({state:'ok',result:{subs:{}}}), []);
+  const ids = [];
+  assert.deepEqual(model.job_result({result:{subs:{s_missing:{ok:false,code:'UNKNOWN'}}}}, id => {
+   ids.push(id);
+   return null;
+  }), ['s_missing: UNKNOWN']);
+  assert.deepEqual(ids, ['s_missing']);
  });
  check('7. generated IDs use four lower-case hex bytes and retry collisions', () => {
   const seq = [[0,1,171,255],[255,16,0,128]]; let calls=0;

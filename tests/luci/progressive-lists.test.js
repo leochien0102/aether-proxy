@@ -38,6 +38,17 @@ function deferred() {
 	return { promise, resolve };
 }
 function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
+	async function renderSection(section) {
+		return E('div', {}, [
+			E('tr', { 'data-title': section.anonymous ? null : '名称' },
+				section.options.filter(o => o.textvalue).map(o => E('th', {}, o.title))),
+			...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
+				...section.options.filter(o => o.textvalue).map(o =>
+					E('td', { field: o.field }, o.textvalue(s['.name']))),
+				section.renderRowActions(s['.name'])
+			]))
+		]);
+	}
 	return { Map: class {
 		constructor() { this.sections = []; maps.push(this); }
 		section(kind, type) {
@@ -50,7 +61,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				},
 				renderMoreOptionsModal(id) {
 					this.modal = { id, value: 'unsaved modal input' };
-					this.addModalOptions(this.modal, id);
+					if (this.addModalOptions)
+						this.addModalOptions(this.modal, id);
 					this.modal.node = E('div', {}, [
 						E('p', {}, this.modal.description ?? ''),
 						...this.options.filter(o => o.modalonly).map(o => E('label', {}, o.title))
@@ -61,6 +73,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 						uciCalls.push(['remove', ...args]);
 						return;
 					}
+					if (method === 'render')
+						return renderSection(section);
 					assert.equal(method, 'renderRowActions');
 					// TableSection only generates Edit when more_label is supplied.
 					const kinds = builtinKinds.filter(kind => kind !== 'edit' || args[1]);
@@ -90,16 +104,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 			return this.render();
 		}
 		async render() {
-			this.node = E('form', {}, this.sections.flatMap(section => [
-				// LuCI's named header exposes the section ID via data-title/CSS.
-				E('tr', { 'data-title': section.anonymous ? null : '名称' },
-					section.options.filter(o => o.textvalue).map(o => E('th', {}, o.title))),
-				...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
-					...section.options.filter(o => o.textvalue).map(o =>
-						E('td', { field: o.field }, o.textvalue(s['.name']))),
-					section.renderRowActions(s['.name'])
-				]))
-			]));
+			this.node = E('form', {}, await Promise.all(this.sections.map(section =>
+				section.render ? section.render() : renderSection(section))));
 			return this.node;
 		}
 	} };
@@ -108,6 +114,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const calls = [], reads = [], turns = [], maps = [], uciCalls = [], builtins = [];
 	const statusCalls = [], statusReads = [], timers = new Map();
 	let now = 0, timerID = 0, current = 'n_a';
+	let changes = async () => ({});
 	const nodes = [
 		{ '.name': 'n_a', label: 'Node A', address: '203.0.113.1', port: '443' },
 		{ '.name': 'n_b', label: 'Node B', source: 's_a' }
@@ -119,15 +126,29 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const uci = {
 		load: async config => { uciCalls.push(['load', config]); },
 		unload: async config => { uciCalls.push(['unload', config]); },
-		get: () => current,
+		get: (config, id, option) => {
+			if (id === 'main' && option === 'node')
+				return current;
+			const section = [...nodes, ...subs].find(s => s['.name'] === id);
+			return option == null ? section ?? null : section?.[option];
+		},
+		changes: () => changes(),
+		add: (config, type, id) => { subs.push({ '.name': id, '.type': type }); },
 		sections: (config, type) => type === 'node' ? nodes : type === 'subscription' ? subs : [...nodes, ...subs],
 		remove: (config, id) => {
 			uciCalls.push(['uci.remove', config, id]);
-			const index = nodes.findIndex(node => node['.name'] === id);
-			if (index >= 0)
-				nodes.splice(index, 1);
+			for (const sections of [nodes, subs]) {
+				const index = sections.findIndex(section => section['.name'] === id);
+				if (index >= 0)
+					sections.splice(index, 1);
+			}
 		},
-		set: (...args) => uciCalls.push(['set', ...args]),
+		set: (config, id, option, value) => {
+			uciCalls.push(['set', config, id, option, value]);
+			const section = [...nodes, ...subs].find(s => s['.name'] === id);
+			if (section)
+				section[option] = value;
+		},
 		save: async () => { uciCalls.push(['save']); }
 	};
 	const form = formDouble(uci, maps, uciCalls, builtins, builtinKinds);
@@ -179,7 +200,8 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 			timers.set(id, { fn, at: now + delay });
 			return id;
 		},
-		clearTimeout: id => timers.delete(id)
+		clearTimeout: id => timers.delete(id),
+		crypto: { getRandomValues: bytes => bytes.fill(1) }
 	} });
 	async function tick(ms) {
 		const end = now + ms;
@@ -195,7 +217,8 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		}
 		now = end;
 	}
-	return { name, page, maps, calls, reads, turns, uciCalls, builtins, ap, nodes,
+	return { name, page, maps, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
+		setChanges: fn => { changes = fn; },
 		statusCalls, statusReads, timers, tick, setCurrent: id => { current = id; } };
 }
 async function render(h) {
@@ -400,6 +423,98 @@ async () => {
 		beforeTable(h.root, row, h.maps.at(-1).node);
 		assert.deepEqual(h.root.children, [row, h.maps.at(-1).node]);
 	}
+});
+
+test('T10.28 scenario 1: subscription grid has one Name column and no section-name column', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	assert.equal(h.page.grid.anonymous, true);
+	const header = find(h.root, node => node.tag === 'tr')[0];
+	assert.equal(header.attrs['data-title'], null);
+	assert.deepEqual(find(header, node => node.tag === 'th').map(text),
+		['名称', '地址', '启用', '更新间隔', '经由', '最近一次结果']);
+	assert.doesNotMatch(text(h.root), /s_a|s_b/);
+});
+
+test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed sections show dashes', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	await h.page.add();
+	const id = 's_01010101';
+	assert.equal(h.page.grid.modal.id, id);
+	for (const [option, value] of Object.entries({ name: 'New saved name',
+		url: 'https://new.example/path?token=SECRET', enabled: '0', interval_hours: '0', fetch_via: 'proxy' }))
+		h.uci.set('aetherproxy', id, option, value);
+	await h.uci.save();
+	h.page.status = { ok: true, subs: { [id]: { nodes: 13 } } };
+	// A modal Save resets the parent map, reusing the existing option instances.
+	await h.maps.at(-1).render();
+	const options = h.page.grid.options.filter(o => o.textvalue);
+	assert.deepEqual(options.slice(0, -1).map(o => o.textvalue(id)),
+		['New saved name', 'https://new.example/…', '禁用', '仅手动', 'proxy']);
+	assert.match(text(options.at(-1).textvalue(id)), /成功，13 个节点/);
+	h.uci.remove('aetherproxy', id);
+	for (const option of options)
+		assert.equal(option.textvalue(id), '–', option.field + ' tolerates a deleted section');
+	await h.page.redraw();
+	assert.equal(find(h.root, node => node.sid === id).length, 0);
+});
+
+for (const record of [['add', 's_a', 'subscription'], ['set', 's_a', 'name', 'Changed'], ['remove', 's_a']]) {
+	test(`T10.28 scenario 3: ${record[0]} blocks only the affected row after a grid reset`, async () => {
+		const h = await harness('subscriptions');
+		let checks = 0;
+		h.setChanges(async () => { checks++; return {}; });
+		await render(h);
+		assert.equal(checks, 1, 'check once after initial section rendering');
+		h.setChanges(async () => { checks++; return { aetherproxy: [record] }; });
+		await h.maps[0].render();
+		await flush();
+		assert.equal(checks, 2, 'modal parent reset must check the saved session again');
+		const affected = h.page.rowButtons.get('s_a');
+		assert.equal(affected.disabled, true);
+		assert.equal(affected.title, '请先保存并应用');
+		assert.equal(h.page.rowButtons.get('s_b').disabled, false);
+		assert.equal(h.page.updateAll.disabled, false);
+		assert.equal(text(h.page.pendingHint), '未应用的订阅不会更新');
+		await h.page.update(['s_a']);
+		assert.equal(h.reads.length, 1, 'direct invocation cannot bypass the pending guard');
+		h.setChanges(async () => { throw new Error('uci changes failed'); });
+		await h.page.redraw();
+		await flush();
+		assert.ok([...h.page.rowButtons.values()].every(button => !button.disabled));
+		assert.equal(h.page.rowButtons.get('s_a').title, '');
+		assert.equal(text(h.page.pendingHint), '');
+	});
+}
+
+test('T10.28 scenario 3: saved deletion still warns; unrelated packages and nodes do not block', async () => {
+	const h = await harness('subscriptions');
+	h.setChanges(async () => ({ aetherproxy: [['remove', 's_deleted']] }));
+	await render(h);
+	assert.equal(text(h.page.pendingHint), '未应用的订阅不会更新');
+	assert.ok([...h.page.rowButtons.values()].every(button => !button.disabled));
+	assert.equal(h.page.updateAll.disabled, false);
+	h.setChanges(async () => ({ dhcp: [['set', 's_a', 'name', 'Not ours']],
+		aetherproxy: [['set', 'n_a', 'label', 'Node'], ['set', 'main', 'enabled', '1']] }));
+	await h.page.redraw();
+	await flush();
+	assert.equal(text(h.page.pendingHint), '');
+	assert.ok([...h.page.rowButtons.values()].every(button => !button.disabled));
+});
+
+test('T10.28 scenario 3: slow changes RPC does not delay rendering or overwrite a newer reply', async () => {
+	const h = await harness('subscriptions');
+	const old = deferred();
+	h.setChanges(() => old.promise);
+	await render(h);
+	assert.equal(h.page.rowButtons.get('s_a').disabled, false);
+	h.setChanges(async () => ({ aetherproxy: [['set', 's_a', 'name', 'Pending']] }));
+	await h.page.redraw();
+	await flush();
+	old.resolve({});
+	await flush();
+	assert.equal(h.page.rowButtons.get('s_a').disabled, true);
 });
 
 function gridRow(h, id) {

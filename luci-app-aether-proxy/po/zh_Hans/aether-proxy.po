@@ -1818,3 +1818,39 @@ msgstr "已设为当前节点，下次启动时使用"
 msgctxt "aether-proxy"
 msgid "The node was switched, but refreshing the page data failed: %s. Reload the page."
 msgstr "已切换节点，但刷新页面数据失败：%s。请刷新页面。"
+
+msgctxt "aether-proxy"
+msgid "IPv6 address"
+msgstr "IPv6 地址"
+
+msgctxt "aether-proxy"
+msgid "Missing required field"
+msgstr "缺少必填项"
+
+msgctxt "aether-proxy"
+msgid "Duplicate"
+msgstr "重复"
+
+msgctxt "aether-proxy"
+msgid "Insecure transport"
+msgstr "不安全的传输"
+
+msgctxt "aether-proxy"
+msgid "Invalid value"
+msgstr "取值无效"
+
+msgctxt "aether-proxy"
+msgid "Please save and apply first"
+msgstr "请先保存并应用"
+
+msgctxt "aether-proxy"
+msgid "Unapplied subscriptions will not be updated"
+msgstr "未应用的订阅不会更新"
+
+msgctxt "aether-proxy"
+msgid "Subscription not applied yet; please save and apply first"
+msgstr "订阅尚未应用，请先保存并应用"
+
+msgctxt "aether-proxy"
+msgid "Update failed: %s"
+msgstr "更新失败：%s"
