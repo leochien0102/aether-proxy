@@ -1,7 +1,7 @@
 'use strict';
 
-// Node parse/import and committed node selection (docs/10 "node parse" and "切换节点").
-// Selection only changes main.node; session/global UCI deltas must never be committed here.
+// Node parse/import and shared node/mode selection (docs/10 "切换节点" / "切换默认模式").
+// Selection only changes the requested main options; session/global UCI deltas must stay staged.
 
 import * as fs from 'fs';
 import * as uci from 'uci';
@@ -13,13 +13,15 @@ import * as sys from 'aetherproxy.sys';
 import * as node from 'aetherproxy.node';
 import * as pipeline from 'aetherproxy.pipeline';
 
-const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--json] [--confdir <dir>]';
+const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--mode <mode>]';
+const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global>';
+const MODES = filter(schema.SCHEMA.main, field => field.name == 'mode')[0].enum;
 // Match the node_import RPC boundary (docs/10); these are input limits, not system paths.
 const URI_MAX_BYTES = 4096;
 const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const CONTEXT_OPTIONS = { '--confdir': 'confdir', '--run-dir': 'run_dir', '--sys-root': 'sys_root' };
 
-function parse_args(args) {
+function parse_args(args, allow_mode) {
 	let opts = {}, positional = [];
 
 	for (let i = 0; i < length(args); i++) {
@@ -30,10 +32,14 @@ function parse_args(args) {
 			continue;
 		}
 
-		let key = CONTEXT_OPTIONS[arg];
+		let key = arg == '--mode' && allow_mode ? 'mode' : CONTEXT_OPTIONS[arg];
 		if (key != null) {
-			if (i + 1 >= length(args))
+			if (i + 1 >= length(args) || (key == 'mode' && substr(args[i + 1], 0, 1) == '-'))
 				return { error: `option ${arg} needs a value` };
+			// TODO(design): repeated --mode is unspecified; reject conflicting intent
+			// before any write instead of silently choosing the first or last value.
+			if (key == 'mode' && opts.mode != null)
+				return { error: 'option --mode may only be given once' };
 			opts[key] = args[++i];
 			continue;
 		}
@@ -63,9 +69,13 @@ function use_failure(opts, code, detail, op) {
 	return pipeline.finish(opts, value, code == 'USAGE' ? 2 : 1, `${code}: ${detail}`);
 }
 
-function use_node(opts, id) {
-	if (match(id, schema.NODE_NAME_RE) == null)
+// Both entry points use this transaction and reload path. Validate all requested
+// values before touching UCI, so an invalid mode can never partially select a node.
+function use_selection(opts, id, mode) {
+	if (id != null && match(id, schema.NODE_NAME_RE) == null)
 		return use_failure(opts, 'USAGE', 'invalid node ID');
+	if (mode != null && index(MODES, mode) < 0)
+		return use_failure(opts, 'USAGE', `mode must be one of ${join('|', MODES)}`);
 
 	let root = replace(opts.sys_root ?? '', /\/$/, '');
 	let confdir = fs.realpath(opts.confdir ?? (root + C.CONFIG_DIR));
@@ -78,19 +88,38 @@ function use_node(opts, id) {
 	// Commit the loaded package by name: libuci retains its original file path.
 	if (!cursor.load(confdir + '/' + C.UCI_PACKAGE))
 		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot load configuration', 'uci-commit');
-	if (cursor.get(C.UCI_PACKAGE, id) != 'node')
+	if (id != null && cursor.get(C.UCI_PACKAGE, id) != 'node')
 		return use_failure(opts, 'USAGE', `unknown node ID '${id}'`);
 
-	let previous = cursor.get(C.UCI_PACKAGE, 'main', 'node');
-	if (previous == id)
-		return pipeline.finish(opts, { ok: true, node: id, previous, reload: false }, 0, `already using ${id}`);
+	let previous_node = cursor.get(C.UCI_PACKAGE, 'main', 'node');
+	let previous_mode = cursor.get(C.UCI_PACKAGE, 'main', 'mode');
+	let node_changed = id != null && previous_node != id;
+	let mode_changed = mode != null && previous_mode != mode;
+	// Keep the legacy node-only wire shape and human output exactly unchanged.
+	let value = id != null
+		? { ok: true, node: id, previous: previous_node, reload: false }
+		: { ok: true, mode, previous: previous_mode, reload: false };
+	if (id != null && mode != null) {
+		value.mode = mode;
+		value.previous_mode = previous_mode;
+	}
+	let selection = id ?? mode;
+	if (!node_changed && !mode_changed)
+		return pipeline.finish(opts, value, 0, `already using ${selection}`);
 
 	let current = state.read(opts.run_dir ?? (root + C.RUN_DIR));
 	// Refuse before committing: guessing "stopped" could silently skip a required reload (docs/10).
 	if (current == null)
 		return use_failure(opts, 'FS_FAILED', state.error(), 'read');
-	if (!cursor.set(C.UCI_PACKAGE, 'main', 'node', id) || !cursor.commit(C.UCI_PACKAGE))
+	if (node_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'node', id))
 		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot commit main.node', 'uci-commit');
+	if (mode_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'mode', mode))
+		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot set main.mode', 'uci-commit');
+	// One commit publishes both values; neither set() writes the configuration file.
+	if (!cursor.commit(C.UCI_PACKAGE)) {
+		let fallback = mode == null ? 'cannot commit main.node' : 'cannot commit selection';
+		return use_failure(opts, 'FS_FAILED', cursor.error() ?? fallback, 'uci-commit');
+	}
 
 	let reload = index([ 'starting', 'running', 'degraded', 'failsafe' ], current.state) >= 0;
 	if (reload) {
@@ -99,7 +128,8 @@ function use_node(opts, id) {
 		if (res.code != 0)
 			return use_failure(opts, 'CMD_FAILED', `${init} reload: exit ${res.code}: ${trim(res.stderr)}`);
 	}
-	return pipeline.finish(opts, { ok: true, node: id, previous, reload }, 0, `selected ${id}`);
+	value.reload = reload;
+	return pipeline.finish(opts, value, 0, `selected ${selection}`);
 }
 
 function parse_node(opts, line) {
@@ -114,18 +144,30 @@ function parse_node(opts, line) {
 		value.ok ? sprintf('%.J', value) : `${value.code}: ${value.detail}`);
 }
 
+export function run_mode(args) {
+	let parsed = parse_args(args, false);
+	let opts = parsed.opts ?? { json: index(args, '--json') >= 0 };
+	if (parsed.error || parsed.positional[0] != 'use' || length(parsed.positional) != 2)
+		return pipeline.finish(opts,
+			{ ok: false, code: 'USAGE', detail: parsed.error ?? 'expected `mode use <mode>`' }, 2, MODE_USAGE);
+	return use_selection(opts, null, parsed.positional[1]);
+};
+
 export function run(args) {
-	let parsed = parse_args(args);
+	let parsed = parse_args(args, true);
 	if (parsed.error)
 		return pipeline.finish({ json: index(args, '--json') >= 0 },
 			{ ok: false, code: 'USAGE', detail: parsed.error }, 2,
 			`${parsed.error}\n${USAGE}`);
 
+	if (parsed.opts.mode != null && parsed.positional[0] != 'use')
+		return use_failure(parsed.opts, 'USAGE', '--mode is only valid with node use');
+
 	if (parsed.positional[0] == 'parse' && length(parsed.positional) == 2)
 		return parse_node(parsed.opts, parsed.positional[1]);
 
 	if (parsed.positional[0] == 'use' && length(parsed.positional) == 2)
-		return use_node(parsed.opts, parsed.positional[1]);
+		return use_selection(parsed.opts, parsed.positional[1], parsed.opts.mode);
 
 	if (parsed.positional[0] != 'import' || length(parsed.positional) != 2)
 		return pipeline.finish(parsed.opts, { ok: false, code: 'USAGE', detail: 'expected `node import <uri>`' }, 2,

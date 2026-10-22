@@ -31,6 +31,11 @@ const LOG_LINES_MIN = 1;
 
 
 const SERVICE_ACTIONS = [ 'start', 'stop', 'restart' ];
+const MODES = filter(schema.SCHEMA.main, field => field.name == 'mode')[0].enum;
+
+function valid_mode(mode) {
+	return type(mode) == 'string' && index(MODES, mode) >= 0;
+}
 
 // docs/10 "service": restarting can outlast any RPC timeout (procd waits for
 // children to exit), so the action is backgrounded and the caller polls `status`
@@ -183,9 +188,26 @@ const methods = {
 			let id = req?.args?.id;
 			if (type(id) != 'string' || match(id, schema.NODE_NAME_RE) == null)
 				return usage('id must match n_<32 lowercase hex>');
-			return call_cli([ 'node', 'use', id ], C.NODE_USE_TIMEOUT_SECS);
+			let mode = req?.args?.mode;
+			if (mode != null && !valid_mode(mode))
+				return usage(`mode must be one of ${join('|', MODES)}`);
+			let argv = [ 'node', 'use', id ];
+			if (mode != null)
+				push(argv, '--mode', mode);
+			return call_cli(argv, C.NODE_USE_TIMEOUT_SECS);
 		},
-		args: { id: '' }
+		args: { id: '', mode: '' }
+	},
+
+	// T9.20: session metadata is ignored, just as for node_use.
+	mode_use: {
+		call: function(req) {
+			let mode = req?.args?.mode;
+			if (!valid_mode(mode))
+				return usage(`mode must be one of ${join('|', MODES)}`);
+			return call_cli([ 'mode', 'use', mode ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: { mode: '' }
 	},
 
 	probe_url: {
