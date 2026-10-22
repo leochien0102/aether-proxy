@@ -30,6 +30,8 @@ function viewSources() {
 		if (f.endsWith('.js'))
 			map.set(f, read(path.join(VIEWS, f)));
 
+	// T10.37 moves a complete form/controller out of view/: keep every former gate on it.
+	map.set('subscriptions-block.js', read(path.join(HTDOCS, 'aether-proxy/subscriptions-block.js')));
 	return map;
 }
 
@@ -150,7 +152,8 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	const msgids = new Set();
 
 	for (const node of Object.values(JSON.parse(read(MENU))))
-		msgids.add(node.title);
+		if (node.title)
+			msgids.add(node.title);
 
 	for (const src of [ common, ...views.values(), ...modelSources().values() ])
 		for (const m of src.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
@@ -170,7 +173,7 @@ test('T10.32 scenario 2: no view chains then() onto synchronous uci.unload()', (
 
 test('T10.27 scenario 3: all views avoid cbi-page-actions for block controls', () => {
 	const sources = viewSources();
-	assert.equal(sources.size, 8, 'scan all shipped views');
+	assert.equal(sources.size, 8, 'scan seven shipped views and the subscription block');
 	for (const [name, source] of sources)
 		assert.ok(!source.includes('cbi-page-actions'), name + ': no theme footer-action class');
 });
@@ -243,7 +246,7 @@ function booleanAttributeErrors(file, source) {
 
 test('T10.18 scenario 4: all views use safe boolean attribute values', () => {
 	const sources = viewSources();
-	assert.equal(sources.size, 8, 'all eight views are scanned');
+	assert.equal(sources.size, 8, 'all seven views and the subscription block are scanned');
 	assert.deepEqual([...sources].flatMap(([file, source]) => booleanAttributeErrors(file, source)), []);
 });
 

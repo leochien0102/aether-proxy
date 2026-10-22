@@ -81,7 +81,8 @@ function harness() {
 	const page = loadModule(path.join(RES, 'view/aether-proxy/nodes.js'), {
 		view: { extend: o => o }, form,
 		uci: { get: (config, id, field) => stored[field] }, ui: {}, dom: {},
-		'aether-proxy.common': {}, 'aether-proxy.model.nodes': model
+		'aether-proxy.common': {}, 'aether-proxy.model.nodes': model,
+		'aether-proxy.subscriptions-block': {}
 	}, {});
 	page.buildMap();
 	return { options, live, stored, model };

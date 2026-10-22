@@ -1,9 +1,9 @@
 'use strict';
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
 // Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
-// Also follows docs/10「订阅：通用设置、获取方式与行首开关」.
+// Also follows docs/10「订阅：通用设置、获取方式与行首开关」「节点与订阅合并为一页」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
-'require view';
+'require baseclass';
 'require form';
 'require uci';
 'require ui';
@@ -11,14 +11,15 @@
 'require aether-proxy.common as ap';
 'require aether-proxy.model.subscriptions as model';
 
-return view.extend({
+return baseclass.extend({
 	load: function() {
 		return uci.load('aetherproxy').then(() => {
 			if (!uci.get('aetherproxy', 'sub'))
 				uci.add('aetherproxy', 'sub', 'sub');
 		});
 	},
-	render: function() {
+	render: function(refresh_nodes) {
+		this.refresh_nodes = refresh_nodes;
 		this.status = undefined;
 		this.busy = false;
 		this.pendingIds = new Set();
@@ -192,7 +193,7 @@ return view.extend({
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		this.rowButtons = new Map();
-		const m = new form.Map('aetherproxy', _('Subscriptions', 'aether-proxy'));
+		const m = new form.Map('aetherproxy');
 		this.map = m;
 		this.general_settings(m);
 		const s = m.section(form.GridSection, 'subscription');
@@ -256,6 +257,7 @@ return view.extend({
 			self.updateAll = updateAll;
 			self.pendingHint = E('span');
 			dom.content(self.root, [
+				content,
 				E('div', {
 					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
@@ -263,7 +265,6 @@ return view.extend({
 					E('button', {
 						'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add')
 					}, _('Add', 'aether-proxy')) ]),
-				content
 			]);
 			self.sync_buttons();
 			self.show_results();
@@ -287,7 +288,8 @@ return view.extend({
 		try {
 			this.summary.replaceChildren();
 			timer = ap.job_progress(this.progress, _('Updating subscriptions…', 'aether-proxy'));
-			await this.redraw();
+			// Keep live common settings and editable flags mounted throughout the job.
+			this.show_results();
 			const job = await ap.run_job('sub_update', ids);
 			timer.stop();
 			const lines = model.job_result(job, id => uci.get('aetherproxy', id)?.name || id);
@@ -298,6 +300,8 @@ return view.extend({
 			uci.unload('aetherproxy');
 			const data = await Promise.all([this.load(), ap.call('sub_status')]);
 			this.status = data[1];
+			if (this.refresh_nodes)
+				await this.refresh_nodes();
 		}
 		catch (e) {
 			this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
@@ -309,7 +313,8 @@ return view.extend({
 			// A rendering error must not strand the previously rendered buttons.
 			this.sync_buttons();
 			try {
-				await this.redraw();
+				this.show_results();
+				await this.refresh_changes();
 			}
 			catch (e) {
 				this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));

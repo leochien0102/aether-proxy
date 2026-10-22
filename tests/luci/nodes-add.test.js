@@ -165,7 +165,9 @@ async function harness() {
 			addNotification: (...args) => h.calls.push(['notify', ...args])
 		},
 		dom: { content: (target, content) => target.replaceChildren(...[content].flat()) },
-		'aether-proxy.common': ap, 'aether-proxy.model.nodes': model
+		'aether-proxy.common': ap, 'aether-proxy.model.nodes': model,
+		// Isolate node modal staging; progressive-lists exercises the real subscription map.
+		'aether-proxy.subscriptions-block': { load: () => h.uci.load('aetherproxy'), render: async () => E('div') }
 	}, { window: {
 		setTimeout() {},
 		crypto: { getRandomValues: bytes => {

@@ -24,7 +24,7 @@
 	},
 
 	"admin/services/aether-proxy/nodes": {
-		"title": "Nodes",
+		"title": "Nodes & Subscriptions",
 		"order": 2,
 		"action": {
 			"type": "view",
@@ -36,11 +36,9 @@
 	},
 
 	"admin/services/aether-proxy/subscriptions": {
-		"title": "Subscriptions",
-		"order": 3,
 		"action": {
-			"type": "view",
-			"path": "aether-proxy/subscriptions"
+			"type": "alias",
+			"path": "admin/services/aether-proxy/nodes"
 		},
 		"depends": {
 			"acl": [ "luci-app-aether-proxy" ]

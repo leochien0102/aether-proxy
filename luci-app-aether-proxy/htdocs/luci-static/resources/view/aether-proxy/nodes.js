@@ -6,6 +6,7 @@
 'require dom';
 'require aether-proxy.common as ap';
 'require aether-proxy.model.nodes as model';
+'require aether-proxy.subscriptions-block as subscriptions';
 
 /*
  * Nodes page (docs/10 「节点页」, docs/tasks/m8.md T8.5).
@@ -27,6 +28,7 @@
  * Transport, security and Mux modal options follow 「节点编辑框新字段」 (T10.30).
  * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
  * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
+ * The independent subscription map precedes this node region (「节点与订阅合并为一页」, T10.37).
  */
 
 function compactKey(value) {
@@ -63,7 +65,7 @@ function renderPreservedList(section_id, option_index, cfgvalue) {
 
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return subscriptions.load();
 	},
 
 	render: function() {
@@ -73,23 +75,38 @@ return view.extend({
 		this.pendingProbes = [];
 		this.selectedNodes = new Set();
 
-		const root = E('div', { 'class': 'cbi-map' });
+		// Only the two actual form.Map roots are .cbi-map; the view footer saves both.
+		const root = E('div');
 		this.root = root;
 		const self = this;
 
-		return this.buildPage().then(function(content) {
+		return subscriptions.render(() => self.redrawNodes()).then(function(block) {
+			self.subscriptionsDetails = E('details', { 'class': 'cbi-section', 'open': true }, [
+				E('summary', {}, _('Subscriptions', 'aether-proxy')), block
+			]);
+			return self.buildPage();
+		}).then(function(content) {
 			dom.content(root, content);
 			self.updateProbeColumns();
 			window.setTimeout(() => {
 				self.refreshResults();
 				self.refreshSwitchStatus();
 			}, 0);
-			return root;
+			return E('div', {}, [
+				E('h2', {}, _('Nodes & Subscriptions', 'aether-proxy')),
+				self.subscriptionsDetails, root
+			]);
 		});
 	},
 
-	/* Re-fetches the page data (used after imports added nodes) and rebuilds
-	   the whole page in place. */
+	// Subscription jobs already reloaded UCI. Replace only the node region, not either input block.
+	redrawNodes: async function() {
+		dom.content(this.root, await this.buildPage());
+		this.updateProbeColumns();
+	},
+
+	/* Re-fetch after imports add nodes. Only this region is rebuilt: subscription
+	   inputs belong to a separate map and must remain mounted. */
 	rebuild: function() {
 		const self = this;
 		// Import can finish while the initial read is still in flight.
@@ -98,7 +115,7 @@ return view.extend({
 		// unload is synchronous in luci-base; only load returns a Promise.
 		uci.unload('aetherproxy');
 		return Promise.all([
-			uci.load('aetherproxy'),
+			this.load(),
 			ap.call('probe_results')
 		]).then(function(res) {
 			if ((res[1] && res[1].ok !== false) || self.results === undefined)
@@ -956,7 +973,7 @@ return view.extend({
 			let status;
 			if (reply.ok) {
 				uci.unload('aetherproxy');
-				await uci.load('aetherproxy');
+				await this.load();
 				status = await ap.call('status');
 				this.watchSwitch(status);
 				const content = await this.buildPage();
