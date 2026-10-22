@@ -45,10 +45,9 @@ return view.extend({
 	},
 	read_version: async function() {
 		const reply = await ap.call('version');
-		// TODO(design): no default-UA placeholder policy is specified for a failed version RPC.
-		// Do not invent or persist a version; keep the failure visible without blocking the form.
-		this.defaultUA = reply?.ok && reply.version ? 'aether-proxy/' + reply.version
-			: reply?.code || 'RPC_FAILED';
+		// A failed version read shows the UA's shape, never an error code in an input
+		// (design lead, 2026-10-22); nothing is written to UCI either way.
+		this.defaultUA = 'aether-proxy/' + (reply?.ok && reply.version ? reply.version : '…');
 		const o = this.generalOptions.user_agent;
 		o.placeholder = _('Default (%s)', 'aether-proxy').format(this.defaultUA);
 		o.getUIElement('sub')?.setPlaceholder(o.placeholder);

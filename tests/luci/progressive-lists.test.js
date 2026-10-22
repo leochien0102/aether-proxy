@@ -431,12 +431,12 @@ test('T10.34 scenario 3: late backend version fills UA placeholders without repl
 	assert.ok(!h.uciCalls.some(call => call[0] === 'set'), 'UA placeholder never persists a version');
 });
 
-test('T10.34 scenario 3: unavailable backend version is visible without guessing or writing a UA', async () => {
+test('T10.34 scenario 3: unavailable backend version shows the UA shape, no error code, no write', async () => {
 	const h = await harness('subscriptions');
 	await render(h);
 	h.versionRead.resolve({ ok: false, code: 'TIMEOUT' });
 	await flush();
-	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').placeholder, '默认（TIMEOUT）');
+	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').placeholder, '默认（aether-proxy/…）');
 	assert.ok(!h.uciCalls.some(call => call[0] === 'set'));
 });
 
