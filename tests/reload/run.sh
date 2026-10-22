@@ -237,6 +237,15 @@ done
 xray_after=$(cat "$SYSROOT/xray.pid")
 expect "mode reload leaves xray pid unchanged" "$xray_before" "$xray_after"
 assert_applied mode "$NODE_A" "$NODE_A" nft_replace,restart_chinadns
+expect 'T9.26 mode-only reload updates mode' bypass_cn \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T9.26 mode-only reload preserves node_id' "$NODE_A" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_id < "$SYSROOT/var/run/aether-proxy/state.json")"
+mode_status=$("$UCODE" -S "$ENTRY" -- status --json --sys-root "$SYSROOT" \
+	--run-dir "$SYSROOT/var/run/aether-proxy" --confdir "$T/conf" --bin-dir "$T/bin")
+expect 'T9.26 mode-only status exits successfully' 0 "$?"
+expect 'T9.26 mode-only status exposes applied mode' bypass_cn \
+	"$(printf '%s\n' "$mode_status" | "$UCODE" "$ROOT/tests/cli/jget.uc" -- mode)"
 assert_budget mode 1
 expect 'T9.9 mode reload never resolves a node' "$resolves_before" "$(count_calls "$LOG" 'resolveip ')"
 assert_build_bytes mode '{}'
@@ -449,6 +458,7 @@ failure_checkpoint() {
 	failure_events_before=$(count_calls "$EVENTS" "$1")
 	nft_loads_before=$(count_calls "$LOG" 'nft -f ')
 	state_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_id < "$SYSROOT/var/run/aether-proxy/state.json")
+	mode_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")
 	xray_before=$(< "$SYSROOT/xray.pid")
 	dns_before=$(< "$SYSROOT/chinadns.pid")
 	sha256sum "$SYSROOT/var/run/aether-proxy/current/"* > "$T/current-before"
@@ -466,6 +476,17 @@ assert_failed() {
 	expect "T9.8 $label has no success event" "$applied_before" "$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
 	expect "T9.8 $label keeps node_id" "$state_before" \
 		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_id < "$SYSROOT/var/run/aether-proxy/state.json")"
+	expect "T9.26 $label keeps applied mode" "$mode_before" \
+		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")"
+	failure_status=$("$UCODE" -S "$ENTRY" -- status --json --sys-root "$SYSROOT" \
+		--run-dir "$SYSROOT/var/run/aether-proxy" --confdir "$T/conf" --bin-dir "$T/bin")
+	failure_status_rc=$?
+	# Invalid UCI deliberately makes status fail; the remaining failures leave valid UCI.
+	if [ "$label" != invalid-config ]; then
+		expect "T9.26 $label status exits successfully" 0 "$failure_status_rc"
+		expect "T9.26 $label status keeps applied mode" "$mode_before" \
+			"$(printf '%s\n' "$failure_status" | "$UCODE" "$ROOT/tests/cli/jget.uc" -- mode)"
+	fi
 	expect "T9.8 $label keeps Xray pid" "$xray_before" "$(< "$SYSROOT/xray.pid")"
 	expect "T9.8 $label keeps chinadns pid" "$dns_before" "$(< "$SYSROOT/chinadns.pid")"
 	sha256sum "$SYSROOT/var/run/aether-proxy/current/"* > "$T/current-after"
@@ -520,6 +541,35 @@ assert_failed START_FAILED action-failure
 grep 'START_FAILED' "$EVENTS" | grep -Fq '"step": "reload:actions"' \
 	&& ok 'T9.8 action failure retains reload step prefix' || bad 'T9.8 action failure retains reload step prefix'
 rm "$SYSROOT/nft-load-fail"
+
+# T9.26: change node and mode in one reload, then return to the original pair.
+# B already has an LKG entry, so the active DNS-outage substitute remains unchanged.
+mkdir -p "$T/savedir"
+for pair in "$NODE_B global" "$NODE_A gfw"; do
+	read -r target_node target_mode <<< "$pair"
+	"$UCODE" -e '
+		import * as uci from "uci";
+		let cursor = uci.cursor(ARGV[0], ARGV[1]);
+		if (!cursor.set("aetherproxy", "main", "node", ARGV[2]) ||
+		    !cursor.set("aetherproxy", "main", "mode", ARGV[3]) || !cursor.commit("aetherproxy"))
+			exit(1);
+	' -- "$T/conf" "$T/savedir" "$target_node" "$target_mode"
+	expect "T9.26 combined $target_mode configuration commits" 0 "$?"
+	combined_before=$(count_calls "$EVENTS" 'RELOAD_APPLIED')
+	kill -HUP "$DAEMON_PID"
+	wait_count "$EVENTS" 'RELOAD_APPLIED' "$((combined_before + 1))" \
+		&& ok "T9.26 combined $target_mode reload succeeds" \
+		|| bad "T9.26 combined $target_mode reload succeeds"
+	expect "T9.26 combined $target_mode updates mode" "$target_mode" \
+		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")"
+	expect "T9.26 combined $target_mode updates node_id" "$target_node" \
+		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_id < "$SYSROOT/var/run/aether-proxy/state.json")"
+	combined_status=$("$UCODE" -S "$ENTRY" -- status --json --sys-root "$SYSROOT" \
+		--run-dir "$SYSROOT/var/run/aether-proxy" --confdir "$T/conf" --bin-dir "$T/bin")
+	expect "T9.26 combined $target_mode status exits successfully" 0 "$?"
+	expect "T9.26 combined $target_mode status exposes mode" "$target_mode" \
+		"$(printf '%s\n' "$combined_status" | "$UCODE" "$ROOT/tests/cli/jget.uc" -- mode)"
+done
 
 # Disable: the pure plan returns stop alone and daemon follows the normal stop path.
 sed -i "s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"

@@ -209,7 +209,7 @@ function wait_network(ctx, opts, snapshot, on_signal) {
 	let timeout = max(+(snapshot.main.boot_wait_timeout ?? 0), 0) * 1000;
 	let deadline = started + timeout;
 	let saved = write_state(ctx, { state: 'starting', dns_tier: 'T2', dns_failsafe: false,
-		waiting_network: true, node_id: snapshot.main.node, node_ip: null, since: time() });
+		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time() });
 	if (!saved.ok)
 		return { ok: false, detail: saved.detail };
 	while (true) {
@@ -665,7 +665,7 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	let initial_state = {
 		state: degraded ? 'degraded' : 'starting', dns_tier: 'T2', dns_failsafe: false,
-		node_id, node_ip, since: time(), waiting_network: false,
+		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
 		components,
 		wan_dns: initial.wan_dns,

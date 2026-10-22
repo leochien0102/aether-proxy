@@ -374,6 +374,30 @@ expect 'T9.6 absent cache null' '<missing>' "$(echo "$out" | jget updates_availa
 expect 'T9.6 absent cache no notice' '<missing>' "$(echo "$out" | jget notices.0.code)"
 [ ! -e "$R/events.jsonl" ] && ok 'T9.6 absent cache no events' || bad 'T9.6 absent cache no events'
 
+# T9.26: a saved mode is applied state, even while UCI requests another mode.
+# Keep the existing status behavior for old state files which have no mode field.
+R="$T/applied-mode"; SR="$T/applied-mode-root"
+make_root "$SR"
+mkdir -p "$R"
+for mode in gfw bypass_cn global; do
+	printf '{"state":"running","node_id":"n_00000000000000000000000000000001","mode":"%s"}\n' \
+		"$mode" > "$R/state.json"
+	cp "$R/state.json" "$T/applied-mode-before"
+	out=$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" \
+		--sys-root "$SR" --bin-dir "$T/bin" 2>"$T/applied-mode.stderr")
+	expect "T9.26 status $mode exits successfully" 0 "$?"
+	expect "T9.26 status preserves applied $mode despite configured gfw" "$mode" \
+		"$(printf '%s\n' "$out" | jget mode)"
+	cmp -s "$T/applied-mode-before" "$R/state.json" \
+		&& ok "T9.26 status $mode leaves state bytes unchanged" \
+		|| bad "T9.26 status $mode leaves state bytes unchanged"
+done
+printf '{"state":"running"}\n' > "$R/state.json"
+out=$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" \
+	--sys-root "$SR" --bin-dir "$T/bin" 2>"$T/applied-mode.stderr")
+expect 'T9.26 legacy status exits successfully' 0 "$?"
+expect 'T9.26 legacy status does not infer mode from UCI' '<missing>' "$(printf '%s\n' "$out" | jget mode)"
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
