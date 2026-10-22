@@ -243,6 +243,12 @@ if wait_for "$R1/var/run/aether-proxy/state.json" '"state": "running"' 100; then
 else
 	bad 'startup curl and running state arrive within 5 seconds' "daemon stderr: $(cat "$R1/daemon.stderr")"
 fi
+# T9.26: status must expose the applied snapshot, not infer the mode from UCI.
+expect 'T9.26 startup persists configured mode' gfw "$(jget mode < "$R1/var/run/aether-proxy/state.json")"
+startup_status=$(ap status --json --sys-root "$R1" --bin-dir "$T/bin" \
+	--run-dir "$R1/var/run/aether-proxy" --confdir "$FIX")
+expect 'T9.26 startup status exits successfully' 0 "$?"
+expect 'T9.26 startup status exposes configured mode' gfw "$(printf '%s\n' "$startup_status" | jget mode)"
 expect 'startup first success selects T1' T1 "$(jget dns_tier < "$R1/var/run/aether-proxy/state.json")"
 expect 'startup needs exactly one successful curl' 1 "$(count_calls "$L1" 'curl ')"
 grep -Fq '203.0.113.20' "$R1/var/run/aether-proxy/current/xray.json" \
@@ -601,6 +607,21 @@ if ! wait_for "$R7/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' 200; the
 fi
 stop_daemon; expect "first locked daemon stops" 0 "$?"
 assert_no_children "$R7"
+
+# T9.26: hold boot in the network wait so its transient state is observable.
+RW="$T/sys-wait-mode"; LW="$RW/calls.log"; make_root "$RW"
+WAIT_CONF="$T/wait-mode-conf"; mkdir -p "$WAIT_CONF"
+sed -e "s/option mode 'gfw'/option mode 'global'/" \
+	-e "/option enabled '1'/a\\\toption boot_wait_timeout '120'\n\tlist boot_check_targets '127.0.0.1:1'" \
+	"$FIX/aetherproxy" > "$WAIT_CONF/aetherproxy"
+start_daemon "$RW" "$LW" --boot --confdir "$WAIT_CONF"
+wait_for "$RW/var/run/aether-proxy/state.json" '"waiting_network": true' \
+	&& ok 'T9.26 boot reaches network wait' || bad 'T9.26 boot reaches network wait'
+expect 'T9.26 network wait persists configured mode' global \
+	"$(jget mode < "$RW/var/run/aether-proxy/state.json")"
+expect 'T9.26 network wait keeps starting state' starting \
+	"$(jget state < "$RW/var/run/aether-proxy/state.json")"
+stop_daemon; expect 'T9.26 network wait daemon stops' 0 "$?"
 
 # 8. Boot wait succeeds using only a local loopback TCP listener.
 R8="$T/sys8"; L8="$T/sys8/calls.log"; BOOT_CONF="$T/boot-conf"; make_root "$R8"; : > "$L8"

@@ -295,7 +295,7 @@ function retain_metadata(daemon, components, wan_dns) {
 };
 
 function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components,
-	old_lan_ifaces, new_lan_ifaces, new_node_id, wan_dns, detail) {
+	old_lan_ifaces, new_lan_ifaces, new_node_id, new_mode, wan_dns, detail) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let previous = `${run_dir(daemon)}/${C.DAEMON_PREVIOUS_DIR}`;
@@ -322,6 +322,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	let updated = {
 		...daemon.state,
 		node_id: new_node_id,
+		mode: new_mode,
 		wan_dns,
 		components: component_metadata(daemon.state.components, components),
 		render_hash: stage_hashes
@@ -510,7 +511,7 @@ function run(daemon, started_ms) {
 	daemon.state = { ...daemon.state, node_ip };
 	step_started = monotonic_ms();
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
-		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, loaded.wan_dns, detail);
+		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, snapshot.main.mode, loaded.wan_dns, detail);
 	if (!applied.ok) {
 		daemon.state = old_state;
 		daemon.ctx.dnsmasq_instance = old_instance;
