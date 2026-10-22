@@ -123,7 +123,7 @@ for key in "$repo"/aether-proxy/files/keys/*; do
 	[ -f "$key" ] || { bad 'repository channel key exists'; continue; }
 	file_present "/etc/aether-proxy/keys/${key##*/}"
 done
-for view in overview nodes subscriptions access rules updates logs advanced; do
+for view in overview nodes access rules updates logs advanced; do
 	file_present "/www/luci-static/resources/view/aether-proxy/$view.js"
 done
 

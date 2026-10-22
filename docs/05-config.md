@@ -198,6 +198,10 @@ config dns 'dns'
 	list direct_dns 'tcp://9.9.9.9'
 	list direct_dns 'tcp://8.8.8.8'
 
+config sub 'sub'
+	option fetch_via 'auto'
+	option interval_hours '24'
+
 config update 'update'
 	option data_auto '1'
 	option xray_auto 'notify'
