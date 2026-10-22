@@ -36,7 +36,7 @@
       "settings": {
         "address": "8.8.8.8",
         "port": 53,
-        "network": "tcp"
+        "network": "tcp,udp"
       }
     },
     {
@@ -47,7 +47,7 @@
       "settings": {
         "address": "1.1.1.1",
         "port": 53,
-        "network": "tcp"
+        "network": "tcp,udp"
       }
     },
     {

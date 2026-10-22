@@ -1,0 +1,100 @@
+{
+  "log": {
+    "loglevel": "warning",
+    "access": "none"
+  },
+  "inbounds": [
+    {
+      "tag": "tproxy-in",
+      "listen": "0.0.0.0",
+      "port": 31080,
+      "protocol": "tunnel",
+      "settings": {
+        "network": "tcp,udp",
+        "followRedirect": true
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tproxy": "tproxy"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "routeOnly": false
+      }
+    },
+    {
+      "tag": "dns-in-0",
+      "listen": "127.0.0.1",
+      "port": 31082,
+      "protocol": "tunnel",
+      "settings": {
+        "address": "8.8.8.8",
+        "port": 53,
+        "network": "tcp,udp"
+      }
+    },
+    {
+      "tag": "dns-in-1",
+      "listen": "127.0.0.1",
+      "port": 31083,
+      "protocol": "tunnel",
+      "settings": {
+        "address": "1.1.1.1",
+        "port": 53,
+        "network": "tcp,udp"
+      }
+    },
+    {
+      "tag": "http-in",
+      "listen": "127.0.0.1",
+      "port": 31081,
+      "protocol": "http",
+      "settings": {
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {
+        "address": "dns-proxy.example.com",
+        "port": 443,
+        "id": "11111111-2222-4333-8444-555555555555",
+        "encryption": "none"
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "dns-proxy.example.com"
+        }
+      }
+    },
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "tproxy-in",
+          "dns-in-0",
+          "dns-in-1",
+          "http-in"
+        ],
+        "outboundTag": "proxy"
+      }
+    ]
+  }
+}

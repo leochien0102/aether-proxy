@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "dns.trust_dns",
+      "code": "invalid_ipv4",
+      "detail": "item 0: \"udp://8.8.8.8#53\" is not valid"
+    }
+  ]
+}

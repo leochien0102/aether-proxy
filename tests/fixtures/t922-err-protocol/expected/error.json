@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "dns.trust_dns",
+      "code": "invalid_ipv4",
+      "detail": "item 0: \"tls://8.8.8.8\" is not valid"
+    }
+  ]
+}

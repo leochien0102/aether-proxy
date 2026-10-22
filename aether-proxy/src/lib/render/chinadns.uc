@@ -3,6 +3,7 @@
 // chinadns-ng config renderer (docs/03-dns.md "chinadns-ng 配置模板"). Pure function.
 
 import * as C from 'aetherproxy.const';
+import { trust_dns_parts } from 'aetherproxy.net';
 
 // "inet aetherproxy" + "gfw4" -> "inet@aetherproxy@gfw4" (chinadns-ng's nft set syntax)
 function nft_set(name) {
@@ -19,8 +20,11 @@ function trust_upstreams(dns, tier) {
 		if (n > length(C.DNS_TUNNEL_PORTS))
 			n = length(C.DNS_TUNNEL_PORTS);
 		let out = [];
-		for (let i = 0; i < n; i++)
-			push(out, sprintf('tcp://%s#%d', C.DNS_TUNNEL_ADDR, C.DNS_TUNNEL_PORTS[i]));
+		for (let i = 0; i < n; i++) {
+			let protocol = trust_dns_parts(dns?.trust_dns?.[i])?.protocol ?? 'tcp';
+			// Send UDP to local Xray too, never directly to the remote DNS (docs/03).
+			push(out, sprintf('%s://%s#%d', protocol, C.DNS_TUNNEL_ADDR, C.DNS_TUNNEL_PORTS[i]));
+		}
 		return out;
 	}
 	if (tier == 'T3')

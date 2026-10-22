@@ -4,6 +4,7 @@
 
 import * as C from 'aetherproxy.const';
 import { build_outbound } from 'aetherproxy.render.outbound';
+import { trust_dns_parts } from 'aetherproxy.net';
 
 export function build(snapshot, ctx) {
 	let main = snapshot.main ?? {};
@@ -26,10 +27,14 @@ export function build(snapshot, ctx) {
 	// defaults normally prevent it); the DNS inbounds are skipped rather than pointing nowhere.
 	for (let i = 0; i < length(C.DNS_TUNNEL_PORTS) && length(trust) > 0; i++) {
 		let tag = C.DNS_IN_TAG_PREFIX + i;
+		// TODO(design): docs/03 does not define the second target for a one-item list.
+		// Preserve the historical mirror of the first address; chinadns uses only the first port.
+		let target = trust_dns_parts(trust[i] ?? trust[0]);
 
 		push(inbounds, {
 			tag: tag, listen: C.DNS_LISTEN, port: C.DNS_TUNNEL_PORTS[i], protocol: 'tunnel',
-			settings: { address: trust[i] ?? trust[0], port: 53, network: 'tcp' }
+			// docs/03: chinadns selects the protocol; both go through the proxy outbound.
+			settings: { address: target.address, port: 53, network: 'tcp,udp' }
 		});
 		push(tags, tag);
 	}

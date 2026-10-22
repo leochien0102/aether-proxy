@@ -1,0 +1,2 @@
+config dns 'dns'
+	list trust_dns 'udp://8.8.8.8#53'
