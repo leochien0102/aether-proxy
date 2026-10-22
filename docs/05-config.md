@@ -99,6 +99,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 > 2026-10-22 新增的节点字段按 Xray **v26.9.30 与 v26.10.21** 的源码（`infra/conf/`）核实了 JSON 字段名；分享链接参数名与 helloworld（ssr-plus）的解析一致。
 > 两处与 helloworld 不同：WebSocket 的 `maxEarlyData`/`earlyDataHeaderName` 在 Xray 26 已不存在（改为 `path` 中的 `?ed=`）；Shadowsocks 出站没有 `uot`、`ivCheck`（Xray 会静默忽略），所以不提供「UDP over TCP」。
+> T9.14 复核定（2026-10-22）：① 字段属于没在用的传输或安全层时（例如 `ws_heartbeat` 而 `transport` 是 `grpc`）**保留、不报错、不渲染**，与已有字段一致；
+> ② `ech_config_list`、`reality_pqv` 当作不透明字符串原样渲染，不校验编码（由 Xray 自己校验）；③ 分享链接 grpc 的 `mode` 只认 `multi` 与 `gun`，其他值 → 该链接跳过（`invalid_value`）。
 > 注意 Xray 解析 JSON 时**忽略不认识的字段**，`xray run -test` 查不出字段名写错——新增字段必须对照源码，不能只靠 `run -test`。
 
 > Xray 26.9.30 已**移除** `allowInsecure`（配置中出现即报错，2026-10-14 核实 `infra/conf/transport_security.go`），所以节点没有「跳过证书校验」字段。
