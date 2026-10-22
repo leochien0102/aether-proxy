@@ -470,5 +470,34 @@ for field in interval_hours fetch_via; do
 		|| bad "T9.17 invalid sub.$field prevents download"
 done
 
+# T9.18: exercise CLI rejection and a mixed subscription through the atomic write path.
+python3 "$ROOT/tests/sub/flow.py" "$ROOT" "$T/flow-cli" \
+	&& ok 'T9.18 flow CLI scenarios' || bad 'T9.18 flow CLI scenarios'
+make_root "$T/root-flow"
+write_config
+BODY="$FIX/flow.txt"
+out=$(ap --json s_00000001 2>"$T/flow.stderr"); rc=$?
+expect 'T9.18 mixed flow subscription succeeds' 0 "$rc"
+expect 'T9.18 mixed flow subscription adds exactly three valid nodes' 3 \
+	"$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+expect 'T9.18 mixed flow subscription counts two invalid_value skips' 2 \
+	"$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.invalid_value)"
+"$UCODE" -e '
+import * as uci from "uci";
+let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
+let nodes = [];
+c.foreach("aetherproxy", "node", n => { push(nodes, n); });
+let actual = sort(map(nodes, n => n.address + ":" + (n.flow ?? "")));
+let expected = [ "empty.example:", "udp443.example:xtls-rprx-vision-udp443",
+	"vision.example:xtls-rprx-vision" ];
+exit(sprintf("%.J", actual) == sprintf("%.J", expected) ? 0 : 1);
+' -- "$R/etc/config" 2>>"$T/flow.stderr" \
+	&& ok 'T9.18 subscription commits only valid flows unchanged' \
+	|| bad 'T9.18 subscription commits only valid flows unchanged'
+expect 'T9.18 sub.json stores three valid nodes' 3 \
+	"$(jget s_00000001.nodes < "$R/etc/aether-proxy/state/sub.json")"
+expect 'T9.18 sub.json stores two invalid_value skips' 2 \
+	"$(jget s_00000001.skipped.invalid_value < "$R/etc/aether-proxy/state/sub.json")"
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -97,6 +97,9 @@ const INVALID = [
 	[ 'extra null', { xhttp_extra: 'null' }, 'xhttp_extra:invalid_value' ],
 	[ 'extra scalar', { xhttp_extra: '42' }, 'xhttp_extra:invalid_value' ],
 	[ 'mux Vision conflict', { mux: '1', flow: 'xtls-rprx-vision' }, 'mux:conflict' ],
+	[ 'mux Vision UDP443 conflict', { mux: '1', flow: 'xtls-rprx-vision-udp443' }, 'mux:conflict' ],
+	[ 'legacy flow rejects enum', { flow: 'xtls-rprx-direct' }, 'flow:invalid_enum' ],
+	[ 'unknown flow rejects enum', { flow: 'arbitrary' }, 'flow:invalid_enum' ],
 	[ 'mux concurrency below minimum', { mux_concurrency: '-2' }, 'mux_concurrency:out_of_range' ],
 	[ 'mux concurrency above maximum', { mux_concurrency: '1025' }, 'mux_concurrency:out_of_range' ],
 	[ 'xudp concurrency below minimum', { mux_xudp_concurrency: '-2' }, 'mux_xudp_concurrency:out_of_range' ],
@@ -121,6 +124,15 @@ for (let value in [ 'reject', 'allow', 'skip' ])
 push(cases, { name: 'Vision with disabled Mux is valid', fn: 'invalid',
 	extra: { mux: '0', flow: 'xtls-rprx-vision' }, expect: [] });
 push(cases, { name: 'empty JSON object valid', fn: 'invalid', extra: { xhttp_extra: '{}' }, expect: [] });
+
+// Compare the complete outbound to prove accepted flow values survive normalization unchanged.
+for (let flow in [ 'xtls-rprx-vision', 'xtls-rprx-vision-udp443' ]) {
+	for (let mux in [ null, '0' ])
+		push(cases, { name: flow + ' renders unchanged with mux ' + (mux ?? 'unset'),
+			extra: { flow, mux }, expect: { ...BASE_OUT, settings: { ...BASE_OUT.settings, flow } } });
+}
+push(cases, rendered_case('empty flow is unset and allows Mux', { flow: '', mux: '1' }, null, { enabled: true }));
+push(cases, { name: 'empty flow normalizes to null', fn: 'flow', extra: { flow: '' }, expect: null });
 
 function extension_plan(remove) {
 	let old = { ...BASE, port: 443, ...(remove ? EXTENSIONS : {}) };
@@ -167,6 +179,8 @@ export function run(c) {
 	let normalized = config.normalize({ nodes: { [ID]: { ...BASE, ...(c.extra ?? {}) } } });
 	if (c.fn == 'invalid')
 		return map(normalized.errors ?? [], e => e.field + ':' + e.code);
+	if (c.fn == 'flow')
+		return normalized.ok ? normalized.snapshot.nodes[ID].flow : normalized.errors;
 	if (!normalized.ok)
 		return normalized.errors;
 	let actual = outbound.build_outbound(normalized.snapshot.nodes[ID]);
