@@ -68,8 +68,9 @@ return view.extend({
 				note = E('span', { 'data-access-note': '1' });
 				cell.appendChild(note);
 			}
+			/* The space stays outside the msgid: po2lmo keeps it but _() trims it (X3). */
 			note.textContent = inactive
-				? _(' (same as unlisted devices; has no effect)', 'aether-proxy') : '';
+				? ' ' + _('(same as unlisted devices; has no effect)', 'aether-proxy') : '';
 			row.parentNode.appendChild(row);
 		}
 	},
@@ -152,7 +153,7 @@ return view.extend({
 		/* GridSection modals save independently of the page footer. Fill the
 		   name in both write/remove paths, including an empty optional field. */
 		o.write = function(sid, value) {
-			const mac = this.map.lookupOption('mac', sid)[0].formvalue(sid);
+			const mac = this.map.lookupOption('mac', sid)?.[0].formvalue(sid);
 			const name = value || model.default_name(mac, self.candidates);
 			if (name)
 				uci.set('aetherproxy', sid, 'name', name);

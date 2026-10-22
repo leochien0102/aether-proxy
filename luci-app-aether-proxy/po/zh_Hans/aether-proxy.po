@@ -1140,7 +1140,7 @@ msgid "Unlisted devices (including IoT) use the proxy. To proxy only some, choos
 msgstr "所有未列出的设备（包括物联网设备）都会走代理；只想让部分设备走代理，选『直连』并在下面列出这些设备。"
 
 msgctxt "aether-proxy"
-msgid " (same as unlisted devices; has no effect)"
+msgid "(same as unlisted devices; has no effect)"
 msgstr "（与未列出的设备相同，不起作用）"
 
 msgctxt "aether-proxy"
@@ -1304,7 +1304,7 @@ msgid "Not automatically updated through the release channel: install or update 
 msgstr "不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包%s手工安装。"
 
 msgctxt "aether-proxy"
-msgid " (device architecture %s)"
+msgid "(device architecture %s)"
 msgstr "（本机架构 %s）"
 
 msgctxt "aether-proxy"
