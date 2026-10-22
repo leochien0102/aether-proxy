@@ -11,19 +11,27 @@ const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const MENU = path.join(APP, 'root', 'usr', 'share', 'luci', 'menu.d', 'luci-app-aether-proxy.json');
 const VIEWS = path.join(APP, 'htdocs', 'luci-static', 'resources', 'view', 'aether-proxy');
 
-/* docs/10 「LuCI 页面」 and 「公共模块与菜单」: the 8 pages in their order. */
-const PAGES = [ 'overview', 'nodes', 'subscriptions', 'access', 'rules', 'updates', 'logs', 'advanced' ];
+/* docs/10 「节点与订阅合并为一页」: seven visible pages and a hidden legacy alias. */
+const PAGES = [ 'overview', 'nodes', 'access', 'rules', 'updates', 'logs', 'advanced' ];
 
-test('scenario 8: menu — firstchild parent, exactly the 8 child pages in order, existing views, ACL dependency', () => {
+test('scenario 8: menu — firstchild parent, seven visible pages in order, existing views, ACL dependency', () => {
 	const menu = JSON.parse(fs.readFileSync(MENU, 'utf8'));
 	const parent = 'admin/services/aether-proxy';
 
 	assert.ok(menu[parent], 'the parent node exists');
 	assert.equal(menu[parent].action.type, 'firstchild', 'the parent is a firstchild node');
 
-	const childKeys = Object.keys(menu).filter((k) => k != parent);
+	const childKeys = Object.keys(menu).filter((k) => k != parent && menu[k].title);
 	assert.deepEqual(childKeys, PAGES.map((name) => `${parent}/${name}`),
-		'exactly the 8 documented child pages, in the documented order');
+		'exactly the seven documented visible pages, in the documented order');
+
+	assert.equal(Object.keys(menu).length, 9, 'parent, seven pages and one legacy alias');
+	assert.equal(menu[`${parent}/nodes`].title, 'Nodes & Subscriptions');
+	const alias = menu[`${parent}/subscriptions`];
+	assert.equal(Object.hasOwn(alias, 'title'), false, 'the legacy address is not a visible menu item');
+	assert.deepEqual(alias.action, { type: 'alias', path: `${parent}/nodes` });
+	assert.deepEqual(alias.depends.acl, ['luci-app-aether-proxy']);
+	assert.equal(fs.existsSync(path.join(VIEWS, 'subscriptions.js')), false, 'the obsolete view is removed');
 
 	let lastOrder = 0;
 

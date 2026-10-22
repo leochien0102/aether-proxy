@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
+const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable } = require('./button-layout');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -82,7 +83,11 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				...section.options.filter(o => o.textvalue || o.editable).map(o =>
 					E('td', { field: o.field }, o.editable ? E('input', {
 						type: 'checkbox', checked: s[o.field] !== '0' || null,
-						change: event => o.onchange(event, s['.name'], event.target.checked ? '1' : '0')
+						change: event => {
+							const value = event.target.checked ? '1' : '0';
+							o.setFormValue(s['.name'], value);
+							o.onchange(event, s['.name'], value);
+						}
 					}) : o.textvalue(s['.name']))),
 				section.renderRowActions(s['.name'])
 			]))
@@ -146,17 +151,25 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 		}
 		async save(...args) {
 			uciCalls.push(['map.save', ...args]);
+			for (const section of this.sections) {
+				const ids = section.kind === 'NamedSection' ? [section.type]
+					: uci.sections('aetherproxy', section.type).map(s => s['.name']);
+				for (const id of ids)
+					for (const option of section.options)
+						await option.parse(id);
+			}
 			return this.render();
 		}
 		async render() {
-			this.node = E('form', {}, await Promise.all(this.sections.map(section =>
+			this.node = E('form', { 'class': 'cbi-map', map: this }, await Promise.all(this.sections.map(section =>
 				section.render ? section.render() : renderSection(section))));
 			return this.node;
 		}
 	} };
 }
 async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['edit', 'remove']) {
-	const calls = [], reads = [], turns = [], maps = [], uciCalls = [], builtins = [];
+	const calls = [], reads = [], turns = [], allMaps = [], uciCalls = [], builtins = [];
+	const otherReads = [], allCalls = [];
 	const statusCalls = [], statusReads = [], timers = new Map(), notices = [];
 	let now = 0, timerID = 0, current = 'n_a';
 	const general = [], versionRead = deferred(), versionCalls = [];
@@ -205,9 +218,16 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		},
 		save: async () => { uciCalls.push(['save']); }
 	};
-	const form = formDouble(uci, maps, uciCalls, builtins, builtinKinds);
+	const form = formDouble(uci, allMaps, uciCalls, builtins, builtinKinds);
 	const ap = {
 		call: (method, params) => {
+			allCalls.push([method, params]);
+			if ((name === 'nodes' && method === 'sub_status') ||
+				(name === 'subscriptions' && method === 'probe_results')) {
+				const read = deferred();
+				otherReads.push(read);
+				return read.promise;
+			}
 			if (method === 'version') {
 				versionCalls.push(method);
 				return versionRead.promise;
@@ -229,8 +249,15 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	};
 	const model = loadModule(path.join(RES, 'aether-proxy/model', name + '.js'),
 		{ baseclass: { extend: o => o } }, {});
-	const page = loadModule(path.join(RES, 'view/aether-proxy', name + '.js'), {
-		view: { extend: o => o }, form, uci,
+	// LuCI's inherited footer walks the actual .cbi-map roots, not named view properties.
+	const viewBase = {
+		handleSave: async function() {
+			await Promise.all(find(this.fullRoot, node => node.class === 'cbi-map')
+				.map(node => node.map.save()));
+		}
+	};
+	const { view, subscriptions } = loadNodesPage({
+		view: { extend: o => Object.assign(Object.create(viewBase), o) }, form, uci,
 		ui: {
 			/* Same contract as luci-base ui.js: bound arguments first, the event
 			   last; the button is disabled until fn settles and nothing is returned. */
@@ -284,18 +311,23 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		}
 		now = end;
 	}
-	return { name, page, maps, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
+	return { name, page: name === 'nodes' ? view : subscriptions, view, subscriptions,
+		get maps() { return allMaps.filter(map => map.sections[0].type === (name === 'nodes' ? 'node' : 'sub')); },
+		allMaps, otherReads, allCalls, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
 		general, versionRead, versionCalls,
 		setChanges: fn => { changes = fn; },
 		statusCalls, statusReads, timers, notices, tick, setCurrent: id => { current = id; } };
 }
 async function render(h) {
-	await h.page.load();
-	h.root = await h.page.render();
+	await h.view.load();
+	h.fullRoot = h.view.fullRoot = await h.view.render();
+	h.root = h.page.root;
 	assert.equal(h.maps.length, 1);
+	assert.equal(h.allMaps.length, 2, 'the merged page renders both maps');
 	assert.deepEqual(h.calls, [], 'the complete page returns before RPC starts');
-	assert.equal(h.turns.length, 1);
-	h.turns.shift()();
+	assert.equal(h.turns.length, 2);
+	for (const turn of h.turns.splice(0))
+		turn();
 	await flush();
 }
 function resultCells(h) {
@@ -332,6 +364,7 @@ test('T10.34 scenario 1: existing general section displays its values without wr
 	for (const field of ['interval_hours', 'fetch_via', 'user_agent'])
 		assert.equal(h.page.generalOptions[field].getUIElement('sub').value, h.general[0][field]);
 	assert.deepEqual(h.uciCalls, [['load', 'aetherproxy']]);
+	assert.equal(h.allMaps.length, 2);
 });
 
 test('T10.34 scenario 1: missing general section is added once empty and displays defaults', async () => {
@@ -503,8 +536,8 @@ test('T10.34 scenario 5: first-column flag immediately locks only its row before
 for (const name of ['nodes', 'subscriptions']) {
 	test(`T10.16 ${name} scenario 1: load reads only UCI`, async () => {
 		const h = await harness(name);
-		await h.page.load();
-		assert.deepEqual(h.uciCalls, name === 'nodes' ? [['load', 'aetherproxy']] :
+		await h.view.load();
+		assert.deepEqual(h.uciCalls,
 			[['load', 'aetherproxy'], ['add', 'aetherproxy', 'sub', 'sub']]);
 		assert.deepEqual(h.calls, []);
 		assert.deepEqual(h.turns, []);
@@ -660,7 +693,7 @@ async () => {
 	const h = await harness('nodes');
 	await render(h);
 	const details = find(h.root, node => node.tag === 'details');
-	assert.equal(details.length, 1);
+	assert.equal(details.length, 1, 'only bulk import is inside the node region');
 	const box = details[0];
 	assert.equal(box.open, false, 'bulk import is initially collapsed');
 	assert.equal(box.attrs.open, undefined, 'no open="false" HTML attribute');
@@ -713,7 +746,7 @@ async () => {
 	assert.deepEqual(h.calls[4], ['probe_results', undefined]);
 	h.reads[4].resolve(success('nodes'));
 	await flush();
-	assert.equal(h.maps.length, 2, 'an added node triggers a full page rebuild');
+	assert.equal(h.maps.length, 2, 'an added node rebuilds the node region');
 	assert.notEqual(h.page.importDetails, oldBox);
 	assert.notEqual(h.page.importText, oldInput);
 	assert.equal(h.page.importDetails.open, true);
@@ -779,7 +812,7 @@ test('T10.27 scenarios 1/2: node actions share progress before the table; Import
 	assert.equal(importBox.children.at(-2), h.page.importText);
 });
 
-test('T10.27 scenarios 1/2: subscription Update all and Add share text-first row above the table after redraw',
+test('T10.27 scenarios 1/2: subscription Update all and Add share text-first row below the table after redraw',
 async () => {
 	const h = await harness('subscriptions');
 	await render(h);
@@ -790,8 +823,8 @@ async () => {
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.root, ['全部更新', '添加'],
 			[h.page.statusError, h.page.progress, h.page.summary]);
-		beforeTable(h.root, row, h.maps.at(-1).node);
-		assert.deepEqual(h.root.children, [row, h.maps.at(-1).node]);
+		assert.deepEqual(h.root.children, [h.maps.at(-1).node, row],
+			'T10.37 moves subscription actions below the general settings and subscription table');
 	}
 });
 
@@ -1483,6 +1516,172 @@ test('T10.25 scenario 6: repeated mismatches never extend the original 60s deadl
 	await h.tick(3000);
 	assertSwitchLocked(h, false);
 	assert.equal(h.timers.size, 0);
+});
+
+test('T10.37 scenario 2: expanded subscriptions precede node tools/table and collapsed batch import', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const page = h.view;
+	assert.equal(h.fullRoot.children[0].textContent, '节点与订阅');
+	assert.deepEqual(h.fullRoot.children.slice(1), [page.subscriptionsDetails, page.root]);
+	assert.equal(page.subscriptionsDetails.tag, 'details');
+	assert.equal(page.subscriptionsDetails.open, true);
+	assert.equal(page.subscriptionsDetails.children[0].textContent, '订阅');
+	assert.equal(page.subscriptionsDetails.children[1], h.subscriptions.root);
+	const subMap = h.subscriptions.map;
+	assert.deepEqual(subMap.sections.map(section => section.type), ['sub', 'subscription']);
+	assert.deepEqual(h.subscriptions.root.children.map(node => node.tag), ['form', 'div']);
+	assert.equal(h.subscriptions.root.children[0], subMap.node);
+	assert.equal(subMap.node.children[0].textContent, '通用设置');
+	assert.match(subMap.node.children[1].textContent, /Alpha.*Beta/);
+	assert.deepEqual(buttons(h.subscriptions.root.children[1]).map(text), ['全部更新', '添加']);
+	const tools = actionRow(page.root, ['检测全部', '删除所选', '添加节点']);
+	const region = find(page.root, node => node.children.includes(page.nodeMap.node))[0];
+	assert.deepEqual(region.children.slice(-3), [tools, page.nodeMap.node, page.importDetails]);
+	assert.equal(page.importDetails.open, false);
+	assert.deepEqual(find(h.fullRoot, node => node.tag === 'h2').map(text), ['节点与订阅'],
+		'one page heading; the node region uses a section heading');
+	assert.deepEqual(find(page.root, node => node.tag === 'h3').map(text).slice(0, 1), ['节点']);
+	assert.deepEqual(find(h.fullRoot, node => node.class === 'cbi-map').map(node => node.map),
+		[subMap, page.nodeMap], 'no extra wrapper is mistaken for a form by the footer');
+	assert.deepEqual(h.allCalls.map(call => call[0]), ['version', 'sub_status', 'probe_results', 'status'],
+		'first-paint requests follow the displayed subscription-then-node order');
+});
+
+for (const ids of [['s_a'], []]) {
+	test(`T10.37 scenario 4: ${ids.length ? 'single' : 'all'} subscription update shows new nodes without losing inputs`,
+	async () => {
+		const h = await harness('subscriptions');
+		await render(h);
+		const block = h.subscriptions, page = h.view;
+		const common = block.generalOptions;
+		common.interval_hours.setFormValue('sub', '72');
+		common.fetch_via.setFormValue('sub', 'proxy');
+		common.user_agent.setFormValue('sub', 'Unsaved/UA');
+		const flag = find(h.root, node => node.sid === 's_b')[0].children[0].children[0];
+		flag.checked = false;
+		flag.change({ target: flag });
+		block.grid.renderMoreOptionsModal('s_a');
+		block.grid.modal.value = 'Unsaved modal text';
+		const modal = block.grid.modal, form = block.map.node;
+		page.subscriptionsDetails.open = false;
+		page.importDetails.open = true;
+		page.importText.value = '\n vless://unsaved-import \n';
+		page.importResult.textContent = 'Previous import result';
+		const job = deferred();
+		h.ap.run_job = (kind, args) => {
+			assert.equal(kind, 'sub_update');
+			assert.deepEqual(args, ids);
+			return job.promise;
+		};
+		const pending = block.update(ids);
+		assert.equal(block.map.node, form, 'starting a job cannot replace live subscription widgets');
+		assert.equal(block.generalOptions, common);
+		h.nodes.push({ '.name': 'n_fresh', label: 'Fresh subscription node', source: 's_a' });
+		job.resolve({ state: 'ok', result: { subs: { s_a: { ok: true, added: 1 } } } });
+		await flush();
+		h.reads[1].resolve(success('subscriptions'));
+		await pending;
+		assert.match(page.nodeMap.node.textContent, /Fresh subscription node/);
+		assert.equal(block.map.node, form, 'finishing a job only fills result cells in the subscription form');
+		assert.equal(block.generalOptions, common);
+		assert.deepEqual(block.general_values(), {
+			interval_hours: '72', fetch_via: 'proxy', user_agent: 'Unsaved/UA'
+		});
+		assert.equal(block.grid.modal, modal);
+		assert.equal(modal.value, 'Unsaved modal text');
+		assert.equal(flag.checked, false);
+		assert.equal(subOption(h, 'enabled').formvalue('s_b'), '0');
+		assert.equal(block.rowButtons.get('s_b').disabled, true, 'local pending flag survives refresh');
+		assert.equal(page.subscriptionsDetails.open, false);
+		assert.equal(page.importDetails.open, true);
+		assert.equal(page.importText.value, '\n vless://unsaved-import \n');
+		assert.equal(page.importResult.textContent, 'Previous import result');
+		assert.match(block.resultCells.s_a.textContent, /成功，7 个节点/);
+		assert.doesNotMatch(block.summary.textContent, /操作失败/);
+		assert.equal(h.uciCalls.some(call => ['set', 'save', 'map.save'].includes(call[0])), false,
+			'refresh never saves unrelated inputs to retain them');
+	});
+}
+
+test('T10.37 scenarios 3/4: node reload keeps subscription widgets and recreates the legacy common section',
+async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const block = h.subscriptions, common = block.generalOptions, form = block.map.node;
+	common.user_agent.setFormValue('sub', 'Not saved yet');
+	h.uci.unload = config => {
+		h.uciCalls.push(['unload', config]);
+		h.general.length = 0;
+	};
+	const pending = h.view.rebuild();
+	await flush();
+	h.reads[1].resolve(success('nodes'));
+	await pending;
+	assert.equal(block.map.node, form);
+	assert.equal(block.generalOptions, common);
+	assert.equal(common.user_agent.formvalue('sub'), 'Not saved yet');
+	assert.deepEqual(h.general, [{ '.name': 'sub', '.type': 'sub' }]);
+	assert.equal(h.uciCalls.filter(call => call[0] === 'add').length, 2,
+		'node imports use the combined load path after unloading a legacy configuration');
+	assert.equal(h.fullRoot.children[1].children[1], block.root);
+	assert.equal(h.uciCalls.some(call => call[0] === 'save'), false);
+});
+
+test('T10.37 scenario 3: subscription redraw leaves node form and bulk-import controls mounted', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const page = h.view, nodeMap = page.nodeMap, form = nodeMap.node;
+	const label = page.nodeGrid.options.find(option => option.field === 'label');
+	label.setFormValue('n_b', 'Unfinished node edit');
+	page.importText.value = 'vless://keep-this';
+	page.importDetails.open = true;
+	const input = page.importText;
+	await h.subscriptions.redraw();
+	assert.equal(page.nodeMap, nodeMap);
+	assert.equal(page.nodeMap.node, form);
+	assert.equal(label.formvalue('n_b'), 'Unfinished node edit');
+	assert.equal(page.importText, input);
+	assert.equal(input.value, 'vless://keep-this');
+	assert.equal(page.importDetails.open, true);
+	assert.equal(find(h.fullRoot, node => node === form).length, 1);
+});
+
+test('T10.37 defensive: node repaint failure preserves subscription input and restores update buttons', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	const block = h.subscriptions, form = block.map.node, common = block.generalOptions;
+	common.user_agent.setFormValue('sub', 'Keep after failure');
+	h.view.buildPage = async () => { throw new Error('node repaint failed'); };
+	const pending = block.update([]);
+	await flush();
+	h.reads[1].resolve(success('subscriptions'));
+	await pending;
+	assert.equal(block.busy, false);
+	assert.equal(block.updateAll.disabled, false);
+	assert.ok([...block.rowButtons.values()].every(button => !button.disabled));
+	assert.equal(block.summary.textContent, '操作失败：node repaint failed');
+	assert.equal(block.map.node, form);
+	assert.equal(common.user_agent.formvalue('sub'), 'Keep after failure');
+});
+
+test('T10.37 scenario 5: inherited page Save saves both maps and their pending settings', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const block = h.subscriptions;
+	block.generalOptions.interval_hours.setFormValue('sub', '168');
+	block.generalOptions.fetch_via.setFormValue('sub', 'direct');
+	block.generalOptions.user_agent.setFormValue('sub', 'Save both/1');
+	block.grid.options.find(option => option.field === 'enabled').setFormValue('s_b', '0');
+	h.view.nodeGrid.options.find(option => option.field === 'label').setFormValue('n_b', 'Saved node');
+	assert.equal(Object.hasOwn(h.view, 'handleSave'), false, 'use LuCI footer behavior without a custom override');
+	await h.view.handleSave();
+	assert.equal(h.uciCalls.filter(call => call[0] === 'map.save').length, 2);
+	assert.equal(h.uci.get('aetherproxy', 'sub', 'interval_hours'), '168');
+	assert.equal(h.uci.get('aetherproxy', 'sub', 'fetch_via'), 'direct');
+	assert.equal(h.uci.get('aetherproxy', 'sub', 'user_agent'), 'Save both/1');
+	assert.equal(h.uci.get('aetherproxy', 's_b', 'enabled'), '0');
+	assert.equal(h.uci.get('aetherproxy', 'n_b', 'label'), 'Saved node');
 });
 
 test('T10.25 scenario 6: matching, stopped and unread status do not start a switch watch', async () => {

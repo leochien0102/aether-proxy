@@ -294,7 +294,10 @@ function loadNodesView(calls, overrides = {}) {
 			},
 			run_job: (kind, args) => { calls.push([ 'run_job', kind, args ]); return Promise.resolve({ state: 'ok' }); }
 		},
-		'aether-proxy.model.nodes': modelMod
+		'aether-proxy.model.nodes': modelMod,
+		'aether-proxy.subscriptions-block': {
+			load: async () => { calls.push(['load', 'aetherproxy']); }
+		}
 	}, { window: { setTimeout: () => 1, clearTimeout() {} },
 		document: { addEventListener() {}, removeEventListener() {} } });
 	view.probeButtons = [];

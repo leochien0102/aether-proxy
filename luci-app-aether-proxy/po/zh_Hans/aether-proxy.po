@@ -474,15 +474,16 @@ msgstr "以太跃迁"
 msgid "Overview"
 msgstr "概览"
 
-msgid "Nodes"
-msgstr "节点"
+msgid "Nodes & Subscriptions"
+msgstr "节点与订阅"
+
+msgctxt "aether-proxy"
+msgid "Nodes & Subscriptions"
+msgstr "节点与订阅"
 
 msgctxt "aether-proxy"
 msgid "Nodes"
 msgstr "节点"
-
-msgid "Subscriptions"
-msgstr "订阅"
 
 msgctxt "aether-proxy"
 msgid "Subscriptions"

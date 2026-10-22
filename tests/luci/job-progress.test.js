@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, createRpc, element } = require('./loader');
+const { loadNodesPage } = require('./nodes-page');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -125,7 +126,7 @@ async function harness(t, name) {
 			return { ok: true, done: 1, total: 1, finished: true, nodes: {} };
 		return { ok: true, items: { gfwlist: { version: 'new-hash' } } };
 	};
-	const page = loadModule(path.join(RES, 'view/aether-proxy', name + '.js'), {
+	const modules = {
 		view: { extend: props => props }, form: formDouble(uci), uci,
 		ui: {
 			createHandlerFn: (self, fn, ...bound) => (...rest) =>
@@ -136,8 +137,13 @@ async function harness(t, name) {
 			target.replaceChildren(...(Array.isArray(content) ? content : [content]));
 		} },
 		'aether-proxy.common': ap, ['aether-proxy.model.' + name]: vm
-	}, { window: { setTimeout: fn => initialReads.push(fn) } });
-	const root = await page.render();
+	};
+	const env = { window: { setTimeout: fn => initialReads.push(fn) } };
+	const merged = ['nodes', 'subscriptions'].includes(name) ? loadNodesPage(modules, env) : null;
+	const view = merged?.view ?? loadModule(path.join(RES, 'view/aether-proxy', name + '.js'), modules, env);
+	const page = name === 'subscriptions' ? merged.subscriptions : view;
+	const fullRoot = await view.render();
+	const root = merged ? page.root : fullRoot;
 	// These lifecycle scenarios start after the deferred initial read; their
 	// call assertions still count only job-driven refreshes, as before T10.16.
 	if (name !== 'rules') {

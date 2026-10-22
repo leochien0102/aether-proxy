@@ -107,7 +107,7 @@ try {
   assert.deepEqual(model.delete_plan('A',nodes,'b').remove,['current','a1','a2']);
  });
  check('9. GridSection uses named add, password URL, confirmed destructive delete, job updates and translated text', () => {
-  const source = fs.readFileSync(path.join(res,'view/aether-proxy/subscriptions.js'),'utf8');
+  const source = fs.readFileSync(path.join(res,'aether-proxy/subscriptions-block.js'),'utf8');
   assert.match(source,/m\.section\(form\.GridSection, 'subscription'\)/);
   assert.match(source,/renderSectionAdd = function\(\) \{ return E\(\[\]\); \}/);
   assert.match(source,/model\.new_id/); assert.match(source,/crypto\.getRandomValues/);
@@ -121,7 +121,7 @@ try {
   assert.match(source,/uci\.set\('aetherproxy', node, 'source', 'manual'\)/);
   assert.match(source,/uci\.set\('aetherproxy', node, 'stale', '0'\)/);
   assert.doesNotMatch(source,/rpc\.declare|cbi-button-reset/);
-  for (const f of ['view/aether-proxy/subscriptions.js','aether-proxy/model/subscriptions.js']) {
+  for (const f of ['aether-proxy/subscriptions-block.js','aether-proxy/model/subscriptions.js']) {
    const text=fs.readFileSync(path.join(res,f),'utf8');
    // _() calls carry the translation context since T10.1; an empty match list would make this check vacuous.
    const ids=[...text.matchAll(/_\('([^']+)', 'aether-proxy'\)/g)].map(m=>m[1]);

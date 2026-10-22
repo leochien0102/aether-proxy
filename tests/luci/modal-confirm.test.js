@@ -112,8 +112,10 @@ function formDouble(effects, uci) {
 }
 
 function view(name, ap, uci, effects) {
-	return loadModule(path.join(RES, 'view/aether-proxy', name + '.js'), {
-		view: { extend: props => props },
+	const file = name === 'subscriptions' ? 'aether-proxy/subscriptions-block.js'
+		: 'view/aether-proxy/' + name + '.js';
+	return loadModule(path.join(RES, file), {
+		view: { extend: props => props }, baseclass: { extend: props => props },
 		form: formDouble(effects, uci), uci,
 		ui: {
 			createHandlerFn: (self, fn) => typeof fn === 'function' ? fn.bind(self) : () => {},
@@ -122,7 +124,8 @@ function view(name, ap, uci, effects) {
 		},
 		dom: { content: (element, children) => { element.children = children; } },
 		'aether-proxy.common': ap,
-		['aether-proxy.model.' + name]: model(name)
+		['aether-proxy.model.' + name]: model(name),
+		'aether-proxy.subscriptions-block': {}
 	}, { window: { setTimeout: () => { effects.push([ 'timer' ]); } } });
 }
 
