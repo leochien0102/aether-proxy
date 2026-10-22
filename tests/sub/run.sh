@@ -361,7 +361,7 @@ expect "node extensions removal update exits successfully" 0 "$rc"
 expect "node extensions removal counts an updated node" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.updated)"
 "$UCODE" -e '
 import * as uci from "uci";
-let c = uci.cursor(ARGV[0]);
+let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 let names = [];
 c.foreach("aetherproxy", "node", n => { push(names, n[".name"]); });
 let id = "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -414,7 +414,7 @@ for mode in direct proxy auto; do
 	printf '{"state":"running"}\n' > "$R/var/run/aether-proxy/state.json"
 	printf '0: 0100007F:7969 00000000:0000 0A\n' >> "$R/proc/net/tcp"
 	"$UCODE" -e 'import * as uci from "uci";
-		let c = uci.cursor(ARGV[0]);
+		let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 		if (!c.set("aetherproxy", "sub", "fetch_via", ARGV[1]) || !c.commit("aetherproxy"))
 			die(c.error() ?? "cannot set common fetch mode");' -- "$R/etc/config" "$mode"
 	BODY="$FIX/one-node.txt"
@@ -441,7 +441,7 @@ cp "$ROOT/aether-proxy/files/aether-proxy.config" "$R/etc/config/aetherproxy"
 if "$UCODE" -e 'import * as uci from "uci";
 	import * as config from "aetherproxy.config";
 	import * as C from "aetherproxy.const";
-	let c = uci.cursor(ARGV[0]);
+	let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 	let raw = config.read_raw(c, C.UCI_PACKAGE);
 	let r = config.load(c);
 	let s = r.snapshot?.sub;
@@ -457,7 +457,7 @@ for field in interval_hours fetch_via; do
 	cp "$ROOT/tests/fixtures/t917-sub-defaults/aetherproxy" "$R/etc/config/aetherproxy"
 	if [ "$field" = interval_hours ]; then value=-1; else value=foo; fi
 	"$UCODE" -e 'import * as uci from "uci";
-		let c = uci.cursor(ARGV[0]);
+		let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 		if (!c.set("aetherproxy", "sub", ARGV[1], ARGV[2]) || !c.commit("aetherproxy"))
 			die(c.error() ?? "cannot set invalid common value");' -- "$R/etc/config" "$field" "$value"
 	out=$(ap s_00000001 --json 2>"$T/defaults-invalid.stderr"); rc=$?

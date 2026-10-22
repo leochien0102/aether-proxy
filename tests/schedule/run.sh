@@ -216,7 +216,7 @@ fi
 make_root "$T/root-sub-defaults"
 R="$T/root-sub-defaults"
 "$UCODE" -e 'import * as uci from "uci";
-	let c = uci.cursor(ARGV[0]);
+	let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 	let ok = c.delete("aetherproxy", "s_00000001", "interval_hours")
 		&& c.set("aetherproxy", "sub", "sub")
 		&& c.set("aetherproxy", "sub", "interval_hours", "0")
@@ -237,7 +237,7 @@ if wait_for_text "$R/schedule-calls.log" 'job start sub update s_00000002' 400; 
 		ok 'T9.17 daemon does not schedule inherited zero interval'
 	fi
 	"$UCODE" -e 'import * as uci from "uci";
-		let c = uci.cursor(ARGV[0]);
+		let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
 		if (!c.set("aetherproxy", "sub", "interval_hours", "6") || !c.commit("aetherproxy"))
 			die(c.error() ?? "cannot change common interval");' -- "$R/etc/config"
 	kill -HUP "$DAEMON_PID"
