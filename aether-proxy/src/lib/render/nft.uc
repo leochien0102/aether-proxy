@@ -30,8 +30,7 @@ function sort_ips(list) {
 
 // Only data.load's arrays are stable across reloads. Host and restored lists may be
 // rebuilt or mutated by their callers, so those continue through uncached sort_ips.
-// TODO(design): no eviction policy is specified. Keep only the latest array per static
-// set, bounding retained generations instead of accumulating every historical update.
+// docs/04: keep only the latest array per static set, never every historical update.
 const sorted_data = {};
 function sort_data(name, list) {
 	let cached = sorted_data[name];

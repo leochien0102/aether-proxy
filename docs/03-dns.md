@@ -84,7 +84,7 @@ Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 c
 - **取不到**（WAN 还没拨上、`ubus` 失败或超时 3 秒、没有 IPv4 DNS）：`wan` 展开为 `223.5.5.5`（常量 `WAN_DNS_FALLBACK`），不记事件；国内解析照常可用。
 - 用到 `china_dns` 的三处（china 组、udirect 组、T3）都用展开后的列表。`check`、`render chinadns` 输出展开后的结果。
 - `state.json` 增加 `wan_dns`：本次渲染实际用到的运营商 DNS（取不到时为 `[]`）；`china_dns` 不含 `wan` 时为 `null`。
-- **WAN 变化**：随包安装 `/etc/hotplug.d/iface/80-aether-proxy`，在 `ifup`、`ifupdate` 时后台执行 `aether-proxy dns sync-wan`：服务在运行、`china_dns` 含 `wan`，且现在取到的运营商 DNS 与 `state.json` 的 `wan_dns` 不同 → 执行一次重载（`/etc/init.d/aether-proxy reload`）；否则什么都不做。
+- **WAN 变化**：原有的 `/etc/hotplug.d/iface/90-aether-proxy`（04「热插拔」：WAN 上线时发 USR1 立即检测一轮，这部分不变）另在 `ifup`、`ifupdate` 时后台执行 `aether-proxy dns sync-wan`：服务在运行、`china_dns` 含 `wan`，且现在取到的运营商 DNS 与 `state.json` 的 `wan_dns` 不同 → 执行一次重载（`/etc/init.d/aether-proxy reload`）；否则什么都不做。
   开机时 daemon 常常先于 WAN 拨号完成启动，此时用 `223.5.5.5`，WAN 上线后由这一步换成运营商 DNS。重载只在 chinadns-ng 配置变化时重启它（04「重载」）。
 - 说明（写进页面）：部分运营商 DNS 会把不存在的域名解析到广告页；介意的用户改用公共 DNS。
 

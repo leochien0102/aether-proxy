@@ -375,8 +375,7 @@ function cleanup_run(parsed_opts) {
 	let lock_path = root_path(opts, C.LOCK_FILE);
 	let lock = sys.lock(lock_path);
 	// procd stops asynchronously: let the daemon finish before the fallback touches its state (docs/04).
-	// TODO(design): sys.lock does not distinguish contention from I/O failures. Keep its existing
-	// BUSY semantics for both, including bounded retries, rather than inventing a new error result.
+	// docs/04: sys.lock cannot tell contention from I/O failure; both retry, then report BUSY.
 	for (let remaining = opts.wait ?? 0; lock == null && remaining > 0; remaining--) {
 		sleep(1000);
 		lock = sys.lock(lock_path);
