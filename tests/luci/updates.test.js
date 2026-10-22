@@ -599,11 +599,21 @@ async () => {
 	}
 });
 test('T10.31 scenario 5: pre-install failures preserve original error and never claim a backend rollback', () => {
-	for (const code of ['UPDATE_FETCH_FAILED', 'MANIFEST_BAD_SIGNATURE', 'BUSY', 'JOB_LOST']) {
-		const result = model.job_result('update_package', 'aether-proxy', { ok: false, code, detail: 'WHY' }, true);
+	const skipped = Object.fromEntries(page_packages.map(name => [name, 'skipped']));
+	for (const code of ['UPDATE_FETCH_FAILED', 'MANIFEST_BAD_SIGNATURE']) {
+		// The CLI ran: its result reports the page packages as skipped.
+		const job = { state: 'failed', result: { ok: false, code, detail: 'WHY', companions: skipped } };
+		const result = model.job_result('update_package', 'aether-proxy', job, true);
 		assert.ok(result.startsWith(model.job_result('update_package', 'aether-proxy',
 			{ ok: false, code, detail: 'WHY' })));
 		assert.ok(result.endsWith('两个页面包没有改动'));
 		assert.doesNotMatch(result, /后端已回滚|已回滚到/);
+	}
+	for (const code of ['BUSY', 'JOB_LOST', 'RPC_FAILED']) {
+		// No CLI result: nothing is known about the page packages (T10.31 review).
+		const result = model.job_result('update_package', 'aether-proxy', { ok: false, code, detail: 'WHY' }, true);
+		assert.ok(result.startsWith(model.job_result('update_package', 'aether-proxy',
+			{ ok: false, code, detail: 'WHY' })));
+		assert.doesNotMatch(result, /两个页面包没有改动|后端已回滚|已回滚到/);
 	}
 });

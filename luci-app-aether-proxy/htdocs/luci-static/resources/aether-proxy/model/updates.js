@@ -80,7 +80,8 @@ function grouped_result(r) {
 	if (states.includes('failed'))
 		lines.push(_('Backend rolled back; page files are still newer. Try rolling back again or reinstalling.',
 			'aether-proxy'));
-	else if (!backend_ok)
+	// Without companions (the job itself could not be read) nothing is known about them.
+	else if (!backend_ok && r.companions)
 		lines.push(_('The two page packages were not changed.', 'aether-proxy'));
 	return lines.join('\n');
 }
