@@ -14,7 +14,7 @@
 | `dns_failsafe` | chinadns-ng 不可用（可与以上状态叠加，作为标志位） | 不变 | **已撤回**，dnsmasq 回到原配置 |
 | `error` | 启动失败，已回滚 | 无 | 无 |
 
-`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`node_ip`、`since`（进入当前状态的时间戳）、
+`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`mode`（当前生效的默认模式：启动或重载**成功应用**后写入，失败的重载不改；与 `node_id` 同理，2026-10-22 加，供概览页判断只换模式的切换何时完成，10「概览页：默认模式下拉」）、`node_ip`、`since`（进入当前状态的时间戳）、
 `last_probe`（`ok`、`latency_ms`、`at`）、`last_error`（事件码）、`components`（各组件的版本与路径）、`render_hash`（各产物的哈希）、
 `wan_dns`（本次成功应用的渲染所用的运营商下发 IPv4 DNS，按接口名排序、保持接口内顺序并去重；`china_dns` 含 `wan` 但取不到时为 `[]`，此时渲染用 `223.5.5.5`；不含 `wan` 时为 `null`。启动和重载成功应用后更新，产物没变也更新；失败的重载不覆盖原值。2026-10-22 T9.23）。
 
