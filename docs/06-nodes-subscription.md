@@ -3,9 +3,10 @@
 ## 订阅获取
 
 - 下载工具：`curl --fail --silent --show-error --max-time 30 --max-filesize 5242880 -A <UA>`，写入 `/tmp/aether-proxy-dl/sub-<段名>`。
+- `user_agent`、`fetch_via`、`interval_hours` 一律用**生效值**（单独设置 → `config sub` 通用设置 → 默认值，[05](05-config.md)「`config sub 'sub'`」，2026-10-22）。
 - `fetch_via`：
   - `direct`：直接下载
-  - `proxy`：追加 `-x http://127.0.0.1:31081`，仅当 Xray 正在运行时可用，否则失败（`SUB_PROXY_UNAVAILABLE`）
+  - `proxy`：**经当前节点**——追加 `-x http://127.0.0.1:31081`（本机 Xray 的 HTTP 入站），仅当 Xray 正在运行时可用，否则失败（`SUB_PROXY_UNAVAILABLE`）。不提供另填独立代理（2026-10-22 仓库所有者同意：订阅被墙时能用的代理就是自己的节点）
   - `auto`：先直连，失败后如果 Xray 在运行就经代理重试一次
 - 以下情况都算**下载失败**，保留旧节点不动：HTTP 非 2xx、超时、内容为空、内容超过 5MB。
 

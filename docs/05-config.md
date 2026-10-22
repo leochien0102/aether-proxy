@@ -48,6 +48,16 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `policy` | enum(`follow`\|`direct`\|`proxy`) | `follow` | |
 | `udp` | bool | `0` | 游戏模式。`policy=direct` 时必须为 0 |
 
+## `config sub 'sub'`（订阅的通用设置，2026-10-22 加，r12 窗口）
+
+各订阅没有单独设置时使用这里的值（仓库所有者定：通用设置，单个订阅可以覆盖）。段不存在（旧版升级上来的配置）时各项取默认值。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `user_agent` | 字符串 | `aether-proxy/<版本>` | 部分机场按 UA 决定返回格式，可改 |
+| `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | `auto` | `auto` = 先直连，失败再经代理；`proxy` 指**经当前节点**（本机 Xray 的 HTTP 入站），不是独立的代理（[06](06-nodes-subscription.md)） |
+| `interval_hours` | int ≥ 0 | `24` | 0 = 只手动更新。LuCI 以下拉给出 0 / 12 / 24 / 72 / 168，命令行接受任意非负整数 |
+
 ## `config subscription`（命名段 `s_<8位十六进制>`，可多个）
 
 | 字段 | 类型 | 默认值 | 说明 |
@@ -55,9 +65,12 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `enabled` | bool | `1` | |
 | `name` | 字符串 | — | |
 | `url` | URL | — | 必填 |
-| `user_agent` | 字符串 | `aether-proxy/<版本>` | 部分机场按 UA 决定返回格式，可改 |
-| `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | `auto` | `auto` = 先直连，失败再经代理（[06](06-nodes-subscription.md)） |
-| `interval_hours` | int | `24` | 0 = 只手动更新 |
+| `user_agent` | 字符串 | 空 = 跟随 `sub.user_agent` | 设了就只用于这个订阅 |
+| `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | 空 = 跟随 `sub.fetch_via` | 同上 |
+| `interval_hours` | int ≥ 0 | 空 = 跟随 `sub.interval_hours` | 同上 |
+
+**生效值**（2026-10-22）：这三项在读取配置时就合并为生效值（单独值，没有就用通用值，通用值没有就用上表默认值），调度、下载、`sub status` 等都只看生效值，不各自再判断一次。
+2026-10-22 之前写下的显式值（LuCI 新建订阅时会写 `interval_hours='24'`、`fetch_via='auto'`）照旧生效，视为单独设置；页面可提供「改为跟随通用设置」（删除该选项）。
 
 ## `config node`（命名段 `n_<32位十六进制>`）
 
@@ -75,7 +88,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `uuid` | 字符串 | vless / vmess |
 | `password` | 字符串 | trojan / shadowsocks |
 | `method` | 字符串 | shadowsocks 加密方式；vmess 的 `security`（默认 `auto`） |
-| `flow` | 字符串 | vless，如 `xtls-rprx-vision` |
+| `flow` | enum(`xtls-rprx-vision`\|`xtls-rprx-vision-udp443`)，可空 | vless。Xray v26.9.30 / v26.10.21 只接受空与这两个值（`infra/conf/vless.go`），其他值 Xray 拒绝启动（规则 7）；`-udp443` 另放行 UDP/443，其余与 Vision 相同（2026-10-22 改为枚举，r12 窗口） |
 | `encryption` | 字符串 | vless，默认 `none` |
 | `transport` | enum(`raw`\|`ws`\|`grpc`\|`httpupgrade`\|`xhttp`) | 默认 `raw`；URI 中的 `tcp` 映射为 `raw` |
 | `host` / `path` | 字符串 | ws、httpupgrade、xhttp |
@@ -92,7 +105,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `grpc_multi_mode` | bool | grpc：渲染为 `grpcSettings.multiMode`；分享链接 `mode=multi` 为真、`mode=gun` 或没有为假（2026-10-22 加） |
 | `ws_heartbeat` | 整数（秒，1–3600） | ws：渲染为 `wsSettings.heartbeatPeriod`（2026-10-22 加）。**early data 不另设字段**：Xray 26 从 `path` 的 `?ed=<字节数>` 读取，写在 `path` 里即可 |
 | `xhttp_extra` | 字符串（JSON 对象） | xhttp：原样作为 `xhttpSettings.extra`；必须能解析为 JSON 对象，否则配置无效；分享链接参数 `extra`（URL 编码的 JSON）（2026-10-22 加） |
-| `mux` | bool | 渲染出站 `mux.enabled`；默认关。**与 `flow` 为 `xtls-rprx-vision` 同时开 → 配置无效**（Vision 不支持 Mux）（2026-10-22 加） |
+| `mux` | bool | 渲染出站 `mux.enabled`；默认关。**与 `flow` 为 `xtls-rprx-vision` 或 `xtls-rprx-vision-udp443` 同时开 → 配置无效**（Vision 不支持 Mux；`-udp443` 在 Xray 中走同一段代码，r12 窗口补）（2026-10-22 加） |
 | `mux_concurrency` / `mux_xudp_concurrency` | 整数（-1–1024） | `mux.concurrency` / `mux.xudpConcurrency`；不设则不渲染（用 Xray 的默认 8 / 16）；只在 `mux` 开时渲染 |
 | `mux_xudp_udp443` | enum(`reject`\|`allow`\|`skip`) | `mux.xudpProxyUDP443`；不设则不渲染（Xray 默认 `reject`）；只在 `mux` 开时渲染 |
 | `tcp_fast_open` / `tcp_mptcp` | bool | 渲染为出站 `streamSettings.sockopt.tcpFastOpen` / `tcpMptcp`；默认关，关时不渲染（2026-10-22 加） |
@@ -162,6 +175,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    - `reality_pbk`：无填充 base64url 编码的 32 字节（恰好 43 个字符 `[A-Za-z0-9_-]`），否则 `invalid_reality_key`
    - `reality_sid`：十六进制、长度为偶数且不超过 16，否则 `invalid_short_id`
    - `pinned_cert_sha256`：逗号分隔的每一项去掉冒号后是 64 位十六进制，否则 `invalid_cert_hash`
+   - `flow`：只能为空、`xtls-rprx-vision` 或 `xtls-rprx-vision-udp443`（2026-10-22，核对 v26.9.30 与 v26.10.21 的 `infra/conf/vless.go`），否则按 enum 报错；订阅中带其他值的节点按 `invalid_value` 跳过
    - **明文禁令**：`trojan`，以及 `encryption` 为空或 `none` 的 `vless`，当 `security=none` 时，`address` 必须是私有 IPv4
      （`10/8`、`100.64/10`、`127/8`、`169.254/16`、`172.16/12`、`192.168/16`），否则 `insecure_transport`。
      Xray 对私有**域名**也放行，但它的私有域名表在 geodata 中，这里一律按公网处理（保守）。
