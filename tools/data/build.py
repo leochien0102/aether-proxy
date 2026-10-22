@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the packaged rule-data baseline from its documented upstream sources."""
+"""Build and validate rule-data baselines per docs/08-updates.md data formats and sources."""
 
 from __future__ import annotations
 
@@ -38,6 +38,18 @@ OUTPUT_SOURCES = {
         "Factual IP address list; redistribution with packages allowed by docs/08-updates.md",
     ),
 }
+
+# Built in per docs/08: IP-pinned DoH/DoT bypasses DNS-based gfw4 population.
+PUBLIC_DNS4 = (
+    "8.8.8.8",
+    "8.8.4.4",
+    "1.1.1.1",
+    "1.0.0.1",
+    "9.9.9.9",
+    "149.112.112.112",
+    "208.67.222.222",
+    "208.67.220.220",
+)
 
 MIN_LINES = {
     "gfwlist.txt": 3000,
@@ -174,7 +186,7 @@ def apnic_networks(text: str) -> list[ipaddress.IPv4Network]:
 
 
 def static_networks(text: str) -> list[ipaddress.IPv4Network]:
-    networks: set[ipaddress.IPv4Network] = set()
+    networks = {ipaddress.IPv4Network(address) for address in PUBLIC_DNS4}
     for number, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -222,6 +234,11 @@ def validate_outputs(
     for address in ("8.8.8.8", "1.1.1.1"):
         if has_address(routes, address):
             raise ValueError(f"chnroute4.txt: must not cover {address}")
+
+    static = [ipaddress.ip_network(line, strict=True) for line in outputs["gfw_static4.txt"]]
+    for address in PUBLIC_DNS4:
+        if not has_address(static, address):
+            raise ValueError(f"gfw_static4.txt: must cover {address}")
 
 
 def render_sources(
