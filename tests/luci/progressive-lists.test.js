@@ -395,6 +395,113 @@ test('T10.16 subscriptions: late initial status cannot overwrite a completed upd
 	assert.ok(buttons(h.root).filter(node => text(node) !== '删除所选').every(node => !node.disabled));
 });
 
+test('T10.29 scenarios 1/2/4: collapsed bulk import follows the table with its own summary and action row',
+async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const details = find(h.root, node => node.tag === 'details');
+	assert.equal(details.length, 1);
+	const box = details[0];
+	assert.equal(box.open, false, 'bulk import is initially collapsed');
+	assert.equal(box.attrs.open, undefined, 'no open="false" HTML attribute');
+	assert.equal(box.children[0].tag, 'summary');
+	assert.equal(text(box.children[0]), '批量导入分享链接');
+	assert.equal(box.children[1].tag, 'p');
+	assert.equal(text(box.children[1]), '一次导入多行，每行一个链接，直接加入节点列表。');
+	assert.equal(box.children[2], h.page.importText);
+	assert.equal(h.page.importText.tag, 'textarea');
+	assert.equal(h.page.importText.placeholder, '每行一个节点分享链接（URI）。');
+	assert.equal(h.page.importText.value, '');
+	const importRow = actionRow(box, ['导入'], [h.page.importResult]);
+	assert.equal(box.children.at(-1), importRow);
+	assert.equal(text(h.page.importResult), '');
+	const toolbar = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
+	const content = find(h.root, node => node.children.includes(h.maps[0].node))[0];
+	assert.deepEqual(content.children.slice(-3), [toolbar, h.maps[0].node, box],
+		'toolbar immediately precedes the table, bulk import immediately follows it');
+	assert.doesNotMatch(text(h.root), /导入 URI|Import URIs/);
+});
+
+test('T10.29 scenario 3: clicked sequential import redraws nodes, retaining open state, exact input and inline results',
+async () => {
+	const h = await harness('nodes');
+	await render(h);
+	h.reads[0].resolve(success('nodes'));
+	await flush();
+	const oldBox = h.page.importDetails;
+	const oldInput = h.page.importText;
+	const input = '\n  vless://new  \r\n\nvmess://duplicate\nbad://invalid\n';
+	oldBox.open = true; // Native summary expansion changes the details.open property.
+	oldInput.value = input;
+	const importButton = buttons(oldBox).find(node => text(node) === '导入');
+	importButton.click({ currentTarget: importButton });
+	await flush();
+	assert.equal(importButton.disabled, true);
+	assert.deepEqual(h.calls.slice(1), [['node_import', { uri: 'vless://new' }]],
+		'the next line waits for the previous reply');
+	h.nodes.push({ '.name': 'n_new', label: 'Newly imported', source: 'manual' });
+	h.reads[1].resolve({ ok: true, node: 'n_new', duplicate: false });
+	await flush();
+	assert.deepEqual(h.calls.slice(1), [
+		['node_import', { uri: 'vless://new' }], ['node_import', { uri: 'vmess://duplicate' }]
+	]);
+	h.reads[2].resolve({ ok: true, node: 'n_b', duplicate: true });
+	await flush();
+	assert.deepEqual(h.calls[3], ['node_import', { uri: 'bad://invalid' }]);
+	h.reads[3].resolve({ ok: false, code: 'CONFIG_INVALID', detail: '<invalid link>' });
+	await flush();
+	assert.deepEqual(h.calls[4], ['probe_results', undefined]);
+	h.reads[4].resolve(success('nodes'));
+	await flush();
+	assert.equal(h.maps.length, 2, 'an added node triggers a full page rebuild');
+	assert.notEqual(h.page.importDetails, oldBox);
+	assert.notEqual(h.page.importText, oldInput);
+	assert.equal(h.page.importDetails.open, true);
+	assert.equal(h.page.importText.value, input, 'do not trim or clear the submitted textarea');
+	assert.match(text(h.maps[1].node), /Newly imported/);
+	assert.equal(text(h.page.importResult), '新增 1 个，已存在 1 个，失败 1 个#5 CONFIG_INVALID: <invalid link>');
+	assert.equal(find(h.page.importDetails, node => node === h.page.importResult).length, 1);
+	assert.equal(find(h.page.importResult, node => node.tag === 'li').length, 1);
+	assert.equal(find(h.page.importResult, node => node.tag === 'invalid').length, 0);
+	actionRow(h.page.importDetails, ['导入'], [h.page.importResult]);
+	assert.equal(h.uciCalls.some(call => call[0] === 'notify'), false, 'results stay in the block, not a toast');
+	assert.equal(buttons(h.page.importDetails)[0].disabled, false);
+
+	// Further redraws preserve the user's choice to collapse, rather than always forcing open.
+	h.page.importDetails.open = false;
+	const pending = h.page.rebuild();
+	await flush();
+	h.reads[5].resolve(success('nodes'));
+	await pending;
+	assert.equal(h.page.importDetails.open, false);
+	assert.equal(h.page.importText.value, input);
+	assert.match(text(h.page.importResult), /^新增 1 个，已存在 1 个，失败 1 个/);
+});
+
+test('T10.29 scenario 3: duplicate-only and failed imports replace inline results without rebuilding', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	h.page.importDetails.open = true;
+	h.page.importText.value = 'vless://duplicate';
+	const box = h.page.importDetails;
+	const pending = h.page.handleImport({});
+	await flush();
+	h.reads[1].resolve({ ok: true, node: 'n_b', duplicate: true });
+	await pending;
+	assert.equal(text(h.page.importResult), '新增 0 个，已存在 1 个，失败 0 个');
+	h.page.importText.value = '\nbad://invalid';
+	const failed = h.page.handleImport({});
+	await flush();
+	h.reads[2].resolve({ ok: false, code: 'CONFIG_INVALID', detail: 'malformed' });
+	await failed;
+	assert.equal(text(h.page.importResult), '新增 0 个，已存在 0 个，失败 1 个#2 CONFIG_INVALID: malformed');
+	assert.equal(h.page.importDetails, box);
+	assert.equal(box.open, true);
+	assert.equal(h.page.importText.value, '\nbad://invalid');
+	assert.equal(h.maps.length, 1);
+	assert.equal(h.uciCalls.some(call => call[0] === 'notify'), false);
+});
+
 test('T10.27 scenarios 1/2: node actions share progress before the table; Import has its own bottom row', async () => {
 	const h = await harness('nodes');
 	await render(h);
