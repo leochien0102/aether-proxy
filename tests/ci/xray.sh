@@ -5,7 +5,7 @@
 # so a field one of them does not know is caught in CI rather than on a device (06). Each
 # archive is verified against the upstream .dgst file (SHA2-256) before it is unpacked.
 # Bump XRAY_LATEST_TESTED when a newer Xray release appears.
-XRAY_LATEST_TESTED=26.10.10
+XRAY_LATEST_TESTED=26.10.21
 set -u
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
