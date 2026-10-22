@@ -931,6 +931,16 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 - 服务没在运行时：`reload: false` →「已设为默认，下次启动时使用」（节点、模式各自或合在一起的写法同现有「已设为当前节点，下次启动时使用」）。
 - **依赖**：后端 T9.20（`mode_use`、`node_use` 带 `mode`，已合并），以及 `state.json`/`status` 增加 `mode`（启动或重载成功应用后写入当前模式；需后端出卡）。没有 `status.mode` 就无法判断只换模式的切换何时完成。
 
+### 日志页：事件里显示名称而不是 ID（2026-10-22 定，T10.39；仓库所有者定）
+
+- 日志页载入时读 UCI（已经在读），建两张对照表：节点段名 → `label`（没有 `label` 用段名），订阅段名 → `name`（没有用段名）。
+- `model/logs.js` 的 `message(event, names)` 填模板时，`node`、`from_node`、`to_node` 换成节点名称，`sub` 换成订阅名称；涉及 `RELOAD_APPLIED`、`SERVICE_STOPPED`、`NODE_RESOLVE_*`、`NODE_IP_CHANGED`、`NODE_STALE*`、`NODE_INSECURE_IGNORED` 与全部 `SUB_*` 模板。
+  名称的取法：事件自带 `label` 时优先用它（事件发生时的名称）；否则查对照表；都查不到（节点或订阅已删除）→「已删除的节点」/「已删除的订阅」。参数缺失时照旧显示「–」。
+- 「节点 {node}（{label}）」一类模板改成只显示一次名称：`NODE_STALE`「节点 {node} 已失效」、`NODE_STALE_IN_USE`「当前节点 {node} 已失效」、`NODE_INSECURE_IGNORED`「已忽略节点 {node} 的不安全设置」。
+- 悬停（`title`）照旧是原始参数的 JSON（含 ID），方便排查。
+- `names` 省略时行为与现在相同（显示 ID），模型保持纯函数。概览页「切换未生效」横幅里的原因（`logs.message(reason)`）也传入它已有的节点名称表（订阅表为空）。
+- 已知限制：旧事件只存了 ID，节点改名后显示的是新名称；「原始日志」标签页是 syslog 原文，仍是 ID。要解决需后端在事件与 syslog 中写入当时的名称（如 `RELOAD_APPLIED` 加 `from_label`/`to_label`），先不做，r13 窗口看实际体验再定。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
