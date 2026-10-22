@@ -32,7 +32,8 @@ init.d / hotplug / daemon ──────────────────
 | `sub update [<sub>]` | 更新订阅（不带参数时更新全部） | 是 |
 | `sub status` | 读取各订阅最近一次更新的记录（`sub.json`） | 否 |
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
-| `node use <id>` | 切换当前节点：写 `main.node` 并提交，服务在运行时立即触发重载，**不等重载完成**（见下方「切换节点」，2026-10-21） | 否 |
+| `node use <id> [--mode <模式>]` | 切换当前节点：写 `main.node` 并提交，服务在运行时立即触发重载，**不等重载完成**（见下方「切换节点」，2026-10-21）；带 `--mode` 时同时改默认模式，只重载一次（2026-10-22） | 否 |
+| `mode use <模式>` | 只切换默认模式（`main.mode`），做法同 `node use`（见下方「切换默认模式」，2026-10-22） | 否 |
 | `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
 | `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |
@@ -162,6 +163,17 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
   只读 `/etc/config/aetherproxy` 本身，不带上 `/tmp/.uci` 或会话里暂存的改动（libuci 用绝对路径加载时不回放暂存改动）。
 - 页面（前端）：概览「使用此节点」、节点页「设为当前」改调 rpcd `node_use`，返回后重新读 UCI 与 `status`，「正在切换到…」的提示（「切换节点未生效时提示」）立即出现。
 
+### 切换默认模式（`mode use`、`node use --mode`，2026-10-22 定，r12 窗口）
+
+仓库所有者提出：概览页要能选默认模式，可以只换节点、只换模式，或一起换。原来模式只能在规则与 DNS 页改、走 LuCI 的「保存并应用」。
+
+- `mode use <模式>`：`<模式>` 必须是 `gfw`、`bypass_cn`、`global` 之一，否则 `USAGE`。与 `main.mode` 相同 → `{ "ok": true, "mode": <模式>, "previous": <模式>, "reload": false }`，什么都不做；
+  不同 → 只写 `main.mode` 并提交，服务在运行时发重载、不等完成，返回 `{ "ok": true, "mode": <模式>, "previous": <原值>, "reload": true }`。是否在运行、只读 `/etc/config/aetherproxy`、失败的错误码与退出码，**全部与 `node use` 相同**（同一个函数实现）。
+- `node use <id> --mode <模式>`：节点与模式在**同一次** `commit` 里写入，最多发一次重载（两项都没变 → `reload: false`）。输出在原有字段之外加 `mode`、`previous_mode`；不带 `--mode` 时输出与原来完全相同。
+  `<模式>` 不合法 → `USAGE`，节点也不改。
+- 只换模式的重载不重启 Xray（Xray 配置与模式无关），r11/r12 实测约 8 秒（`nft_replace` + `restart_chinadns`）。
+- 页面（前端）：概览页节点下拉旁加「默认模式」下拉，「应用」按两者是否变化调 `node_use`（带或不带 `mode`）或 `mode_use`；切换中的横幅与按钮变灰沿用切换节点的做法。
+
 ## rpcd 插件
 
 形式：`/usr/share/rpcd/ucode/aetherproxy.uc`（rpcd 的 ucode 插件机制，与后端语言选择无关，24.10 起可用）。
@@ -180,7 +192,8 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
 | `components` | — | `components`（read，超时 15 秒，T10.4） |
-| `node_use` | `id`（正则 `^n_[0-9a-f]{32}$`） | `node use <id>`（write，10 秒） |
+| `node_use` | `id`（正则 `^n_[0-9a-f]{32}$`）；可选 `mode`（`gfw\|bypass_cn\|global`，2026-10-22） | `node use <id> [--mode <mode>]`（write，10 秒） |
+| `mode_use` | `mode`（`gfw\|bypass_cn\|global`） | `mode use <mode>`（write，10 秒，2026-10-22） |
 | `probe_url` | `site`（`probe sites` 列出的名称之一，正则 `^[a-z0-9]{1,16}$`） | `probe url <site>`（write，超时 = `probe.timeout` + 5 秒） |
 | `probe_sites` | — | `probe sites`（read） |
 | `sub_status` | — | `sub status`（read） |

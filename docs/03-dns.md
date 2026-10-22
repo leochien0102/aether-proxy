@@ -39,6 +39,9 @@ LAN 客户端 ─53─▶ dnsmasq（系统实例）─▶ chinadns-ng 127.0.0.1:
 | `udirect` | `/etc/aether-proxy/custom/direct_domain.txt` | china_dns | `inet@aetherproxy@udirect4` |
 | `boot` | 所有节点的域名（渲染时生成 `/var/run/aether-proxy/boot.txt`） | direct_dns | — |
 
+**有启用的 `gfw` 设备覆盖时**（02「主机策略模型」，2026-10-22）：`bypass_cn` 下另加 `add-taggfw-ip inet@aetherproxy@gfw4,null`；`global` 下另加 `gfwlist-file` 与同一行 `add-taggfw-ip`。
+两种情况下 gfwlist 域名本来就走 trust（`bypass_cn` 中 gfwlist 优先，`global` 的 default-tag 就是 `gfw`），所以**解析结果不变**，只是把这些域名的 IP 写进 `gfw4` 供 `mode_gfw` 使用。没有 `gfw` 设备时配置与之前逐字节相同。
+
 Apple 域名在全局模式下放进 chnlist，用国内 DNS 解析，但**不会写入任何直连集合**，流量照常走代理——
 与需求一致（Apple 库只决定解析结果，不改变路由）。
 

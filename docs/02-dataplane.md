@@ -45,7 +45,10 @@
 
 每台主机在 UCI 里只有一个 `host` 段（[05](05-config.md)）：
 
-- `policy`：`follow`（跟随模式）／ `direct`（不走代理）／ `proxy`（强制代理）
+- `policy`：`follow`（跟随默认模式 `main.mode`）／ `direct`（不走代理）／ `bypass_cn`（这台设备按绕过大陆）／ `gfw`（这台设备只代理被墙网站）／ `proxy`（全局：这台设备所有流量走代理）。
+  `bypass_cn`、`gfw` 为 2026-10-22 加（r12 窗口，仓库所有者定：设备覆盖可以跳出默认模式）。**DNS 只有一套，按默认模式解析**（03）；设备的模式与默认模式不同时，
+  走代理的 HTTP/TLS 流量由 Xray 嗅探出域名、节点按域名连接（`sniffing`，`routeOnly=false`），基本不受影响；只有嗅探不出域名的流量按本地解析的 IP 连接。
+  `gfw` 设备依赖 `gfw4` 集合，所以只要有启用的 `gfw` 设备，chinadns-ng 在任何默认模式下都写这个集合（03「各模式的分流」）。
 - `udp`：游戏模式开关。**只在 policy ≠ direct 时有效**，`direct` + `udp=1` 是配置错误，保存时拒绝。
 - 匹配依据：`ip`（IP 或 CIDR，可多个）和/或 `mac`（可多个）。
 
@@ -59,7 +62,7 @@ helloworld 的三种访问控制方式对应如下，不再单独建名单：
 
 **冲突校验**（渲染前做，失败就是配置错误，退出码 2）：同一个 IP、CIDR 或 MAC 出现在两个 host 段中即报错。
 CIDR 之间互相包含（如 `192.168.1.0/24` 和 `192.168.1.10`）**允许**，按 nft 集合的判定顺序
-`direct` → `proxy` → `follow` 生效，并在 LuCI 中提示。
+`direct` → `proxy` → `bypass_cn` → `gfw` → `follow` 生效（代理范围大的在前），并在 LuCI 中提示。
 
 MAC 匹配用 `ether saddr`，只对在二层直连 LAN 网桥的主机有效（经过另一台路由器的主机看到的是那台路由器的 MAC）。
 
@@ -88,6 +91,10 @@ table inet aetherproxy {
 	set host_proxy_mac  { type ether_addr; ... }
 	set host_follow4    { type ipv4_addr;  flags interval; auto-merge; ... }
 	set host_follow_mac { type ether_addr; ... }
+{% for p in host_modes %}                      # 只有启用的主机用到的覆盖模式：bypass_cn、gfw（顺序同下）
+	set host_{{p}}4    { type ipv4_addr;  flags interval; auto-merge; ... }
+	set host_{{p}}_mac { type ether_addr; ... }
+{% endfor %}
 	set host_udp4       { type ipv4_addr;  flags interval; auto-merge; ... }
 	set host_udp_mac    { type ether_addr; ... }
 
@@ -113,6 +120,10 @@ table inet aetherproxy {
 		ether saddr @host_direct_mac return
 		ip saddr @host_proxy4 goto proxy
 		ether saddr @host_proxy_mac goto proxy
+{% for p in host_modes %}
+		ip saddr @host_{{p}}4 goto mode_{{p}}
+		ether saddr @host_{{p}}_mac goto mode_{{p}}
+{% endfor %}
 		ip saddr @host_follow4 goto by_mode
 		ether saddr @host_follow_mac goto by_mode
 {% if unlisted_policy == "follow" %}
@@ -133,6 +144,15 @@ table inet aetherproxy {
 		goto proxy
 {% endif %}
 	}
+
+{% for p in host_modes %}                      # 设备覆盖的模式：与 by_mode 中该模式的规则相同
+	chain mode_{{p}} {
+		ip daddr @proxy_ip4 goto proxy
+		ip daddr @uproxy4 goto proxy
+		（p == gfw：ip daddr @gfw4 goto proxy；ip daddr @gfw_static4 goto proxy）
+		（p == bypass_cn：ip daddr @chnroute4 return；goto proxy）
+	}
+{% endfor %}
 
 	chain proxy {
 		meta l4proto tcp meta mark set meta mark | 0x00080000 tproxy ip to :31080 accept
@@ -173,6 +193,8 @@ table inet aetherproxy {
 
 要点：
 
+- **设备覆盖的模式**（2026-10-22）：`host_modes` 为启用的主机中出现过的 `bypass_cn`、`gfw`（按这个顺序），没有就为空——此时输出与之前**逐字节相同**（黄金样本不变）。
+  `mode_<p>` 的内容与默认模式为 `<p>` 时 `by_mode` 的内容相同（由同一个函数生成）。全局（`proxy`）直接 `goto proxy`，不需要单独的链。游戏模式（`host_udp*`）在 `proxy` 链里判断，对所有覆盖模式都有效。
 - 开头的 `table … / delete table …` 两行让同一份文件既能首次加载，也能整体替换，并且在一个事务里完成，
   替换过程中不会出现规则缺口。
 - `input_guard` 能工作的原因：经过 TPROXY 的包目的地址仍是远端 IP，`fib daddr type local` 不成立；

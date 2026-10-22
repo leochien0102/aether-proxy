@@ -10,10 +10,10 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `enabled` | bool | `0` | |
-| `mode` | enum(`gfw`\|`bypass_cn`\|`global`) | `bypass_cn` | |
+| `mode` | enum(`gfw`\|`bypass_cn`\|`global`) | `bypass_cn` | **默认模式**（页面用语，2026-10-22 定）：绕过大陆 / 仅代理被墙网站（GFW）/ 全局（所有流量走代理）。全局只有这一个，换节点不改变它；访问控制的设备覆盖可以另选模式（02「主机策略模型」） |
 | `node` | 节点段名 | — | 当前节点。为空则无法启用 |
 | `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名） |
-| `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略（[02](02-dataplane.md)） |
+| `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略：跟随默认模式 / 直连（[02](02-dataplane.md)） |
 | `quic_block` | bool | `1` | 代理目标的 UDP 443 拒绝（非游戏模式主机） |
 | `dns_hijack` | bool | `1` | 劫持 LAN 的 53 端口到路由器（direct 主机除外） |
 | `ipv6_filter` | bool | `1` | 过滤 AAAA |
@@ -45,7 +45,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `name` | 字符串 | — | 仅用于显示 |
 | `ip` | list IPv4 或 CIDR | — | `ip` 和 `mac` 至少填一个 |
 | `mac` | list MAC | — | 统一转为小写冒号格式 |
-| `policy` | enum(`follow`\|`direct`\|`proxy`) | `follow` | |
+| `policy` | enum(`follow`\|`direct`\|`bypass_cn`\|`gfw`\|`proxy`) | `follow` | 跟随默认模式 / 直连 / 绕过大陆 / 仅代理被墙网站 / 全局（`proxy`，所有流量走代理；值名沿用，旧配置不迁移）。`bypass_cn`、`gfw` 为 2026-10-22 加（r12 窗口，仓库所有者定：覆盖可以跳出默认模式），见 02 |
 | `udp` | bool | `0` | 游戏模式。`policy=direct` 时必须为 0 |
 
 ## `config sub 'sub'`（订阅的通用设置，2026-10-22 加，r12 窗口）
