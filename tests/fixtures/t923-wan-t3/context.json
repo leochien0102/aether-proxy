@@ -1,0 +1,12 @@
+{
+  "wan_dns": ["202.96.128.86", "202.96.134.133"],
+  "runtime": {"dns_tier": "T3"},
+  "paths": {
+    "gfwlist": "/usr/share/aether-proxy/data/gfwlist.txt",
+    "chnlist": "/usr/share/aether-proxy/data/chnlist.txt",
+    "apple": "/usr/share/aether-proxy/data/apple.txt",
+    "proxy_domain": "/etc/aether-proxy/custom/proxy_domain.txt",
+    "direct_domain": "/etc/aether-proxy/custom/direct_domain.txt",
+    "boot_list": "/var/run/aether-proxy/boot.txt"
+  }
+}

@@ -275,25 +275,27 @@ function component_metadata(previous, components) {
 	return updated;
 };
 
-// Binary overrides need fresh metadata even when renderer hashes do not change.
+// Binary overrides and WAN observations need fresh metadata even when outputs do not change.
 // The documented action plan still depends only on rendered outputs, not UCI inputs.
-function retain_components(daemon, components) {
+function retain_metadata(daemon, components, wan_dns) {
 	let previous = daemon.state.components;
-	let changed = false;
+	// WAN can become available with the same address as the fallback, leaving all
+	// artifact hashes unchanged. Still record the observation or every hotplug reloads.
+	let changed = sprintf('%.J', daemon.state.wan_dns) != sprintf('%.J', wan_dns);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
 		if (previous?.[name]?.path != components[name].path)
 			changed = true;
 	if (!changed)
 		return { ok: true };
-	let updated = { ...daemon.state, components: component_metadata(previous, components) };
+	let updated = { ...daemon.state, wan_dns, components: component_metadata(previous, components) };
 	if (!state_file.write(run_dir(daemon), updated))
-		return { ok: false, detail: `cannot update component metadata: ${state_file.error()}` };
+		return { ok: false, detail: `cannot update reload metadata: ${state_file.error()}` };
 	daemon.state = updated;
 	return { ok: true };
 };
 
 function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components,
-	old_lan_ifaces, new_lan_ifaces, new_node_id, detail) {
+	old_lan_ifaces, new_lan_ifaces, new_node_id, wan_dns, detail) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let previous = `${run_dir(daemon)}/${C.DAEMON_PREVIOUS_DIR}`;
@@ -320,6 +322,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	let updated = {
 		...daemon.state,
 		node_id: new_node_id,
+		wan_dns,
 		components: component_metadata(daemon.state.components, components),
 		render_hash: stage_hashes
 	};
@@ -414,7 +417,7 @@ function run(daemon, started_ms) {
 	if (!length(rough_plan)) {
 		if (!discard_stage(daemon, stage))
 			return failure(daemon, 'staging_cleanup', `cannot discard ${stage}`);
-		let retained = retain_components(daemon, validated.components);
+		let retained = retain_metadata(daemon, validated.components, loaded.wan_dns);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
 		return { ok: true, actions: [], snapshot, state: daemon.state };
@@ -494,7 +497,7 @@ function run(daemon, started_ms) {
 
 	if (!length(actions)) {
 		discard_stage(daemon, stage);
-		let retained = retain_components(daemon, components);
+		let retained = retain_metadata(daemon, components, loaded.wan_dns);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
 		daemon.ctx.lan_ifaces = snapshot.main.lan_ifaces ?? [];
@@ -507,7 +510,7 @@ function run(daemon, started_ms) {
 	daemon.state = { ...daemon.state, node_ip };
 	step_started = monotonic_ms();
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
-		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, detail);
+		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, loaded.wan_dns, detail);
 	if (!applied.ok) {
 		daemon.state = old_state;
 		daemon.ctx.dnsmasq_instance = old_instance;

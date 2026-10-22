@@ -1,0 +1,6 @@
+config global 'main'
+	option mode 'bypass_cn'
+
+config dns 'dns'
+	list china_dns 'wan'
+	list china_dns '114.114.114.114'

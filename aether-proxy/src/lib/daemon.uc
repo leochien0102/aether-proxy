@@ -473,6 +473,9 @@ function start_sequence(ctx, opts, signal_pending) {
 		locked.close();
 		return { ok: false, code: initial.exit ?? 1, step: 'render', detail: initial.detail };
 	}
+	// This is the snapshot whose chinadns output is actually published. Later builds
+	// only replace Xray/nft, so monitor and state must keep this WAN DNS observation.
+	snapshot = initial.snapshot;
 	let prepared = ensure_clean_dir(ctx, staging);
 	if (!prepared.ok) {
 		record_step(ctx, 'render_validate', step_started);
@@ -652,6 +655,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		node_id, node_ip, since: time(), waiting_network: false,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
 		components,
+		wan_dns: initial.wan_dns,
 		render_hash: hashed.hashes
 	};
 	step_started = monotonic_ms();

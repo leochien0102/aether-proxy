@@ -51,7 +51,7 @@ define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/aether-proxy.init $(1)/etc/init.d/aether-proxy
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
-	$(INSTALL_BIN) ./files/aether-proxy.hotplug $(1)/etc/hotplug.d/iface/90-aether-proxy
+	$(INSTALL_BIN) ./files/aether-proxy.hotplug $(1)/etc/hotplug.d/iface/80-aether-proxy
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./files/aether-proxy.uci-defaults $(1)/etc/uci-defaults/99-aether-proxy
 	$(INSTALL_DIR) $(1)/etc/aether-proxy/custom

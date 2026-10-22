@@ -1,0 +1,10 @@
+{
+  "wan_dns": [],
+  "runtime": {"dns_tier": "T3"},
+  "paths": {
+    "gfwlist": "/usr/share/aether-proxy/data/gfwlist.txt",
+    "proxy_domain": "/etc/aether-proxy/custom/proxy_domain.txt",
+    "direct_domain": "/etc/aether-proxy/custom/direct_domain.txt",
+    "boot_list": "/var/run/aether-proxy/boot.txt"
+  }
+}

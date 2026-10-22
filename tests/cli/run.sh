@@ -582,6 +582,13 @@ else
 	bad 'T10.8 lazy subcommand CLI scenarios'
 fi
 
+# T9.23: real pipeline, sync-wan decisions, daemon publication and incremental DNS reload.
+if python3 "$ROOT/tests/cli/wan-dns.py"; then
+	ok 'T9.23 WAN DNS CLI and lifecycle scenarios'
+else
+	bad 'T9.23 WAN DNS CLI and lifecycle scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

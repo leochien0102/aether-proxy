@@ -1,0 +1,25 @@
+#!/bin/sh
+# T9.23: optional interface-dump reply/failure controls; unrelated suites see no ISP DNS.
+if [ -n "${WAN_DNS_CALLS:-}" ]; then
+	printf '%s\n' "$*" >> "$WAN_DNS_CALLS"
+fi
+if [ "$*" != 'call network.interface dump' ]; then
+	echo "unexpected ubus arguments: $*" >&2
+	exit 2
+fi
+case "${WAN_DNS_MODE:-ok}" in
+	fail) echo 'injected ubus failure' >&2; exit 7 ;;
+	timeout) exec sleep 5 ;;
+	invalid) printf 'not JSON\n'; exit 0 ;;
+esac
+# Optional single-use reply reproduces WAN arrival between startup's two reads.
+if [ -n "${WAN_DNS_ONCE_REPLY:-}" ] && [ -f "$WAN_DNS_ONCE_REPLY" ]; then
+	cat "$WAN_DNS_ONCE_REPLY" || exit 3
+	rm "$WAN_DNS_ONCE_REPLY"
+	exit $?
+fi
+if [ -n "${WAN_DNS_REPLY:-}" ]; then
+	cat "$WAN_DNS_REPLY"
+else
+	printf '{"interface":[]}\n'
+fi

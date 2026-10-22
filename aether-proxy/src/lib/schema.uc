@@ -10,7 +10,8 @@
 //   default   value used when the option is unset or empty (null = no default)
 //   enum      allowed values (type enum)
 //   min, max  inclusive bounds (type int)
-//   item      element type of a list: ipv4 | ip_or_cidr | mac | upstream | trust_dns | hostport | url | string
+//   item      list element type: ipv4 | ip_or_cidr | mac | upstream | china_dns | trust_dns
+//             | hostport | url | string
 //   min_items, max_items   list length bounds
 //   required  unset is an error: true, or (node only) a list of the protocols for which it is
 //             required; with `protocols` set, true means "for those protocols"
@@ -57,7 +58,7 @@ const main = [
 ];
 
 const dns = [
-	{ name: 'china_dns', type: 'list', item: 'upstream', default: [ '223.5.5.5', '114.114.114.114' ] },
+	{ name: 'china_dns', type: 'list', item: 'china_dns', default: [ 'wan', '114.114.114.114' ] },
 	{ name: 'trust_dns', type: 'list', item: 'trust_dns', min_items: 1, max_items: 2,
 	  default: [ '8.8.8.8', '1.1.1.1' ] },
 	{ name: 'direct_dns', type: 'list', item: 'upstream', default: [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ] },

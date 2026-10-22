@@ -7,6 +7,8 @@
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
+import * as sys from 'aetherproxy.sys';
+import { ipv4 } from 'aetherproxy.net';
 import * as config from 'aetherproxy.config';
 import * as data from 'aetherproxy.data';
 import * as nft from 'aetherproxy.render.nft';
@@ -62,6 +64,45 @@ function static_runtime() {
 	return { node_ip: null, dns_tier: 'T2', restored: {} };
 }
 
+// docs/03 "运营商下发的 DNS": only live default-route interfaces contribute IPv4 DNS.
+// Keep parsing pure so malformed ubus replies are treated like an unavailable WAN.
+export function wan_dns_from_dump(dump) {
+	if (type(dump) != 'object' || type(dump.interface) != 'array')
+		return [];
+	let interfaces = filter(dump.interface, iface => type(iface) == 'object' &&
+		type(iface.interface) == 'string' && iface.up == true);
+	sort(interfaces, (a, b) => a.interface < b.interface ? -1 : a.interface > b.interface ? 1 : 0);
+	let out = [];
+	for (let iface in interfaces) {
+		if (type(iface.route) != 'array' || type(iface['dns-server']) != 'array')
+			continue;
+		let defaults = filter(iface.route, route => type(route) == 'object' &&
+			route.target == '0.0.0.0' && route.mask == 0);
+		if (!length(defaults))
+			continue;
+		for (let value in iface['dns-server'])
+			if (type(value) == 'string' && ipv4(value) != null && index(out, value) < 0)
+				push(out, value);
+	}
+	return out;
+};
+
+export function read_wan_dns(opts) {
+	let bin = opts.bin_dir ? `${opts.bin_dir}/ubus` : 'ubus';
+	let result = sys.run([ bin, 'call', 'network.interface', 'dump' ],
+		{ timeout: C.WAN_DNS_TIMEOUT_SECS, quiet: true });
+	// No event on failure or timeout: the fallback exists specifically for WAN startup (03).
+	if (result.code != 0)
+		return [];
+	try {
+		return wan_dns_from_dump(json(result.stdout));
+	}
+	catch (e) {
+		// A malformed dump is unavailable DNS, not a configuration error.
+		return [];
+	}
+};
+
 // Read once before node resolution, including warning events and all six list paths.
 // Failures retain build()'s { ok: false, code, detail, errors, exit } contract.
 export function read(opts) {
@@ -104,7 +145,9 @@ export function read(opts) {
 		direct_domain: custom_dir + '/' + C.CUSTOM_DOMAIN_FILES.direct_domain,
 		boot_list: run_dir(opts) + '/' + C.BOOT_LIST_FILE
 	};
-	return { ok: true, snapshot: cfg.snapshot, data: d.data, paths, warnings };
+	let wan_dns = index(cfg.snapshot.dns.china_dns, 'wan') >= 0 ? read_wan_dns(opts) : null;
+	cfg.snapshot.dns.china_dns = config.expand_china_dns(cfg.snapshot.dns.china_dns, wan_dns);
+	return { ok: true, snapshot: cfg.snapshot, wan_dns, data: d.data, paths, warnings };
 };
 
 // No file reads or warning events here. A fresh context leaves the read result reusable
@@ -119,6 +162,7 @@ export function render(loaded, runtime, only) {
 	runtime ??= static_runtime();
 	let ctx = {
 		data: loaded.data,
+		wan_dns: loaded.wan_dns ?? null,
 		runtime: {
 			node_ip: runtime.node_ip ?? null,
 			dns_tier: runtime.dns_tier ?? 'T2',
@@ -143,7 +187,8 @@ export function render(loaded, runtime, only) {
 		}
 	}
 
-	return { ok: true, snapshot: loaded.snapshot, ctx, artifacts, warnings: loaded.warnings };
+	return { ok: true, snapshot: loaded.snapshot, wan_dns: loaded.wan_dns ?? null,
+		ctx, artifacts, warnings: loaded.warnings };
 };
 
 // Compatibility entry point: same signature, defaults, errors and four artifacts.
