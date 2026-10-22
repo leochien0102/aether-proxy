@@ -188,7 +188,11 @@ return view.extend({
 	add: function() {
 		const id = model.new_id(uci.sections('aetherproxy').map(s => s['.name']), () => window.crypto.getRandomValues(new Uint8Array(4)));
 		uci.add('aetherproxy', 'subscription', id);
-		return this.redraw().then(() => this.grid.renderMoreOptionsModal(id));
+		/* Same as GridSection.handleAdd: Cancel removes the new section and Save
+		   keeps it (the modal Save re-renders the table). Without this, Cancel
+		   left an empty subscription in the page. */
+		this.map.addedSection = id;
+		return this.grid.renderMoreOptionsModal(id);
 	},
 	update: async function(ids) {
 		if (this.busy || ids.some(id => this.pendingIds.has(id)))

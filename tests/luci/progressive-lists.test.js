@@ -439,9 +439,13 @@ test('T10.28 scenario 1: subscription grid has one Name column and no section-na
 test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed sections show dashes', async () => {
 	const h = await harness('subscriptions');
 	await render(h);
+	const before = h.maps.length;
 	await h.page.add();
 	const id = 's_01010101';
 	assert.equal(h.page.grid.modal.id, id);
+	assert.equal(h.page.map.addedSection, id, 'GridSection Cancel removes the new section');
+	assert.equal(h.maps.length, before, 'the table is not redrawn before Save');
+	assert.equal(find(h.root, node => node.sid === id).length, 0, 'no row until the modal is saved');
 	for (const [option, value] of Object.entries({ name: 'New saved name',
 		url: 'https://new.example/path?token=SECRET', enabled: '0', interval_hours: '0', fetch_via: 'proxy' }))
 		h.uci.set('aetherproxy', id, option, value);
