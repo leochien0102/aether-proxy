@@ -213,6 +213,9 @@ function validation_skip(node) {
 			return 'insecure_transport';
 		if (error.code == 'unsupported_method')
 			return 'unsupported_security';
+		// Flow is an Xray value error, not a malformed URI (docs/05 rule 7).
+		if (error.field == 'node.flow' && error.code == 'invalid_enum')
+			return 'invalid_value';
 		if (index([ 'invalid_reality_key', 'invalid_short_id', 'invalid_cert_hash' ], error.code) >= 0)
 			return 'invalid_value';
 	}

@@ -107,7 +107,8 @@ const node = [
 	{ name: 'password', type: 'string', protocols: [ 'trojan', 'shadowsocks' ], required: true, default: null },
 	// ss: required and checked against SS_METHODS; vmess: the `security` value, default auto.
 	{ name: 'method', type: 'string', protocols: [ 'shadowsocks', 'vmess' ], required: [ 'shadowsocks' ], default: null, proto_default: { vmess: 'auto' } },
-	{ name: 'flow', type: 'string', protocols: [ 'vless' ], default: null },
+	{ name: 'flow', type: 'enum', enum: [ 'xtls-rprx-vision', 'xtls-rprx-vision-udp443' ],
+	  protocols: [ 'vless' ], default: null },
 	{ name: 'encryption', type: 'string', protocols: [ 'vless' ], default: null, proto_default: { vless: 'none' } },
 	{ name: 'transport', type: 'enum', enum: [ 'raw', 'ws', 'grpc', 'httpupgrade', 'xhttp' ], default: 'raw' },
 	{ name: 'host', type: 'string', default: null },

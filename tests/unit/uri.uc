@@ -81,6 +81,24 @@ export const cases = [
 		} }
 	},
 	{
+		name: 'vless Vision UDP443 sharing preserves flow', fn: 'line',
+		input: `vless://${UUID}@edge.example:443?security=tls&flow=xtls-rprx-vision-udp443`,
+		expect: { node: {
+			protocol: 'vless', address: 'edge.example', port: 443, uuid: UUID,
+			transport: 'raw', security: 'tls', encryption: 'none', flow: 'xtls-rprx-vision-udp443'
+		} }
+	},
+	{
+		name: 'legacy flow skips as invalid_value', fn: 'line',
+		input: `vless://${UUID}@edge.example:443?security=tls&flow=xtls-rprx-direct`,
+		expect: { skip: 'invalid_value' }
+	},
+	{
+		name: 'unknown flow skips as invalid_value', fn: 'line',
+		input: `vless://${UUID}@edge.example:443?security=tls&flow=unknown`,
+		expect: { skip: 'invalid_value' }
+	},
+	{
 		name: 'vless ws tls', fn: 'line',
 		input: `vless://${UUID}@ws.example.com:443?type=ws&security=tls&host=cdn.example.com&path=%2Fws#ws`,
 		expect: { node: {
