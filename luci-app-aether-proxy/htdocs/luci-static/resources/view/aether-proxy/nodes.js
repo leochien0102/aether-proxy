@@ -25,6 +25,7 @@
  * Manual additions and separate protocol columns follow 「添加节点」「节点表的协议列」 (T10.26).
  * Collapsible bulk imports retain input and results across redraws (「节点页第三轮修正」, T10.29).
  * Transport, security and Mux modal options follow 「节点编辑框新字段」 (T10.30).
+ * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
  */
 
 return view.extend({
@@ -61,8 +62,10 @@ return view.extend({
 		// Import can finish while the initial read is still in flight.
 		this.resultsRequest = (this.resultsRequest ?? 0) + 1;
 
+		// unload is synchronous in luci-base; only load returns a Promise.
+		uci.unload('aetherproxy');
 		return Promise.all([
-			uci.unload('aetherproxy').then(function() { return uci.load('aetherproxy'); }),
+			uci.load('aetherproxy'),
 			ap.call('probe_results')
 		]).then(function(res) {
 			if ((res[1] && res[1].ok !== false) || self.results === undefined)
@@ -76,6 +79,7 @@ return view.extend({
 	},
 
 	buildPage: function() {
+		this.clearSwitchNotification();
 		const self = this;
 		const vm = model.build(
 			uci.sections('aetherproxy', 'node'),
@@ -712,6 +716,28 @@ return view.extend({
 		}
 	},
 
+	clearSwitchNotification: function() {
+		if (this.switchNoticeTimer != null)
+			window.clearTimeout(this.switchNoticeTimer);
+		this.switchNoticeTimer = null;
+		this.switchNotice?.element.remove();
+		this.switchNotice = null;
+	},
+
+	finishSwitch: function(timedOut) {
+		this.stopSwitchWatch();
+		this.switchOutcome = timedOut ? 'timeout' : 'complete';
+		const notice = this.switchNotice;
+		if (!notice)
+			return;
+		// Replace only our content: keep LuCI's banner and its Dismiss button intact.
+		notice.content.textContent = (timedOut
+			? _('Switching to “%s” has not finished yet; see the overview or logs for the reason.', 'aether-proxy')
+			: _('Switched to “%s”', 'aether-proxy')).format(notice.name);
+		if (!timedOut)
+			this.switchNoticeTimer = window.setTimeout(() => this.clearSwitchNotification(), 5000);
+	},
+
 	stopSwitchWatch: function() {
 		this.switchEpoch = (this.switchEpoch ?? 0) + 1;
 		if (this.switchPoll != null)
@@ -728,12 +754,13 @@ return view.extend({
 	   replies from the initial read or a previous node_use. */
 	watchSwitch: function(status) {
 		this.stopSwitchWatch();
+		this.switchOutcome = null;
 		if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node')))
 			return;
 		this.switchPending = true;
 		this.updateSwitchButtons();
 		const epoch = this.switchEpoch;
-		this.switchDeadline = window.setTimeout(() => this.stopSwitchWatch(), 60000);
+		this.switchDeadline = window.setTimeout(() => this.finishSwitch(true), 60000);
 		this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);
 	},
 
@@ -749,7 +776,7 @@ return view.extend({
 				return;
 			}
 			if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
-				this.stopSwitchWatch();
+				this.finishSwitch(false);
 				return;
 			}
 		}
@@ -871,6 +898,7 @@ return view.extend({
 		if (this.switching || this.switchPending)
 			return;
 		this.switching = true;
+		this.clearSwitchNotification();
 		this.stopSwitchWatch();
 		const button = ev.currentTarget;
 		button.disabled = true;
@@ -878,7 +906,7 @@ return view.extend({
 			const reply = await ap.call('node_use', { id: section_id });
 			let status;
 			if (reply.ok) {
-				await uci.unload('aetherproxy');
+				uci.unload('aetherproxy');
 				await uci.load('aetherproxy');
 				status = await ap.call('status');
 				this.watchSwitch(status);
@@ -888,8 +916,17 @@ return view.extend({
 			}
 			const text = model.node_use_message(reply, status,
 				uci.get('aetherproxy', 'main', 'node'), uci.sections('aetherproxy', 'node'));
-			if (text)
-				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
+			if (text) {
+				const content = E('p', {}, text);
+				const element = ui.addNotification(null, content, reply.ok ? 'info' : 'error');
+				if (reply.ok && model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
+					const node = uci.get('aetherproxy', section_id);
+					this.switchNotice = { element, content, name: node?.label || section_id };
+					// Form rendering may outlast the watch; never leave a stale pending banner.
+					if (this.switchOutcome)
+						this.finishSwitch(this.switchOutcome === 'timeout');
+				}
+			}
 		}
 		catch (e) {
 			/* ap.call never rejects, so reaching here means node_use already

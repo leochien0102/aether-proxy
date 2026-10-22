@@ -272,7 +272,7 @@ function loadNodesView(calls, overrides = {}) {
 		uci: {
 			sections: () => [],
 			get: () => 'n_' + 'b'.repeat(32),
-			unload: async config => { calls.push(['unload', config]); },
+			unload: config => { calls.push(['unload', config]); },
 			load: async config => { calls.push(['load', config]); },
 			set: () => assert.fail('must not set session UCI'),
 			save: () => assert.fail('must not save session UCI'),
@@ -281,7 +281,10 @@ function loadNodesView(calls, overrides = {}) {
 		ui: {
 			createHandlerFn: luciCreateHandlerFn,
 			changes: { apply: () => assert.fail('must not apply session UCI') },
-			addNotification: (...args) => calls.push([ 'notify', ...args ])
+			addNotification: (...args) => {
+				calls.push([ 'notify', ...args ]);
+				return { remove() {} };
+			}
 		},
 		dom: { content: () => {} },
 		'aether-proxy.common': {

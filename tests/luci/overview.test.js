@@ -76,7 +76,7 @@ function loadView(overrides = {}) {
 	};
 	const uciDouble = Object.assign({
 		load: () => Promise.resolve(),
-		unload: () => Promise.resolve(),
+		unload: () => {},
 		sections: () => {},
 		get: () => undefined,
 		set: () => {},
@@ -622,7 +622,9 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	assert.deepEqual(calls, [ 'status', 'stats' ]);
 });
 
-test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refreshes status', async () => {
+test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refreshes status', async t => {
+	// Keep the exact events.since assertion stable when the async flow crosses a second boundary.
+	t.mock.method(Date, 'now', () => NOW * 1000);
 	const order = [];
 	const page = loadView({
 		ap: {
@@ -641,7 +643,7 @@ test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refr
 			},
 			get: (cfg, sec, opt) => opt === 'node' ? (order.some(c => c[0] === 'node_use') ? 'n_b' : 'n_a') : '1',
 			load: async config => { order.push(['load', config]); },
-			unload: async config => { order.push(['unload', config]); },
+			unload: config => { order.push(['unload', config]); },
 			set: () => assert.fail('node switch must not set session UCI'),
 			save: () => assert.fail('node switch must not save session UCI'),
 			changes: () => assert.fail('node switch must not inspect staged changes')
@@ -2489,7 +2491,7 @@ test('T10.23 defensive: overview UCI refresh rejection notifies and restores swi
 	const notes = [], calls = [];
 	const page = loadView({
 		ap: { call: async method => { calls.push(method); return { ok: true, reload: true }; } },
-		uci: { unload: async () => { throw new Error('UCI unavailable'); } },
+		uci: { unload: () => { throw new Error('UCI unavailable'); } },
 		ui: { addNotification: (title, body, kind) => notes.push([body.textContent, kind]) }
 	});
 	page.content = E('div');
@@ -2808,7 +2810,7 @@ test('T10.24 review: retrying with another node ignores the reason found for the
 		},
 		uci: {
 			load: async () => {},
-			unload: async () => {},
+			unload: () => {},
 			sections: (config, type, cb) => {
 				if (type === 'node')
 					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta'], ['n_c', 'Gamma']])

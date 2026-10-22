@@ -103,7 +103,7 @@ async function harness(t, name) {
 			type === 'node' ? [{ '.name': 'n_a', label: 'Node' }] : [],
 		get: (config, id) => id === 's_a' ? { '.name': 's_a', name: 'Alpha' } : undefined,
 		changes: async () => ({}),
-		unload: async config => { uciCalls.push(['unload', config]); },
+		unload: config => { uciCalls.push(['unload', config]); },
 		load: async config => { uciCalls.push(['load', config]); }
 	};
 	ap.confirm = async () => true;
@@ -228,6 +228,7 @@ for (const s of scenarios) {
 		assert.equal(h.page.busy ?? false, false);
 		assert.deepEqual(h.calls, s.calls);
 		if (s.name === 'subscriptions') {
+			assert.doesNotMatch(text(summary(h, s.name)), /操作失败/);
 			assert.deepEqual(h.uciCalls, [['unload', 'aetherproxy'], ['load', 'aetherproxy']]);
 			assert.match(text(h.root), /成功，4 个节点/);
 			assert.deepEqual(h.notifications, [s.result]);
