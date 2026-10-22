@@ -728,8 +728,24 @@ msgid "Address"
 msgstr "地址"
 
 msgctxt "aether-proxy"
-msgid "Protocol / Transport / Security"
-msgstr "协议 / 传输 / 安全层"
+msgid "Transport / Security"
+msgstr "传输 / 安全层"
+
+msgctxt "aether-proxy"
+msgid "VLESS"
+msgstr "VLESS"
+
+msgctxt "aether-proxy"
+msgid "VMess"
+msgstr "VMess"
+
+msgctxt "aether-proxy"
+msgid "Trojan"
+msgstr "Trojan"
+
+msgctxt "aether-proxy"
+msgid "Shadowsocks"
+msgstr "Shadowsocks"
 
 msgctxt "aether-proxy"
 msgid "Source"
@@ -802,6 +818,22 @@ msgstr "新增 %s 个，已存在 %s 个，失败 %s 个"
 msgctxt "aether-proxy"
 msgid "Display name"
 msgstr "显示名称"
+
+msgctxt "aether-proxy"
+msgid "Add node"
+msgstr "添加节点"
+
+msgctxt "aether-proxy"
+msgid "Fill from share link"
+msgstr "从分享链接填写"
+
+msgctxt "aether-proxy"
+msgid "Parse"
+msgstr "解析"
+
+msgctxt "aether-proxy"
+msgid "Unable to parse: %s"
+msgstr "无法解析：%s"
 
 msgctxt "aether-proxy"
 msgid "Protocol"
