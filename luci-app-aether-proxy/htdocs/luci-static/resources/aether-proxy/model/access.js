@@ -3,7 +3,7 @@
 
 /*
  * Pure view model for the access control page (docs/10 「访问控制页」,
- * docs/tasks/m8.md T8.7).
+ * docs/10 「访问控制页定案」, T10.36).
  *
  * validate() mirrors the authoritative command-line host rules one to one, so
  * the page precheck agrees with `aether-proxy check` (docs/10: 最终仍以命令行
@@ -185,7 +185,8 @@ function ranges_overlap(as, bs) {
 	return false;
 }
 
-const POLICIES = [ 'follow', 'direct', 'proxy' ];
+/* Match nft precedence without ever moving the underlying UCI sections. */
+const POLICIES = [ 'direct', 'proxy', 'bypass_cn', 'gfw', 'follow' ];
 
 /* Own-property check: the lookup tables above must not answer for inherited
    names (an unknown policy straight from UCI could be any string, e.g.
@@ -302,7 +303,7 @@ return baseclass.extend({
 		}
 
 		/* docs/02 冲突校验: nesting CIDRs are allowed and take effect in the
-		   order direct → proxy → follow, so the page only warns (02: 并在
+		   order direct → proxy → bypass_cn → gfw → follow, so the page only warns (02: 并在
 		   LuCI 中提示). Same-policy pairs cannot differ in precedence and
 		   unknown policies are rejected by the command line anyway, so they
 		   do not warn.
@@ -328,7 +329,9 @@ return baseclass.extend({
 
 				warnings.push({
 					a: labels[i], b: labels[j],
-					text: fmt(_('Hosts %s and %s overlap; direct → proxy → follow applies in this order.', 'aether-proxy'), labels[i], labels[j])
+					text: fmt(_(
+						'Hosts %s and %s overlap: direct → global → bypass China → GFW only → follow.',
+						'aether-proxy'), labels[i], labels[j])
 				});
 			}
 		}
@@ -336,9 +339,8 @@ return baseclass.extend({
 		return { errors: errors, warnings: warnings };
 	},
 
-	/* docs/10 访问控制页: the MAC combobox offers the hosts known from DHCP
-	   leases and the neighbor table as candidates, displayed as
-	   「MAC（主机名，IP）」 with missing parts left out. Hint keys are
+	/* docs/10 访问控制页定案: device choices display name (IP, MAC),
+	   leaving out missing parts but always retaining the MAC. Hint keys are
 	   normalized to the lowercase colon form and duplicate keys after that
 	   are dropped (the first hint wins); candidates without a syntactically
 	   valid MAC cannot be entered anyway and are skipped. Sorted by MAC. */
@@ -357,11 +359,11 @@ return baseclass.extend({
 
 			const name = (h != null && h.name != null && h.name !== '') ? String(h.name) : null;
 			const ip = first_ipv4(h);
-			const detail = [ name, ip ].filter((x) => x != null).join(_(', ', 'aether-proxy'));
+			const detail = [ ip, mac ].filter((x) => x != null).join(_(', ', 'aether-proxy'));
 
 			out.push({
-				mac: mac,
-				label: (detail === '') ? mac : fmt(_('%s (%s)', 'aether-proxy'), mac, detail)
+				mac: mac, name: name,
+				label: name ? fmt(_('%s (%s)', 'aether-proxy'), name, detail) : detail
 			});
 		}
 
@@ -370,18 +372,71 @@ return baseclass.extend({
 		return out;
 	},
 
-	/* docs/10 访问控制页: follow 跟随 / direct 直连 / proxy 代理; an unknown
-	   value is shown verbatim. */
+	/* Only proxy means all traffic; follow always refers to the default mode. */
 	policy_text: function(policy) {
-		const texts = { follow: _('Follow', 'aether-proxy'), direct: _('Direct', 'aether-proxy'), proxy: _('Proxy', 'aether-proxy') };
+		const texts = {
+			follow: _('Follow default mode', 'aether-proxy'),
+			direct: _('Direct', 'aether-proxy'),
+			bypass_cn: _('Bypass China', 'aether-proxy'),
+			gfw: _('GFW only', 'aether-proxy'),
+			proxy: _('Global (all traffic through proxy)', 'aether-proxy')
+		};
 
 		return has_own(texts, policy) ? texts[policy] : String(policy);
 	},
 
-	/* docs/10 访问控制页: 「跟随全局模式」/「直连」; an unknown value is
-	   shown verbatim. */
+	/* The default mode belongs to main, not to the selected node. */
+	mode_text: function(mode) {
+		return this.policy_text(mode == 'global' ? 'proxy' : mode);
+	},
+
+	unlisted_notice: function(policy, mode) {
+		return policy == 'follow' && (mode == 'bypass_cn' || mode == 'global')
+			? _(
+				'Unlisted devices (including IoT) use the proxy. To proxy only some, choose Direct and list them.',
+				'aether-proxy')
+			: '';
+	},
+
+	ineffective: function(host, unlisted) {
+		if (!enabled_of(host))
+			return false;
+
+		return unlisted == 'direct' ? policy_of(host) == 'direct'
+			: policy_of(host) == 'follow' && !udp_on(host);
+	},
+
+	sort_hosts: function(hosts) {
+		/* Explicit indices preserve same-policy order even on older browsers. */
+		return hosts.map((h, i) => ({ host: h, index: i })).sort(function(a, b) {
+			return POLICIES.indexOf(policy_of(a.host)) - POLICIES.indexOf(policy_of(b.host)) || a.index - b.index;
+		}).map((entry) => entry.host);
+	},
+
+	default_name: function(macs, candidates) {
+		const first = normalize_mac(list_items(macs)[0]);
+		return candidates.find((c) => c.mac == first)?.name || '';
+	},
+
+	device_summary: function(host, candidates) {
+		const items = list_items(host.mac).map(function(raw) {
+			const known = candidates.find((c) => c.mac == normalize_mac(raw));
+			return known?.name || String(raw);
+		}).concat(list_items(host.ip));
+		const join_items = (values) => values.reduce((text, value) => text
+			? fmt(_('%s, %s', 'aether-proxy'), text, value) : value, '');
+		const all = join_items(items);
+		return {
+			text: items.length > 2
+				? fmt(_('%s, etc. (%s items)', 'aether-proxy'), join_items(items.slice(0, 2)), items.length)
+				: all,
+			title: all
+		};
+	},
+
+	/* Unknown values remain visible rather than silently becoming follow. */
 	unlisted_text: function(v) {
-		const texts = { follow: _('Follow global mode', 'aether-proxy'), direct: _('Direct', 'aether-proxy') };
+		const texts = { follow: _('Follow default mode', 'aether-proxy'), direct: _('Direct', 'aether-proxy') };
 
 		return has_own(texts, v) ? texts[v] : String(v);
 	}

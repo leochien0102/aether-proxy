@@ -364,3 +364,14 @@ test('T10.12 scenario 6: source placeholders and prepare hook stamp both package
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+/* po2lmo keeps leading/trailing whitespace in a msgid, but LuCI's _() trims
+   the key before looking it up, so such an entry never translates on the
+   device (m10 X3, found again in the T10.36 review). ", " is X3 itself and
+   still awaits its design. */
+test('X3: no msgid starts or ends with whitespace', () => {
+	const po = fs.readFileSync(path.join(__dirname, '../../luci-app-aether-proxy/po/zh_Hans/aether-proxy.po'), 'utf8');
+	const bad = [...po.matchAll(/^msgid "(.*)"$/gm)].map(m => m[1])
+		.filter(id => id !== '' && id !== ', ' && id.trim() !== id);
+	assert.deepEqual(bad, []);
+});

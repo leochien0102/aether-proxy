@@ -108,6 +108,8 @@ test('scenario 2: rule 2 — direct + udp=1 is an error; follow and proxy with u
 	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], policy: 'direct', udp: '0' }) ]).errors.length, 0);
 	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], policy: 'proxy', udp: '1' }) ]).errors.length, 0);
 	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], policy: 'follow', udp: '1' }) ]).errors.length, 0);
+	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], policy: 'bypass_cn', udp: '1' }) ]).errors.length, 0);
+	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], policy: 'gfw', udp: '1' }) ]).errors.length, 0);
 
 	/* a missing policy is a follow host (docs/05 default) */
 	assert.equal(validate([ host('cfg1', { ip: [ '10.0.0.1' ], udp: '1' }) ]).errors.length, 0);
@@ -243,6 +245,10 @@ const AGREEMENT_FIXTURES = [
 	{ name: 'rule 2: direct with udp',
 		sections: [ host('cfg1', { ip: [ '192.168.1.10' ], policy: 'direct', udp: '1' }) ] },
 	{ name: 'rule 2: proxy with udp', sections: [ host('cfg1', { ip: [ '192.168.1.10' ], policy: 'proxy', udp: '1' }) ] },
+	{ name: 'rule 2: bypass_cn with udp',
+		sections: [ host('cfg1', { ip: [ '192.168.1.10' ], policy: 'bypass_cn', udp: '1' }) ] },
+	{ name: 'rule 2: gfw with udp',
+		sections: [ host('cfg1', { ip: [ '192.168.1.10' ], policy: 'gfw', udp: '1' }) ] },
 	{ name: 'rule 3: same ip', sections: [ host('cfg1', { ip: [ '10.0.0.1' ] }), host('cfg2', { ip: [ '10.0.0.1' ] }) ] },
 	{ name: 'rule 3: x vs x/32',
 		sections: [ host('cfg1', { ip: [ '1.2.3.4' ] }), host('cfg2', { ip: [ '1.2.3.4/32' ] }) ] },
@@ -358,7 +364,7 @@ test('scenario 6: overlap hints — nesting CIDRs with different policies warn o
 	assert.equal(r.warnings[0].a, 'tv');
 	assert.equal(r.warnings[0].b, 'pc');
 	assert.match(r.warnings[0].text, /tv 与 pc 重叠/);
-	assert.match(r.warnings[0].text, /直连 → 代理 → 跟随/);
+	assert.match(r.warnings[0].text, /直连 → 全局 → 绕过大陆 → 仅被墙 → 跟随/);
 
 	/* the pair is reported once even though both directions nest */
 	r = validate([
@@ -396,7 +402,7 @@ test('scenario 6: overlap hints — nesting CIDRs with different policies warn o
 
 /* --- scenario 7: MAC candidates ------------------------------------------------ */
 
-test('scenario 7: MAC candidates — normalized, deduplicated, labelled MAC (name, IP) with missing parts left out, sorted', () => {
+test('scenario 7: MAC candidates — normalized, deduplicated, labelled name (IP, MAC) with missing parts left out, sorted', () => {
 	const hints = { hosts: {
 		'AA-BB-CC-DD-EE-01': { name: 'tv', ipaddrs: [ '192.168.1.10' ] },
 		'aa:bb:cc:dd:ee:01': { ipaddrs: [ '192.168.1.11' ] },
@@ -412,16 +418,16 @@ test('scenario 7: MAC candidates — normalized, deduplicated, labelled MAC (nam
 		[ 'aa:bb:cc:dd:ee:01', 'ab:cd:ef:12:34:56', 'cc:dd:ee:ff:00:11', 'ff:ee:dd:cc:bb:aa' ],
 		'normalized to the lowercase colon form, deduplicated, sorted by MAC');
 
-	assert.equal(cands[0].label, 'aa:bb:cc:dd:ee:01（tv，192.168.1.10）');
-	assert.equal(cands[1].label, 'ab:cd:ef:12:34:56（192.168.1.12）');
-	assert.equal(cands[2].label, 'cc:dd:ee:ff:00:11（printer）');
+	assert.equal(cands[0].label, 'tv（192.168.1.10，aa:bb:cc:dd:ee:01）');
+	assert.equal(cands[1].label, '192.168.1.12，ab:cd:ef:12:34:56');
+	assert.equal(cands[2].label, 'printer（cc:dd:ee:ff:00:11）');
 	assert.equal(cands[3].label, 'ff:ee:dd:cc:bb:aa', 'a candidate without name and IP shows the bare MAC');
 
 	/* the legacy ipv4 field the LuCI Hosts class also accepts */
 	const legacy = model().mac_candidates({ hosts: { '11:22:33:44:55:66': { name: 'legacy', ipv4: '192.168.1.9' } } });
 
 	assert.equal(legacy.length, 1);
-	assert.equal(legacy[0].label, '11:22:33:44:55:66（legacy，192.168.1.9）');
+	assert.equal(legacy[0].label, 'legacy（192.168.1.9，11:22:33:44:55:66）');
 
 	/* no hints at all: an empty list instead of an error */
 	assert.deepEqual(model().mac_candidates(null), []);
@@ -433,12 +439,12 @@ test('scenario 7: MAC candidates — normalized, deduplicated, labelled MAC (nam
 test('scenario 8: policy and unlisted_policy wording; unknown values are shown verbatim', () => {
 	const m = model();
 
-	assert.equal(m.policy_text('follow'), '跟随');
+	assert.equal(m.policy_text('follow'), '跟随默认模式');
 	assert.equal(m.policy_text('direct'), '直连');
-	assert.equal(m.policy_text('proxy'), '代理');
+	assert.equal(m.policy_text('proxy'), '全局（所有流量走代理）');
 	assert.equal(m.policy_text('bogus'), 'bogus');
 
-	assert.equal(m.unlisted_text('follow'), '跟随全局模式');
+	assert.equal(m.unlisted_text('follow'), '跟随默认模式');
 	assert.equal(m.unlisted_text('direct'), '直连');
 	assert.equal(m.unlisted_text('bogus'), 'bogus');
 });
@@ -449,7 +455,8 @@ test('scenario 9: static checks — Map + GridSection(host), precheck before uci
 	const src = fs.readFileSync(VIEW, 'utf8');
 
 	assert.match(src, /new form\.Map\('aetherproxy'/, 'the page is a form.Map');
-	assert.match(src, /form\.GridSection, 'host'/, 'the host table is a GridSection');
+	assert.match(src, /Hosts = form\.GridSection\.extend/, 'the host table extends GridSection');
+	assert.match(src, /m\.section\(Hosts, 'host'/, 'the host table uses the extended GridSection');
 	assert.match(src, /'require aether-proxy\.model\.access as model'/, 'the view goes through the model');
 	assert.match(src, /network\.getHostHints\(\)/, 'MAC candidates come from network.getHostHints');
 	assert.ok(!/rpc\s*\.\s*declare/.test(src), 'no rpc.declare in the view');

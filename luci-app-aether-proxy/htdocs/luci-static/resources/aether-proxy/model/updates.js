@@ -22,6 +22,13 @@ function grouped_confirmation(status) {
 			_('%s: skip (not installed or no previous version available)', 'aether-proxy').format(name);
 	}) ];
 }
+/* Keep whitespace out of msgids: po2lmo stores it but _() trims it, so a
+   leading space never matches on the device (m10 X3). English needs a space
+   before an ASCII parenthesis; the Chinese full-width one needs none. */
+function arch_note(arch) {
+	const note = _('(device architecture %s)', 'aether-proxy').format(arch);
+	return (note.startsWith('(') ? ' ' : '') + note;
+}
 function restarts(name) {
 	return name != 'xray-core';
 }
@@ -146,8 +153,7 @@ return baseclass.extend({
 					+ 'install or update from feeds on the Software page, '
 					+ 'or download the chinadns-ng package%s from the release page and install it manually.',
 					'aether-proxy')
-					.format(status?.updates_available ?
-						_(' (device architecture %s)', 'aether-proxy').format(status.updates_available.arch) : '') : ''
+					.format(status?.updates_available ? arch_note(status.updates_available.arch) : '') : ''
 		}));
 	},
 	page_rolled_back: function(job) {

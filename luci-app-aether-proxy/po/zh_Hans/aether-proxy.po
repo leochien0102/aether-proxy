@@ -1112,12 +1112,60 @@ msgid "Update all"
 msgstr "全部更新"
 
 msgctxt "aether-proxy"
-msgid "Set the policy for each LAN host and for hosts that are not listed."
-msgstr "为每台 LAN 主机设置策略，并设置未列出主机采用的策略。"
+msgid "Set the policy for each LAN device and for devices that are not listed."
+msgstr "为每台 LAN 设备设置策略，并设置未列出的设备采用的策略。"
 
 msgctxt "aether-proxy"
-msgid "Policy for unlisted hosts"
-msgstr "未列出主机的策略"
+msgid "Unlisted devices"
+msgstr "未列出的设备"
+
+msgctxt "aether-proxy"
+msgid "Default mode"
+msgstr "默认模式"
+
+msgctxt "aether-proxy"
+msgid "Bypass China"
+msgstr "绕过大陆"
+
+msgctxt "aether-proxy"
+msgid "GFW only"
+msgstr "仅代理被墙网站（GFW）"
+
+msgctxt "aether-proxy"
+msgid "Global (all traffic through proxy)"
+msgstr "全局（所有流量走代理）"
+
+msgctxt "aether-proxy"
+msgid "Unlisted devices (including IoT) use the proxy. To proxy only some, choose Direct and list them."
+msgstr "所有未列出的设备（包括物联网设备）都会走代理；只想让部分设备走代理，选『直连』并在下面列出这些设备。"
+
+msgctxt "aether-proxy"
+msgid "(same as unlisted devices; has no effect)"
+msgstr "（与未列出的设备相同，不起作用）"
+
+msgctxt "aether-proxy"
+msgid "Device"
+msgstr "设备"
+
+msgctxt "aether-proxy"
+msgid "IP / subnet (optional)"
+msgstr "IP / 网段（可选）"
+
+msgctxt "aether-proxy"
+msgid "Match MAC or IP (either suffices). Use IP for fixed addresses, subnets or devices behind a router."
+msgstr "按 MAC 或 IP 匹配，任一命中即生效；同一设备一般只选设备。IP 用于固定地址、整个网段或经过另一台路由器的设备。"
+
+msgctxt "aether-proxy"
+msgid "DNS uses the default mode. Web pages and most apps connect by domain name through the node."
+msgstr "DNS 按默认模式解析；网页和大多数 App 由节点按域名连接，基本不受影响。"
+
+msgctxt "aether-proxy"
+msgid "%s, etc. (%s items)"
+msgstr "%s 等 %s 项"
+
+msgctxt "aether-proxy"
+msgid "%s, %s"
+msgstr "%s、%s"
 
 msgctxt "aether-proxy"
 msgid "This corresponds to the three helloworld approaches as follows:"
@@ -1136,24 +1184,12 @@ msgid "Also allow unlisted hosts: unlisted_policy=follow, listed hosts use polic
 msgstr "列表外也允许：unlisted_policy=follow，列表内主机 policy=direct。"
 
 msgctxt "aether-proxy"
-msgid "Follow global mode"
-msgstr "跟随全局模式"
-
-msgctxt "aether-proxy"
-msgid "Follow"
-msgstr "跟随"
+msgid "Follow default mode"
+msgstr "跟随默认模式"
 
 msgctxt "aether-proxy"
 msgid "Policy"
 msgstr "策略"
-
-msgctxt "aether-proxy"
-msgid "IP"
-msgstr "IP"
-
-msgctxt "aether-proxy"
-msgid "MAC"
-msgstr "MAC"
 
 msgctxt "aether-proxy"
 msgid "Game mode"
@@ -1184,8 +1220,8 @@ msgid "Host %s: %s is not a valid MAC address."
 msgstr "主机 %s：%s 不是合法的 MAC 地址。"
 
 msgctxt "aether-proxy"
-msgid "Hosts %s and %s overlap; direct → proxy → follow applies in this order."
-msgstr "主机 %s 与 %s 重叠，按 直连 → 代理 → 跟随 的顺序生效。"
+msgid "Hosts %s and %s overlap: direct → global → bypass China → GFW only → follow."
+msgstr "主机 %s 与 %s 重叠，按 直连 → 全局 → 绕过大陆 → 仅被墙 → 跟随 的顺序生效。"
 
 msgctxt "aether-proxy"
 msgid "%s (%s)"
@@ -1268,7 +1304,7 @@ msgid "Not automatically updated through the release channel: install or update 
 msgstr "不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包%s手工安装。"
 
 msgctxt "aether-proxy"
-msgid " (device architecture %s)"
+msgid "(device architecture %s)"
 msgstr "（本机架构 %s）"
 
 msgctxt "aether-proxy"
