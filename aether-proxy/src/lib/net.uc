@@ -1,8 +1,8 @@
 'use strict';
 
 // Pure IPv4 / CIDR / domain syntax helpers shared by config.uc and data.uc (docs/12 rule 1:
-// no fs, uci or system calls in here). Each validator takes a string and returns it unchanged
-// when valid, or null when not.
+// no fs, uci or system calls in here). Validators return a string unchanged when valid,
+// or null when not; parsers return the documented parts instead.
 
 export function valid_octet(s) {
 	return match(s, /^(0|[1-9][0-9]{0,2})$/) != null && +s <= 255;
@@ -19,6 +19,23 @@ export function ipv4(s) {
 			return null;
 
 	return s;
+};
+
+// docs/05 trust_dns allows only a fixed port-53 IPv4 target, not the broader
+// chinadns upstream grammar. Share parsing so validation and both renderers agree.
+export function trust_dns_parts(s) {
+	if (type(s) != 'string')
+		return null;
+
+	let protocol = 'tcp';
+	let address = s;
+	let prefix = match(s, /^(tcp|udp):\/\//);
+	if (prefix != null) {
+		protocol = prefix[1];
+		address = substr(s, length(prefix[0]));
+	}
+
+	return ipv4(address) != null ? { protocol, address } : null;
 };
 
 // IPv4 or a.b.c.d/len. Host bits must be zero (nft interval sets reject a prefix with

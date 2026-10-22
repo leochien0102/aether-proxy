@@ -1,0 +1,14 @@
+config global 'main'
+	option enabled '1'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+config dns 'dns'
+	list trust_dns 'udp://8.8.8.8'
+	list trust_dns '1.1.1.1'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'vless'
+	option address 'dns-proxy.example.com'
+	option port '443'
+	option uuid '11111111-2222-4333-8444-555555555555'
+	option security 'tls'

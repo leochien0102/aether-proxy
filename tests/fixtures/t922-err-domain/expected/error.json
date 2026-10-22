@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "dns.trust_dns",
+      "code": "invalid_ipv4",
+      "detail": "item 0: \"udp://dns.google\" is not valid"
+    }
+  ]
+}
