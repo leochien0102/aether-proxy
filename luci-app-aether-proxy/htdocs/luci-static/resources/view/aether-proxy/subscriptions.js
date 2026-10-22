@@ -1,7 +1,8 @@
 'use strict';
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
 // Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
-// The initial status read only fills result cells; never redraw an open edit modal for it.
+// Also follows docs/10「订阅：通用设置、获取方式与行首开关」.
+// Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require view';
 'require form';
 'require uci';
@@ -12,27 +13,101 @@
 
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return uci.load('aetherproxy').then(() => {
+			if (!uci.get('aetherproxy', 'sub'))
+				uci.add('aetherproxy', 'sub', 'sub');
+		});
 	},
 	render: function() {
 		this.status = undefined;
 		this.busy = false;
 		this.pendingIds = new Set();
+		this.localPendingIds = new Set();
+		this.defaultUA = _('Reading…', 'aether-proxy');
 		this.changesGeneration = 0;
 		this.root = E('div');
 		// Keep these nodes across redraws so the timer never targets a detached node.
 		this.progress = E('div');
 		this.summary = E('div');
 		return this.redraw().then(() => {
-			window.setTimeout(() => ap.call('sub_status').then(status => {
-				// A completed update may have already supplied fresher status.
-				if (this.status !== undefined)
-					return;
-				this.status = status ?? { ok: false, code: 'RPC_FAILED' };
-				this.show_results();
-			}), 0);
+			window.setTimeout(() => {
+				this.read_version();
+				ap.call('sub_status').then(status => {
+					// A completed update may have already supplied fresher status.
+					if (this.status !== undefined)
+						return;
+					this.status = status ?? { ok: false, code: 'RPC_FAILED' };
+					this.show_results();
+				});
+			}, 0);
 			return this.root;
 		});
+	},
+	read_version: async function() {
+		const reply = await ap.call('version');
+		// TODO(design): no default-UA placeholder policy is specified for a failed version RPC.
+		// Do not invent or persist a version; keep the failure visible without blocking the form.
+		this.defaultUA = reply?.ok && reply.version ? 'aether-proxy/' + reply.version
+			: reply?.code || 'RPC_FAILED';
+		const o = this.generalOptions.user_agent;
+		o.placeholder = _('Default (%s)', 'aether-proxy').format(this.defaultUA);
+		o.getUIElement('sub')?.setPlaceholder(o.placeholder);
+		if (this.uaModal) {
+			const { option, id } = this.uaModal;
+			option.placeholder = model.follow(this.general_values().user_agent);
+			option.getUIElement(id)?.setPlaceholder(option.placeholder);
+		}
+	},
+	general_values: function() {
+		const values = {};
+		for (const field of ['interval_hours', 'fetch_via', 'user_agent']) {
+			const option = this.generalOptions?.[field];
+			values[field] = option?.formvalue('sub') ?? uci.get('aetherproxy', 'sub', field);
+		}
+		return model.general_values(values, this.defaultUA);
+	},
+	setting_option: function(section, field, title, inherited) {
+		const self = this;
+		const kind = field === 'user_agent' ? form.Value : form.ListValue;
+		const o = section.option(kind, field, title);
+		o.rmempty = true;
+		if (inherited)
+			o.modalonly = true;
+		else if (field !== 'user_agent')
+			o.default = field === 'interval_hours' ? '24' : 'auto';
+		// Capture the ListValue/Value method: instance super() would skip that class.
+		const renderWidget = o.renderWidget;
+		// Recompute when opening a modal: the common block may have unsaved input.
+		o.renderWidget = function(id, index, value) {
+			const common = self.general_values();
+			if (field === 'user_agent') {
+				this.placeholder = inherited ? model.follow(common.user_agent)
+					: _('Default (%s)', 'aether-proxy').format(self.defaultUA);
+				if (inherited)
+					self.uaModal = { option: this, id };
+			}
+			else {
+				this.keylist = [];
+				this.vallist = [];
+				const format = field === 'interval_hours' ? model.interval_text : model.fetch_text;
+				if (inherited)
+					this.value('', model.follow(format(common[field])));
+				const choices = field === 'interval_hours' ? model.interval_choices(value)
+					: ['auto', 'direct', 'proxy'].map(key => [key, model.fetch_text(key)]);
+				for (const [key, label] of choices)
+					this.value(key, label);
+			}
+			return renderWidget.call(this, id, index, value);
+		};
+		return o;
+	},
+	general_settings: function(m) {
+		const s = m.section(form.NamedSection, 'sub', 'sub', _('General settings', 'aether-proxy'));
+		this.generalOptions = {
+			interval_hours: this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), false),
+			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
+			user_agent: this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), false)
+		};
 	},
 	result_content: function(result) {
 		return [result.text, E('br'), result.time, E('br'), result.skipped];
@@ -71,21 +146,32 @@ return view.extend({
 		// A slow reply from an older form must not undo a newer session check.
 		if (generation !== this.changesGeneration)
 			return;
-		this.pendingIds = model.pending_ids(changes);
+		this.pendingIds = new Set([...model.pending_ids(changes), ...(this.localPendingIds ?? [])]);
 		this.sync_buttons();
 	},
 	table_columns: function(s) {
 		const self = this;
+		const enabled = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy'));
+		enabled.editable = true;
+		enabled.modalonly = false;
+		enabled.default = '1';
+		enabled.onchange = function(event, id) {
+			// uci.changes() cannot see a widget change before the form is saved.
+			self.localPendingIds.add(id);
+			self.pendingIds.add(id);
+			self.sync_buttons();
+		};
 		const columns = [
 			['_name', _('Name', 'aether-proxy')], ['_address', _('Address', 'aether-proxy')],
-			['_enabled', _('Enabled', 'aether-proxy')], ['_interval', _('Update interval', 'aether-proxy')],
-			['_via', _('Fetch via', 'aether-proxy')], ['_result', _('Last result', 'aether-proxy')]
+			['_interval', _('Update interval', 'aether-proxy')],
+			['_via', _('Fetch method', 'aether-proxy')], ['_result', _('Last result', 'aether-proxy')]
 		];
 		for (const [field, title] of columns) {
 			const o = s.option(form.DummyValue, field, title);
 			o.modalonly = false;
 			o.textvalue = function(id) {
-				const row = model.row(uci.get('aetherproxy', id), self.status, Date.now() / 1000, self.busy);
+				const row = model.row(uci.get('aetherproxy', id), self.status, Date.now() / 1000,
+					self.busy, uci.get('aetherproxy', 'sub'));
 				if (!row)
 					return '–';
 				if (field === '_result') {
@@ -109,6 +195,7 @@ return view.extend({
 		this.rowButtons = new Map();
 		const m = new form.Map('aetherproxy', _('Subscriptions', 'aether-proxy'));
 		this.map = m;
+		this.general_settings(m);
 		const s = m.section(form.GridSection, 'subscription');
 		this.grid = s;
 		s.addremove = true;
@@ -159,11 +246,9 @@ return view.extend({
 		this.table_columns(s);
 		let o = s.option(form.Value, 'name', _('Name', 'aether-proxy')); o.modalonly = true;
 		o = s.option(form.Value, 'url', _('Subscription URL', 'aether-proxy')); o.modalonly = true; o.password = true; o.rmempty = false;
-		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy')); o.modalonly = true; o.default = '1';
-		o = s.option(form.Value, 'interval_hours', _('Update interval', 'aether-proxy')); o.modalonly = true; o.datatype = 'uinteger'; o.default = '24';
-		o = s.option(form.ListValue, 'fetch_via', _('Fetch via', 'aether-proxy')); o.modalonly = true; o.default = 'auto';
-		o.value('auto', _('Automatic', 'aether-proxy')); o.value('direct', _('Direct', 'aether-proxy')); o.value('proxy', _('Proxy', 'aether-proxy'));
-		o = s.option(form.Value, 'user_agent', _('User agent', 'aether-proxy')); o.modalonly = true;
+		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
+		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
+		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
 		return m.render().then(content => {
 			const updateAll = E('button', {
 				'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null,
@@ -212,7 +297,7 @@ return view.extend({
 				ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, text))));
 			// unload is synchronous in luci-base; only load returns a Promise.
 			uci.unload('aetherproxy');
-			const data = await Promise.all([uci.load('aetherproxy'), ap.call('sub_status')]);
+			const data = await Promise.all([this.load(), ap.call('sub_status')]);
 			this.status = data[1];
 		}
 		catch (e) {
