@@ -1,5 +1,15 @@
 #!/bin/sh
 if [ "$1" = list ] && [ "$2" = -I ]; then
+	# T9.16: opt-in per-package inventory; absent files mean not installed.
+	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
+		if [ -n "${UPDATE_PACKAGE_QUERY_CALLS:-}" ]; then
+			printf '%s\n' "$3" >> "$UPDATE_PACKAGE_QUERY_CALLS"
+		fi
+		if [ -f "$UPDATE_PACKAGE_STATE_DIR/$3" ]; then
+			printf '%s-%s noarch {installed}\n' "$3" "$(cat "$UPDATE_PACKAGE_STATE_DIR/$3")"
+		fi
+		exit 0
+	fi
 	if [ -n "${UPDATE_PACKAGE_STATE_FILE:-}" ] && [ -f "$UPDATE_PACKAGE_STATE_FILE" ]; then
 		printf '%s-%s noarch {installed}\n' "$3" "$(cat "$UPDATE_PACKAGE_STATE_FILE")"; exit 0
 	fi
@@ -11,7 +21,16 @@ if [ "$1" = add ] && [ "$2" = --allow-untrusted ]; then
 	printf '%s\n' "$*" >> "${UPDATE_PACKAGE_CALLS:?}"
 	[ "${UPDATE_INSTALL_EXIT:-0}" = 0 ] || exit "$UPDATE_INSTALL_EXIT"
 	file=${3##*/}; version=$(printf '%s\n' "$file" | sed -E 's/.*-([0-9][0-9.]*-r[0-9]+)_.*/\1/')
-	[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
+	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
+		name=${file%-${version}_*}
+		if [ "${UPDATE_INSTALL_FAIL_PACKAGE:-}" = "$name" ]; then
+			printf 'fixture install failure: %s\n' "$name" >&2
+			exit 7
+		fi
+		printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_DIR/$name"
+	else
+		[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
+	fi
 	# T9.6: opt-in package database mutation, before update.uc refreshes its cache.
 	if [ -n "${UPDATE_PACKAGE_DB_FILE:-}" ]; then
 		touch "$UPDATE_PACKAGE_DB_FILE" || exit 1

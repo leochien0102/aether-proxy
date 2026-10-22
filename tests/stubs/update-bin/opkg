@@ -1,6 +1,16 @@
 #!/bin/sh
 if [ "$1" = status ]; then
 	[ -z "${UPDATE_INSTALLED_SLEEP:-}" ] || sleep "$UPDATE_INSTALLED_SLEEP"
+	# T9.16: opt-in per-package inventory; absent files mean not installed.
+	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
+		if [ -n "${UPDATE_PACKAGE_QUERY_CALLS:-}" ]; then
+			printf '%s\n' "$2" >> "$UPDATE_PACKAGE_QUERY_CALLS"
+		fi
+		if [ -f "$UPDATE_PACKAGE_STATE_DIR/$2" ]; then
+			printf 'Package: %s\nVersion: %s\n' "$2" "$(cat "$UPDATE_PACKAGE_STATE_DIR/$2")"
+		fi
+		exit 0
+	fi
 	if [ -n "${UPDATE_PACKAGE_STATE_FILE:-}" ] && [ -f "$UPDATE_PACKAGE_STATE_FILE" ]; then
 		# Simulate a post-install version mismatch independently of the installed asset.
 		printf 'Package: %s\nVersion: %s\n' "$2" "${UPDATE_STATUS_VERSION:-$(cat "$UPDATE_PACKAGE_STATE_FILE")}"; exit 0
@@ -17,7 +27,16 @@ if [ "$1" = install ]; then
 	[ "${1:-}" = --force-downgrade ] && shift
 	[ "${UPDATE_INSTALL_EXIT:-0}" = 0 ] || exit "$UPDATE_INSTALL_EXIT"
 	file=${1##*/}; version=${file#*_}; version=${version%%_*}
-	[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
+	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
+		name=${file%%_*}
+		if [ "${UPDATE_INSTALL_FAIL_PACKAGE:-}" = "$name" ]; then
+			printf 'fixture install failure: %s\n' "$name" >&2
+			exit 7
+		fi
+		printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_DIR/$name"
+	else
+		[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
+	fi
 	# T9.6: opt-in package database mutation, before update.uc refreshes its cache.
 	if [ -n "${UPDATE_PACKAGE_DB_FILE:-}" ]; then
 		touch "$UPDATE_PACKAGE_DB_FILE" || exit 1

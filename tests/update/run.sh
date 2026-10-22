@@ -409,6 +409,9 @@ PY
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
 done
 
+# T9.16 reuses the signed manifests, package-manager stubs and restart fixture above.
+source "$ROOT/tests/update/rollback-together.sh"
+
 # Invalid hashes and unsupported architectures never reach the package manager.
 : > "$UPDATE_PACKAGE_CALLS"
 python3 - "$T/ch1/manifest.json" <<'PY'

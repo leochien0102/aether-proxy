@@ -274,3 +274,6 @@ export const PROBE_SITES = [
 export const PROBE_SITE_RE = /^[a-z0-9]{1,16}$/;
 export const PROBE_URL_GRACE_SECS = 5;
 export const NODE_USE_TIMEOUT_SECS = 10;
+
+// T9.16 (docs/08 "回滚一起回滚"): backend first, then UI and its translation.
+export const UPDATE_ROLLBACK_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
