@@ -171,7 +171,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 - `mode use <模式>`：`<模式>` 必须是 `gfw`、`bypass_cn`、`global` 之一，否则 `USAGE`。与 `main.mode` 相同 → `{ "ok": true, "mode": <模式>, "previous": <模式>, "reload": false }`，什么都不做；
   不同 → 只写 `main.mode` 并提交，服务在运行时发重载、不等完成，返回 `{ "ok": true, "mode": <模式>, "previous": <原值>, "reload": true }`。是否在运行、只读 `/etc/config/aetherproxy`、失败的错误码与退出码，**全部与 `node use` 相同**（同一个函数实现）。
 - `node use <id> --mode <模式>`：节点与模式在**同一次** `commit` 里写入，最多发一次重载（两项都没变 → `reload: false`）。输出在原有字段之外加 `mode`、`previous_mode`；不带 `--mode` 时输出与原来完全相同。
-  `<模式>` 不合法 → `USAGE`，节点也不改。
+  `<模式>` 不合法 → `USAGE`，节点也不改；`--mode` 给了不止一次 → `USAGE`，什么都不写（意图不明确，不取第一个或最后一个；2026-10-22 T9.20 复核定）。
 - 只换模式的重载不重启 Xray（Xray 配置与模式无关），r11/r12 实测约 8 秒（`nft_replace` + `restart_chinadns`）。
 - 页面（前端）：概览页节点下拉旁加「默认模式」下拉，「应用」按两者是否变化调 `node_use`（带或不带 `mode`）或 `mode_use`；切换中的横幅与按钮变灰沿用切换节点的做法。
 

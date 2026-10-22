@@ -36,8 +36,7 @@ function parse_args(args, allow_mode) {
 		if (key != null) {
 			if (i + 1 >= length(args) || (key == 'mode' && substr(args[i + 1], 0, 1) == '-'))
 				return { error: `option ${arg} needs a value` };
-			// TODO(design): repeated --mode is unspecified; reject conflicting intent
-			// before any write instead of silently choosing the first or last value.
+			// docs/10: a repeated --mode is ambiguous, so reject it before any write.
 			if (key == 'mode' && opts.mode != null)
 				return { error: 'option --mode may only be given once' };
 			opts[key] = args[++i];
