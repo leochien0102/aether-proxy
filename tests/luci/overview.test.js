@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { loadModule, parsePo, element } = require('./loader.js');
+const { actionRow } = require('./button-layout');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -2274,6 +2275,20 @@ for (const failure of COMPONENT_ERRORS) {
 		]);
 	});
 }
+
+test('T10.27 scenario 1: component Retry has a spaced right-aligned row with failure text first', async () => {
+	const h = deferredPage('0');
+	const root = h.page.render(await h.page.load());
+	await Promise.resolve();
+	await h.reply('components', { ok: false, code: 'TIMEOUT', detail: 'offline' });
+	const content = h.page.componentContent;
+	const reason = content.children[1].children[0];
+	const row = actionRow(root, ['重试'], [reason]);
+	assert.equal(reason.textContent, '读取组件信息失败（TIMEOUT）');
+	assert.equal(row.attrs.title, 'offline');
+	assert.equal(content.children.at(-1), row);
+	assert.equal(content.children.at(-2).tag, 'table');
+});
 
 test('T10.20 scenario 2: own executable path is fixed while reading, after failure and after success', () => {
 	const { page } = renderStatus({ ok: true, state: 'running' });

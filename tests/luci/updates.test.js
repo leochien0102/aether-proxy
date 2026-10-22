@@ -11,6 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element } = require('./loader');
+const { actionRow, descendants } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -297,10 +298,10 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	const h = load_view();
 	const root = await h.page.render();
 	assert.deepEqual(h.calls, [], 'RPC must wait until render resolves');
-	assert.equal(root.children.length, 3);
+	assert.equal(root.children.length, 2);
 	assert.equal(root.children[0], h.maps[0].node);
 	assert.equal(root.children[1], h.page.inventory);
-	assert.equal(root.children[2], h.page.summary);
+	assert.ok(descendants(h.page.inventory).includes(h.page.summary), 'summary now belongs to the action row');
 	const map = h.maps[0];
 	assert.equal(map.config, 'aetherproxy');
 	assert.equal(map.section_info.name, 'update');
@@ -410,6 +411,23 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	h.page.busy = true;
 	h.page.show_inventory();
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === true));
+});
+
+test('T10.27 scenario 1: Check for updates shares a spaced right-aligned row with result and progress after redraw',
+async () => {
+	const h = load_view();
+	await h.page.render();
+	for (const busy of [false, true, false]) {
+		h.page.status = { ok: true, ...status() };
+		h.page.busy = busy;
+		h.page.show_inventory();
+		h.page.summary.textContent = 'check result';
+		h.page.progress.textContent = 'elapsed';
+		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
+		const index = h.page.inventory.children.indexOf(row);
+		assert.equal(h.page.inventory.children[index - 1].tag, 'p', 'last-checked line precedes actions');
+		assert.equal(h.page.inventory.children[index + 1].tag, 'h3', 'next block follows the action row');
+	}
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {

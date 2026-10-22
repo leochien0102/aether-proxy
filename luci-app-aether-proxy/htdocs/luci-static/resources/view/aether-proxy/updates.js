@@ -89,7 +89,10 @@ return view.extend({
 				]);
 			})
 		]), E('p', {}, [ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
-		check, this.progress,
+		E('div', {
+			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+		}, [ this.summary, this.progress, check ]),
 		E('h3', {}, _('Running components', 'aether-proxy')),
 		...model.components(this.status).map(row => E('p', {},
 			[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])));
@@ -122,7 +125,7 @@ return view.extend({
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
 		option.validate = function(section_id, value) { return model.validate_url(value); };
 		return map.render().then(node => {
-			const root = E('div', {}, [ node, this.inventory, this.summary ]);
+			const root = E('div', {}, [ node, this.inventory ]);
 			// A new turn lets LuCI display the complete page before starting RPC.
 			window.setTimeout(() => {
 				ap.call('status').then(status => {

@@ -483,7 +483,8 @@ return view.extend({
 		if (error)
 			children.push(E('div', {
 				title: error.detail,
-				style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap'
+				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
 			}, [
 				E('span', {}, error.text),
 				E('button', {
