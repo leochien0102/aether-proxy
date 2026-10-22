@@ -198,6 +198,14 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
    - **回滚之后要让旧版生效**（2026-10-20 T7.7 发现：只重装不重启，内存里跑的仍是检查失败的那一版）：`aether-proxy` 在更新前服务处于 `starting`、`running` 或 `degraded` 时执行一次 restart（同样 90 秒超时）；`xray-core` 在更新前服务处于 `running`、`degraded` 或 `starting` 时发一次 SIGUSR2。回滚后不再做检查，结果仍是 `UPDATE_VERIFY_FAILED`（`rolled_back: true`）；restart 或信号失败记 `CMD_FAILED`。`--previous` 的检查失败、改装回 `current` 时同样处理。
 5. 成功记 `UPDATE_INSTALLED`。
 
+**回滚一起回滚**（2026-10-22 定，r11 窗口）：只回滚 `aether-proxy` 而页面（`luci-app-aether-proxy`）仍是新版时，新页面用到的新接口（`probe_sites`、`node_use`、`node_parse` 等）在旧后端上一律 `USAGE`，
+页面长期处于半坏状态（r11 窗口 R7 回滚期间实际看到「站点列表读取失败（USAGE）」）。所以：
+- `update package aether-proxy --previous` 与 `update package luci-app-aether-proxy --previous` 都回滚**同一组三个包**：`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。
+- 顺序：先 `aether-proxy`，照上面第 3、4 步安装并检查；**检查通过之后**才依次安装两个 luci 包的 `previous` 资产（不做检查，同上）。`aether-proxy` 检查失败而恢复原版时，luci 包不动——页面与后端始终同一版。
+- 某个 luci 包本机没装、或清单中没有它对本机可用的 `previous` → 跳过它；某个 luci 包安装失败 → 记 `CMD_FAILED`，不再回滚已装好的 `aether-proxy`（旧后端配新页面会报 `USAGE`，但服务本身正常），在结果中如实报告。
+- 结果在原有字段之外加 `companions: { "<包>": "rolled_back" | "skipped" | "failed", … }`；`update package luci-i18n-aether-proxy-zh-cn --previous` 与 `xray-core` 的回滚不变（只回滚自己）。
+- 正向的安装（不带 `--previous`）不变：新后端配旧页面时，旧页面只调用旧接口，能正常工作。
+
 更新 `aether-proxy` 自身时，执行更新的是作业进程：ucode 在启动时就加载完了全部模块，安装过程中替换磁盘上的文件不影响它跑完。
 不提供「手动上传二进制」：没有通道时，用户可以在 LuCI 的软件包页面或 `opkg install` 直接安装软件源里的包。
 
