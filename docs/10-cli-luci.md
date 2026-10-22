@@ -952,6 +952,8 @@ UI 规则：
   4. 不做「重新打开页面后接着显示正在跑的作业」：需要后端先提供列出正在运行的作业的接口，留待以后。
 - **增删页面文件时同步安装冒烟测试**（2026-10-22，T10.37 删掉 `subscriptions.js` 后 CI 才发现）：`tests/ci/smoke.sh` 逐个检查 `view/aether-proxy/*.js` 是否装上，只在 CI 里跑；`tests/luci/static.test.js` 检查它的列表与包里的页面文件一致。
 - **原文首尾不带空格**（2026-10-22 定，T10.36 复审；X3）：`po2lmo` 把空格留在原文里，LuCI 的 `_()` 却先去掉首尾空格再查，带空格的条目在真机上永远不翻译。需要空格时在代码里拼接；`tests/luci/static.test.js` 检查（只放过 X3 本身的 `", "`）。
+- **`status` 成功时没有 `ok` 字段**（2026-10-22，T10.35 复审）：成功的 `status` 就是 `state.json` 本身；判断失败用 `ok === false`，不要要求 `ok === true`。替身照真实形态写，不加 `ok: true`。
+- **自定义控件要覆盖 `triggerValidation`**（2026-10-22，T10.35 复审）：`Map.checkDepends` 对每个选项调用它；默认实现经 `getUIElement()` 往上找到的是选项自己的外框，会无限递归。
 - **测试替身与 LuCI 的同步/异步一致**（2026-10-22 定，r12 窗口）：`uci.unload()` 同步、不返回值；`uci.load()`、`uci.save()`、`uci.changes()` 返回 Promise。替身照 luci-base 写，否则 `uci.unload(...).then` 这类错误测试抓不到（r12 第 1 条就是这样漏掉的）。
 - **`ui.createHandlerFn` 不返回任何值**（2026-10-22 定，T10.25 复审）：它在处理函数结束后把按钮重新设为可用，返回值是 `undefined`。不要在它的返回值上接 `.then`/`.finally`；
   处理函数自己管按钮状态（例如切换进行中要保持不可用）时直接绑定处理函数。测试替身照 luci-base 写：不返回值，结束后恢复 `disabled`。
