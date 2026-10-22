@@ -203,6 +203,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - `update package aether-proxy --previous` 与 `update package luci-app-aether-proxy --previous` 都回滚**同一组三个包**：`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。
 - 顺序：先 `aether-proxy`，照上面第 3、4 步安装并检查；**检查通过之后**才依次安装两个 luci 包的 `previous` 资产（不做检查，同上）。`aether-proxy` 检查失败而恢复原版时，luci 包不动——页面与后端始终同一版。
 - 某个 luci 包本机没装、或清单中没有它对本机可用的 `previous` → 跳过它；某个 luci 包安装失败 → 记 `CMD_FAILED`，不再回滚已装好的 `aether-proxy`（旧后端配新页面会报 `USAGE`，但服务本身正常），在结果中如实报告。
+- 有 luci 包失败（安装、下载或校验）时：整体退出码 1，`code`/`detail` 取第一个失败的；其余 luci 包照常各自处理；已检查通过的 `aether-proxy` 不回退（2026-10-22 T9.16 复核定）。
+  从 `luci-app-aether-proxy` 发起时，结果的 `package`、`from`、`to` 仍描述 `aether-proxy` 这一主事务，两个 luci 包写在 `companions` 里。
 - 结果在原有字段之外加 `companions: { "<包>": "rolled_back" | "skipped" | "failed", … }`；`update package luci-i18n-aether-proxy-zh-cn --previous` 与 `xray-core` 的回滚不变（只回滚自己）。
 - 正向的安装（不带 `--previous`）不变：新后端配旧页面时，旧页面只调用旧接口，能正常工作。
 
