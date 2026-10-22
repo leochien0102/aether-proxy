@@ -1,7 +1,7 @@
 'use strict';
 'require baseclass';
 // Pure subscription presentation, ID generation and deletion plans for the LuCI view.
-// Design: docs/10「订阅页」「其余页面先出页面」; keep URLs masked and the current node retained.
+// Design: docs/10「订阅页」「订阅页修正」; keep URLs masked and the current node retained.
 
 function fmt(text, ...args) {
 	for (const arg of args) text = text.replace('%s', String(arg));
@@ -19,7 +19,10 @@ const errors = {
 const reasons = {
 	malformed: _('Malformed', 'aether-proxy'), unsupported_scheme: _('Unsupported protocol', 'aether-proxy'),
 	unsupported_transport: _('Unsupported transport', 'aether-proxy'), unsupported_security: _('Unsupported security', 'aether-proxy'),
-	ss_plugin: _('SS with plugin', 'aether-proxy'), vmess_alterid: _('VMess alterId is not zero', 'aether-proxy')
+	ss_plugin: _('SS with plugin', 'aether-proxy'), vmess_alterid: _('VMess alterId is not zero', 'aether-proxy'),
+	ipv6_address: _('IPv6 address', 'aether-proxy'), missing_field: _('Missing required field', 'aether-proxy'),
+	duplicate: _('Duplicate', 'aether-proxy'), insecure_transport: _('Insecure transport', 'aether-proxy'),
+	invalid_value: _('Invalid value', 'aether-proxy')
 };
 function relative(now, at) {
 	if (at == null) return '–';
@@ -51,25 +54,50 @@ function status_result(status, id, now) {
 	return status === undefined ? { text: _('Reading…', 'aether-proxy'), time: '', skipped: '' } :
 		result(status?.subs?.[id], now);
 }
+function row(s, status, now, busy) {
+	if (!s)
+		return null;
+	return {
+		id: s['.name'], name: s.name || s['.name'], address: mask(s.url),
+		enabled: s.enabled === '0' ? _('Disabled', 'aether-proxy') : _('Enabled', 'aether-proxy'),
+		interval: Number(s.interval_hours ?? 24) === 0 ? _('Manual only', 'aether-proxy') :
+			fmt(_('%s hours', 'aether-proxy'), s.interval_hours || 24),
+		via: s.fetch_via || 'auto', result: status_result(status, s['.name'], now), can_update: !busy
+	};
+}
+function job_error(failure) {
+	if (failure.code === 'USAGE')
+		return _('Subscription not applied yet; please save and apply first', 'aether-proxy');
+	return fmt(_('Update failed: %s', 'aether-proxy'), failure.code || failure.error || 'UNKNOWN') +
+		(failure.detail ? '（' + failure.detail + '）' : '');
+}
 return baseclass.extend({
 	status_result,
+	row,
+	pending_ids: function(changes) {
+		// Subscription IDs own the s_ namespace, including removed sections absent from UCI now.
+		return new Set((changes?.aetherproxy || []).map(change => change[1])
+			.filter(id => typeof id === 'string' && id.startsWith('s_')));
+	},
 	build: function(subscriptions, status, now, busy) {
 		return {
 			error: status && status.ok === false ? status.code + ': ' + (status.detail || '') : '',
-			rows: subscriptions.map(s => ({
-				id: s['.name'], name: s.name || s['.name'], address: mask(s.url),
-				enabled: s.enabled === '0' ? _('Disabled', 'aether-proxy') : _('Enabled', 'aether-proxy'),
-				interval: Number(s.interval_hours ?? 24) === 0 ? _('Manual only', 'aether-proxy') : fmt(_('%s hours', 'aether-proxy'), s.interval_hours || 24),
-				via: s.fetch_via || 'auto', result: status_result(status, s['.name'], now),
-				can_update: !busy
-			})), can_update: !busy
+			rows: subscriptions.map(s => row(s, status, now, busy)), can_update: !busy
 		};
 	},
-	job_result: function(job, names) {
-		if (job.ok === false) return [job.code + ': ' + (job.detail || '')];
-		return Object.entries(job.result?.subs || {}).map(([id, s]) =>
-			(names[id] || id) + ': ' + (s.ok === false ? s.code :
-				fmt(_('Added %s / Updated %s / Stale %s / Revived %s / Removed %s', 'aether-proxy'), s.added ?? 0, s.updated ?? 0, s.stale ?? 0, s.revived ?? 0, s.removed ?? 0)));
+	job_result: function(job, name_for_id) {
+		if (job.ok === false)
+			return [job_error(job)];
+		const subs = job.result?.subs || {};
+		const lines = Object.entries(subs).map(([id, s]) => {
+			const name = typeof name_for_id === 'function' ? name_for_id(id) : name_for_id?.[id];
+			return (name || id) + ': ' + (s.ok === false ? (errors[s.code] || s.code) :
+				fmt(_('Added %s / Updated %s / Stale %s / Revived %s / Removed %s', 'aether-proxy'),
+					s.added ?? 0, s.updated ?? 0, s.stale ?? 0, s.revived ?? 0, s.removed ?? 0));
+		});
+		if (!lines.length && (job.result?.ok === false || job.state === 'failed'))
+			return [job_error(job.result || job)];
+		return lines;
 	},
 	new_id: function(existing, bytes) {
 		let id;

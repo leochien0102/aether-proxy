@@ -65,6 +65,13 @@ const status = () => ({ ok: true, updates_available: {
 
 /* Render real GridSection action hooks, not just the top-level toolbar. */
 function formDouble(uci) {
+	async function renderSection(name, section) {
+		return E('div', {}, section.renderRowActions ? uci.sections('aetherproxy', name).map(s =>
+			E('div', {}, [
+				...section.options.filter(o => o.textvalue).map(o => o.textvalue(s['.name'])),
+				section.renderRowActions(s['.name'])
+			])) : []);
+	}
 	return { Map: class {
 		constructor() { this.sections = []; }
 		section(kind, name) {
@@ -76,18 +83,15 @@ function formDouble(uci) {
 					options.push(option);
 					return option;
 				},
-				super: () => E('td', {}, [E('div', {}, [E('button', {}, 'edit'), E('button', {}, 'delete')])])
+				super: method => method === 'render' ? renderSection(name, section) :
+					E('td', {}, [E('div', {}, [E('button', {}, 'edit'), E('button', {}, 'delete')])])
 			};
 			this.sections.push({ name, section });
 			return section;
 		}
 		async render() {
-			return E('form', {}, this.sections.flatMap(({ name, section }) =>
-				section.renderRowActions ? uci.sections('aetherproxy', name).map(s =>
-					E('div', {}, [
-						...section.options.filter(o => o.textvalue).map(o => o.textvalue(s['.name'])),
-						section.renderRowActions(s['.name'])
-					])) : []));
+			return E('form', {}, await Promise.all(this.sections.map(({ name, section }) =>
+				section.render ? section.render() : renderSection(name, section))));
 		}
 	} };
 }
@@ -97,7 +101,8 @@ async function harness(t, name) {
 	const uci = {
 		sections: (config, type) => type === 'subscription' ? [{ '.name': 's_a', name: 'Alpha' }] :
 			type === 'node' ? [{ '.name': 'n_a', label: 'Node' }] : [],
-		get: () => undefined,
+		get: (config, id) => id === 's_a' ? { '.name': 's_a', name: 'Alpha' } : undefined,
+		changes: async () => ({}),
 		unload: async config => { uciCalls.push(['unload', config]); },
 		load: async config => { uciCalls.push(['load', config]); }
 	};
@@ -137,7 +142,7 @@ async function harness(t, name) {
 		await flush();
 		calls.length = 0;
 	}
-	return { page, root, ap, vm, jobs, calls, uciCalls, notifications };
+	return { page, root, ap, vm, uci, jobs, calls, uciCalls, notifications };
 }
 function activeButtons(h, name) {
 	if (name === 'nodes')
@@ -404,6 +409,74 @@ for (const name of ['rules', 'updates', 'subscriptions', 'nodes']) {
 			name === 'nodes' ? 'probe_results' : 'data_status']);
 	});
 }
+
+for (const [job, expected] of [
+	[{ ok: false, code: 'USAGE', detail: 'unknown subscription' }, '订阅尚未应用，请先保存并应用'],
+	[{ ok: false, code: 'BUSY', detail: 'locked' }, '更新失败：BUSY（locked）'],
+	[{ ok: false, code: 'TIMEOUT' }, '更新失败：TIMEOUT'],
+	[{ state: 'failed', result: { ok: false, code: 'FS_FAILED', detail: 'read failed' } },
+		'更新失败：FS_FAILED（read failed）']
+]) {
+	test(`T10.28 scenario 4: subscription failure displays one nonempty line: ${expected}`, async t => {
+		const h = await harness(t, 'subscriptions');
+		const pending = click(button(h.root, '全部更新'));
+		await flush();
+		h.jobs[0].resolve(job);
+		await pending;
+		assert.equal(text(h.page.summary), expected);
+		assert.equal(h.page.summary.children.length, 1);
+		assert.deepEqual(h.notifications, [expected]);
+		assert.ok(activeButtons(h, 'subscriptions').every(button => !button.disabled));
+	});
+}
+
+test('T10.28 scenario 4: job rows use current UCI names, deleted IDs fall back, failures use event text', async t => {
+	const h = await harness(t, 'subscriptions');
+	const pending = click(button(h.root, '全部更新'));
+	await flush();
+	// Resolve names only after the job finishes, not from its pre-job row snapshot.
+	const lookups = [];
+	h.uci.get = (config, id) => {
+		lookups.push(id);
+		return id === 's_a' ? { '.name': id, name: 'Current name' } : null;
+	};
+	h.jobs[0].resolve({ result: { subs: {
+		s_a: { ok: false, code: 'SUB_FETCH_FAILED' }, s_deleted: { ok: true, added: 2 }
+	} } });
+	await pending;
+	assert.deepEqual(lookups.slice(0, 2), ['s_a', 's_deleted'], 'resolve only the result IDs before redraw');
+	assert.deepEqual(h.page.summary.children.map(text), [
+		'Current name: 下载失败', 's_deleted: 新增 2 / 更新 0 / 失效 0 / 恢复 0 / 移除 0'
+	]);
+});
+
+test('T10.28 scenario 4: an empty subscription result never emits an empty notification', async t => {
+	const h = await harness(t, 'subscriptions');
+	const pending = click(button(h.root, '全部更新'));
+	await flush();
+	h.jobs[0].resolve({ state: 'ok', result: { subs: {} } });
+	await pending;
+	assert.deepEqual(h.page.summary.children, []);
+	assert.deepEqual(h.notifications, []);
+});
+
+test('T10.28 scenario 3: Update all stays usable with pending rows; finally preserves their lock', async t => {
+	const h = await harness(t, 'subscriptions');
+	h.uci.changes = async () => ({ aetherproxy: [['set', 's_a', 'name', 'Pending']] });
+	await h.page.refresh_changes();
+	assert.equal(button(h.root, '立即更新').disabled, true);
+	assert.equal(button(h.root, '全部更新').disabled, false);
+	const pending = click(button(h.root, '全部更新'));
+	await flush();
+	assert.equal(h.jobs.length, 1);
+	assert.deepEqual(h.jobs[0].args, []);
+	h.jobs[0].resolve({ result: { subs: { s_a: { ok: true } } } });
+	await pending;
+	assert.equal(h.page.busy, false);
+	assert.equal(button(h.root, '立即更新').disabled, true);
+	assert.equal(button(h.root, '立即更新').title, '请先保存并应用');
+	assert.equal(button(h.root, '全部更新').disabled, false);
+});
 
 test('T10.15 scenario 4: chinadns-ng instructions embed optional arch; xray missing notice is unchanged', () => {
 	const updates = model('updates');
