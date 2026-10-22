@@ -1,6 +1,7 @@
 'use strict';
 
 // Rule data and custom list reading (docs/05 "文件", docs/08 "数据格式").
+// Successful per-file parses are reused by stat identity (docs/04 "规则数据缓存").
 //
 // parse_domains() and parse_cidrs() are pure (docs/12 rule 1). load() is the only function in
 // this module that reads files.
@@ -82,24 +83,37 @@ export function parse_cidrs(text) {
 
 // ------------------------------------------------------------------ loading
 
-// Reads one file. Returns { state: 'ok', text } | { state: 'missing' } | { state: 'error', detail }.
+// Paths retain only their latest successful parse; failed reads/parses are never cached.
+const parsed_files = {};
+
+// Reads/parses one file. Returns { state: 'ok', parsed } | { state: 'missing' } | { state: 'error', detail }.
 // "Does not exist" is told apart from every other failure by the error text: this ucode has no
 // numeric errno from fs.error(), and musl and glibc both say "No such file or directory".
-function read_file(path) {
+function read_file(path, parser) {
 	let st = fs.stat(path);
+	let cached = parsed_files[path];
 
 	if (st == null) {
 		let err = fs.error() ?? 'unknown error';
-
+		delete parsed_files[path];
 		return err == 'No such file or directory' ? { state: 'missing' } : { state: 'error', detail: err };
 	}
 
+	if (cached != null && cached.size == st.size && cached.mtime == st.mtime && cached.inode == st.inode)
+		return { state: 'ok', parsed: cached.parsed };
+
+	// Evict before reading: an error must not resurrect an older successful parse.
+	delete parsed_files[path];
 	let text = fs.readfile(path);
 
 	if (text == null)
 		return { state: 'error', detail: fs.error() ?? 'unknown error' };
 
-	return { state: 'ok', text };
+	let parsed = parser(text);
+	if (!length(parsed.errors))
+		parsed_files[path] = { size: st.size, mtime: st.mtime, inode: st.inode, parsed };
+
+	return { state: 'ok', parsed };
 }
 
 // Locates the rule-data domain lists that chinadns-ng reads directly (docs/05 "列表文件的解析规则"):
@@ -175,7 +189,7 @@ export function load(opts) {
 		for (let d in dirs) {
 			path = d.dir + '/' + file;
 			origin = d.origin;
-			r = read_file(path);
+			r = read_file(path, parser);
 
 			if (r.state != 'missing')
 				break;
@@ -198,7 +212,7 @@ export function load(opts) {
 			return;
 		}
 
-		let p = parser(r.text);
+		let p = r.parsed;
 
 		for (let e in p.errors)
 			push(out.errors, { file: path, code: 'invalid_line', line: e.line, text: e.text });
