@@ -87,6 +87,19 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `pinned_cert_sha256` | 字符串 | tls：证书 SHA-256 指纹固定（逗号分隔，可多个），原样渲染为 `pinnedPeerCertSha256`（Xray 自己按逗号拆分，已核实 v26.9.30 源码）。格式按校验规则 7 检查 |
 | `verify_name` | 字符串 | tls：按指定名称校验证书，渲染为 `verifyPeerCertByName` |
 | `reality_pbk` / `reality_sid` / `reality_spx` | 字符串 | reality |
+| `reality_pqv` | 字符串 | reality：ML-DSA-65 公钥，渲染为 `realitySettings.mldsa65Verify`；分享链接参数 `pqv`（2026-10-22 加） |
+| `ech_config_list` | 字符串 | tls：ECH 配置，原样渲染为 `tlsSettings.echConfigList`；分享链接参数 `ech`（2026-10-22 加） |
+| `grpc_multi_mode` | bool | grpc：渲染为 `grpcSettings.multiMode`；分享链接 `mode=multi` 为真、`mode=gun` 或没有为假（2026-10-22 加） |
+| `ws_heartbeat` | 整数（秒，1–3600） | ws：渲染为 `wsSettings.heartbeatPeriod`（2026-10-22 加）。**early data 不另设字段**：Xray 26 从 `path` 的 `?ed=<字节数>` 读取，写在 `path` 里即可 |
+| `xhttp_extra` | 字符串（JSON 对象） | xhttp：原样作为 `xhttpSettings.extra`；必须能解析为 JSON 对象，否则配置无效；分享链接参数 `extra`（URL 编码的 JSON）（2026-10-22 加） |
+| `mux` | bool | 渲染出站 `mux.enabled`；默认关。**与 `flow` 为 `xtls-rprx-vision` 同时开 → 配置无效**（Vision 不支持 Mux）（2026-10-22 加） |
+| `mux_concurrency` / `mux_xudp_concurrency` | 整数（-1–1024） | `mux.concurrency` / `mux.xudpConcurrency`；不设则不渲染（用 Xray 的默认 8 / 16）；只在 `mux` 开时渲染 |
+| `mux_xudp_udp443` | enum(`reject`\|`allow`\|`skip`) | `mux.xudpProxyUDP443`；不设则不渲染（Xray 默认 `reject`）；只在 `mux` 开时渲染 |
+| `tcp_fast_open` / `tcp_mptcp` | bool | 渲染为出站 `streamSettings.sockopt.tcpFastOpen` / `tcpMptcp`；默认关，关时不渲染（2026-10-22 加） |
+
+> 2026-10-22 新增的节点字段按 Xray **v26.9.30 与 v26.10.21** 的源码（`infra/conf/`）核实了 JSON 字段名；分享链接参数名与 helloworld（ssr-plus）的解析一致。
+> 两处与 helloworld 不同：WebSocket 的 `maxEarlyData`/`earlyDataHeaderName` 在 Xray 26 已不存在（改为 `path` 中的 `?ed=`）；Shadowsocks 出站没有 `uot`、`ivCheck`（Xray 会静默忽略），所以不提供「UDP over TCP」。
+> 注意 Xray 解析 JSON 时**忽略不认识的字段**，`xray run -test` 查不出字段名写错——新增字段必须对照源码，不能只靠 `run -test`。
 
 > Xray 26.9.30 已**移除** `allowInsecure`（配置中出现即报错，2026-10-14 核实 `infra/conf/transport_security.go`），所以节点没有「跳过证书校验」字段。
 

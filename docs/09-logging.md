@@ -120,7 +120,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `MANIFEST_BAD_SIGNATURE` | error | `url` |
 | `UPDATE_FETCH_FAILED` | error | `urls`（所有发布通道地址都连不上；与验签失败区分，见 08「检查」） |
 | `NO_SPACE` / `ARCH_UNSUPPORTED` | error | `need`、`free` / `arch` |
-| `CMD_FAILED` | error | `cmd`、`rc`、`stderr` |
+| `CMD_FAILED` | error | `cmd`、`rc`、`stderr`；作业工作进程记录时另有 `code`、`detail`（子命令 `--json` 输出中的错误码与原因，没有就不带；2026-10-22 加，r11 窗口：`sub update` 未知订阅时 `stderr` 为空，看不出原因） |
 | `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出） |
 | `FS_FAILED` | error | `op`（open/read/parse/write/rename/unlink/mkdir/stat/list，以及 `reload-config` 等说明具体步骤的值）、`path`、`detail`（调用方在 `sys.write_atomic` 等返回失败时记录） |
 

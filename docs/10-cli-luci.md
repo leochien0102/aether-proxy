@@ -142,6 +142,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
   后台进程被 init 收养，不依赖发起者存活（rpcd 调用结束、daemon 重启都不影响）。
 - **工作进程** `job run <id>`（内部子命令，不出现在用法说明里）：取种类锁 `/var/lock/aether-proxy-job-<kind>.lock`（拿不到 → 作业记为 `failed`、`error: BUSY`），
   把自身 pid 写进作业文件，经 `sys.run` 执行 `<自身> <argv…> --json`（超时 600 秒，作业进程不受 daemon 的 10 秒限制），解析输出，写 `ok`/`failed`。
+  子命令非 0 退出时记 `CMD_FAILED`：除 `cmd`、`rc`、`stderr` 外，输出能解析为带 `code` 的 JSON 时另带 `code`、`detail`（09；2026-10-22 加，r11 窗口）。
 - **自身路径**：`/usr/bin/aether-proxy`；指定了 `--bin-dir` 时用 `<bin-dir>/aether-proxy`（测试放一个包装脚本）。`job start` 收到的测试选项（`--confdir`、`--run-dir`、`--sys-root`、`--bin-dir`）原样传给子命令。
 - **工作进程消失**：`job status` 读到 `running` 但 pid 已不存在（或命令行不再匹配）→ 改写为 `failed`、`error: JOB_LOST`，记 WARN `JOB_LOST`。
 - **清理**：每次 `job start` 删除 `finished` 早于 1 小时的作业文件；内容损坏的作业文件（原子写入下只可能来自外部破坏）记 `FS_FAILED` 后删除，不阻止新作业。
