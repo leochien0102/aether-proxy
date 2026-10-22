@@ -1858,3 +1858,79 @@ msgstr "订阅尚未应用，请先保存并应用"
 msgctxt "aether-proxy"
 msgid "Update failed: %s"
 msgstr "更新失败：%s"
+
+msgctxt "aether-proxy"
+msgid "Vision does not support multiplexing."
+msgstr "Vision 不支持多路复用。"
+
+msgctxt "aether-proxy"
+msgid "For WebSocket early data, use the path, e.g. /path?ed=2048."
+msgstr "WebSocket 的 early data 写在路径里，如 /path?ed=2048。"
+
+msgctxt "aether-proxy"
+msgid "gRPC multiMode"
+msgstr "gRPC 多路模式（multiMode）"
+
+msgctxt "aether-proxy"
+msgid "WebSocket heartbeat interval (seconds)"
+msgstr "WebSocket 心跳间隔（秒）"
+
+msgctxt "aether-proxy"
+msgid "XHTTP extra settings (JSON)"
+msgstr "XHTTP 额外设置（JSON）"
+
+msgctxt "aether-proxy"
+msgid "Must be a JSON object"
+msgstr "须为 JSON 对象"
+
+msgctxt "aether-proxy"
+msgid "ECH configuration"
+msgstr "ECH 配置"
+
+msgctxt "aether-proxy"
+msgid "REALITY post-quantum verification key (mldsa65Verify)"
+msgstr "REALITY 抗量子验证公钥（mldsa65Verify）"
+
+msgctxt "aether-proxy"
+msgid "Multiplexing (Mux)"
+msgstr "多路复用（Mux）"
+
+msgctxt "aether-proxy"
+msgid "Vision flow cannot be used with multiplexing enabled"
+msgstr "Vision 流控不能同时开启多路复用"
+
+msgctxt "aether-proxy"
+msgid "Mux concurrency"
+msgstr "Mux 并发数"
+
+msgctxt "aether-proxy"
+msgid "XUDP concurrency"
+msgstr "XUDP 并发数"
+
+msgctxt "aether-proxy"
+msgid "XUDP handling of UDP/443"
+msgstr "XUDP 处理 UDP/443"
+
+msgctxt "aether-proxy"
+msgid "Default (reject)"
+msgstr "默认（拒绝）"
+
+msgctxt "aether-proxy"
+msgid "Reject"
+msgstr "拒绝"
+
+msgctxt "aether-proxy"
+msgid "Allow"
+msgstr "允许"
+
+msgctxt "aether-proxy"
+msgid "Do not multiplex"
+msgstr "不经多路复用"
+
+msgctxt "aether-proxy"
+msgid "TCP Fast Open"
+msgstr "TCP Fast Open"
+
+msgctxt "aether-proxy"
+msgid "MPTCP"
+msgstr "MPTCP"
