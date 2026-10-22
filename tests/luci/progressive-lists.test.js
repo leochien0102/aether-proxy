@@ -103,8 +103,11 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					this.modal = { id, value: 'unsaved modal input' };
 					if (this.addModalOptions)
 						this.addModalOptions(this.modal, id);
-					for (const o of this.options.filter(o => o.modalonly && o.renderWidget))
-						o.renderWidget(id, 0, uci.get('aetherproxy', id, o.field) ?? o.default);
+					/* Only subscription modals render widgets here: node modal widgets call
+					   LuCI class prototypes this double lacks; nodes-fields.test.js covers them. */
+					if (type === 'subscription')
+						for (const o of this.options.filter(o => o.modalonly && o.renderWidget))
+							o.renderWidget(id, 0, uci.get('aetherproxy', id, o.field) ?? o.default);
 					this.modal.node = E('div', {}, [
 						E('p', {}, this.modal.description ?? ''),
 						...this.options.filter(o => o.modalonly).map(o => E('label', {}, o.title))
