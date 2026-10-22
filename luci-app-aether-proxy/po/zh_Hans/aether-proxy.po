@@ -13,6 +13,14 @@ msgid "Switching to “%s”…"
 msgstr "正在切换到「%s」…"
 
 msgctxt "aether-proxy"
+msgid "Switched to “%s”"
+msgstr "已切换到「%s」"
+
+msgctxt "aether-proxy"
+msgid "Switching to “%s” has not finished yet; see the overview or logs for the reason."
+msgstr "切换到「%s」还没有完成，可到概览页或日志页查看原因"
+
+msgctxt "aether-proxy"
 msgid "Switching to “%s” did not take effect; the service is still using “%s”. Reason: %s (%s). Click Restart to start with the configured node (this briefly interrupts proxy traffic), or see the logs page for details."
 msgstr "切换到「%s」未生效，服务仍在使用「%s」。原因：%s（%s）。可以点「重启」用配置的节点重新启动（会短暂中断代理），或到日志页查看详情。"
 

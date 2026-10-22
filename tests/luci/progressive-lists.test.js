@@ -112,7 +112,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 }
 async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['edit', 'remove']) {
 	const calls = [], reads = [], turns = [], maps = [], uciCalls = [], builtins = [];
-	const statusCalls = [], statusReads = [], timers = new Map();
+	const statusCalls = [], statusReads = [], timers = new Map(), notices = [];
 	let now = 0, timerID = 0, current = 'n_a';
 	let changes = async () => ({});
 	const nodes = [
@@ -125,7 +125,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	];
 	const uci = {
 		load: async config => { uciCalls.push(['load', config]); },
-		unload: async config => { uciCalls.push(['unload', config]); },
+		unload: config => { uciCalls.push(['unload', config]); },
 		get: (config, id, option) => {
 			if (id === 'main' && option === 'node')
 				return current;
@@ -184,7 +184,16 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 					.finally(() => { if (target) target.disabled = false; });
 			},
 			changes: { apply: () => assert.fail('must not apply staged UCI changes') },
-			addNotification(...args) { uciCalls.push(['notify', ...args]); }
+			addNotification(...args) {
+				uciCalls.push(['notify', ...args]);
+				// luci-base returns the banner, including a separate Dismiss control.
+				const dismiss = E('button', {}, '关闭');
+				const banner = E('div', {}, [E('div', {}, args[1]), dismiss]);
+				banner.remove = () => { banner.removed = true; };
+				dismiss.click = () => banner.remove();
+				notices.push(banner);
+				return banner;
+			}
 		},
 		dom: { content: (target, content) => {
 			target.replaceChildren(...(Array.isArray(content) ? content : [content]));
@@ -219,7 +228,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	}
 	return { name, page, maps, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
 		setChanges: fn => { changes = fn; },
-		statusCalls, statusReads, timers, tick, setCurrent: id => { current = id; } };
+		statusCalls, statusReads, timers, notices, tick, setCurrent: id => { current = id; } };
 }
 async function render(h) {
 	await h.page.load();
@@ -459,6 +468,9 @@ async () => {
 	assert.equal(h.page.importDetails.open, true);
 	assert.equal(h.page.importText.value, input, 'do not trim or clear the submitted textarea');
 	assert.match(text(h.maps[1].node), /Newly imported/);
+	assert.deepEqual(h.uciCalls.filter(call => ['unload', 'load'].includes(call[0])),
+		[['load', 'aetherproxy'], ['unload', 'aetherproxy'], ['load', 'aetherproxy']]);
+	assert.doesNotMatch(text(h.root), /操作失败/);
 	assert.equal(text(h.page.importResult), '新增 1 个，已存在 1 个，失败 1 个#5 CONFIG_INVALID: <invalid link>');
 	assert.equal(find(h.page.importDetails, node => node === h.page.importResult).length, 1);
 	assert.equal(find(h.page.importResult, node => node.tag === 'li').length, 1);
@@ -772,6 +784,200 @@ test('T10.19 scenario 4: anonymous grid hides section names without changing edi
 	assert.equal(h.maps[1].sections[0].anonymous, true);
 	assert.equal(text(h.page.probeCells.n_b), '拒绝连接');
 });
+
+/* T10.32: synchronous unload regressions and the returned LuCI banner lifecycle. */
+test('T10.32 scenario 1: single subscription update reloads after synchronous unload and shows new results',
+async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	h.reads[0].resolve({ ok: true, subs: {} });
+	await flush();
+	assert.match(text(h.page.resultCells.s_a), /尚未更新/);
+	h.ap.run_job = async (kind, ids) => {
+		assert.equal(kind, 'sub_update');
+		assert.deepEqual(ids, ['s_a']);
+		return { state: 'ok', result: { subs: { s_a: { ok: true, added: 7 } } } };
+	};
+	const button = h.page.rowButtons.get('s_a');
+	assert.equal(button.click({ currentTarget: button }), undefined, 'LuCI handlers return no value');
+	await flush();
+	assert.deepEqual(h.uciCalls.filter(call => ['unload', 'load'].includes(call[0])),
+		[['load', 'aetherproxy'], ['unload', 'aetherproxy'], ['load', 'aetherproxy']]);
+	assert.deepEqual(h.calls.at(-1), ['sub_status', undefined]);
+	h.reads[1].resolve(success('subscriptions'));
+	await flush();
+	assert.match(text(h.page.resultCells.s_a), /成功，7 个节点/);
+	assert.doesNotMatch(text(h.page.summary), /操作失败/);
+	assert.match(text(h.page.summary), /Alpha: 新增 7/);
+	assert.equal(h.page.busy, false);
+	assert.ok(!h.page.rowButtons.get('s_a').disabled);
+});
+
+test('T10.32 scenario 3: subscription actions are Update, Edit, Delete and Edit opens that subscription', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	for (const id of ['s_a', 's_b']) {
+		const rowButtons = buttons(actions(h, id));
+		assert.deepEqual(rowButtons.map(text), ['立即更新', '编辑', '删除']);
+		const edit = rowButtons[1];
+		assert.ok(h.builtins.find(row => row.id === id).buttons.includes(edit));
+		edit.click({ currentTarget: edit });
+		assert.equal(h.page.grid.modal.id, id);
+		assert.match(text(h.page.grid.modal.node), /名称订阅地址/);
+	}
+});
+
+async function beginSwitch(h, id) {
+	const previous = h.uci.get('aetherproxy', 'main', 'node');
+	const button = buttons(actions(h, id)).find(node => text(node) === '设为当前');
+	const pending = button.click({ currentTarget: button });
+	assert.deepEqual(h.calls.at(-1), ['node_use', { id }]);
+	h.setCurrent(id);
+	h.reads.at(-1).resolve({ ok: true, reload: true });
+	await flush();
+	h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: previous });
+	await pending;
+	return h.notices.at(-1);
+}
+async function switchHarness() {
+	const h = await harness('nodes');
+	h.nodes.push({ '.name': 'n_c', label: 'Node C' });
+	await render(h);
+	h.reads[0].resolve(success('nodes'));
+	h.statusReads[0].resolve({ ok: true, state: 'running', node_id: 'n_a' });
+	await flush();
+	return h;
+}
+
+test('T10.32 scenario 4: completed switch updates the same banner, keeps Dismiss and removes it after 5s', async () => {
+	const h = await switchHarness();
+	const banner = await beginSwitch(h, 'n_b');
+	const content = h.page.switchNotice.content;
+	const dismiss = banner.children[1];
+	assert.equal(content.textContent, '正在切换到「Node B」…');
+	assertSwitchLocked(h, true);
+	await h.tick(3000);
+	h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: 'n_b' });
+	await flush();
+	assert.equal(h.page.switchNotice.element, banner, 'reuse addNotification return value');
+	assert.equal(banner.children[0].children[0], content, 'update only our text node');
+	assert.equal(content.textContent, '已切换到「Node B」');
+	assert.equal(banner.children[1], dismiss, 'keep the SDK Dismiss control');
+	assert.equal(h.notices.length, 1, 'do not stack a second banner');
+	assertSwitchLocked(h, false);
+	await h.tick(4999);
+	assert.ok(!banner.removed);
+	await h.tick(1);
+	assert.equal(banner.removed, true);
+	assert.equal(h.page.switchNotice, null);
+	assert.equal(h.timers.size, 0);
+});
+
+test('T10.32 scenario 4: 60s timeout retains an unfinished banner, ignores late status and permits Dismiss',
+async () => {
+	const h = await switchHarness();
+	const banner = await beginSwitch(h, 'n_b');
+	await h.tick(59999);
+	assert.equal(h.page.switchNotice.content.textContent, '正在切换到「Node B」…');
+	assertSwitchLocked(h, true);
+	await h.tick(1);
+	assert.equal(h.page.switchNotice.element, banner);
+	assert.equal(h.page.switchNotice.content.textContent,
+		'切换到「Node B」还没有完成，可到概览页或日志页查看原因');
+	assertSwitchLocked(h, false);
+	assert.equal(h.timers.size, 0);
+	h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: 'n_b' });
+	await flush();
+	await h.tick(60000);
+	assert.ok(!banner.removed, 'unfinished notices do not auto-expire');
+	assert.match(text(banner), /还没有完成/);
+	banner.children[1].click();
+	assert.equal(banner.removed, true, 'the original Dismiss control still works');
+});
+
+for (const outcome of ['complete', 'timeout']) {
+	test(`T10.32 defensive: slow form rendering retains the ${outcome} watch outcome`, async () => {
+		const h = await switchHarness();
+		const gate = deferred();
+		const buildPage = h.page.buildPage.bind(h.page);
+		h.page.buildPage = async () => {
+			const content = await buildPage();
+			await gate.promise;
+			return content;
+		};
+		const pending = beginSwitch(h, 'n_b');
+		await flush();
+		assert.equal(h.page.switchPending, true, 'watch starts before the form settles');
+		if (outcome === 'complete') {
+			await h.tick(3000);
+			h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: 'n_b' });
+			await flush();
+		}
+		else
+			await h.tick(60000);
+		assert.equal(h.page.switchPending, false);
+		assert.equal(h.notices.length, 0, 'form has not returned yet');
+		gate.resolve();
+		const banner = await pending;
+		assert.equal(h.page.switchNotice.content.textContent, outcome === 'complete'
+			? '已切换到「Node B」' : '切换到「Node B」还没有完成，可到概览页或日志页查看原因');
+		assertSwitchLocked(h, false);
+		await h.tick(5000);
+		assert.equal(!!banner.removed, outcome === 'complete');
+	});
+}
+
+test('T10.32 defensive: failed form refresh retains the original bounded switch lock', async () => {
+	const h = await switchHarness();
+	h.page.buildPage = async () => { throw new Error('form unavailable'); };
+	await beginSwitch(h, 'n_b');
+	assertSwitchLocked(h, true);
+	assert.match(text(h.notices.at(-1)), /已切换节点，但刷新页面数据失败/);
+	await h.tick(60000);
+	assertSwitchLocked(h, false);
+	assert.equal(h.notices.length, 1, 'no extra switch banner after refresh failure');
+});
+
+for (const outcome of ['complete', 'timeout']) {
+	test(`T10.32 scenario 4: switching again removes the ${outcome} banner before node_use returns`, async () => {
+		const h = await switchHarness();
+		const old = await beginSwitch(h, 'n_b');
+		if (outcome === 'complete') {
+			await h.tick(3000);
+			h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: 'n_b' });
+			await flush();
+			await h.tick(2000);
+		}
+		else
+			await h.tick(60000);
+		const pending = beginSwitch(h, 'n_c');
+		assert.equal(old.removed, true, 'remove before awaiting the next write');
+		const next = await pending;
+		assert.notEqual(next, old);
+		assert.equal(h.notices.length, 2);
+		await h.tick(3000);
+		assert.ok(!next.removed, 'old success timer must not remove a new banner');
+		assert.equal(h.page.switchNotice.content.textContent, '正在切换到「Node C」…');
+	});
+}
+for (const completed of [false, true]) {
+	test(`T10.32 scenario 4: page redraw removes the ${completed ? 'completed' : 'pending'} switch banner`,
+	async () => {
+		const h = await switchHarness();
+		const banner = await beginSwitch(h, 'n_b');
+		if (completed) {
+			await h.tick(3000);
+			h.statusReads.at(-1).resolve({ ok: true, state: 'running', node_id: 'n_b' });
+			await flush();
+		}
+		await h.page.buildPage();
+		assert.equal(banner.removed, true);
+		assert.equal(h.page.switchNotice, null);
+		assert.equal(h.page.switchNoticeTimer, null);
+		await h.tick(60000);
+		assert.equal(h.notices.length, 1, 'old watch must not recreate the notice');
+	});
+}
 
 /* T10.25: real view/grid tests with independent status RPCs and virtual time. */
 test('T10.25 scenario 1: idle progress is hidden and empty; running progress shows done/total', async () => {

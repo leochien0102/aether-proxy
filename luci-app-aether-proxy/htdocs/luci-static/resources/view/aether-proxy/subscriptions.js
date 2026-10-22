@@ -1,6 +1,6 @@
 'use strict';
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
-// Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」.
+// Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
 // The initial status read only fills result cells; never redraw an open edit modal for it.
 'require view';
 'require form';
@@ -124,7 +124,7 @@ return view.extend({
 		// The generic Add creates anonymous sections, which are not subscription IDs.
 		s.renderSectionAdd = function() { return E([]); };
 		s.renderRowActions = function(id) {
-			const td = this.super('renderRowActions', [id]);
+			const td = this.super('renderRowActions', [id, _('Edit', 'aether-proxy')]);
 			const button = E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'disabled': self.busy || self.pendingIds.has(id) || null,
@@ -210,9 +210,9 @@ return view.extend({
 			this.summary.replaceChildren(...lines.map(text => E('p', {}, text)));
 			if (lines.length)
 				ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, text))));
-			const data = await Promise.all([
-				uci.unload('aetherproxy').then(() => uci.load('aetherproxy')), ap.call('sub_status')
-			]);
+			// unload is synchronous in luci-base; only load returns a Promise.
+			uci.unload('aetherproxy');
+			const data = await Promise.all([uci.load('aetherproxy'), ap.call('sub_status')]);
 			this.status = data[1];
 		}
 		catch (e) {

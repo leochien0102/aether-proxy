@@ -161,6 +161,12 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	}
 });
 
+test('T10.32 scenario 2: no view chains then() onto synchronous uci.unload()', () => {
+	for (const [name, source] of viewSources())
+		assert.doesNotMatch(source, /uci\.unload\([^)]*\)\s*\.\s*then\s*\(/,
+			name + ': unload returns undefined, not a Promise');
+});
+
 test('T10.27 scenario 3: all views avoid cbi-page-actions for block controls', () => {
 	const sources = viewSources();
 	assert.equal(sources.size, 8, 'scan all shipped views');
