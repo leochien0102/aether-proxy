@@ -810,6 +810,9 @@ test('T10.35 scenario 3: deferred status shows current WAN DNS or fallback only 
 		[{ ok: true, state: 'error', wan_dns: [] }, null],
 		[{ ok: false, code: 'RPC_FAILED', wan_dns: ['10.0.0.1'] }, null],
 		[{ ok: true, state: 'running' }, null],
+		// The real CLI status is state.json itself, without an ok field.
+		[{ state: 'running', wan_dns: ['10.0.0.3'] }, '运营商下发的 DNS 当前为 10.0.0.3'],
+		[{ state: 'running', wan_dns: [] }, '运营商下发的 DNS 暂未取得，临时使用 223.5.5.5'],
 		[new Error('offline'), null]
 	];
 	for (const [reply, expected] of cases) {
@@ -894,4 +897,19 @@ test('T10.35 scenario 5: direct presets retain upstream editing and explain the 
 	assert.ok(text(root).includes(option.description));
 	assert.equal(option.validate('dns', ['udp://198.51.100.53#5353']), true);
 	assert.notEqual(option.validate('dns', ['wan']), true, 'wan is domestic-only');
+});
+
+test('T10.35 review: Map.checkDepends can validate the trust rows without recursing', async () => {
+	const h = load_view({ trust_dns: ['8.8.8.8'] });
+	await h.page.render();
+	const option = dns_option(h, 'trust_dns');
+	let triggered = 0;
+	for (const row of option.widgets.dns)
+		row.address.triggerValidation = () => { triggered++; return true; };
+	// In LuCI, getUIElement() walks up to this option's own frame and returns the option.
+	option.getUIElement = () => option;
+	assert.equal(option.triggerValidation('dns'), true);
+	assert.equal(triggered, 2);
+	option.widgets.dns[0].address.value = '';
+	assert.equal(option.triggerValidation('dns'), false);
 });

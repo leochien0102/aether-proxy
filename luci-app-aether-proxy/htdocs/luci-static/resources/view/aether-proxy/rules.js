@@ -68,6 +68,14 @@ function trust_option(section) {
 	/* Combobox is always optional in LuCI. Aggregate validation must still
 	 * reject an empty first address when AbstractValue.parse() saves the map. */
 	option.isValid = function(section_id) { return this.getValidationError(section_id) == ''; };
+	/* Map.checkDepends calls triggerValidation on every option. The stock one
+	 * asks getUIElement(), which finds this option's own frame here and would
+	 * recurse forever; validate the two rows instead. */
+	option.triggerValidation = function(section_id) {
+		for (const row of this.widgets[section_id] ?? [])
+			row.address.triggerValidation?.();
+		return this.isValid(section_id);
+	};
 	return option;
 }
 return view.extend({

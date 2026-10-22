@@ -90,7 +90,8 @@ function trust_values(rows) {
 }
 function wan_dns_text(status) {
 	const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
-	if (status?.ok !== true || !active || !Array.isArray(status.wan_dns))
+	/* A successful status is state.json itself and carries no ok field. */
+	if (!status || status.ok === false || !active || !Array.isArray(status.wan_dns))
 		return null;
 	return status.wan_dns.length ?
 		fmt(_('ISP-provided DNS is currently %s', 'aether-proxy'),
