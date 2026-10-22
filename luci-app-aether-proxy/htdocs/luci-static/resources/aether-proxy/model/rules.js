@@ -3,7 +3,8 @@
 
 /* Pure rules/DNS presentation and format preflight (docs/10 "规则与 DNS 页").
  * Match config.uc upstream and net.uc literally, including underscores in domains.
- * The CLI remains authoritative after LuCI applies its session configuration. */
+ * The CLI remains authoritative after LuCI applies its session configuration.
+ * DNS presets, trust transports and WAN hints follow docs/10 "DNS 常用地址与协议". */
 function fmt(s) {
 	for (let i = 1; i < arguments.length; i++)
 		s = s.replace('%s', arguments[i]);
@@ -41,6 +42,62 @@ function upstream(s) {
 	}
 	return ipv4(rest);
 }
+/* Keep values separate from translated labels so adding a provider changes only this table. */
+const PRESETS = {
+	china_dns: [
+		{ value: 'wan', name: _('ISP-provided DNS', 'aether-proxy') },
+		{ value: '223.5.5.5', name: _('AliDNS', 'aether-proxy') },
+		{ value: '223.6.6.6', name: _('AliDNS', 'aether-proxy') },
+		{ value: '114.114.114.114', name: _('114 DNS', 'aether-proxy') },
+		{ value: '114.114.115.115', name: _('114 DNS', 'aether-proxy') },
+		{ value: '180.76.76.76', name: _('Baidu', 'aether-proxy') }
+	],
+	trust_dns: [
+		{ value: '8.8.8.8', name: _('Google', 'aether-proxy') },
+		{ value: '8.8.4.4', name: _('Google', 'aether-proxy') },
+		{ value: '1.1.1.1', name: _('Cloudflare', 'aether-proxy') },
+		{ value: '1.0.0.1', name: _('Cloudflare', 'aether-proxy') },
+		{ value: '9.9.9.9', name: _('Quad9', 'aether-proxy') },
+		{ value: '208.67.222.222', name: _('OpenDNS', 'aether-proxy') }
+	],
+	direct_dns: [
+		{ value: 'tcp://9.9.9.9', name: _('Quad9', 'aether-proxy') },
+		{ value: 'tcp://8.8.8.8', name: _('Google', 'aether-proxy') },
+		{ value: 'tcp://1.1.1.1', name: _('Cloudflare', 'aether-proxy') }
+	]
+};
+function presets(field) {
+	return PRESETS[field].map(item => [ item.value, item.value == 'wan' ? item.name :
+		fmt(_('%s (%s)', 'aether-proxy'), item.name, item.value) ]);
+}
+function trust_address(value) {
+	return typeof value == 'string' && ipv4(value.replace(/^(tcp|udp):\/\//, ''));
+}
+function trust_input(value, optional) {
+	return (optional && value == '') || ipv4(value) ? true : _('Invalid IPv4 address.', 'aether-proxy');
+}
+function trust_rows(value) {
+	const values = Array.isArray(value) ? value : value == null ? [] : [ value ];
+	return [0, 1].map(i => ({
+		address: (values[i] ?? '').replace(/^(tcp|udp):\/\//, ''),
+		protocol: values[i]?.startsWith('udp://') ? 'udp' : 'tcp'
+	}));
+}
+function trust_values(rows) {
+	/* Do not filter the first empty row: validation must reject it even if row 2 is filled. */
+	return rows.map(row => row.address && row.protocol == 'udp' ? 'udp://' + row.address : row.address)
+		.slice(0, rows[1].address == '' ? 1 : 2);
+}
+function wan_dns_text(status) {
+	const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
+	/* A successful status is state.json itself and carries no ok field. */
+	if (!status || status.ok === false || !active || !Array.isArray(status.wan_dns))
+		return null;
+	return status.wan_dns.length ?
+		fmt(_('ISP-provided DNS is currently %s', 'aether-proxy'),
+			status.wan_dns.join(_(',', 'aether-proxy'))) :
+		_('ISP-provided DNS is not available yet; temporarily using 223.5.5.5.', 'aether-proxy');
+}
 function validate(field, value) {
 	if (field == 'dns_probe_domain')
 		return domain(value) ? true : _('Invalid DNS probe domain.', 'aether-proxy');
@@ -50,9 +107,10 @@ function validate(field, value) {
 	if (field == 'trust_dns') {
 		if (values.length < 1 || values.length > 2)
 			return _('Trust DNS requires one or two IPv4 addresses.', 'aether-proxy');
-		return values.every(ipv4) ? true : _('Invalid IPv4 address.', 'aether-proxy');
+		return values.every(trust_address) ? true : _('Invalid IPv4 address.', 'aether-proxy');
 	}
-	return values.every(upstream) ? true : _('Invalid DNS upstream.', 'aether-proxy');
+	return values.every(v => (field == 'china_dns' && v == 'wan') || upstream(v)) ?
+		true : _('Invalid DNS upstream.', 'aether-proxy');
 }
 const NAMES = {
 	gfwlist: _('Blocked domains', 'aether-proxy'), chnlist: _('China domains', 'aether-proxy'), apple: _('Apple China domains', 'aether-proxy'),
@@ -121,6 +179,7 @@ function job_result(job) {
 	return lines;
 }
 return baseclass.extend({ validate, save_result, table, job_result, relative, loading_text, list_state,
+	presets, trust_rows, trust_values, trust_input, wan_dns_text,
 	modes: function() {
 		return [ [ 'bypass_cn', _('Bypass China — proxy destinations outside China.', 'aether-proxy') ],
 			[ 'gfw', _('Blocked sites — proxy only blocked domains.', 'aether-proxy') ],
