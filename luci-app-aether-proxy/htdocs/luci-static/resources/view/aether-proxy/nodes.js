@@ -547,8 +547,8 @@ return view.extend({
 		// A late reply after Cancel must not recreate the removed section.
 		if (this.pendingAdd !== added)
 			return;
-		/* TODO(design): Save racing with Parse is unspecified. Ignore the reply
-		   during Save rather than mutate the data while LuCI is validating it. */
+		/* A reply arriving while Save validates is dropped (design lead,
+		   2026-10-22): never change the data under LuCI's save. */
 		if (added.saving)
 			return;
 		if (!reply.ok) {
