@@ -38,6 +38,8 @@ export function render(snapshot, ctx) {
 	let china = dns.china_dns ?? [];
 	let direct = dns.direct_dns ?? [];
 	let trust = trust_upstreams(dns, tier);
+	// DNS still follows main.mode; device GFW overrides only need its IP set populated (docs/03).
+	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false && h.policy == 'gfw')) > 0;
 	let out = [];
 
 	// A line that needs a path is skipped when the caller did not supply it.
@@ -57,7 +59,6 @@ export function render(snapshot, ctx) {
 	if (main.mode == 'gfw') {
 		put_path('gfwlist-file', paths.gfwlist);
 		push(out, 'default-tag chn');
-		push(out, 'add-taggfw-ip ' + nft_set(C.CHINADNS_SET_GFW4) + ',null');
 	}
 	else if (main.mode == 'bypass_cn') {
 		put_path('gfwlist-file', paths.gfwlist);
@@ -68,9 +69,14 @@ export function render(snapshot, ctx) {
 	}
 	else {
 		// global
+		if (host_gfw)
+			put_path('gfwlist-file', paths.gfwlist);
 		put_path('chnlist-file', paths.apple);
 		push(out, 'default-tag gfw');
 	}
+
+	if (main.mode == 'gfw' || host_gfw)
+		push(out, 'add-taggfw-ip ' + nft_set(C.CHINADNS_SET_GFW4) + ',null');
 
 	// Custom groups: declaration order = priority, low to high.
 	push(out, 'group uproxy');

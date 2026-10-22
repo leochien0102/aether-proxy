@@ -70,6 +70,31 @@ function quote_list(list) {
 	return join(', ', map(list, x => '"' + x + '"'));
 };
 
+// Default and device modes share every destination rule, including user proxy exceptions.
+function mode_chain(name, mode) {
+	let out = [
+		`${T}chain ${name} {`,
+		`${T}${T}ip daddr @proxy_ip4 goto proxy`,
+		`${T}${T}ip daddr @uproxy4 goto proxy`
+	];
+
+	if (mode == 'gfw') {
+		push(out, `${T}${T}ip daddr @gfw4 goto proxy`);
+		push(out, `${T}${T}ip daddr @gfw_static4 goto proxy`);
+	}
+	else if (mode == 'bypass_cn') {
+		push(out, `${T}${T}ip daddr @chnroute4 return`);
+		push(out, `${T}${T}goto proxy`);
+	}
+	else if (mode == 'global') {
+		push(out, `${T}${T}goto proxy`);
+	}
+
+	push(out, `${T}}`);
+	push(out, '');
+	return out;
+};
+
 export function render(snapshot, ctx) {
 	ctx = ctx ?? {};
 
@@ -84,11 +109,17 @@ export function render(snapshot, ctx) {
 	let lan = quote_list(sort_strings(main.lan_ifaces));
 
 	// Host policy sets. Disabled hosts are not rendered.
-	let host = { direct: { ip: [], mac: [] }, proxy: { ip: [], mac: [] }, follow: { ip: [], mac: [] }, udp: { ip: [], mac: [] } };
+	let host = {
+		direct: { ip: [], mac: [] }, proxy: { ip: [], mac: [] },
+		follow: { ip: [], mac: [] }, udp: { ip: [], mac: [] }
+	};
 
 	for (let h in snapshot?.hosts ?? []) {
 		if (h.enabled == false)
 			continue;
+
+		if (h.policy in [ 'bypass_cn', 'gfw' ])
+			host[h.policy] ??= { ip: [], mac: [] };
 
 		let pol = host[h.policy] ?? host.follow;
 
@@ -101,6 +132,8 @@ export function render(snapshot, ctx) {
 		}
 	}
 
+	// Fixed precedence, independent of UCI order; absent overrides add no output bytes.
+	let host_modes = filter([ 'bypass_cn', 'gfw' ], p => host[p] != null);
 	let out = [];
 
 	push(out, sprintf('table %s', C.NFT_TABLE));
@@ -119,7 +152,7 @@ export function render(snapshot, ctx) {
 	push(out, set_block('uproxy4', 'ipv4_addr', true, sort_ips(restored.uproxy4), 'chinadns-ng group-ipset'));
 	push(out, '');
 
-	for (let p in [ 'direct', 'proxy', 'follow', 'udp' ]) {
+	for (let p in [ 'direct', 'proxy', 'follow', ...host_modes, 'udp' ]) {
 		push(out, set_block(`host_${p}4`, 'ipv4_addr', true, sort_ips(host[p].ip)));
 		push(out, set_block(`host_${p}_mac`, 'ether_addr', false, sort_strings(host[p].mac)));
 	}
@@ -161,6 +194,12 @@ export function render(snapshot, ctx) {
 	push(out, `${T}${T}ether saddr @host_direct_mac return`);
 	push(out, `${T}${T}ip saddr @host_proxy4 goto proxy`);
 	push(out, `${T}${T}ether saddr @host_proxy_mac goto proxy`);
+
+	for (let p in host_modes) {
+		push(out, `${T}${T}ip saddr @host_${p}4 goto mode_${p}`);
+		push(out, `${T}${T}ether saddr @host_${p}_mac goto mode_${p}`);
+	}
+
 	push(out, `${T}${T}ip saddr @host_follow4 goto by_mode`);
 	push(out, `${T}${T}ether saddr @host_follow_mac goto by_mode`);
 
@@ -170,24 +209,10 @@ export function render(snapshot, ctx) {
 	push(out, `${T}}`);
 	push(out, '');
 
-	push(out, `${T}chain by_mode {`);
-	push(out, `${T}${T}ip daddr @proxy_ip4 goto proxy`);
-	push(out, `${T}${T}ip daddr @uproxy4 goto proxy`);
+	push(out, ...mode_chain('by_mode', main.mode));
 
-	if (main.mode == 'gfw') {
-		push(out, `${T}${T}ip daddr @gfw4 goto proxy`);
-		push(out, `${T}${T}ip daddr @gfw_static4 goto proxy`);
-	}
-	else if (main.mode == 'bypass_cn') {
-		push(out, `${T}${T}ip daddr @chnroute4 return`);
-		push(out, `${T}${T}goto proxy`);
-	}
-	else if (main.mode == 'global') {
-		push(out, `${T}${T}goto proxy`);
-	}
-
-	push(out, `${T}}`);
-	push(out, '');
+	for (let p in host_modes)
+		push(out, ...mode_chain('mode_' + p, p));
 
 	let tp = `meta mark set meta mark | ${mark} tproxy ip to :${C.TPROXY_PORT} accept`;
 
