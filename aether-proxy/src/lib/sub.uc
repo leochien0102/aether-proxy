@@ -213,14 +213,6 @@ function temp_dirs(ctx) {
 	return { base, delta, render, render_delta: `${render}/${C.SUB_DELTA_SUBDIR}` };
 }
 
-function strip_section(section) {
-	let out = {};
-	for (let key in keys(section))
-		if (substr(key, 0, 1) != '.')
-			out[key] = section[key];
-	return out;
-}
-
 export function load_committed_config(ctx, text) {  // T8.2: reused by node import
 	let dirs = temp_dirs(ctx);
 	let dir = `${dirs.base}/${C.SUB_SNAPSHOT_SUBDIR}`;
@@ -234,20 +226,7 @@ export function load_committed_config(ctx, text) {  // T8.2: reused by node impo
 	if (!cursor.load(C.SUB_SNAPSHOT_PACKAGE))
 		return { ok: false, errors: [ { code: 'uci', detail: uci_error(cursor) } ] };
 
-	let raw = { hosts: [], subscriptions: {}, nodes: {} };
-	for (let section in [ 'main', 'dns', 'update', 'probe' ]) {
-		let value = cursor.get_all(C.SUB_SNAPSHOT_PACKAGE, section);
-		raw[section] = value ? strip_section(value) : null;
-	}
-	cursor.foreach(C.SUB_SNAPSHOT_PACKAGE, 'host', section => { push(raw.hosts, strip_section(section)); });
-	cursor.foreach(C.SUB_SNAPSHOT_PACKAGE, 'subscription', section => {
-		raw.subscriptions[section['.name']] = strip_section(section);
-	});
-	cursor.foreach(C.SUB_SNAPSHOT_PACKAGE, 'node', section => {
-		raw.nodes[section['.name']] = strip_section(section);
-	});
-
-	let loaded = config.normalize(raw);
+	let loaded = config.normalize(config.read_raw(cursor, C.SUB_SNAPSHOT_PACKAGE));
 	if (loaded.ok)
 		for (let warning in (loaded.warnings ?? []))
 			log.event(null, warning.code, warning.args);

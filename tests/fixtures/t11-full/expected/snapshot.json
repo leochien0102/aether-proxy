@@ -58,6 +58,11 @@
     "node_timeout": 7,
     "node_concurrency": 16
   },
+  "sub": {
+    "user_agent": "aether-proxy/0.0.0-dev",
+    "fetch_via": "auto",
+    "interval_hours": 24
+  },
   "hosts": [
     {
       "enabled": false,

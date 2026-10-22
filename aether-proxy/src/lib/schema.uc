@@ -74,13 +74,20 @@ const host = [
 	{ name: 'udp', type: 'bool', default: false }
 ];
 
+const sub = [
+	{ name: 'user_agent', type: 'string', default: C.PROG + '/' + C.VERSION },
+	{ name: 'fetch_via', type: 'enum', enum: [ 'auto', 'direct', 'proxy' ], default: 'auto' },
+	{ name: 'interval_hours', type: 'int', min: 0, default: 24 }
+];
+
 const subscription = [
 	{ name: 'enabled', type: 'bool', default: true },
 	{ name: 'name', type: 'string', default: null },
 	{ name: 'url', type: 'url', required: true, default: null },
-	{ name: 'user_agent', type: 'string', default: C.PROG + '/' + C.VERSION },
-	{ name: 'fetch_via', type: 'enum', enum: [ 'auto', 'direct', 'proxy' ], default: 'auto' },
-	{ name: 'interval_hours', type: 'int', min: 0, default: 24 }
+	// Null means inherit from sub; config.normalize materializes the effective values (docs/05).
+	{ name: 'user_agent', type: 'string', default: null },
+	{ name: 'fetch_via', type: 'enum', enum: [ 'auto', 'direct', 'proxy' ], default: null },
+	{ name: 'interval_hours', type: 'int', min: 0, default: null }
 ];
 
 // TODO(design): 05 does not mark which node fields are required beyond the per-protocol
@@ -157,4 +164,4 @@ const probe = [
 ];
 
 // Named singleton sections map to the section name; the rest are per-type collections.
-export const SCHEMA = { main, dns, update, probe, host, subscription, node };
+export const SCHEMA = { main, dns, update, probe, sub, host, subscription, node };

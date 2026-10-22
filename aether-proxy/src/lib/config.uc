@@ -2,8 +2,8 @@
 
 // UCI -> normalized snapshot (docs/05, docs/12 "配置快照").
 //
-// load(cursor) is the only part that touches the system: it copies the raw sections out of a
-// uci cursor into plain objects. Everything else (normalize and the validators) is pure
+// read_raw(cursor, package_name) copies raw sections from a UCI cursor into plain objects;
+// load(cursor) normalizes them. Everything else (normalize and the validators) is pure
 // (docs/12 rule 1) and takes those plain objects, so it can be tested without UCI.
 
 import * as C from 'aetherproxy.const';
@@ -383,7 +383,10 @@ function check_main(snap, errors, warnings) {
 
 // ------------------------------------------------------------------ public API
 
-// raw: { main, dns, update, probe: option objects (or null when the section is absent),
+// Keep singleton names in one place for normalization and both raw readers (docs/05, docs/06).
+const SINGLETON_SECTIONS = [ 'main', 'dns', 'update', 'probe', 'sub' ];
+
+// raw: { main, dns, update, probe, sub: option objects (or null when the section is absent),
 //        hosts: [option objects in file order],
 //        subscriptions: { name: options }, nodes: { name: options } }
 // Pure. Result: { ok, snapshot | errors, warnings }.
@@ -393,7 +396,7 @@ export function normalize(raw) {
 	let errors = [], warnings = [];
 	let snap = {};
 
-	for (let s in [ 'main', 'dns', 'update', 'probe' ])
+	for (let s in SINGLETON_SECTIONS)
 		snap[s] = normalize_section(SCHEMA[s], raw[s] ?? {}, s, errors);
 
 	snap.hosts = [];
@@ -414,7 +417,12 @@ export function normalize(raw) {
 				push(errors, { field: `${kind}.${name}`, code: 'invalid_name',
 					detail: `section name must match ${kind == 'node' ? 'n_<32 hex>' : 's_<8 hex>'}` });
 
-			snap[coll][name] = normalize_section(SCHEMA[kind], src[name], `${kind}.${name}`, errors);
+			let section = normalize_section(SCHEMA[kind], src[name], `${kind}.${name}`, errors);
+			if (kind == 'subscription')
+				// Resolve inheritance once, after validation. Nullish coalescing preserves explicit 0.
+				for (let field, value in snap.sub)
+					section[field] ??= value;
+			snap[coll][name] = section;
 		}
 	}
 
@@ -441,21 +449,27 @@ function strip(section) {
 	return o;
 }
 
-// Reads /etc/config/aetherproxy (or the cursor's confdir) and returns normalize()'s result.
-// TODO(design): `lan_ifaces` existence (05 rule 5) is a precheck that needs the live system
-// and is not done here.
-export function load(cursor) {
+// The subscription writer uses an isolated package name to avoid pending LuCI deltas (docs/06).
+// Share the section inventory so newly supported sections cannot disappear on that path.
+export function read_raw(cursor, package_name) {
 	let raw = { hosts: [], subscriptions: {}, nodes: {} };
 
-	for (let s in [ 'main', 'dns', 'update', 'probe' ]) {
-		let sec = cursor.get_all(C.UCI_PACKAGE, s);
+	for (let s in SINGLETON_SECTIONS) {
+		let sec = cursor.get_all(package_name, s);
 
 		raw[s] = sec ? strip(sec) : null;
 	}
 
-	cursor.foreach(C.UCI_PACKAGE, 'host', s => { push(raw.hosts, strip(s)); });
-	cursor.foreach(C.UCI_PACKAGE, 'subscription', s => { raw.subscriptions[s['.name']] = strip(s); });
-	cursor.foreach(C.UCI_PACKAGE, 'node', s => { raw.nodes[s['.name']] = strip(s); });
+	cursor.foreach(package_name, 'host', s => { push(raw.hosts, strip(s)); });
+	cursor.foreach(package_name, 'subscription', s => { raw.subscriptions[s['.name']] = strip(s); });
+	cursor.foreach(package_name, 'node', s => { raw.nodes[s['.name']] = strip(s); });
 
-	return normalize(raw);
+	return raw;
+};
+
+// Reads /etc/config/aetherproxy (or the cursor's confdir) and returns normalize()'s result.
+// TODO(design): `lan_ifaces` existence (05 rule 5) is a precheck that needs the live system
+// and is not done here.
+export function load(cursor) {
+	return normalize(read_raw(cursor, C.UCI_PACKAGE));
 };

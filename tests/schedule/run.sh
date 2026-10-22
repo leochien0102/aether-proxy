@@ -206,6 +206,51 @@ else
 	bad "update schedule pure-function cases"
 fi
 
+if "$UCODE" "$ROOT/tests/schedule/sub_defaults.uc"; then
+	ok "T9.17 effective interval scheduling boundaries"
+else
+	bad "T9.17 effective interval scheduling boundaries"
+fi
+
+# T9.17: daemon jitter selection must also see the effective interval, including after reload.
+make_root "$T/root-sub-defaults"
+R="$T/root-sub-defaults"
+"$UCODE" -e 'import * as uci from "uci";
+	let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
+	let ok = c.delete("aetherproxy", "s_00000001", "interval_hours")
+		&& c.set("aetherproxy", "sub", "sub")
+		&& c.set("aetherproxy", "sub", "interval_hours", "0")
+		&& c.set("aetherproxy", "s_00000002", "subscription")
+		&& c.set("aetherproxy", "s_00000002", "url", "https://sub.example/override")
+		&& c.set("aetherproxy", "s_00000002", "interval_hours", "6")
+		&& c.commit("aetherproxy");
+	if (!ok) die(c.error() ?? "cannot configure inherited intervals");' -- "$R/etc/config"
+printf '{"s_00000001":{"last_attempt":0},"s_00000002":{"last_attempt":0}}\n' \
+	> "$R/etc/aether-proxy/state/sub.json"
+start_daemon "$R"
+if wait_for_text "$R/schedule-calls.log" 'job start sub update s_00000002' 400; then
+	ok 'T9.17 daemon schedules explicit six-hour override of common zero'
+	sleep 0.4
+	if grep -Fq 'job start sub update s_00000001' "$R/schedule-calls.log"; then
+		bad 'T9.17 daemon does not schedule inherited zero interval'
+	else
+		ok 'T9.17 daemon does not schedule inherited zero interval'
+	fi
+	"$UCODE" -e 'import * as uci from "uci";
+		let c = uci.cursor(ARGV[0], ARGV[0] + "/../uci-save");
+		if (!c.set("aetherproxy", "sub", "interval_hours", "6") || !c.commit("aetherproxy"))
+			die(c.error() ?? "cannot change common interval");' -- "$R/etc/config"
+	kill -HUP "$DAEMON_PID"
+	if wait_for_text "$R/schedule-calls.log" 'job start sub update s_00000001' 400; then
+		ok 'T9.17 reload of common interval enables inherited scheduling and jitter'
+	else
+		bad 'T9.17 reload of common interval enables inherited scheduling and jitter' "$(< "$R/daemon.stderr")"
+	fi
+else
+	bad 'T9.17 daemon schedules explicit six-hour override of common zero' "$(< "$R/daemon.stderr")"
+fi
+stop_daemon
+
 # Due subscription scheduling runs independently of the monitor interval.
 make_root "$T/root1"
 R="$T/root1"
