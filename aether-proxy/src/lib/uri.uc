@@ -1,6 +1,7 @@
 'use strict';
 
-// Parses supported subscription URI formats without performing I/O.
+// Parses supported subscription URI formats without performing I/O (docs/06 "URI 格式").
+// Optional sharing parameters follow docs/05 "config node" (T9.14).
 
 import * as config from 'aetherproxy.config';
 
@@ -163,12 +164,29 @@ function copy_common(node, options, default_security) {
 
 	let mappings = {
 		sni: 'sni', fp: 'fingerprint', pbk: 'reality_pbk', sid: 'reality_sid', spx: 'reality_spx',
-		host: 'host', path: 'path', serviceName: 'service_name', mode: 'xhttp_mode',
-		headerType: 'header_type', pcs: 'pinned_cert_sha256', vcn: 'verify_name', flow: 'flow'
+		host: 'host', path: 'path', serviceName: 'service_name',
+		headerType: 'header_type', pcs: 'pinned_cert_sha256', vcn: 'verify_name', flow: 'flow',
+		ech: 'ech_config_list', pqv: 'reality_pqv'
 	};
 	for (let key, field in mappings)
 		if (options[key] != null)
 			node[field] = options[key];
+
+	// `mode` belongs to two transports; never leak grpc's gun/multi into xhttp_mode.
+	if (net == 'grpc' && options.mode != null) {
+		// TODO(design): 05 defines only multi/gun; reject other modes instead of silently guessing.
+		if (index([ 'multi', 'gun' ], options.mode) < 0)
+			return skipped('invalid_value');
+		node.grpc_multi_mode = options.mode == 'multi' ? '1' : '0';
+	}
+	else if (net == 'xhttp' && options.mode != null)
+		node.xhttp_mode = options.mode;
+
+	if (net == 'xhttp' && options.extra != null) {
+		if (!config.is_json_object(options.extra))
+			return skipped('invalid_value');
+		node.xhttp_extra = options.extra;
+	}
 
 	if (options.alpn != null && options.alpn != '')
 		node.alpn = split(options.alpn, ',');

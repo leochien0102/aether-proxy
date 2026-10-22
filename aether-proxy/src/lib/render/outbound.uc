@@ -2,6 +2,7 @@
 
 // Node -> Xray outbound object (docs/06 "出站映射"). Pure: no fs, no sys. Kept separate from
 // xray.uc so that a future routing feature can build several outbounds with the same code.
+// Optional extensions use the exact Xray JSON names from docs/05 "config node".
 
 import { PROXY_TAG } from 'aetherproxy.const';
 import { ipv4 } from 'aetherproxy.net';
@@ -36,6 +37,7 @@ function stream_settings(node) {
 		put(tls, 'fingerprint', node.fingerprint);
 		put(tls, 'pinnedPeerCertSha256', node.pinned_cert_sha256);
 		put(tls, 'verifyPeerCertByName', node.verify_name);
+		put(tls, 'echConfigList', node.ech_config_list);
 		ss.tlsSettings = tls;
 		break;
 	case 'reality':
@@ -46,6 +48,7 @@ function stream_settings(node) {
 		put(rl, 'publicKey', node.reality_pbk);
 		put(rl, 'shortId', node.reality_sid);
 		put(rl, 'spiderX', node.reality_spx);
+		put(rl, 'mldsa65Verify', node.reality_pqv);
 		ss.realitySettings = rl;
 		break;
 	}
@@ -57,14 +60,22 @@ function stream_settings(node) {
 		let t = {};
 		put(t, 'path', node.path);
 		put(t, 'host', node.host ?? domain);
-		if (net == 'xhttp')
+		if (net == 'ws' && node.ws_heartbeat != null)
+			t.heartbeatPeriod = node.ws_heartbeat;
+		if (net == 'xhttp') {
 			put(t, 'mode', node.xhttp_mode);
+			if (node.xhttp_extra != null)
+				t.extra = json(node.xhttp_extra);
+		}
 		ss[net == 'ws' ? 'wsSettings' : net + 'Settings'] = t;
 		break;
 	}
 	case 'grpc': {
 		let t = {};
 		put(t, 'serviceName', node.service_name);
+		// Do not use put(): false is an explicitly configured multiMode value.
+		if (node.grpc_multi_mode != null)
+			t.multiMode = node.grpc_multi_mode;
 		ss.grpcSettings = t;
 		break;
 	}
@@ -72,6 +83,14 @@ function stream_settings(node) {
 		if (node.header_type == 'http')
 			ss.rawSettings = { header: { type: 'http' } };
 		break;
+	}
+
+	if (node.tcp_fast_open || node.tcp_mptcp) {
+		ss.sockopt = {};
+		if (node.tcp_fast_open)
+			ss.sockopt.tcpFastOpen = true;
+		if (node.tcp_mptcp)
+			ss.sockopt.tcpMptcp = true;
 	}
 
 	return ss;
@@ -110,10 +129,20 @@ export function build_outbound(node, node_ip) {
 		break;
 	}
 
-	return {
+	let outbound = {
 		tag: PROXY_TAG,
 		protocol: node.protocol,
 		settings: settings,
 		streamSettings: stream_settings(node)
 	};
+	if (node.mux) {
+		outbound.mux = { enabled: true };
+		// Zero and -1 are valid; omit only unset tuning values.
+		if (node.mux_concurrency != null)
+			outbound.mux.concurrency = node.mux_concurrency;
+		if (node.mux_xudp_concurrency != null)
+			outbound.mux.xudpConcurrency = node.mux_xudp_concurrency;
+		put(outbound.mux, 'xudpProxyUDP443', node.mux_xudp_udp443);
+	}
+	return outbound;
 };

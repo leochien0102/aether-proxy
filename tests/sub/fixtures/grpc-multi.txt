@@ -1,0 +1,1 @@
+vless://11111111-2222-4333-8444-555555555555@edge.example.com:443?type=grpc&security=tls&mode=multi&ech=opaque-ech#Grpc%20Multi

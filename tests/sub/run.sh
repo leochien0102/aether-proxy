@@ -318,6 +318,60 @@ expect "named disabled subscription exits successfully" 0 "$rc"
 echo "$out" | grep -q '"disabled": true' && ok "named disabled subscription is reported as disabled" || bad "named disabled subscription is reported as disabled" "$out"
 ! grep -q '^curl ' "$R/calls.log" && ok "named disabled subscription is not downloaded" || bad "named disabled subscription is not downloaded"
 
+# T9.14: normalized bools and URI UCI strings must compare equal on repeat updates.
+make_root "$T/root-grpc-multi"
+write_config
+BODY="$FIX/grpc-multi.txt"
+out=$(ap --json s_00000001 2>"$T/grpc-multi-first.err"); rc=$?
+expect "grpc multi initial subscription import exits successfully" 0 "$rc"
+has_line "$R/etc/config/aetherproxy" "option grpc_multi_mode '1'" \
+	&& ok "grpc multi subscription writes UCI bool" || bad "grpc multi subscription writes UCI bool"
+has_line "$R/etc/config/aetherproxy" "option ech_config_list 'opaque-ech'" \
+	&& ok "grpc multi subscription writes ECH" || bad "grpc multi subscription writes ECH"
+cp "$R/etc/config/aetherproxy" "$T/grpc-multi.before"
+out=$(ap --json s_00000001 2>"$T/grpc-multi-repeat.err"); rc=$?
+expect "grpc multi repeat subscription exits successfully" 0 "$rc"
+expect "grpc multi repeat subscription reports zero updated nodes" 0 \
+	"$(printf '%s\n' "$out" | jget subs.s_00000001.updated)"
+cmp -s "$T/grpc-multi.before" "$R/etc/config/aetherproxy" \
+	&& ok "grpc multi repeat subscription preserves exact UCI bytes" \
+	|| bad "grpc multi repeat subscription preserves exact UCI bytes"
+
+# T9.14: removal must survive the real staging/commit path, not only the pure plan.
+make_root "$T/root-node-fields"
+init_current_config
+cat >> "$R/etc/config/aetherproxy" <<'EOF'
+	option ech_config_list 'opaque-ech'
+	option reality_pqv 'opaque-pqv'
+	option grpc_multi_mode '1'
+	option ws_heartbeat '30'
+	option xhttp_extra '{}'
+	option mux '1'
+	option mux_concurrency '8'
+	option mux_xudp_concurrency '16'
+	option mux_xudp_udp443 'allow'
+	option tcp_fast_open '1'
+	option tcp_mptcp '1'
+EOF
+BODY="$FIX/one-node.txt"
+out=$(ap --json s_00000001 2>"$T/node-fields.err"); rc=$?
+expect "node extensions removal update exits successfully" 0 "$rc"
+expect "node extensions removal counts an updated node" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.updated)"
+"$UCODE" -e '
+import * as uci from "uci";
+let c = uci.cursor(ARGV[0]);
+let names = [];
+c.foreach("aetherproxy", "node", n => { push(names, n[".name"]); });
+let id = "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+let fields = [ "ech_config_list", "reality_pqv", "grpc_multi_mode", "ws_heartbeat", "xhttp_extra",
+    "mux", "mux_concurrency", "mux_xudp_concurrency", "mux_xudp_udp443", "tcp_fast_open", "tcp_mptcp" ];
+let old = c.get_all("aetherproxy", id);
+exit(length(names) == 1 && names[0] == id && old != null
+    && !length(filter(fields, k => old[k] != null)) ? 0 : 1);
+' -- "$R/etc/config" 2>>"$T/node-fields.err" \
+	&& ok "subscription deletes all absent extensions including ECH and keeps node ID" \
+	|| bad "subscription deletes all absent extensions including ECH and keeps node ID"
+
 # State and structured events have the documented per-subscription shape.
 R="$T/root1"
 state="$R/etc/aether-proxy/state/sub.json"

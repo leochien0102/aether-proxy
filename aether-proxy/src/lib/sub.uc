@@ -1,6 +1,7 @@
 'use strict';
 
-// Subscription planning is pure; update() owns all I/O and side effects.
+// Subscription planning is pure; update() owns all I/O and side effects (docs/06
+// "原子应用"). Protocol fields include docs/05 extensions so absent values are deleted.
 
 import * as fs from 'fs';
 import * as uci from 'uci';
@@ -17,7 +18,9 @@ const NODE_PROTOCOL_FIELDS = [
 	'protocol', 'address', 'port', 'uuid', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
-	'reality_pbk', 'reality_sid', 'reality_spx'
+	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
+	'grpc_multi_mode', 'ws_heartbeat', 'xhttp_extra', 'mux', 'mux_concurrency',
+	'mux_xudp_concurrency', 'mux_xudp_udp443', 'tcp_fast_open', 'tcp_mptcp'
 ];
 const NODE_OPTION_FIELDS = [ 'label', 'source', 'match_strong', 'match_weak', ...NODE_PROTOCOL_FIELDS ];
 
@@ -26,6 +29,10 @@ function same_value(a, b) {
 }
 
 function protocol_value(field, node) {
+	// URI options carry UCI 0/1 strings, while committed snapshots carry booleans.
+	// Compare their meaning or an unchanged gRPC subscription would reload every time.
+	if (field == 'grpc_multi_mode' && node?.[field] != null)
+		return node[field] == true || node[field] == '1';
 	if (node?.[field] != null)
 		return node[field];
 	if (field == 'transport')
@@ -123,7 +130,10 @@ function make_plan(old_nodes, parsed, opts) {
 				continue;
 			}
 
-			if (old == null || !same_value(old[field], value))
+			let unchanged = field == 'grpc_multi_mode'
+				? same_value(protocol_value(field, old), protocol_value(field, desired))
+				: same_value(old?.[field], value);
+			if (old == null || !unchanged)
 				add_change(changes, 'set', id, field, value);
 		}
 

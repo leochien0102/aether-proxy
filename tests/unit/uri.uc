@@ -20,6 +20,58 @@ const SS_OLD = b64enc('aes-128-gcm:oldpw@old-ss.example:8388');
 
 export const cases = [
 	{
+		name: 'grpc multi and ECH sharing fields', fn: 'line',
+		input: `vless://${UUID}@grpc.example:443?type=grpc&security=tls&mode=multi&ech=ECH%2Bconfig%3D`,
+		expect: { node: {
+			protocol: 'vless', address: 'grpc.example', port: 443, uuid: UUID,
+			transport: 'grpc', security: 'tls', encryption: 'none',
+			grpc_multi_mode: '1', ech_config_list: 'ECH+config='
+		} }
+	},
+	{
+		name: 'grpc gun is explicit false', fn: 'line',
+		input: 'trojan://secret@grpc.example:443?type=grpc&mode=gun',
+		expect: { node: {
+			protocol: 'trojan', address: 'grpc.example', port: 443, password: 'secret',
+			transport: 'grpc', security: 'tls', grpc_multi_mode: '0'
+		} }
+	},
+	{
+		name: 'grpc unknown mode skipped with reason', fn: 'line',
+		input: 'trojan://secret@grpc.example:443?type=grpc&mode=unknown',
+		expect: { skip: 'invalid_value' }
+	},
+	{
+		name: 'xhttp extra and REALITY pqv sharing fields', fn: 'line',
+		input: `vless://${UUID}@xh.example:443?type=xhttp&security=reality&sni=xh.example&pbk=${REALITY_KEY}`
+			+ '&mode=auto&extra=%7B%22headers%22%3A%7B%22X-Test%22%3A%22a%26b%22%7D%7D&pqv=PQV%2Bkey%3D',
+		expect: { node: {
+			protocol: 'vless', address: 'xh.example', port: 443, uuid: UUID, encryption: 'none',
+			transport: 'xhttp', security: 'reality', sni: 'xh.example', reality_pbk: REALITY_KEY,
+			xhttp_mode: 'auto', xhttp_extra: '{"headers":{"X-Test":"a&b"}}', reality_pqv: 'PQV+key='
+		} }
+	},
+	{
+		name: 'xhttp extra invalid JSON skipped with reason', fn: 'line',
+		input: `vless://${UUID}@xh.example:443?type=xhttp&security=tls&extra=not-json`,
+		expect: { skip: 'invalid_value' }
+	},
+	{
+		name: 'xhttp extra array skipped with reason', fn: 'line',
+		input: `vless://${UUID}@xh.example:443?type=xhttp&security=tls&extra=%5B%5D`,
+		expect: { skip: 'invalid_value' }
+	},
+	{
+		name: 'xhttp extra null skipped with reason', fn: 'line',
+		input: `vless://${UUID}@xh.example:443?type=xhttp&security=tls&extra=null`,
+		expect: { skip: 'invalid_value' }
+	},
+	{
+		name: 'xhttp extra invalid URL escape skipped', fn: 'line',
+		input: `vless://${UUID}@xh.example:443?type=xhttp&security=tls&extra=%ZZ`,
+		expect: { skip: 'malformed' }
+	},
+	{
 		name: 'vless reality vision', fn: 'line',
 		input: `vless://${UUID}@203.0.113.10:443?type=tcp&security=reality&flow=xtls-rprx-vision&sni=www.example.com&pbk=${REALITY_KEY}&sid=abcd&spx=%2F#vision`,
 		expect: { node: {
