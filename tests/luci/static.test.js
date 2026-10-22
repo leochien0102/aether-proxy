@@ -49,8 +49,8 @@ function modelSources() {
 	return map;
 }
 
-/* The current frontend contract; backend additions can precede their UI card. */
-const FRONTEND_METHODS = {
+/* docs/10 「rpcd 插件」: the current ubus methods with their declared params. */
+const PLUGIN_METHODS = {
 	version: [],
 	status: [],
 	components: [],
@@ -61,7 +61,8 @@ const FRONTEND_METHODS = {
 	events: [ 'since', 'level' ],
 	probe_results: [],
 	probe_now: [],
-	node_use: [ 'id' ],
+	node_use: [ 'id', 'mode' ],
+	mode_use: [ 'mode' ],
 	probe_url: [ 'site' ],
 	probe_sites: [],
 	sub_status: [],
@@ -72,14 +73,6 @@ const FRONTEND_METHODS = {
 	node_parse: [ 'uri' ],
 	list_file: [ 'name' ],
 	save_file: [ 'name', 'content' ]
-};
-
-/* T9.20 / docs/10: keep the expanded backend contract exact without requiring
-   the separate frontend mode-selector work in this backend task. */
-const PLUGIN_METHODS = {
-	...FRONTEND_METHODS,
-	node_use: [ 'id', 'mode' ],
-	mode_use: [ 'mode' ]
 };
 
 test('scenario 9: static checks — shared RPC method set, page requires, no reset buttons, po complete', async (t) => {
@@ -98,8 +91,8 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 
 	assert.match(common, /rpc\s*\.\s*declare/, 'common.js declares the rpc methods');
 
-	/* Check the frontend and backend against their own exact contracts, rather
-	   than weakening the check to accept arbitrary extra methods or arguments. */
+	/* common.js declares exactly the current plugin methods with the documented
+	   params — cross-checked against the ACL and the plugin source */
 	const acl = JSON.parse(read(ACL));
 	const aclMethods = [
 		...acl['luci-app-aether-proxy'].read.ubus.aetherproxy,
@@ -107,7 +100,7 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	].sort();
 
 	assert.deepEqual(aclMethods, Object.keys(PLUGIN_METHODS).sort(),
-		'ACL sanity: exactly the backend methods');
+		'ACL sanity: exactly the frontend methods');
 
 	const rpc = createRpc();
 	loadModule(COMMON, { rpc, baseclass: { extend: (o) => o }, ui: {} }, {
@@ -118,12 +111,12 @@ test('scenario 9: static checks — shared RPC method set, page requires, no res
 	for (const d of rpc.declared)
 		declared[d.method] = d;
 
-	assert.deepEqual(Object.keys(declared).sort(), Object.keys(FRONTEND_METHODS).sort(),
-		'common.js declares exactly the current frontend methods');
+	assert.deepEqual(Object.keys(declared).sort(), Object.keys(PLUGIN_METHODS).sort(),
+		'common.js declares exactly the current plugin methods');
 	assert.deepEqual(rpc.declared.filter((d) => d.object != 'aetherproxy'), [],
 		'all declarations target the aetherproxy object');
 
-	for (const [ method, params ] of Object.entries(FRONTEND_METHODS))
+	for (const [ method, params ] of Object.entries(PLUGIN_METHODS))
 		assert.deepEqual(declared[method].params, params, `declaration of ${method} carries the documented params`);
 
 	const plugin = read(PLUGIN);

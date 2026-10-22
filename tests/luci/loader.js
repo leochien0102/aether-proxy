@@ -113,8 +113,11 @@ function createRpc() {
 			return function(...args) {
 				const params = {};
 
+				/* luci-base rpc.js sets every declared name, then posts the request as
+				   JSON, which drops undefined values: record what goes on the wire. */
 				for (let i = 0; i < names.length; i++)
-					params[names[i]] = args[i];
+					if (args[i] !== undefined)
+						params[names[i]] = args[i];
 
 				calls.push({ object: options.object, method: options.method, params });
 
