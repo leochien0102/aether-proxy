@@ -27,8 +27,7 @@ export function build(snapshot, ctx) {
 	// defaults normally prevent it); the DNS inbounds are skipped rather than pointing nowhere.
 	for (let i = 0; i < length(C.DNS_TUNNEL_PORTS) && length(trust) > 0; i++) {
 		let tag = C.DNS_IN_TAG_PREFIX + i;
-		// TODO(design): docs/03 does not define the second target for a one-item list.
-		// Preserve the historical mirror of the first address; chinadns uses only the first port.
+		// docs/03: a one-item list mirrors the first address; chinadns uses only the first port.
 		let target = trust_dns_parts(trust[i] ?? trust[0]);
 
 		push(inbounds, {

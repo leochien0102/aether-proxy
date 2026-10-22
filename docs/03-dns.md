@@ -55,7 +55,7 @@ Apple 域名在全局模式下放进 chnlist，用国内 DNS 解析，但**不�
 
 **可信 DNS 的协议**（2026-10-22 定）：「TCP / UDP」只决定**节点到可信 DNS** 这一段；路由器到节点之间始终是节点的代理连接，查询经加密隧道送到节点，再由节点向可信 DNS 发起（所以这一段不会被抢答污染）。
 TCP 要求可信 DNS 支持 TCP 查询（标准要求，主流公共 DNS 都支持）；UDP 要求节点支持 UDP 转发。默认 TCP。两项协议可以不同：节点不支持 UDP 时 TCP 那一项仍可用。
-Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 chinadns-ng 的上游写法选择。对照：helloworld 的「UDP 上游」由路由器本机直接发出 UDP，它的 output 链只把 TCP 送进代理，所以 UDP 查询实际直连出去、会被污染；我们是显式发给本机 Xray，不经 nft，不存在这个问题。
+Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 chinadns-ng 的上游写法选择。`trust_dns` 只有一项时，第二个入站照旧指向同一个地址，chinadns-ng 只用第一个端口（2026-10-22 T9.22 复核定：保留原行为，不另补一个 DNS）。对照：helloworld 的「UDP 上游」由路由器本机直接发出 UDP，它的 output 链只把 TCP 送进代理，所以 UDP 查询实际直连出去、会被污染；我们是显式发给本机 Xray，不经 nft，不存在这个问题。
 
 切换规则（由 monitor 执行，见 [04](04-lifecycle.md)、[07](07-probe.md)）：
 
