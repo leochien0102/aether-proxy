@@ -174,7 +174,7 @@ function copy_common(node, options, default_security) {
 
 	// `mode` belongs to two transports; never leak grpc's gun/multi into xhttp_mode.
 	if (net == 'grpc' && options.mode != null) {
-		// TODO(design): 05 defines only multi/gun; reject other modes instead of silently guessing.
+		// Only multi/gun are accepted; anything else skips the link (docs/05).
 		if (index([ 'multi', 'gun' ], options.mode) < 0)
 			return skipped('invalid_value');
 		node.grpc_multi_mode = options.mode == 'multi' ? '1' : '0';

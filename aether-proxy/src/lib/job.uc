@@ -375,8 +375,7 @@ function report_child_failure(argv, ran, parsed, parse_error) {
 		args.stderr = first_line(parse_error ?? 'child stdout is not a JSON object');
 	if (ran.timed_out)
 		args.timed_out = true;
-	// TODO(design): docs/09 assumes string error fields but does not define malformed
-	// types. Omit them rather than inventing codes or stringifying objects as reasons.
+	// Non-string error fields are omitted, never stringified (docs/09 CMD_FAILED).
 	if (valid_result && type(parsed.code) == 'string') {
 		args.code = first_line(parsed.code);
 		if (type(parsed.detail) == 'string')

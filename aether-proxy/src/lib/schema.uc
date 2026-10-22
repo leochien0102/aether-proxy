@@ -118,9 +118,7 @@ const node = [
 	{ name: 'reality_sid', type: 'string', default: null },
 	{ name: 'reality_spx', type: 'string', default: null },
 	// docs/05 extensions have no materialized defaults: absent must stay absent (T9.14).
-	// TODO(design): 05 does not say whether inactive-layer fields invalidate a node.
-	// Retain typed values, as for existing fields; the renderer gates by transport/security.
-	// TODO(design): 05 gives no ECH/PQV encoding validation rules; keep them opaque strings.
+	// Inactive-layer values are kept and not rendered; ECH/PQV are opaque strings (docs/05).
 	{ name: 'reality_pqv', type: 'string', securities: [ 'reality' ], default: null, omit_unset: true },
 	{ name: 'ech_config_list', type: 'string', securities: [ 'tls' ], default: null, omit_unset: true },
 	{ name: 'grpc_multi_mode', type: 'bool', transports: [ 'grpc' ], default: null, omit_unset: true },
