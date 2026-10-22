@@ -660,8 +660,12 @@ msgid "Manage the proxy nodes, probe their TCP reachability and import node shar
 msgstr "管理代理节点，检测它们的 TCP 可达性，并导入节点分享链接。"
 
 msgctxt "aether-proxy"
-msgid "Import URIs"
-msgstr "导入 URI"
+msgid "Batch import share links"
+msgstr "批量导入分享链接"
+
+msgctxt "aether-proxy"
+msgid "Import multiple lines at once, one link per line, directly into the node list."
+msgstr "一次导入多行，每行一个链接，直接加入节点列表。"
 
 msgctxt "aether-proxy"
 msgid "One node share URI per line."

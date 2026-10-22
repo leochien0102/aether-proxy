@@ -285,6 +285,8 @@ for (const reply of [
 test('T10.26 scenario 4: hand-filled Save stages the node without parsing, importing or applying', async () => {
 	const h = await harness();
 	h.page.importText.value = 'vless://unsaved-bulk-import';
+	h.page.importDetails.open = true;
+	h.page.importResult.textContent = 'Earlier import result';
 	const id = await add(h);
 	for (const [field, value] of Object.entries({
 		label: 'Hand filled', protocol: 'shadowsocks', address: '192.0.2.1', port: '443',
@@ -300,6 +302,9 @@ test('T10.26 scenario 4: hand-filled Save stages the node without parsing, impor
 	assert.equal(h.modal, null);
 	assert.match(h.root.textContent, /Hand filledShadowsocks/);
 	assert.equal(h.page.importText.value, 'vless://unsaved-bulk-import');
+	assert.equal(h.page.importDetails.open, true, 'modal Save preserves bulk-import expansion');
+	assert.equal(h.page.importResult.textContent, 'Earlier import result');
+	assert.equal(find(h.page.importDetails, node => node === h.page.importResult).length, 1);
 	assert.deepEqual(h.rpc, []);
 	assert.deepEqual(h.calls.filter(c => c[0] === 'remove'), []);
 	assert.deepEqual(h.calls.filter(c => c[0] === 'modal.save'), [['modal.save', null, true]]);

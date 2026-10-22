@@ -23,6 +23,7 @@
  * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
  * Editing, multi-delete and bounded switch locking follow 「节点页第二轮修正」 (T10.25).
  * Manual additions and separate protocol columns follow 「添加节点」「节点表的协议列」 (T10.26).
+ * Collapsible bulk imports retain input and results across redraws (「节点页第三轮修正」, T10.29).
  */
 
 return view.extend({
@@ -93,23 +94,33 @@ return view.extend({
 
 		this.progressEl = E('div', { 'class': 'cbi-map-descr' });
 
+		// Rebuilds after imports, additions or switching must not discard bulk-import input.
+		const importValue = this.importText?.value ?? '';
+		const importOpen = this.importDetails?.open ?? false;
+		this.importResult ??= E('div', {});
 		this.importText = E('textarea', {
 			'class': 'cbi-input-textarea',
 			'rows': 4,
 			'placeholder': _('One node share URI per line.', 'aether-proxy')
 		});
 
-		const importBox = E('div', { 'class': 'cbi-map-descr' }, [
-			E('h3', {}, _('Import URIs', 'aether-proxy')),
+		this.importText.value = importValue;
+
+		const importBox = E('details', { 'class': 'cbi-section' }, [
+			E('summary', {}, _('Batch import share links', 'aether-proxy')),
+			E('p', {}, _('Import multiple lines at once, one link per line, directly into the node list.',
+				'aether-proxy')),
 			this.importText,
 			E('div', {
 				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-			}, [ E('button', {
+			}, [ this.importResult, E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(self, 'handleImport')
 			}, [ _('Import', 'aether-proxy') ]) ])
 		]);
+		this.importDetails = importBox;
+		importBox.open = importOpen;
 
 		const probeAll = E('button', {
 			'class': 'btn cbi-button cbi-button-action',
@@ -140,9 +151,9 @@ return view.extend({
 			return E('div', {}, [
 				E('h2', {}, _('Nodes', 'aether-proxy')),
 				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
-				importBox,
 				controls,
-				mapNode
+				mapNode,
+				importBox
 			]);
 		});
 	},
@@ -255,10 +266,8 @@ return view.extend({
 			return Promise.resolve(cancelModal.call(this, modalMap, ev, isSaving))
 				.then(async () => {
 					if (added && isSaving) {
-						// Refresh the row model without losing unrelated bulk-import input.
-						const importText = self.importText.value;
+						// Refresh the row model; buildPage retains the unrelated bulk-import state.
 						dom.content(self.root, await self.buildPage());
-						self.importText.value = importText;
 						self.updateProbeColumns();
 					}
 				});
@@ -848,10 +857,10 @@ return view.extend({
 				return E('li', {}, `#${f.line} ${f.code}` + (f.detail !== '' ? `: ${f.detail}` : ''));
 			});
 
-			ui.addNotification(null, E('div', {}, [
+			dom.content(self.importResult, [
 				E('p', {}, sum.text),
 				items.length ? E('ul', {}, items) : E([])
-			]));
+			]);
 
 			if (sum.added > 0)
 				return self.rebuild();
