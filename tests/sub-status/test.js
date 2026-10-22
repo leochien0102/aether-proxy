@@ -54,7 +54,7 @@ try {
  check('4. list defaults, URL redaction and manual interval', () => {
   const r = row({ url: 'https://example.com/api/v1/client/subscribe?token=SECRET', interval_hours: '0' });
   assert.equal(r.name, 's_00000001'); assert.equal(r.address, 'https://example.com/…');
-  assert.doesNotMatch(JSON.stringify(r), /token|SECRET/); assert.equal(r.interval, '仅手动');
+  assert.doesNotMatch(JSON.stringify(r), /token|SECRET/); assert.equal(r.interval, '不自动更新');
   for (const url of ['broken', 'https://', 'https://bad host/path', 'javascript:alert(1)']) assert.equal(row({url}).address, '…');
   // userinfo (user:password@) must never reach the list either
   const withAuth = row({ url: 'https://alice:HUNTER2@example.com/sub?token=SECRET' });

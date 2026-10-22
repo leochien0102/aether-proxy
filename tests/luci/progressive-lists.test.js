@@ -37,25 +37,65 @@ function deferred() {
 	const promise = new Promise(done => { resolve = done; });
 	return { promise, resolve };
 }
+function optionDouble(uci, kind, field, title) {
+	const values = new Map(), widgets = new Map();
+	return {
+		kind, field, title, depends() {},
+		value(key, label) {
+			(this.keylist ??= []).push(key);
+			(this.vallist ??= []).push(label);
+		},
+		formvalue: id => values.get(id),
+		getUIElement: id => widgets.get(id),
+		renderWidget(id, index, value) {
+			const widget = {
+				value: value ?? '', placeholder: this.placeholder,
+				setPlaceholder(text) { this.placeholder = text; }
+			};
+			widgets.set(id, widget);
+			return widget;
+		},
+		setFormValue: (id, value) => values.set(id, value),
+		// LuCI AbstractValue.parse removes rmempty options rather than writing ''.
+		async parse(id) {
+			if (!values.has(id))
+				return;
+			const value = values.get(id);
+			if (this.rmempty && value === '')
+				uci.unset('aetherproxy', id, field);
+			else
+				uci.set('aetherproxy', id, field, value);
+		}
+	};
+}
 function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 	async function renderSection(section) {
+		if (section.kind === 'NamedSection') {
+			for (const o of section.options)
+				o.renderWidget(section.type, 0, uci.get('aetherproxy', section.type, o.field) ?? o.default);
+			return E('section', {}, section.title);
+		}
 		return E('div', {}, [
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
-				section.options.filter(o => o.textvalue).map(o => E('th', {}, o.title))),
+				section.options.filter(o => o.textvalue || o.editable).map(o => E('th', {}, o.title))),
 			...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
-				...section.options.filter(o => o.textvalue).map(o =>
-					E('td', { field: o.field }, o.textvalue(s['.name']))),
+				...section.options.filter(o => o.textvalue || o.editable).map(o =>
+					E('td', { field: o.field }, o.editable ? E('input', {
+						type: 'checkbox', checked: s[o.field] !== '0' || null,
+						change: event => o.onchange(event, s['.name'], event.target.checked ? '1' : '0')
+					}) : o.textvalue(s['.name']))),
 				section.renderRowActions(s['.name'])
 			]))
 		]);
 	}
-	return { Map: class {
+	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag',
+		ListValue: 'ListValue', Value: 'Value', Map: class {
 		constructor() { this.sections = []; maps.push(this); }
-		section(kind, type) {
+		section(kind, type, sectionType, title) {
 			const section = {
-				type, options: [], modal: { value: 'unsaved modal input' },
+				kind, type, sectionType, title, options: [], modal: { value: 'unsaved modal input' },
 				option(kind, field, title) {
-					const option = { field, title, value() {}, depends() {} };
+					const option = optionDouble(uci, kind, field, title);
 					this.options.push(option);
 					return option;
 				},
@@ -63,6 +103,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					this.modal = { id, value: 'unsaved modal input' };
 					if (this.addModalOptions)
 						this.addModalOptions(this.modal, id);
+					for (const o of this.options.filter(o => o.modalonly && o.renderWidget))
+						o.renderWidget(id, 0, uci.get('aetherproxy', id, o.field) ?? o.default);
 					this.modal.node = E('div', {}, [
 						E('p', {}, this.modal.description ?? ''),
 						...this.options.filter(o => o.modalonly).map(o => E('label', {}, o.title))
@@ -114,6 +156,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const calls = [], reads = [], turns = [], maps = [], uciCalls = [], builtins = [];
 	const statusCalls = [], statusReads = [], timers = new Map(), notices = [];
 	let now = 0, timerID = 0, current = 'n_a';
+	const general = [], versionRead = deferred(), versionCalls = [];
 	let changes = async () => ({});
 	const nodes = [
 		{ '.name': 'n_a', label: 'Node A', address: '203.0.113.1', port: '443' },
@@ -129,12 +172,20 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		get: (config, id, option) => {
 			if (id === 'main' && option === 'node')
 				return current;
-			const section = [...nodes, ...subs].find(s => s['.name'] === id);
+			const section = [...nodes, ...subs, ...general].find(s => s['.name'] === id);
 			return option == null ? section ?? null : section?.[option];
 		},
 		changes: () => changes(),
-		add: (config, type, id) => { subs.push({ '.name': id, '.type': type }); },
-		sections: (config, type) => type === 'node' ? nodes : type === 'subscription' ? subs : [...nodes, ...subs],
+		add: (config, type, id) => {
+			uciCalls.push(['add', config, type, id]);
+			(type === 'sub' ? general : subs).push({ '.name': id, '.type': type });
+		},
+		sections: (config, type) => type === 'node' ? nodes :
+			type === 'subscription' ? subs : [...nodes, ...subs, ...general],
+		unset: (config, id, option) => {
+			uciCalls.push(['unset', config, id, option]);
+			delete uci.get(config, id)[option];
+		},
 		remove: (config, id) => {
 			uciCalls.push(['uci.remove', config, id]);
 			for (const sections of [nodes, subs]) {
@@ -145,7 +196,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		},
 		set: (config, id, option, value) => {
 			uciCalls.push(['set', config, id, option, value]);
-			const section = [...nodes, ...subs].find(s => s['.name'] === id);
+			const section = [...nodes, ...subs, ...general].find(s => s['.name'] === id);
 			if (section)
 				section[option] = value;
 		},
@@ -154,6 +205,10 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const form = formDouble(uci, maps, uciCalls, builtins, builtinKinds);
 	const ap = {
 		call: (method, params) => {
+			if (method === 'version') {
+				versionCalls.push(method);
+				return versionRead.promise;
+			}
 			const read = deferred();
 			if (method === 'status') {
 				statusCalls.push([method, params]);
@@ -227,6 +282,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		now = end;
 	}
 	return { name, page, maps, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
+		general, versionRead, versionCalls,
 		setChanges: fn => { changes = fn; },
 		statusCalls, statusReads, timers, notices, tick, setCurrent: id => { current = id; } };
 }
@@ -250,11 +306,203 @@ function success(name) {
 		s_b: { error: 'SUB_FETCH_FAILED' }
 	} };
 }
+// T10.34 uses the same asynchronous grid harness so inherited settings cannot
+// regress first-paint behavior or erase an open modal when the version arrives.
+function subOption(h, field) {
+	return h.page.grid.options.find(o => o.field === field);
+}
+function renderOption(o, id, value) {
+	return o.renderWidget(id, 0, value);
+}
+const intervalLabels = ['不自动更新', '12 小时', '1 天', '3 天', '7 天'];
+
+test('T10.34 scenario 1: existing general section displays its values without writes', async () => {
+	const h = await harness('subscriptions');
+	h.general.push({ '.name': 'sub', '.type': 'sub', interval_hours: '72',
+		fetch_via: 'proxy', user_agent: 'Custom/1' });
+	await render(h);
+	const section = h.maps[0].sections[0];
+	assert.equal(section.kind, 'NamedSection');
+	assert.equal(section.type, 'sub');
+	assert.equal(section.sectionType, 'sub');
+	assert.equal(section.title, '通用设置');
+	for (const field of ['interval_hours', 'fetch_via', 'user_agent'])
+		assert.equal(h.page.generalOptions[field].getUIElement('sub').value, h.general[0][field]);
+	assert.deepEqual(h.uciCalls, [['load', 'aetherproxy']]);
+});
+
+test('T10.34 scenario 1: missing general section is added once empty and displays defaults', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	await h.page.load();
+	assert.deepEqual(h.general, [{ '.name': 'sub', '.type': 'sub' }]);
+	assert.equal(h.uciCalls.filter(call => call[0] === 'add').length, 1);
+	assert.ok(!h.uciCalls.some(call => ['set', 'save'].includes(call[0])));
+	assert.equal(h.page.generalOptions.interval_hours.getUIElement('sub').value, '24');
+	assert.equal(h.page.generalOptions.fetch_via.getUIElement('sub').value, 'auto');
+	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').value, '');
+	assert.equal(subOption(h, '_interval').textvalue('s_a'), '1 天（通用）');
+	assert.equal(subOption(h, '_via').textvalue('s_a'), '自动（先直连，失败经当前节点）（通用）');
+});
+
+test('T10.34 scenario 1: job reload recreates the empty common section for legacy configuration', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	h.uci.unload = config => {
+		h.uciCalls.push(['unload', config]);
+		// An empty, unsaved common section is not in the persisted legacy configuration.
+		h.general.length = 0;
+	};
+	const pending = h.page.update(['s_a']);
+	await flush();
+	h.reads[1].resolve(success('subscriptions'));
+	await pending;
+	assert.deepEqual(h.general, [{ '.name': 'sub', '.type': 'sub' }]);
+	assert.equal(h.uciCalls.filter(call => call[0] === 'add').length, 2);
+	assert.ok(!h.uciCalls.some(call => ['set', 'save'].includes(call[0])));
+	assert.equal(h.page.generalOptions.interval_hours.getUIElement('sub').value, '24');
+});
+
+test('T10.34 scenario 2: interval dropdown has five labels and retains a custom 6-hour value', async () => {
+	const h = await harness('subscriptions');
+	h.general.push({ '.name': 'sub', interval_hours: '6' });
+	h.subs[0].interval_hours = '6';
+	await render(h);
+	const general = h.page.generalOptions.interval_hours;
+	assert.equal(general.kind, 'ListValue');
+	assert.deepEqual(general.keylist, ['0', '12', '24', '72', '168', '6']);
+	assert.deepEqual(general.vallist, [...intervalLabels, '6 小时']);
+	assert.equal(general.getUIElement('sub').value, '6');
+	h.page.grid.renderMoreOptionsModal('s_a');
+	const single = subOption(h, 'interval_hours');
+	assert.equal(single.kind, 'ListValue');
+	assert.deepEqual(single.keylist, ['', '0', '12', '24', '72', '168', '6']);
+	assert.deepEqual(single.vallist, ['跟随通用设置（6 小时）', ...intervalLabels, '6 小时']);
+	assert.equal(single.getUIElement('s_a').value, '6');
+	// Reopening must not accumulate choices from another subscription.
+	renderOption(single, 's_b', undefined);
+	assert.deepEqual(single.keylist, ['', '0', '12', '24', '72', '168']);
+});
+
+test('T10.34 scenario 3: overrides follow live common values and empty Save removes all three options', async () => {
+	const h = await harness('subscriptions');
+	Object.assign(h.subs[0], { interval_hours: '24', fetch_via: 'auto', user_agent: 'Legacy/1' });
+	await render(h);
+	const common = h.page.generalOptions;
+	common.interval_hours.setFormValue('sub', '72');
+	common.fetch_via.setFormValue('sub', 'proxy');
+	common.user_agent.setFormValue('sub', 'Common/2');
+	h.page.grid.renderMoreOptionsModal('s_a');
+	assert.equal(subOption(h, 'interval_hours').vallist[0], '跟随通用设置（3 天）');
+	assert.equal(subOption(h, 'fetch_via').vallist[0], '跟随通用设置（经当前节点）');
+	assert.equal(subOption(h, 'user_agent').placeholder, '跟随通用设置（Common/2）');
+	for (const [field, legacy] of Object.entries({ interval_hours: '24', fetch_via: 'auto', user_agent: 'Legacy/1' })) {
+		const option = subOption(h, field);
+		assert.equal(option.default, undefined, 'no inherited field writes a default');
+		assert.equal(option.getUIElement('s_a').value, legacy, 'explicit legacy values remain selected');
+		assert.equal(option.rmempty, true);
+		option.setFormValue('s_a', '');
+		await option.parse('s_a');
+		assert.equal(Object.hasOwn(h.subs[0], field), false, field + ' is removed, not saved as empty');
+		assert.ok(h.uciCalls.some(call => call[0] === 'unset' && call[2] === 's_a' && call[3] === field));
+	}
+	await h.page.add();
+	const added = h.subs.find(s => s['.name'] === 's_01010101');
+	assert.deepEqual(added, { '.name': 's_01010101', '.type': 'subscription' });
+	for (const field of ['interval_hours', 'fetch_via', 'user_agent'])
+		assert.equal(subOption(h, field).getUIElement(added['.name']).value, '');
+});
+
+test('T10.34 scenario 3: late backend version fills UA placeholders without replacing an open modal', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	assert.deepEqual(h.versionCalls, ['version']);
+	h.page.grid.renderMoreOptionsModal('s_a');
+	const modal = h.page.grid.modal;
+	const commonUA = h.page.generalOptions.user_agent;
+	const singleUA = subOption(h, 'user_agent');
+	assert.equal(commonUA.placeholder, '默认（读取中…）');
+	h.versionRead.resolve({ ok: true, version: '0.2.0-r99' });
+	await flush();
+	assert.equal(commonUA.getUIElement('sub').placeholder, '默认（aether-proxy/0.2.0-r99）');
+	assert.equal(singleUA.getUIElement('s_a').placeholder, '跟随通用设置（aether-proxy/0.2.0-r99）');
+	assert.equal(h.page.grid.modal, modal);
+	assert.equal(h.maps.length, 1);
+	assert.ok(!h.uciCalls.some(call => call[0] === 'set'), 'UA placeholder never persists a version');
+});
+
+test('T10.34 scenario 3: unavailable backend version shows the UA shape, no error code, no write', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	h.versionRead.resolve({ ok: false, code: 'TIMEOUT' });
+	await flush();
+	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').placeholder, '默认（aether-proxy/…）');
+	assert.ok(!h.uciCalls.some(call => call[0] === 'set'));
+});
+
+test('T10.34 scenario 4: effective table values mark inheritance and both dropdowns share fetch labels', async () => {
+	const h = await harness('subscriptions');
+	h.general.push({ '.name': 'sub', interval_hours: '72', fetch_via: 'proxy' });
+	Object.assign(h.subs[1], { interval_hours: '12', fetch_via: 'direct' });
+	await render(h);
+	const interval = subOption(h, '_interval'), via = subOption(h, '_via');
+	assert.equal(interval.textvalue('s_a'), '3 天（通用）');
+	assert.equal(via.textvalue('s_a'), '经当前节点（通用）');
+	assert.equal(interval.textvalue('s_b'), '12 小时');
+	assert.equal(via.textvalue('s_b'), '直连');
+	assert.equal(via.title, '获取方式');
+	const labels = ['自动（先直连，失败经当前节点）', '直连', '经当前节点'];
+	const common = h.page.generalOptions.fetch_via;
+	assert.deepEqual(common.keylist, ['auto', 'direct', 'proxy']);
+	assert.deepEqual(common.vallist, labels);
+	const single = subOption(h, 'fetch_via');
+	renderOption(single, 's_a', undefined);
+	assert.deepEqual(single.keylist, ['', 'auto', 'direct', 'proxy']);
+	assert.deepEqual(single.vallist, ['跟随通用设置（经当前节点）', ...labels]);
+	// Table cells read saved session values rather than a captured initial row.
+	h.uci.set('aetherproxy', 'sub', 'interval_hours', '0');
+	h.uci.set('aetherproxy', 'sub', 'fetch_via', 'direct');
+	assert.equal(interval.textvalue('s_a'), '不自动更新（通用）');
+	assert.equal(via.textvalue('s_a'), '直连（通用）');
+});
+
+test('T10.34 scenario 5: first-column flag immediately locks only its row before any UCI save', async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	const enabled = subOption(h, 'enabled');
+	assert.equal(h.page.grid.options[0], enabled);
+	assert.equal(enabled.kind, 'Flag');
+	assert.equal(enabled.editable, true);
+	assert.equal(enabled.modalonly, false);
+	h.page.grid.renderMoreOptionsModal('s_a');
+	assert.doesNotMatch(text(h.page.grid.modal.node), /启用/);
+	const row = find(h.root, node => node.sid === 's_a')[0];
+	const checkbox = find(row, node => node.tag === 'input')[0];
+	assert.equal(checkbox.type, 'checkbox');
+	checkbox.change({ target: { checked: false } });
+	assert.equal(h.page.rowButtons.get('s_a').disabled, true);
+	assert.equal(h.page.rowButtons.get('s_a').title, '请先保存并应用');
+	assert.equal(h.page.rowButtons.get('s_b').disabled, false);
+	assert.equal(h.page.updateAll.disabled, false);
+	assert.equal(h.page.pendingHint.textContent, '未应用的订阅不会更新');
+	assert.ok(!h.uciCalls.some(call => ['save', 'set'].includes(call[0])));
+	await h.page.refresh_changes();
+	assert.equal(h.page.rowButtons.get('s_a').disabled, true, 'empty session changes cannot undo local lock');
+	const jobs = [];
+	h.ap.run_job = async (...args) => { jobs.push(args); return { result: { subs: {} } }; };
+	await h.page.update(['s_a']);
+	assert.deepEqual(jobs, [], 'the update handler also guards the locally dirty row');
+	await h.page.redraw();
+	assert.equal(h.page.rowButtons.get('s_a').disabled, true, 'redraw preserves the local lock');
+	assert.equal(h.page.rowButtons.get('s_b').disabled, false);
+});
+
 for (const name of ['nodes', 'subscriptions']) {
 	test(`T10.16 ${name} scenario 1: load reads only UCI`, async () => {
 		const h = await harness(name);
 		await h.page.load();
-		assert.deepEqual(h.uciCalls, [['load', 'aetherproxy']]);
+		assert.deepEqual(h.uciCalls, name === 'nodes' ? [['load', 'aetherproxy']] :
+			[['load', 'aetherproxy'], ['add', 'aetherproxy', 'sub', 'sub']]);
 		assert.deepEqual(h.calls, []);
 		assert.deepEqual(h.turns, []);
 	});
@@ -272,7 +520,7 @@ for (const name of ['nodes', 'subscriptions']) {
 			assert.ok(matches.length > 0, label + ' exists');
 			assert.ok(matches.every(node => !node.disabled), label + ' usable without prior results');
 		}
-		assert.equal(h.maps[0].sections[0].options.filter(o => o.modalonly).length > 0, true);
+		assert.equal((h.page.grid ?? h.maps[0].sections[0]).options.filter(o => o.modalonly).length > 0, true);
 		if (name === 'nodes') {
 			assert.ok(h.page.importText);
 			assert.equal(text(h.page.progressEl), '', 'reading is not a running probe');
@@ -293,7 +541,7 @@ for (const name of ['nodes', 'subscriptions']) {
 		assert.equal(h.maps[0].node, form);
 		assert.deepEqual(buttons(h.root), controls);
 		assert.ok(stable.every(node => find(h.root, n => n === node).length === 1));
-		assert.equal(h.maps[0].sections[0].modal.value, 'unsaved modal input');
+		assert.equal((h.page.grid ?? h.maps[0].sections[0]).modal.value, 'unsaved modal input');
 		assert.doesNotMatch(text(h.root), /读取中…/);
 		const expected = name === 'nodes' ? /42 ms（3\/3）/ : /成功，7 个节点.*跳过 2 个：格式错误 2/;
 		assert.match(text(cells[0]), expected);
@@ -308,7 +556,7 @@ for (const name of ['nodes', 'subscriptions']) {
 		h.reads[0].resolve(success(name));
 		await flush();
 		const field = name === 'nodes' ? '_probe' : '_result';
-		const option = h.maps[0].sections[0].options.find(o => o.field === field);
+		const option = (h.page.grid ?? h.maps[0].sections[0]).options.find(o => o.field === field);
 		const cell = option.textvalue(name === 'nodes' ? 'n_a' : 's_a');
 		assert.match(text(cell), name === 'nodes' ? /42 ms/ : /成功，7 个节点/);
 		assert.doesNotMatch(text(cell), /读取中…/);
@@ -551,7 +799,7 @@ test('T10.28 scenario 1: subscription grid has one Name column and no section-na
 	const header = find(h.root, node => node.tag === 'tr')[0];
 	assert.equal(header.attrs['data-title'], null);
 	assert.deepEqual(find(header, node => node.tag === 'th').map(text),
-		['名称', '地址', '启用', '更新间隔', '经由', '最近一次结果']);
+		['启用', '名称', '地址', '更新间隔', '获取方式', '最近一次结果']);
 	assert.doesNotMatch(text(h.root), /s_a|s_b/);
 });
 
@@ -574,7 +822,7 @@ test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed se
 	await h.maps.at(-1).render();
 	const options = h.page.grid.options.filter(o => o.textvalue);
 	assert.deepEqual(options.slice(0, -1).map(o => o.textvalue(id)),
-		['New saved name', 'https://new.example/…', '禁用', '仅手动', 'proxy']);
+		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点']);
 	assert.match(text(options.at(-1).textvalue(id)), /成功，13 个节点/);
 	h.uci.remove('aetherproxy', id);
 	for (const option of options)

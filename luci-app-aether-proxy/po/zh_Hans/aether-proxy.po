@@ -1016,10 +1016,6 @@ msgid "Enabled"
 msgstr "启用"
 
 msgctxt "aether-proxy"
-msgid "Manual only"
-msgstr "仅手动"
-
-msgctxt "aether-proxy"
 msgid "%s hours"
 msgstr "%s 小时"
 
@@ -1040,8 +1036,52 @@ msgid "Update interval"
 msgstr "更新间隔"
 
 msgctxt "aether-proxy"
-msgid "Fetch via"
-msgstr "经由"
+msgid "Fetch method"
+msgstr "获取方式"
+
+msgctxt "aether-proxy"
+msgid "General settings"
+msgstr "通用设置"
+
+msgctxt "aether-proxy"
+msgid "Do not update automatically"
+msgstr "不自动更新"
+
+msgctxt "aether-proxy"
+msgid "12 hours"
+msgstr "12 小时"
+
+msgctxt "aether-proxy"
+msgid "1 day"
+msgstr "1 天"
+
+msgctxt "aether-proxy"
+msgid "3 days"
+msgstr "3 天"
+
+msgctxt "aether-proxy"
+msgid "7 days"
+msgstr "7 天"
+
+msgctxt "aether-proxy"
+msgid "Default (%s)"
+msgstr "默认（%s）"
+
+msgctxt "aether-proxy"
+msgid "Follow general settings (%s)"
+msgstr "跟随通用设置（%s）"
+
+msgctxt "aether-proxy"
+msgid "%s (general)"
+msgstr "%s（通用）"
+
+msgctxt "aether-proxy"
+msgid "Automatic (direct first, then via current node on failure)"
+msgstr "自动（先直连，失败经当前节点）"
+
+msgctxt "aether-proxy"
+msgid "Via current node"
+msgstr "经当前节点"
 
 msgctxt "aether-proxy"
 msgid "Last result"
@@ -1050,10 +1090,6 @@ msgstr "最近一次结果"
 msgctxt "aether-proxy"
 msgid "Subscription URL"
 msgstr "订阅地址"
-
-msgctxt "aether-proxy"
-msgid "Automatic"
-msgstr "自动"
 
 msgctxt "aether-proxy"
 msgid "Direct"

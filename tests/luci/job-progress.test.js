@@ -79,7 +79,7 @@ function formDouble(uci) {
 			const section = {
 				options,
 				option: () => {
-					const option = { value() {}, depends() {} };
+					const option = { value() {}, depends() {}, formvalue() {}, getUIElement() {} };
 					options.push(option);
 					return option;
 				},
@@ -101,7 +101,8 @@ async function harness(t, name) {
 	const uci = {
 		sections: (config, type) => type === 'subscription' ? [{ '.name': 's_a', name: 'Alpha' }] :
 			type === 'node' ? [{ '.name': 'n_a', label: 'Node' }] : [],
-		get: (config, id) => id === 's_a' ? { '.name': 's_a', name: 'Alpha' } : undefined,
+		get: (config, id) => id === 's_a' ? { '.name': 's_a', name: 'Alpha' } :
+			id === 'sub' ? { '.name': 'sub', '.type': 'sub' } : undefined,
 		changes: async () => ({}),
 		unload: config => { uciCalls.push(['unload', config]); },
 		load: async config => { uciCalls.push(['load', config]); }
@@ -113,6 +114,8 @@ async function harness(t, name) {
 		return d.promise;
 	};
 	ap.call = async method => {
+		if (method === 'version')
+			return { ok: true, version: '0.2.0-r6' };
 		calls.push(method);
 		if (method === 'status')
 			return status();
@@ -441,7 +444,8 @@ test('T10.28 scenario 4: job rows use current UCI names, deleted IDs fall back, 
 	const lookups = [];
 	h.uci.get = (config, id) => {
 		lookups.push(id);
-		return id === 's_a' ? { '.name': id, name: 'Current name' } : null;
+		return id === 's_a' ? { '.name': id, name: 'Current name' } :
+			id === 'sub' ? { '.name': 'sub', '.type': 'sub' } : null;
 	};
 	h.jobs[0].resolve({ result: { subs: {
 		s_a: { ok: false, code: 'SUB_FETCH_FAILED' }, s_deleted: { ok: true, added: 2 }

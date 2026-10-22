@@ -1,7 +1,8 @@
 'use strict';
 'require baseclass';
 // Pure subscription presentation, ID generation and deletion plans for the LuCI view.
-// Design: docs/10「订阅页」「订阅页修正」; keep URLs masked and the current node retained.
+// Design: docs/10「订阅页」「订阅页修正」「订阅：通用设置、获取方式与行首开关」.
+// Keep inheritance pure, URLs masked and the current node retained.
 
 function fmt(text, ...args) {
 	for (const arg of args) text = text.replace('%s', String(arg));
@@ -54,15 +55,43 @@ function status_result(status, id, now) {
 	return status === undefined ? { text: _('Reading…', 'aether-proxy'), time: '', skipped: '' } :
 		result(status?.subs?.[id], now);
 }
-function row(s, status, now, busy) {
+function interval_text(value) {
+	const labels = {
+		'0': _('Do not update automatically', 'aether-proxy'),
+		'12': _('12 hours', 'aether-proxy'), '24': _('1 day', 'aether-proxy'),
+		'72': _('3 days', 'aether-proxy'), '168': _('7 days', 'aether-proxy')
+	};
+	return labels[String(value)] || fmt(_('%s hours', 'aether-proxy'), value);
+}
+function fetch_text(value) {
+	return {
+		auto: _('Automatic (direct first, then via current node on failure)', 'aether-proxy'),
+		direct: _('Direct', 'aether-proxy'), proxy: _('Via current node', 'aether-proxy')
+	}[value] || value;
+}
+function general_values(section, default_ua) {
+	return {
+		interval_hours: section?.interval_hours || '24',
+		fetch_via: section?.fetch_via || 'auto',
+		user_agent: section?.user_agent || default_ua
+	};
+}
+function follow(value) {
+	return fmt(_('Follow general settings (%s)', 'aether-proxy'), value);
+}
+function effective_text(raw, common, format) {
+	return raw ? format(raw) : fmt(_('%s (general)', 'aether-proxy'), format(common));
+}
+function row(s, status, now, busy, general) {
 	if (!s)
 		return null;
+	const common = general_values(general);
 	return {
 		id: s['.name'], name: s.name || s['.name'], address: mask(s.url),
 		enabled: s.enabled === '0' ? _('Disabled', 'aether-proxy') : _('Enabled', 'aether-proxy'),
-		interval: Number(s.interval_hours ?? 24) === 0 ? _('Manual only', 'aether-proxy') :
-			fmt(_('%s hours', 'aether-proxy'), s.interval_hours || 24),
-		via: s.fetch_via || 'auto', result: status_result(status, s['.name'], now), can_update: !busy
+		interval: effective_text(s.interval_hours, common.interval_hours, interval_text),
+		via: effective_text(s.fetch_via, common.fetch_via, fetch_text),
+		result: status_result(status, s['.name'], now), can_update: !busy
 	};
 }
 function job_error(failure) {
@@ -72,6 +101,16 @@ function job_error(failure) {
 		(failure.detail ? '（' + failure.detail + '）' : '');
 }
 return baseclass.extend({
+	general_values,
+	interval_text,
+	fetch_text,
+	follow,
+	interval_choices: function(current) {
+		const values = ['0', '12', '24', '72', '168'];
+		if (current && !values.includes(String(current)))
+			values.push(String(current));
+		return values.map(value => [value, interval_text(value)]);
+	},
 	status_result,
 	row,
 	pending_ids: function(changes) {
@@ -79,10 +118,10 @@ return baseclass.extend({
 		return new Set((changes?.aetherproxy || []).map(change => change[1])
 			.filter(id => typeof id === 'string' && id.startsWith('s_')));
 	},
-	build: function(subscriptions, status, now, busy) {
+	build: function(subscriptions, status, now, busy, general) {
 		return {
 			error: status && status.ok === false ? status.code + ': ' + (status.detail || '') : '',
-			rows: subscriptions.map(s => row(s, status, now, busy)), can_update: !busy
+			rows: subscriptions.map(s => row(s, status, now, busy, general)), can_update: !busy
 		};
 	},
 	job_result: function(job, name_for_id) {
