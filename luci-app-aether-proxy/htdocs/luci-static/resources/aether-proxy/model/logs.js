@@ -80,11 +80,11 @@ function value_text(value) {
 }
 
 function name_text(args, key, names) {
-	// TODO(design): docs/10 calls “–” the existing fallback, but legacy uses “?”.
-	// Apply the new fallback only to named references; preserve all other output.
+	// A missing reference keeps the page-wide “?” (design lead, 2026-10-22).
 	if (args[key] == null || args[key] === '')
-		return '–';
-	if (args.label != null && args.label !== '')
+		return value_text(null);
+	// Only node events carry label (docs/09), and it names that node.
+	if (key === 'node' && args.label != null && args.label !== '')
 		return value_text(args.label);
 	const table = (key === 'sub' ? names.subscriptions : names.nodes) || {};
 	if (Object.prototype.hasOwnProperty.call(table, args[key]) && table[args[key]])

@@ -50,10 +50,13 @@ for (const [code, args, expected] of CASES) {
 	test(`T10.39 scenario 1: ${code} resolves names, event label, deleted references and missing parameters`, () => {
 		const original = event(code, Object.freeze({ ...args }));
 		assert.equal(model.message(original, names), fill(expected, key => LABELS[key]));
+		// label names the event's node only (docs/09); subscriptions and reload endpoints ignore it.
+		const deleted = key => key === 'sub' ? '已删除的订阅' : '已删除的节点';
 		assert.equal(model.message(event(code, { ...args, label: '发生时的名称' }), names),
-			fill(expected, () => '发生时的名称'));
+			fill(expected, key => key === 'node' ? '发生时的名称' : LABELS[key]));
 		// Even deleted references retain a name captured in the event itself.
-		assert.equal(model.message(event(code, { ...args, label: '旧名称' }), {}), fill(expected, () => '旧名称'));
+		assert.equal(model.message(event(code, { ...args, label: '旧名称' }), {}),
+			fill(expected, key => key === 'node' ? '旧名称' : deleted(key)));
 		for (const label of [undefined, null, '']) {
 			assert.equal(model.message(event(code, { ...args, label }), names), fill(expected, key => LABELS[key]));
 			assert.equal(model.message(event(code, { ...args, label }), {}),
@@ -66,7 +69,7 @@ for (const [code, args, expected] of CASES) {
 				if (missing === undefined)
 					delete changed[key];
 				assert.equal(model.message(event(code, changed), names),
-					fill(expected, field => field === key ? '–' : '不能掩盖缺参'));
+					fill(expected, field => field === key ? '?' : field === 'node' ? '不能掩盖缺参' : LABELS[field]));
 			}
 		}
 		assert.deepEqual(original.args, args, 'resolving names never rewrites stored args');
@@ -100,7 +103,8 @@ test('T10.39 scenario 3: name-aware rows retain byte-identical original args JSO
 		const vm = model.events(reply, null, '', '', names);
 		assert.equal(vm.rows[0].title, json);
 		assert.ok(Object.values(IDS).some(id => json.includes(id)));
-		assert.equal(vm.rows[0].text, fill(CASES.find(([item]) => item === code)[2], () => '当时的名称'));
+		assert.equal(vm.rows[0].text, fill(CASES.find(([item]) => item === code)[2],
+			key => key === 'node' ? '当时的名称' : LABELS[key]));
 		const failed = model.events({ ok: false, code: 'TIMEOUT' }, vm.data, 'warn', code, names);
 		assert.deepEqual(failed.rows, vm.rows, 'failed refresh and filters retain name-aware rows');
 		assert.equal(JSON.stringify(original.args), json);
