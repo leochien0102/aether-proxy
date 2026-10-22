@@ -2,6 +2,7 @@
 
 // nftables ruleset renderer (docs/02-dataplane.md "nft 规则模板"). Pure function: snapshot and
 // ctx in, text out. Traffic-only counters follow docs/10 "Dashboard", part 1.
+// Reuse static rule-array sorting by identity (docs/04 "规则数据缓存"); output stays pure.
 
 import * as C from 'aetherproxy.const';
 import { ip_key, cidr_parts } from 'aetherproxy.net';
@@ -26,6 +27,20 @@ function sort_ips(list) {
 
 	return map(sort(items, (a, b) => (a.addr != b.addr) ? (a.addr < b.addr ? -1 : 1) : (a.len - b.len)), x => x.s);
 };
+
+// Only data.load's arrays are stable across reloads. Host and restored lists may be
+// rebuilt or mutated by their callers, so those continue through uncached sort_ips.
+// TODO(design): no eviction policy is specified. Keep only the latest array per static
+// set, bounding retained generations instead of accumulating every historical update.
+const sorted_data = {};
+function sort_data(name, list) {
+	let cached = sorted_data[name];
+	if (cached != null && cached.input == list)
+		return cached.items;
+	let items = sort_ips(list);
+	sorted_data[name] = { input: list, items };
+	return items;
+}
 
 function sort_strings(list) {
 	let seen = {}, out = [];
@@ -143,10 +158,10 @@ export function render(snapshot, ctx) {
 
 	push(out, set_block('reserved4', 'ipv4_addr', true, C.RESERVED4));
 	push(out, set_block('node_ip4', 'ipv4_addr', true, node_ip ? [ node_ip ] : []));
-	push(out, set_block('chnroute4', 'ipv4_addr', true, sort_ips(data.chnroute4)));
-	push(out, set_block('gfw_static4', 'ipv4_addr', true, sort_ips(data.gfw_static4)));
-	push(out, set_block('direct_ip4', 'ipv4_addr', true, sort_ips(data.direct_ip4)));
-	push(out, set_block('proxy_ip4', 'ipv4_addr', true, sort_ips(data.proxy_ip4)));
+	push(out, set_block('chnroute4', 'ipv4_addr', true, sort_data('chnroute4', data.chnroute4)));
+	push(out, set_block('gfw_static4', 'ipv4_addr', true, sort_data('gfw_static4', data.gfw_static4)));
+	push(out, set_block('direct_ip4', 'ipv4_addr', true, sort_data('direct_ip4', data.direct_ip4)));
+	push(out, set_block('proxy_ip4', 'ipv4_addr', true, sort_data('proxy_ip4', data.proxy_ip4)));
 	push(out, set_block('gfw4', 'ipv4_addr', true, sort_ips(restored.gfw4), 'chinadns-ng add-taggfw-ip'));
 	push(out, set_block('udirect4', 'ipv4_addr', true, sort_ips(restored.udirect4), 'chinadns-ng group-ipset'));
 	push(out, set_block('uproxy4', 'ipv4_addr', true, sort_ips(restored.uproxy4), 'chinadns-ng group-ipset'));
