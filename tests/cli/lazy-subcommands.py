@@ -14,7 +14,7 @@ LIB = ROOT / 'aether-proxy/src/lib'
 ENTRY = ROOT / 'aether-proxy/src/aether-proxy'
 PREFIX = ROOT / 'tests/host/prefix'
 
-# Freeze the help bytes (T9.20 adds node use/mode use): comparing help to
+# Freeze the help bytes (T9.23 adds dns sync-wan): comparing help to
 # unknown-command output alone would miss a shared accidental change to USAGE.
 USAGE = b'''Usage: aether-proxy <command> [options]
 
@@ -34,6 +34,7 @@ Commands:
   node import <uri>  import a share-link URI as a manual node
   node use <id> [--mode <mode>] select the current node and optionally default mode
   mode use <mode>    select the default mode (gfw|bypass_cn|global)
+  dns sync-wan      reload when the applied ISP DNS has changed
   custom get|set     read or validate-and-save a custom list file
   log [options]      read recent tagged lines from logd
   data status        inspect local rule data and available updates

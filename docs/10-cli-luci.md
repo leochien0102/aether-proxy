@@ -24,7 +24,7 @@ init.d / hotplug / daemon ──────────────────
 | `daemon [--boot]` | procd 实例入口（[04](04-lifecycle.md)） | 常驻 |
 | `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup [--wait <秒>]` | 幂等清理。`--wait`：锁被占用时每秒重试、最多等这么久（0–120，默认 0 即不等，init 的 `service_stopped` 用 35，04「启停」） | 否 |
-| `status` | 输出 `state.json`，并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
+| `status` | 输出 `state.json`（含 `wan_dns`：已应用的观测值，`status` 不重新查询 ubus，见 04「状态」），并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
 | `components` | 现场查找 Xray、chinadns-ng 并读取版本（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
@@ -34,7 +34,7 @@ init.d / hotplug / daemon ──────────────────
 | `node import <uri>` | 导入单个 URI 作为手动节点 | 否 |
 | `node use <id> [--mode <模式>]` | 切换当前节点：写 `main.node` 并提交，服务在运行时立即触发重载，**不等重载完成**（见下方「切换节点」，2026-10-21）；带 `--mode` 时同时改默认模式，只重载一次（2026-10-22） | 否 |
 | `mode use <模式>` | 只切换默认模式（`main.mode`），做法同 `node use`（见下方「切换默认模式」，2026-10-22） | 否 |
-| `dns sync-wan` | 运营商下发的 DNS 变了且服务在运行时触发重载（由 hotplug 调用，[03](03-dns.md)「运营商下发的 DNS」，2026-10-22）；输出 `{ "ok": true, "wan_dns": [...], "reload": <bool> }` | 否 |
+| `dns sync-wan` | 运营商下发的 DNS 变了且服务在运行时触发重载（由 hotplug 调用，[03](03-dns.md)「运营商下发的 DNS」，2026-10-22）；输出 `{ "ok": true, "wan_dns": [...], "reload": <bool> }`。`china_dns` 不含 `wan` 或服务没在运行时不查询，`wan_dns` 为 `null`；`state.json` 损坏 → `FS_FAILED`（退出 1），不猜测、不重载（T9.23 复核定） | 否 |
 | `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
 | `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |

@@ -1,0 +1,72 @@
+{
+  "main": {
+    "enabled": false,
+    "mode": "bypass_cn",
+    "node": null,
+    "lan_ifaces": [
+      "br-lan"
+    ],
+    "unlisted_policy": "follow",
+    "quic_block": true,
+    "dns_hijack": true,
+    "ipv6_filter": true,
+    "filter_https_rr": true,
+    "fail_open": true,
+    "sniffing": true,
+    "log_level": "notice",
+    "xray_log_level": "warning",
+    "boot_wait_timeout": 120,
+    "boot_check_targets": [
+      "223.5.5.5:53",
+      "114.114.114.114:53"
+    ],
+    "xray_bin": null,
+    "chinadns_bin": null
+  },
+  "dns": {
+    "china_dns": [
+      "wan",
+      "114.114.114.114"
+    ],
+    "trust_dns": [
+      "8.8.8.8",
+      "1.1.1.1"
+    ],
+    "direct_dns": [
+      "tcp://9.9.9.9",
+      "tcp://8.8.8.8"
+    ],
+    "allow_china_fallback": true,
+    "dns_probe_domain": "www.google.com",
+    "dnsmasq_instance": null
+  },
+  "update": {
+    "channel_urls": [
+      "https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/"
+    ],
+    "data_auto": true,
+    "data_hour": 4,
+    "data_minute": null,
+    "xray_auto": "notify"
+  },
+  "probe": {
+    "url": "https://www.gstatic.com/generate_204",
+    "expect_code": 204,
+    "timeout": 5,
+    "fail_threshold": 3,
+    "recover_threshold": 2,
+    "node_timeout": 3,
+    "node_concurrency": 8
+  },
+  "sub": {
+    "user_agent": "aether-proxy/0.0.0-dev",
+    "fetch_via": "auto",
+    "interval_hours": 24
+  },
+  "hosts": [
+  ],
+  "subscriptions": {
+  },
+  "nodes": {
+  }
+}

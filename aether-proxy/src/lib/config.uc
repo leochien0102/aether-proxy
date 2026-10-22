@@ -71,6 +71,22 @@ function upstream(s) {
 	return ipv4(rest) != null ? s : null;
 }
 
+// Only china_dns accepts the WAN placeholder; direct/trust DNS retain their grammar.
+function china_dns(s) {
+	return s == 'wan' ? s : upstream(s);
+}
+
+// Shared by pipeline.read and fixture rendering: expand once, then deduplicate the whole list.
+export function expand_china_dns(entries, wan_dns) {
+	let out = [];
+	let wan = length(wan_dns ?? []) ? wan_dns : [ C.WAN_DNS_FALLBACK ];
+	for (let entry in entries ?? [])
+		for (let value in entry == 'wan' ? wan : [ entry ])
+			if (index(out, value) < 0)
+				push(out, value);
+	return out;
+};
+
 // Keep legacy snapshots byte-compatible; only consumers need the parsed protocol.
 function trust_dns(s) {
 	return trust_dns_parts(s) != null ? s : null;
@@ -89,7 +105,7 @@ function nonempty(s) {
 }
 
 const ITEM_CHECK = {
-	ipv4, ip_or_cidr, mac, upstream, trust_dns, hostport, url, string: nonempty
+	ipv4, ip_or_cidr, mac, upstream, china_dns, trust_dns, hostport, url, string: nonempty
 };
 
 const SCALAR_CHECK = {
@@ -98,7 +114,7 @@ const SCALAR_CHECK = {
 
 const INVALID_CODE = {
 	// Preserve the existing trust_dns error subcode; the enclosing event remains CONFIG_INVALID.
-	trust_dns: 'invalid_ipv4',
+	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream',
 	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
 	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value',
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'

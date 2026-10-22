@@ -22,6 +22,7 @@ printf 'aether-proxy %s\n' "$*" >> "$PROCD_LOG"
 exit "${CHECK_RC:-0}"
 EOF
 chmod +x "$T/bin-aether-proxy"
+# Replace only the OpenWrt library imports; retain every branch of the packaged hook.
 sed '/^\. \/lib\/functions\.sh$/d; /^\. \/lib\/functions\/procd\.sh$/d' "$HOTPLUG" > "$T/hotplug.test.sh"
 
 run_init() {
@@ -112,6 +113,8 @@ run_init triggers 1 0 init-triggers; rc=$?
 expect "service_triggers succeeds" 0 "$rc"
 grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger registered" || bad "reload trigger registered"
 
+# Preserve the original monitor-wakeup cases; DNS synchronization is an independent
+# background call, including on LAN. Only the harness waits for its logging substitute.
 run_hotplug() {
 	local device="$1" enabled="$2" ifaces="$3" output="$4" ubus_rc="${5:-0}"
 	(
@@ -122,9 +125,19 @@ run_hotplug() {
 		config_get_bool() { printf -v "$1" '%s' "$TEST_ENABLED"; }
 		config_list_foreach() { local value; for value in $TEST_LAN_IFACES; do "$3" "$value"; done; }
 		ubus() { printf 'ubus %s\n' "$*" >> "$PROCD_LOG"; printf '%s\n' "$UBUS_OUTPUT"; return "$UBUS_RC"; }
-		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return 0; }
+		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return "${HOTPLUG_SIGNAL_RC:-0}"; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
-		ACTION=ifup DEVICE="$device" INTERFACE=lan
+		hook_pid=$BASHPID
+		aether-proxy() {
+			printf 'aether-proxy %s\n' "$*" >> "$PROCD_LOG"
+			if [ "$BASHPID" != "$hook_pid" ]; then
+				printf 'dns-background yes\n' >> "$PROCD_LOG"
+			else
+				printf 'dns-background no\n' >> "$PROCD_LOG"
+			fi
+		}
+		ACTION="${7-ifup}" DEVICE="$device" INTERFACE=lan
+		trap 'wait' EXIT
 		. "$T/hotplug.test.sh"
 	)
 }
@@ -132,9 +145,13 @@ run_hotplug() {
 run_hotplug br-lan 1 'br-lan br-guest' hotplug-lan; rc=$?
 expect "LAN ifup is ignored" 0 "$rc"
 ! contains "$T/hotplug-lan.log" 'signal aether-proxy' && ok "LAN does not send USR1" || bad "LAN does not send USR1"
+grep -Fxq 'aether-proxy dns sync-wan' "$T/hotplug-lan.log" \
+	&& ok "T9.23 LAN ifup still invokes dns sync-wan" || bad "T9.23 LAN ifup still invokes dns sync-wan"
 run_hotplug pppoe-wan 0 'br-lan' hotplug-disabled; rc=$?
 expect "disabled hotplug is a no-op" 0 "$rc"
 ! contains "$T/hotplug-disabled.log" 'ubus call' && ok "disabled hotplug skips service lookup" || bad "disabled hotplug skips service lookup"
+! contains "$T/hotplug-disabled.log" 'signal aether-proxy' \
+	&& ok "disabled hotplug does not send USR1" || bad "disabled hotplug does not send USR1"
 run_hotplug pppoe-wan 1 'br-lan' hotplug-down 0 '{"aether-proxy":{"instances":{}}}'; rc=$?
 expect "stopped service hotplug is a no-op" 0 "$rc"
 ! contains "$T/hotplug-down.log" 'signal aether-proxy' && ok "stopped service does not send USR1" || bad "stopped service does not send USR1"
@@ -145,6 +162,35 @@ run_hotplug pppoe-wan 1 'br-lan' hotplug-ubus-fail 9 '{}'; rc=$?
 expect "ubus failure is returned" 9 "$rc"
 contains "$T/hotplug-ubus-fail.log" 'ubus call service list failed (rc=9)' \
 	&& ok "ubus failure is logged" || bad "ubus failure is logged"
+HOTPLUG_SIGNAL_RC=8 run_hotplug pppoe-wan 1 'br-lan' hotplug-signal-fail; rc=$?
+expect "USR1 delivery failure is returned" 8 "$rc"
+contains "$T/hotplug-signal-fail.log" 'procd_send_signal USR1 failed (rc=8)' \
+	&& ok "USR1 delivery failure is logged" || bad "USR1 delivery failure is logged"
+run_hotplug '' 1 'br-lan' hotplug-no-device; rc=$?
+expect "missing DEVICE exits successfully" 0 "$rc"
+! contains "$T/hotplug-no-device.log" 'signal aether-proxy' \
+	&& ok "missing DEVICE does not send USR1" || bad "missing DEVICE does not send USR1"
+
+for action in ifup ifupdate; do
+	run_hotplug pppoe-wan 1 'br-lan' "hotplug-$action" 0 \
+		'{"aether-proxy":{"instances":{"main":{"running":true}}}}' "$action"; rc=$?
+	expect "T9.23 hotplug $action exits successfully" 0 "$rc"
+	expect "T9.23 hotplug $action invokes dns sync-wan" 1 \
+		"$(grep -Fxc 'aether-proxy dns sync-wan' "$T/hotplug-$action.log")"
+	grep -Fxq 'dns-background yes' "$T/hotplug-$action.log" \
+		&& ok "T9.23 hotplug $action runs sync-wan in background" \
+		|| bad "T9.23 hotplug $action runs sync-wan in background"
+done
+! contains "$T/hotplug-ifupdate.log" 'signal aether-proxy' \
+	&& ok "T9.23 ifupdate does not send USR1" || bad "T9.23 ifupdate does not send USR1"
+! contains "$T/hotplug-ifupdate.log" 'ubus call' \
+	&& ok "T9.23 ifupdate skips service lookup" || bad "T9.23 ifupdate skips service lookup"
+for action in ifdown iflink reload ''; do
+	run_hotplug pppoe-wan 1 'br-lan' hotplug-other 0 '{}' "$action"; rc=$?
+	expect "T9.23 hotplug other action '$action' exits successfully" 0 "$rc"
+	[ ! -s "$T/hotplug-other.log" ] \
+		&& ok "T9.23 hotplug other action '$action' makes no call" || bad "T9.23 hotplug other action '$action' makes no call"
+done
 
 run_defaults() {
 	local name="$1" get_rc="$2" current="$3" od_value="$4" set_rc="$5" commit_rc="$6" log="$T/$1.log"

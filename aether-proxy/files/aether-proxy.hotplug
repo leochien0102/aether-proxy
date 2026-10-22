@@ -1,4 +1,8 @@
 #!/bin/sh
+# docs/03: DNS synchronization must not block netifd or the existing monitor wakeup (docs/04).
+case "${ACTION:-}" in
+	ifup|ifupdate) aether-proxy dns sync-wan >/dev/null 2>&1 & ;;
+esac
 
 [ "${ACTION:-}" = ifup ] || exit 0
 [ -n "${DEVICE:-}" ] || exit 0

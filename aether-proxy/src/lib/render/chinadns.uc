@@ -4,6 +4,7 @@
 
 import * as C from 'aetherproxy.const';
 import { trust_dns_parts } from 'aetherproxy.net';
+import { expand_china_dns } from 'aetherproxy.config';
 
 // "inet aetherproxy" + "gfw4" -> "inet@aetherproxy@gfw4" (chinadns-ng's nft set syntax)
 function nft_set(name) {
@@ -11,7 +12,7 @@ function nft_set(name) {
 }
 
 // Upstreams of the trust group for a DNS tier (docs/03 "DNS 级别").
-function trust_upstreams(dns, tier) {
+function trust_upstreams(dns, tier, china) {
 	if (tier == 'T1') {
 		// One tunnel port per configured trust_dns entry, at least one, at most two.
 		let n = length(dns?.trust_dns ?? []);
@@ -28,7 +29,7 @@ function trust_upstreams(dns, tier) {
 		return out;
 	}
 	if (tier == 'T3')
-		return dns?.china_dns ?? [];
+		return china;
 	return dns?.direct_dns ?? [];
 }
 
@@ -39,9 +40,11 @@ export function render(snapshot, ctx) {
 	// The monitor starts every run at T2 (docs/03 "切换规则"), so that is the default
 	// when the context carries no tier.
 	let tier = ctx?.runtime?.dns_tier ?? 'T2';
-	let china = dns.china_dns ?? [];
+	// Production snapshots are already expanded by pipeline.read. Raw fixture snapshots
+	// use context.json's wan_dns, never live network I/O, keeping rendering deterministic.
+	let china = expand_china_dns(dns.china_dns, ctx?.wan_dns);
 	let direct = dns.direct_dns ?? [];
-	let trust = trust_upstreams(dns, tier);
+	let trust = trust_upstreams(dns, tier, china);
 	// DNS still follows main.mode; device GFW overrides only need its IP set populated (docs/03).
 	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false && h.policy == 'gfw')) > 0;
 	let out = [];
