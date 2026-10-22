@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
+const { widgetTypes, inputOf } = require('./node-input-widgets');
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.resolve(RES, '../../../po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = (s, context) => {
@@ -46,27 +47,31 @@ function deferred() {
 	const promise = new Promise(done => { resolve = done; });
 	return { promise, resolve };
 }
-function optionSection() {
+function optionSection(map) {
 	return {
 		children: [],
 		option(kind, field, title) {
-			const option = { field, title, value() {}, depends() {} };
+			const option = Object.assign(Object.create(kind.prototype), {
+				field, option: field, title, map, depends() {}
+			});
 			this.children.push(option);
 			return option;
 		}
 	};
 }
 function gridDouble(map, h) {
-	const grid = optionSection();
+	const grid = optionSection(map);
 	grid.renderMoreOptionsModal = async function(id) {
-		const modal = optionSection();
-		modal.children = this.children.filter(o => o.modalonly !== false).map(o => ({ ...o }));
+		const modal = optionSection(map);
+		modal.children = this.children.filter(o => o.modalonly !== false)
+			.map(o => Object.assign(Object.create(Object.getPrototypeOf(o)), o));
 		this.addModalOptions(modal, id);
 		h.modal = { id, section: modal, widgets: {} };
 		h.modal.node = E('div', {}, modal.children.map(o => {
-			const widget = o.renderWidget ? o.renderWidget()
-				: E('input', { value: h.uci.get('aetherproxy', id, o.field) ?? '' });
-			h.modal.widgets[o.field] = widget;
+			const cfgvalue = h.uci.get('aetherproxy', id, o.field);
+			const widget = o.renderWidget ? o.renderWidget(id, 0, cfgvalue)
+				: E('input', { value: cfgvalue ?? '' });
+			h.modal.widgets[o.field] = o.field === '_share' ? widget : inputOf(widget);
 			return E('label', {}, [o.title, widget]);
 		}));
 	};
@@ -87,7 +92,7 @@ function gridDouble(map, h) {
 		const modal = h.modal;
 		for (const o of modal.section.children) {
 			if (o.field !== '_share')
-				h.uci.set('aetherproxy', modal.id, o.field, modal.widgets[o.field].value);
+				o.write(modal.id, modal.widgets[o.field].value);
 		}
 		await this.handleModalCancel(modal, {}, true);
 	};
@@ -98,7 +103,8 @@ function gridDouble(map, h) {
 	return grid;
 }
 function formDouble(h) {
-	return { Map: class {
+	return { ...widgetTypes(), Map: class {
+		constructor(config) { this.config = config; this.data = h.uci; }
 		section() { this.grid = gridDouble(this, h); return this.grid; }
 		async render() {
 			const columns = this.grid.children.filter(o => o.modalonly === false);
@@ -319,6 +325,27 @@ test('T10.26 scenario 4: hand-filled Save stages the node without parsing, impor
 	await add(h);
 	await h.page.nodeGrid.handleModalCancel(h.modal, {}, false);
 	assert.ok(h.uci.get('aetherproxy', id));
+});
+
+test('T10.33 scenario 1/2: parsed legacy choices and long keys survive the Add modal Save path', async () => {
+	const h = await harness();
+	const id = await add(h);
+	await parse(h, 'vless://opaque', { ok: true, node: {
+		protocol: 'vless', address: 'edge.example', port: '443',
+		flow: 'xtls-rprx-direct', fingerprint: '360',
+		reality_pqv: 'AB\n CD', ech_config_list: 'EF\t GH'
+	} });
+	assert.equal(h.modal.widgets.flow.value, 'xtls-rprx-direct');
+	assert.equal(h.modal.widgets.fingerprint.value, '360');
+	h.modal.widgets.reality_pqv.value = 'AB \nCD+/=';
+	h.modal.widgets.ech_config_list.value = '\tEF\r\nGH+/=';
+	await h.page.nodeGrid.handleModalSave();
+	const saved = h.uci.get('aetherproxy', id);
+	assert.equal(saved.flow, 'xtls-rprx-direct');
+	assert.equal(saved.fingerprint, '360');
+	assert.equal(saved.reality_pqv, 'ABCD+/=');
+	assert.equal(saved.ech_config_list, 'EFGH+/=');
+	assert.equal(h.rpc.length, 1, 'only Parse uses RPC; modal Save stages the normalized values');
 });
 
 test('T10.26 defensive: invalid Save keeps the new node editable and later Cancel still removes it', async () => {

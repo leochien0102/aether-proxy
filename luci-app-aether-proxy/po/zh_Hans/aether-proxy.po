@@ -877,7 +877,19 @@ msgstr "加密"
 
 msgctxt "aether-proxy"
 msgid "Flow"
-msgstr "Flow"
+msgstr "流控"
+
+msgctxt "aether-proxy"
+msgid "None"
+msgstr "无"
+
+msgctxt "aether-proxy"
+msgid "Not set"
+msgstr "不设"
+
+msgctxt "aether-proxy"
+msgid "%s characters"
+msgstr "%s 个字符"
 
 msgctxt "aether-proxy"
 msgid "Security layer"
