@@ -7,6 +7,7 @@
 
 /* Log-page controller (docs/10 「日志页」). Only events are polled; raw logs
  * can be large and are fetched on demand. All untrusted content is text.
+ * T10.39 reads name maps from the already loaded UCI; hover keeps original IDs.
  * Block action rows follow docs/10 "UI 规则" (T10.27).
  */
 return view.extend({
@@ -37,7 +38,7 @@ return view.extend({
 
 	showEvents: function(res) {
 		this.eventsReply = res;
-		const vm = model.events(res, this.lastEvents, this.level.value, this.code.value);
+		const vm = model.events(res, this.lastEvents, this.level.value, this.code.value, this.names);
 		this.lastEvents = vm.data;
 		this.level.disabled = this.code.disabled = vm.filters_disabled;
 		const selected = this.code.value;
@@ -84,6 +85,13 @@ return view.extend({
 	},
 
 	render: function() {
+		this.names = { nodes: Object.create(null), subscriptions: Object.create(null) };
+		uci.sections('aetherproxy', 'node', s => {
+			this.names.nodes[s['.name']] = s.label || s['.name'];
+		});
+		uci.sections('aetherproxy', 'subscription', s => {
+			this.names.subscriptions[s['.name']] = s.name || s['.name'];
+		});
 		this.eventsRequest = 0;
 		this.tab = 'events';
 		this.auto = E('input', { type: 'checkbox', checked: true, change: () => this.startPolling() });

@@ -1626,8 +1626,9 @@ function failedSwitchText(configured, current, reason, age) {
 		+ '可以点「重启」用配置的节点重新启动（会短暂中断代理），或到日志页查看详情。';
 }
 
-function logText(event) {
-	return logsModel().events({ ok: true, events: [ event ] }, null, '', '').rows[0].text;
+function logText(event, labels = { n_a: 'Alpha', n_b: 'Beta' }) {
+	return logsModel().events({ ok: true, events: [ event ] }, null, '', '',
+		{ nodes: labels, subscriptions: {} }).rows[0].text;
 }
 
 const SWITCH_REASON_CASES = [
@@ -1649,7 +1650,7 @@ for (const [code, args] of SWITCH_REASON_CASES) {
 		assert.equal(switchModel(reply).switch_notice,
 			failedSwitchText('Beta', 'Alpha', logText(event), '2 分钟前'));
 		assert.equal(switchModel(reply, { n_b: '' }).switch_notice,
-			failedSwitchText('n_b', 'n_a', logText(event), '2 分钟前'));
+			failedSwitchText('n_b', 'n_a', logText(event, { n_b: '' }), '2 分钟前'));
 	});
 }
 
