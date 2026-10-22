@@ -26,7 +26,40 @@
  * Collapsible bulk imports retain input and results across redraws (「节点页第三轮修正」, T10.29).
  * Transport, security and Mux modal options follow 「节点编辑框新字段」 (T10.30).
  * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
+ * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
  */
+
+function compactKey(value) {
+	return String(value ?? '').replace(/\s/g, '');
+}
+
+/* Keep LuCI's textarea instance and validation; only add a live, whitespace-free count. */
+function renderLongKey(section_id, option_index, cfgvalue) {
+	const widget = form.TextValue.prototype.renderWidget.call(this, section_id, option_index, cfgvalue);
+	const input = widget.querySelector('textarea');
+	const count = E('div', { 'class': 'cbi-value-description' });
+	const update = () => {
+		count.textContent = _('%s characters', 'aether-proxy').format(compactKey(input.value).length);
+	};
+	input.addEventListener('input', update);
+	update();
+	return E('div', {}, [ widget, count ]);
+}
+
+function writeLongKey(section_id, value) {
+	return form.TextValue.prototype.write.call(this, section_id, compactKey(value));
+}
+
+/* An old value belongs only to this node: never pollute the shared grid option's choices. */
+function renderPreservedList(section_id, option_index, cfgvalue) {
+	const option = Object.assign(Object.create(this), {
+		keylist: this.keylist.slice(),
+		vallist: this.vallist.slice()
+	});
+	if (cfgvalue != null && !option.keylist.includes(String(cfgvalue)))
+		option.value(cfgvalue, cfgvalue);
+	return form.ListValue.prototype.renderWidget.call(option, section_id, option_index, cfgvalue);
+}
 
 return view.extend({
 	load: function() {
@@ -437,8 +470,12 @@ return view.extend({
 		o.placeholder = 'none';
 		o.depends('protocol', 'vless');
 
-		o = s.option(form.Value, 'flow', _('Flow', 'aether-proxy'));
+		o = s.option(form.ListValue, 'flow', _('Flow', 'aether-proxy'));
 		o.modalonly = true;
+		o.value('', _('None', 'aether-proxy'));
+		o.value('xtls-rprx-vision', 'xtls-rprx-vision');
+		o.value('xtls-rprx-vision-udp443', 'xtls-rprx-vision-udp443');
+		o.renderWidget = renderPreservedList;
 		o.depends('protocol', 'vless');
 		o.description = _('Vision does not support multiplexing.', 'aether-proxy');
 
@@ -514,8 +551,12 @@ return view.extend({
 		o.depends('security', 'tls');
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'fingerprint', _('TLS fingerprint', 'aether-proxy'));
+		o = s.option(form.ListValue, 'fingerprint', _('TLS fingerprint', 'aether-proxy'));
 		o.modalonly = true;
+		o.value('', _('Not set', 'aether-proxy'));
+		for (const fingerprint of ['chrome', 'firefox', 'safari', 'ios', 'android', 'edge', 'random', 'randomized'])
+			o.value(fingerprint, fingerprint);
+		o.renderWidget = renderPreservedList;
 		o.depends('security', 'tls');
 		o.depends('security', 'reality');
 
@@ -527,8 +568,12 @@ return view.extend({
 		o.modalonly = true;
 		o.depends('security', 'tls');
 
-		o = s.option(form.Value, 'ech_config_list', _('ECH configuration', 'aether-proxy'));
+		o = s.option(form.TextValue, 'ech_config_list', _('ECH configuration', 'aether-proxy'));
 		o.modalonly = true;
+		o.rows = 4;
+		o.wrap = true;
+		o.renderWidget = renderLongKey;
+		o.write = writeLongKey;
 		o.depends('security', 'tls');
 
 		o = s.option(form.Value, 'reality_pbk', _('REALITY public key', 'aether-proxy'));
@@ -543,19 +588,23 @@ return view.extend({
 		o.modalonly = true;
 		o.depends('security', 'reality');
 
-		o = s.option(form.Value, 'reality_pqv', _('REALITY post-quantum verification key (mldsa65Verify)',
+		o = s.option(form.TextValue, 'reality_pqv', _('REALITY post-quantum verification key (mldsa65Verify)',
 			'aether-proxy'));
 		o.modalonly = true;
+		o.rows = 4;
+		o.wrap = true;
+		o.renderWidget = renderLongKey;
+		o.write = writeLongKey;
 		o.depends('security', 'reality');
 
 		o = s.option(form.Flag, 'mux', _('Multiplexing (Mux)', 'aether-proxy'));
 		o.modalonly = true;
-		o.depends({ flow: 'xtls-rprx-vision', '!reverse': true });
+		o.depends({ flow: /^xtls-rprx-vision(-udp443)?$/, '!reverse': true });
 		o.validate = function(section_id, value) {
 			// Read the modal's live input, not just UCI: flow may have unsaved edits.
 			const flow = this.map.lookupOption('flow', section_id);
 			const current = flow?.[0].formvalue(section_id) ?? uci.get('aetherproxy', section_id, 'flow');
-			return value === '1' && current === 'xtls-rprx-vision'
+			return value === '1' && /^xtls-rprx-vision(-udp443)?$/.test(current)
 				? _('Vision flow cannot be used with multiplexing enabled', 'aether-proxy') : true;
 		};
 
