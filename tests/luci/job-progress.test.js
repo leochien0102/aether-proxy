@@ -196,8 +196,10 @@ const scenarios = [
 		prompt: '正在安装 aether-proxy…', job: { result: { ok: true, from: '2', to: '3' } },
 		result: 'aether-proxy 已从 2 更新到 3 页面文件可能已变化，请刷新浏览器。', calls: ['status'] },
 	{ name: 'updates', label: '回滚到 1', kind: 'update_package', args: ['aether-proxy', '--previous'],
-		prompt: '正在回滚 aether-proxy…', job: { result: { ok: true, from: '2', to: '1' } },
-		result: 'aether-proxy 已从 2 更新到 1 页面文件可能已变化，请刷新浏览器。', calls: ['status'] },
+		prompt: '正在回滚 aether-proxy…', job: { result: { ok: true, package: 'aether-proxy', from: '2', to: '1',
+			companions: { 'luci-app-aether-proxy': 'rolled_back', 'luci-i18n-aether-proxy-zh-cn': 'skipped' } } },
+		result: 'aether-proxy：已回滚到 1luci-app-aether-proxy: 已回滚luci-i18n-aether-proxy-zh-cn: 已跳过',
+		calls: ['status'] },
 	{ name: 'subscriptions', label: '立即更新', kind: 'sub_update', args: ['s_a'], prompt: '正在更新订阅…',
 		job: { result: { subs: { s_a: { ok: true, added: 1, updated: 2, stale: 3, revived: 4, removed: 5 } } } },
 		result: 'Alpha: 新增 1 / 更新 2 / 失效 3 / 恢复 4 / 移除 5', calls: ['sub_status'] },
@@ -476,6 +478,33 @@ test('T10.28 scenario 3: Update all stays usable with pending rows; finally pres
 	assert.equal(button(h.root, '立即更新').disabled, true);
 	assert.equal(button(h.root, '立即更新').title, '请先保存并应用');
 	assert.equal(button(h.root, '全部更新').disabled, false);
+});
+
+test('T10.31 scenario 4: a rollback warning survives a rejected status refresh and later retry', async t => {
+	const h = await harness(t, 'updates');
+	const pending = click(button(h.root, '回滚到 1'));
+	await flush();
+	assert.equal(text(h.page.progress), '正在回滚 aether-proxy…（已用 0 秒）');
+	assert.ok(activeButtons(h, 'updates').every(button => button.disabled));
+	h.ap.call = async () => { throw new Error('status unavailable'); };
+	h.jobs[0].resolve({ result: { ok: true, package: 'aether-proxy', to: '1', companions: {
+		'luci-app-aether-proxy': 'rolled_back', 'luci-i18n-aether-proxy-zh-cn': 'rolled_back'
+	} } });
+	await pending;
+	assert.equal(text(h.page.summary), '操作失败：status unavailable');
+	assert.equal(text(h.page.progress), '');
+	assert.match(text(h.root.children[0]), /页面已换成旧版本，请刷新页面/);
+	assert.ok(activeButtons(h, 'updates').every(button => !button.disabled));
+	assert.equal(h.page.busy, false);
+	t.mock.timers.tick(10000);
+	assert.equal(text(h.page.progress), '');
+	h.ap.call = async () => status();
+	const retry = click(button(h.root, '检查更新'));
+	await flush();
+	h.jobs[1].resolve({ result: { ok: true, packages: {} } });
+	await retry;
+	assert.match(text(h.root.children[0]), /页面已换成旧版本，请刷新页面/);
+	assert.equal(h.page.busy, false);
 });
 
 test('T10.15 scenario 4: chinadns-ng instructions embed optional arch; xray missing notice is unchanged', () => {

@@ -4,8 +4,24 @@
 /* Pure update-page decisions and messages, per docs/10 "更新页".
  * Asset availability comes from the CLI; never infer it from a version or arch.
  * Undefined status means the initial read is pending (docs/10 "其余页面先出页面").
+ * Grouped rollback messages follow docs/10 "更新页：回滚一起回滚".
  */
 const PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+const ROLLBACK_GROUP = PACKAGES.slice(1);
+const PAGE_PACKAGES = ROLLBACK_GROUP.slice(1);
+function rolls_back_together(name) {
+	return name == 'aether-proxy' || name == 'luci-app-aether-proxy';
+}
+function grouped_confirmation(status) {
+	const packages = status?.updates_available?.packages;
+	return [ _('These three packages will be rolled back together to keep the page and backend at the same version:',
+		'aether-proxy'), ...ROLLBACK_GROUP.map(name => {
+		const p = packages?.[name];
+		return p?.installed != null && p?.previous != null ?
+			_('%s: %s → %s', 'aether-proxy').format(name, p.installed, p.previous) :
+			_('%s: skip (not installed or no previous version available)', 'aether-proxy').format(name);
+	}) ];
+}
 function restarts(name) {
 	return name != 'xray-core';
 }
@@ -33,6 +49,40 @@ function failure(r) {
 		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy')
 	};
 	return (messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy')) + (r.detail ? ': ' + r.detail : '');
+}
+function package_result(name, r) {
+	if (r.rolled_back)
+		return _('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from);
+	if (!r.ok)
+		return failure(r);
+	const text = r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
+		_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to);
+	return text + (restarts(name) ?
+		' ' + _('Page files may have changed; please refresh your browser.', 'aether-proxy') : '');
+}
+function grouped_result(r) {
+	const companions = r.companions ?? {};
+	const states = Object.values(companions);
+	// A companion is only attempted after backend verification has passed.
+	const backend_ok = r.ok || states.some(state => state == 'rolled_back' || state == 'failed');
+	const lines = [ backend_ok ?
+		_('%s: rolled back to %s', 'aether-proxy').format('aether-proxy', r.to) :
+		(r.rolled_back ? failure(r) + ' — ' : '') + package_result('aether-proxy', r) ];
+	const labels = {
+		rolled_back: _('Rolled back', 'aether-proxy'),
+		skipped: _('Skipped', 'aether-proxy'),
+		failed: _('Failed', 'aether-proxy')
+	};
+	for (const [name, state] of Object.entries(companions))
+		lines.push(name + ': ' + (labels[state] ?? state));
+	if (backend_ok && !r.ok)
+		lines.push(failure(r));
+	if (states.includes('failed'))
+		lines.push(_('Backend rolled back; page files are still newer. Try rolling back again or reinstalling.',
+			'aether-proxy'));
+	else if (!backend_ok)
+		lines.push(_('The two page packages were not changed.', 'aether-proxy'));
+	return lines.join('\n');
 }
 return baseclass.extend({
 	validate_url: function(value) {
@@ -72,7 +122,10 @@ return baseclass.extend({
 					rollback: !!p && p.previous != null && p.installed != null && p.previous != p.installed,
 					disabled: pending || !!busy,
 					rollback_label: _('Roll back to %s', 'aether-proxy').format(p?.previous ?? '–'),
-					confirmation: p ? this.confirmation(name, p.installed, p.previous) : ''
+					confirmation_title: rolls_back_together(name) ? _('Roll back Aether Proxy', 'aether-proxy') :
+						_('Roll back %s', 'aether-proxy').format(name),
+					confirmation: rolls_back_together(name) ? grouped_confirmation(status) :
+						(p ? this.confirmation(name, p.installed, p.previous) : '')
 				};
 			})
 		};
@@ -96,7 +149,10 @@ return baseclass.extend({
 						_(' (device architecture %s)', 'aether-proxy').format(status.updates_available.arch) : '') : ''
 		}));
 	},
-	job_result: function(kind, name, job) {
+	page_rolled_back: function(job) {
+		return PAGE_PACKAGES.some(name => job.result?.companions?.[name] == 'rolled_back');
+	},
+	job_result: function(kind, name, job, previous) {
 		// Job transport errors have no result; completed CLI failures do.
 		const r = job.result ?? { ...job, code: job.code ?? job.error };
 		if (kind == 'update_check') {
@@ -105,13 +161,8 @@ return baseclass.extend({
 			const count = Object.values(r.packages ?? {}).filter(p => p.newer === true).length;
 			return _('Check complete: %s packages have updates', 'aether-proxy').format(count);
 		}
-		if (r.rolled_back)
-			return _('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from);
-		if (!r.ok)
-			return failure(r);
-		const text = r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
-			_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to);
-		return text + (restarts(name) ?
-			' ' + _('Page files may have changed; please refresh your browser.', 'aether-proxy') : '');
+		if (previous && rolls_back_together(name))
+			return grouped_result(r);
+		return package_result(name, r);
 	}
 });

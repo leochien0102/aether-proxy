@@ -1854,3 +1854,51 @@ msgstr "订阅尚未应用，请先保存并应用"
 msgctxt "aether-proxy"
 msgid "Update failed: %s"
 msgstr "更新失败：%s"
+
+msgctxt "aether-proxy"
+msgid "Roll back Aether Proxy"
+msgstr "回滚 Aether Proxy"
+
+msgctxt "aether-proxy"
+msgid "These three packages will be rolled back together to keep the page and backend at the same version:"
+msgstr "这三个软件包会一起回滚，页面与后端保持同一版本："
+
+msgctxt "aether-proxy"
+msgid "%s: %s → %s"
+msgstr "%s：%s → %s"
+
+msgctxt "aether-proxy"
+msgid "%s: skip (not installed or no previous version available)"
+msgstr "%s：跳过（未安装或没有可用的旧版本）"
+
+msgctxt "aether-proxy"
+msgid "%s: rolled back to %s"
+msgstr "%s：已回滚到 %s"
+
+msgctxt "aether-proxy"
+msgid "Rolled back"
+msgstr "已回滚"
+
+msgctxt "aether-proxy"
+msgid "Skipped"
+msgstr "已跳过"
+
+msgctxt "aether-proxy"
+msgid "Failed"
+msgstr "失败"
+
+msgctxt "aether-proxy"
+msgid "Backend rolled back; page files are still newer. Try rolling back again or reinstalling."
+msgstr "后端已回滚，页面仍是新版，可再点一次回滚或重新安装"
+
+msgctxt "aether-proxy"
+msgid "The two page packages were not changed."
+msgstr "两个页面包没有改动"
+
+msgctxt "aether-proxy"
+msgid "Page files were rolled back. Please refresh the page (clear browser cache if necessary)."
+msgstr "页面已换成旧版本，请刷新页面（必要时清除浏览器缓存）"
+
+msgctxt "aether-proxy"
+msgid "Refresh page"
+msgstr "刷新页面"

@@ -10,6 +10,7 @@
  * Defer the initial status read until render returns (docs/10 "其余页面先出页面").
  * Refresh only the inventory, leaving unsaved policy edits intact.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
+ * Grouped rollback and the manual refresh warning follow docs/10 "更新页：回滚一起回滚".
  */
 return view.extend({
 	load: function() {
@@ -27,7 +28,10 @@ return view.extend({
 			const job = kind == 'update_check' ? await ap.run_job('update_check', []) :
 				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);
 			timer.stop();
-			this.summary.textContent = model.job_result(kind, name, job);
+			this.summary.replaceChildren(...model.job_result(kind, name, job, previous).split('\n')
+				.map(line => E('p', {}, line)));
+			if (model.page_rolled_back(job))
+				this.show_refresh_warning();
 			this.status = await ap.call('status');
 		}
 		catch (e) {
@@ -48,13 +52,24 @@ return view.extend({
 			}
 		}
 	},
+	show_refresh_warning: function() {
+		// Keep the warning across inventory refreshes; never reload before results can be read.
+		this.refreshWarning.replaceChildren(E('div', { class: 'alert-message warning' }, [
+			E('p', {}, _('Page files were rolled back. Please refresh the page (clear browser cache if necessary).',
+				'aether-proxy')),
+			E('button', { type: 'button', class: 'cbi-button cbi-button-action',
+				click: function() { window.location.reload(); }
+			}, _('Refresh page', 'aether-proxy'))
+		]));
+	},
 	package_button: function(row, label, previous) {
 		return E('button', { type: 'button', disabled: row.disabled || null,
 			class: 'cbi-button ' + (previous ? 'cbi-button-remove' : 'cbi-button-action'),
 			click: ui.createHandlerFn(this, async function() {
 				if (previous && !await ap.confirm({
-					title: _('Roll back %s', 'aether-proxy').replace('%s', row.name),
-					text: row.confirmation,
+					title: row.confirmation_title ?? _('Roll back %s', 'aether-proxy').replace('%s', row.name),
+					text: Array.isArray(row.confirmation) ?
+						row.confirmation.map(line => E('span', { style: 'display:block' }, line)) : row.confirmation,
 					ok: _('Roll back', 'aether-proxy'),
 					destructive: true
 				}))
@@ -102,7 +117,8 @@ return view.extend({
 		this.status = undefined;
 		this.busy = false;
 		this.inventory = E('div');
-		this.summary = E('p');
+		this.summary = E('div');
+		this.refreshWarning = E('div');
 		this.progress = E('p');
 		this.show_inventory();
 		const map = new form.Map('aetherproxy', _('Updates', 'aether-proxy'));
@@ -125,7 +141,7 @@ return view.extend({
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
 		option.validate = function(section_id, value) { return model.validate_url(value); };
 		return map.render().then(node => {
-			const root = E('div', {}, [ node, this.inventory ]);
+			const root = E('div', {}, [ this.refreshWarning, node, this.inventory ]);
 			// A new turn lets LuCI display the complete page before starting RPC.
 			window.setTimeout(() => {
 				ap.call('status').then(status => {
