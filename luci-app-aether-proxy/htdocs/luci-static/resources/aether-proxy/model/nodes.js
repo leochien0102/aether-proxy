@@ -17,6 +17,7 @@
  * Direct switch feedback follows docs/10 「检测真实延迟与切换节点」 (T10.23).
  * Selection marks, stale names and switch locking follow 「节点页第二轮修正」 (T10.25).
  * Protocol columns and manual node IDs follow 「节点表的协议列」「添加节点」 (T10.26).
+ * Parse cleanup includes the advanced options from 「节点编辑框新字段」 (T10.30).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -118,7 +119,9 @@ const NODE_FIELDS = [
 	'label', 'protocol', 'address', 'port', 'uuid', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
-	'reality_pbk', 'reality_sid', 'reality_spx'
+	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
+	'grpc_multi_mode', 'ws_heartbeat', 'xhttp_extra', 'mux', 'mux_concurrency',
+	'mux_xudp_concurrency', 'mux_xudp_udp443', 'tcp_fast_open', 'tcp_mptcp'
 ];
 
 return baseclass.extend({

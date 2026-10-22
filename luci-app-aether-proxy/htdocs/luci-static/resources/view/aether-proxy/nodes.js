@@ -24,6 +24,7 @@
  * Editing, multi-delete and bounded switch locking follow 「节点页第二轮修正」 (T10.25).
  * Manual additions and separate protocol columns follow 「添加节点」「节点表的协议列」 (T10.26).
  * Collapsible bulk imports retain input and results across redraws (「节点页第三轮修正」, T10.29).
+ * Transport, security and Mux modal options follow 「节点编辑框新字段」 (T10.30).
  */
 
 return view.extend({
@@ -435,6 +436,7 @@ return view.extend({
 		o = s.option(form.Value, 'flow', _('Flow', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'vless');
+		o.description = _('Vision does not support multiplexing.', 'aether-proxy');
 
 		o = s.option(form.ListValue, 'security', _('Security layer', 'aether-proxy'));
 		o.modalonly = true;
@@ -452,6 +454,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'path', _('Path', 'aether-proxy'));
 		o.modalonly = true;
+		o.description = _('For WebSocket early data, use the path, e.g. /path?ed=2048.', 'aether-proxy');
 		o.depends('transport', 'ws');
 		o.depends('transport', 'httpupgrade');
 		o.depends('transport', 'xhttp');
@@ -463,6 +466,32 @@ return view.extend({
 		o = s.option(form.Value, 'xhttp_mode', _('XHTTP mode', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('transport', 'xhttp');
+
+		o = s.option(form.Flag, 'grpc_multi_mode', _('gRPC multiMode', 'aether-proxy'));
+		o.modalonly = true;
+		o.depends('transport', 'grpc');
+
+		o = s.option(form.Value, 'ws_heartbeat', _('WebSocket heartbeat interval (seconds)', 'aether-proxy'));
+		o.modalonly = true;
+		o.datatype = 'range(1,3600)';
+		o.depends('transport', 'ws');
+
+		o = s.option(form.TextValue, 'xhttp_extra', _('XHTTP extra settings (JSON)', 'aether-proxy'));
+		o.modalonly = true;
+		o.depends('transport', 'xhttp');
+		o.validate = function(section_id, value) {
+			if (value == null || value === '')
+				return true;
+			try {
+				const extra = JSON.parse(value);
+				if (extra !== null && typeof extra === 'object' && !Array.isArray(extra))
+					return true;
+			}
+			catch (e) {
+				return _('Must be a JSON object', 'aether-proxy');
+			}
+			return _('Must be a JSON object', 'aether-proxy');
+		};
 
 		o = s.option(form.ListValue, 'header_type', _('Header type', 'aether-proxy'));
 		o.modalonly = true;
@@ -494,6 +523,10 @@ return view.extend({
 		o.modalonly = true;
 		o.depends('security', 'tls');
 
+		o = s.option(form.Value, 'ech_config_list', _('ECH configuration', 'aether-proxy'));
+		o.modalonly = true;
+		o.depends('security', 'tls');
+
 		o = s.option(form.Value, 'reality_pbk', _('REALITY public key', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'reality');
@@ -505,6 +538,48 @@ return view.extend({
 		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('security', 'reality');
+
+		o = s.option(form.Value, 'reality_pqv', _('REALITY post-quantum verification key (mldsa65Verify)',
+			'aether-proxy'));
+		o.modalonly = true;
+		o.depends('security', 'reality');
+
+		o = s.option(form.Flag, 'mux', _('Multiplexing (Mux)', 'aether-proxy'));
+		o.modalonly = true;
+		o.depends({ flow: 'xtls-rprx-vision', '!reverse': true });
+		o.validate = function(section_id, value) {
+			// Read the modal's live input, not just UCI: flow may have unsaved edits.
+			const flow = this.map.lookupOption('flow', section_id);
+			const current = flow?.[0].formvalue(section_id) ?? uci.get('aetherproxy', section_id, 'flow');
+			return value === '1' && current === 'xtls-rprx-vision'
+				? _('Vision flow cannot be used with multiplexing enabled', 'aether-proxy') : true;
+		};
+
+		o = s.option(form.Value, 'mux_concurrency', _('Mux concurrency', 'aether-proxy'));
+		o.modalonly = true;
+		o.placeholder = '8';
+		o.datatype = 'range(-1,1024)';
+		o.depends('mux', '1');
+
+		o = s.option(form.Value, 'mux_xudp_concurrency', _('XUDP concurrency', 'aether-proxy'));
+		o.modalonly = true;
+		o.placeholder = '16';
+		o.datatype = 'range(-1,1024)';
+		o.depends('mux', '1');
+
+		o = s.option(form.ListValue, 'mux_xudp_udp443', _('XUDP handling of UDP/443', 'aether-proxy'));
+		o.modalonly = true;
+		o.value('', _('Default (reject)', 'aether-proxy'));
+		o.value('reject', _('Reject', 'aether-proxy'));
+		o.value('allow', _('Allow', 'aether-proxy'));
+		o.value('skip', _('Do not multiplex', 'aether-proxy'));
+		o.depends('mux', '1');
+
+		o = s.option(form.Flag, 'tcp_fast_open', _('TCP Fast Open', 'aether-proxy'));
+		o.modalonly = true;
+
+		o = s.option(form.Flag, 'tcp_mptcp', _('MPTCP', 'aether-proxy'));
+		o.modalonly = true;
 
 		return m;
 	},
