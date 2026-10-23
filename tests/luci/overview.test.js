@@ -130,6 +130,7 @@ test('scenario 7a: every documented state has its text; waiting_network and dns_
 	const cases = {
 		stopped: '已停止',
 		starting: '启动中',
+		stopping: '正在停止',
 		running: '运行中',
 		degraded: '降级',
 		failsafe: '故障放行',
@@ -149,6 +150,7 @@ test('scenario 7a: every documented state has its text; waiting_network and dns_
 test('scenario 7b: button availability per state', () => {
 	const cases = {
 		stopped: { start: true, restart: false, stop: false },
+		stopping: { start: false, restart: false, stop: false },
 		error: { start: true, restart: false, stop: false },
 		starting: { start: false, restart: true, stop: true },
 		running: { start: false, restart: true, stop: true },
@@ -1428,11 +1430,12 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 		assert.match(row.attrs.style, rule);
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
-	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'label', 'button' ]);
-	assert.equal(left.children[2].textContent, '应用');
-	assert.equal(left.children[1].children[0], '默认模式');
-	/* themes give select width:100%, which wraps the button onto the next line */
-	assert.match(left.children[0].attrs.style ?? '', /width:\s*auto/);
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div' ]);
+	assert.equal(findAll(left, 'button')[0].textContent, '应用');
+	assert.equal(left.children[1].children[0].children[0], '默认模式');
+	/* The mode label, select and Apply now wrap together (T10.48). */
+	assert.match(left.children[1].attrs.style, /flex-wrap:\s*nowrap/);
+	assert.match(findAll(left, 'select')[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
 	assert.equal(right.children[0].textContent, '节点地址 203.0.113.10');
 	assert.equal(right.children[1].textContent, '正常，12 ms');
@@ -1913,6 +1916,8 @@ test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds wi
 		const [retry] = retryButtons(root);
 		assert.ok(retry);
 		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
+		/* Wait for the status/UCI refresh before isolating the retry's DOM writes. */
+		await page.initialRequest;
 		const runtime = sections(root)[0], traffic = sections(root)[1], button = page.probeButton;
 		const pending = retry.attrs.click();
 		assert.deepEqual(componentCells(root), [
@@ -1969,7 +1974,7 @@ test('T10.13 scenario 4: successful initial inventory has no retry; a failed ret
 
 /* Explicitly released RPC promises prove the skeleton and each independent
    region work even when every other backend response remains outstanding. */
-function deferredPage(interval = '5') {
+function deferredPage(interval = '5', configured_node = 'n_a') {
 	const calls = [], polls = [], writes = [], uciOps = [], notifications = [];
 	const page = loadView({
 		ap: {
@@ -1989,7 +1994,7 @@ function deferredPage(interval = '5') {
 					cb({ '.name': 'n_b', label: 'Beta' });
 				}
 			},
-			get: (config, section, option) => option === 'node' ? 'n_a' : '1',
+			get: (config, section, option) => option === 'node' ? configured_node : '1',
 			set: (...args) => uciOps.push([ 'set', ...args ]),
 			save: async () => { uciOps.push([ 'save' ]); }
 		},
@@ -2478,7 +2483,8 @@ test('T10.23 scenario 4: overview node_use failure restores button, reports code
 	failedPage.content = E('div');
 	failedPage.currentNode = 'n_a';
 	failedPage.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const [select, , button] = failedPage.nodeControl.children;
+	const select = findAll(failedPage.nodeControl, 'select')[0];
+	const button = findAll(failedPage.nodeControl, 'button')[0];
 	select.value = 'n_b';
 	select.attrs.change();
 	const pending = button.attrs.click();
@@ -2504,7 +2510,8 @@ test('T10.23 defensive: overview UCI refresh rejection notifies and restores swi
 	page.content = E('div');
 	page.labels = { n_a: 'Alpha', n_b: 'Beta' };
 	page.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const [select, , button] = page.nodeControl.children;
+	const select = findAll(page.nodeControl, 'select')[0];
+	const button = findAll(page.nodeControl, 'button')[0];
 	select.value = 'n_b';
 	select.attrs.change();
 	await button.attrs.click();
@@ -2751,14 +2758,15 @@ test('T10.24 scenario 3: failed, empty and malformed site lists can retry succes
 test('T10.24 scenario 4: pending switch locks both controls; failure or completion restores them, not service actions',
 	async () => {
 	for (const recovery of ['failure', 'complete']) {
-		const h = deferredPage('0');
+		const h = deferredPage('0', 'n_b');
 		const { page, calls } = h;
 		page.currentNode = 'n_b';
 		const data = await page.load();
 		const root = page.render({ ...data, node: 'n_b' });
 		await Promise.resolve();
 		await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-		const [nodes, , use] = page.nodeControl.children;
+		const nodes = findAll(page.nodeControl, 'select')[0];
+		const use = findAll(page.nodeControl, 'button')[0];
 		nodes.value = 'n_b';
 		nodes.attrs.change();
 		assert.equal(page.vm.switch_notice, '正在切换到「Beta」…');
@@ -2777,17 +2785,17 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 			assert.ok(page.vm.switch_notice.includes('未生效'));
 			assert.equal(nodes.disabled, false, 'late failure unlocks existing selector without recreating it');
 			assert.equal(use.disabled, false);
-			assert.equal(nodes.title, '');
+			assert.equal(nodes.title, 'Beta');
 			assert.equal(use.title, '');
 			const poll = page.fetchRefresh();
 			await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-			assert.equal(page.nodeControl.children[0].disabled, false,
+			assert.equal(findAll(page.nodeControl, 'select')[0].disabled, false,
 				'next poll keeps the known failure reason until its own events arrive');
 			assert.ok(page.vm.switch_notice.includes('未生效'));
 			await h.reply('stats', readings(2000, 0, 0, 0, 0));
 			await h.reply('events', { ok: true, events: [event] });
 			await poll;
-			assert.equal(page.nodeControl.children[0].disabled, false);
+			assert.equal(findAll(page.nodeControl, 'select')[0].disabled, false);
 		}
 		else {
 			assert.equal(nodes.disabled, true, 'no failure reason means switch is still pending');
@@ -2795,10 +2803,11 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 			await h.reply('status', { ok: true, state: 'running', node_id: 'n_b' });
 			await h.reply('stats', readings(2000, 0, 0, 0, 0));
 			await refresh;
-			const [selected, , button] = page.nodeControl.children;
+			const selected = findAll(page.nodeControl, 'select')[0];
+			const button = findAll(page.nodeControl, 'button')[0];
 			assert.equal(page.vm.switch_notice, null);
 			assert.equal(selected.disabled, false);
-			assert.equal(selected.title, '');
+			assert.equal(selected.title, 'Beta');
 			selected.value = 'n_a';
 			selected.attrs.change();
 			assert.equal(button.disabled, false, 'another node is selectable after completion');
@@ -2844,7 +2853,7 @@ test('T10.24 review: retrying with another node ignores the reason found for the
 	await reply('events', { ok: true, events: [event] });
 	await page.initialRequest;
 	assert.ok(page.vm.switch_notice.includes('未生效'), 'failure reason for Beta is shown');
-	const [nodes] = page.nodeControl.children;
+	const nodes = findAll(page.nodeControl, 'select')[0];
 	assert.equal(nodes.disabled, false, 'failure reason unlocks the selector for a retry');
 	const switching = page.handleNode('n_c');
 	configured = 'n_c';
@@ -2856,7 +2865,7 @@ test('T10.24 review: retrying with another node ignores the reason found for the
 	await reply('events', { ok: true, events: [event] });
 	await switching;
 	assert.equal(page.vm.switch_notice, '正在切换到「Gamma」…', 'Beta\'s failure event is older than the retry');
-	assert.equal(page.nodeControl.children[0].disabled, true);
+	assert.equal(findAll(page.nodeControl, 'select')[0].disabled, true);
 	const later = { ts: NOW + 5, code: 'CONFIG_INVALID', args: {} };
 	const poll = page.fetchRefresh();
 	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
@@ -3018,7 +3027,7 @@ for (const [kind, node, mode, expected] of [
 	});
 }
 
-test('T10.38 scenario 2: ordinary polls preserve both edited selections; effective mode changes rebase controls',
+test('T10.38 scenario 2 / T10.48: effective mode changes rebase current labels but preserve unapplied selections',
 	async () => {
 	const h = await modePage();
 	const before = h.controls();
@@ -3036,8 +3045,10 @@ test('T10.38 scenario 2: ordinary polls preserve both edited selections; effecti
 	h.runtime.mode = 'gfw';
 	await h.page.fetchRefresh();
 	assert.notEqual(h.controls().mode, before.mode);
-	assert.equal(h.controls().mode.value, 'gfw');
-	assert.equal(h.controls().apply.disabled, true);
+	assert.equal(h.page.vm.current_mode, 'gfw');
+	assert.equal(h.controls().mode.value, 'global', 'T10.48 keeps unapplied edits across external changes');
+	assert.equal(h.controls().node.value, 'n_b');
+	assert.equal(h.controls().apply.disabled, false);
 });
 
 test('T10.38 scenario 3: mode-only mismatch locks both dropdowns and Apply; completion restores them, '
@@ -3092,7 +3103,8 @@ for (const [code, args] of SWITCH_REASON_CASES) {
 		let release;
 		h.events = () => new Promise(resolve => { release = resolve; });
 		const pending = page.fetchRefresh();
-		for (let i = 0; i < 12; i++)
+		/* Status now reloads the UCI cache before stats and diagnostic events. */
+		for (let i = 0; i < 32; i++)
 			await Promise.resolve();
 		assert.equal(typeof release, 'function');
 		assert.equal(controls.mode.disabled, false, 'status phase retains the known reason until events arrive');
@@ -3277,7 +3289,14 @@ function startupHarness(options = {}) {
 				return poll;
 			}
 		},
-		uci: { save: options.save ?? (async () => {}) },
+		uci: {
+			save: options.save ?? (async () => {}),
+			get: (config, section, option) => ({ enabled: '1', node: 'n_a', mode: 'bypass_cn' })[option],
+			sections: (config, type, cb) => {
+				for (const [id, label] of [['n_a', 'A very long node label'], ['n_b', 'Beta']])
+					cb({ '.name': id, label });
+			}
+		},
 		ui: {
 			changes: { apply: options.apply ?? (() => {}) },
 			addNotification: (title, body, kind) => notes.push({ text: visibleText(body), kind }),
@@ -3364,14 +3383,17 @@ for (const reply of [{ state: 'stopped' }, { ok: false, code: 'TIMEOUT' }, { sta
 test('T10.43 scenario 2: pre-acknowledgement running status cannot finish Restart', async () => {
 	let finishService;
 	const h = startupHarness({ service: () => new Promise(resolve => { finishService = resolve; }) });
-	h.status = { state: 'running' };
+	h.status = { state: 'running', since: 10 };
 	h.page.refresh(h.status);
 	const pending = h.page.handleService('restart');
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '正在停止…');
 	assert.ok(h.page.startup);
 	finishService({ ok: true });
 	await pending;
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在停止…', 'acknowledgement alone cannot identify a new process');
+	h.status = { state: 'running', since: 20 };
 	await h.clock.advance(2000);
 	assert.equal(h.page.vm.state_text, '运行中');
 	assert.equal(h.page.startup, null);
@@ -3409,15 +3431,15 @@ test('T10.43 scenario 1: service failure reports diagnostics and restores contro
 
 test('T10.43 scenario 2: Restart ignores intermediate stopped and ordinary refresh cannot end waiting', async () => {
 	const h = startupHarness();
-	h.page.refresh({ state: 'running' });
+	h.page.refresh({ state: 'running', since: 10 });
 	await runtimeButtons(h.page)[1].attrs.click();
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '正在停止…');
 	await h.clock.advance(2000);
 	assert.equal(h.page.vm.state_text, '正在启动…');
 	assert.ok(h.page.startup, 'stopped during restart is not completion');
 	await h.page.fetchRefresh();
 	assert.equal(h.page.vm.state_text, '正在启动…');
-	h.status = { state: 'starting', waiting_network: true };
+	h.status = { state: 'starting', since: 20, waiting_network: true };
 	await h.clock.advance(2000);
 	assert.equal(h.page.vm.state_text, '等待网络');
 	assert.equal(h.page.startup, null);
@@ -3502,7 +3524,7 @@ test('T10.43 scenario 1: late diagnostic events cannot overwrite a newer startup
 	const h = startupHarness({ events: () => new Promise(resolve => { release = resolve; }) });
 	h.status = { state: 'running', node_id: 'n_b' };
 	const old = h.page.fetchRefresh();
-	for (let i = 0; i < 16; i++)
+	for (let i = 0; i < 32; i++)
 		await Promise.resolve();
 	assert.equal(typeof release, 'function');
 	assert.ok(h.page.vm.switch_notice);
@@ -3536,10 +3558,103 @@ test('T10.43 scenario 4: node minimum is 16em clamped to narrow width, with wrap
 	const h = startupHarness();
 	const nodes = findAll(h.page.nodeControl, 'select')[0];
 	assert.match(nodes.attrs.style, /min-width:\s*min\(16em,\s*100%\)/);
-	assert.match(nodes.attrs.style, /max-width:\s*100%/);
+	assert.match(nodes.attrs.style, /max-width:\s*24em/);
+	assert.match(h.page.nodeControl.children[0].attrs.style, /max-width:\s*100%/);
+	assert.equal(nodes.title, 'A very long node label');
 	assert.match(nodes.attrs.style, /width:\s*auto/);
 	assert.match(h.page.nodeControl.attrs.style, /flex-wrap:\s*wrap/);
 	assert.match(h.page.nodeControl.attrs.style, /min-width:\s*0/);
 	assert.match(h.page.nodeControl.attrs.style, /max-width:\s*100%/);
 	assert.doesNotMatch(nodes.attrs.style, /\dpx/);
+});
+
+/* T10.48 keeps T10.43's virtual clock and exercises the entire restart timeline,
+   not just isolated model states. No wall-clock sleeps or successful-ok fiction. */
+test('T10.48 scenario 3: Restart stops, waits for startup, then shows the new starting and running states', async () => {
+	const h = startupHarness();
+	h.status = { state: 'running', since: 10 };
+	h.page.refresh(h.status);
+	await runtimeButtons(h.page)[1].attrs.click();
+	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.startup.baseline, 10);
+	assert.deepEqual(runtimeButtons(h.page).slice(0, 2).map(disabled), [true, true]);
+	for (const reply of [
+		{ state: 'stopping', since: 11 },
+		...['starting', 'running', 'degraded', 'failsafe'].map(state => ({ state, since: 10 }))
+	]) {
+		h.status = reply;
+		await h.clock.advance(2000);
+		assert.equal(h.page.vm.state_text, '正在停止…', JSON.stringify(reply));
+		assert.ok(h.page.startup);
+		assert.deepEqual(runtimeButtons(h.page).slice(0, 2).map(disabled), [true, true]);
+	}
+	h.status = { state: 'stopped', since: 12 };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.ok(h.page.startup);
+	h.status = { state: 'starting', since: 13 };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '启动中');
+	assert.equal(h.page.startup, null);
+	h.status = { state: 'running', since: 14 };
+	await h.page.fetchRefresh();
+	assert.equal(h.page.vm.state_text, '运行中');
+	assert.equal(h.timers.size, 0);
+});
+
+for (const state of ['starting', 'running', 'degraded', 'failsafe', 'error']) {
+	test(`T10.48 scenario 3: a new ${state} since completes Restart even before service acknowledgement`, async () => {
+		let finishService;
+		const h = startupHarness({ service: () => new Promise(resolve => { finishService = resolve; }) });
+		h.status = { state: 'running', since: 10 };
+		h.page.refresh(h.status);
+		const pending = h.page.handleService('restart');
+		h.status = { state, since: 20, last_error: state === 'error' ? 'CONFIG_INVALID' : null };
+		await h.clock.advance(2000);
+		assert.equal(h.page.startup, null);
+		assert.equal(h.page.vm.state_text, build(h.status).state_text);
+		finishService({ ok: true });
+		await pending;
+		assert.equal(h.page.vm.state_text, build(h.status).state_text, 'late acknowledgement cannot restart waiting');
+	});
+}
+
+test('T10.48 scenario 3: acknowledged unknown status enters startup wait; failed reads do not reset its phase', async () => {
+	const h = startupHarness();
+	h.page.refresh({ state: 'running', since: 10 });
+	await h.page.handleService('restart');
+	h.status = { state: 'unknown' };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	h.status = { ok: false, code: 'TIMEOUT' };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	h.events.dispatch('pagehide');
+	assert.equal(h.timers.size, 0);
+});
+
+test('T10.48 scenario 3: Restart never accepts the old running process and releases controls at 60 seconds', async () => {
+	const h = startupHarness();
+	h.status = { state: 'running', since: 10 };
+	h.page.refresh(h.status);
+	await h.page.handleService('restart');
+	await h.clock.advance(59999);
+	assert.equal(h.page.vm.state_text, '正在停止…');
+	await h.clock.advance(1);
+	assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
+	assert.equal(h.page.startup, null);
+	assert.equal(runtimeButtons(h.page)[1].disabled, false);
+	assert.equal(h.timers.size, 0);
+});
+
+test('T10.48 scenario 4: Stop reads stopping as the normal translated state, without a startup watcher', async () => {
+	const h = startupHarness();
+	h.page.refresh({ state: 'running', since: 10 });
+	await runtimeButtons(h.page)[2].attrs.click();
+	h.status = { state: 'stopping', since: 11 };
+	await h.clock.advance(1500);
+	assert.equal(h.page.vm.state_text, '正在停止');
+	assert.ok(!h.page.startup);
+	assert.deepEqual(runtimeButtons(h.page).map(disabled), [true, true, true]);
+	assert.deepEqual(h.calls.filter(([method]) => method === 'service'), [['service', { action: 'stop' }]]);
 });

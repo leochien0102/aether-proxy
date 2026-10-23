@@ -681,6 +681,14 @@ msgid "Starting"
 msgstr "启动中"
 
 msgctxt "aether-proxy"
+msgid "Stopping"
+msgstr "正在停止"
+
+msgctxt "aether-proxy"
+msgid "Stopping…"
+msgstr "正在停止…"
+
+msgctxt "aether-proxy"
 msgid "Waiting for network"
 msgstr "等待网络"
 

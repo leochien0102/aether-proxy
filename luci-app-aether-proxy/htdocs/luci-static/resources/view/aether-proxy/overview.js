@@ -13,6 +13,8 @@
  * T10.24 follows docs/10 「概览页第七轮修正」: restart-aware inventory,
  * manual health display, remembered/retryable sites and pending-switch guards.
  * T10.38 follows docs/10 「概览页：默认模式下拉」 for one-shot node/mode apply.
+ * T10.48 synchronizes UCI on refresh, preserves unapplied selections and
+ * distinguishes restart's stopping phase from the new process's startup.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
@@ -61,6 +63,19 @@ return view.extend({
 	   LuCI's standard save & apply with rollback confirmation. No `service` call is made:
 	   the reload trigger starts or stops the service. */
 	handleEnable: async function(checked) {
+		this.enabling = true;
+		try {
+			/* Finish an already-issued cache read before staging a local write. */
+			if (this.configRequest)
+				await this.configRequest;
+			await this.saveEnable(checked);
+		}
+		finally {
+			this.enabling = false;
+		}
+	},
+
+	saveEnable: async function(checked) {
 		/* Disabling is persistent and immediately stops traffic interception;
 		   cancelling must leave both the local setting and UCI untouched. */
 		if (this.enabled && !checked) {
@@ -110,24 +125,24 @@ return view.extend({
 	enableSwitch: function(note) {
 		const self = this;
 
+		this.enableInput = E('input', {
+			'type': 'checkbox',
+			'id': 'aetherproxy-enabled',
+			'title': note,
+			'checked': this.enabled ? 'checked' : null,
+			'change': ui.createHandlerFn(this, async function(ev) {
+				try {
+					await self.handleEnable(ev.target.checked);
+				}
+				finally {
+					/* Restore after cancellation or a failed staged-changes read. */
+					ev.target.checked = self.enabled;
+				}
+			})
+		});
 		/* The explanation is a tooltip now, not a visible line (docs/10 T10.9). */
 		return E('label', { 'title': note, 'style': 'display:flex; align-items:center; gap:0.5em' }, [
-			_('Enable', 'aether-proxy'),
-			E('input', {
-				'type': 'checkbox',
-				'id': 'aetherproxy-enabled',
-				'title': note,
-				'checked': this.enabled ? 'checked' : null,
-				'change': ui.createHandlerFn(this, async function(ev) {
-					try {
-						await self.handleEnable(ev.target.checked);
-					}
-					finally {
-						/* Restore after cancellation or a failed staged-changes read. */
-						ev.target.checked = self.enabled;
-					}
-				})
-			})
+			_('Enable', 'aether-proxy'), this.enableInput
 		]);
 	},
 
@@ -160,9 +175,9 @@ return view.extend({
 		this.startupPhase = phase;
 	},
 
-	beginStartup: function(ready) {
-		this.endStartup('waiting');
-		const session = { ready, reading: false };
+	beginStartup: function(ready, action = 'start') {
+		this.endStartup(action === 'restart' ? 'stopping' : 'waiting');
+		const session = { ready, action, baseline: this.status?.since, reading: false };
 		this.startup = session;
 		session.cleanup = () => this.endStartup(null);
 		window.addEventListener('pagehide', session.cleanup);
@@ -191,12 +206,23 @@ return view.extend({
 			const reply = await ap.call('status');
 			if (this.startup !== session || read < (this.acceptedRead ?? 0))
 				return;
-			if (ready && model.startup_complete(reply))
-				this.endStartup(null);
+			this.advanceStartup(reply, ready);
 			this.acceptStatus(reply, read);
 		}
 		finally {
 			session.reading = false;
+		}
+	},
+
+	advanceStartup: function(reply, ready) {
+		if (!this.startup)
+			return;
+		const phase = model.startup_phase(reply, this.startup, ready);
+		if (phase === null)
+			this.endStartup(null);
+		else {
+			this.startup.phase = phase;
+			this.startupPhase = phase;
 		}
 	},
 
@@ -215,7 +241,7 @@ return view.extend({
 			return;
 
 		this.clearEnableApply?.();
-		const session = action === 'stop' ? null : this.beginStartup(false);
+		const session = action === 'stop' ? null : this.beginStartup(false, action);
 		if (action === 'stop' && this.startupPhase) {
 			this.endStartup(null);
 			this.refresh(this.status, undefined, this.latestEvents);
@@ -274,11 +300,15 @@ return view.extend({
 		this.status = reply ?? null;
 		const markers = model.status_markers(this.status);
 		if (markers) {
-			if (this.lastMarkers && markers.since !== this.lastMarkers.since) {
+			/* since has second precision. Activation can share the stopped stamp;
+			   the inactive-to-active edge must also replace pre-start inventory. */
+			const activated = this.lastMarkers && !this.lastActive && model.startup_complete(this.status);
+			if (this.lastMarkers && (markers.since !== this.lastMarkers.since || activated)) {
 				this.loadVersion(true);
 				this.loadComponents(true);
 			}
 			this.lastMarkers = markers;
+			this.lastActive = model.startup_complete(this.status);
 		}
 		if (this.startupPhase === 'timeout' && model.startup_complete(this.status))
 			this.startupPhase = null;
@@ -290,6 +320,39 @@ return view.extend({
 		return true;
 	},
 
+	refreshConfig: function(read, was_switching) {
+		/* A newly mismatched status can be an external change, not our pending
+		   switch. Only an already-known, still-pending switch blocks the read. */
+		if (this.enabling || this.switching || (was_switching && this.vm?.switch_busy))
+			return Promise.resolve();
+		/* unload is synchronous, and load alone would return the SDK's cache. */
+		const request = Promise.resolve().then(() => {
+			uci.unload('aetherproxy');
+			return this.load();
+		}).then((data) => {
+			if (read !== this.acceptedRead || this.enabling || this.switching)
+				return;
+			const unchanged = this.currentNode === data.node && this.currentMode === data.mode
+				&& this.enabled === data.enabled && JSON.stringify(this.labels) === JSON.stringify(data.labels);
+			if (unchanged)
+				return;
+			this.labels = data.labels;
+			this.currentNode = data.node;
+			this.currentMode = data.mode;
+			this.enabled = data.enabled;
+			this.refresh(this.status, undefined, this.latestEvents);
+		}).catch((e) => {
+			/* TODO(design): no UCI-refresh failure presentation is specified.
+			   Keep the last complete snapshot, never write guessed settings. */
+			console.warn('aether-proxy: reading overview configuration failed:', e);
+		}).finally(() => {
+			if (this.configRequest === request)
+				this.configRequest = null;
+		});
+		this.configRequest = request;
+		return request;
+	},
+
 	/* Manual refresh, service actions and replacement pollers share the same
 	   promise: ap.poll alone cannot serialize these independent entry points. */
 	fetchRefresh: function() {
@@ -297,10 +360,11 @@ return view.extend({
 			return this.refreshing;
 		const read = this.nextStatusRead();
 		this.refreshing = ap.call('status').then((reply) => {
+			const was_switching = this.vm?.switch_busy;
 			/* Status controls update before the slower stats/events reads. */
 			if (!this.acceptStatus(reply, read))
 				return;
-			return ap.call('stats').then((stats) => {
+			return this.refreshConfig(read, was_switching).then(() => ap.call('stats')).then((stats) => {
 				this.updateTraffic(stats);
 				return this.switchEvents(reply, this.currentNode, this.currentMode).then((events) => {
 					if (read !== this.acceptedRead)
@@ -354,11 +418,15 @@ return view.extend({
 		if (!request)
 			return;
 		this.switching = true;
+		this.nodeEdited = false;
+		this.modeEdited = false;
 		this.updateNodeButton?.();
 		try {
+			if (this.configRequest)
+				await this.configRequest;
 			const reply = await ap.call(request.method, request.params);
 			if (reply.ok) {
-				await uci.unload('aetherproxy');
+				uci.unload('aetherproxy');
 				const data = await this.load();
 				this.currentNode = data.node;
 				this.currentMode = data.mode;
@@ -518,21 +586,26 @@ return view.extend({
 		]);
 	},
 
-	nodeControls: function(vm) {
+	nodeControls: function(vm, selected = {}) {
 		const current = vm.current_node;
 		/* Themes size select at 100% (proton2025). Keep the 16em minimum for long
 		   labels, but clamp it to the row on screens narrower than 16em; CSS min
 		   width otherwise wins over max-width and causes horizontal overflow. */
 		const nodes = E('select', {
-			style: 'width:auto; min-width:min(16em, 100%); max-width:100%'
+			style: 'width:auto; min-width:min(16em, 100%); max-width:24em'
 		}, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
-		const modes = E('select', { style: 'width:auto' }, model.mode_options().map((option) => E('option', {
-			value: option.value, selected: option.value === vm.current_mode ? 'selected' : null
-		}, option.text)));
+		const modes = E('select', { style: 'width:auto; min-width:0' },
+			model.mode_options().map((option) => E('option', {
+				value: option.value, selected: option.value === vm.current_mode ? 'selected' : null
+			}, option.text)));
 		/* Do not let the browser silently select its first mode when runtime mode is unknown. */
-		modes.value = vm.current_mode ?? '';
+		modes.value = selected.mode ?? vm.current_mode ?? '';
+		if (selected.node && vm.node_options.some(option => option.value === selected.node))
+			nodes.value = selected.node;
+		this.nodeSelect = nodes;
+		this.modeSelect = modes;
 		const button = E('button', {
 			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value, modes.value)
 		}, _('Apply', 'aether-proxy'));
@@ -541,20 +614,30 @@ return view.extend({
 			nodes.disabled = busy;
 			modes.disabled = busy || !vm.current_mode;
 			button.disabled = busy || !model.switch_request(nodes.value, modes.value, current, vm.current_mode);
-			for (const control of [nodes, modes, button])
+			nodes.title = this.vm.switch_title ?? this.labels[nodes.value] ?? nodes.value;
+			for (const control of [modes, button])
 				control.title = this.vm.switch_title ?? '';
 		};
-		nodes.addEventListener('change', update);
-		modes.addEventListener('change', update);
+		const changed = () => {
+			/* Only a user's change event marks an edit. A temporarily absent node
+			   option may make the browser choose its first entry during refresh. */
+			this.nodeEdited = nodes.value !== this.controlNode;
+			this.modeEdited = modes.value !== this.controlMode;
+			update();
+		};
+		nodes.addEventListener('change', changed);
+		modes.addEventListener('change', changed);
 		update();
 		return E('div', {
 			style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; min-width:0; max-width:100%'
 		}, [
-			nodes,
-			E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
-				_('Default mode', 'aether-proxy'), modes
-			]),
-			button
+			E('div', { style: 'display:flex; align-items:center; min-width:0; max-width:100%' }, [nodes]),
+			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:nowrap; '
+				+ 'white-space:nowrap; min-width:0; max-width:100%' }, [
+				E('label', { style: 'display:flex; align-items:center; gap:0.5em; min-width:0' }, [
+					_('Default mode', 'aether-proxy'), modes
+				]), button
+			])
 		]);
 	},
 
@@ -720,12 +803,23 @@ return view.extend({
 		/* Reuse controls when moving them into fresh sections: polling must not
 		   reset an edited selection, the enable switch or an in-flight probe. */
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
-		/* Keep edits across ordinary polls, but rebase the suffix and switch
-		   guard if the effective runtime node changes. */
-		if (!this.nodeControl || this.controlNode !== vm.current_node || this.controlMode !== vm.current_mode) {
-			this.nodeControl = vm.node_options.length ? this.nodeControls(vm) : null;
+		this.enableInput.checked = this.enabled;
+		/* Rebase current labels and guards, but keep each independently edited
+		   dropdown even when an external change moves the effective settings. */
+		const labels = JSON.stringify(vm.node_options);
+		const changed = this.controlNode !== vm.current_node || this.controlMode !== vm.current_mode;
+		if (!this.nodeControl || changed || this.controlLabels !== labels) {
+			const selected = {};
+			if (!this.switching) {
+				if (this.nodeEdited && this.nodeSelect)
+					selected.node = this.nodeSelect.value;
+				if (this.modeEdited && this.modeSelect)
+					selected.mode = this.modeSelect.value;
+			}
+			this.nodeControl = vm.node_options.length ? this.nodeControls(vm, selected) : null;
 			this.controlNode = vm.current_node;
 			this.controlMode = vm.current_mode;
+			this.controlLabels = labels;
 		}
 		this.updateNodeButton?.();
 		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);
