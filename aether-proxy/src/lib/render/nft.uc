@@ -5,27 +5,44 @@
 // Reuse static rule-array sorting by identity (docs/04 "规则数据缓存"); output stays pure.
 
 import * as C from 'aetherproxy.const';
-import { ip_key, cidr_parts } from 'aetherproxy.net';
+import { ip_key, cidr_parts, range_parts } from 'aetherproxy.net';
 
 const T = '\t';
 
-// Sorted, de-duplicated IPv4/CIDR list (numeric order, then prefix length). 1.2.3.4 and
-// 1.2.3.4/32 count as the same entry.
+// Sorted, de-duplicated IPv4/CIDR/range list: by start address, then wider block first (end
+// descending, which equals prefix length ascending for CIDRs). 1.2.3.4 and 1.2.3.4/32 count as
+// the same entry. Ranges (host sets only reach here normalised) are written as a.b.c.d-e.f.g.h.
 function sort_ips(list) {
 	let seen = {}, items = [];
 
 	for (let s in list ?? []) {
 		let k = ip_key(s);
 		let p = cidr_parts(k);
+		let start, end;
 
-		if (seen[k] || p == null)
+		if (p != null) {
+			start = p.addr;
+			end = p.addr + (1 << (32 - p.len)) - 1;
+		}
+		else if ((p = range_parts(k)) != null) {
+			start = p.start;
+			end = p.end;
+		}
+		else
 			continue;
 
-		seen[k] = true;
-		push(items, { s: k, addr: p.addr, len: p.len });
+		// Same covered interval (e.g. a range spelling out a CIDR block) is written once.
+		// TODO(design): the first spelling in input order wins; nft would also auto-merge.
+		let id = `${start}-${end}`;
+
+		if (seen[id])
+			continue;
+
+		seen[id] = true;
+		push(items, { s: k, start, end });
 	}
 
-	return map(sort(items, (a, b) => (a.addr != b.addr) ? (a.addr < b.addr ? -1 : 1) : (a.len - b.len)), x => x.s);
+	return map(sort(items, (a, b) => (a.start != b.start) ? (a.start < b.start ? -1 : 1) : (a.end != b.end ? (a.end > b.end ? -1 : 1) : 0)), x => x.s);
 };
 
 // Only data.load's arrays are stable across reloads. Host and restored lists may be

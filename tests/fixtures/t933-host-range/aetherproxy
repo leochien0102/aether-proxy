@@ -1,0 +1,41 @@
+config global 'main'
+	option enabled '1'
+	option mode 'gfw'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option unlisted_policy 'direct'
+	option quic_block '1'
+	option dns_hijack '1'
+	list lan_ifaces 'br-lan'
+	list lan_ifaces 'br-guest'
+config dns 'dns'
+
+config update 'update'
+
+config probe 'probe'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'shadowsocks'
+	option address '203.0.113.7'
+	option port '8388'
+	option password 'pw'
+	option method 'aes-256-gcm'
+
+config host
+	option name 'range-direct'
+	list ip '192.168.8.250-192.168.8.254'
+	list ip '192.168.8.20'
+	list ip '192.168.8.0/28'
+	list ip '192.168.8.100-192.168.8.100'
+	option policy 'direct'
+
+config host
+	option name 'range-proxy'
+	list ip '10.0.0.200-10.0.1.5'
+	list ip '10.0.0.0/25'
+	list ip '10.0.0.7'
+	option policy 'proxy'
+	option udp '1'
+
+config host
+	option name 'plain'
+	list ip '192.168.2.0/24'
