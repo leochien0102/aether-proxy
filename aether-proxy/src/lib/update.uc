@@ -1,7 +1,7 @@
 'use strict';
 
 // Device-side update discovery, PATH package-manager lookup and shared local-data hashes
-// (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 回滚一起回滚").
+// (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 取消三包手动回滚").
 // Downloaded metadata is never trusted before usign succeeds.
 
 import * as fs from 'fs';
@@ -808,55 +808,16 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 		value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: true, code: 'UPDATE_VERIFY_FAILED' } };
 }
 
-// Companion failures must not restore the already verified backend (docs/08 rollback together).
-function rollback_companion(opts, ctx, selected, plat, name) {
-	let installed = installed_version(ctx, plat.pm, name);
-	if (!installed.ok)
-		return { status: 'failed', code: 'CMD_FAILED', detail: installed.detail };
-	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, true);
-	if (installed.version == null || asset == null)
-		return { status: 'skipped' };
-	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
-	if (!downloaded.ok)
-		return { status: 'failed', code: downloaded.code, detail: downloaded.detail ?? downloaded.code };
-	let result = install_package(ctx, plat.pm, downloaded.path, true);
-	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
-		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
-	if (!result.ok)
-		return { status: 'failed', code: 'CMD_FAILED', detail: result.detail };
-	log.event('notice', 'UPDATE_INSTALLED', { package: name, version: asset.version });
-	return { status: 'rolled_back' };
-}
-
-function rollback_together(opts, ctx, selected, plat, asset) {
-	let result = install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, true);
-	let companions = {};
-	let failure = null;
-	for (let name in C.UPDATE_ROLLBACK_COMPANIONS) {
-		// Never touch the UI if backend verification failed and restored the current version.
-		let outcome = result.ok ? rollback_companion(opts, ctx, selected, plat, name) : { status: 'skipped' };
-		companions[name] = outcome.status;
-		if (outcome.status == 'failed' && failure == null)
-			failure = outcome;
-	}
-	// First failure wins (exit 1); the verified backend stays and each UI package is tried (docs/08).
-	if (failure != null) {
-		result = { ...result, ok: false, exit: 1, code: failure.code, detail: failure.detail,
-			value: { ...result.value, ok: false, code: failure.code, detail: failure.detail } };
-	}
-	// package/from/to describe the backend transaction, also from the luci-app entry (docs/08).
-	result.value ??= { ok: false, package: C.PROG, from: null, to: null, rolled_back: false,
-		code: result.code, detail: result.detail };
-	result.value.companions = companions;
-	return result;
-}
-
 export function package_update(opts, name, previous) {
 	opts ??= {};
 	if (index(C.UPDATE_PACKAGES, name) < 0) {
 		log.set_run_dir(opts.run_dir ?? system_path(opts.sys_root ?? '', C.RUN_DIR));
 		return { ok: false, code: 'USAGE', exit: 2, detail: `unsupported package '${name}'` };
 	}
+	// Reject before fetching anything, including for callers that bypass the CLI parser.
+	// Older backend/UI packages may not understand the current configuration (docs/08).
+	if (previous == true && name != 'xray-core')
+		return { ok: false, code: 'USAGE', exit: 2, detail: '--previous is only supported for xray-core' };
 	let selected = fetch_manifest(opts);
 	if (!selected.ok)
 		return selected;
@@ -865,15 +826,12 @@ export function package_update(opts, name, previous) {
 	if (!plat.ok)
 		return plat;
 	let arch = plat.arch, pm = plat.pm;
-	let together = previous == true && (name == C.PROG || name == C.UPDATE_ROLLBACK_COMPANIONS[0]);
-	let primary = together ? C.PROG : name;
-	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
+	let asset = package_asset(selected.manifest, name, arch, pm, previous == true);
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });
-		return { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail: `no ${pm} asset for ${primary} on ${arch}` };
+		return { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail: `no ${pm} asset for ${name} on ${arch}` };
 	}
-	let result = together ? rollback_together(opts, ctx, selected, plat, asset)
-		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
+	let result = install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
 	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
 	// offering what was just installed. The install outcome stands even if the refresh fails.
 	let refreshed = write_updates(ctx, selected, plat);

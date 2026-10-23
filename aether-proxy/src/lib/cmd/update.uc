@@ -45,6 +45,8 @@ export function run(args) {
 	if (parsed.error)
 		return usage({ json: index(args, '--json') >= 0 }, parsed.error);
 	if (parsed.positional[0] == 'package' && length(parsed.positional) == 2) {
+		if (parsed.opts.previous && parsed.positional[1] != 'xray-core')
+			return usage(parsed.opts, '--previous is only supported for xray-core');
 		let result = update.package_update(parsed.opts, parsed.positional[1], parsed.opts.previous);
 		if (!result.ok)
 			return pipeline.finish(parsed.opts,
