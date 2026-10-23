@@ -2155,3 +2155,11 @@ msgstr "设置已保存，下次启动时使用"
 msgctxt "aether-proxy"
 msgid "Settings were switched, but refreshing the page data failed: %s. Reload the page."
 msgstr "已切换设置，但刷新页面数据失败：%s。请刷新页面。"
+
+msgctxt "aether-proxy"
+msgid "Starting…"
+msgstr "正在启动…"
+
+msgctxt "aether-proxy"
+msgid "Startup did not complete; see the logs page for the reason."
+msgstr "启动没有完成，可到日志页查看原因"
