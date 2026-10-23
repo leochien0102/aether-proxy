@@ -55,12 +55,27 @@ function optionDouble(uci, kind, field, title) {
 		getUIElement(id) { return this.widgets.get(id); }
 		renderWidget(id, index, value) {
 			const initial = value ?? this.default;
-			const widget = kind === 'ListValue'
-				? selectWidget(initial, Object.fromEntries((this.keylist ?? []).map((key, i) =>
-					[key, this.vallist[i]])), { sort: this.keylist, optional: this.optional,
-					placeholder: this.placeholder })
-				: { value: initial ?? '', placeholder: this.placeholder,
-					setPlaceholder(text) { this.placeholder = text; } };
+			let widget;
+			if (kind === 'Flag') {
+				// Render through the option hook, like LuCI, so flag wrappers are observable.
+				widget = E('span', {}, [E('input', {
+					type: 'checkbox', checked: initial !== '0' || null,
+					change: event => {
+						const value = event.target.checked ? '1' : '0';
+						this.setFormValue(id, value);
+						this.onchange(event, id, value);
+					}
+				})]);
+				widget.value = initial ?? '';
+			}
+			else {
+				widget = kind === 'ListValue'
+					? selectWidget(initial, Object.fromEntries((this.keylist ?? []).map((key, i) =>
+						[key, this.vallist[i]])), { sort: this.keylist, optional: this.optional,
+						placeholder: this.placeholder })
+					: { value: initial ?? '', placeholder: this.placeholder,
+						setPlaceholder(text) { this.placeholder = text; } };
+			}
 			this.widgets.set(id, widget);
 			return widget;
 		}
@@ -94,14 +109,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				section.options.filter(o => o.textvalue || o.editable).map(o => E('th', {}, o.title))),
 			...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
 				...section.options.filter(o => o.textvalue || o.editable).map(o =>
-					E('td', { field: o.field }, o.editable ? E('input', {
-						type: 'checkbox', checked: s[o.field] !== '0' || null,
-						change: event => {
-							const value = event.target.checked ? '1' : '0';
-							o.setFormValue(s['.name'], value);
-							o.onchange(event, s['.name'], value);
-						}
-					}) : o.textvalue(s['.name']))),
+					E('td', { field: o.field }, o.editable
+						? o.renderWidget(s['.name'], 0, s[o.field]) : o.textvalue(s['.name']))),
 				section.renderRowActions(s['.name'])
 			]))
 		]);
@@ -611,15 +620,16 @@ for (const stored of [undefined, '1', '0']) {
 			const checkbox = find(gridRow(h, 's_a'), node => node.tag === 'input')[0];
 			const original = stored !== '0';
 			const toggle = checked => checkbox.change({ target: { checked } });
-			assert.equal(button.disabled, staged);
+			assert.equal(button.disabled, staged || !original);
+			assert.equal(wrapper.attrs.title, staged ? '请先保存并应用' : original ? undefined : '订阅已停用');
 			toggle(!original);
 			assert.equal(button.disabled, true);
 			assert.equal(wrapper.attrs.title, '请先保存并应用');
 			await h.page.refresh_changes();
 			assert.equal(button.disabled, true, 'a changes reply must preserve the live difference');
 			toggle(original);
-			assert.equal(button.disabled, staged);
-			assert.equal(Object.hasOwn(wrapper.attrs, 'title'), staged);
+			assert.equal(button.disabled, staged || !original);
+			assert.equal(wrapper.attrs.title, staged ? '请先保存并应用' : original ? undefined : '订阅已停用');
 			assert.equal(h.page.pendingHint.textContent, staged ? '未应用的订阅不会更新' : '');
 			assert.equal(h.page.rowButtons.get('s_b').disabled, false);
 			assert.equal(h.page.updateAll.disabled, false);
@@ -628,13 +638,112 @@ for (const stored of [undefined, '1', '0']) {
 			h.ap.run_job = async () => { jobs++; return { result: { subs: {} } }; };
 			const pending = h.page.update(['s_a']);
 			await flush();
-			if (!staged)
+			if (!staged && original)
 				h.reads[1].resolve(success('subscriptions'));
 			await pending;
-			assert.equal(jobs, staged ? 0 : 1, 'only a genuine pending change blocks the update handler');
+			assert.equal(jobs, staged || !original ? 0 : 1, 'pending or saved-disabled subscriptions cannot update');
 		});
 	}
 }
+
+for (const stored of [undefined, '1', '0']) {
+	for (const staged of [false, true]) {
+		test(`T10.49 scenarios 1/2: enabled=${stored ?? 'default'} staged=${staged} controls button and wrapper hint`,
+		async () => {
+			const h = await harness('subscriptions');
+			if (stored != null)
+				h.subs[0].enabled = stored;
+			if (staged)
+				h.setChanges(async () => ({ aetherproxy: [['set', 's_a', 'name', 'Staged']] }));
+			await render(h);
+			for (let pass = 0; pass < 2; pass++) {
+				const button = h.page.rowButtons.get('s_a');
+				const wrapper = h.page.rowWrappers.get('s_a');
+				assert.equal(button.disabled, staged || stored === '0');
+				assert.equal(wrapper.children[0], button);
+				assert.equal(wrapper.attrs.title, staged ? '请先保存并应用'
+					: stored === '0' ? '订阅已停用' : undefined);
+				assert.equal(Object.hasOwn(button.attrs, 'title'), false, 'hint belongs to the wrapper');
+				await h.page.redraw();
+				await flush();
+			}
+			if (stored === '0') {
+				let jobs = 0;
+				h.ap.run_job = async () => {
+					jobs++;
+					throw new Error('unexpected single-subscription job');
+				};
+				await h.page.update(['s_a']);
+				assert.equal(jobs, 0, 'saved-disabled rows cannot start a job through direct invocation');
+				const checkbox = find(gridRow(h, 's_a'), node => node.tag === 'input')[0];
+				checkbox.change({ target: { checked: true } });
+				await h.page.refresh_changes();
+				assert.equal(h.page.rowButtons.get('s_a').disabled, true);
+				assert.equal(h.page.rowWrappers.get('s_a').attrs.title, '请先保存并应用');
+				assert.equal(h.subs[0].enabled, '0', 'turning on the widget does not save the subscription');
+				await h.page.update(['s_a']);
+				assert.equal(jobs, 0, 'an unsaved toggle cannot bypass the job guard');
+			}
+		});
+	}
+}
+
+test('T10.49 scenario 3: Update all still runs with saved-disabled and pending subscriptions', async () => {
+	const h = await harness('subscriptions');
+	h.subs[0].enabled = '0';
+	h.setChanges(async () => ({ aetherproxy: [['set', 's_b', 'name', 'Staged']] }));
+	await render(h);
+	const jobs = [];
+	h.ap.run_job = async (...args) => {
+		jobs.push(args);
+		return { result: { subs: {} } };
+	};
+	assert.equal(h.page.updateAll.disabled, false);
+	assert.ok([...h.page.rowButtons.values()].every(button => button.disabled));
+	const pending = h.page.update([]);
+	assert.equal(h.page.updateAll.disabled, true, 'only busy state disables Update all');
+	await flush();
+	assert.deepEqual(jobs, [['sub_update', []]], 'the backend still receives an unfiltered all-subscriptions job');
+	h.reads[1].resolve(success('subscriptions'));
+	await pending;
+	assert.equal(h.page.updateAll.disabled, false);
+	assert.equal(h.page.rowButtons.get('s_a').disabled, true);
+	assert.equal(h.page.rowWrappers.get('s_a').attrs.title, '订阅已停用');
+	assert.equal(h.page.rowButtons.get('s_b').disabled, true);
+	assert.equal(h.page.rowWrappers.get('s_b').attrs.title, '请先保存并应用');
+});
+
+test('T10.49 scenario 4: card flag and multiline results keep inline value-column layout after refresh/reset',
+async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	const check = () => {
+		const row = gridRow(h, 's_a');
+		const cell = find(row, node => node.field === 'enabled')[0];
+		const wrapper = cell.children[0];
+		assert.equal(wrapper.tag, 'span');
+		assert.equal(wrapper.style, 'display:inline-flex; align-items:center');
+		assert.equal(find(wrapper, node => node.tag === 'input').length, 1, 'keep the native flag widget');
+		const result = h.page.resultCells.s_a;
+		assert.equal(result.tag, 'span');
+		assert.equal(result.style, 'display:inline-block; vertical-align:top');
+		assert.equal(find(result, node => node.tag === 'br').length, 2, 'all three lines share the value wrapper');
+		return result;
+	};
+	const result = check();
+	h.reads[0].resolve(success('subscriptions'));
+	await flush();
+	assert.equal(check(), result, 'late status fills the existing styled wrapper');
+	assert.match(text(result), /成功，7 个节点/);
+	assert.match(text(result), /秒前/);
+	assert.match(text(result), /跳过 2/);
+	await h.maps[0].render();
+	await flush();
+	check();
+	await h.page.redraw();
+	await flush();
+	check();
+});
 
 for (const name of ['nodes', 'subscriptions']) {
 	test(`T10.16 ${name} scenario 1: load reads only UCI`, async () => {
@@ -1718,7 +1827,7 @@ for (const ids of [['s_a'], []]) {
 		common.interval_hours.setFormValue('sub', '72');
 		common.fetch_via.setFormValue('sub', 'proxy');
 		common.user_agent.setFormValue('sub', 'Unsaved/UA');
-		const flag = find(h.root, node => node.sid === 's_b')[0].children[0].children[0];
+		const flag = find(gridRow(h, 's_b'), node => node.tag === 'input')[0];
 		flag.checked = false;
 		flag.change({ target: flag });
 		block.grid.renderMoreOptionsModal('s_a');

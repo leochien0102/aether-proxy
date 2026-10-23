@@ -4,6 +4,7 @@
 // Also follows docs/10「订阅：通用设置、获取方式与行首开关」「节点与订阅合并为一页」.
 // r13 pending-state and tooltip rules: docs/10「r13 修正：订阅编辑框与启用开关」.
 // Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
+// Saved disabled state and card alignment: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -140,12 +141,12 @@ return baseclass.extend({
 			const saved = uci.get('aetherproxy', id, 'enabled') ?? this.enabledOption?.default;
 			if (current != null && current !== saved)
 				this.pendingIds.add(id);
-			const pending = this.pendingIds.has(id);
-			button.disabled = this.busy || pending;
+			const state = model.update_state(uci.get('aetherproxy', id), this.busy, this.pendingIds.has(id));
+			button.disabled = !state.can_update;
 			// Disabled controls do not reliably receive hover events in all browsers.
 			const wrapper = this.rowWrappers.get(id);
-			if (pending)
-				wrapper.setAttribute('title', _('Please save and apply first', 'aether-proxy'));
+			if (state.hint)
+				wrapper.setAttribute('title', state.hint);
 			else
 				wrapper.removeAttribute('title');
 		}
@@ -178,6 +179,11 @@ return baseclass.extend({
 		enabled.modalonly = false;
 		enabled.default = '1';
 		this.enabledOption = enabled;
+		const renderWidget = enabled.renderWidget;
+		enabled.renderWidget = function(...args) {
+			// Keep the theme's flag widget beside the card label, without changing its styling.
+			return E('span', { style: 'display:inline-flex; align-items:center' }, [renderWidget.apply(this, args)]);
+		};
 		enabled.onchange = function() {
 			// uci.changes() cannot see a widget change before the form is saved.
 			self.sync_buttons();
@@ -197,7 +203,9 @@ return baseclass.extend({
 					return '–';
 				if (field === '_result') {
 					// An edit can make GridSection render cells again on the same map.
-					const span = E('span', {}, self.result_content(row.result));
+					// One inline block keeps all result lines in the card's value column.
+					const span = E('span', { style: 'display:inline-block; vertical-align:top' },
+						self.result_content(row.result));
 					self.resultCells[id] = span;
 					return span;
 				}
@@ -311,7 +319,8 @@ return baseclass.extend({
 		return this.grid.renderMoreOptionsModal(id);
 	},
 	update: async function(ids) {
-		if (this.busy || ids.some(id => this.pendingIds.has(id)))
+		if (this.busy || ids.some(id => !model.update_state(uci.get('aetherproxy', id),
+			this.busy, this.pendingIds.has(id)).can_update))
 			return;
 		this.busy = true;
 		this.sync_buttons();
