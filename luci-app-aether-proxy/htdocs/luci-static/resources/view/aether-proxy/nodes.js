@@ -477,6 +477,8 @@ return view.extend({
 		o.depends('protocol', 'shadowsocks');
 
 		o = s.option(form.Value, 'method', _('Encryption method', 'aether-proxy'));
+		// Shared with Shadowsocks, whose method is required: do not materialize VMess's default.
+		o.placeholder = _('auto (VMess)', 'aether-proxy');
 		o.modalonly = true;
 		o.depends('protocol', 'shadowsocks');
 		o.depends('protocol', 'vmess');

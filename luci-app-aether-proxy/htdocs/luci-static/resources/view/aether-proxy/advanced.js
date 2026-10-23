@@ -31,8 +31,13 @@ function option(section, tab, type, field, title, target) {
 
 	const fallback = model.default(field);
 
-	if (fallback != null)
-		o.default = fallback;
+	if (fallback != null) {
+		// A Value default would be saved even without input; a hint stays display-only.
+		if (type == form.Value)
+			o.placeholder = fallback;
+		else
+			o.default = fallback;
+	}
 
 	o.validate = function(section_id, value) {
 		return model.validate(field, value);

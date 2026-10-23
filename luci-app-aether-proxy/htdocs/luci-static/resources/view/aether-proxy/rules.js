@@ -22,13 +22,14 @@ const LISTS = [
 function trust_option(section) {
 	const option = section.option(form.Value, 'trust_dns', _('Trust DNS', 'aether-proxy'));
 	option.rmempty = false;
+	option.default = [ '8.8.8.8', '1.1.1.1' ];
 	option.description = _('UDP is for DNS servers without TCP query support and requires UDP forwarding '
 		+ 'on the node; the two entries can use different protocols as backups.', 'aether-proxy');
 	option.widgets = {};
 	option.renderWidget = function(section_id, option_index, cfgvalue) {
 		const labels = [ _('Trust DNS 1', 'aether-proxy'), _('Trust DNS 2 (optional)', 'aether-proxy') ];
 		const choices = Object.fromEntries(model.presets('trust_dns'));
-		this.widgets[section_id] = model.trust_rows(cfgvalue).map((row, i) => {
+		this.widgets[section_id] = model.trust_rows(cfgvalue ?? this.default).map((row, i) => {
 			const id = this.cbid(section_id) + '.' + i;
 			const address = new ui.Combobox(row.address, choices, {
 				id: id + '.address', sort: Object.keys(choices),
@@ -133,11 +134,13 @@ return view.extend({
 		const map = new form.Map('aetherproxy', _('Rules and DNS', 'aether-proxy'));
 		let section = map.section(form.NamedSection, 'main', 'global');
 		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
+		option.default = 'bypass_cn';
 		model.modes().forEach(item => option.value(item[0], item[1]));
 		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings', 'aether-proxy'));
 		const wan_hint = E('div');
 		const china = section.option(form.DynamicList, 'china_dns', _('China DNS', 'aether-proxy'));
 		china.rmempty = false;
+		china.default = [ 'wan', '114.114.114.114' ];
 		model.presets('china_dns').forEach(item => china.value(item[0], item[1]));
 		china.validate = function(section_id, value) { return model.validate('china_dns', value); };
 		china.renderWidget = function(section_id, option_index, cfgvalue) {
@@ -152,6 +155,8 @@ return view.extend({
 		trust_option(section);
 		const direct = section.option(form.DynamicList, 'direct_dns', _('Direct DNS', 'aether-proxy'));
 		direct.rmempty = false;
+		// TODO(design): docs/05 has the next DNS defaults; keep the current schema until T9.28 lands.
+		direct.default = [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ];
 		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
 		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };
 		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
@@ -161,8 +166,16 @@ return view.extend({
 			[ 'dns_probe_domain', _('DNS probe domain', 'aether-proxy'), form.Value ] ];
 		fields.forEach(field => {
 			const o = section.option(field[2], field[0], field[1]);
-			o.rmempty = false;
-			o.validate = function(section_id, value) { return model.validate(field[0], value); };
+			/* A Value default would become input and be written on Save. Keep the
+			 * domain optional with a display-only hint, matching backend fallback. */
+			o.rmempty = field[0] == 'dns_probe_domain';
+			if (field[0] == 'allow_china_fallback')
+				o.default = '1';
+			else
+				o.placeholder = 'www.google.com';
+			o.validate = function(section_id, value) {
+				return field[0] == 'dns_probe_domain' && value === '' ? true : model.validate(field[0], value);
+			};
 		});
 		const inventory = E('div', {}, model.loading_text), summary = E('div'), progress = E('div');
 		const update = E('button', { type: 'button', class: 'cbi-button cbi-button-action',
