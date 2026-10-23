@@ -2021,6 +2021,10 @@ msgid "Please save and apply first"
 msgstr "请先保存并应用"
 
 msgctxt "aether-proxy"
+msgid "Subscription disabled"
+msgstr "订阅已停用"
+
+msgctxt "aether-proxy"
 msgid "Unapplied subscriptions will not be updated"
 msgstr "未应用的订阅不会更新"
 

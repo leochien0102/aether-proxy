@@ -2,6 +2,7 @@
 'require baseclass';
 // Pure subscription presentation, ID generation and deletion plans for the LuCI view.
 // Design: docs/10「订阅页」「订阅页修正」「订阅：通用设置、获取方式与行首开关」.
+// Availability and hint priority: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
 // Keep inheritance pure, URLs masked and the current node retained.
 
 function fmt(text, ...args) {
@@ -82,6 +83,15 @@ function follow(value) {
 function effective_text(raw, common, format) {
 	return raw ? format(raw) : fmt(_('%s (general)', 'aether-proxy'), format(common));
 }
+function update_state(subscription, busy, pending) {
+	// Pending changes take precedence even when the saved subscription is disabled.
+	const disabled = subscription?.enabled === '0';
+	return {
+		can_update: !busy && !pending && !disabled,
+		hint: pending ? _('Please save and apply first', 'aether-proxy')
+			: disabled ? _('Subscription disabled', 'aether-proxy') : ''
+	};
+}
 function row(s, status, now, busy, general) {
 	if (!s)
 		return null;
@@ -91,7 +101,7 @@ function row(s, status, now, busy, general) {
 		enabled: s.enabled === '0' ? _('Disabled', 'aether-proxy') : _('Enabled', 'aether-proxy'),
 		interval: effective_text(s.interval_hours, common.interval_hours, interval_text),
 		via: effective_text(s.fetch_via, common.fetch_via, fetch_text),
-		result: status_result(status, s['.name'], now), can_update: !busy
+		result: status_result(status, s['.name'], now), can_update: update_state(s, busy, false).can_update
 	};
 }
 function job_error(failure) {
@@ -112,6 +122,7 @@ return baseclass.extend({
 		return values.map(value => [value, interval_text(value)]);
 	},
 	status_result,
+	update_state,
 	row,
 	pending_ids: function(changes) {
 		// Subscription IDs own the s_ namespace, including removed sections absent from UCI now.
