@@ -170,7 +170,7 @@ expect "render --json: ok" true "$(echo "$out" | jget ok)"
 expect "render --json: file" aether-proxy.nft "$(echo "$out" | jget file)"
 
 # T8.22: validate the actual shipped file, not a copied fixture that could drift from it.
-# T2 and boot must share the new direct upstreams (docs/05 "config dns 'dns'").
+# T9.28: the shipped config defaults to T1/domestic boot; explicit opt-in uses the single direct upstream.
 mkdir -p "$T/install-conf"
 cp "$ROOT/aether-proxy/files/aether-proxy.config" "$T/install-conf/aetherproxy"
 out="$(ap check --json --no-precheck $(opts "$T/install-conf" "$T/install-run") \
@@ -184,11 +184,29 @@ ap render chinadns $(opts "$T/install-conf" "$T/install-run") \
 	> "$T/install-chinadns.conf" 2>"$T/install-render.stderr"; rc=$?
 expect 'installed config: render chinadns exit code 0' 0 "$rc"
 expect 'installed config: render stderr empty' '' "$(cat "$T/install-render.stderr")"
-expect 'installed config: T2 trust uses new direct defaults in order' \
-	'trust-dns tcp://9.9.9.9,tcp://8.8.8.8' "$(grep '^trust-dns ' "$T/install-chinadns.conf")"
-expect 'installed config: boot uses new direct defaults in order' \
-	'group-upstream tcp://9.9.9.9,tcp://8.8.8.8' \
+expect 'installed config: default-off trust uses T1 tunnels' \
+	'trust-dns tcp://127.0.0.1#31082,tcp://127.0.0.1#31083' "$(grep '^trust-dns ' "$T/install-chinadns.conf")"
+expect 'installed config: default-off boot uses expanded china DNS' \
+	"group-upstream $(awk '/^china-dns / { print $2 }' "$T/install-chinadns.conf")" \
 	"$(awk '/^group boot$/ { boot = 1; next } boot && /^group-upstream / { print; exit }' "$T/install-chinadns.conf")"
+expect 'installed config: direct DNS list contains only 9.9.9.9' \
+	"$(printf "\tlist direct_dns 'tcp://9.9.9.9'")" "$(grep 'list direct_dns ' "$T/install-conf/aetherproxy")"
+if grep -q 'direct_dns_enabled' "$T/install-conf/aetherproxy"; then
+	bad 'installed config: switch is omitted to use schema default'
+else
+	ok 'installed config: switch is omitted to use schema default'
+fi
+mkdir -p "$T/install-enabled-conf"
+sed "/^config dns /a\\\toption direct_dns_enabled '1'" \
+	"$T/install-conf/aetherproxy" > "$T/install-enabled-conf/aetherproxy"
+ap render chinadns $(opts "$T/install-enabled-conf" "$T/install-run") \
+	> "$T/install-enabled-chinadns.conf" 2>"$T/install-enabled-render.stderr"; rc=$?
+expect 'installed config: explicit opt-in render exits 0' 0 "$rc"
+expect 'installed config: explicit opt-in stderr empty' '' "$(cat "$T/install-enabled-render.stderr")"
+expect 'installed config: enabled T2 trust uses single direct default' \
+	'trust-dns tcp://9.9.9.9' "$(grep '^trust-dns ' "$T/install-enabled-chinadns.conf")"
+expect 'installed config: enabled boot uses single direct default' 'group-upstream tcp://9.9.9.9' \
+	"$(awk '/^group boot$/ { boot = 1; next } boot && /^group-upstream / { print; exit }' "$T/install-enabled-chinadns.conf")"
 
 # --- 3. rule data missing in both places: error, exit 2
 rm "$T/base/chnlist.txt"
