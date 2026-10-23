@@ -155,8 +155,8 @@ return view.extend({
 		trust_option(section);
 		const direct = section.option(form.DynamicList, 'direct_dns', _('Direct DNS', 'aether-proxy'));
 		direct.rmempty = false;
-		// Current schema value; T10.45 moves to docs/05's direct DNS defaults with T9.28.
-		direct.default = [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ];
+		// Schema default since T9.28 (docs/05); T10.45 reworks the rest of this option.
+		direct.default = [ 'tcp://9.9.9.9' ];
 		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
 		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };
 		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
