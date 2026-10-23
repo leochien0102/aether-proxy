@@ -142,9 +142,9 @@ return view.extend({
 			clear();
 			this.beginStartup(true);
 		};
-		/* TODO(design): LuCI emits no apply-cancelled/apply-failed event. Leave
-		   the intent dormant (no startup timer or poll) until a successful apply,
-		   a new toggle, revert or page exit; do not guess success from a delay. */
+		/* LuCI emits no apply-cancelled/apply-failed event: the intent stays
+		   dormant until a successful apply, a new toggle, revert or page exit
+		   (docs/10「r13 修正：概览页启动反馈与节点下拉」复审结论). */
 		document.addEventListener('uci-applied', applied);
 		document.addEventListener('uci-reverted', clear);
 		window.addEventListener('pagehide', clear);
