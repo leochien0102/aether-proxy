@@ -12,6 +12,7 @@
  * Per docs/10 "先出页面", defer RPC until the form and disabled editors are rendered.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  * Composite trust rows and deferred WAN hints follow docs/10 "DNS 常用地址与协议".
+ * Optional direct DNS and its independent test follow docs/10 "r13：直连境外 DNS 的开关与检测".
  */
 const LISTS = [
 	[ 'direct_domain', _('Direct domains', 'aether-proxy') ], [ 'proxy_domain', _('Proxy domains', 'aether-proxy') ],
@@ -78,6 +79,37 @@ function trust_option(section) {
 		return this.isValid(section_id);
 	};
 	return option;
+}
+/* Testing uses applied configuration through the job API, not unsaved form
+ * values. Keep the editor and test available even when direct DNS is disabled. */
+function direct_test_controls() {
+	const summary = E('div'), progress = E('div');
+	const button = E('button', { type: 'button', class: 'cbi-button cbi-button-action',
+		click: async function() {
+			button.disabled = true;
+			let timer;
+			try {
+				summary.replaceChildren();
+				timer = ap.job_progress(progress, _('Testing direct DNS…', 'aether-proxy'));
+				const job = await ap.run_job('dns_test', []);
+				timer.stop();
+				summary.replaceChildren(...model.dns_test_result(job).map(line => E('div', {}, line)));
+			}
+			catch (e) {
+				summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
+			}
+			finally {
+				if (timer)
+					timer.stop();
+				button.disabled = false;
+			}
+		} }, _('Test', 'aether-proxy'));
+	return E('div', {}, [ E('div', {
+		style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+			+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+	}, [ summary, progress, button ]), E('div', { class: 'cbi-value-description' },
+		_('If the router’s own traffic goes through another proxy plugin (for example, ssr-plus is enabled), '
+			+ 'the results reflect that path.', 'aether-proxy')) ]);
 }
 return view.extend({
 	load: function() {
@@ -153,14 +185,26 @@ return view.extend({
 				]) ]);
 		};
 		trust_option(section);
+		const enabled = section.option(form.Flag, 'direct_dns_enabled', _('Enable direct foreign DNS', 'aether-proxy'));
+		enabled.default = '0';
+		enabled.rmempty = false;
+		enabled.validate = function(section_id, value) { return model.validate('direct_dns_enabled', value); };
+		enabled.description = _('Direct foreign DNS queries are sent from the router to foreign DNS servers: '
+			+ 'blocked domains cannot be resolved, and direct queries to common foreign DNS servers are reset '
+			+ 'on most networks in China. Enable this only if the node domain is poisoned, or if you need to '
+			+ 'resolve unblocked foreign domains when the proxy is unavailable. Use “Test” before enabling it.',
+			'aether-proxy');
 		const direct = section.option(form.DynamicList, 'direct_dns', _('Direct DNS', 'aether-proxy'));
 		direct.rmempty = false;
-		// Schema default since T9.28 (docs/05); T10.45 reworks the rest of this option.
 		direct.default = [ 'tcp://9.9.9.9' ];
 		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
 		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };
 		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
 			+ 'try tcp://9.9.9.9 first.', 'aether-proxy');
+		direct.renderWidget = function(section_id, option_index, cfgvalue) {
+			return E('div', {}, [ form.DynamicList.prototype.renderWidget.call(this,
+				section_id, option_index, cfgvalue), direct_test_controls() ]);
+		};
 		const fields = [
 			[ 'allow_china_fallback', _('Allow China fallback', 'aether-proxy'), form.Flag ],
 			[ 'dns_probe_domain', _('DNS probe domain', 'aether-proxy'), form.Value ] ];
