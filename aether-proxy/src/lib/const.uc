@@ -275,9 +275,6 @@ export const PROBE_SITE_RE = /^[a-z0-9]{1,16}$/;
 export const PROBE_URL_GRACE_SECS = 5;
 export const NODE_USE_TIMEOUT_SECS = 10;
 
-// T9.16 (docs/08 "回滚一起回滚"): backend first, then UI and its translation.
-export const UPDATE_ROLLBACK_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
-
 // T9.23 (docs/03 "运营商下发的 DNS"). Lookup failure is a quiet, normal boot condition.
 export const WAN_DNS_FALLBACK = '223.5.5.5';
 export const WAN_DNS_TIMEOUT_SECS = 3;

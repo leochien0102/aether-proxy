@@ -337,9 +337,18 @@ function scenario_6() {
 		  want: [ 'job', 'start', 'update', 'data', '--json' ] },
 		{ name: 'update_package with a package', args: { kind: 'update_package', args: [ 'xray-core' ] },
 		  want: [ 'job', 'start', 'update', 'package', 'xray-core', '--json' ] },
-		{ name: 'update_package with --previous',
-		  args: { kind: 'update_package', args: [ 'luci-app-aether-proxy', '--previous' ] },
-		  want: [ 'job', 'start', 'update', 'package', 'luci-app-aether-proxy', '--previous', '--json' ] }
+		{ name: 'update_package xray-core with --previous',
+		  args: { kind: 'update_package', args: [ 'xray-core', '--previous' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'xray-core', '--previous', '--json' ] },
+		{ name: 'update_package aether-proxy forward',
+		  args: { kind: 'update_package', args: [ 'aether-proxy' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'aether-proxy', '--json' ] },
+		{ name: 'update_package luci-app forward',
+		  args: { kind: 'update_package', args: [ 'luci-app-aether-proxy' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'luci-app-aether-proxy', '--json' ] },
+		{ name: 'update_package luci-i18n forward',
+		  args: { kind: 'update_package', args: [ 'luci-i18n-aether-proxy-zh-cn' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'luci-i18n-aether-proxy-zh-cn', '--json' ] }
 	];
 
 	for (let c in cases) {
@@ -372,6 +381,12 @@ function scenario_7() {
 		{ name: 'sub_update id too long', args: { kind: 'sub_update', args: [ sub_id(1) + 'f' ] } },
 		{ name: 'update_check with args', args: { kind: 'update_check', args: [ '--json' ] } },
 		{ name: 'update_data with args', args: { kind: 'update_data', args: [ 'force' ] } },
+		{ name: 'update_package aether-proxy --previous',
+		  args: { kind: 'update_package', args: [ 'aether-proxy', '--previous' ] } },
+		{ name: 'update_package luci-app-aether-proxy --previous',
+		  args: { kind: 'update_package', args: [ 'luci-app-aether-proxy', '--previous' ] } },
+		{ name: 'update_package luci-i18n-aether-proxy-zh-cn --previous',
+		  args: { kind: 'update_package', args: [ 'luci-i18n-aether-proxy-zh-cn', '--previous' ] } },
 		{ name: 'update_package unknown package', args: { kind: 'update_package', args: [ 'nginx' ] } },
 		{ name: 'update_package wrong spelling', args: { kind: 'update_package', args: [ 'aether_proxy' ] } },
 		{ name: 'update_package missing package', args: { kind: 'update_package', args: [] } },
