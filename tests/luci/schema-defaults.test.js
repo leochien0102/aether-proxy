@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, element: E } = require('./loader');
+const { renderList, parseList } = require('./dynamic-list');
 
 const ROOT = path.resolve(__dirname, '../..');
 const RES = path.join(ROOT, 'luci-app-aether-proxy/htdocs/luci-static/resources');
@@ -188,6 +189,65 @@ for (const page of ['rules', 'subscriptions', 'access', 'advanced', 'updates', '
 				assert.ok(checked.includes(field), field + ': per-option section overrides are recorded');
 	});
 }
+
+/* T10.47: inspect the actual option objects, including DeviceSelect subclasses
+ * and options created by helpers/loops, rather than matching validator text.
+ * Visit every shipped form page and the extracted subscription block. */
+function check_list_validators(h, page) {
+	const checked = [];
+	for (const option of h.options) {
+		if (!(option instanceof h.form.DynamicList) || typeof option.validate != 'function')
+			continue;
+		const section = option.ucisection ?? option.section.name;
+		const label = page + ': ' + section + '.' + option.option;
+		assert.equal(option.validate(section, ''), true, label + ': empty add box must be valid');
+		checked.push(label);
+	}
+	return checked;
+}
+
+test('T10.47 scenario 4: all form-page DynamicList validators including DeviceSelect accept the empty add box',
+async () => {
+	const checked = [];
+	for (const page of ['rules', 'subscriptions', 'access', 'advanced', 'updates', 'nodes'])
+		checked.push(...check_list_validators(await page_options(page), page));
+	assert.deepEqual(checked.sort(), [
+		'advanced: main.boot_check_targets', 'advanced: main.lan_ifaces',
+		'rules: dns.china_dns', 'rules: dns.direct_dns', 'updates: update.channel_urls'
+	]);
+});
+
+test('T10.47 scenario 4: list gate rejects a validator that fails the empty add box', async () => {
+	for (const page of ['rules', 'advanced', 'updates']) {
+		const h = await page_options(page);
+		const option = h.options.find(o => o instanceof h.form.DynamicList && typeof o.validate == 'function');
+		const validate = option.validate;
+		option.validate = function(section, value) {
+			return value === '' ? 'invalid empty add box' : validate.call(this, section, value);
+		};
+		assert.throws(() => check_list_validators(h, page), /empty add box must be valid/);
+	}
+});
+
+test('T10.47 scenario 4: illegal list values fail and required DNS/interface lists cannot save empty', async () => {
+	const bad = { china_dns: 'invalid', direct_dns: 'invalid', channel_urls: 'ftp://host',
+		boot_check_targets: '999.1.1.1:0', lan_ifaces: 123 };
+	for (const page of ['rules', 'advanced', 'updates']) {
+		const h = await page_options(page);
+		for (const option of h.options.filter(o => o instanceof h.form.DynamicList && o.validate)) {
+			const section = option.section.name;
+			assert.notEqual(option.validate(section, bad[option.option]), true, page + ': ' + option.option);
+			if (option.rmempty !== false)
+				continue;
+			const input = renderList(option, section, []);
+			assert.equal(input.isValid(), true, 'add box is optional, not the complete list');
+			const writes = [];
+			assert.throws(() => parseList(option, section, input, undefined,
+				value => writes.push(value), () => writes.push('remove')), /must not be empty/);
+			assert.deepEqual(writes, []);
+		}
+	}
+});
 
 test('T10.41 scenario 2: gate rejects a wrong Flag default and a missing explicit default', async () => {
 	const h = await page_options('access');

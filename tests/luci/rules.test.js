@@ -17,6 +17,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element, createRpc } = require('./loader');
 const { actionRow } = require('./button-layout');
+const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -313,7 +314,7 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 		NamedSection: 'named', ListValue: 'select', Flag: 'flag', Value: 'value',
 		DynamicList: class {
 			renderWidget(section_id, index, value) {
-				return E('list', { name: this.key, value }, this.label);
+				return this.listInput = renderList(this, section_id, value ?? this.default);
 			}
 		}
 	};
@@ -369,7 +370,9 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 					const cfgvalue = dns_config[option.key];
 					const value = cfgvalue ?? option.default;
 					const widget = option.renderWidget ? option.renderWidget(section.name, i, cfgvalue) :
-						E(option.kind == form.DynamicList ? 'list' : option.kind,
+						option.kind == form.DynamicList ?
+							form.DynamicList.prototype.renderWidget.call(option, section.name, i, cfgvalue) :
+						E(option.kind,
 							{ name: option.key, value, placeholder: option.placeholder,
 								checked: option.kind == form.Flag && value == '1' || null }, option.label);
 					option.input = widget;
@@ -378,8 +381,14 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 		}
 		/* Scalar parse compares raw loaded configuration, not display defaults.
 		 * Flags have a separate write path; optional blank Values remove keys.
-		 * Composite/list widgets have their own write tests below. */
+		 * Lists also check the empty add-box validation state before saving. */
 		parse() {
+			for (const section of this.sections) {
+				for (const option of section.options.filter(o => o.kind == form.DynamicList))
+					parseList(option, section.name, option.listInput, dns_config[option.key],
+						value => this.data.set(this.config, section.name, option.key, value),
+						() => this.data.unset(this.config, section.name, option.key));
+			}
 			for (const section of this.sections) {
 				for (const option of section.options) {
 					if (![form.Value, form.Flag].includes(option.kind) || option.renderWidget)
@@ -778,6 +787,47 @@ test('T10.21 scenario 4: update renders only nonempty categories and preserves j
 
 function dns_option(h, key) {
 	return h.maps[0].sections[1].options.find(option => option.key == key);
+}
+
+const unchanged_dns = {
+	china_dns: ['wan', '114.114.114.114'], direct_dns: ['tcp://9.9.9.9'],
+	trust_dns: ['8.8.8.8', '1.1.1.1'], direct_dns_enabled: '0',
+	allow_china_fallback: '1', dns_probe_domain: 'www.google.com'
+};
+
+test('T10.47 scenario 1: unchanged DNS lists save without validation errors or configuration changes', async () => {
+	const config = structuredClone(unchanged_dns);
+	const h = load_view(config);
+	await h.page.render();
+	await h.maps[0].parse();
+	for (const key of ['china_dns', 'direct_dns']) {
+		const input = dns_option(h, key).listInput;
+		assert.deepEqual(input.validationCalls, [...config[key], ''], key + ': items and empty add box');
+		assert.equal(input.isValid(), true, key + ': no error after render');
+	}
+	assert.deepEqual(h.writes.filter(write => ['china_dns', 'direct_dns'].includes(write[2])), []);
+	// SDK Flag.parse always calls set; setting the existing value is a UCI no-op.
+	assert.deepEqual(h.writes.filter(write => JSON.stringify(write[3]) !== JSON.stringify(config[write[2]])), []);
+	assert.deepEqual(h.removals, []);
+	assert.deepEqual(config, unchanged_dns);
+	assert.equal(dns_option(h, 'direct_dns_enabled').input.checked, false);
+	assert.deepEqual(h.jobs, [], 'saving does not start a DNS test or update');
+});
+
+for (const key of ['china_dns', 'direct_dns']) {
+	test('T10.47 scenario 4: ' + key + ' rejects invalid items and an empty required list', async () => {
+		const h = load_view(structuredClone(unchanged_dns));
+		await h.page.render();
+		const input = dns_option(h, key).listInput;
+		input.value = ['not-a-DNS-upstream'];
+		assert.equal(input.triggerValidation(), false);
+		assert.throws(() => h.maps[0].parse(), /DNS 上游格式无效/);
+		assert.deepEqual(h.writes, []);
+		input.value = [];
+		assert.equal(input.triggerValidation(), true, 'empty add box is valid even for a required list');
+		assert.throws(() => h.maps[0].parse(), /must not be empty/);
+		assert.deepEqual(h.writes, []);
+	});
 }
 
 test('T10.41 scenario 1: missing DNS options show fallback on and the probe placeholder without saving it',
