@@ -200,6 +200,9 @@ function element(tag, attrs = {}, children = []) {
 		},
 		set textContent(value) { this.children = [String(value)]; },
 		replaceChildren(...nodes) { this.children = nodes; },
+		// T10.40: wrapper tooltips are removed when the row becomes available.
+		setAttribute(name, value) { this.attrs[name] = this[name] = String(value); },
+		removeAttribute(name) { delete this.attrs[name]; delete this[name]; },
 		addEventListener(event, fn) { this.attrs[event] = fn; this[event] = fn; }
 	};
 	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ])

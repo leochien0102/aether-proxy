@@ -487,7 +487,7 @@ test('T10.28 scenario 3: Update all stays usable with pending rows; finally pres
 	await pending;
 	assert.equal(h.page.busy, false);
 	assert.equal(button(h.root, '立即更新').disabled, true);
-	assert.equal(button(h.root, '立即更新').title, '请先保存并应用');
+	assert.equal(h.page.rowWrappers.get('s_a').attrs.title, '请先保存并应用');
 	assert.equal(button(h.root, '全部更新').disabled, false);
 });
 

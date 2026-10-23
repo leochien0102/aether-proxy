@@ -21,6 +21,16 @@ for (const key of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'mu
 	});
 }
 
+test('T10.40 shared E: wrapper title attribute can be set and completely removed', () => {
+	const wrapper = E('span');
+	wrapper.setAttribute('title', 'Please save and apply first');
+	assert.equal(wrapper.attrs.title, 'Please save and apply first');
+	assert.equal(wrapper.title, 'Please save and apply first');
+	wrapper.removeAttribute('title');
+	assert.equal(Object.hasOwn(wrapper.attrs, 'title'), false);
+	assert.equal(Object.hasOwn(wrapper, 'title'), false);
+});
+
 test('T10.18 shared E: short calls, text-only children, selected options and mutable contents', () => {
 	const node = E('p', '<img src=x>');
 	assert.equal(node.textContent, '<img src=x>');

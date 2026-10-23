@@ -10,6 +10,7 @@ const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable } = require('./button-layout');
+const { selectWidget } = require('./subscription-select');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -39,35 +40,47 @@ function deferred() {
 	return { promise, resolve };
 }
 function optionDouble(uci, kind, field, title) {
-	const values = new Map(), widgets = new Map();
-	return {
-		kind, field, title, depends() {},
+	// LuCI methods live on the prototype: cloneOptions only copies own properties.
+	class Option {
+		constructor() {
+			Object.assign(this, { kind, field, title });
+			this.widgets = new Map();
+		}
+		depends() {}
 		value(key, label) {
-			(this.keylist ??= []).push(key);
+			(this.keylist ??= []).push(String(key));
 			(this.vallist ??= []).push(label);
-		},
-		formvalue: id => values.get(id),
-		getUIElement: id => widgets.get(id),
+		}
+		formvalue(id) { return this.widgets.get(id)?.value; }
+		getUIElement(id) { return this.widgets.get(id); }
 		renderWidget(id, index, value) {
-			const widget = {
-				value: value ?? '', placeholder: this.placeholder,
-				setPlaceholder(text) { this.placeholder = text; }
-			};
-			widgets.set(id, widget);
+			const initial = value ?? this.default;
+			const widget = kind === 'ListValue'
+				? selectWidget(initial, Object.fromEntries((this.keylist ?? []).map((key, i) =>
+					[key, this.vallist[i]])), { sort: this.keylist, optional: this.optional,
+					placeholder: this.placeholder })
+				: { value: initial ?? '', placeholder: this.placeholder,
+					setPlaceholder(text) { this.placeholder = text; } };
+			this.widgets.set(id, widget);
 			return widget;
-		},
-		setFormValue: (id, value) => values.set(id, value),
-		// LuCI AbstractValue.parse removes rmempty options rather than writing ''.
+		}
+		setFormValue(id, value) {
+			if (!this.widgets.has(id))
+				this.widgets.set(id, {});
+			this.widgets.get(id).value = value;
+		}
+		remove(id) { uci.unset('aetherproxy', id, field); }
 		async parse(id) {
-			if (!values.has(id))
+			if (!this.widgets.has(id))
 				return;
-			const value = values.get(id);
+			const value = this.formvalue(id);
 			if (this.rmempty && value === '')
-				uci.unset('aetherproxy', id, field);
-			else
+				this.remove(id);
+			else if (value !== uci.get('aetherproxy', id, field))
 				uci.set('aetherproxy', id, field, value);
 		}
-	};
+	}
+	return new Option();
 }
 function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 	async function renderSection(section) {
@@ -110,9 +123,22 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 						this.addModalOptions(this.modal, id);
 					/* Only subscription modals render widgets here: node modal widgets call
 					   LuCI class prototypes this double lacks; nodes-fields.test.js covers them. */
-					if (type === 'subscription')
-						for (const o of this.options.filter(o => o.modalonly && o.renderWidget))
-							o.renderWidget(id, 0, uci.get('aetherproxy', id, o.field) ?? o.default);
+					if (type === 'subscription') {
+						this.modal.options = this.options.filter(o => o.modalonly !== false).map(source => {
+							const clone = optionDouble(uci, source.kind, source.field, source.title);
+							for (const key of Object.keys(source))
+								if (key !== 'widgets')
+									clone[key] = source[key];
+							clone.renderWidget(id, 0, uci.get('aetherproxy', id, clone.field));
+							return clone;
+						});
+						this.modal.save = async () => {
+							for (const option of this.modal.options)
+								await option.parse(id);
+							await uci.save();
+						};
+						this.modal.cancel = () => {};
+					}
 					this.modal.node = E('div', {}, [
 						E('p', {}, this.modal.description ?? ''),
 						...this.options.filter(o => o.modalonly).map(o => E('label', {}, o.title))
@@ -344,12 +370,46 @@ function success(name) {
 // T10.34 uses the same asynchronous grid harness so inherited settings cannot
 // regress first-paint behavior or erase an open modal when the version arrives.
 function subOption(h, field) {
-	return h.page.grid.options.find(o => o.field === field);
+	const source = h.page.grid.options.find(o => o.field === field);
+	return source.modalonly ? h.page.grid.modal.options?.find(o => o.field === field) ?? source : source;
 }
 function renderOption(o, id, value) {
 	return o.renderWidget(id, 0, value);
 }
 const intervalLabels = ['不自动更新', '12 小时', '1 天', '3 天', '7 天'];
+
+for (const interval of ['0', '12', '24', '72', '168', '6']) {
+	for (const via of ['auto', 'direct', 'proxy']) {
+		for (const action of ['save', 'cancel']) {
+			test(`T10.40 scenario 1: ${interval}/${via} modal ${action} preserves explicit values without writes`,
+			async () => {
+				const h = await harness('subscriptions');
+				Object.assign(h.subs[0], { interval_hours: interval, fetch_via: via });
+				await render(h);
+				h.page.grid.renderMoreOptionsModal('s_a');
+				assert.equal(subOption(h, 'interval_hours').formvalue('s_a'), interval);
+				assert.equal(subOption(h, 'fetch_via').formvalue('s_a'), via);
+				await h.page.grid.modal[action]();
+				assert.deepEqual(h.uciCalls.filter(call => ['set', 'unset'].includes(call[0])), []);
+			});
+		}
+	}
+}
+
+for (const ua of [undefined, 'Custom/1']) {
+	test(`T10.40 scenarios 1/2: inherited dropdowns and UA=${ua ?? 'inherit'} save without set or unset`, async () => {
+		const h = await harness('subscriptions');
+		if (ua != null)
+			h.subs[0].user_agent = ua;
+		await render(h);
+		h.page.grid.renderMoreOptionsModal('s_a');
+		assert.equal(subOption(h, 'interval_hours').formvalue('s_a'), '');
+		assert.equal(subOption(h, 'fetch_via').formvalue('s_a'), '');
+		assert.equal(subOption(h, 'user_agent').formvalue('s_a'), ua ?? '');
+		await h.page.grid.modal.save();
+		assert.deepEqual(h.uciCalls.filter(call => ['set', 'unset'].includes(call[0])), []);
+	});
+}
 
 test('T10.34 scenario 1: existing general section displays its values without writes', async () => {
 	const h = await harness('subscriptions');
@@ -517,7 +577,7 @@ test('T10.34 scenario 5: first-column flag immediately locks only its row before
 	assert.equal(checkbox.type, 'checkbox');
 	checkbox.change({ target: { checked: false } });
 	assert.equal(h.page.rowButtons.get('s_a').disabled, true);
-	assert.equal(h.page.rowButtons.get('s_a').title, '请先保存并应用');
+	assert.equal(h.page.rowWrappers.get('s_a').attrs.title, '请先保存并应用');
 	assert.equal(h.page.rowButtons.get('s_b').disabled, false);
 	assert.equal(h.page.updateAll.disabled, false);
 	assert.equal(h.page.pendingHint.textContent, '未应用的订阅不会更新');
@@ -529,9 +589,51 @@ test('T10.34 scenario 5: first-column flag immediately locks only its row before
 	await h.page.update(['s_a']);
 	assert.deepEqual(jobs, [], 'the update handler also guards the locally dirty row');
 	await h.page.redraw();
-	assert.equal(h.page.rowButtons.get('s_a').disabled, true, 'redraw preserves the local lock');
+	assert.equal(h.page.rowButtons.get('s_a').disabled, false, 'redraw discards the unsaved widget difference');
 	assert.equal(h.page.rowButtons.get('s_b').disabled, false);
 });
+
+for (const stored of [undefined, '1', '0']) {
+	for (const staged of [false, true]) {
+		test(`T10.40 scenarios 3/4: enabled=${stored ?? 'default'} staged=${staged} round trip uses actual differences`,
+		async () => {
+			const h = await harness('subscriptions');
+			if (stored != null)
+				h.subs[0].enabled = stored;
+			if (staged)
+				h.setChanges(async () => ({ aetherproxy: [['set', 's_a', 'name', 'Staged name']] }));
+			await render(h);
+			const button = h.page.rowButtons.get('s_a');
+			const wrapper = h.page.rowWrappers.get('s_a');
+			assert.equal(wrapper.tag, 'span');
+			assert.equal(wrapper.children[0], button);
+			const checkbox = find(gridRow(h, 's_a'), node => node.tag === 'input')[0];
+			const original = stored !== '0';
+			const toggle = checked => checkbox.change({ target: { checked } });
+			assert.equal(button.disabled, staged);
+			toggle(!original);
+			assert.equal(button.disabled, true);
+			assert.equal(wrapper.attrs.title, '请先保存并应用');
+			await h.page.refresh_changes();
+			assert.equal(button.disabled, true, 'a changes reply must preserve the live difference');
+			toggle(original);
+			assert.equal(button.disabled, staged);
+			assert.equal(Object.hasOwn(wrapper.attrs, 'title'), staged);
+			assert.equal(h.page.pendingHint.textContent, staged ? '未应用的订阅不会更新' : '');
+			assert.equal(h.page.rowButtons.get('s_b').disabled, false);
+			assert.equal(h.page.updateAll.disabled, false);
+			assert.deepEqual(h.uciCalls.filter(call => ['set', 'unset', 'save'].includes(call[0])), []);
+			let jobs = 0;
+			h.ap.run_job = async () => { jobs++; return { result: { subs: {} } }; };
+			const pending = h.page.update(['s_a']);
+			await flush();
+			if (!staged)
+				h.reads[1].resolve(success('subscriptions'));
+			await pending;
+			assert.equal(jobs, staged ? 0 : 1, 'only a genuine pending change blocks the update handler');
+		});
+	}
+}
 
 for (const name of ['nodes', 'subscriptions']) {
 	test(`T10.16 ${name} scenario 1: load reads only UCI`, async () => {
@@ -880,7 +982,7 @@ for (const record of [['add', 's_a', 'subscription'], ['set', 's_a', 'name', 'Ch
 		assert.equal(checks, 2, 'modal parent reset must check the saved session again');
 		const affected = h.page.rowButtons.get('s_a');
 		assert.equal(affected.disabled, true);
-		assert.equal(affected.title, '请先保存并应用');
+		assert.equal(h.page.rowWrappers.get('s_a').attrs.title, '请先保存并应用');
 		assert.equal(h.page.rowButtons.get('s_b').disabled, false);
 		assert.equal(h.page.updateAll.disabled, false);
 		assert.equal(text(h.page.pendingHint), '未应用的订阅不会更新');
@@ -890,7 +992,7 @@ for (const record of [['add', 's_a', 'subscription'], ['set', 's_a', 'name', 'Ch
 		await h.page.redraw();
 		await flush();
 		assert.ok([...h.page.rowButtons.values()].every(button => !button.disabled));
-		assert.equal(h.page.rowButtons.get('s_a').title, '');
+		assert.equal(Object.hasOwn(h.page.rowWrappers.get('s_a').attrs, 'title'), false);
 		assert.equal(text(h.page.pendingHint), '');
 	});
 }
