@@ -96,6 +96,9 @@
   - init 的 `stop`（页面「停止」、命令行 `/etc/init.d/aether-proxy stop`）写这个标记；`start`、`restart` 清掉它（`restart` 是先 stop 后 start，结果是清掉）。
   - `reload_service`：`enabled=0` → 停止（若在运行）并**清掉标记**；`enabled=1` 且没在运行 → 有标记就什么都不做，没有才 `start`；在运行 → 照旧发 HUP。
   - 结果：开关关着时改配置不启动；开关开着但手动停止后改配置不启动；开关从关到开（中间经过 `enabled=0` 分支清标记）会启动。
+  - 实现（T9.32 复核定）：标记写在 `stop_service` 钩子里（rc.common 的 procd 模式按 `stop_service` → 删除服务 → `service_stopped` 的顺序调用），不覆盖 `stop`；`enabled=0` 分支在自己的 stop 之后再清掉它。
+    重新登记只需 `procd_open_service` + `procd_close_service`：后者自己会加 `service_triggers`，在两者之间再调一次会把触发器塞进 `instances` 对象（复核时修正，H28K 实测停止后触发器仍在、连续两次配置变化后仍在）。
+  - `aether-proxy cleanup` 命令本身不写 `stopping`（它不依赖 daemon 存活，直接清理并写 `stopped`）。
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
 - 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。
