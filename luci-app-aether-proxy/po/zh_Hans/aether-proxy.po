@@ -1385,10 +1385,6 @@ msgid "Install %s, replacing the current %s?"
 msgstr "将安装 %s，替换当前的 %s？"
 
 msgctxt "aether-proxy"
-msgid "The service will restart."
-msgstr "服务会重启。"
-
-msgctxt "aether-proxy"
 msgid "Not automatically updated through the release channel: install or update from feeds on the Software page, or download the chinadns-ng package%s from the release page and install it manually."
 msgstr "不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包%s手工安装。"
 
@@ -2037,52 +2033,8 @@ msgid "Update failed: %s"
 msgstr "更新失败：%s"
 
 msgctxt "aether-proxy"
-msgid "Roll back Aether Proxy"
-msgstr "回滚 Aether Proxy"
-
-msgctxt "aether-proxy"
-msgid "These three packages will be rolled back together to keep the page and backend at the same version:"
-msgstr "这三个软件包会一起回滚，页面与后端保持同一版本："
-
-msgctxt "aether-proxy"
-msgid "%s: %s → %s"
-msgstr "%s：%s → %s"
-
-msgctxt "aether-proxy"
-msgid "%s: skip (not installed or no previous version available)"
-msgstr "%s：跳过（未安装或没有可用的旧版本）"
-
-msgctxt "aether-proxy"
-msgid "%s: rolled back to %s"
-msgstr "%s：已回滚到 %s"
-
-msgctxt "aether-proxy"
-msgid "Rolled back"
-msgstr "已回滚"
-
-msgctxt "aether-proxy"
-msgid "Skipped"
-msgstr "已跳过"
-
-msgctxt "aether-proxy"
-msgid "Failed"
-msgstr "失败"
-
-msgctxt "aether-proxy"
-msgid "Backend rolled back; page files are still newer. Try rolling back again or reinstalling."
-msgstr "后端已回滚，页面仍是新版，可再点一次回滚或重新安装"
-
-msgctxt "aether-proxy"
-msgid "The two page packages were not changed."
-msgstr "两个页面包没有改动"
-
-msgctxt "aether-proxy"
-msgid "Page files were rolled back. Please refresh the page (clear browser cache if necessary)."
-msgstr "页面已换成旧版本，请刷新页面（必要时清除浏览器缓存）"
-
-msgctxt "aether-proxy"
-msgid "Refresh page"
-msgstr "刷新页面"
+msgid "To install another version: download the three packages for that version from the release page, then upload and install them on the system Software page, or use opkg install. Before downgrading, note that older versions may not recognize newer settings; restore the default configuration first if necessary."
+msgstr "如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。"
 
 msgctxt "aether-proxy"
 msgid "Vision does not support multiplexing."

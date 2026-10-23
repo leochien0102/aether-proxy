@@ -1,7 +1,7 @@
 'use strict';
 
 /* T8.9b update-page contracts and T10.16 progressive status loading.
- * T10.31 covers grouped rollback confirmations, per-package results and refresh warnings.
+ * T10.46 replaces grouped rollback with Xray-only rollback and manual install guidance.
  * Cover pure decisions, CLI URL parity and actual view rendering/clicks.
  * Translations are loaded so assertions cover the text actually shown to users.
  */
@@ -61,13 +61,9 @@ test('T8.9b scenario 2: package state precedence and every action', () => {
 	assert.equal(model.table(status(), false, 160).url, 'https://channel/');
 	assert.match(model.table(status(), false, 160).checked, /1/);
 });
-test('T8.9b scenario 3: rollback confirmation includes both versions and correct restart warning', () => {
-	for (const name of names) {
-		const text = model.confirmation(name, 'CURRENT', 'PREVIOUS');
-		assert.match(text, /CURRENT/);
-		assert.match(text, /PREVIOUS/);
-		assert.equal(text.includes('服务会重启'), name != 'xray-core');
-	}
+test('T8.9b scenario 3 / T10.46: Xray rollback confirmation includes both versions without restart warning', () => {
+	assert.equal(model.confirmation('xray-core', 'CURRENT', 'PREVIOUS'),
+		'将安装 PREVIOUS，替换当前的 CURRENT？');
 });
 test('T8.9b scenario 4: check and install result messages cover success, rollback and failures', () => {
 	assert.equal(model.job_result('update_check', null, { state: 'ok', result: {
@@ -212,7 +208,6 @@ function buttons(node) {
 function load_view() {
 	globalThis.E = element;
 	const calls = [], loads = [], timers = [], maps = [], jobs = [], confirmations = [];
-	const reloads = [];
 	const ap = {
 		call: method => {
 			let resolve;
@@ -255,9 +250,8 @@ function load_view() {
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
 		'aether-proxy.model.updates': model,
 		'aether-proxy.common': ap
-	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); },
-		location: { reload: () => { reloads.push('reload'); } } }, document: {} });
-	return { page, calls, loads, timers, maps, jobs, ap, confirmations, reloads,
+	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
+	return { page, calls, loads, timers, maps, jobs, ap, confirmations,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -303,11 +297,9 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	const h = load_view();
 	const root = await h.page.render();
 	assert.deepEqual(h.calls, [], 'RPC must wait until render resolves');
-	assert.equal(root.children.length, 3);
-	assert.equal(root.children[0], h.page.refreshWarning);
-	assert.equal(text(root.children[0]), '');
-	assert.equal(root.children[1], h.maps[0].node);
-	assert.equal(root.children[2], h.page.inventory);
+	assert.equal(root.children.length, 2);
+	assert.equal(root.children[0], h.maps[0].node);
+	assert.equal(root.children[1], h.page.inventory);
 	assert.ok(descendants(h.page.inventory).includes(h.page.summary), 'summary now belongs to the action row');
 	const map = h.maps[0];
 	assert.equal(map.config, 'aetherproxy');
@@ -339,7 +331,7 @@ test('T10.16 updates scenario 3: status fills only inventory and preserves unsav
 	const h = load_view();
 	const root = await h.page.render();
 	const nodes = [ ...root.children ];
-	const inputs = [ ...nodes[1].children ];
+	const inputs = [ ...nodes[0].children ];
 	inputs[0].value = 'off';
 	inputs[4].value = 'https://unsaved/';
 	h.start();
@@ -362,7 +354,7 @@ test('T10.16 updates scenario 3: status fills only inventory and preserves unsav
 	for (const [i, node] of nodes.entries())
 		assert.equal(root.children[i], node, 'only inventory contents may be replaced');
 	for (const [i, input] of inputs.entries())
-		assert.equal(nodes[1].children[i], input, 'form controls retain identity');
+		assert.equal(nodes[0].children[i], input, 'form controls retain identity');
 	assert.equal(inputs[0].value, 'off');
 	assert.equal(inputs[4].value, 'https://unsaved/');
 	assert.equal(h.maps.length, 1);
@@ -373,7 +365,7 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 	for (const code of [ 'TIMEOUT', 'RPC_FAILED' ]) {
 		const h = load_view();
 		const root = await h.page.render();
-		const form = root.children[1];
+		const form = root.children[0];
 		form.children[4].value = 'https://unsaved/';
 		h.start();
 		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
@@ -393,7 +385,7 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		await running;
 		assert.equal(h.page.busy, false);
 		assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
-		assert.equal(root.children[1], form);
+		assert.equal(root.children[0], form);
 		assert.equal(form.children[4].value, 'https://unsaved/');
 	}
 });
@@ -444,8 +436,7 @@ test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and t
 	assert.match(source, /ap.run_job\('update_package', previous \? \[ name, '--previous' \]/);
 	assert.match(source, /cbi-button-remove/);
 	assert.match(source, /previous && !await ap\.confirm\(/);
-	assert.match(source, /text: Array.isArray\(row.confirmation\)/);
-	assert.match(source, /: row.confirmation,/);
+	assert.match(source, /text: row.confirmation,/);
 	assert.match(source, /validate.*function[^\n]*model.validate_url/);
 	assert.doesNotMatch(source, /rpc.declare|cbi-button-reset|upload|\.depends\s*=/i);
 	assert.doesNotMatch(source, /ap.poll/);
@@ -458,11 +449,11 @@ test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and t
 	}
 });
 
-function group_status() {
+function all_packages_status() {
 	return { updates_available: { arch: 'test_arch', packages: Object.fromEntries(
 		names.map((name, i) => [ name, { ...entry, installed: 'CURRENT-' + i, previous: 'OLD-' + i } ])) } };
 }
-async function ready_view(s = group_status()) {
+async function ready_view(s = all_packages_status()) {
 	const h = load_view();
 	h.root = await h.page.render();
 	h.page.status = s;
@@ -476,144 +467,113 @@ function rollback_button(h, name) {
 	return buttons(row).find(node => text(node).startsWith('回滚到'));
 }
 
-for (const name of names.slice(1, 3)) {
-	test(`T10.31 scenario 1: ${name} confirms all three versions; cancel never starts a job`, async () => {
-		const h = await ready_view();
-		await rollback_button(h, name).click();
-		const c = h.confirmations[0];
-		assert.equal(c.title, '回滚 Aether Proxy');
-		assert.equal(c.ok, '回滚');
-		assert.equal(c.destructive, true);
-		assert.deepEqual(c.text.map(text), [
-			'这三个软件包会一起回滚，页面与后端保持同一版本：',
-			...names.slice(1).map((name, i) => `${name}：CURRENT-${i + 1} → OLD-${i + 1}`)
-		]);
-		assert.ok(c.text.every(node => node.attrs.style == 'display:block'), 'each package has its own line');
-		assert.deepEqual(h.jobs, []);
-		assert.equal(h.page.busy, false);
-		assert.equal(text(h.page.summary), '');
-		assert.ok(buttons(h.page.inventory).every(button => !button.disabled));
-		// Confirming still dispatches the clicked package, not a frontend-generated group job.
-		h.ap.confirm = async () => true;
-		await rollback_button(h, name).click();
-		assert.deepEqual(h.jobs, [{ kind: 'update_package', args: [ name, '--previous' ] }]);
+test('T10.46 scenario 1: only Xray offers rollback even when all four previous versions are installable', async () => {
+	const s = all_packages_status();
+	const rows = model.table(s, false, 160).rows;
+	assert.deepEqual(rows.map(r => r.rollback), [true, false, false, false]);
+	assert.ok(rows.every(r => r.update));
+	assert.ok(rows.slice(1).every(r => r.confirmation === ''));
+	const h = await ready_view(s);
+	for (const name of names)
+		assert.equal(!!rollback_button(h, name), name == 'xray-core');
+	assert.equal(buttons(h.page.inventory).filter(b => text(b).startsWith('回滚')).length, 1);
+	assert.deepEqual(buttons(h.page.inventory).map(text),
+		['立即更新', '回滚到 OLD-0', '立即更新', '立即更新', '立即更新', '检查更新']);
+});
+test('T10.46 scenario 1: Xray keeps single-package confirmation, cancellation, dispatch and result', async () => {
+	const h = await ready_view();
+	assert.equal(rollback_button(h, 'xray-core').attrs.class, 'cbi-button cbi-button-remove');
+	await rollback_button(h, 'xray-core').click();
+	assert.deepEqual(h.confirmations[0], {
+		title: '回滚 xray-core', text: '将安装 OLD-0，替换当前的 CURRENT-0？',
+		ok: '回滚', destructive: true
 	});
-	test(`T10.31 scenario 1: ${name} confirmation marks missing packages or previous versions as skipped`, async () => {
-		for (const missing of ['not installed', 'no previous', 'not in channel']) {
-			const s = group_status();
-			const packages = s.updates_available.packages;
-			const other = name == 'aether-proxy' ? 'luci-app-aether-proxy' : 'aether-proxy';
-			if (missing == 'not installed')
-				packages[other].installed = null;
-			else if (missing == 'no previous')
-				packages[other].previous = null;
-			else
-				delete packages[other];
-			packages['luci-i18n-aether-proxy-zh-cn'].previous = null;
-			const h = await ready_view(s);
-			await rollback_button(h, name).click();
-			const lines = h.confirmations[0].text.map(text);
-			for (const skipped of [other, 'luci-i18n-aether-proxy-zh-cn'])
-				assert.ok(lines.includes(skipped + '：跳过（未安装或没有可用的旧版本）'), missing);
-			assert.ok(lines.includes(`${name}：CURRENT-${names.indexOf(name)} → OLD-${names.indexOf(name)}`));
-			assert.deepEqual(h.jobs, []);
-		}
-	});
-}
-for (const name of [names[0], names[3]]) {
-	test(`T10.31 scenario 2: ${name} retains its single-package confirmation and result`, async () => {
-		const h = await ready_view();
-		await rollback_button(h, name).click();
-		assert.deepEqual(h.confirmations[0], {
-			title: '回滚 ' + name,
-			text: `将安装 OLD-${names.indexOf(name)}，替换当前的 CURRENT-${names.indexOf(name)}？` +
-				(name == 'xray-core' ? '' : ' 服务会重启。'),
-			ok: '回滚', destructive: true
-		});
-		assert.deepEqual(h.jobs, []);
-		h.ap.confirm = async () => true;
-		h.ap.run_job = async () => ({ result: { ok: true, from: 'CURRENT', to: 'OLD' } });
-		await rollback_button(h, name).click();
-		assert.equal(text(h.page.summary), `${name} 已从 CURRENT 更新到 OLD` +
-			(name == 'xray-core' ? '' : ' 页面文件可能已变化，请刷新浏览器。'));
-		assert.equal(text(h.page.refreshWarning), '');
-	});
-}
-const page_packages = names.slice(2);
-const companion_labels = { rolled_back: '已回滚', skipped: '已跳过', failed: '失败' };
-for (const first of Object.keys(companion_labels)) {
-	for (const second of Object.keys(companion_labels)) {
-		test(`T10.31 scenarios 3-5: companions ${first}/${second} show exact rows and manual refresh only when changed`,
-		async () => {
-			const h = await ready_view();
-			const states = [first, second];
-			const failed = states.includes('failed');
-			const result = { ok: !failed, package: 'aether-proxy', from: 'CURRENT', to: 'OLD',
-				companions: Object.fromEntries(page_packages.map((name, i) => [name, states[i]])),
-				...(failed ? { code: 'CMD_FAILED', detail: '<install failed>' } : {}) };
-			h.ap.run_job = async () => ({ state: failed ? 'failed' : 'ok', result });
-			await h.page.run('update_package', 'luci-app-aether-proxy', true);
-			const expected = ['aether-proxy：已回滚到 OLD',
-				...page_packages.map((name, i) => name + ': ' + companion_labels[states[i]])];
-			if (failed)
-				expected.push('CMD_FAILED: <install failed>', '后端已回滚，页面仍是新版，可再点一次回滚或重新安装');
-			assert.deepEqual(h.page.summary.children.map(text), expected);
-			assert.equal(h.page.busy, false);
-			assert.ok(buttons(h.page.inventory).every(button => !button.disabled));
-			assert.deepEqual(h.reloads, [], 'never reload automatically');
-			assert.equal(h.root.children[0], h.page.refreshWarning, 'warning is at the page top');
-			if (states.includes('rolled_back')) {
-				assert.equal(h.page.refreshWarning.children[0].attrs.class, 'alert-message warning');
-				assert.match(text(h.page.refreshWarning), /页面已换成旧版本，请刷新页面（必要时清除浏览器缓存）/);
-				const refresh = buttons(h.page.refreshWarning)[0];
-				assert.equal(text(refresh), '刷新页面');
-				refresh.click();
-				assert.deepEqual(h.reloads, ['reload']);
-				// A later check redraw must not hide the warning or destroy the result early.
-				h.ap.run_job = async () => ({ result: { ok: true, packages: {} } });
-				await h.page.run('update_check');
-				assert.match(text(h.page.refreshWarning), /页面已换成旧版本/);
-			}
-			else {
-				assert.equal(text(h.page.refreshWarning), '');
-				assert.deepEqual(buttons(h.page.refreshWarning), []);
-			}
-		});
-	}
-}
-test('T10.31 scenario 5: backend verification failure retains cause, restoration and unchanged-page explanation',
-async () => {
-	for (const rolled_back of [true, false]) {
-		const h = await ready_view();
-		h.ap.run_job = async () => ({ state: 'failed', result: {
-			ok: false, code: 'UPDATE_VERIFY_FAILED', detail: '<probe failed>', rolled_back, from: 'CURRENT',
-			companions: Object.fromEntries(page_packages.map(name => [name, 'skipped']))
-		} });
-		await h.page.run('update_package', 'aether-proxy', true);
-		assert.deepEqual(h.page.summary.children.map(text), [
-			'校验失败: <probe failed>' + (rolled_back ? ' — 安装后检查失败，已回滚到 CURRENT' : ''),
-			...page_packages.map(name => name + ': 已跳过'), '两个页面包没有改动'
-		]);
-		assert.equal(text(h.page.refreshWarning), '');
-		assert.deepEqual(h.reloads, []);
+	assert.deepEqual(h.jobs, []);
+	assert.equal(h.page.busy, false);
+	assert.equal(text(h.page.summary), '');
+	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+	h.ap.confirm = async () => true;
+	h.ap.run_job = async (kind, args) => {
+		h.jobs.push({ kind, args });
+		return { state: 'ok', result: { ok: true, from: 'CURRENT', to: 'OLD' } };
+	};
+	await rollback_button(h, 'xray-core').click();
+	assert.deepEqual(h.jobs, [{ kind: 'update_package', args: ['xray-core', '--previous'] }]);
+	assert.equal(text(h.page.summary), 'xray-core 已从 CURRENT 更新到 OLD');
+	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+	assert.equal(h.root.children[0], h.maps[0].node, 'no rollback refresh banner before the form');
+});
+test('T10.46 scenario 2: model and view contain no grouped rollback or manual refresh UI', () => {
+	for (const file of ['aether-proxy/model/updates.js', 'view/aether-proxy/updates.js']) {
+		const source = fs.readFileSync(path.join(RES, file), 'utf8');
+		assert.doesNotMatch(source, /companions|grouped_|ROLLBACK_GROUP|rolls_back_together/);
+		assert.doesNotMatch(source, /page_rolled_back|refreshWarning|show_refresh_warning|location.reload/);
+		assert.doesNotMatch(source, /These three packages|Roll back Aether Proxy|Refresh page/);
 	}
 });
-test('T10.31 scenario 5: pre-install failures preserve original error and never claim a backend rollback', () => {
-	const skipped = Object.fromEntries(page_packages.map(name => [name, 'skipped']));
-	for (const code of ['UPDATE_FETCH_FAILED', 'MANIFEST_BAD_SIGNATURE']) {
-		// The CLI ran: its result reports the page packages as skipped.
-		const job = { state: 'failed', result: { ok: false, code, detail: 'WHY', companions: skipped } };
-		const result = model.job_result('update_package', 'aether-proxy', job, true);
-		assert.ok(result.startsWith(model.job_result('update_package', 'aether-proxy',
-			{ ok: false, code, detail: 'WHY' })));
-		assert.ok(result.endsWith('两个页面包没有改动'));
-		assert.doesNotMatch(result, /后端已回滚|已回滚到/);
+const manual_note = '如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，' +
+	'或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。';
+test('T10.46 scenario 3: translated manual install guidance sits immediately below the package table', async () => {
+	assert.equal(model.manual_install_note(), manual_note);
+	const h = load_view();
+	await h.page.render();
+	for (const s of [undefined, all_packages_status(), { ok: false, code: 'RPC_FAILED' }]) {
+		h.page.status = s;
+		h.page.show_inventory();
+		const children = h.page.inventory.children;
+		const index = children.findIndex(node => node.tag == 'table');
+		assert.equal(children[index + 1].tag, 'p');
+		assert.equal(text(children[index + 1]), manual_note);
 	}
-	for (const code of ['BUSY', 'JOB_LOST', 'RPC_FAILED']) {
-		// No CLI result: nothing is known about the page packages (T10.31 review).
-		const result = model.job_result('update_package', 'aether-proxy', { ok: false, code, detail: 'WHY' }, true);
-		assert.ok(result.startsWith(model.job_result('update_package', 'aether-proxy',
-			{ ok: false, code, detail: 'WHY' })));
-		assert.doesNotMatch(result, /两个页面包没有改动|后端已回滚|已回滚到/);
+});
+test('T10.46 scenario 4: automatic recovery text remains unchanged for Xray and backend installs', async () => {
+	for (const name of ['xray-core', 'aether-proxy']) {
+		const h = await ready_view();
+		for (const rolled_back of [true, false]) {
+			h.ap.run_job = async () => ({ state: 'failed', result: {
+				ok: false, code: 'UPDATE_VERIFY_FAILED', detail: '<probe failed>', rolled_back, from: 'CURRENT'
+			} });
+			await h.page.run('update_package', name, false);
+			assert.equal(text(h.page.summary), rolled_back ?
+				'安装后检查失败，已回滚到 CURRENT' : '校验失败: <probe failed>');
+			assert.equal(h.page.busy, false);
+			assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+			assert.doesNotMatch(text(h.root), /两个页面包没有改动|后端已回滚|页面已换成旧版本/);
+		}
+	}
+});
+test('T10.46 scenario 5: every package still installs and updates without previous or rollback confirmation', async () => {
+	for (const installed of [null, 'CURRENT']) {
+		const s = all_packages_status();
+		for (const p of Object.values(s.updates_available.packages))
+			p.installed = installed;
+		const h = await ready_view(s);
+		h.ap.run_job = async (kind, args) => {
+			h.jobs.push({ kind, args });
+			return { state: 'ok', result: { ok: true, from: installed, to: 'NEW' } };
+		};
+		for (const name of names) {
+			const table = h.page.inventory.children.find(node => node.tag == 'table');
+			const row = table.children.find(node => text(node.children[0]) == name);
+			const button = buttons(row).find(b => text(b) == (installed ? '立即更新' : '安装'));
+			assert.ok(button && !button.disabled);
+			await button.click();
+			assert.deepEqual(h.jobs.at(-1), { kind: 'update_package', args: [name] });
+			const result = installed ? `${name} 已从 CURRENT 更新到 NEW` : `${name} 已安装 NEW`;
+			assert.equal(text(h.page.summary), result +
+				(name == 'xray-core' ? '' : ' 页面文件可能已变化，请刷新浏览器。'));
+		}
+		assert.deepEqual(h.confirmations, []);
+	}
+});
+test('T10.46 scenario 5: pre-install and transport failures retain causes without grouped rollback claims', () => {
+	for (const code of ['UPDATE_FETCH_FAILED', 'MANIFEST_BAD_SIGNATURE', 'BUSY', 'JOB_LOST', 'RPC_FAILED']) {
+		for (const name of names) {
+			const r = { ok: false, code, detail: 'WHY' };
+			const result = model.job_result('update_package', name, { state: 'failed', result: r });
+			assert.equal(result, model.job_result('update_package', name, r));
+			assert.ok(result.endsWith(': WHY'));
+			assert.doesNotMatch(result, /两个页面包没有改动|后端已回滚|已回滚到/);
+		}
 	}
 });
