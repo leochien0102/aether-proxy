@@ -40,4 +40,35 @@ function beforeTable(root, row, table) {
 	assert.ok(nodes.indexOf(row) < nodes.indexOf(table), 'table-level actions precede the table');
 }
 
-module.exports = { actionRow, beforeTable, descendants };
+/* T10.44: inspect populated feedback too, not just its empty placeholder.
+ * Paragraphs have browser-default vertical margins; spans/divs do not.
+ */
+function marginlessMessages(messages) {
+	for (const node of messages.flatMap(descendants)) {
+		const style = node.style?.cssText ?? node.style ?? '';
+		if (node.tag === 'p' || /margin(?:-top|-bottom|-block)?\s*:/.test(style))
+			assert.match(style, /(?:^|;)\s*margin\s*:\s*0(?:\s*;|$)/,
+				'feedback has no vertical margins: ' + node.tag);
+	}
+}
+
+function nowrapActions(cell, labels) {
+	assert.equal(cell.tag, 'td', 'keep the theme action cell for narrow-screen cards');
+	assert.match(cell.class, /\bcbi-section-actions\b/, 'keep LuCI action-cell classes');
+	const row = cell.lastChild;
+	const buttons = descendants(row).filter(node => node.tag === 'button');
+	assert.deepEqual(buttons.map(button => button.textContent), labels, 'preserve action order');
+	for (const button of buttons)
+		assert.match(button.style?.cssText ?? button.style ?? '', /white-space:\s*nowrap/,
+			'button text stays on one line: ' + button.textContent);
+	for (const rule of [/display:\s*flex/, /flex-wrap:\s*nowrap/, /align-items:\s*center/, /gap:\s*0\.25em/])
+		assert.match(row.style?.cssText ?? row.style ?? '', rule, 'actions size to their content');
+	for (const node of descendants(cell)) {
+		const style = node.style?.cssText ?? node.style ?? '';
+		assert.doesNotMatch(style, /(?:^|;)\s*(?:width|max-width)\s*:\s*[^;]+/,
+			'no fixed width constrains the action cell, wrapper or buttons');
+		assert.equal(node.attrs?.width, undefined, 'no width attribute constrains actions');
+	}
+}
+
+module.exports = { actionRow, beforeTable, descendants, marginlessMessages, nowrapActions };

@@ -12,7 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element } = require('./loader');
-const { actionRow, descendants } = require('./button-layout');
+const { actionRow, descendants, marginlessMessages } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -424,9 +424,48 @@ async () => {
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
 		const index = h.page.inventory.children.indexOf(row);
-		assert.equal(h.page.inventory.children[index - 1].tag, 'p', 'last-checked line precedes actions');
+		assert.equal(text(h.page.inventory.children[index - 1]), model.manual_install_note(),
+			'manual installation guidance precedes actions');
 		assert.equal(h.page.inventory.children[index + 1].tag, 'h3', 'next block follows the action row');
 	}
+});
+
+test('T10.44 scenario 1: Last checked, live progress and completed check share the centered button row', async () => {
+	const h = load_view();
+	await h.page.render();
+	function checkRow() {
+		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
+		const checked = descendants(h.page.inventory).filter(node =>
+			['span', 'p'].includes(node.tag) && text(node).startsWith('上次检查: '));
+		assert.equal(checked.length, 1, 'Last checked is mounted exactly once');
+		assert.ok(row.children.includes(checked[0]), 'Last checked shares the button row');
+		assert.ok(row.children.indexOf(checked[0]) < row.children.indexOf(buttons(row)[0]),
+			'Last checked precedes the button');
+		marginlessMessages([checked[0], h.page.summary, h.page.progress]);
+		return checked[0];
+	}
+	assert.match(text(checkRow()), /读取中…/);
+	h.page.status = status();
+	h.page.show_inventory();
+	assert.doesNotMatch(text(checkRow()), /读取中…/);
+	let finishJob;
+	h.ap.run_job = () => new Promise(resolve => { finishJob = resolve; });
+	h.ap.job_progress = target => {
+		target.textContent = '正在检查更新…（已用 0 秒）';
+		return { stop() { target.textContent = ''; } };
+	};
+	const pending = h.page.run('update_check');
+	assert.match(text(h.page.progress), /已用 0 秒/);
+	checkRow();
+	finishJob({ state: 'ok', result: { ok: true, packages: {} } });
+	await settle();
+	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
+	checkRow();
+	h.calls[0].resolve(status());
+	await pending;
+	assert.equal(text(h.page.progress), '');
+	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
+	checkRow();
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {

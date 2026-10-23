@@ -3,6 +3,7 @@
 // Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
 // Also follows docs/10「订阅：通用设置、获取方式与行首开关」「节点与订阅合并为一页」.
 // r13 pending-state and tooltip rules: docs/10「r13 修正：订阅编辑框与启用开关」.
+// Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -209,7 +210,7 @@ return baseclass.extend({
 		this.pendingIds ??= new Set();
 		this.changesGeneration ??= 0;
 		this.resultCells = {};
-		this.statusError = E('p');
+		this.statusError = E('span', { style: 'margin:0' });
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		this.rowButtons = new Map();
@@ -243,7 +244,13 @@ return baseclass.extend({
 			self.rowButtons.set(id, button);
 			self.rowWrappers.set(id, wrapper);
 			self.sync_buttons();
-			dom.content(td.lastChild, [wrapper, ...Array.from(td.lastChild.childNodes)]);
+			const actions = [button, ...Array.from(td.lastChild.childNodes)];
+			// Theme button rules can override inherited nowrap; retain built-in nodes and handlers.
+			for (const action of actions)
+				action.style = (action.style?.cssText ?? '') + ';white-space:nowrap';
+			dom.content(td, E('div', {
+				style: 'display:flex; flex-wrap:nowrap; gap:0.25em; align-items:center'
+			}, [wrapper, ...actions.slice(1)]));
 			return td;
 		};
 		// GridSection's built-in cbi-button-remove dispatches here.
@@ -317,7 +324,8 @@ return baseclass.extend({
 			const job = await ap.run_job('sub_update', ids);
 			timer.stop();
 			const lines = model.job_result(job, id => uci.get('aetherproxy', id)?.name || id);
-			this.summary.replaceChildren(...lines.map(text => E('p', {}, text)));
+			// Paragraph margins would offset multi-subscription results from the adjacent buttons.
+			this.summary.replaceChildren(...lines.map(text => E('div', { style: 'margin:0' }, text)));
 			if (lines.length)
 				ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, text))));
 			// unload is synchronous in luci-base; only load returns a Promise.

@@ -11,6 +11,7 @@
  * Refresh only the inventory, leaving unsaved policy edits intact.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  * Xray-only rollback and manual installation guidance follow docs/10 "r13：取消三包手动回滚".
+ * Centered inline feedback follows docs/10 "r13 修正：块内行与表格操作列".
  */
 return view.extend({
 	load: function() {
@@ -90,11 +91,12 @@ return view.extend({
 				]);
 			})
 		]), E('p', {}, model.manual_install_note()),
-		E('p', {}, [ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
 		E('div', {
 			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-		}, [ this.summary, this.progress, check ]),
+		}, [ E('span', { style: 'margin:0' },
+			[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
+			this.summary, this.progress, check ]),
 		E('h3', {}, _('Running components', 'aether-proxy')),
 		...model.components(this.status).map(row => E('p', {},
 			[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])));
@@ -105,7 +107,8 @@ return view.extend({
 		this.busy = false;
 		this.inventory = E('div');
 		this.summary = E('div');
-		this.progress = E('p');
+		// A paragraph's default margins would shift progress away from the button's center.
+		this.progress = E('span', { style: 'margin:0' });
 		this.show_inventory();
 		const map = new form.Map('aetherproxy', _('Updates', 'aether-proxy'));
 		const section = map.section(form.NamedSection, 'update', 'update', _('Update policy', 'aether-proxy'));

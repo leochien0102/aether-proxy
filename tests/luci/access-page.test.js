@@ -11,6 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element: E } = require('./loader.js');
+const { nowrapActions } = require('./button-layout');
 
 const APP = path.join(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -75,6 +76,18 @@ function fixture(hosts = [], main = {}) {
 			/* SDK saves the child first, then reloads and resets its parent. */
 			return modalMap.save().then(() => this.map.load()).then(() => this.map.reset());
 		}
+		renderRowActions(sid) {
+			// SDK GridSection keeps TableSection's action cell and its Edit/Delete handlers.
+			const buttons = ['编辑', '删除'].map(label => {
+				const button = E('button', { click: () => ({ sid, label }) }, label);
+				button.style = { cssText: 'min-width:0;' };
+				return button;
+			});
+			calls.actions ??= [];
+			calls.actions.push({ sid, buttons });
+			return E('td', { class: 'td cbi-section-table-cell nowrap cbi-section-actions' },
+				E('div', {}, buttons));
+		}
 		renderSectionAdd() {
 			return E('div', {}, E('button', { class: 'cbi-button cbi-button-add' }, 'Add'));
 		}
@@ -84,7 +97,7 @@ function fixture(hosts = [], main = {}) {
 				cell.querySelector = () => cell.children[0];
 				cell.appendChild = (node) => cell.children.push(node);
 				return {
-					sid, style: {}, cell,
+					sid, style: {}, cell, actions: this.renderRowActions(sid),
 					getAttribute: () => sid,
 					querySelector: () => cell
 				};
@@ -348,6 +361,24 @@ test('T10.36 scenario 9: overlaps use five-policy order, notify without blocking
 	}
 });
 
+
+test('T10.44 scenario 2: access actions stay nowrap and content-sized with original handlers after reset', async () => {
+	const f = fixture([host('a', 'proxy'), host('b', 'follow')]);
+	await f.start();
+	for (const reset of [false, true]) {
+		if (reset)
+			await f.page.map.reset();
+		for (const row of f.table().rows) {
+			nowrapActions(row.actions, ['编辑', '删除']);
+			const originals = f.calls.actions.filter(action => action.sid === row.sid).at(-1).buttons;
+			assert.deepEqual(row.actions.lastChild.children, originals, 'keep the built-in buttons');
+			for (const button of originals) {
+				assert.match(button.style, /min-width:0;/, 'keep existing inline button styles');
+				assert.deepEqual(button.click(), { sid: row.sid, label: button.textContent });
+			}
+		}
+	}
+});
 
 test('T10.42 scenario 1: modal fields are enabled, name, device, IP, policy and game mode', async () => {
 	const f = fixture();
