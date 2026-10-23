@@ -10,7 +10,7 @@
 //   default   value used when the option is unset or empty (null = no default)
 //   enum      allowed values (type enum)
 //   min, max  inclusive bounds (type int)
-//   item      list element type: ipv4 | ip_or_cidr | mac | upstream | china_dns | trust_dns
+//   item      list element type: ipv4 | ip_or_cidr | ip_or_range | mac | upstream | china_dns | trust_dns
 //             | hostport | url | string
 //   min_items, max_items   list length bounds
 //   required  unset is an error: true, or (node only) a list of the protocols for which it is
@@ -71,7 +71,7 @@ const dns = [
 const host = [
 	{ name: 'enabled', type: 'bool', default: true },
 	{ name: 'name', type: 'string', default: null },
-	{ name: 'ip', type: 'list', item: 'ip_or_cidr', default: [] },
+	{ name: 'ip', type: 'list', item: 'ip_or_range', default: [] },
 	{ name: 'mac', type: 'list', item: 'mac', default: [] },
 	{ name: 'policy', type: 'enum', enum: [ 'follow', 'direct', 'bypass_cn', 'gfw', 'proxy' ], default: 'follow' },
 	{ name: 'udp', type: 'bool', default: false }

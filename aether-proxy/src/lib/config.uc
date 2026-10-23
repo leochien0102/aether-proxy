@@ -7,7 +7,7 @@
 // (docs/12 rule 1) and takes those plain objects, so it can be tested without UCI.
 
 import * as C from 'aetherproxy.const';
-import { ipv4, ip_or_cidr, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
+import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
 // ------------------------------------------------------------------ syntax validators
@@ -105,7 +105,7 @@ function nonempty(s) {
 }
 
 const ITEM_CHECK = {
-	ipv4, ip_or_cidr, mac, upstream, china_dns, trust_dns, hostport, url, string: nonempty
+	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, string: nonempty
 };
 
 const SCALAR_CHECK = {
@@ -115,7 +115,7 @@ const SCALAR_CHECK = {
 const INVALID_CODE = {
 	// Preserve the existing trust_dns error subcode; the enclosing event remains CONFIG_INVALID.
 	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream',
-	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
+	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', ip_or_range: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
 	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value',
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'
 };

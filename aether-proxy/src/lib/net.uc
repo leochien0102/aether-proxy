@@ -61,6 +61,42 @@ export function ip_or_cidr(s) {
 	return (addr & ~mask & 0xFFFFFFFF) == 0 ? s : null;
 };
 
+// start-end range of two IPv4 addresses (no whitespace, start <= end). Returns the normalised
+// string (start == end collapses to the single address) or null. Only host `ip` accepts
+// ranges (docs/05 `config host`); ip_or_cidr() deliberately stays range-free so the dynamic
+// set export/restore paths are unaffected.
+function addr_number(a) {
+	let o = map(split(a, '.'), x => +x);
+	return o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3];
+};
+
+export function range_parts(s) {
+	if (type(s) != 'string')
+		return null;
+
+	let p = split(s, '-');
+
+	if (length(p) != 2 || ipv4(p[0]) == null || ipv4(p[1]) == null)
+		return null;
+
+	let a = addr_number(p[0]), b = addr_number(p[1]);
+
+	return a <= b ? { start: a, end: b, from: p[0], to: p[1] } : null;
+};
+
+export function ip_or_range(s) {
+	if (type(s) == 'string' && index(s, '-') >= 0) {
+		let r = range_parts(s);
+
+		if (r == null)
+			return null;
+
+		return r.start == r.end ? r.from : `${r.from}-${r.to}`;
+	}
+
+	return ip_or_cidr(s);
+};
+
 export function domain(s) {
 	if (length(s) < 1 || length(s) > 253)
 		return null;
