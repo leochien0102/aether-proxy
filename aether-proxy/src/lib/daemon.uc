@@ -208,7 +208,7 @@ function wait_network(ctx, opts, snapshot, on_signal) {
 		return false;
 	let timeout = max(+(snapshot.main.boot_wait_timeout ?? 0), 0) * 1000;
 	let deadline = started + timeout;
-	let saved = write_state(ctx, { state: 'starting', dns_tier: 'T2', dns_failsafe: false,
+	let saved = write_state(ctx, { state: 'starting', dns_tier: snapshot.dns.direct_dns_enabled ? 'T2' : 'T1', dns_failsafe: false,
 		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time() });
 	if (!saved.ok)
 		return { ok: false, detail: saved.detail };
@@ -749,8 +749,26 @@ function stop_children(ctx, children) {
 		uloop.run();
 };
 
+// docs/04 stop step 0: publish `stopping` (other fields kept) before any cleanup so a page
+// polling state.json no longer sees the old process as running. A failed write is only logged.
+function write_stopping(ctx) {
+	let current = state.read(run_dir(ctx));
+	let obj = type(current) == 'object' ? { ...current } : {};
+	obj.state = 'stopping';
+	obj.since = time();
+	// Not write_state(): that records START_FAILED, which a stop must never emit (docs/04).
+	if (!sys.mkdir_p(run_dir(ctx)) || !state.write(run_dir(ctx), obj)) {
+		setup_log(ctx);
+		log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
+			detail: state.error() ?? sys.error() ?? 'unknown error' });
+	}
+};
+
 function shutdown(ctx, children, normal_stop) {
 	let failures = [];
+	// Startup rollback (normal_stop false) is not a stop: its state stays starting/error.
+	if (normal_stop)
+		write_stopping(ctx);
 	// Stop takes priority over one-shot commands and never waits for their lock (docs/04).
 	if (ctx.monitor != null) {
 		ctx.monitor.cancel();
@@ -1037,6 +1055,7 @@ function run(args) {
 	// Publish before validation or component checks, including an invalid configuration (04).
 	let raw = uci.cursor(opts.confdir);
 	let early = write_state(ctx, { state: 'starting', since: daemon_started_at,
+		dns_tier: raw.get(C.UCI_PACKAGE, 'dns', 'direct_dns_enabled') == '1' ? 'T2' : 'T1',
 		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode') });
 	if (!early.ok)
 		return 1;

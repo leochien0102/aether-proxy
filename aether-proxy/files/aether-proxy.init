@@ -6,8 +6,13 @@ STOP=10
 
 AETHER_PROXY=/usr/bin/aether-proxy
 _AETHER_PROXY_BOOT=0
+# Same name as STOPPED_BY_USER_FILE in lib/const.uc; the directory is overridable for tests.
+AETHER_PROXY_RUN_DIR="${AETHER_PROXY_RUN_DIR:-/var/run/aether-proxy}"
+_AETHER_PROXY_STOP_MARK="$AETHER_PROXY_RUN_DIR/stopped-by-user"
 
 start_service() {
+	# Any start (manual, restart, reload of a stopped service, boot) clears the manual-stop mark.
+	rm -f "$_AETHER_PROXY_STOP_MARK"
 	config_load aetherproxy
 	config_get_bool enabled main enabled 0
 	[ "$enabled" = 1 ] || return 0
@@ -43,10 +48,14 @@ reload_service() {
 	config_load aetherproxy
 	config_get_bool enabled main enabled 0
 	if [ "$enabled" != 1 ]; then
-		stop
+		# stop_service writes the manual-stop mark; this stop is not manual, so clear it again.
+		procd_running aether-proxy && stop
+		rm -f "$_AETHER_PROXY_STOP_MARK"
 		return 0
 	fi
 	if ! procd_running aether-proxy; then
+		# Stopped by hand (docs/04): editing the configuration must not bring it back.
+		[ -e "$_AETHER_PROXY_STOP_MARK" ] && return 0
 		start
 		return $?
 	fi
@@ -61,13 +70,26 @@ reload_service() {
 	return 0
 }
 
+stop_service() {
+	# Runs for init stop, restart and the enabled=0 reload; the last one clears it again.
+	mkdir -p "$AETHER_PROXY_RUN_DIR" && : > "$_AETHER_PROXY_STOP_MARK" ||
+		logger -t aether-proxy "cannot write $_AETHER_PROXY_STOP_MARK"
+	return 0
+}
+
 service_stopped() {
 	# Wait for both the daemon and its lock: monitor mode does not hold the lock (docs/04).
 	"$AETHER_PROXY" cleanup --wait 35
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
 		logger -t aether-proxy "aether-proxy cleanup failed (rc=$rc)"
-		return "$rc"
 	fi
-	return 0
+	# procd's stop deleted the service together with its reload trigger. Register it again with
+	# no instance, as boot does when enabled=0, so a later config change still reaches
+	# reload_service (docs/04 "配置变化的触发器在停止后也要保留").
+	# rc.common (procd) runs stop_service, deletes the service, then service_stopped; procd_close_service
+	# adds service_triggers itself, so open + close registers the triggers with no instance.
+	procd_open_service "$(basename "${basescript:-${initscript:-aether-proxy}}")" "${initscript:-/etc/init.d/aether-proxy}"
+	procd_close_service
+	return "$rc"
 }

@@ -406,6 +406,28 @@ out=$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" \
 expect 'T9.26 legacy status exits successfully' 0 "$?"
 expect 'T9.26 legacy status does not infer mode from UCI' '<missing>' "$(printf '%s\n' "$out" | jget mode)"
 
+# T9.32 scenario 5: `stopping` is a known state which is not "running".
+R="$T/stopping"; SR="$T/stopping-root"
+make_root "$SR"
+mkdir -p "$R"
+printf '{"state":"stopping","since":1700000000,"node_id":"n_00000000000000000000000000000001","mode":"gfw","dns_tier":"T2"}\n' > "$R/state.json"
+cp "$R/state.json" "$T/stopping-before"
+out=$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" --sys-root "$SR" --bin-dir "$T/bin" 2>"$T/stopping.stderr"); rc=$?
+expect 'T9.32 status --json under stopping exits 0' 0 "$rc"
+expect 'T9.32 status --json under stopping keeps state' stopping "$(printf '%s\n' "$out" | jget state)"
+expect 'T9.32 status --json under stopping keeps node_id' n_00000000000000000000000000000001 "$(printf '%s\n' "$out" | jget node_id)"
+expect 'T9.32 status --json under stopping has empty stderr' '' "$(cat "$T/stopping.stderr")"
+human=$(ap "$PATH_BOTH" status --confdir "$FIX/sample" --run-dir "$R" --sys-root "$SR" --bin-dir "$T/bin" 2>&1); rc=$?
+expect 'T9.32 human status under stopping exits 0' 0 "$rc"
+printf '%s\n' "$human" | grep -Fxq 'state: stopping' \
+	&& ok 'T9.32 human status under stopping shows the state' || bad 'T9.32 human status under stopping shows the state' "$human"
+out=$(ap "$PATH_BOTH" probe now --json --run-dir "$R" --confdir "$FIX/sample" --sys-root "$SR" --bin-dir "$T/bin" 2>"$T/stopping-probe.stderr"); rc=$?
+expect 'T9.32 probe now under stopping exits 1' 1 "$rc"
+expect 'T9.32 probe now under stopping is NOT_RUNNING' NOT_RUNNING "$(printf '%s\n' "$out" | jget code)"
+cmp -s "$T/stopping-before" "$R/state.json" \
+	&& ok 'T9.32 stopping state bytes unchanged by status and probe now' \
+	|| bad 'T9.32 stopping state bytes unchanged by status and probe now'
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

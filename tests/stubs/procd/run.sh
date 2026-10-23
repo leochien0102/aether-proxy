@@ -36,6 +36,9 @@ run_init() {
 		procd_set_param() { printf 'set %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_append_param() { printf 'append %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_close_instance() { printf 'close\n' >> "$PROCD_LOG"; }
+		procd_open_service() { printf 'open_service %s\n' "$*" >> "$PROCD_LOG"; }
+		# Like procd.sh: close_service adds service_triggers itself.
+		procd_close_service() { service_triggers; printf 'close_service\n' >> "$PROCD_LOG"; }
 		procd_add_reload_trigger() { printf 'trigger %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return "${SIGNAL_RC:-0}"; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
@@ -108,15 +111,110 @@ grep -Fxq start "$T/init-reload-start.log" && grep -Fxq 'open aether-proxy' "$T/
 	&& ok "reload of a stopped service starts it" || bad "reload of a stopped service starts it"
 run_init stop 1 0 init-stop; rc=$?
 expect "service_stopped cleanup succeeds" 0 "$rc"
+grep -Fxq 'open_service aether-proxy /etc/init.d/aether-proxy' "$T/init-stop.log" \
+	&& grep -Fxq 'trigger aetherproxy' "$T/init-stop.log" && grep -Fxq close_service "$T/init-stop.log" \
+	&& ok "T9.32 service_stopped re-registers the service with triggers" \
+	|| bad "T9.32 service_stopped re-registers the service with triggers"
 grep -Fxq 'aether-proxy cleanup --wait 35' "$T/init-stop.log" \
 	&& ok "service_stopped runs cleanup --wait 35" || bad "service_stopped runs cleanup --wait 35"
 run_init stop 1 3 init-stop-busy; rc=$?
 expect "service_stopped preserves cleanup failure status" 3 "$rc"
+grep -Fxq close_service "$T/init-stop-busy.log" \
+	&& ok "T9.32 service_stopped registers triggers even when cleanup fails" \
+	|| bad "T9.32 service_stopped registers triggers even when cleanup fails"
 contains "$T/init-stop-busy.log" 'aether-proxy cleanup failed (rc=3)' \
 	&& ok "service_stopped logs cleanup failure" || bad "service_stopped logs cleanup failure"
 run_init triggers 1 0 init-triggers; rc=$?
 expect "service_triggers succeeds" 0 "$rc"
 grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger registered" || bad "reload trigger registered"
+
+# T9.32: a stateful procd stand-in (registry file) so trigger registration, service deletion
+# and the manual-stop marker can be asserted across a whole stop/reload/start sequence.
+# Like rc.common in procd mode: start = open_service; start_service; close_service, and close_service
+# itself adds service_triggers (procd.sh); a trigger added before close lands inside "instances";
+# stop = stop_service; procd deletes the service (instances and triggers); service_stopped.
+F="$T/flow"
+mkdir -p "$F/run"
+flow_reset() { rm -rf "$F/run" "$F/svc"; mkdir -p "$F/run"; : > "$F/log"; }
+flow_op() {
+	(
+		export PROCD_LOG="$F/log" CHECK_RC=0
+		export AETHER_PROXY_RUN_DIR="$F/run"
+		initscript=/etc/init.d/aether-proxy
+		config_load() { return 0; }
+		config_get_bool() { printf -v "$1" '%s' "$(cat "$F/enabled")"; }
+		procd_open_service() { printf 'open_service %s\n' "$*" >> "$F/log"; : > "$F/pending"; }
+		procd_open_instance() { echo instance >> "$F/pending"; }
+		procd_set_param() { :; }
+		procd_append_param() { :; }
+		procd_close_instance() { :; }
+		procd_add_reload_trigger() {
+			if [ "${_in_close:-0}" = 1 ]; then echo "trigger $*" >> "$F/pending"; else echo "misplaced_trigger $*" >> "$F/pending"; fi
+		}
+		procd_close_service() { _in_close=1; service_triggers; _in_close=0; cp "$F/pending" "$F/svc"; printf 'close_service\n' >> "$F/log"; }
+		procd_running() { grep -Fxq instance "$F/svc" 2>/dev/null; }
+		procd_send_signal() { printf 'signal %s\n' "$*" >> "$F/log"; }
+		logger() { :; }
+		. "$INIT"
+		AETHER_PROXY="$T/bin-aether-proxy"
+		start() { procd_open_service "$(basename "${basescript:-$initscript}")" "$initscript"; start_service "$@"; procd_close_service; }
+		stop() { stop_service "$@"; rm -f "$F/svc"; printf 'service_deleted\n' >> "$F/log"; service_stopped "$@"; }
+		restart() { stop "$@"; start "$@"; }
+		"$1"
+	)
+}
+flow_has() { grep -Fxq -- "$1" "$F/svc" 2>/dev/null; }
+flow_no_instance() { [ -f "$F/svc" ] && ! flow_has instance; }
+MARK="$F/run/stopped-by-user"
+
+# Scenario 3: enabled=0 reload stops, yet the service stays registered with its trigger.
+flow_reset; echo 1 > "$F/enabled"
+flow_op start
+flow_has instance && flow_has 'trigger aetherproxy' && ok "T9.32 flow: started service has instance and trigger" \
+	|| bad "T9.32 flow: started service has instance and trigger"
+echo 0 > "$F/enabled"; flow_op reload_service; rc=$?
+expect "T9.32 flow: enabled=0 reload succeeds" 0 "$rc"
+grep -Fxq service_deleted "$F/log" && ok "T9.32 flow: stop deleted the service (as procd does)" \
+	|| bad "T9.32 flow: stop deleted the service (as procd does)"
+flow_no_instance && flow_has 'trigger aetherproxy' \
+	&& ok "T9.32 flow: after enabled=0 stop the service is registered again, no instance, with trigger" \
+	|| bad "T9.32 flow: after enabled=0 stop the service is registered again, no instance, with trigger"
+! grep -q misplaced_trigger "$F/svc" && ok "T9.32 flow: re-registration adds triggers only through close_service" \
+	|| bad "T9.32 flow: re-registration adds triggers only through close_service"
+[ ! -e "$MARK" ] && ok "T9.32 flow: enabled=0 branch leaves no manual-stop marker" \
+	|| bad "T9.32 flow: enabled=0 branch leaves no manual-stop marker"
+echo 1 > "$F/enabled"; flow_op reload_service
+flow_has instance && ok "T9.32 flow: enabled=1 reload after enabled=0 starts the service" \
+	|| bad "T9.32 flow: enabled=1 reload after enabled=0 starts the service"
+
+# Scenario 4: manual stop keeps config edits from starting the service.
+flow_op stop
+[ -e "$MARK" ] && ok "T9.32 flow: init stop writes the manual-stop marker" || bad "T9.32 flow: init stop writes the manual-stop marker"
+flow_no_instance && flow_has 'trigger aetherproxy' && ok "T9.32 flow: manual stop keeps the reload trigger" \
+	|| bad "T9.32 flow: manual stop keeps the reload trigger"
+flow_op reload_service; rc=$?
+expect "T9.32 flow: reload after manual stop succeeds" 0 "$rc"
+flow_no_instance && [ -e "$MARK" ] && ok "T9.32 flow: reload after manual stop does not start" \
+	|| bad "T9.32 flow: reload after manual stop does not start"
+flow_op start
+flow_has instance && [ ! -e "$MARK" ] && ok "T9.32 flow: start clears the marker and starts" \
+	|| bad "T9.32 flow: start clears the marker and starts"
+flow_op stop; flow_op restart
+flow_has instance && [ ! -e "$MARK" ] && ok "T9.32 flow: restart of a manually stopped service ends without marker" \
+	|| bad "T9.32 flow: restart of a manually stopped service ends without marker"
+flow_op restart
+flow_has instance && [ ! -e "$MARK" ] && ok "T9.32 flow: restart of a running service ends without marker" \
+	|| bad "T9.32 flow: restart of a running service ends without marker"
+flow_op reload_service
+grep -Fxq 'signal aether-proxy * HUP' "$F/log" && ok "T9.32 flow: running reload still sends HUP" \
+	|| bad "T9.32 flow: running reload still sends HUP"
+# enabled=0 clears a marker left by a manual stop, so off -> on starts afterwards.
+flow_op stop; echo 0 > "$F/enabled"; flow_op reload_service
+[ ! -e "$MARK" ] && ok "T9.32 flow: enabled=0 reload clears the marker of a manual stop" \
+	|| bad "T9.32 flow: enabled=0 reload clears the marker of a manual stop"
+echo 1 > "$F/enabled"; flow_op reload_service
+flow_has instance && ok "T9.32 flow: off then on after a manual stop starts the service" \
+	|| bad "T9.32 flow: off then on after a manual stop starts the service"
 
 # Preserve the original monitor-wakeup cases; DNS synchronization is an independent
 # background call, including on LAN. Only the harness waits for its logging substitute.
