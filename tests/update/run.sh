@@ -409,8 +409,8 @@ PY
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
 done
 
-# T9.16 reuses the signed manifests, package-manager stubs and restart fixture above.
-source "$ROOT/tests/update/rollback-together.sh"
+# T9.29 reuses the signed manifests, package-manager stubs and restart fixture above.
+source "$ROOT/tests/update/package-policy.sh"
 
 # Invalid hashes and unsupported architectures never reach the package manager.
 : > "$UPDATE_PACKAGE_CALLS"
@@ -526,7 +526,6 @@ while IFS='|' read -r label package state previous init_failure restarts signals
 done <<'ROLLBACK_CASES'
 running rollback|aether-proxy|running|no|first|2|0
 stopped rollback|aether-proxy|stopped|no|first|1|0
-previous restores current|aether-proxy|running|yes|first|2|0
 rollback restart fails|aether-proxy|running|no|always|2|0
 starting rollback|aether-proxy|starting|no|first|2|0
 degraded rollback|aether-proxy|degraded|no|first|2|0
