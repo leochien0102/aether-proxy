@@ -28,7 +28,7 @@ function state_write(ctx, value) {
 function settings(root, confdir, data_dir, baseline_dir, custom_dir, bin_dir) {
 	let opts = { sys_root: root, confdir, data_dir, baseline_dir, custom_dir, bin_dir, run_dir: C.RUN_DIR };
 	let ctx = { root, bin_dir, run_dir: C.RUN_DIR, state_dir: C.STATE_DIR, lan_ifaces: [ 'br-lan' ] };
-	let cfg = config.load(uci.cursor(confdir));
+	let cfg = config.load(uci.cursor(confdir, root + '/uci-savedir'));
 	if (!cfg.ok)
 		return { error: `config invalid: ${sprintf('%.J', cfg.errors)}` };
 	let built = pipeline.build({ ...opts, runtime: { node_ip: '203.0.113.20', dns_tier: 'T2', restored: {} } });
@@ -97,9 +97,47 @@ if (!uloop.init()) {
 	exit(1);
 }
 
-if (scenario == 'proxy-tier') {
+if (match(scenario, /^disabled-/)) {
 	let d = opts.daemon;
-	let state = config.load(uci.cursor(opts.opts.confdir)).snapshot;
+	d.snapshot.probe.fail_threshold = 1;
+	d.snapshot.probe.recover_threshold = 2;
+	d.snapshot.dns.allow_china_fallback = scenario != 'disabled-no-fallback';
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', ever_healthy: true };
+	if (scenario == 'disabled-t3' || scenario == 'disabled-recover') {
+		d.machine.state = 'degraded';
+		d.machine.dns_tier = 'T3';
+		d.machine.last_t2_retry = time() - 301;
+		d.machine.proxy_ok_count = scenario == 'disabled-recover' ? 1 : 0;
+	}
+	if (scenario == 'disabled-stale-t2') {
+		d.machine.state = 'degraded';
+		d.machine.dns_tier = 'T2';
+	}
+	if (scenario == 'disabled-outage') {
+		d.machine.xray_down_count = 1;
+		let path = `${opts.ctx.root}/proc/net/tcp`;
+		let lines = split(fs.readfile(path), '\n');
+		check(write(path, join('\n', filter(lines, line => index(line, '7968') < 0))),
+			'disabled-outage removes Xray listener');
+	}
+	let retry_before = d.machine.last_t2_retry;
+	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	let expected = scenario == 'disabled-no-fallback' || scenario == 'disabled-recover' ? 'T1' : 'T3';
+	check(d.machine.dns_tier == expected, `${scenario}: applies ${expected} without T2`, sprintf('%.J', d.machine));
+	check(count(fs.readfile(log_path), 'resolveip ') == 0,
+		`${scenario}: no direct-tier DNS probe is executed`);
+	if (scenario == 'disabled-t3')
+		check(d.machine.last_t2_retry == retry_before && !d.machine.t2_retry_pending,
+			'disabled-t3: five-minute retry stays disabled');
+	if (scenario == 'disabled-recover')
+		check(d.machine.state == 'running', 'disabled-recover: healthy threshold restores running/T1');
+	no_external_children(d);
+}
+else if (scenario == 'proxy-tier') {
+	let d = opts.daemon;
+	let state = config.load(uci.cursor(opts.opts.confdir, opts.ctx.root + '/uci-savedir')).snapshot;
 	state.probe.fail_threshold = 3;
 	state.probe.recover_threshold = 1;
 	d.snapshot = state;

@@ -89,6 +89,7 @@ read -r uptime rest < /proc/uptime
 printf '%s\n' "$uptime" >> "$SYSROOT/curl-times"
 if [ ! -f "$SYSROOT/first-probe-chinadns.conf" ]; then
 	cp "$SYSROOT/var/run/aether-proxy/current/chinadns.conf" "$SYSROOT/first-probe-chinadns.conf" || exit 1
+	cp "$SYSROOT/var/run/aether-proxy/state.json" "$SYSROOT/first-probe-state.json" || exit 1
 fi
 exec "$(dirname "$0")/curl-original" "$@"
 EOF
@@ -226,7 +227,7 @@ UCODE
 	return 1
 }
 
-# 1. Startup begins on T2, then the first immediate success reaches running/T1 within 5 s.
+# 1. Default-off startup begins on T1; its first immediate success still reaches running within 5 s.
 R1="$T/sys1"; L1="$T/sys1/calls.log"; make_root "$R1"; : > "$L1"
 L1_START="$T/sys1/startup.log"
 printf '{"gfw4":["1.2.3.4"],"udirect4":[],"uproxy4":[]}\n' > "$R1/var/run/aether-proxy/sets.save"
@@ -257,8 +258,10 @@ grep -Fq '203.0.113.20' "$R1/var/run/aether-proxy/current/xray.json" \
 grep -Fq 'set gfw4' "$R1/var/run/aether-proxy/current/aether-proxy.nft" && \
 	grep -Fq 'elements = { 1.2.3.4 }' "$R1/var/run/aether-proxy/current/aether-proxy.nft" \
 	&& ok "saved dynamic sets reach nft renderer" || bad "saved dynamic sets reach nft renderer"
-grep -Fq 'trust-dns tcp://9.9.9.9,tcp://8.8.8.8' "$R1/first-probe-chinadns.conf" \
-	&& ok "startup chinadns config uses T2" || bad "startup chinadns config uses T2"
+expect 'T9.28 default-off initial state is T1 before first health probe' T1 \
+	"$(jget dns_tier < "$R1/first-probe-state.json")"
+grep -Fq 'trust-dns tcp://127.0.0.1#31082,tcp://127.0.0.1#31083' "$R1/first-probe-chinadns.conf" \
+	&& ok 'T9.28 default-off startup chinadns config uses T1' || bad 'T9.28 default-off startup chinadns config uses T1'
 [ ! -e "$R1/var/run/aether-proxy/sets.save" ] && ok "sets.save is consumed after restoring" || bad "sets.save is consumed after restoring"
 for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 3' 'xray run -c' 'nft -f' 'ip rule add'; do
 	has_line "$L1" "$command" && ok "normal call recorded: $command" || bad "normal call recorded: $command"
@@ -327,6 +330,23 @@ echo 'CALL SEQUENCE scenario 1 (startup):'
 cat "$L1_START"
 echo 'CALL SEQUENCE scenario 2 (SIGTERM teardown):'
 cat "$STOP_LOG"
+
+# T9.28: opt-in preserves the old initial T2 behavior, independently of the default-off run.
+RE="$T/sys-direct-enabled"; LE="$RE/calls.log"; make_root "$RE"
+ENABLED_CONF="$T/enabled-conf"; mkdir -p "$ENABLED_CONF"
+cp "$FIX/aetherproxy" "$ENABLED_CONF/aetherproxy"
+printf "\nconfig dns 'dns'\n\toption direct_dns_enabled '1'\n" >> "$ENABLED_CONF/aetherproxy"
+start_daemon "$RE" "$LE" --confdir "$ENABLED_CONF"
+if wait_for "$RE/var/run/aether-proxy/state.json" '"state": "running"'; then
+	expect 'T9.28 enabled initial state is T2 before first health probe' T2 \
+		"$(jget dns_tier < "$RE/first-probe-state.json")"
+	grep -Fq 'trust-dns tcp://9.9.9.9' "$RE/first-probe-chinadns.conf" \
+		&& ok 'T9.28 enabled startup chinadns config uses direct upstream' \
+		|| bad 'T9.28 enabled startup chinadns config uses direct upstream'
+else
+	bad 'T9.28 enabled daemon starts' "$(cat "$RE/daemon.stderr")"
+fi
+stop_daemon; expect 'T9.28 enabled daemon stops cleanly' 0 "$?"; assert_no_children "$RE"
 
 # SIGUSR2 restarts only the supervised Xray child and schedules an immediate monitor round.
 R2U="$T/sys2usr2"; L2U="$T/sys2usr2/calls.log"; make_root "$R2U"; : > "$L2U"

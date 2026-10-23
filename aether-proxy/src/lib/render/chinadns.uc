@@ -37,13 +37,14 @@ export function render(snapshot, ctx) {
 	let main = snapshot?.main ?? {};
 	let dns = snapshot?.dns ?? {};
 	let paths = ctx?.paths ?? {};
-	// The monitor starts every run at T2 (docs/03 "切换规则"), so that is the default
-	// when the context carries no tier.
-	let tier = ctx?.runtime?.dns_tier ?? 'T2';
+	// docs/03 "直连境外 DNS（可选）": T2 is opt-in, including bootstrapping.
+	let tier = ctx?.runtime?.dns_tier ?? (dns.direct_dns_enabled ? 'T2' : 'T1');
+	if (tier == 'T2' && !dns.direct_dns_enabled)
+		tier = 'T1';
 	// Production snapshots are already expanded by pipeline.read. Raw fixture snapshots
 	// use context.json's wan_dns, never live network I/O, keeping rendering deterministic.
 	let china = expand_china_dns(dns.china_dns, ctx?.wan_dns);
-	let direct = dns.direct_dns ?? [];
+	let direct = dns.direct_dns_enabled ? (dns.direct_dns ?? []) : china;
 	let trust = trust_upstreams(dns, tier, china);
 	// DNS still follows main.mode; device GFW overrides only need its IP set populated (docs/03).
 	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false && h.policy == 'gfw')) > 0;

@@ -350,5 +350,8 @@ export JOB_STUB_JSON='{"ok":true,"code":"IGNORED","detail":"not a failure"}'
 check_child_event success null ok
 unset JOB_STUB_JSON
 
+# T9.28: dedicated DNS-kind locking, rpcd-facing results, and a real CLI worker.
+source "$ROOT/tests/job/dns-test.sh"
+
 echo "job: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

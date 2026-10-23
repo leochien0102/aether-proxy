@@ -596,6 +596,13 @@ else
 	bad 'T9.23 WAN DNS CLI and lifecycle scenarios'
 fi
 
+# T9.28: real IPv4 DNS sockets and standalone CLI diagnostics, with private UCI savedirs.
+if python3 "$ROOT/tests/cli/dns-test-direct.py"; then
+	ok 'T9.28 DNS socket and CLI scenarios'
+else
+	bad 'T9.28 DNS socket and CLI scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

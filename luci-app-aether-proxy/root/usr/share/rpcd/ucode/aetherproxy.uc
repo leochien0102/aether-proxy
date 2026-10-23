@@ -135,6 +135,9 @@ function job_argv(kind, args) {
 		return [ 'job', 'start', 'sub', 'update', ...args ];
 	}
 
+	if (kind == 'dns_test')
+		return length(args) == 0 ? [ 'job', 'start', 'dns', 'test-direct' ] : null;
+
 	if (kind == 'update_check')
 		return length(args) == 0 ? [ 'job', 'start', 'update', 'check' ] : null;
 
