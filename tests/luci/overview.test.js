@@ -109,8 +109,11 @@ function loadView(overrides = {}) {
 		'aether-proxy.model.overview': modelMod
 	}, { window: Object.assign({
 		setTimeout: () => {}, clearTimeout: () => {},
-		localStorage: { getItem: () => null, setItem: () => {} }
-	}, overrides.window ?? {}), document: { addEventListener() {}, removeEventListener() {} } });
+		localStorage: { getItem: () => null, setItem: () => {} },
+		addEventListener() {}, removeEventListener() {}
+	}, overrides.window ?? {}), document: overrides.document ?? {
+		addEventListener() {}, removeEventListener() {}
+	} });
 }
 
 /* Expected text for a translated template with its %s filled in. */
@@ -772,9 +775,10 @@ test('T10.23 scenario 3: only running/degraded with sites enables real latency',
 	assert.equal(page.probeButton.disabled, true);
 });
 
-test('T8.12c service refresh: action schedules serialized status/stats even with automatic refresh off', async () => {
+test('T8.12c service refresh: stop schedules serialized status/stats even with automatic refresh off', async () => {
 	const clock = timerQueue(), calls = [];
-	const page = loadView({ window: clock, ap: { call: async (method, params) => {
+	const page = loadView({ window: clock, confirm: async () => true, ap: {
+		confirm: async () => true, call: async (method, params) => {
 		calls.push([ method, params ]);
 		return method === 'status' ? { ok: true, state: 'running' }
 			: method === 'stats' ? readings(1000, 1, 2, 3, 4) : { ok: true };
@@ -783,8 +787,9 @@ test('T8.12c service refresh: action schedules serialized status/stats even with
 	page.labels = {};
 	page.enabled = true;
 	page.startPolling(0);
-	await page.handleService('restart');
-	assert.deepEqual(calls, [ [ 'service', { action: 'restart' } ] ]);
+	page.refresh({ state: 'running' });
+	await page.handleService('stop');
+	assert.deepEqual(calls, [ [ 'service', { action: 'stop' } ] ]);
 	await clock.run(1500);
 	await page.refreshing;
 	assert.deepEqual(calls.map((call) => call[0]), [ 'service', 'status', 'stats' ]);
@@ -3197,4 +3202,344 @@ test('T10.38 review: Apply compares with the effective mode, not the configured 
 	await h.page.handleNode('n_a', 'bypass_cn');
 	assert.ok(!h.calls.some(([method]) => method === 'node_use' || method === 'mode_use'),
 		'selecting the effective node and mode is not a change');
+});
+
+/* T10.43 uses a virtual clock, real success-shaped status replies (no ok), and
+   event-only apply completion: LuCI apply() returns undefined even on success. */
+function startupHarness(options = {}) {
+	let now = 0;
+	const timers = new Set();
+	const listeners = new Map();
+	const events = {
+		addEventListener(name, fn) {
+			if (!listeners.has(name))
+				listeners.set(name, new Set());
+			listeners.get(name).add(fn);
+		},
+		removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
+		dispatch(name) {
+			for (const fn of [...(listeners.get(name) ?? [])])
+				fn();
+		}
+	};
+	const clock = {
+		...events,
+		setTimeout(fn, ms) {
+			const timer = { fn, at: now + ms };
+			timers.add(timer);
+			return timer;
+		},
+		clearTimeout(timer) { timers.delete(timer); },
+		async advance(ms) {
+			const target = now + ms;
+			for (;;) {
+				const next = [...timers].sort((a, b) => a.at - b.at)[0];
+				if (!next || next.at > target)
+					break;
+				now = next.at;
+				timers.delete(next);
+				next.fn();
+				for (let i = 0; i < 16; i++)
+					await Promise.resolve();
+			}
+			now = target;
+		}
+	};
+	const calls = [], polls = [], notes = [];
+	const h = { clock, events, calls, polls, notes, status: { state: 'stopped' }, timers, listeners };
+	h.page = loadView({
+		document: events,
+		window: { ...clock, localStorage: { getItem: () => '0', setItem() {} } },
+		ap: {
+			confirm: async () => true,
+			call(method, params) {
+				calls.push([method, params]);
+				if (method === 'status')
+					return Promise.resolve(options.status?.() ?? h.status);
+				if (method === 'service')
+					return Promise.resolve(options.service?.() ?? { ok: true });
+				if (method === 'events')
+					return Promise.resolve(options.events?.() ?? { ok: true, events: [] });
+				return Promise.resolve({ ok: true });
+			},
+			poll(fn, ms) {
+				const poll = { ms, stopped: false, stop() {
+					this.stopped = true;
+					clock.clearTimeout(this.timer);
+				} };
+				const tick = async () => {
+					await fn();
+					if (!poll.stopped)
+						poll.timer = clock.setTimeout(tick, ms);
+				};
+				poll.timer = clock.setTimeout(tick, ms);
+				polls.push(poll);
+				return poll;
+			}
+		},
+		uci: { save: options.save ?? (async () => {}) },
+		ui: {
+			changes: { apply: options.apply ?? (() => {}) },
+			addNotification: (title, body, kind) => notes.push({ text: visibleText(body), kind }),
+			/* Real createHandlerFn returns undefined and re-enables on completion.
+			   Service buttons must not delegate their disabled state to it. */
+			createHandlerFn: (ctx, fn) => ev => {
+				Promise.resolve(fn.call(ctx, ev)).finally(() => { if (ev?.target) ev.target.disabled = false; });
+			}
+		}
+	});
+	const page = h.page;
+	page.labels = { n_a: 'A very long node label', n_b: 'Beta' };
+	page.currentNode = 'n_a';
+	page.currentMode = 'bypass_cn';
+	page.enabled = true;
+	page.content = E('div');
+	page.startPolling(0);
+	page.refresh(h.status);
+	return h;
+}
+
+function runtimeButtons(page) {
+	return findAll(page.runtimeContent, 'button').slice(0, 3);
+}
+
+for (const state of ['starting', 'running', 'degraded', 'failsafe', 'error']) {
+	test(`T10.43 scenario 1: Start immediately waits, polls at 2s with refresh Off, then displays ${state}`,
+		async () => {
+		let finishService;
+		const h = startupHarness({ service: () => new Promise(resolve => { finishService = resolve; }) });
+		const { page, clock } = h;
+		const start = runtimeButtons(page)[0];
+		const pending = start.attrs.click({ target: start });
+		assert.equal(page.vm.state_text, '正在启动…', 'feedback precedes the service reply');
+		assert.equal(runtimeButtons(page)[0].disabled, true);
+		assert.equal(runtimeButtons(page)[1].disabled, true);
+		await clock.advance(2000);
+		assert.equal(h.calls.filter(([method]) => method === 'status').length, 1,
+			'status polling starts even while the service request is in flight');
+		assert.equal(page.vm.state_text, '正在启动…');
+		finishService({ ok: true });
+		await pending;
+		await start.attrs.click();
+		assert.equal(h.calls.filter(([method]) => method === 'service').length, 1, 'stale double click is guarded');
+		await clock.advance(1999);
+		assert.equal(h.calls.filter(([method]) => method === 'status').length, 1);
+		await clock.advance(1);
+		assert.equal(h.calls.filter(([method]) => method === 'status').length, 2);
+		assert.equal(page.vm.state_text, '正在启动…', 'stopped keeps waiting');
+		h.status = { state, last_error: state === 'error' ? 'NODE_RESOLVE_FAILED' : null };
+		await clock.advance(2000);
+		assert.equal(page.vm.state_text, build(h.status).state_text);
+		assert.deepEqual(page.vm.buttons, build(h.status).buttons);
+		assert.deepEqual(runtimeButtons(page).map(disabled), Object.values(page.vm.buttons).map(value => !value));
+		assert.equal(page.vm.error_text, state === 'error' ? '节点地址解析失败' : null);
+		assert.equal(page.startup, null);
+		assert.equal(page.poller, null, 'user refresh preference is unchanged');
+		assert.ok(h.polls.every(poll => poll.ms === 2000 && poll.stopped));
+		const count = h.calls.length;
+		await clock.advance(60000);
+		assert.equal(h.calls.length, count, 'outcome cancels startup polling and timeout');
+	});
+}
+
+for (const reply of [{ state: 'stopped' }, { ok: false, code: 'TIMEOUT' }, { state: 'unknown' }]) {
+	test(`T10.43 scenario 1: 60s deadline restores buttons after ${reply.state ?? reply.code}`, async () => {
+		const h = startupHarness();
+		await h.page.handleService('start');
+		h.status = reply;
+		await h.clock.advance(59999);
+		assert.equal(h.page.vm.state_text, '正在启动…');
+		assert.equal(runtimeButtons(h.page)[0].disabled, true);
+		await h.clock.advance(1);
+		assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
+		assert.equal(h.page.startup, null);
+		assert.deepEqual(h.page.vm.buttons, build(reply).buttons, 'normal safety rules resume');
+		assert.ok(h.polls[0].stopped);
+		const count = h.calls.length;
+		await h.clock.advance(10000);
+		assert.equal(h.calls.length, count);
+	});
+}
+
+test('T10.43 scenario 2: pre-acknowledgement running status cannot finish Restart', async () => {
+	let finishService;
+	const h = startupHarness({ service: () => new Promise(resolve => { finishService = resolve; }) });
+	h.status = { state: 'running' };
+	h.page.refresh(h.status);
+	const pending = h.page.handleService('restart');
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.ok(h.page.startup);
+	finishService({ ok: true });
+	await pending;
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '运行中');
+	assert.equal(h.page.startup, null);
+});
+
+test('T10.43 scenario 1: slow status cannot extend deadline or overwrite a retry', async () => {
+	let resolve;
+	const h = startupHarness({ status: () => new Promise(done => { resolve = done; }) });
+	await h.page.handleService('start');
+	await h.clock.advance(2000);
+	await h.clock.advance(58000);
+	assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
+	assert.equal(runtimeButtons(h.page)[0].disabled, false);
+	await h.page.handleService('start');
+	resolve({ state: 'running' });
+	for (let i = 0; i < 16; i++)
+		await Promise.resolve();
+	assert.equal(h.page.vm.state_text, '正在启动…', 'late reply belongs to the previous wait');
+	assert.ok(h.page.startup);
+	h.events.dispatch('pagehide');
+	assert.equal(h.page.startup, null);
+	assert.equal(h.timers.size, 0, 'page exit cancels poll and deadline');
+});
+
+test('T10.43 scenario 1: service failure reports diagnostics and restores controls without waiting', async () => {
+	const h = startupHarness({ service: () => ({ ok: false, code: 'CMD_FAILED', detail: 'init failed' }) });
+	await h.page.handleService('start');
+	assert.equal(h.page.vm.state_text, '已停止');
+	assert.equal(runtimeButtons(h.page)[0].disabled, false);
+	assert.equal(h.page.startup, null);
+	assert.equal(h.timers.size, 0);
+	assert.equal(h.notes.length, 1);
+	assert.ok(h.notes[0].text.includes('CMD_FAILED') && h.notes[0].text.includes('init failed'));
+});
+
+test('T10.43 scenario 2: Restart ignores intermediate stopped and ordinary refresh cannot end waiting', async () => {
+	const h = startupHarness();
+	h.page.refresh({ state: 'running' });
+	await runtimeButtons(h.page)[1].attrs.click();
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.ok(h.page.startup, 'stopped during restart is not completion');
+	await h.page.fetchRefresh();
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	h.status = { state: 'starting', waiting_network: true };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '等待网络');
+	assert.equal(h.page.startup, null);
+	assert.deepEqual(h.calls.filter(([method]) => method === 'service'), [['service', { action: 'restart' }]]);
+});
+
+test('T10.43 scenario 3: Enable waits for uci-applied, not save or apply return; deadline starts on completion',
+	async () => {
+	let saved;
+	const h = startupHarness({ save: () => new Promise(resolve => { saved = resolve; }) });
+	h.page.enabled = false;
+	const pending = h.page.handleEnable(true);
+	await h.clock.advance(60000);
+	assert.equal(h.page.startup, undefined, 'save in progress does not arm startup');
+	saved();
+	await pending;
+	await h.clock.advance(60000);
+	assert.equal(h.page.startup, undefined, 'apply returned undefined but has not completed');
+	assert.deepEqual(h.calls, []);
+	h.events.dispatch('uci-applied');
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(runtimeButtons(h.page)[0].disabled, true);
+	assert.equal(h.listeners.get('uci-applied').size, 0, 'completion listener is one-shot');
+	await h.clock.advance(59999);
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	await h.clock.advance(1);
+	assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
+	assert.ok(!h.calls.some(([method]) => method === 'service'), 'Enable never calls service');
+});
+
+for (const result of ['cancelled', 'failed', 'save failed', 'apply throws']) {
+	test(`T10.43 scenario 3: ${result} apply never enters startup waiting`, async () => {
+		const h = startupHarness({
+			save: async () => { if (result === 'save failed') throw new Error('save failed'); },
+			apply: () => { if (result === 'apply throws') throw new Error('apply failed'); }
+		});
+		h.page.enabled = false;
+		if (result === 'save failed' || result === 'apply throws')
+			await assert.rejects(h.page.handleEnable(true), /failed/);
+		else
+			await h.page.handleEnable(true);
+		/* Real LuCI cancel and failed apply emit no uci-applied event. */
+		await h.clock.advance(120000);
+		assert.equal(h.page.startup, undefined);
+		assert.notEqual(h.page.vm.state_text, '正在启动…');
+		assert.deepEqual(h.calls, []);
+		h.events.dispatch('pagehide');
+		assert.equal(h.listeners.get('uci-applied')?.size ?? 0, 0);
+	});
+}
+
+test('T10.43 scenario 3: disabling or reverting clears dormant Enable intent', async () => {
+	for (const action of ['disable', 'revert']) {
+		const h = startupHarness();
+		h.page.enabled = false;
+		await h.page.handleEnable(true);
+		if (action === 'disable')
+			await h.page.handleEnable(false);
+		else
+			h.events.dispatch('uci-reverted');
+		h.events.dispatch('uci-applied');
+		assert.equal(h.page.startup, undefined, action);
+		assert.equal(h.listeners.get('uci-applied').size, 0);
+	}
+});
+
+test('T10.43 scenario 1: an older automatic status cannot replace a newer startup outcome', async () => {
+	let release;
+	const h = startupHarness({ status: () => h.calls.filter(([method]) => method === 'status').length === 1
+		? new Promise(resolve => { release = resolve; }) : { state: 'running' } });
+	const old = h.page.fetchRefresh();
+	await h.page.handleService('start');
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '运行中');
+	release({ state: 'stopped' });
+	await old;
+	assert.equal(h.page.vm.state_text, '运行中');
+});
+
+test('T10.43 scenario 1: late diagnostic events cannot overwrite a newer startup result', async () => {
+	let release;
+	const h = startupHarness({ events: () => new Promise(resolve => { release = resolve; }) });
+	h.status = { state: 'running', node_id: 'n_b' };
+	const old = h.page.fetchRefresh();
+	for (let i = 0; i < 16; i++)
+		await Promise.resolve();
+	assert.equal(typeof release, 'function');
+	assert.ok(h.page.vm.switch_notice);
+	await h.page.handleService('restart');
+	h.status = { state: 'running', node_id: 'n_a' };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.switch_notice, null);
+	release({ ok: true, events: [{ ts: NOW, code: 'CONFIG_INVALID', args: {} }] });
+	await old;
+	assert.equal(h.page.vm.switch_notice, null);
+	assert.equal(h.page.latestEvents, undefined);
+});
+
+test('T10.43 scenario 1: stale startup read cannot complete over a newer ordinary status', async () => {
+	let release;
+	let reads = 0;
+	const h = startupHarness({ status: () => ++reads === 1
+		? new Promise(resolve => { release = resolve; }) : { state: 'stopped' } });
+	await h.page.handleService('start');
+	await h.clock.advance(2000);
+	await h.page.fetchRefresh();
+	release({ state: 'running' });
+	for (let i = 0; i < 16; i++)
+		await Promise.resolve();
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.ok(h.page.startup, 'discarded completion does not strand a waiting display with no poller');
+	h.events.dispatch('pagehide');
+});
+
+test('T10.43 scenario 4: node minimum is 16em clamped to narrow width, with wrapping flex groups', () => {
+	const h = startupHarness();
+	const nodes = findAll(h.page.nodeControl, 'select')[0];
+	assert.match(nodes.attrs.style, /min-width:\s*min\(16em,\s*100%\)/);
+	assert.match(nodes.attrs.style, /max-width:\s*100%/);
+	assert.match(nodes.attrs.style, /width:\s*auto/);
+	assert.match(h.page.nodeControl.attrs.style, /flex-wrap:\s*wrap/);
+	assert.match(h.page.nodeControl.attrs.style, /min-width:\s*0/);
+	assert.match(h.page.nodeControl.attrs.style, /max-width:\s*100%/);
+	assert.doesNotMatch(nodes.attrs.style, /\dpx/);
 });

@@ -13,6 +13,8 @@
  * T10.24 follows docs/10 「概览页第七轮修正」: restart-aware inventory,
  * manual health display, remembered/retryable sites and pending-switch guards.
  * T10.38 follows docs/10 「概览页：默认模式下拉」 for one-shot node/mode apply.
+ * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
+ * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -90,9 +92,19 @@ return view.extend({
 
 		uci.set('aetherproxy', 'main', 'enabled', this.enabled ? '1' : '0');
 
-		return uci.save().then(function() {
-			return ui.changes.apply(true);
-		});
+		this.clearEnableApply?.();
+		await uci.save();
+		/* apply() returns undefined, not a completion promise (LuCI ui.js).
+		   Only uci-applied means the checked apply actually succeeded. */
+		if (this.enabled)
+			this.watchEnableApply();
+		try {
+			ui.changes.apply(true);
+		}
+		catch (e) {
+			this.clearEnableApply?.();
+			throw e;
+		}
 	},
 
 	enableSwitch: function(note) {
@@ -119,8 +131,78 @@ return view.extend({
 		]);
 	},
 
+	watchEnableApply: function() {
+		const clear = this.clearEnableApply = () => {
+			document.removeEventListener('uci-applied', applied);
+			document.removeEventListener('uci-reverted', clear);
+			window.removeEventListener('pagehide', clear);
+			this.clearEnableApply = null;
+		};
+		const applied = () => {
+			clear();
+			this.beginStartup(true);
+		};
+		/* TODO(design): LuCI emits no apply-cancelled/apply-failed event. Leave
+		   the intent dormant (no startup timer or poll) until a successful apply,
+		   a new toggle, revert or page exit; do not guess success from a delay. */
+		document.addEventListener('uci-applied', applied);
+		document.addEventListener('uci-reverted', clear);
+		window.addEventListener('pagehide', clear);
+	},
+
+	endStartup: function(phase) {
+		if (this.startup) {
+			this.startup.poller.stop();
+			window.clearTimeout(this.startup.deadline);
+			window.removeEventListener('pagehide', this.startup.cleanup);
+		}
+		this.startup = null;
+		this.startupPhase = phase;
+	},
+
+	beginStartup: function(ready) {
+		this.endStartup('waiting');
+		const session = { ready, reading: false };
+		this.startup = session;
+		session.cleanup = () => this.endStartup(null);
+		window.addEventListener('pagehide', session.cleanup);
+		/* This cadence ignores the user's automatic-refresh preference. The hard
+		   deadline also releases controls when status itself is slow or fails. */
+		session.poller = ap.poll(() => this.fetchStartup(session), 2000);
+		session.deadline = window.setTimeout(() => {
+			if (this.startup !== session)
+				return;
+			this.endStartup('timeout');
+			this.refresh(this.status, undefined, this.latestEvents);
+		}, 60000);
+		this.refresh(this.status, undefined, this.latestEvents);
+		return session;
+	},
+
+	fetchStartup: async function(session) {
+		if (this.startup !== session || session.reading)
+			return;
+		session.reading = true;
+		/* Poll immediately at the requested cadence, but a read issued before
+		   service acknowledges restart may still describe the old process. */
+		const ready = session.ready;
+		const read = this.nextStatusRead();
+		try {
+			const reply = await ap.call('status');
+			if (this.startup !== session || read < (this.acceptedRead ?? 0))
+				return;
+			if (ready && model.startup_complete(reply))
+				this.endStartup(null);
+			this.acceptStatus(reply, read);
+		}
+		finally {
+			session.reading = false;
+		}
+	},
+
 	handleService: async function(action) {
-		const self = this;
+		if (action !== 'stop' && this.startup)
+			return;
 
 		/* The wording comes from the model so it stays in one place (docs/10
 		   「启用开关」). */
@@ -132,17 +214,28 @@ return view.extend({
 		}))
 			return;
 
-		return ap.call('service', { action: action }).then(function(res) {
-			if (res && res.ok === false)
-				ui.addNotification(null,
-					E('p', {}, _('The service action failed: %s (%s).', 'aether-proxy').replace('%s', res.code).replace('%s', res.detail ?? '')),
-					'error');
-
-			/* Keep service actions useful even when automatic refresh is off. */
-			window.setTimeout(function() {
-				self.fetchRefresh();
-			}, 1500);
-		});
+		this.clearEnableApply?.();
+		const session = action === 'stop' ? null : this.beginStartup(false);
+		if (action === 'stop' && this.startupPhase) {
+			this.endStartup(null);
+			this.refresh(this.status, undefined, this.latestEvents);
+		}
+		const res = await ap.call('service', { action: action });
+		if (res && res.ok === false) {
+			if (this.startup === session) {
+				this.endStartup(null);
+				this.refresh(this.status, undefined, this.latestEvents);
+			}
+			ui.addNotification(null,
+				E('p', {}, _('The service action failed: %s (%s).', 'aether-proxy')
+					.replace('%s', res.code).replace('%s', res.detail ?? '')), 'error');
+		}
+		else if (this.startup === session && session)
+			session.ready = true;
+		/* Stop keeps the old one-shot refresh; start/restart have their own
+		   status-only watcher and must not wait for stats or diagnostic events. */
+		if (action === 'stop')
+			window.setTimeout(() => this.fetchRefresh(), 1500);
 	},
 
 	buttonBar: function(buttons) {
@@ -151,8 +244,10 @@ return view.extend({
 		const btn = (label, cls, enabled, fn) => {
 			const attrs = { 'class': 'cbi-button ' + cls };
 
+			/* The startup model owns disabled state; createHandlerFn would
+			   unconditionally re-enable a completed action's button. */
 			if (enabled)
-				attrs.click = ui.createHandlerFn(this, fn);
+				attrs.click = fn;
 			else
 				attrs.disabled = 'disabled';
 
@@ -166,33 +261,50 @@ return view.extend({
 		]);
 	},
 
+	nextStatusRead: function() {
+		this.statusRead = (this.statusRead ?? 0) + 1;
+		return this.statusRead;
+	},
+
+	/* A pre-action automatic read must not overwrite a newer startup result. */
+	acceptStatus: function(reply, read) {
+		if (read < (this.acceptedRead ?? 0))
+			return false;
+		this.acceptedRead = read;
+		this.status = reply ?? null;
+		const markers = model.status_markers(this.status);
+		if (markers) {
+			if (this.lastMarkers && markers.since !== this.lastMarkers.since) {
+				this.loadVersion(true);
+				this.loadComponents(true);
+			}
+			this.lastMarkers = markers;
+		}
+		if (this.startupPhase === 'timeout' && model.startup_complete(this.status))
+			this.startupPhase = null;
+		this.refresh(this.status, undefined, this.latestEvents);
+		if (this.initialReading) {
+			this.initialReading = false;
+			this.startPolling(this.interval);
+		}
+		return true;
+	},
+
 	/* Manual refresh, service actions and replacement pollers share the same
 	   promise: ap.poll alone cannot serialize these independent entry points. */
 	fetchRefresh: function() {
 		if (this.refreshing)
 			return this.refreshing;
+		const read = this.nextStatusRead();
 		this.refreshing = ap.call('status').then((reply) => {
-			/* A slow stats/events read must not hold the runtime controls hostage.
-			   Even a failed first status starts the normal retry cadence. */
-			this.status = reply ?? null;
-			const markers = model.status_markers(this.status);
-			if (markers) {
-				if (this.lastMarkers && markers.since !== this.lastMarkers.since) {
-					this.loadVersion(true);
-					this.loadComponents(true);
-				}
-				this.lastMarkers = markers;
-			}
-			/* Until this poll's events arrive, keep the previous switch reason:
-			   otherwise every poll briefly relocks the node controls. */
-			this.refresh(this.status, undefined, this.latestEvents);
-			if (this.initialReading) {
-				this.initialReading = false;
-				this.startPolling(this.interval);
-			}
+			/* Status controls update before the slower stats/events reads. */
+			if (!this.acceptStatus(reply, read))
+				return;
 			return ap.call('stats').then((stats) => {
 				this.updateTraffic(stats);
 				return this.switchEvents(reply, this.currentNode, this.currentMode).then((events) => {
+					if (read !== this.acceptedRead)
+						return;
 					events = model.newer_events(events, this.reasonFloor);
 					this.latestEvents = events;
 					const next = model.build(reply, this.version, this.labels,
@@ -408,9 +520,12 @@ return view.extend({
 
 	nodeControls: function(vm) {
 		const current = vm.current_node;
-		/* Themes size select at 100% (proton2025); inside a flex row that pushes the
-		   button to the next line (docs/10 「样式」). */
-		const nodes = E('select', { style: 'width:auto' }, vm.node_options.map((option) => E('option', {
+		/* Themes size select at 100% (proton2025). Keep the 16em minimum for long
+		   labels, but clamp it to the row on screens narrower than 16em; CSS min
+		   width otherwise wins over max-width and causes horizontal overflow. */
+		const nodes = E('select', {
+			style: 'width:auto; min-width:min(16em, 100%); max-width:100%'
+		}, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
 		const modes = E('select', { style: 'width:auto' }, model.mode_options().map((option) => E('option', {
@@ -432,7 +547,9 @@ return view.extend({
 		nodes.addEventListener('change', update);
 		modes.addEventListener('change', update);
 		update();
-		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+		return E('div', {
+			style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; min-width:0; max-width:100%'
+		}, [
 			nodes,
 			E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
 				_('Default mode', 'aether-proxy'), modes
@@ -591,8 +708,9 @@ return view.extend({
 		const markers = model.status_markers(status);
 		if (markers && this.manualProbe && markers.probe_at !== this.manualProbe.monitor_at)
 			this.manualProbe = null;
-		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
+		const normal = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
 			this.enabled, this.currentNode, this.components, events, this.manualProbe, this.currentMode);
+		const vm = model.startup_view(normal, this.startupPhase);
 
 		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;

@@ -13,6 +13,7 @@
  * health result without changing monitor health, and locks pending node switches;
  * T10.38 adds default-mode selection and shares the pending-switch lifecycle;
  * T10.39 resolves switch failure reasons with the same node names as logs;
+ * T10.43 supplies startup completion rules and waiting/timeout presentation;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -313,6 +314,30 @@ function switch_notice(status, configured_node, labels, reply, now, configured_m
 }
 
 return baseclass.extend({
+	/* A stopped restart intermediate, unknown state or failed RPC is not an
+	   observed startup outcome. Successful status has no ok field. */
+	startup_complete: function(status) {
+		return !!status && status.ok !== false
+			&& ['starting', 'running', 'degraded', 'failsafe', 'error'].includes(status.state);
+	},
+
+	startup_view: function(vm, phase) {
+		if (!phase)
+			return vm;
+		const waiting = phase === 'waiting';
+		return {
+			...vm,
+			state_text: waiting ? _('Starting…', 'aether-proxy')
+				: _('Startup did not complete; see the logs page for the reason.', 'aether-proxy'),
+			state_level: waiting ? 'neutral' : 'warn',
+			state_duration_text: null,
+			error_text: null,
+			dns_text: null,
+			dns_failsafe: false,
+			buttons: waiting ? { ...vm.buttons, start: false, restart: false } : vm.buttons
+		};
+	},
+
 	switch_pending: switch_pending,
 
 	/* A retry with another node must not inherit the reason the previous target
