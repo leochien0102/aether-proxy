@@ -3183,3 +3183,18 @@ test('T10.38 scenario 4: successful mode write followed by refresh failure warns
 	assert.equal(controls.mode.disabled, false);
 	assert.equal(controls.apply.disabled, false);
 });
+
+test('T10.38 review: Apply compares with the effective mode, not the configured one', async () => {
+	// A failed mode reload leaves UCI on gfw while the service still runs bypass_cn.
+	const h = await modePage({
+		configured: { mode: 'gfw' },
+		events: { ok: true, events: [{ ts: Math.floor(Date.now() / 1000), code: 'CONFIG_INVALID', args: {} }] }
+	});
+	await h.page.fetchRefresh();
+	assert.equal(h.page.vm.switch_busy, false, 'a failure reason unlocks the controls');
+	assert.equal(h.page.vm.current_mode, 'bypass_cn');
+	h.calls.length = 0;
+	await h.page.handleNode('n_a', 'bypass_cn');
+	assert.ok(!h.calls.some(([method]) => method === 'node_use' || method === 'mode_use'),
+		'selecting the effective node and mode is not a change');
+});

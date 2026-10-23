@@ -508,8 +508,9 @@ return baseclass.extend({
 			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
-		/* TODO(design): an active legacy status without mode has no defined fallback.
-		   Leave mode unknown (the view disables it), rather than claim UCI is applied. */
+		/* An active status without mode (an older backend) leaves the effective mode
+		   unknown: the view disables the mode select rather than claim UCI is applied
+		   (design lead, 2026-10-23). */
 		const mode = active ? status.mode : configured_mode;
 		const current_mode = MODE_TEXT[mode] ? mode : null;
 		const switching = switch_pending(status, configured_node, configured_mode) && !switch_reason(events);
