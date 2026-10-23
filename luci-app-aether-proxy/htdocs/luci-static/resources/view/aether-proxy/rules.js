@@ -155,7 +155,7 @@ return view.extend({
 		trust_option(section);
 		const direct = section.option(form.DynamicList, 'direct_dns', _('Direct DNS', 'aether-proxy'));
 		direct.rmempty = false;
-		// TODO(design): docs/05 has the next DNS defaults; keep the current schema until T9.28 lands.
+		// Current schema value; T10.45 moves to docs/05's direct DNS defaults with T9.28.
 		direct.default = [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ];
 		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
 		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };

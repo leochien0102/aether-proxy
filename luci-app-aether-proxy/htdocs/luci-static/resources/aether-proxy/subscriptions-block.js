@@ -83,9 +83,8 @@ return baseclass.extend({
 		}
 		else if (field !== 'user_agent')
 			o.default = field === 'interval_hours' ? '24' : 'auto';
-		// TODO(design): r13's 24 -> 0 could not be reproduced with the documented SDK
-		// Select/cloneOptions contract. Keep explicit values untouched; regression tests
-		// cover selection and no-op Save/Cancel rather than guessing a replacement value.
+		// Explicit values are preselected as stored; r13's 24 -> 0 is not reproducible
+		// on the SDK (docs/10「r13 修正：订阅编辑框与启用开关」复审结论).
 		// Capture the ListValue/Value method: instance super() would skip that class.
 		const renderWidget = o.renderWidget;
 		// Recompute when opening a modal: the common block may have unsaved input.
