@@ -62,9 +62,8 @@ function duplicate(message) {
 	}
 	if (tracked < REPEAT_LIMIT) {
 		messages[++tracked] = message
-		# TODO(design): docs/09 does not say whether a quota-dropped first occurrence
-		# should be tracked. Keep it: merging precedes limiting, so retries cannot
-		# consume another quota slot in this window even when the first was dropped.
+		# Tracked even if the rate limit then drops this first line (docs/09):
+		# retries cannot take more quota, and the summary still carries the message.
 		repeats[message] = 0
 	}
 	return 0
