@@ -24,9 +24,8 @@ function summary() {
 # Forwarded text (docs/09): drop every ESC[...m, then a leading timestamp and the whitespace
 # after it. Lines without a recognized timestamp only lose the colour codes. The result is
 # also the deduplication key.
-# TODO(design): chinadns-ng's level letter (W/I/E) follows the timestamp and its colour reset, so it
-# stays at the start of the forwarded line ("W [Upstream.zig..."); docs/09 does not say to drop it. Spell out digit classes rather than intervals or awk
-# extensions for firmware BusyBox awk.
+# chinadns-ng's level letter (W/I/E) stays at the start ("W [Upstream.zig..."), docs/09.
+# Spell out digit classes rather than intervals or awk extensions for firmware BusyBox awk.
 function message_key(line, message) {
 	message = line
 	gsub(/\033\[[0-9;]*m/, "", message)
