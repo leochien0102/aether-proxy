@@ -139,7 +139,8 @@ return view.extend({
 		option.placeholder = '30';
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
-		option.default = [ 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/' ];
+		// Empty means the built-in channel; a default would pin today's URL on Save.
+		option.placeholder = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
 		option.validate = function(section_id, value) { return model.validate_url(value); };
 		return map.render().then(node => {
 			const root = E('div', {}, [ this.refreshWarning, node, this.inventory ]);

@@ -75,6 +75,7 @@ function recorder() {
 	form.Map = class {
 		section(kind, name) { return new kind(name); }
 		render() { return Promise.resolve(E('form')); }
+		renderContents() { return Promise.resolve(E('div')); }
 	};
 	const uci = {
 		load: () => Promise.resolve(), get: () => undefined, sections: () => []
@@ -128,6 +129,8 @@ function widget_default(value) {
 	return value == null ? value : String(value);
 }
 
+const LIST_HINTS = [ 'updates: update.channel_urls' ];
+
 function check_options(h, page) {
 	const checked = [];
 	for (const option of h.options) {
@@ -144,8 +147,14 @@ function check_options(h, page) {
 			assert.ok(Object.hasOwn(option, 'default'), label + ': Flag must declare its default');
 		if (Object.hasOwn(option, 'default'))
 			assert.deepEqual(option.default, widget_default(field.default), label + ': default differs from schema');
-		if (Array.isArray(field.default) && field.default.length > 0)
+		/* A list whose empty value means "use the backend default" shows it as a
+		 * hint instead, so Save never pins today's default (updates.channel_urls). */
+		if (Array.isArray(field.default) && field.default.length > 0 && !LIST_HINTS.includes(label))
 			assert.deepEqual(option.default, widget_default(field.default), label + ': list must show schema defaults');
+		if (LIST_HINTS.includes(label)) {
+			assert.equal(option.default, undefined, label + ': list fallback must be display-only');
+			assert.equal(option.placeholder, widget_default(field.default).join(' '), label + ': list must hint schema defaults');
+		}
 		if ([h.form.ListValue, h.form.RichListValue].includes(option.kind) && field.default != null)
 			assert.equal(option.default, widget_default(field.default), label + ': select must show schema default');
 		/* Protocol defaults must stay placeholders: method is shared with SS,
