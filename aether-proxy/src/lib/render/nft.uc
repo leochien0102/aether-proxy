@@ -32,7 +32,7 @@ function sort_ips(list) {
 			continue;
 
 		// Same covered interval (e.g. a range spelling out a CIDR block) is written once.
-		// TODO(design): the first spelling in input order wins; nft would also auto-merge.
+		// The first spelling in input order wins (docs/05).
 		let id = `${start}-${end}`;
 
 		if (seen[id])
