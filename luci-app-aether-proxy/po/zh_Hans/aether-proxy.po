@@ -2163,3 +2163,59 @@ msgstr "正在启动…"
 msgctxt "aether-proxy"
 msgid "Startup did not complete; see the logs page for the reason."
 msgstr "启动没有完成，可到日志页查看原因"
+
+msgctxt "aether-proxy"
+msgid "Enable direct foreign DNS"
+msgstr "启用直连境外 DNS"
+
+msgctxt "aether-proxy"
+msgid "Direct foreign DNS queries are sent from the router to foreign DNS servers: blocked domains cannot be resolved, and direct queries to common foreign DNS servers are reset on most networks in China. Enable this only if the node domain is poisoned, or if you need to resolve unblocked foreign domains when the proxy is unavailable. Use “Test” before enabling it."
+msgstr "直连境外 DNS 由路由器直接向境外 DNS 查询：被墙域名一定解析不了，常见境外 DNS 的直连查询在国内多数网络里会被重置。只在节点域名被污染、或代理不可用时仍需解析未被墙的境外域名时打开，打开前先用『检测』看看。"
+
+msgctxt "aether-proxy"
+msgid "Testing direct DNS…"
+msgstr "正在检测直连 DNS…"
+
+msgctxt "aether-proxy"
+msgid "Test"
+msgstr "检测"
+
+msgctxt "aether-proxy"
+msgid "If the router’s own traffic goes through another proxy plugin (for example, ssr-plus is enabled), the results reflect that path."
+msgstr "路由器自己的流量若经过其他代理插件（例如 ssr-plus 开着），结果反映的是那条路径。"
+
+msgctxt "aether-proxy"
+msgid "Invalid direct DNS flag."
+msgstr "直连 DNS 开关值无效。"
+
+msgctxt "aether-proxy"
+msgid "Blocked domains cannot be resolved directly (normal)."
+msgstr "被墙域名无法直连解析（正常）"
+
+msgctxt "aether-proxy"
+msgid "All %s attempts failed"
+msgstr "%s 次全部失败"
+
+msgctxt "aether-proxy"
+msgid "Blocked domain: out of %s attempts, %s succeeded"
+msgstr "被墙域名 %s 次成功 %s 次"
+
+msgctxt "aether-proxy"
+msgid "Out of %s attempts, %s succeeded"
+msgstr "%s 次成功 %s 次"
+
+msgctxt "aether-proxy"
+msgid ", about %s ms"
+msgstr "，约 %s 毫秒"
+
+msgctxt "aether-proxy"
+msgid "Direct DNS test failed: %s"
+msgstr "直连 DNS 检测失败：%s"
+
+msgctxt "aether-proxy"
+msgid "Direct DNS test returned no results."
+msgstr "直连 DNS 检测未返回结果。"
+
+msgctxt "aether-proxy"
+msgid "This upstream format is not supported for testing."
+msgstr "这种写法不支持检测"

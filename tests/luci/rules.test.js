@@ -5,7 +5,9 @@
  * Deferred RPC and timer doubles prove that only the arriving tab/region changes.
  * The tab double records panes and attachment without reimplementing LuCI tabs.
  * T10.35 uses editable widget doubles and recorded UCI writes to exercise the
- * composite trust option; status remains deferred and independent of list reads. */
+ * composite trust option; status remains deferred and independent of list reads.
+ * T10.45 renders the real direct-DNS controls with deferred jobs and real progress
+ * timers, including failures that must recover without LuCI's handler wrapper. */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,13 +15,17 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, createRpc } = require('./loader');
 const { actionRow } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const PO = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = s => PO[s] ?? s;
+String.prototype.format = function(...args) {
+	let index = 0;
+	return this.replace(/%s/g, () => String(args[index++]));
+};
 const model = () => loadModule(path.join(RES, 'aether-proxy/model/rules.js'),
 	{ baseclass: { extend: o => o } }, { window: {}, document: {} });
 const names = [ 'gfwlist', 'chnlist', 'apple', 'chnroute4', 'gfw_static4' ];
@@ -200,7 +206,10 @@ fixtures.push(
 	{ field: 'dns_probe_domain', value: 'bad..example', ok: false },
 	{ field: 'dns_probe_domain', value: 'x'.repeat(64) + '.example', ok: false },
 	{ field: 'allow_china_fallback', value: '0', ok: true },
-	{ field: 'allow_china_fallback', value: '2', ok: false }
+	{ field: 'allow_china_fallback', value: '2', ok: false },
+	{ field: 'direct_dns_enabled', value: '0', ok: true },
+	{ field: 'direct_dns_enabled', value: '1', ok: true },
+	{ field: 'direct_dns_enabled', value: '2', ok: false }
 );
 test('T8.8 scenario 5: DNS syntax accepts all supported forms and rejects invalid inputs', () => {
 	for (const f of fixtures)
@@ -295,7 +304,8 @@ function descendants(node) {
 		return [];
 	return [node, ...node.children.flatMap(descendants)];
 }
-function load_view(dns_config = {}) {
+function load_view(dns_config = {}, ap_overrides = {}) {
+	const vm = model();
 	const calls = [], jobs = [], loads = [], timers = [], maps = [], tab_groups = [], writes = [], actions = [];
 	const removals = [];
 	const document = { body: E('body') };
@@ -401,7 +411,7 @@ function load_view(dns_config = {}) {
 			tabs: { initTabGroup: panes => tab_groups.push({ panes: [...panes],
 				attached: panes.every(pane => descendants(document.body).includes(pane)) }) }
 		},
-		'aether-proxy.model.rules': model(),
+		'aether-proxy.model.rules': vm,
 		'aether-proxy.common': {
 			job_progress: () => ({ stop() {} }),
 			call: (method, params) => {
@@ -413,10 +423,11 @@ function load_view(dns_config = {}) {
 				const reply = deferred();
 				jobs.push({ kind, args, ...reply });
 				return reply.promise;
-			}
+			},
+			...ap_overrides
 		}
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document });
-	return { page, calls, jobs, loads, maps, timers, tab_groups, document, writes, actions, removals,
+	return { page, vm, calls, jobs, loads, maps, timers, tab_groups, document, writes, actions, removals,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -456,7 +467,8 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	assert.equal(h.maps[0].config, 'aetherproxy');
 	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);
 	assert.deepEqual(r.form.children.flatMap(s => s.children.map(o => o.name)),
-		['mode', 'china_dns', 'trust_dns', 'direct_dns', 'allow_china_fallback', 'dns_probe_domain']);
+		['mode', 'china_dns', 'trust_dns', 'direct_dns_enabled', 'direct_dns',
+			'allow_china_fallback', 'dns_probe_domain']);
 	const mode = h.maps[0].sections[0].options[0];
 	assert.deepEqual(mode.values, model().modes());
 	for (const option of h.maps[0].sections[1].options) {
@@ -979,3 +991,155 @@ test('T10.35 review: Map.checkDepends can validate the trust rows without recurs
 	option.widgets.dns[0].address.value = '';
 	assert.equal(option.triggerValidation('dns'), false);
 });
+
+function direct_controls(h) {
+	const widget = dns_option(h, 'direct_dns').input;
+	const controls = widget.children[1];
+	return { widget, list: widget.children[0], controls, row: controls.children[0],
+		summary: controls.children[0].children[0], progress: controls.children[0].children[1],
+		button: controls.children[0].children[2], hint: controls.children[1] };
+}
+function direct_progress(t) {
+	t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
+	return loadModule(path.join(RES, 'aether-proxy/common.js'), {
+		rpc: createRpc(), baseclass: { extend: object => object }, ui: {}
+	}, {}).job_progress;
+}
+const direct_item = (upstream, ok, latency, blocked_ok = 0, blocked_latency = null) => ({
+	upstream, unsupported: false,
+	unblocked: { domain: 'node.example', ok, total: 3, latency_ms: latency },
+	blocked: { domain: 'www.google.com', ok: blocked_ok, total: 3, latency_ms: blocked_latency }
+});
+const direct_job = results => ({ state: 'ok', result: { ok: true, results } });
+
+test('T10.45 scenario 1: direct DNS defaults off above the editable list with the full explanation', async () => {
+	for (const value of [undefined, '0', '1']) {
+		const h = load_view(value == null ? {} : { direct_dns_enabled: value });
+		await h.page.render();
+		const flag = dns_option(h, 'direct_dns_enabled');
+		assert.equal(flag.kind, 'flag');
+		assert.equal(flag.default, '0');
+		assert.equal(flag.input.checked, value == '1');
+		assert.equal(flag.label, '启用直连境外 DNS');
+		assert.equal(flag.description, '直连境外 DNS 由路由器直接向境外 DNS 查询：被墙域名一定解析不了，'
+			+ '常见境外 DNS 的直连查询在国内多数网络里会被重置。只在节点域名被污染、或代理不可用时仍需解析'
+			+ '未被墙的境外域名时打开，打开前先用『检测』看看。');
+		const options = h.maps[0].sections[1].options;
+		assert.equal(options.indexOf(flag) + 1, options.indexOf(dns_option(h, 'direct_dns')));
+		const controls = direct_controls(h);
+		assert.equal(controls.list.disabled, false, 'off does not disable editing');
+		assert.equal(controls.button.disabled, false, 'off does not disable testing');
+		assert.equal(dns_option(h, 'direct_dns').deps, undefined);
+		assert.deepEqual(h.writes, []);
+		await h.maps[0].parse();
+		assert.deepEqual(h.writes.find(write => write[2] == 'direct_dns_enabled'),
+			['aetherproxy', 'dns', 'direct_dns_enabled', value ?? '0']);
+	}
+});
+
+test('T10.45 scenario 2: detection reports each upstream, counts, median, normal failures and unsupported formats',
+async t => {
+	const h = load_view({}, { job_progress: direct_progress(t) });
+	const root = await h.page.render(), c = direct_controls(h);
+	const row = actionRow(c.controls, ['检测'], [c.summary, c.progress]);
+	assert.equal(row, c.row, 'results and progress precede the button below the list');
+	assert.equal(c.widget.children[0], c.list);
+	assert.equal(text(c.hint), '路由器自己的流量若经过其他代理插件（例如 ssr-plus 开着），结果反映的是那条路径。');
+	const items = [
+		direct_item('tcp://9.9.9.9', 2, 120),
+		direct_item('198.51.100.53#5353', 0, null),
+		direct_item('tcp://203.0.113.53', 3, 10.5, 1, 24),
+		{ upstream: 'tls://dns.example@192.0.2.53#853', unsupported: true }
+	];
+	const pending = c.button.click({ currentTarget: c.button });
+	assert.deepEqual(h.jobs.map(job => [job.kind, job.args]), [['dns_test', []]]);
+	assert.equal(c.button.disabled, true);
+	assert.equal(c.list.disabled, false);
+	assert.equal(text(c.progress), '正在检测直连 DNS…（已用 0 秒）');
+	t.mock.timers.tick(3000);
+	assert.equal(text(c.progress), '正在检测直连 DNS…（已用 3 秒）');
+	h.jobs[0].resolve(direct_job(items));
+	await pending;
+	assert.deepEqual(c.summary.children.map(text), [
+		'tcp://9.9.9.9: node.example 3 次成功 2 次，约 120 毫秒; www.google.com 被墙域名无法直连解析（正常）',
+		'198.51.100.53#5353: node.example 3 次全部失败; www.google.com 被墙域名无法直连解析（正常）',
+		'tcp://203.0.113.53: node.example 3 次成功 3 次，约 10.5 毫秒; www.google.com 被墙域名 3 次成功 1 次，约 24 毫秒',
+		'tls://dns.example@192.0.2.53#853: 这种写法不支持检测'
+	]);
+	assert.ok(descendants(c.controls).indexOf(c.summary) < descendants(c.controls).indexOf(c.hint));
+	assert.equal(c.button.disabled, false);
+	assert.equal(text(c.progress), '');
+	const result_text = text(c.summary);
+	t.mock.timers.tick(10000);
+	assert.equal(text(c.summary), result_text, 'a stopped timer cannot overwrite results');
+	assert.equal(text(c.progress), '');
+	assert.deepEqual(h.calls, [], 'no service status is needed and no rule-data refresh is triggered');
+	assert.deepEqual(h.writes, []);
+	assert.equal(regions(root).update.disabled, false, 'unrelated update button is unchanged');
+});
+
+test('T10.45 scenario 3: resolved job failures show reasons, stop progress and permit retry regardless of the switch',
+async t => {
+	const job_progress = direct_progress(t);
+	const failures = [
+		[{ ok: false, code: 'TIMEOUT', detail: 'offline' }, '直连 DNS 检测失败：TIMEOUT: offline'],
+		[{ state: 'failed', error: 'JOB_LOST', result: null }, '直连 DNS 检测失败：JOB_LOST'],
+		[{ state: 'failed', error: 'CMD_FAILED', result: { ok: false, code: 'CONFIG_INVALID', detail: 'dns' } },
+			'直连 DNS 检测失败：CONFIG_INVALID: dns'],
+		[{ state: 'ok', result: null }, '直连 DNS 检测未返回结果。']
+	];
+	for (const value of [undefined, '0', '1']) {
+		for (const [job, expected] of failures) {
+			const h = load_view({ direct_dns_enabled: value }, { job_progress });
+			await h.page.render();
+			const c = direct_controls(h);
+			const pending = c.button.click({ currentTarget: c.button });
+			assert.equal(c.button.disabled, true);
+			assert.deepEqual(h.jobs.map(item => [item.kind, item.args]), [['dns_test', []]]);
+			h.jobs[0].resolve(job);
+			await pending;
+			assert.equal(text(c.summary), expected);
+			assert.equal(c.button.disabled, false);
+			assert.equal(text(c.progress), '');
+			t.mock.timers.tick(3000);
+			assert.equal(text(c.summary), expected);
+			const retry = c.button.click({ currentTarget: c.button });
+			assert.equal(text(c.summary), '', 'clear stale results on retry');
+			assert.equal(h.jobs.length, 2);
+			h.jobs[1].resolve(direct_job([direct_item('tcp://9.9.9.9', 3, 1)]));
+			await retry;
+			assert.match(text(c.summary), /3 次成功 3 次，约 1 毫秒/);
+			assert.equal(c.button.disabled, false);
+			assert.deepEqual(h.writes, []);
+		}
+	}
+});
+
+for (const stage of ['reject', 'sync throw', 'result rendering', 'progress setup']) {
+	test('T10.45 scenario 3: ' + stage + ' displays the exception and restores the button in finally', async t => {
+		const job_progress = direct_progress(t);
+		const overrides = { job_progress };
+		if (stage == 'sync throw')
+			overrides.run_job = () => { throw new Error('<test failure>'); };
+		if (stage == 'progress setup')
+			overrides.job_progress = () => { throw new Error('<test failure>'); };
+		const h = load_view({}, overrides);
+		await h.page.render();
+		if (stage == 'result rendering')
+			h.vm.dns_test_result = () => { throw new Error('<test failure>'); };
+		const c = direct_controls(h);
+		const pending = c.button.click({ currentTarget: c.button });
+		if (stage == 'reject')
+			h.jobs[0].reject(new Error('<test failure>'));
+		if (stage == 'result rendering')
+			h.jobs[0].resolve(direct_job([]));
+		await pending;
+		assert.equal(text(c.summary), '操作失败：<test failure>');
+		assert.equal(c.button.disabled, false, 'no ui.createHandlerFn double restores this button');
+		assert.equal(text(c.progress), '');
+		t.mock.timers.tick(10000);
+		assert.equal(text(c.summary), '操作失败：<test failure>');
+		assert.equal(text(c.progress), '');
+		assert.deepEqual(h.writes, []);
+	});
+}

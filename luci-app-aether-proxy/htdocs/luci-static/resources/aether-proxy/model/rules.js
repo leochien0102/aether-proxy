@@ -4,7 +4,8 @@
 /* Pure rules/DNS presentation and format preflight (docs/10 "规则与 DNS 页").
  * Match config.uc upstream and net.uc literally, including underscores in domains.
  * The CLI remains authoritative after LuCI applies its session configuration.
- * DNS presets, trust transports and WAN hints follow docs/10 "DNS 常用地址与协议". */
+ * DNS presets, trust transports and WAN hints follow docs/10 "DNS 常用地址与协议".
+ * Direct DNS test fields follow docs/03 "直连境外 DNS（可选）" and docs/10 r13. */
 function fmt(s) {
 	for (let i = 1; i < arguments.length; i++)
 		s = s.replace('%s', arguments[i]);
@@ -101,6 +102,8 @@ function wan_dns_text(status) {
 function validate(field, value) {
 	if (field == 'dns_probe_domain')
 		return domain(value) ? true : _('Invalid DNS probe domain.', 'aether-proxy');
+	if (field == 'direct_dns_enabled')
+		return value == '0' || value == '1' ? true : _('Invalid direct DNS flag.', 'aether-proxy');
 	if (field == 'allow_china_fallback')
 		return value == '0' || value == '1' ? true : _('Invalid fallback flag.', 'aether-proxy');
 	const values = Array.isArray(value) ? value : value == null ? [] : [ value ];
@@ -178,7 +181,36 @@ function job_result(job) {
 		lines.push(failure(job));
 	return lines;
 }
-return baseclass.extend({ validate, save_result, table, job_result, relative, loading_text, list_state,
+function dns_test_count(result, blocked) {
+	if (result.ok == 0)
+		return blocked ? _('Blocked domains cannot be resolved directly (normal).', 'aether-proxy') :
+			fmt(_('All %s attempts failed', 'aether-proxy'), result.total);
+	let text = blocked ? fmt(_('Blocked domain: out of %s attempts, %s succeeded', 'aether-proxy'),
+		result.total, result.ok) : fmt(_('Out of %s attempts, %s succeeded', 'aether-proxy'), result.total, result.ok);
+	if (result.latency_ms != null)
+		text += fmt(_(', about %s ms', 'aether-proxy'), result.latency_ms);
+	return text;
+}
+function dns_test_result(job) {
+	const result = job?.result ?? job;
+	if (job?.ok === false || job?.state == 'failed' || result?.ok === false) {
+		const code = result?.code ?? job?.code ?? job?.error ?? 'CMD_FAILED';
+		const detail = result?.detail ?? job?.detail;
+		return [ fmt(_('Direct DNS test failed: %s', 'aether-proxy'), code + (detail ? ': ' + detail : '')) ];
+	}
+	if (!Array.isArray(result?.results)) {
+		/* TODO(design): unspecified missing job results must not look like a
+		 * successful empty test; report failure without changing configuration. */
+		return [ _('Direct DNS test returned no results.', 'aether-proxy') ];
+	}
+	return result.results.map(item => {
+		if (item.unsupported)
+			return item.upstream + ': ' + _('This upstream format is not supported for testing.', 'aether-proxy');
+		return item.upstream + ': ' + item.unblocked.domain + ' ' + dns_test_count(item.unblocked, false) +
+			'; ' + item.blocked.domain + ' ' + dns_test_count(item.blocked, true);
+	});
+}
+return baseclass.extend({ validate, save_result, table, job_result, dns_test_result, relative, loading_text, list_state,
 	presets, trust_rows, trust_values, trust_input, wan_dns_text,
 	modes: function() {
 		return [ [ 'bypass_cn', _('Bypass China — proxy destinations outside China.', 'aether-proxy') ],
