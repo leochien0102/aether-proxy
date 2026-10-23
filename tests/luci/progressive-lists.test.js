@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
-const { actionRow, beforeTable } = require('./button-layout');
+const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
 const { selectWidget } = require('./subscription-select');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -169,7 +169,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					});
 					builtins.push({ id: args[0], buttons: original });
 					// LuCI puts its buttons inside the last child of the action td.
-					return E('td', {}, [E('div', {}, original)]);
+					return E('td', { class: 'td cbi-section-table-cell nowrap cbi-section-actions' },
+						[E('div', {}, original)]);
 				}
 			};
 			this.sections.push(section);
@@ -927,6 +928,63 @@ async () => {
 			[h.page.statusError, h.page.progress, h.page.summary]);
 		assert.deepEqual(h.root.children, [h.maps.at(-1).node, row],
 			'T10.37 moves subscription actions below the general settings and subscription table');
+	}
+});
+
+test('T10.44 scenario 1: subscription errors, progress and multiline results stay marginless beside actions',
+async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	h.reads[0].resolve({ ok: false, code: 'TIMEOUT', detail: 'offline' });
+	await flush();
+	assert.match(text(h.page.statusError), /TIMEOUT: offline/);
+	const feedback = () => [h.page.statusError, h.page.progress, h.page.summary, h.page.pendingHint];
+	const check = () => {
+		actionRow(h.root, ['全部更新', '添加'], feedback());
+		marginlessMessages(feedback());
+	};
+	check();
+	const job = deferred();
+	h.ap.job_progress = target => {
+		target.textContent = '正在更新订阅…（已用 0 秒）';
+		return { stop() { target.textContent = ''; } };
+	};
+	h.ap.run_job = () => job.promise;
+	const pending = h.page.update([]);
+	assert.match(text(h.page.progress), /已用 0 秒/);
+	check();
+	job.resolve({ state: 'ok', result: { subs: {
+		s_a: { ok: true, added: 1 }, s_b: { ok: true, added: 2 }
+	} } });
+	await flush();
+	h.reads[1].resolve(success('subscriptions'));
+	await pending;
+	assert.equal(h.page.summary.children.length, 2, 'both subscription results are rendered');
+	assert.match(text(h.page.summary), /Alpha: 新增 1.*Beta: 新增 2/);
+	assert.equal(text(h.page.progress), '');
+	check();
+	await h.page.redraw();
+	check();
+});
+
+test('T10.44 scenario 2: subscription action buttons stay nowrap without a fixed column width after redraw',
+async () => {
+	const h = await harness('subscriptions');
+	await render(h);
+	for (const redraw of [false, true]) {
+		if (redraw)
+			await h.page.redraw();
+		for (const id of ['s_a', 's_b']) {
+			const cell = gridRow(h, id).lastChild;
+			nowrapActions(cell, ['立即更新', '编辑', '删除']);
+			const originals = h.builtins.filter(row => row.id === id).at(-1).buttons;
+			for (const button of originals) {
+				assert.ok(buttons(cell).includes(button), 'keep built-in button identity and handlers');
+				assert.match(button.style, /min-width:0;/, 'keep existing inline button styles');
+			}
+			const wrapper = h.page.rowWrappers.get(id);
+			assert.equal(wrapper.children[0], h.page.rowButtons.get(id), 'keep the disabled-button tooltip wrapper');
+		}
 	}
 });
 

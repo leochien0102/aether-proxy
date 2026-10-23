@@ -8,6 +8,7 @@
 
 /*
  * Access control (docs/10 「访问控制页定案」 and 「r13 修正：访问控制页」).
+ * Action sizing follows docs/10 「r13 修正：块内行与表格操作列」.
  * The model owns wording, summaries and validation. Staged LuCI changes are
  * invisible to the command line, so both save buttons precheck them here;
  * the backend remains authoritative. Display sorting must not reorder UCI.
@@ -135,6 +136,15 @@ return view.extend({
 				return model.sort_hosts(uci.sections('aetherproxy', 'host')).map((h) => h['.name']);
 			},
 			renderSectionAdd: function() { return E([]); },
+			renderRowActions: function(id) {
+				const td = form.GridSection.prototype.renderRowActions.call(this, id);
+				const actions = td.lastChild;
+				// Keep intrinsic button widths without changing the theme's narrow-screen card layout.
+				for (const button of actions.childNodes)
+					button.style = (button.style?.cssText ?? '') + ';white-space:nowrap';
+				actions.style = 'display:flex; flex-wrap:nowrap; gap:0.25em; align-items:center';
+				return td;
+			},
 			renderContents: function(ids, nodes) {
 				const node = form.GridSection.prototype.renderContents.call(this, ids, nodes);
 				node.insertBefore(E('div', {
