@@ -377,8 +377,7 @@ function cleanup_run(parsed_opts) {
 		if (text == null)
 			return fs.error() != 'No such file or directory';
 		let pid = trim(text);
-		// TODO(design): 04 does not define corrupt/unreadable pid or cmdline handling.
-		// Treat an unknown identity as busy rather than deleting a live daemon's table.
+		// docs/04: an unreadable or corrupt pid/cmdline counts as busy, never as exited.
 		if (!match(pid, /^[1-9][0-9]*$/))
 			return true;
 		// Process identity is real even with --sys-root, just like supervise.kill_stale().
@@ -763,8 +762,7 @@ function shutdown(ctx, children, normal_stop) {
 				push(failures, `sets_save: ${saved.detail}`);
 		}
 		// Export failure is already CMD_FAILED, not a startup failure; keep cleaning (04).
-		// TODO(design): successful nft output that cannot be decoded has no command failure.
-		// The stop-only export policy returns that error without adding an event.
+		// docs/04: undecodable nft output on stop is returned without an extra event.
 	}
 	else if (!table.ok)
 		push(failures, `nft_table_exists: ${table.detail}`);
@@ -1042,8 +1040,7 @@ function run(args) {
 	let pid = fs.readlink(`${C.PROC_DIR}/self`);
 	let pid_file = `${run_dir(ctx)}/${C.DAEMON_PID_FILE}`;
 	if (pid == null || !sys.write_atomic(pid_file, `${pid}\n`)) {
-		// TODO(design): 04 does not specify pid publication failure. Do not start untrackable
-		// children: cleanup --wait could otherwise race the supervisor's orderly stop.
+		// docs/04: without a pid file cleanup --wait cannot see us, so do not start.
 		log.event('error', 'FS_FAILED', { op: 'write', path: pid_file,
 			detail: pid == null ? (fs.error() ?? 'cannot read own pid') : sys.error() });
 		return 1;

@@ -85,7 +85,7 @@
     拿锁失败不区分「被占用」与锁文件 I/O 错误，两者都按上面重试、等满记 `BUSY`（T9.25 复核定：`sys.lock` 只返回句柄或 null，没有更细的原因）。
     **还要等 daemon 进程退出**（2026-10-23 改，r13 窗口：daemon 在 monitor 阶段不持锁，`service_stopped` 的 cleanup 立刻拿到锁、先删了表，daemon 的有序退出再导出动态集合时表已不在，
     每次重启都记 `CMD_FAILED` 与 `START_FAILED {step: sets_export}`，动态集合也没能保留）：daemon 启动时写 `/var/run/aether-proxy/daemon.pid`；`--wait` 期间同时等「锁可拿到」与
-    「该 pid 已不存在，或 `/proc/<pid>/cmdline` 不再是 `aether-proxy daemon`」，两者都满足才清理；等满仍不满足照原来的 `BUSY` 处理。daemon 正常退出时删除自己的 pid 文件。
+    「该 pid 已不存在，或 `/proc/<pid>/cmdline` 不再是 `aether-proxy daemon`」，两者都满足才清理；等满仍不满足照原来的 `BUSY` 处理。daemon 正常退出时删除自己的 pid 文件；启动失败进入 `error` 退避重试时保留（进程还在）。pid 文件或 cmdline 读不了、内容损坏时一律当作 daemon 还在（宁可等满报 `BUSY`，也不在活着的 daemon 底下删表）；daemon 写不了 pid 文件就不启动（记 `FS_FAILED` 并退出，否则 cleanup 看不见它）。停止时 nft 的输出解析不了，只返回失败、不另记事件（执行失败已有 `CMD_FAILED`）。（T9.27 复核定）
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
 - 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。
