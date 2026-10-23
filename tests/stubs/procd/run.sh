@@ -60,10 +60,10 @@ expect "disabled start is a no-op" 0 "$rc"
 ! contains "$T/init-disabled.log" 'aether-proxy check' && ok "disabled start skips check" || bad "disabled start skips check"
 ! contains "$T/init-disabled.log" 'open aether-proxy' && ok "disabled start registers no instance" || bad "disabled start registers no instance"
 
-# Enabled manual start checks first and registers the single supervised daemon.
+# Enabled manual start registers immediately; validation belongs to the daemon (T9.27).
 run_init start 1 0 init-start; rc=$?
 expect "enabled start succeeds" 0 "$rc"
-grep -Fxq 'aether-proxy check' "$T/init-start.log" && ok "start invokes check" || bad "start invokes check"
+! contains "$T/init-start.log" 'aether-proxy check' && ok "T9.27 start never invokes check" || bad "T9.27 start never invokes check"
 grep -Fxq "open aether-proxy" "$T/init-start.log" && ok "start opens named instance" || bad "start opens named instance"
 grep -Fxq "set command $T/bin-aether-proxy daemon" "$T/init-start.log" && ok "start command is daemon" || bad "start command is daemon"
 grep -Fxq 'set respawn 3600 5 5' "$T/init-start.log" && ok "respawn policy recorded" || bad "respawn policy recorded"
@@ -75,8 +75,13 @@ expect "boot succeeds" 0 "$rc"
 grep -Fxq "append command --boot" "$T/init-boot.log" && ok "boot appends --boot" || bad "boot appends --boot"
 
 run_init start 1 7 init-check-fail; rc=$?
-expect "failed check aborts start" 1 "$rc"
-! contains "$T/init-check-fail.log" 'open aether-proxy' && ok "failed check registers no instance" || bad "failed check registers no instance"
+expect "T9.27 start ignores failing check substitute" 0 "$rc"
+! contains "$T/init-check-fail.log" 'aether-proxy check' \
+	&& contains "$T/init-check-fail.log" 'open aether-proxy' \
+	&& ok "T9.27 failing check substitute cannot prevent daemon registration" \
+	|| bad "T9.27 failing check substitute cannot prevent daemon registration"
+! contains "$T/init-boot.log" 'aether-proxy check' \
+	&& ok "T9.27 boot never invokes check" || bad "T9.27 boot never invokes check"
 
 # A failing check substitute proves the running branch never invokes it at all.
 run_init reload 1 7 init-reload-fail; rc=$?

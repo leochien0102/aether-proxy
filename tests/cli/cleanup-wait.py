@@ -161,7 +161,73 @@ with tempfile.TemporaryDirectory(prefix='.cleanup-wait-', dir=ROOT / 'tests/cli'
 			result.returncode == 0 and result.stdout == 'cleanup: ok\n' and result.stderr == ''
 			and elapsed < 1.5 and busy_events() == [] and cleaned())
 
-	# sys.lock currently maps open failures to BUSY too; pin the conservative TODO(design) fallback.
+	# T9.27: simulate the real /proc identity without holding the global lock.
+	@contextmanager
+	def daemon_process(*identity):
+		code = "import sys; print('ready', flush=True); sys.stdin.readline()"
+		with subprocess.Popen([sys.executable, '-c', code, *identity], stdin=subprocess.PIPE,
+				stdout=subprocess.PIPE, text=True) as child:
+			try:
+				assert child.stdout.readline() == 'ready\n'
+				(run / 'daemon.pid').write_text(str(child.pid) + '\n')
+				yield child
+			finally:
+				if child.poll() is None:
+					child.terminate()
+				child.wait(timeout=5)
+
+	for identity in [('aether-proxy', 'daemon'), ('/usr/bin/aether-proxy', '--', 'daemon')]:
+		seed()
+		with daemon_process(*identity) as daemon:
+			with subprocess.Popen(COMMAND + ['cleanup', *options, '--wait', '5'], env=env,
+					stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as pending:
+				time.sleep(1.3)
+				check('T9.27 unlocked live daemon blocks cleanup: ' + repr(identity),
+					pending.poll() is None and untouched() and busy_events() == [])
+				# Waiting must release a lock it could acquire, or daemon exit could deadlock.
+				with hold_lock(lock, 0.1):
+					check('T9.27 daemon wait leaves the global lock available', untouched())
+				daemon.terminate()
+				daemon.wait(timeout=5)
+				stdout, stderr = pending.communicate(timeout=10)
+				check('T9.27 cleanup runs after daemon exit and preserves exported sets',
+					pending.returncode == 0 and stdout == 'cleanup: ok\n' and stderr == ''
+					and busy_events() == [] and cleaned() and (run / 'sets.save').exists())
+
+	seed()
+	with daemon_process('/usr/bin/aether-proxy', 'daemon'):
+		result, elapsed = invoke('--wait', '2')
+		check('T9.27 live daemon timeout is BUSY without cleanup',
+			result.returncode == 3 and 1.8 <= elapsed < 4.5
+			and len(busy_events()) == 1 and untouched())
+		seed()
+		result, elapsed = invoke('--wait', '0')
+		check('T9.27 explicit wait zero checks daemon once and returns BUSY immediately',
+			result.returncode == 3 and elapsed < 0.9 and len(busy_events()) == 1 and untouched())
+		seed()
+		result, elapsed = invoke()
+		check('T9.27 no wait retains immediate lock-only cleanup with a live daemon',
+			result.returncode == 0 and elapsed < 1.5 and cleaned())
+
+	for identity in [('unrelated',), ('not-aether-proxy', 'daemon'), ('aether-proxy', 'status')]:
+		seed()
+		with daemon_process(*identity) as unrelated:
+			result, elapsed = invoke('--wait', '5')
+			check('T9.27 reused pid with different cmdline cleans immediately: ' + repr(identity),
+				result.returncode == 0 and elapsed < 1.5 and cleaned() and unrelated.poll() is None)
+
+	seed()
+	result, elapsed = invoke('--wait', '5')
+	check('T9.27 stale pid whose process has gone does not block cleanup',
+		result.returncode == 0 and elapsed < 1.5 and cleaned())
+	(run / 'daemon.pid').write_text('not-a-pid\n')
+	seed()
+	result, elapsed = invoke('--wait', '1')
+	check('T9.27 corrupt pid conservatively returns BUSY without cleanup',
+		result.returncode == 3 and 0.9 <= elapsed < 2.5 and untouched())
+	(run / 'daemon.pid').unlink()
+
+	# sys.lock currently maps open failures to BUSY too; pin the conservative fallback.
 	seed()
 	lock.unlink()
 	lock.mkdir()

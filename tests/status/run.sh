@@ -383,6 +383,14 @@ for mode in gfw bypass_cn global; do
 	printf '{"state":"running","node_id":"n_00000000000000000000000000000001","mode":"%s"}\n' \
 		"$mode" > "$R/state.json"
 	cp "$R/state.json" "$T/applied-mode-before"
+	human=$(ap "$PATH_BOTH" status --run-dir "$R" --confdir "$FIX/sample" --sys-root "$SR" --bin-dir "$T/bin")
+	expect "T9.27 human status $mode succeeds" 0 "$?"
+	printf '%s\n' "$human" | grep -Fxq "mode: \"$mode\"" \
+		&& ok "T9.27 human status contains applied mode: $mode" \
+		|| bad "T9.27 human status contains applied mode: $mode"
+	printf '%s\n' "$human" | awk '/^node_id:/ { getline; if ($0 ~ /^mode:/) found=1 } END { exit !found }' \
+		&& ok "T9.27 human mode is adjacent to node_id: $mode" \
+		|| bad "T9.27 human mode is adjacent to node_id: $mode"
 	out=$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" \
 		--sys-root "$SR" --bin-dir "$T/bin" 2>"$T/applied-mode.stderr")
 	expect "T9.26 status $mode exits successfully" 0 "$?"

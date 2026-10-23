@@ -12,13 +12,7 @@ start_service() {
 	config_get_bool enabled main enabled 0
 	[ "$enabled" = 1 ] || return 0
 
-	"$AETHER_PROXY" check
-	rc=$?
-	if [ "$rc" -ne 0 ]; then
-		logger -t aether-proxy "aether-proxy check failed (rc=$rc); procd instance not registered"
-		return 1
-	fi
-
+	# Register immediately: the daemon publishes starting before doing validation (docs/04).
 	procd_open_instance aether-proxy
 	procd_set_param command "$AETHER_PROXY" daemon
 	if [ "$_AETHER_PROXY_BOOT" = 1 ]; then
@@ -68,7 +62,7 @@ reload_service() {
 }
 
 service_stopped() {
-	# procd's asynchronous stop may leave the daemon holding its lock for term_timeout (docs/04).
+	# Wait for both the daemon and its lock: monitor mode does not hold the lock (docs/04).
 	"$AETHER_PROXY" cleanup --wait 35
 	rc=$?
 	if [ "$rc" -ne 0 ]; then
