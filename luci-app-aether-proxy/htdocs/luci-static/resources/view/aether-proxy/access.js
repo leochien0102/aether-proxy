@@ -7,7 +7,7 @@
 'require aether-proxy.model.access as model';
 
 /*
- * Access control (docs/10 「访问控制页」 and 「访问控制页定案」, T10.36).
+ * Access control (docs/10 「访问控制页定案」 and 「r13 修正：访问控制页」).
  * The model owns wording, summaries and validation. Staged LuCI changes are
  * invisible to the command line, so both save buttons precheck them here;
  * the backend remains authoritative. Display sorting must not reorder UCI.
@@ -76,8 +76,19 @@ return view.extend({
 	},
 
 	buildMap: function() {
+		const self = this;
 		const m = new form.Map('aetherproxy', _('Access Control', 'aether-proxy'),
 			_('Set the policy for each LAN device and for devices that are not listed.', 'aether-proxy'));
+		const renderContents = m.renderContents.bind(m);
+		/* Section rendering builds detached nodes; formvalue() still searches
+		   the old Map root then. Wait for replacement so modal saves and resets
+		   read the new widgets, not the previous inline policy/game-mode values. */
+		m.renderContents = function() {
+			return renderContents().then(function(node) {
+				self.updateRows();
+				return node;
+			});
+		};
 		this.addMainOptions(m);
 		this.addHostOptions(m);
 		return m;
@@ -88,10 +99,10 @@ return view.extend({
 		const s = m.section(form.NamedSection, 'main', 'global');
 		let o;
 		s.description = [
-			_('This corresponds to the three helloworld approaches as follows:', 'aether-proxy'),
-			_('Disabled: unlisted_policy=follow, no host sections.', 'aether-proxy'),
-			_('Only allow listed hosts: unlisted_policy=direct, listed hosts use policy=follow.', 'aether-proxy'),
-			_('Also allow unlisted hosts: unlisted_policy=follow, listed hosts use policy=direct.', 'aether-proxy')
+			_('To proxy all devices, set Unlisted devices to Follow default mode, then set exceptions below to Direct.',
+				'aether-proxy'),
+			_('To proxy only some devices, set Unlisted devices to Direct, then list the devices to proxy below.',
+				'aether-proxy')
 		].join(' ');
 		o = s.option(form.DummyValue, '_mode', _('Default mode', 'aether-proxy'));
 		o.cfgvalue = function() {
@@ -123,10 +134,18 @@ return view.extend({
 			cfgsections: function() {
 				return model.sort_hosts(uci.sections('aetherproxy', 'host')).map((h) => h['.name']);
 			},
+			renderSectionAdd: function() { return E([]); },
 			renderContents: function(ids, nodes) {
 				const node = form.GridSection.prototype.renderContents.call(this, ids, nodes);
+				node.insertBefore(E('div', {
+					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+				}, E('button', {
+					'class': 'cbi-button cbi-button-add',
+					'click': ui.createHandlerFn(this, 'handleAdd'),
+					'disabled': this.map.readonly || null
+				}, _('Add', 'aether-proxy'))), node.querySelector('table'));
 				self.tableNode = node;
-				self.updateRows();
 				return node;
 			}
 		});
@@ -134,14 +153,6 @@ return view.extend({
 		s.anonymous = true;
 		s.addremove = true;
 		s.nodescriptions = true;
-
-		/* First in the modal, absent from the table. DynamicList keeps manual
-		   input and multiple selections; DHCP IPs must never be copied to ip. */
-		o = s.option(form.DynamicList, 'mac', _('Device', 'aether-proxy'));
-		o.modalonly = true;
-		o.rmempty = true;
-		for (const c of self.candidates)
-			o.value(c.mac, c.label);
 
 		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy'));
 		o.editable = true;
@@ -161,6 +172,14 @@ return view.extend({
 				uci.unset('aetherproxy', sid, 'name');
 		};
 		o.remove = function(sid) { return this.write(sid, ''); };
+
+		/* Keep both match inputs together in the modal, absent from the table.
+		   DynamicList allows manual/multiple MACs; never copy DHCP IPs to ip. */
+		o = s.option(form.DynamicList, 'mac', _('Device', 'aether-proxy'));
+		o.modalonly = true;
+		o.rmempty = true;
+		for (const c of self.candidates)
+			o.value(c.mac, c.label);
 
 		o = s.option(form.DummyValue, '_devices', _('Device', 'aether-proxy'));
 		o.modalonly = false;
