@@ -3,13 +3,14 @@
 
 /*
  * Pure view model for the access control page (docs/10 「访问控制页」,
- * docs/10 「访问控制页定案」, T10.36).
+ * docs/10 「访问控制页定案」 and 「r14 修正：访问控制 IP 范围与说明」).
  *
  * validate() mirrors the authoritative command-line host rules one to one, so
  * the page precheck agrees with `aether-proxy check` (docs/10: 最终仍以命令行
  * 的校验为准). The reference implementation lives in
  * aether-proxy/src/lib/config.uc (check_hosts, note_value, unset, mac) and
- * aether-proxy/src/lib/net.uc (ipv4, ip_or_cidr, ip_key, cidr_parts); every
+ * aether-proxy/src/lib/net.uc (ipv4, ip_or_cidr, addr_number, range_parts,
+ * ip_or_range, ip_key, cidr_parts); every
  * helper below states which function it mirrors. The page only implements the
  * host rules 1-4 of docs/10 「访问控制页」 — schema-level checks (enums, bools)
  * cannot go wrong through the dropdowns and stay with the command line.
@@ -38,7 +39,7 @@ function ipv4(s) {
 		return null;
 
 	for (const o of p) {
-		if (!/^(0|[1-9][0-9]{0,2})$/.test(o) || Number(o) > 255)
+		if (!fullmatch(o, /^(0|[1-9][0-9]{0,2})$/) || Number(o) > 255)
 			return null;
 	}
 
@@ -73,7 +74,7 @@ function ip_or_cidr_ok(s) {
 	if (p.length == 1)
 		return ipv4(s) != null;
 
-	if (p.length != 2 || ipv4(p[0]) == null || !/^(0|[1-9][0-9]?)$/.test(p[1]))
+	if (p.length != 2 || ipv4(p[0]) == null || !fullmatch(p[1], /^(0|[1-9][0-9]?)$/))
 		return false;
 
 	const len = Number(p[1]);
@@ -86,6 +87,40 @@ function ip_or_cidr_ok(s) {
 	const mask = (len == 0) ? 0 : ((0xFFFFFFFF << (32 - len)) >>> 0);
 
 	return (((addr & (~mask >>> 0)) >>> 0) == 0);
+}
+
+/* lib/net.uc addr_number: arithmetic avoids JavaScript's signed bitwise
+   values for addresses above 127.255.255.255. */
+function addr_number(s) {
+	const o = s.split('.').map((x) => Number(x));
+	return o[0] * 16777216 + o[1] * 65536 + o[2] * 256 + o[3];
+}
+
+/* lib/net.uc range_parts: two literal IPv4 endpoints, no whitespace, start <= end. */
+function range_parts(s) {
+	if (typeof s != 'string')
+		return null;
+
+	const p = s.split('-');
+	if (p.length != 2 || ipv4(p[0]) == null || ipv4(p[1]) == null)
+		return null;
+
+	const a = addr_number(p[0]), b = addr_number(p[1]);
+	return a <= b ? { start: a, end: b, from: p[0], to: p[1] } : null;
+}
+
+/* lib/net.uc ip_or_range: normalize x-x before duplicate detection, but keep
+   other range spellings unchanged just like the backend snapshot. */
+function ip_or_range(s) {
+	if (typeof s == 'string' && s.includes('-')) {
+		const r = range_parts(s);
+		if (r == null)
+			return null;
+
+		return r.start == r.end ? r.from : r.from + '-' + r.to;
+	}
+
+	return ip_or_cidr_ok(s) ? s : null;
 }
 
 /* lib/net.uc ip_key: 1.2.3.4 and 1.2.3.4/32 select the same host. */
@@ -164,14 +199,19 @@ function note_value(seen, reported, key, raw, i, field, labels, errors) {
 		seen[key] = i;
 }
 
-/* docs/02 冲突校验: one range overlaps another when the range with the
-   smaller prefix contains the other one. */
-function range_overlap(a, b) {
-	const lo = (a.len <= b.len) ? a : b;
-	const hi = (a.len <= b.len) ? b : a;
-	const mask = (lo.len == 0) ? 0 : ((0xFFFFFFFF << (32 - lo.len)) >>> 0);
+/* docs/10 r14: compare inclusive intervals for addresses, CIDRs and ranges.
+   Unlike duplicate detection, overlap hints also include partial intersections. */
+function ip_interval(s) {
+	const range = range_parts(s);
+	if (range != null)
+		return range;
 
-	return (((hi.addr & mask) >>> 0) == lo.addr);
+	const cidr = cidr_parts(s);
+	return { start: cidr.addr, end: cidr.addr + Math.pow(2, 32 - cidr.len) - 1 };
+}
+
+function range_overlap(a, b) {
+	return a.start <= b.end && b.start <= a.end;
 }
 
 function ranges_overlap(as, bs) {
@@ -219,10 +259,10 @@ return baseclass.extend({
 	      entry does not additionally produce a required error — that is how
 	      lib/config.uc check_hosts consults raw_hosts);
 	   2. policy=direct forbids the game mode;
-	   3. the same IPv4/CIDR (x and x/32 collide) or MAC (case- and
+	   3. the same IPv4/CIDR/range (x, x/32 and x-x collide) or MAC (case- and
 	      separator-insensitive) must not appear in two host sections;
 	      disabled sections take part, repeats inside one section do not;
-	   4. entry syntax: IPv4 or CIDR (prefix 0-32, zero host bits) and MAC.
+	   4. entry syntax: IPv4, CIDR (prefix 0-32, zero host bits), start-end range and MAC.
 	   Only entries that pass rule 4 take part in rules 3 and the overlap
 	   hints, mirroring the command line where invalid list items are dropped
 	   before check_hosts runs. Returns { errors, warnings }; warnings are the
@@ -258,16 +298,18 @@ return baseclass.extend({
 			const macs = [];
 
 			for (const raw of list_items(h.ip)) {
-				if (!ip_or_cidr_ok(raw)) {
+				const ip = ip_or_range(raw);
+				if (ip == null) {
 					errors.push({
 						host: label, field: 'ip', code: 'invalid_cidr', value: raw,
-						text: fmt(_('Host %s: %s is not a valid IPv4 address or CIDR.', 'aether-proxy'), label, raw)
+						text: fmt(_('Host %s: %s is not a valid IPv4 address, range or CIDR.',
+							'aether-proxy'), label, raw)
 					});
 
 					continue;
 				}
 
-				ips.push({ raw: String(raw), key: ip_key(raw), parts: cidr_parts(raw) });
+				ips.push({ raw: String(raw), key: ip_key(ip), parts: ip_interval(ip) });
 			}
 
 			for (const raw of list_items(h.mac)) {
@@ -302,7 +344,7 @@ return baseclass.extend({
 				note_value(seen_mac, reported, e.key, e.raw, i, 'mac', labels, errors);
 		}
 
-		/* docs/02 冲突校验: nesting CIDRs are allowed and take effect in the
+		/* docs/02 and docs/10 r14: overlapping IP entries are allowed and take effect in the
 		   order direct → proxy → bypass_cn → gfw → follow, so the page only warns (02: 并在
 		   LuCI 中提示). Same-policy pairs cannot differ in precedence and
 		   unknown policies are rejected by the command line anyway, so they
@@ -393,7 +435,7 @@ return baseclass.extend({
 	unlisted_notice: function(policy, mode) {
 		return policy == 'follow' && (mode == 'bypass_cn' || mode == 'global')
 			? _(
-				'Unlisted devices (including IoT) use the proxy. To proxy only some, choose Direct and list them.',
+				'Unlisted devices (including IoT) use the proxy.',
 				'aether-proxy')
 			: '';
 	},

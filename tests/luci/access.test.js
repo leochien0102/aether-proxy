@@ -238,7 +238,91 @@ function uci_host(h) {
 	return out;
 }
 
+/* T10.51 values follow tests/unit/host_range.uc. Only identical normalized
+   entries conflict; other intersections are non-blocking precedence hints. */
+function range_fixture(name, ips, codes = [], warnings = 0) {
+	return {
+		name: name, codes: codes, warnings: warnings,
+		sections: ips.map((ip, i) => host('cfg' + i, { ip: [ ip ], policy: i == 0 ? 'direct' : 'proxy' }))
+	};
+}
+
+const RANGE_FIXTURES = [
+	range_fixture('range passes', [ '192.168.8.250-192.168.8.254' ]),
+	range_fixture('x-x normalises to x', [ '192.168.8.7-192.168.8.7' ]),
+	range_fixture('range with reversed ends is rejected', [ '192.168.8.254-192.168.8.250' ], [ 'invalid_cidr' ]),
+	range_fixture('range with missing end is rejected', [ '192.168.8.250-' ], [ 'invalid_cidr' ]),
+	range_fixture('range with missing start is rejected', [ '-192.168.8.250' ], [ 'invalid_cidr' ]),
+	range_fixture('non-address range is rejected', [ 'a-b' ], [ 'invalid_cidr' ]),
+	range_fixture('range with spaces is rejected', [ '192.168.8.250 - 192.168.8.254' ], [ 'invalid_cidr' ]),
+	range_fixture('range with CIDR end is rejected', [ '192.168.8.250-192.168.8.0/24' ], [ 'invalid_cidr' ]),
+	range_fixture('range with three parts is rejected', [ '192.168.8.1-192.168.8.2-192.168.8.3' ], [ 'invalid_cidr' ]),
+	range_fixture('same range in two hosts is duplicate',
+		[ '192.168.8.250-192.168.8.254', '192.168.8.250-192.168.8.254' ], [ 'duplicate' ], 1),
+	range_fixture('x-x duplicates the single address in another host',
+		[ '192.168.8.7', '192.168.8.7-192.168.8.7' ], [ 'duplicate' ], 1),
+	range_fixture('x-x duplicates a /32 in another host',
+		[ '192.168.8.7-192.168.8.7', '192.168.8.7/32' ], [ 'duplicate' ], 1),
+	range_fixture('range and an address inside it coexist',
+		[ '192.168.8.250-192.168.8.254', '192.168.8.252' ], [], 1),
+	range_fixture('partially overlapping ranges coexist',
+		[ '192.168.8.250-192.168.8.254', '192.168.8.252-192.168.8.253' ], [], 1),
+	range_fixture('range and containing subnet coexist',
+		[ '192.168.8.250-192.168.8.254', '192.168.8.0/24' ], [], 1),
+	range_fixture('range spelling a CIDR block is not a duplicate',
+		[ '10.0.0.0/24', '10.0.0.0-10.0.0.255' ], [], 1),
+	range_fixture('range partially intersects subnet', [ '10.0.0.0/30', '10.0.0.2-10.0.0.9' ], [], 1),
+	range_fixture('ranges intersect at one endpoint',
+		[ '192.168.8.250-192.168.8.252', '192.168.8.252-192.168.8.254' ], [], 1),
+	range_fixture('range and adjacent address do not overlap',
+		[ '192.168.8.250-192.168.8.254', '192.168.8.255' ]),
+	range_fixture('range and adjacent subnet do not overlap', [ '10.0.0.0/30', '10.0.0.4-10.0.0.9' ]),
+	range_fixture('adjacent ranges do not overlap',
+		[ '192.168.8.250-192.168.8.251', '192.168.8.252-192.168.8.254' ]),
+	range_fixture('range crosses signed integer boundary', [ '127.255.255.255-128.0.0.1', '128.0.0.0' ], [], 1),
+	range_fixture('reversed range across signed boundary is rejected',
+		[ '128.0.0.1-127.255.255.255' ], [ 'invalid_cidr' ]),
+	range_fixture('whole IPv4 space overlaps last address', [ '0.0.0.0/0', '255.255.255.255-255.255.255.255' ], [], 1),
+	range_fixture('range with invalid octet is rejected', [ '192.168.8.250-192.168.8.256' ], [ 'invalid_cidr' ]),
+	range_fixture('range with leading zero is rejected', [ '192.168.08.250-192.168.8.254' ], [ 'invalid_cidr' ]),
+	range_fixture('range with trailing newline is rejected', [ '192.168.8.250-192.168.8.254\n' ], [ 'invalid_cidr' ]),
+	range_fixture('single address with trailing newline is rejected', [ '192.168.8.250\n' ], [ 'invalid_cidr' ]),
+	range_fixture('CIDR with trailing newline is rejected', [ '192.168.8.0/24\n' ], [ 'invalid_cidr' ])
+];
+
+for (const fixture of RANGE_FIXTURES) {
+	test('T10.51 ranges: ' + fixture.name, () => {
+		for (const sections of [ fixture.sections, fixture.sections.slice().reverse() ]) {
+			const result = validate(sections);
+			assert.deepEqual(result.errors.map((e) => e.code), fixture.codes);
+			assert.equal(result.warnings.length, fixture.warnings);
+			if (fixture.codes.includes('invalid_cidr'))
+				assert.match(result.errors[0].text, /IPv4 地址、范围或 CIDR/);
+		}
+	});
+}
+
+test('T10.51 ranges: disabled duplicates still fail; same-section repeats and non-effective overlaps do not', () => {
+	const range = '192.168.8.250-192.168.8.254';
+	const inside = '192.168.8.252';
+	const disabled = validate([
+		host('a', { ip: [ range ], policy: 'direct', enabled: '0' }),
+		host('b', { ip: [ range ], policy: 'proxy' })
+	]);
+	assert.deepEqual(disabled.errors.map((e) => e.code), [ 'duplicate' ]);
+	assert.equal(disabled.warnings.length, 0);
+	assert.deepEqual(validate([ host('a', { ip: [ range, range ] }) ]).errors, []);
+	for (const options of [ { policy: 'direct' }, { policy: 'proxy', enabled: '0' } ]) {
+		const result = validate([
+			host('a', { ip: [ range ], policy: 'direct' }), host('b', { ip: [ inside ], ...options })
+		]);
+		assert.deepEqual(result.errors, []);
+		assert.deepEqual(result.warnings, []);
+	}
+});
+
 const AGREEMENT_FIXTURES = [
+	...RANGE_FIXTURES,
 	{ name: 'rule 1: no ip and no mac', sections: [ host('cfg1', { name: 'tv' }) ] },
 	{ name: 'rule 1: only ip', sections: [ host('cfg1', { name: 'tv', ip: [ '192.168.1.10' ] }) ] },
 	{ name: 'rule 1: only mac', sections: [ host('cfg1', { name: 'tv', mac: [ 'aa:bb:cc:dd:ee:01' ] }) ] },
@@ -336,6 +420,9 @@ test('scenario 5: the model agrees with `aether-proxy check` on every fixture ha
 			const reply = JSON.parse(r.stdout);
 			const cli_host_errors = (reply.errors ?? []).filter((e) => /^host\[[0-9]+\]/.test(e.field ?? ''));
 			const model_errors = validate(fixture.sections).errors;
+
+			if (fixture.codes)
+				assert.deepEqual(cli_host_errors.map((e) => e.code), fixture.codes, fixture.name + ': backend codes');
 
 			assert.equal(
 				cli_host_errors.length > 0,
