@@ -41,6 +41,8 @@ export const EVENTS_FILE = 'events.jsonl';
 export const PROBE_FILE = 'probe.json';
 export const BASELINE_DATA_DIR = '/usr/share/aether-proxy/data';
 export const RUN_DIR = '/var/run/aether-proxy';
+// Manual-stop mark written by the init script's stop (docs/04); the init script spells the name itself.
+export const STOPPED_BY_USER_FILE = 'stopped-by-user';
 export const DOWNLOAD_DIR = '/tmp/aether-proxy-dl';
 export const UPLOAD_DIR = '/tmp/aether-proxy-upload';
 export const TMP_DIR = '/tmp';
