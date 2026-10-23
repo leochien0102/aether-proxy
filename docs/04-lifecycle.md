@@ -73,13 +73,19 @@
   子进程用 `uloop.process` 拉起，继承 daemon 的 stdout/stderr（日志由 procd 收集，见 [09](09-logging.md)「子进程日志」）；退出由回调通知，不轮询。daemon 记录每个子进程是否处于「主动停止」中，不是主动停止的退出一律视为崩溃。连续稳定运行 5 分钟后退避计数归零。
 - 收到 SIGTERM：按「停止」的顺序清理，然后退出。
 - `/etc/init.d/aether-proxy`：
-  - `start_service`：先同步执行 `aether-proxy check`（第 1–3 步加第 5 步，只校验不改动；失败就不注册实例，
-    LuCI 能立即看到错误），然后注册 `aether-proxy daemon` 实例（开机时 `boot()` 带 `--boot`）。
+  - `start_service`：直接注册 `aether-proxy daemon` 实例（开机时 `boot()` 带 `--boot`），**不再先同步执行 `aether-proxy check`**。
+    （2026-10-23 改，r13 窗口：H28K 上这次 check 约 5–10 秒（新进程没有缓存，读配置与数据、渲染、`nft -c`、`xray run -test`），期间 `state.json` 仍是 `stopped`，
+    页面点了「启用」「启动」看不到任何变化，重复点只会再排一次 check；daemon 随后又把同样的事做一遍。重载已在 2026-10-21 因同样理由去掉了这次 check。）
+    **daemon 启动后第一件事**是写 `state.json`：`state: starting`、`since`、`node_id` 与 `mode` 取 UCI 原值（此时尚未校验），然后才读配置。
+    配置无效等失败照「启动」各步记事件（`CONFIG_INVALID` 等）、进入 `error` 并按退避重试——页面经 T10.11 的失败原因能看到为什么。
   - `service_stopped`：执行 `aether-proxy cleanup --wait 35`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、
     杀掉残留子进程），兜底 daemon 被 SIGKILL 时来不及清理的情况。
     procd 的停止是异步的：`service_stopped` 运行时 daemon 往往还在自己的有序退出中（最多 `term_timeout` 30 秒）并持有锁。`--wait <秒>` 让 cleanup 在锁被占用时每秒重试、最多等这么久，拿到锁再清理；等满仍拿不到才按原来的 `BUSY` 处理。
     （2026-10-22 定，r12 窗口：运行中用 opkg 重装时 cleanup 撞上 daemon 的锁，记了一条 `BUSY {holder: daemon}` warn，backlog B15 第 2 条。）
     拿锁失败不区分「被占用」与锁文件 I/O 错误，两者都按上面重试、等满记 `BUSY`（T9.25 复核定：`sys.lock` 只返回句柄或 null，没有更细的原因）。
+    **还要等 daemon 进程退出**（2026-10-23 改，r13 窗口：daemon 在 monitor 阶段不持锁，`service_stopped` 的 cleanup 立刻拿到锁、先删了表，daemon 的有序退出再导出动态集合时表已不在，
+    每次重启都记 `CMD_FAILED` 与 `START_FAILED {step: sets_export}`，动态集合也没能保留）：daemon 启动时写 `/var/run/aether-proxy/daemon.pid`；`--wait` 期间同时等「锁可拿到」与
+    「该 pid 已不存在，或 `/proc/<pid>/cmdline` 不再是 `aether-proxy daemon`」，两者都满足才清理；等满仍不满足照原来的 `BUSY` 处理。daemon 正常退出时删除自己的 pid 文件。
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
 - 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。
@@ -196,6 +202,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 - `nft -j` 的元素格式：普通元素是裸值（`"1.2.3.4"`、`{"prefix":…}`、`{"range":[…]}`），只有带超时、计数器、注释的元素才包成 `{"elem":{"val":…}}`。两种都要解析（真机验收时发现只认包装格式导致导出全部失败）。
 - 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去。**`nft -f` 加载成功之后才删除 `sets.save`**（2026-10-17 改，backlog B9）：之前解析成功即删除，加载失败后的退避重试只能用空集合重建，导出的动态集合全部丢失。启动与 monitor 的「表丢失后重建」两处都按此顺序。
 - 会导出的地方：stop、`cleanup`（表还在时，兜底 daemon 被 SIGKILL 的情况；导出失败只记日志，不阻断清理）、reload（整表替换）、failsafe 恢复。
+  **停止时表已不存在**（被 cleanup、`fw4 flush` 或他人删掉）= 没有集合可导出：跳过导出，不记 `CMD_FAILED`。停止过程中的其他失败照记 `CMD_FAILED`，**不记 `START_FAILED`**（那是启动失败的事件码；2026-10-23，r13 窗口）。
 
 ## 故障语义汇总
 

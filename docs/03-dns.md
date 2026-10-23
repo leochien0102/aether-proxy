@@ -77,6 +77,26 @@ Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 c
 为什么接受 T3：T3 只在代理和直连境外 DNS 都不可用时才会进入，此时境外站点本来就打不开。T3 的作用是让
 **国内站点照常解析**。
 
+## 直连境外 DNS（可选，2026-10-23 定，r13 窗口）
+
+**可信 DNS 与直连 DNS 的区别**：两者都用 TCP，区别在查询由谁发出。可信 DNS 的查询经加密隧道到节点、由节点向 DNS 发起，墙看不到内容，结果离节点近；
+直连 DNS 由路由器直接向境外 DNS 发起明文 TCP 查询——被墙域名的查询一定被重置，常用境外 DNS（8.8.8.8、1.1.1.1）的 53/TCP 连接本身也常被干扰（下文「真机验证」与「DNS 级别」表中的实测）。
+所以直连这一档在国内多数网络里作用有限，r13 窗口还看到它在启动后几秒内刷了一屏失败日志。helloworld 的做法是境外 DNS 只走代理，没有直连这一档。
+
+- `dns.direct_dns_enabled` **默认 0**（[05](05-config.md)）。为 0 时：
+  - **不使用 T2**：启动时 trust 组直接用 **T1**（不先用 T2 等健康检测）；代理不健康 → T3（`allow_china_fallback=1` 时），否则留在 T1；T3 的「每 5 分钟试回 T2」改为不试，回 T1 照旧靠「代理健康检测连续通过 `recover_threshold` 次」。
+    monitor 的 T2 阶段 DNS 探测不再发生。
+  - **boot 组**（节点域名的引导解析）改用 `china_dns`（展开 `wan` 后的列表）：节点域名一般没被墙，运营商 DNS 解析最快；少数节点域名被污染的情况由用户打开直连 DNS 解决。
+  - 启动时 chinadns-ng 先于 Xray 起来，Xray 监听之前的一两秒里境外查询会失败，属预期。
+- 为 1 时与现在完全相同（启动先 T2，boot 组用 `direct_dns`）。
+- 说明（写进页面）：何时需要打开（节点域名被污染、代理不可用时仍需解析未被墙的境外域名）；局限（被墙域名直连一定解析不了；常见境外 DNS 直连常被重置，先用「检测」看看）。
+- **检测**（`aether-proxy dns test-direct`，作业种类 `dns_test`，[10](10-cli-luci.md)）：不依赖服务是否运行、也不看开关，对 `direct_dns` 的每一项从路由器直接查询：
+  - 支持 `tcp://IP[#端口]` 与不带前缀的 `IP[#端口]`（UDP）；`tls://` 等写法报 `unsupported`，不检测。查询用 ucode 的 `socket` 模块直接发 DNS 报文（A 记录；TCP 带两字节长度前缀），不借助 chinadns-ng 或 `nslookup`（busybox 的 `nslookup` 只有 UDP）。
+  - 两类域名，各查 3 次、每次超时 2 秒、依次进行：**未被墙的境外域名**——当前节点的地址（是域名时），没有就 `www.microsoft.com`；**被墙域名**——`dns_probe_domain`（默认 `www.google.com`）。
+  - 结果：每项 `{ "upstream", "unblocked": { "domain", "ok": <成功次数>, "total": 3, "latency_ms": <成功的中位数，或 null> }, "blocked": { 同上 }, "unsupported": <bool> }`。
+    页面写法：未被墙的「3 次成功 2 次，约 120 毫秒」；被墙的全失败时写「被墙域名无法直连解析（正常）」，有成功时如实写出（说明这个网络或这台 DNS 没有被干扰，或者路由器自己的流量经过了别的代理）。
+  - 路由器发出的流量不经 aether-proxy 的拦截；若装有其他会代理路由器本机流量的插件（如 ssr-plus 开着），结果反映的是那条路径，页面说明里提一句。
+
 ## 运营商下发的 DNS（`china_dns` 中的 `wan`，2026-10-22 定）
 
 - **取值**：读配置时（`pipeline.read`，与读规则数据同一阶段；渲染仍是纯函数）执行 `ubus call network.interface dump`，取 `up` 为真、且路由表中有默认路由（`target` 为 `0.0.0.0`、`mask` 为 0）的接口，收集它们 `dns-server` 中的 IPv4 地址，按接口名排序、保持原有顺序并去重。

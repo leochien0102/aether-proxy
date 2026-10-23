@@ -32,7 +32,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `china_dns` | list：chinadns-ng 上游写法，或字面值 `wan` | `wan` `114.114.114.114` | `wan` = 运营商下发的 DNS（WAN 口取得的 IPv4 DNS，[03](03-dns.md)「运营商下发的 DNS」）。2026-10-22 起默认值由 `223.5.5.5` `114.114.114.114` 改为此值（仓库所有者定：运营商 DNS 离用户最近，国内 CDN 更准）；已安装设备的配置文件保留原值，不自动改。2026-10-15 起不再默认使用 `119.29.29.29`：真机上 chinadns-ng 走 TCP 访问它时被反复重置（03「真机验证」） |
 | `trust_dns` | list：IPv4，可带 `tcp://` 或 `udp://` 前缀，**最多 2 个** | `8.8.8.8` `1.1.1.1` | T1：经节点访问 53 端口。不带前缀 = `tcp://`（默认，任何节点都能用）；`udp://` 用于不支持 TCP 查询的 DNS，**要求节点支持 UDP 转发**（节点那一端替你发出 UDP，客户端无法代替）。两项可以协议不同，互为备份（2026-10-22 定，[03](03-dns.md)「DNS 级别」） |
-| `direct_dns` | list chinadns-ng 上游写法 | `tcp://9.9.9.9` `tcp://8.8.8.8` | T2 与节点引导解析。默认值依据 2026-10-19 H28K 实测（[03](03-dns.md)「DNS 级别」）：直连 `tcp://9.9.9.9` 9 次成功 8 次且应答未被污染，`tcp://8.8.8.8` 1/9、`tcp://1.1.1.1` 0/9，DoT（8.8.8.8、1.1.1.1、9.9.9.9）全部不通 |
+| `direct_dns_enabled` | bool | `0` | 是否启用直连境外 DNS（T2 与节点域名的引导解析）。**默认关**（2026-10-23 仓库所有者定，r13 窗口；已安装设备升级后同样为关）：直连境外 DNS 在国内多数网络里被重置，作用有限（[03](03-dns.md)「直连境外 DNS（可选）」） |
+| `direct_dns` | list chinadns-ng 上游写法 | `tcp://9.9.9.9` | 只在 `direct_dns_enabled=1` 时使用（2026-10-23 起默认只留 `tcp://9.9.9.9`）。T2 与节点引导解析。原默认值 `tcp://9.9.9.9` `tcp://8.8.8.8` 的依据 2026-10-19 H28K 实测（[03](03-dns.md)「DNS 级别」）：直连 `tcp://9.9.9.9` 9 次成功 8 次且应答未被污染，`tcp://8.8.8.8` 1/9、`tcp://1.1.1.1` 0/9，DoT（8.8.8.8、1.1.1.1、9.9.9.9）全部不通 |
 | `allow_china_fallback` | bool | `1` | 是否允许降到 T3 |
 | `dns_probe_domain` | 域名 | `www.google.com` | T2/T3 探测用 |
 | `dnsmasq_instance` | 字符串 | 空（自动） | 指定 dnsmasq 实例 |
@@ -196,7 +197,6 @@ config dns 'dns'
 	list trust_dns '8.8.8.8'
 	list trust_dns '1.1.1.1'
 	list direct_dns 'tcp://9.9.9.9'
-	list direct_dns 'tcp://8.8.8.8'
 
 config sub 'sub'
 	option fetch_via 'auto'

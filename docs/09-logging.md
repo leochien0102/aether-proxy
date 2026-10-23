@@ -35,6 +35,10 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 - daemon 为每个子进程建一个 FIFO（`/var/run/aether-proxy/<名称>.log.fifo`，启动前先删掉旧的再建），用 `uloop.process` 启动 `/bin/sh -c`：先在后台启动过滤进程（从 FIFO 读、写到继承来的 stdout），
   再 `exec` 子进程并把 stdout/stderr 重定向到 FIFO。**`exec` 保持 pid 不变**，监管、停止、退出码判断都照旧针对这个 pid。子进程退出后 FIFO 的写端关闭，过滤进程读到 EOF，输出汇总行后退出。
 - 过滤进程是 busybox `awk`（`systime()`、`fflush()`；H28K 上实测可用），脚本随包安装。每行读入后立即 `fflush`，不缓冲正常日志。
+- **合并重复消息**（2026-10-23 定，r13 窗口：启动后约 6 秒里 chinadns-ng 交替写 `recv(tcp://8.8.8.8) failed` 与 `recv(tcp://1.1.1.1) failed`，每秒约 10 行，没超过限流却刷了一屏）：
+  每行先去掉行首的时间戳（chinadns-ng 的 `YYYY-MM-DD HH:MM:SS` 连同前面的颜色控制码、Xray 的 `YYYY/MM/DD HH:MM:SS.ffffff`）得到「消息」；10 秒窗口内同一条消息第一次照常输出，之后的只计数不输出；
+  窗口结束时（窗口满 10 秒后的第一行到来时，以及 EOF 时）对每条被压下的消息输出一行 `aether-proxy: <名称> repeated N more times: <消息，截断到 160 字符>`。每个窗口最多跟踪 32 条不同的消息，超出的照常输出（仍受下面的限流）。
+  合并先于限流：被合并掉的行不计入限流的配额。系统时间往回跳时与限流一样清空重来。
 - 规则：每个子进程**每秒最多 20 行、每分钟最多 120 行**，超出的丢弃并计数；之后第一次又有行可输出时（以及 EOF 时）先输出一行
   `aether-proxy: <名称> output rate limited, dropped N lines between HH:MM:SS and HH:MM:SS`（与子进程的输出同样进 syslog，不记事件：过滤进程不连事件日志）。
   数字的依据：logd 默认缓冲区约 64 KB，按每行 150 字节约 400 行；每分钟 120 行时，即使持续刷屏，最早的记录也能保留约 3 分钟以上，日常的启动、切换日志远低于这个量。

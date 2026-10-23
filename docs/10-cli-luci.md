@@ -24,7 +24,7 @@ init.d / hotplug / daemon ──────────────────
 | `daemon [--boot]` | procd 实例入口（[04](04-lifecycle.md)） | 常驻 |
 | `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup [--wait <秒>]` | 幂等清理。`--wait`：锁被占用时每秒重试、最多等这么久（0–120，默认 0 即不等，init 的 `service_stopped` 用 35，04「启停」） | 否 |
-| `status` | 输出 `state.json`（含 `wan_dns`：已应用的观测值，`status` 不重新查询 ubus，见 04「状态」），并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
+| `status` | 人读格式与 `--json` 都包含 `mode`（2026-10-23，r13 窗口脚本按人读格式读不到）；输出 `state.json`（含 `wan_dns`：已应用的观测值，`status` 不重新查询 ubus，见 04「状态」），并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
 | `components` | 现场查找 Xray、chinadns-ng 并读取版本（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
@@ -38,7 +38,8 @@ init.d / hotplug / daemon ──────────────────
 | `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
 | `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |
-| `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本（[08](08-updates.md)） | 是 |
+| `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本，**只对 `xray-core`**（2026-10-23，[08](08-updates.md)「取消三包手动回滚」） | 是 |
+| `dns test-direct` | 检测直连境外 DNS（[03](03-dns.md)「直连境外 DNS（可选）」，2026-10-23） | 是 |
 | `update data` | 更新规则数据 | 是 |
 | `data status` | 各规则数据的来源、版本、行数与可用更新（见「规则与 DNS 页」） | 否 |
 | `job start <子命令...>` | 以后台作业方式运行一个长任务，立即返回 `{"job": "<id>"}` | 否 |
@@ -135,7 +136,7 @@ LuCI 发起的长任务**必须**通过 `job start` 执行，原因：
 实现约定（2026-10-15 定，T6.2）：
 
 - **允许的作业**（`job start` 后面跟的子命令，按前两个词识别种类）：`probe nodes [<id>...]` → 种类 `probe_nodes`；`sub update [<sub>]` → `sub_update`。
-  M7 再加 `update check` → `update_check`、`update package …` → `update_package`、`update data` → `update_data`（三者共用一把「更新」锁，同时只跑一个）。其他子命令一律拒绝（`USAGE`，退出码 2）。
+  M7 再加 `update check` → `update_check`、`update package …` → `update_package`、`update data` → `update_data`（三者共用一把「更新」锁，同时只跑一个）。2026-10-23 再加 `dns test-direct` → `dns_test`（自己一把锁）。其他子命令一律拒绝（`USAGE`，退出码 2）。
 - **作业 ID**：`j_<启动时间秒>_<发起进程 pid>`，满足正则 `^j_[0-9]+_[0-9]+$`。
 - **作业文件**在 `<run-dir>/jobs/<id>.json`，字段：`id`、`kind`、`cmd`（显示用字符串）、`argv`（数组，工作进程据此执行，不经 shell 拼接）、`state`、`pid`（工作进程）、
   `started`、`finished`、`exit`（子命令退出码）、`result`（子命令 `--json` 输出解析后的对象）、`error`（失败时的 `code`，没有就为 `CMD_FAILED`）。全部经 `sys.write_atomic` 写。
@@ -188,7 +189,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 | `status` | — | `status` |
 | `service` | `action: start\|stop\|restart` | `/etc/init.d/aether-proxy <action>` |
 | `check` | — | `check` |
-| `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data`，`args`（按 kind 校验） | `job start …` |
+| `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data\|dns_test`，`args`（按 kind 校验） | `job start …` |
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
 | `probe_results` | — | `probe results`（read） |
@@ -224,7 +225,8 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   | `probe_nodes` | 0–256 个节点段名（`^n_[0-9a-f]{32}$`，不得重复） | `job start probe nodes [<id>…]` |
   | `sub_update` | 空，或 1 个订阅段名（`^s_[0-9a-f]{8}$`） | `job start sub update [<sub>]` |
   | `update_check`、`update_data` | 必须为空 | `job start update check` / `job start update data` |
-  | `update_package` | `[<包>]` 或 `[<包>, "--previous"]`，包名属于 `xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` | `job start update package <包> [--previous]` |
+  | `update_package` | `[<包>]` 或 `["xray-core", "--previous"]`，包名属于 `xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（`--previous` 只允许 `xray-core`，2026-10-23） | `job start update package <包> [--previous]` |
+  | `dns_test` | `[]` | `job start dns test-direct`（2026-10-23） |
 
 - **`events`**：`since` 为非负整数，`level` 为 `error|warn|notice|info|debug`，都可省略。
 - 每个方法在插件中声明 `args`。**值是示例，rpcd 按值的类型生成 ubus 参数规则**（`''` 字符串、`0` int32、`[]` 数组、`{}` 对象、`true` 布尔；rpcd `ucode.c`），
