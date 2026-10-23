@@ -12,6 +12,7 @@
  * rates and result messages, while this view owns requests and timers.
  * T10.24 follows docs/10 「概览页第七轮修正」: restart-aware inventory,
  * manual health display, remembered/retryable sites and pending-switch guards.
+ * T10.38 follows docs/10 「概览页：默认模式下拉」 for one-shot node/mode apply.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -40,15 +41,16 @@ return view.extend({
 			return {
 				labels: labels,
 				node: uci.get('aetherproxy', 'main', 'node'),
+				mode: uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn',
 				enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
 			};
 		});
 	},
 
-	/* Only mismatched runtime/configured nodes need diagnostic events. ap.call
+	/* Only mismatched runtime/configured settings need diagnostic events. ap.call
 	   settles RPC failures; the model treats those as a switch still in progress. */
-	switchEvents: function(status, configured_node) {
-		if (!model.switch_pending(status, configured_node))
+	switchEvents: function(status, configured_node, configured_mode) {
+		if (!model.switch_pending(status, configured_node, configured_mode))
 			return Promise.resolve(null);
 		return ap.call('events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' });
 	},
@@ -190,11 +192,12 @@ return view.extend({
 			}
 			return ap.call('stats').then((stats) => {
 				this.updateTraffic(stats);
-				return this.switchEvents(reply, this.currentNode).then((events) => {
+				return this.switchEvents(reply, this.currentNode, this.currentMode).then((events) => {
 					events = model.newer_events(events, this.reasonFloor);
 					this.latestEvents = events;
 					const next = model.build(reply, this.version, this.labels,
-						Math.floor(Date.now() / 1000), this.enabled, this.currentNode, this.components, events);
+						Math.floor(Date.now() / 1000), this.enabled, this.currentNode, this.components,
+						events, this.manualProbe, this.currentMode);
 					for (const key of ['switch_notice', 'switch_busy', 'switch_title'])
 						this.vm[key] = next[key];
 					this.updateNodeButton?.();
@@ -232,17 +235,21 @@ return view.extend({
 		this.poller = !this.initialReading && interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
 	},
 
-	handleNode: async function(node) {
+	handleNode: async function(node, mode) {
 		if (this.switching || this.vm?.switch_busy)
+			return;
+		const request = model.switch_request(node, mode, this.vm?.current_node, this.vm?.current_mode);
+		if (!request)
 			return;
 		this.switching = true;
 		this.updateNodeButton?.();
 		try {
-			const reply = await ap.call('node_use', { id: node });
+			const reply = await ap.call(request.method, request.params);
 			if (reply.ok) {
 				await uci.unload('aetherproxy');
 				const data = await this.load();
 				this.currentNode = data.node;
+				this.currentMode = data.mode;
 				this.labels = data.labels;
 				this.enabled = data.enabled;
 				/* A reason found for the previous target is not about this switch. */
@@ -252,16 +259,20 @@ return view.extend({
 				await this.refreshing;
 				await this.fetchRefresh();
 			}
-			const text = model.node_use_message(reply, this.status);
+			const text = model.node_use_message(reply, this.status, request.kind);
 			if (text)
 				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
 		}
 		catch (e) {
-			/* ap.call never rejects, so reaching here means node_use already
+			/* ap.call never rejects, so reaching here means the write already
 			   succeeded and only the page refresh failed: never call it a failed
 			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
 			ui.addNotification(null, E('p', {},
-				_('The node was switched, but refreshing the page data failed: %s. Reload the page.', 'aether-proxy')
+				(request.kind === 'node'
+					? _('The node was switched, but refreshing the page data failed: %s. Reload the page.',
+						'aether-proxy')
+					: _('Settings were switched, but refreshing the page data failed: %s. Reload the page.',
+						'aether-proxy'))
 					.replace('%s', e?.message ?? String(e))), 'warning');
 		}
 		finally {
@@ -402,19 +413,32 @@ return view.extend({
 		const nodes = E('select', { style: 'width:auto' }, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
 		}, option.text)));
+		const modes = E('select', { style: 'width:auto' }, model.mode_options().map((option) => E('option', {
+			value: option.value, selected: option.value === vm.current_mode ? 'selected' : null
+		}, option.text)));
+		/* Do not let the browser silently select its first mode when runtime mode is unknown. */
+		modes.value = vm.current_mode ?? '';
 		const button = E('button', {
-			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value)
-		}, _('Use this node', 'aether-proxy'));
+			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value, modes.value)
+		}, _('Apply', 'aether-proxy'));
 		const update = this.updateNodeButton = () => {
 			const busy = !!this.switching || !!this.vm.switch_busy;
 			nodes.disabled = busy;
-			button.disabled = busy || !model.can_switch(nodes.value, current);
-			for (const control of [nodes, button])
+			modes.disabled = busy || !vm.current_mode;
+			button.disabled = busy || !model.switch_request(nodes.value, modes.value, current, vm.current_mode);
+			for (const control of [nodes, modes, button])
 				control.title = this.vm.switch_title ?? '';
 		};
 		nodes.addEventListener('change', update);
+		modes.addEventListener('change', update);
 		update();
-		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [ nodes, button ]);
+		return E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+			nodes,
+			E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
+				_('Default mode', 'aether-proxy'), modes
+			]),
+			button
+		]);
 	},
 
 	colorStyle: function(level) {
@@ -537,6 +561,7 @@ return view.extend({
 	render: function(data) {
 		this.labels = data.labels;
 		this.currentNode = data.node;
+		this.currentMode = data.mode;
 		this.enabled = data.enabled;
 		this.initialReading = true;
 
@@ -567,7 +592,7 @@ return view.extend({
 		if (markers && this.manualProbe && markers.probe_at !== this.manualProbe.monitor_at)
 			this.manualProbe = null;
 		const vm = model.build(status, this.version, this.labels, Math.floor(Date.now() / 1000),
-			this.enabled, this.currentNode, this.components, events, this.manualProbe);
+			this.enabled, this.currentNode, this.components, events, this.manualProbe, this.currentMode);
 
 		/* Keep confirmations from the latest model output for both controls. */
 		this.vm = vm;
@@ -579,9 +604,10 @@ return view.extend({
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
 		/* Keep edits across ordinary polls, but rebase the suffix and switch
 		   guard if the effective runtime node changes. */
-		if (!this.nodeControl || this.controlNode !== vm.current_node) {
+		if (!this.nodeControl || this.controlNode !== vm.current_node || this.controlMode !== vm.current_mode) {
 			this.nodeControl = vm.node_options.length ? this.nodeControls(vm) : null;
 			this.controlNode = vm.current_node;
+			this.controlMode = vm.current_mode;
 		}
 		this.updateNodeButton?.();
 		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);

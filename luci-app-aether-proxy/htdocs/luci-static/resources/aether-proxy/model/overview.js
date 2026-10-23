@@ -11,6 +11,7 @@
  * T10.22 also summarizes staged session changes before disabling the service;
  * T10.23 switches via node_use; T10.24 merges manual latency into the displayed
  * health result without changing monitor health, and locks pending node switches;
+ * T10.38 adds default-mode selection and shares the pending-switch lifecycle;
  * T10.39 resolves switch failure reasons with the same node names as logs;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
@@ -241,11 +242,25 @@ function node_options(labels, current) {
 
 /* Reload failures leave runtime status unchanged. Compare against UCI instead
    of last_error, which describes startup rather than the attempted switch. */
-function switch_pending(status, configured_node) {
+function node_changed(status, configured_node) {
+	return !!configured_node && !!status?.node_id && configured_node !== status.node_id;
+}
+
+const MODE_TEXT = {
+	bypass_cn: _('Bypass China', 'aether-proxy'),
+	gfw: _('GFW only', 'aether-proxy'),
+	global: _('Global (all traffic through proxy)', 'aether-proxy')
+};
+
+function mode_changed(status, configured_mode) {
+	return !!MODE_TEXT[configured_mode] && !!MODE_TEXT[status?.mode] && configured_mode !== status.mode;
+}
+
+function switch_pending(status, configured_node, configured_mode) {
 	const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
 	if (status?.ok === false || !active)
 		return false;
-	return !!configured_node && !!status.node_id && configured_node !== status.node_id;
+	return node_changed(status, configured_node) || mode_changed(status, configured_mode);
 }
 
 function switch_reason(reply) {
@@ -264,11 +279,30 @@ function switch_reason(reply) {
 	return latest;
 }
 
-function switch_notice(status, configured_node, labels, reply, now) {
-	if (!switch_pending(status, configured_node))
+function switch_notice(status, configured_node, labels, reply, now, configured_mode) {
+	if (!switch_pending(status, configured_node, configured_mode))
 		return null;
 	const configured = labels[configured_node] || configured_node;
 	const reason = switch_reason(reply);
+	if (mode_changed(status, configured_mode)) {
+		const both = node_changed(status, configured_node);
+		if (!reason)
+			return both
+				? fmt(_('Switching to “%s”, default mode “%s”…', 'aether-proxy'),
+					configured, MODE_TEXT[configured_mode])
+				: fmt(_('Switching default mode to “%s”…', 'aether-proxy'), MODE_TEXT[configured_mode]);
+		const text = both
+			? fmt(_('Switching to “%s”, default mode “%s” did not take effect; '
+				+ 'the service is still using “%s”, default mode “%s”.', 'aether-proxy'),
+				configured, MODE_TEXT[configured_mode],
+				labels[status.node_id] || status.node_id, MODE_TEXT[status.mode])
+			: fmt(_('Switching default mode to “%s” did not take effect; '
+				+ 'the service is still using default mode “%s”.', 'aether-proxy'),
+				MODE_TEXT[configured_mode], MODE_TEXT[status.mode]);
+		return fmt(_('%s Reason: %s (%s). Click Restart to start with the configured settings '
+			+ '(this briefly interrupts proxy traffic), or see the logs page for details.', 'aether-proxy'),
+			text, logs.message(reason, { nodes: labels, subscriptions: {} }), rel_time(now, reason.ts));
+	}
 	if (!reason)
 		return fmt(_('Switching to “%s”…', 'aether-proxy'), configured);
 	return fmt(_('Switching to “%s” did not take effect; the service is still using “%s”. '
@@ -402,17 +436,38 @@ return baseclass.extend({
 		return fmt(_('Testing real latency failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED');
 	},
 
-	node_use_message: function(reply, status) {
+	node_use_message: function(reply, status, kind = 'node') {
+		const failures = {
+			node: _('Switching nodes failed (%s)', 'aether-proxy'),
+			mode: _('Switching default mode failed (%s)', 'aether-proxy'),
+			both: _('Switching node and default mode failed (%s)', 'aether-proxy')
+		};
 		if (reply?.ok !== true)
-			return fmt(_('Switching nodes failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED')
+			return fmt(failures[kind], reply?.code ?? 'RPC_FAILED')
 				+ (reply?.detail ? ': ' + reply.detail : '');
 		if (reply.reload === false && status?.ok !== false
 			&& ['stopped', 'error'].includes(status?.state))
-			return _('Set as the current node; it will be used on the next start.', 'aether-proxy');
+			return kind === 'node'
+				? _('Set as the current node; it will be used on the next start.', 'aether-proxy')
+				: _('Settings saved; they will be used on the next start.', 'aether-proxy');
 		return null;
 	},
 
 	node_options: node_options,
+
+	mode_options: function() {
+		return Object.entries(MODE_TEXT).map(([value, text]) => ({ value, text }));
+	},
+
+	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */
+	switch_request: function(node, mode, current_node, current_mode) {
+		const change_node = !!node && node !== current_node;
+		const change_mode = !!MODE_TEXT[mode] && mode !== current_mode;
+		if (change_node)
+			return { method: 'node_use', params: change_mode ? { id: node, mode } : { id: node },
+				kind: change_mode ? 'both' : 'node' };
+		return change_mode ? { method: 'mode_use', params: { mode }, kind: 'mode' } : null;
+	},
 
 	can_switch: function(selected, current) {
 		return !!selected && selected !== current;
@@ -424,7 +479,8 @@ return baseclass.extend({
 	   inventory is undefined while pending, null/ok:false on failure, and is
 	   fetched after rendering or on explicit retry (docs/10 「概览页第五轮修正」). events contains
 	   recent errors only while a node switch is pending (docs/10 T10.11). */
-	build: function(status, version, labels, now, enabled, configured_node, inventory, events, manual) {
+	build: function(status, version, labels, now, enabled, configured_node, inventory, events, manual,
+		configured_mode) {
 		labels = (labels && typeof labels == 'object') ? labels : {};
 		now = (typeof now == 'number') ? now : Math.floor(Date.now() / 1000);
 
@@ -452,12 +508,19 @@ return baseclass.extend({
 			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
 		/* Inactive state files can retain an old node_id; only runtime wins. */
 		const current_node = (active && status.node_id) || configured_node || null;
-		const switching = switch_pending(status, configured_node) && !switch_reason(events);
+		/* TODO(design): an active legacy status without mode has no defined fallback.
+		   Leave mode unknown (the view disables it), rather than claim UCI is applied. */
+		const mode = active ? status.mode : configured_mode;
+		const current_mode = MODE_TEXT[mode] ? mode : null;
+		const switching = switch_pending(status, configured_node, configured_mode) && !switch_reason(events);
 		const nodes = {
 			switch_busy: switching,
-			switch_title: switching ? _('Switching nodes, please wait', 'aether-proxy') : null,
-			switch_notice: switch_notice(status, configured_node, labels, events, now),
+			switch_title: switching ? (mode_changed(status, configured_mode)
+				? _('Switching settings, please wait', 'aether-proxy')
+				: _('Switching nodes, please wait', 'aether-proxy')) : null,
+			switch_notice: switch_notice(status, configured_node, labels, events, now, configured_mode),
 			current_node,
+			current_mode,
 			node_options: node_options(labels, current_node),
 			node_text: Object.keys(labels).length ? null
 				: _('There are no nodes yet. Add or import nodes on the Nodes page.', 'aether-proxy')

@@ -1825,10 +1825,6 @@ msgid "%s (current)"
 msgstr "%s（当前）"
 
 msgctxt "aether-proxy"
-msgid "Use this node"
-msgstr "使用此节点"
-
-msgctxt "aether-proxy"
 msgid "Upload"
 msgstr "上传"
 
@@ -2167,3 +2163,47 @@ msgstr "TCP Fast Open"
 msgctxt "aether-proxy"
 msgid "MPTCP"
 msgstr "MPTCP"
+
+msgctxt "aether-proxy"
+msgid "Apply"
+msgstr "应用"
+
+msgctxt "aether-proxy"
+msgid "Switching to “%s”, default mode “%s”…"
+msgstr "正在切换到「%s」，默认模式「%s」…"
+
+msgctxt "aether-proxy"
+msgid "Switching default mode to “%s”…"
+msgstr "正在切换默认模式到「%s」…"
+
+msgctxt "aether-proxy"
+msgid "Switching to “%s”, default mode “%s” did not take effect; the service is still using “%s”, default mode “%s”."
+msgstr "切换到「%s」，默认模式「%s」未生效，服务仍在使用「%s」，默认模式「%s」。"
+
+msgctxt "aether-proxy"
+msgid "Switching default mode to “%s” did not take effect; the service is still using default mode “%s”."
+msgstr "切换默认模式到「%s」未生效，服务仍在使用默认模式「%s」。"
+
+msgctxt "aether-proxy"
+msgid "%s Reason: %s (%s). Click Restart to start with the configured settings (this briefly interrupts proxy traffic), or see the logs page for details."
+msgstr "%s原因：%s（%s）。可以点「重启」用配置的设置重新启动（会短暂中断代理），或到日志页查看详情。"
+
+msgctxt "aether-proxy"
+msgid "Switching settings, please wait"
+msgstr "正在切换设置，请稍候"
+
+msgctxt "aether-proxy"
+msgid "Switching default mode failed (%s)"
+msgstr "切换默认模式失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Switching node and default mode failed (%s)"
+msgstr "切换节点与默认模式失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Settings saved; they will be used on the next start."
+msgstr "设置已保存，下次启动时使用"
+
+msgctxt "aether-proxy"
+msgid "Settings were switched, but refreshing the page data failed: %s. Reload the page."
+msgstr "已切换设置，但刷新页面数据失败：%s。请刷新页面。"

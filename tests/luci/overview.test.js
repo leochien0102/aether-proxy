@@ -1,7 +1,7 @@
 'use strict';
 
 /* Overview model/view tests (docs/tasks/m8.md T8.4, T8.11a, T8.12c;
- * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20, T10.22–T10.24).
+ * m10.md T10.3–T10.6, T10.9, T10.11, T10.13, T10.17, T10.20, T10.22–T10.24, T10.38).
  *
  * 7-8 exercise the pure model module (aether-proxy/model/overview.js) through
  * the LuCI loader with a baseclass double; _() resolves from the real po file
@@ -658,7 +658,7 @@ test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refr
 	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
 	assert.equal(nodes.children[0].attrs.selected, 'selected');
 	assert.equal(nodes.children[1].textContent, 'n_b');
-	const use = findAll(root, 'button').find((b) => b.textContent === '使用此节点');
+	const use = findAll(root, 'button').find((b) => b.textContent === '应用');
 	assert.equal(use.disabled, true, 'current node cannot be applied again');
 	nodes.value = 'n_b';
 	nodes.attrs.change();
@@ -678,7 +678,7 @@ test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refr
 
 	const emptyPage = loadView();
 	const emptyRoot = emptyPage.render(await emptyPage.load());
-	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.textContent === '使用此节点');
+	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.textContent === '应用');
 	assert.equal(emptyUse, undefined, 'an empty node list has no apply button');
 	assert.equal(findAll(emptyRoot, 'select').length, 2, 'refresh and site selectors remain');
 });
@@ -1423,8 +1423,9 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 		assert.match(row.attrs.style, rule);
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
-	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'button' ]);
-	assert.equal(left.children[1].textContent, '使用此节点');
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'select', 'label', 'button' ]);
+	assert.equal(left.children[2].textContent, '应用');
+	assert.equal(left.children[1].children[0], '默认模式');
 	/* themes give select width:100%, which wraps the button onto the next line */
 	assert.match(left.children[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
@@ -2025,7 +2026,7 @@ test('T10.17 scenario 1: load reads only UCI and never starts RPC or polling', a
 	assert.deepEqual(uciOps, [ [ 'load', 'aetherproxy' ] ]);
 	assert.deepEqual(calls, []);
 	assert.deepEqual(polls, []);
-	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', enabled: true });
+	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: '1', enabled: true });
 });
 
 test('T10.17 scenario 2: all RPCs pending still renders complete placeholders and safe UCI controls', async () => {
@@ -2472,7 +2473,7 @@ test('T10.23 scenario 4: overview node_use failure restores button, reports code
 	failedPage.content = E('div');
 	failedPage.currentNode = 'n_a';
 	failedPage.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const [select, button] = failedPage.nodeControl.children;
+	const [select, , button] = failedPage.nodeControl.children;
 	select.value = 'n_b';
 	select.attrs.change();
 	const pending = button.attrs.click();
@@ -2498,7 +2499,7 @@ test('T10.23 defensive: overview UCI refresh rejection notifies and restores swi
 	page.content = E('div');
 	page.labels = { n_a: 'Alpha', n_b: 'Beta' };
 	page.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const [select, button] = page.nodeControl.children;
+	const [select, , button] = page.nodeControl.children;
 	select.value = 'n_b';
 	select.attrs.change();
 	await button.attrs.click();
@@ -2752,7 +2753,7 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 		const root = page.render({ ...data, node: 'n_b' });
 		await Promise.resolve();
 		await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-		const [nodes, use] = page.nodeControl.children;
+		const [nodes, , use] = page.nodeControl.children;
 		nodes.value = 'n_b';
 		nodes.attrs.change();
 		assert.equal(page.vm.switch_notice, '正在切换到「Beta」…');
@@ -2789,7 +2790,7 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 			await h.reply('status', { ok: true, state: 'running', node_id: 'n_b' });
 			await h.reply('stats', readings(2000, 0, 0, 0, 0));
 			await refresh;
-			const [selected, button] = page.nodeControl.children;
+			const [selected, , button] = page.nodeControl.children;
 			assert.equal(page.vm.switch_notice, null);
 			assert.equal(selected.disabled, false);
 			assert.equal(selected.title, '');
@@ -2872,4 +2873,313 @@ test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translation
 		for (const match of source.matchAll(/_\('([^'\n]*)', 'aether-proxy'\)/g))
 			assert.ok(po[match[1]], `translation exists for ${match[1]}`);
 	}
+});
+
+/* Mode scenarios use real enum values on both UCI and runtime sides. The
+   mutable pair represents a committed configuration ahead of an async reload. */
+async function modePage(options = {}) {
+	const calls = [], order = [], notes = [];
+	const configured = { node: 'n_a', mode: 'bypass_cn', ...options.configured };
+	const runtime = { ok: true, state: 'running', node_id: 'n_a', mode: 'bypass_cn', ...options.runtime };
+	const h = { calls, order, notes, configured, runtime, events: options.events ?? { ok: true, events: [] } };
+	const page = h.page = loadView({
+		ap: {
+			confirm: async () => true,
+			call: async (method, params) => {
+				calls.push([method, params]);
+				order.push(method);
+				if (method === 'node_use' || method === 'mode_use') {
+					const reply = await (options.write?.(method, params) ?? { ok: true, reload: true });
+					if (reply.ok) {
+						configured.node = params.id ?? configured.node;
+						configured.mode = params.mode ?? configured.mode;
+					}
+					return reply;
+				}
+				if (method === 'status')
+					return { ...runtime };
+				if (method === 'events')
+					return typeof h.events === 'function' ? h.events() : h.events;
+				if (method === 'probe_sites')
+					return SITES;
+				return { ok: true };
+			},
+			poll: () => ({ stop() {} })
+		},
+		uci: {
+			load: async () => { order.push('load'); },
+			unload: () => { order.push('unload'); options.unload?.(); },
+			get: (config, section, option) => option === 'enabled' ? '1' : configured[option],
+			sections: (config, type, cb) => {
+				if (type === 'node')
+					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta']])
+						cb({ '.name': name, label });
+			},
+			set: () => assert.fail('node/mode apply must not stage session UCI'),
+			save: () => assert.fail('node/mode apply must not save session UCI'),
+			changes: () => assert.fail('node/mode apply must not read staged session changes')
+		},
+		ui: {
+			changes: { apply: () => assert.fail('node/mode apply must not apply session changes') },
+			addNotification: (title, body, kind) => notes.push({ text: visibleText(body), kind })
+		},
+		window: { localStorage: { getItem: () => '0', setItem: () => {} } }
+	});
+	h.root = page.render(await page.load());
+	await Promise.all([page.initialRequest, page.sitesRequest, page.componentRequest, page.versionRequest]);
+	h.controls = () => {
+		const [node, mode] = findAll(page.nodeControl, 'select');
+		return { node, mode, apply: findAll(page.nodeControl, 'button')[0] };
+	};
+	calls.length = 0;
+	order.length = 0;
+	return h;
+}
+
+const MODE_OPTIONS = [
+	['bypass_cn', '绕过大陆'], ['gfw', '仅代理被墙网站（GFW）'], ['global', '全局（所有流量走代理）']
+];
+
+test('T10.38 scenario 1: effective mode is preselected while active; inactive and initial reads use UCI', async () => {
+	for (const state of ['starting', 'running', 'degraded', 'failsafe', 'stopped', 'error', 'unknown']) {
+		const h = await modePage({ configured: { mode: 'global' }, runtime: { state, mode: 'gfw' } });
+		const { mode } = h.controls();
+		const expected = ['starting', 'running', 'degraded', 'failsafe'].includes(state) ? 'gfw' : 'global';
+		assert.equal(h.page.vm.current_mode, expected, state);
+		assert.equal(mode.value, expected, state);
+		assert.deepEqual(mode.children.map(option => [option.value, option.textContent]), MODE_OPTIONS);
+		assert.equal(mode.children.find(option => option.attrs.selected)?.value, expected);
+		assert.equal(h.page.vm.switch_busy, expected === 'gfw', 'only active mismatches are pending');
+		assert.equal(mode.disabled, expected === 'gfw');
+	}
+	const defaults = await modePage({ configured: { mode: undefined }, runtime: { state: 'stopped' } });
+	assert.equal(defaults.controls().mode.value, 'bypass_cn', 'unset UCI uses the schema default');
+	const h = await modePage({ configured: { mode: 'gfw' } });
+	h.page.refresh(undefined);
+	assert.equal(h.controls().mode.value, 'gfw', 'initial skeleton reads the UCI mode');
+	h.page.refresh({ ok: false, code: 'TIMEOUT' });
+	assert.equal(h.controls().mode.value, 'gfw', 'failed status keeps the UCI fallback like node selection');
+});
+
+test('T10.38 conservative: missing active status.mode disables mode selection without inventing effective mode',
+	async () => {
+	const h = await modePage({ runtime: { mode: undefined } });
+	assert.equal(h.page.vm.current_mode, null);
+	assert.equal(h.page.vm.switch_notice, null, 'missing mode is not evidence of a pending reload');
+	assert.equal(h.controls().mode.value, '');
+	assert.equal(h.controls().mode.disabled, true);
+	assert.equal(h.controls().apply.disabled, true);
+	assert.deepEqual(h.calls, []);
+});
+
+for (const [kind, node, mode, expected] of [
+	['unchanged', 'n_a', 'bypass_cn', null],
+	['node', 'n_b', 'bypass_cn', ['node_use', { id: 'n_b' }]],
+	['mode', 'n_a', 'gfw', ['mode_use', { mode: 'gfw' }]],
+	['both', 'n_b', 'global', ['node_use', { id: 'n_b', mode: 'global' }]]
+]) {
+	test(`T10.38 scenario 2: Apply ${kind} dispatches exactly the intended RPC and never applies session changes`,
+		async () => {
+		let resolve;
+		const h = await modePage({ write: () => new Promise(done => { resolve = done; }) });
+		const { page } = h;
+		const controls = h.controls();
+		assert.equal(controls.apply.textContent, '应用');
+		assert.equal(controls.apply.disabled, true, 'no effective selection change');
+		controls.node.value = node;
+		controls.mode.value = mode;
+		controls.mode.attrs.change();
+		assert.equal(controls.apply.disabled, expected == null);
+		const pending = controls.apply.attrs.click();
+		if (!expected) {
+			await pending;
+			assert.deepEqual(h.calls, []);
+			return;
+		}
+		assert.deepEqual(h.calls, [expected]);
+		assert.equal(controls.node.disabled, true);
+		assert.equal(controls.mode.disabled, true);
+		assert.equal(controls.apply.disabled, true);
+		await controls.apply.attrs.click();
+		assert.equal(h.calls.length, 1, 'duplicate click does not write twice');
+		resolve({ ok: true, reload: true });
+		await pending;
+		assert.deepEqual(h.order, [expected[0], 'unload', 'load', 'status', 'stats', 'events']);
+		assert.equal(page.vm.switch_busy, true, 'RPC returns before the reload takes effect');
+		assert.deepEqual(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)), [expected]);
+		const banner = kind === 'both' ? '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…'
+			: kind === 'mode' ? '正在切换默认模式到「仅代理被墙网站（GFW）」…' : '正在切换到「Beta」…';
+		assert.equal(page.vm.switch_notice, banner);
+	});
+}
+
+test('T10.38 scenario 2: ordinary polls preserve both edited selections; effective mode changes rebase controls',
+	async () => {
+	const h = await modePage();
+	const before = h.controls();
+	before.node.value = 'n_b';
+	before.mode.value = 'global';
+	before.node.attrs.change();
+	await h.page.fetchRefresh();
+	assert.equal(h.controls().node, before.node);
+	assert.equal(h.controls().mode, before.mode);
+	assert.equal(h.controls().node.value, 'n_b');
+	assert.equal(h.controls().mode.value, 'global');
+	assert.equal(h.controls().apply.disabled, false);
+	h.configured.mode = 'gfw';
+	h.page.currentMode = 'gfw';
+	h.runtime.mode = 'gfw';
+	await h.page.fetchRefresh();
+	assert.notEqual(h.controls().mode, before.mode);
+	assert.equal(h.controls().mode.value, 'gfw');
+	assert.equal(h.controls().apply.disabled, true);
+});
+
+test('T10.38 scenario 3: mode-only mismatch locks both dropdowns and Apply; completion restores them, '
+	+ 'not service actions',
+	async () => {
+	const h = await modePage({ configured: { mode: 'global' } });
+	const { page, root } = h;
+	let controls = h.controls();
+	assert.equal(page.vm.switch_notice, '正在切换默认模式到「全局（所有流量走代理）」…');
+	for (const control of Object.values(controls)) {
+		assert.equal(control.disabled, true);
+		assert.equal(control.title, '正在切换设置，请稍候');
+	}
+	assert.deepEqual(serviceButtons(root).map(disabled), [true, false, false]);
+	await controls.apply.attrs.click();
+	assert.deepEqual(h.calls, [], 'guard stops writes during a mode-only reload');
+	await page.handleService('restart');
+	await page.handleService('stop');
+	assert.deepEqual(h.calls, [['service', { action: 'restart' }], ['service', { action: 'stop' }]]);
+	h.runtime.mode = 'global';
+	h.calls.length = 0;
+	await page.fetchRefresh();
+	assert.deepEqual(h.calls.map(([method]) => method), ['status', 'stats'], 'completion skips diagnostic events');
+	assert.equal(page.vm.switch_notice, null);
+	controls = h.controls();
+	assert.equal(controls.node.disabled, false);
+	assert.equal(controls.mode.disabled, false);
+	assert.equal(controls.mode.value, 'global');
+	controls.mode.value = 'gfw';
+	controls.mode.attrs.change();
+	assert.equal(controls.apply.disabled, false, 'another mode can be applied after completion');
+	assert.deepEqual(serviceButtons(root).map(disabled), [true, false, false]);
+});
+
+for (const [code, args] of SWITCH_REASON_CASES) {
+	test(`T10.38 scenario 3: mode-only ${code} explains failure and unlocks controls without transient relocking`,
+		async t => {
+		t.mock.method(Date, 'now', () => NOW * 1000);
+		const event = { ts: NOW - 30, code, args };
+		const h = await modePage({ configured: { mode: 'global' }, events: { ok: true, events: [event] } });
+		const { page } = h;
+		const controls = h.controls();
+		assert.equal(page.vm.switch_notice, '切换默认模式到「全局（所有流量走代理）」未生效，'
+			+ '服务仍在使用默认模式「绕过大陆」。原因：' + logText(event)
+			+ '（30 秒前）。'
+			+ '可以点「重启」用配置的设置重新启动（会短暂中断代理），或到日志页查看详情。');
+		assert.equal(controls.node.disabled, false);
+		assert.equal(controls.mode.disabled, false);
+		controls.mode.value = 'gfw';
+		controls.mode.attrs.change();
+		assert.equal(controls.apply.disabled, false);
+		let release;
+		h.events = () => new Promise(resolve => { release = resolve; });
+		const pending = page.fetchRefresh();
+		for (let i = 0; i < 12; i++)
+			await Promise.resolve();
+		assert.equal(typeof release, 'function');
+		assert.equal(controls.mode.disabled, false, 'status phase retains the known reason until events arrive');
+		assert.ok(page.vm.switch_notice.includes('未生效'));
+		release({ ok: true, events: [event] });
+		await pending;
+		assert.equal(controls.mode.disabled, false);
+	});
+}
+
+test('T10.38 scenario 3: combined failure names both targets and effective values, with existing reason-code filtering',
+	async () => {
+	const event = { ts: NOW, code: 'CONFIG_INVALID', args: { field: 'main.mode', reason: 'invalid' } };
+	const h = await modePage({ configured: { node: 'n_b', mode: 'global' }, events: { ok: true, events: [event] } });
+	assert.ok(h.page.vm.switch_notice.startsWith('切换到「Beta」，默认模式「全局（所有流量走代理）」未生效，'
+		+ '服务仍在使用「Alpha」，默认模式「绕过大陆」。原因：' + logText(event)));
+	assert.equal(h.controls().mode.disabled, false);
+	for (const events of [{ ok: true, events: [{ ts: NOW + 5, code: 'CMD_FAILED', args: {} }] },
+		{ ok: true, events: [{ ts: NOW + 5, code: 'START_FAILED', args: { step: 'precheck' } }] },
+		{ ok: false, code: 'TIMEOUT' }, null]) {
+		h.events = events;
+		await h.page.fetchRefresh();
+		assert.equal(h.page.vm.switch_notice, '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…');
+		assert.equal(h.controls().mode.disabled, true);
+	}
+});
+
+test('T10.38 scenario 3: a new mode switch ignores the previous target failure and accepts only newer reasons',
+	async () => {
+	const old = { ts: NOW, code: 'CONFIG_INVALID', args: {} };
+	const h = await modePage({ configured: { mode: 'global' }, events: { ok: true, events: [old] } });
+	const controls = h.controls();
+	assert.ok(h.page.vm.switch_notice.includes('未生效'));
+	controls.mode.value = 'gfw';
+	controls.mode.attrs.change();
+	await controls.apply.attrs.click();
+	assert.equal(h.page.vm.switch_notice, '正在切换默认模式到「仅代理被墙网站（GFW）」…');
+	assert.equal(h.page.vm.switch_busy, true);
+	assert.equal(h.controls().mode.disabled, true);
+	h.events = { ok: true, events: [old, { ts: NOW + 1, code: 'RENDER_INVALID', args: {} }] };
+	await h.page.fetchRefresh();
+	assert.ok(h.page.vm.switch_notice.includes('未生效'));
+	assert.equal(h.controls().mode.disabled, false);
+});
+
+for (const kind of ['node', 'mode', 'both']) {
+	test(`T10.38 scenario 4: ${kind} RPC failure reports code/detail and restores both dropdowns and Apply`,
+		async () => {
+		const h = await modePage({ write: () => ({ ok: false, code: 'FS_FAILED', detail: 'uci-commit' }) });
+		const controls = h.controls();
+		if (kind !== 'mode')
+			controls.node.value = 'n_b';
+		if (kind !== 'node')
+			controls.mode.value = 'global';
+		controls.mode.attrs.change();
+		await controls.apply.attrs.click();
+		assert.equal(controls.node.disabled, false);
+		assert.equal(controls.mode.disabled, false);
+		assert.equal(controls.apply.disabled, false);
+		const prefix = kind === 'node' ? '切换节点' : kind === 'mode' ? '切换默认模式' : '切换节点与默认模式';
+		assert.deepEqual(h.notes, [{ text: `${prefix}失败（FS_FAILED）: uci-commit`, kind: 'error' }]);
+		assert.deepEqual(h.order, [kind === 'mode' ? 'mode_use' : 'node_use'],
+			'failed write does not reload UCI/status');
+	});
+}
+
+test('T10.38 scenario 4: reload:false mode and combined settings notify only when stopped/error', async () => {
+	for (const state of ['stopped', 'error', 'running', 'starting', 'degraded', 'failsafe']) {
+		for (const both of [false, true]) {
+			const h = await modePage({ runtime: { state }, write: () => ({ ok: true, reload: false }) });
+			const controls = h.controls();
+			controls.mode.value = 'global';
+			if (both)
+				controls.node.value = 'n_b';
+			controls.mode.attrs.change();
+			await controls.apply.attrs.click();
+			assert.deepEqual(h.notes, ['stopped', 'error'].includes(state)
+				? [{ text: '设置已保存，下次启动时使用', kind: 'info' }] : []);
+			assert.equal(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)).length, 1);
+		}
+	}
+});
+
+test('T10.38 scenario 4: successful mode write followed by refresh failure warns without retrying the write',
+	async () => {
+	const h = await modePage({ unload: () => { throw new Error('UCI unavailable'); } });
+	const controls = h.controls();
+	controls.mode.value = 'global';
+	controls.mode.attrs.change();
+	await controls.apply.attrs.click();
+	assert.deepEqual(h.calls, [['mode_use', { mode: 'global' }]]);
+	assert.deepEqual(h.notes, [{ text: '已切换设置，但刷新页面数据失败：UCI unavailable。请刷新页面。', kind: 'warning' }]);
+	assert.equal(controls.mode.disabled, false);
+	assert.equal(controls.apply.disabled, false);
 });
