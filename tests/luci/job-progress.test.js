@@ -153,6 +153,11 @@ async function harness(t, name) {
 	}
 	return { page, root, ap, vm, uci, jobs, calls, uciCalls, notifications };
 }
+function prepare_xray_rollback(h) {
+	h.page.status = status();
+	Object.assign(h.page.status.updates_available.packages['xray-core'], { installed: '2', previous: '1' });
+	h.page.show_inventory();
+}
 function activeButtons(h, name) {
 	if (name === 'nodes')
 		return h.page.probeButtons;
@@ -204,11 +209,9 @@ const scenarios = [
 	{ name: 'updates', label: '立即更新', kind: 'update_package', args: ['aether-proxy'],
 		prompt: '正在安装 aether-proxy…', job: { result: { ok: true, from: '2', to: '3' } },
 		result: 'aether-proxy 已从 2 更新到 3 页面文件可能已变化，请刷新浏览器。', calls: ['status'] },
-	{ name: 'updates', label: '回滚到 1', kind: 'update_package', args: ['aether-proxy', '--previous'],
-		prompt: '正在回滚 aether-proxy…', job: { result: { ok: true, package: 'aether-proxy', from: '2', to: '1',
-			companions: { 'luci-app-aether-proxy': 'rolled_back', 'luci-i18n-aether-proxy-zh-cn': 'skipped' } } },
-		result: 'aether-proxy：已回滚到 1luci-app-aether-proxy: 已回滚luci-i18n-aether-proxy-zh-cn: 已跳过',
-		calls: ['status'] },
+	{ name: 'updates', label: '回滚到 1', kind: 'update_package', args: ['xray-core', '--previous'],
+		prompt: '正在回滚 xray-core…', job: { result: { ok: true, from: '2', to: '1' } },
+		result: 'xray-core 已从 2 更新到 1', calls: ['status'] },
 	{ name: 'subscriptions', label: '立即更新', kind: 'sub_update', args: ['s_a'], prompt: '正在更新订阅…',
 		job: { result: { subs: { s_a: { ok: true, added: 1, updated: 2, stale: 3, revived: 4, removed: 5 } } } },
 		result: 'Alpha: 新增 1 / 更新 2 / 失效 3 / 恢复 4 / 移除 5', calls: ['sub_status'] },
@@ -219,6 +222,8 @@ const scenarios = [
 for (const s of scenarios) {
 	test(`T10.15 scenario 2: ${s.name} ${s.label} times, disables, stops, renders results and refreshes`, async t => {
 		const h = await harness(t, s.name);
+		if (s.args.includes('--previous'))
+			prepare_xray_rollback(h);
 		const pending = click(button(h.root, s.label));
 		await flush();
 		assert.equal(h.jobs.length, 1);
@@ -491,20 +496,19 @@ test('T10.28 scenario 3: Update all stays usable with pending rows; finally pres
 	assert.equal(button(h.root, '全部更新').disabled, false);
 });
 
-test('T10.31 scenario 4: a rollback warning survives a rejected status refresh and later retry', async t => {
+test('T10.46 scenario 5: Xray rollback restores controls after a rejected status refresh and allows retry', async t => {
 	const h = await harness(t, 'updates');
+	prepare_xray_rollback(h);
 	const pending = click(button(h.root, '回滚到 1'));
 	await flush();
-	assert.equal(text(h.page.progress), '正在回滚 aether-proxy…（已用 0 秒）');
+	assert.equal(text(h.page.progress), '正在回滚 xray-core…（已用 0 秒）');
 	assert.ok(activeButtons(h, 'updates').every(button => button.disabled));
 	h.ap.call = async () => { throw new Error('status unavailable'); };
-	h.jobs[0].resolve({ result: { ok: true, package: 'aether-proxy', to: '1', companions: {
-		'luci-app-aether-proxy': 'rolled_back', 'luci-i18n-aether-proxy-zh-cn': 'rolled_back'
-	} } });
+	h.jobs[0].resolve({ result: { ok: true, from: '2', to: '1' } });
 	await pending;
 	assert.equal(text(h.page.summary), '操作失败：status unavailable');
 	assert.equal(text(h.page.progress), '');
-	assert.match(text(h.root.children[0]), /页面已换成旧版本，请刷新页面/);
+	assert.doesNotMatch(text(h.root), /页面已换成旧版本|刷新页面/);
 	assert.ok(activeButtons(h, 'updates').every(button => !button.disabled));
 	assert.equal(h.page.busy, false);
 	t.mock.timers.tick(10000);
@@ -514,7 +518,7 @@ test('T10.31 scenario 4: a rollback warning survives a rejected status refresh a
 	await flush();
 	h.jobs[1].resolve({ result: { ok: true, packages: {} } });
 	await retry;
-	assert.match(text(h.root.children[0]), /页面已换成旧版本，请刷新页面/);
+	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
 	assert.equal(h.page.busy, false);
 });
 
