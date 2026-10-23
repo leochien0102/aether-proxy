@@ -14,6 +14,7 @@
  * T10.38 adds default-mode selection and shares the pending-switch lifecycle;
  * T10.39 resolves switch failure reasons with the same node names as logs;
  * T10.43 supplies startup completion rules and waiting/timeout presentation;
+ * T10.48 distinguishes the old restart process by its baseline since;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -30,6 +31,7 @@ function fmt(s) {
 const STATE_TEXT = {
 	stopped: _('Stopped', 'aether-proxy'),
 	starting: _('Starting', 'aether-proxy'),
+	stopping: _('Stopping', 'aether-proxy'),
 	running: _('Running', 'aether-proxy'),
 	degraded: _('Degraded', 'aether-proxy'),
 	failsafe: _('Failsafe', 'aether-proxy'),
@@ -321,14 +323,31 @@ return baseclass.extend({
 			&& ['starting', 'running', 'degraded', 'failsafe', 'error'].includes(status.state);
 	},
 
+	/* Restart's old process can still report running after init acknowledges
+	   the request. Only a new since identifies a startup outcome (docs/10 r14). */
+	startup_phase: function(status, session, ready) {
+		if (session.action !== 'restart')
+			return ready && this.startup_complete(status) ? null : 'waiting';
+		if (!status || status.ok === false)
+			return session.phase ?? 'stopping';
+		const old = status.since === session.baseline;
+		if (status.state === 'stopping' || (old
+			&& ['starting', 'running', 'degraded', 'failsafe'].includes(status.state)))
+			return 'stopping';
+		if (!old && this.startup_complete(status))
+			return null;
+		return status.state === 'stopped' || ready ? 'waiting' : (session.phase ?? 'stopping');
+	},
+
 	startup_view: function(vm, phase) {
 		if (!phase)
 			return vm;
-		const waiting = phase === 'waiting';
+		const waiting = phase === 'waiting' || phase === 'stopping';
 		return {
 			...vm,
-			state_text: waiting ? _('Starting…', 'aether-proxy')
-				: _('Startup did not complete; see the logs page for the reason.', 'aether-proxy'),
+			state_text: phase === 'stopping' ? _('Stopping…', 'aether-proxy')
+				: (waiting ? _('Starting…', 'aether-proxy')
+					: _('Startup did not complete; see the logs page for the reason.', 'aether-proxy')),
 			state_level: waiting ? 'neutral' : 'warn',
 			state_duration_text: null,
 			error_text: null,
