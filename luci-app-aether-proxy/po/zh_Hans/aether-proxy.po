@@ -5,6 +5,10 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "auto (VMess)"
+msgstr "auto（VMess 默认）"
+
+msgctxt "aether-proxy"
 msgid "Page scripts are out of date: installed %s, but the browser is still using %s. Clear your browser cache and reload the page (some third-party themes do not automatically refresh page scripts after an upgrade)."
 msgstr "页面脚本已过期：已安装 %s，浏览器仍在使用 %s。请清除浏览器缓存后刷新页面（部分第三方主题升级后不会自动更新页面脚本）。"
 

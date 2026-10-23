@@ -133,12 +133,13 @@ return view.extend({
 		option.default = '1';
 		option = section.option(form.Value, 'data_hour', _('Update hour', 'aether-proxy'));
 		option.datatype = 'range(0,23)';
-		option.default = '4';
+		option.placeholder = '4';
 		option = section.option(form.Value, 'data_minute', _('Update minute', 'aether-proxy'));
 		option.datatype = 'range(0,59)';
 		option.placeholder = '30';
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
+		option.default = [ 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/' ];
 		option.validate = function(section_id, value) { return model.validate_url(value); };
 		return map.render().then(node => {
 			const root = E('div', {}, [ this.refreshWarning, node, this.inventory ]);

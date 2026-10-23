@@ -381,8 +381,11 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	/* docs/05 defaults: the form must show what the CLI uses when the option is
 	   absent, otherwise a checked-by-default switch would look disabled. */
 	assert.deepEqual(lan.default, [ 'br-lan' ]);
-	for (const o of created)
-		assert.deepEqual(o.default ?? null, real.default(o.field) ?? null, o.field + ': default');
+	for (const o of created) {
+		assert.deepEqual(o.default ?? o.placeholder ?? null, real.default(o.field) ?? null, o.field + ': fallback');
+		if (o.type == form.Value)
+			assert.equal(o.default, undefined, o.field + ': hint must not become saved input');
+	}
 
 	for (const field of [ 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 		'fail_open', 'sniffing' ])
@@ -390,7 +393,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 
 	assert.equal(created.find((o) => o.field == 'log_level').default, 'notice');
 	assert.equal(created.find((o) => o.field == 'xray_log_level').default, 'warning');
-	assert.equal(created.find((o) => o.field == 'boot_wait_timeout').default, '120');
+	assert.equal(created.find((o) => o.field == 'boot_wait_timeout').placeholder, '120');
 
 	/* Every option routes its validator through the model with its own field
 	   name — a wrong field name here would silently validate the wrong rule. */

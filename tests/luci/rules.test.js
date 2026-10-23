@@ -297,6 +297,7 @@ function descendants(node) {
 }
 function load_view(dns_config = {}) {
 	const calls = [], jobs = [], loads = [], timers = [], maps = [], tab_groups = [], writes = [], actions = [];
+	const removals = [];
 	const document = { body: E('body') };
 	const form = {
 		NamedSection: 'named', ListValue: 'select', Flag: 'flag', Value: 'value',
@@ -331,7 +332,13 @@ function load_view(dns_config = {}) {
 			this.config = config;
 			this.title = title;
 			this.sections = [];
-			this.data = { set: (...args) => writes.push(args) };
+			this.data = {
+				set: (...args) => writes.push(args),
+				unset: (config, section, key) => {
+					if (Object.hasOwn(dns_config, key))
+						removals.push([config, section, key]);
+				}
+			};
 			maps.push(this);
 		}
 		section(type, name, section_type, title) {
@@ -349,12 +356,33 @@ function load_view(dns_config = {}) {
 		render() {
 			return Promise.resolve(E('form', {}, this.sections.map(section =>
 				E('fieldset', { name: section.name }, section.options.map((option, i) => {
-					const value = dns_config[option.key];
-					const widget = option.renderWidget ? option.renderWidget(section.name, i, value) :
+					const cfgvalue = dns_config[option.key];
+					const value = cfgvalue ?? option.default;
+					const widget = option.renderWidget ? option.renderWidget(section.name, i, cfgvalue) :
 						E(option.kind == form.DynamicList ? 'list' : option.kind,
-							{ name: option.key, value }, option.label);
+							{ name: option.key, value, placeholder: option.placeholder,
+								checked: option.kind == form.Flag && value == '1' || null }, option.label);
+					option.input = widget;
 					return E('div', { name: option.key }, [widget, option.description ?? '']);
 				})))));
+		}
+		/* Scalar parse compares raw loaded configuration, not display defaults.
+		 * Flags have a separate write path; optional blank Values remove keys.
+		 * Composite/list widgets have their own write tests below. */
+		parse() {
+			for (const section of this.sections) {
+				for (const option of section.options) {
+					if (![form.Value, form.Flag].includes(option.kind) || option.renderWidget)
+						continue;
+					const value = option.kind == form.Flag ? (option.input.checked ? '1' : '0') : option.input.value;
+					assert.equal(option.validate(section.name, value), true, option.key + ': valid on Save');
+					if (value === '' && option.rmempty)
+						this.data.unset(this.config, section.name, option.key);
+					else if (option.kind == form.Flag || value !== dns_config[option.key])
+						this.data.set(this.config, section.name, option.key, value);
+				}
+			}
+			return Promise.resolve();
 		}
 	};
 	const page = loadModule(path.join(RES, 'view/aether-proxy/rules.js'), {
@@ -388,7 +416,7 @@ function load_view(dns_config = {}) {
 			}
 		}
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document });
-	return { page, calls, jobs, loads, maps, timers, tab_groups, document, writes, actions,
+	return { page, calls, jobs, loads, maps, timers, tab_groups, document, writes, actions, removals,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -432,7 +460,7 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	const mode = h.maps[0].sections[0].options[0];
 	assert.deepEqual(mode.values, model().modes());
 	for (const option of h.maps[0].sections[1].options) {
-		assert.equal(option.rmempty, false);
+		assert.equal(option.rmempty, option.key == 'dns_probe_domain');
 		const value = option.key == 'dns_probe_domain' ? 'bad..domain' : 'invalid';
 		assert.equal(option.validate('dns', value), model().validate(option.key, value));
 	}
@@ -739,6 +767,44 @@ test('T10.21 scenario 4: update renders only nonempty categories and preserves j
 function dns_option(h, key) {
 	return h.maps[0].sections[1].options.find(option => option.key == key);
 }
+
+test('T10.41 scenario 1: missing DNS options show fallback on and the probe placeholder without saving it',
+async () => {
+	const h = load_view();
+	await h.page.render();
+	const fallback = dns_option(h, 'allow_china_fallback');
+	const probe = dns_option(h, 'dns_probe_domain');
+	assert.equal(fallback.input.checked, true, 'an absent fallback flag is on');
+	assert.deepEqual(dns_option(h, 'trust_dns').widgets.dns.map(row => row.address.getValue()),
+		['8.8.8.8', '1.1.1.1'], 'the custom widget handles absent raw cfgvalue itself');
+	assert.equal(probe.input.value, '', 'a hint is not an explicit input value');
+	assert.equal(probe.input.placeholder, 'www.google.com');
+	assert.equal(probe.default, undefined, 'a Value default would be written on Save');
+	assert.equal(probe.rmempty, true);
+	assert.equal(probe.validate('dns', ''), true, 'empty uses the backend default');
+	assert.deepEqual(h.writes, [], 'render is read-only');
+	await h.maps[0].parse();
+	assert.deepEqual(h.writes.filter(write => write[2] == 'dns_probe_domain'), [], 'no default domain is written');
+	assert.deepEqual(h.removals, [], 'unsetting an absent domain is a no-op');
+});
+
+test('T10.41 scenario 1: explicit DNS values win and editing the probe domain keeps normal saves', async () => {
+	const h = load_view({ allow_china_fallback: '0', dns_probe_domain: 'custom.example' });
+	await h.page.render();
+	const fallback = dns_option(h, 'allow_china_fallback');
+	const probe = dns_option(h, 'dns_probe_domain');
+	assert.equal(fallback.input.checked, false, 'explicit off wins over default on');
+	assert.equal(probe.input.value, 'custom.example');
+	await h.maps[0].parse();
+	assert.deepEqual(h.writes.filter(write => write[2] == 'dns_probe_domain'), [], 'explicit domain is not rewritten');
+	probe.input.value = 'edited.example';
+	await h.maps[0].parse();
+	assert.deepEqual(h.writes.filter(write => write[2] == 'dns_probe_domain'),
+		[['aetherproxy', 'dns', 'dns_probe_domain', 'edited.example']]);
+	probe.input.value = '';
+	await h.maps[0].parse();
+	assert.deepEqual(h.removals, [['aetherproxy', 'dns', 'dns_probe_domain']]);
+});
 
 test('T10.35 scenario 1: all three preset groups have exact values and translated labels', async () => {
 	const m = model();
