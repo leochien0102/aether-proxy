@@ -2219,3 +2219,11 @@ msgstr "直连 DNS 检测未返回结果。"
 msgctxt "aether-proxy"
 msgid "This upstream format is not supported for testing."
 msgstr "这种写法不支持检测"
+
+msgctxt "aether-proxy"
+msgid "%s: %s"
+msgstr "%s：%s"
+
+msgctxt "aether-proxy"
+msgid "%s: %s; %s"
+msgstr "%s：%s；%s"

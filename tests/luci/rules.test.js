@@ -1061,10 +1061,10 @@ async t => {
 	h.jobs[0].resolve(direct_job(items));
 	await pending;
 	assert.deepEqual(c.summary.children.map(text), [
-		'tcp://9.9.9.9: node.example 3 次成功 2 次，约 120 毫秒; www.google.com 被墙域名无法直连解析（正常）',
-		'198.51.100.53#5353: node.example 3 次全部失败; www.google.com 被墙域名无法直连解析（正常）',
-		'tcp://203.0.113.53: node.example 3 次成功 3 次，约 10.5 毫秒; www.google.com 被墙域名 3 次成功 1 次，约 24 毫秒',
-		'tls://dns.example@192.0.2.53#853: 这种写法不支持检测'
+		'tcp://9.9.9.9：node.example 3 次成功 2 次，约 120 毫秒；www.google.com 被墙域名无法直连解析（正常）',
+		'198.51.100.53#5353：node.example 3 次全部失败；www.google.com 被墙域名无法直连解析（正常）',
+		'tcp://203.0.113.53：node.example 3 次成功 3 次，约 10.5 毫秒；www.google.com 被墙域名 3 次成功 1 次，约 24 毫秒',
+		'tls://dns.example@192.0.2.53#853：这种写法不支持检测'
 	]);
 	assert.ok(descendants(c.controls).indexOf(c.summary) < descendants(c.controls).indexOf(c.hint));
 	assert.equal(c.button.disabled, false);

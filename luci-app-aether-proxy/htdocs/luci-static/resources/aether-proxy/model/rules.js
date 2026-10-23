@@ -199,15 +199,18 @@ function dns_test_result(job) {
 		return [ fmt(_('Direct DNS test failed: %s', 'aether-proxy'), code + (detail ? ': ' + detail : '')) ];
 	}
 	if (!Array.isArray(result?.results)) {
-		/* TODO(design): unspecified missing job results must not look like a
-		 * successful empty test; report failure without changing configuration. */
+		/* Missing results must not look like a successful empty test
+		 * (docs/10「r13：直连境外 DNS 的开关与检测」复审结论). */
 		return [ _('Direct DNS test returned no results.', 'aether-proxy') ];
 	}
 	return result.results.map(item => {
+		// Separators are translated: Chinese uses full-width punctuation.
 		if (item.unsupported)
-			return item.upstream + ': ' + _('This upstream format is not supported for testing.', 'aether-proxy');
-		return item.upstream + ': ' + item.unblocked.domain + ' ' + dns_test_count(item.unblocked, false) +
-			'; ' + item.blocked.domain + ' ' + dns_test_count(item.blocked, true);
+			return fmt(_('%s: %s', 'aether-proxy'), item.upstream,
+				_('This upstream format is not supported for testing.', 'aether-proxy'));
+		return fmt(_('%s: %s; %s', 'aether-proxy'), item.upstream,
+			item.unblocked.domain + ' ' + dns_test_count(item.unblocked, false),
+			item.blocked.domain + ' ' + dns_test_count(item.blocked, true));
 	});
 }
 return baseclass.extend({ validate, save_result, table, job_result, dns_test_result, relative, loading_text, list_state,
