@@ -52,8 +52,7 @@ function target(upstream) {
 	let port = parts[5] == null ? C.DNS_PORT : +parts[5];
 	if (port < 1 || port > 65535)
 		return null;
-	// TODO(design): host@IP is valid configuration but unspecified for diagnostics;
-	// report unsupported rather than resolve a host or silently discard its meaning.
+	// host@IP is unsupported (docs/03): neither resolve the host nor silently drop it.
 	return { tcp: parts[2] == 'tcp', address: parts[3], port };
 }
 
@@ -101,8 +100,8 @@ function read_name(data, offset, deadline) {
 	return null;
 }
 
-// TODO(design): success is not defined at wire level. Conservatively require a
-// complete A/IN answer for the requested name (possibly via CNAME); NODATA fails.
+// Success (docs/03): a complete A/IN answer for the requested name (possibly via
+// CNAME); NODATA fails.
 function valid_answer(data, id, domain, deadline) {
 	if (!within_deadline(deadline) || length(data) < 12 || uint16(data, 0) != id)
 		return false;
@@ -281,8 +280,7 @@ function measure(upstream, domain) {
 	samples = sort(samples, (a, b) => a - b);
 	let size = length(samples);
 	let median = size ? samples[size >> 1] : null;
-	// TODO(design): with two successes use the arithmetic mean of the middle
-	// samples, retaining .5 ms rather than inventing an undocumented rounding rule.
+	// Two successes: mean of the pair, .5 ms kept (docs/03).
 	if (size && size % 2 == 0)
 		median = (samples[(size >> 1) - 1] + median) / 2;
 	return { domain, ok: size, total: C.DNS_TEST_ATTEMPTS, latency_ms: median };

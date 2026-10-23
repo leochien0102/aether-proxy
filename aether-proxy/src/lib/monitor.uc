@@ -503,8 +503,8 @@ next = (state, obs, cfg) => {
 		}
 	};
 
-	// TODO(design): live disable during T2 is unspecified. Stop using the disabled
-	// upstream immediately; preserve health history and choose only T1/T3.
+	// Live disable during T2 (docs/03): stop using the disabled upstream at once, keep
+	// health history, and choose only T1/T3.
 	if (!direct_enabled && out.dns_tier == 'T2')
 		tier(out.state == 'running' || out.state == 'starting' ? 'T1' : fallback_tier, 'direct_dns_disabled');
 

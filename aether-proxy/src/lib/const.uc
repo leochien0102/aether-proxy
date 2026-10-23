@@ -288,5 +288,5 @@ export const DNS_TEST_TIMEOUT_MS = 2000;
 export const DNS_TEST_ATTEMPTS = 3;
 export const DNS_TEST_FALLBACK_DOMAIN = 'www.microsoft.com';
 export const DNS_TEST_SAVEDIR_PREFIX = 'dns-test-uci.';
-// TODO(design): compression budgets are unspecified; bound hostile acyclic pointer chains.
+// docs/03: bound hostile acyclic compression pointer chains per name.
 export const DNS_TEST_MAX_NAME_POINTERS = 128;

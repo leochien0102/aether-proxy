@@ -58,7 +58,7 @@ function test_direct(opts, snapshot) {
 		log.event('error', 'FS_FAILED', { op: 'dns-test-random', path: C.RANDOM_DEVICE, detail });
 		return finish(opts, { ok: false, code: 'FS_FAILED', detail }, 1);
 	}
-	// TODO(design): docs/03 specifies each result, not the top-level wrapper.
+	// docs/03: { ok, results }; the job stores it unchanged.
 	let value = { ok: true, results };
 	let lines = [];
 	for (let row in value.results) {
