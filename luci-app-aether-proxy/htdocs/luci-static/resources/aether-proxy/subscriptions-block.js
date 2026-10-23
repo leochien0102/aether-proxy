@@ -2,6 +2,7 @@
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
 // Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
 // Also follows docs/10「订阅：通用设置、获取方式与行首开关」「节点与订阅合并为一页」.
+// r13 pending-state and tooltip rules: docs/10「r13 修正：订阅编辑框与启用开关」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -23,7 +24,7 @@ return baseclass.extend({
 		this.status = undefined;
 		this.busy = false;
 		this.pendingIds = new Set();
-		this.localPendingIds = new Set();
+		this.sessionPendingIds = new Set();
 		this.defaultUA = _('Reading…', 'aether-proxy');
 		this.changesGeneration = 0;
 		this.root = E('div');
@@ -71,10 +72,20 @@ return baseclass.extend({
 		const kind = field === 'user_agent' ? form.Value : form.ListValue;
 		const o = section.option(kind, field, title);
 		o.rmempty = true;
-		if (inherited)
+		if (inherited) {
 			o.modalonly = true;
+			// AbstractValue.parse calls remove even when an optional field was absent.
+			// No-op modal Save must not issue an unset for an already inherited value.
+			o.remove = function(id) {
+				if (uci.get('aetherproxy', id, field) != null)
+					uci.unset('aetherproxy', id, field);
+			};
+		}
 		else if (field !== 'user_agent')
 			o.default = field === 'interval_hours' ? '24' : 'auto';
+		// TODO(design): r13's 24 -> 0 could not be reproduced with the documented SDK
+		// Select/cloneOptions contract. Keep explicit values untouched; regression tests
+		// cover selection and no-op Save/Cancel rather than guessing a replacement value.
 		// Capture the ListValue/Value method: instance super() would skip that class.
 		const renderWidget = o.renderWidget;
 		// Recompute when opening a modal: the common block may have unsaved input.
@@ -122,10 +133,21 @@ return baseclass.extend({
 		}
 	},
 	sync_buttons: function() {
+		this.pendingIds = new Set(this.sessionPendingIds);
 		for (const [id, button] of this.rowButtons ?? []) {
+			// Only a live difference is dirty: a round trip must not latch the row.
+			const current = this.enabledOption?.formvalue(id);
+			const saved = uci.get('aetherproxy', id, 'enabled') ?? this.enabledOption?.default;
+			if (current != null && current !== saved)
+				this.pendingIds.add(id);
 			const pending = this.pendingIds.has(id);
 			button.disabled = this.busy || pending;
-			button.title = pending ? _('Please save and apply first', 'aether-proxy') : '';
+			// Disabled controls do not reliably receive hover events in all browsers.
+			const wrapper = this.rowWrappers.get(id);
+			if (pending)
+				wrapper.setAttribute('title', _('Please save and apply first', 'aether-proxy'));
+			else
+				wrapper.removeAttribute('title');
 		}
 		if (this.updateAll)
 			this.updateAll.disabled = this.busy;
@@ -146,7 +168,7 @@ return baseclass.extend({
 		// A slow reply from an older form must not undo a newer session check.
 		if (generation !== this.changesGeneration)
 			return;
-		this.pendingIds = new Set([...model.pending_ids(changes), ...(this.localPendingIds ?? [])]);
+		this.sessionPendingIds = model.pending_ids(changes);
 		this.sync_buttons();
 	},
 	table_columns: function(s) {
@@ -155,10 +177,9 @@ return baseclass.extend({
 		enabled.editable = true;
 		enabled.modalonly = false;
 		enabled.default = '1';
-		enabled.onchange = function(event, id) {
+		this.enabledOption = enabled;
+		enabled.onchange = function() {
 			// uci.changes() cannot see a widget change before the form is saved.
-			self.localPendingIds.add(id);
-			self.pendingIds.add(id);
 			self.sync_buttons();
 		};
 		const columns = [
@@ -193,6 +214,7 @@ return baseclass.extend({
 		const subs = uci.sections('aetherproxy', 'subscription');
 		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		this.rowButtons = new Map();
+		this.rowWrappers = new Map();
 		const m = new form.Map('aetherproxy');
 		this.map = m;
 		this.general_settings(m);
@@ -202,6 +224,7 @@ return baseclass.extend({
 		s.anonymous = true;
 		s.render = function(...args) {
 			self.rowButtons = new Map();
+			self.rowWrappers = new Map();
 			return this.super('render', args).then(content => {
 				// Map.reset after modal Save also renders this section, not the whole page.
 				self.refresh_changes();
@@ -217,9 +240,11 @@ return baseclass.extend({
 				'disabled': self.busy || self.pendingIds.has(id) || null,
 				'click': ui.createHandlerFn(self, 'update', [id])
 			}, _('Update now', 'aether-proxy'));
+			const wrapper = E('span', {}, [button]);
 			self.rowButtons.set(id, button);
+			self.rowWrappers.set(id, wrapper);
 			self.sync_buttons();
-			dom.content(td.lastChild, [button, ...Array.from(td.lastChild.childNodes)]);
+			dom.content(td.lastChild, [wrapper, ...Array.from(td.lastChild.childNodes)]);
 			return td;
 		};
 		// GridSection's built-in cbi-button-remove dispatches here.
