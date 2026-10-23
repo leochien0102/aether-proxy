@@ -1249,8 +1249,8 @@ msgid "Global (all traffic through proxy)"
 msgstr "全局（所有流量走代理）"
 
 msgctxt "aether-proxy"
-msgid "Unlisted devices (including IoT) use the proxy. To proxy only some, choose Direct and list them."
-msgstr "所有未列出的设备（包括物联网设备）都会走代理；只想让部分设备走代理，选『直连』并在下面列出这些设备。"
+msgid "Unlisted devices (including IoT) use the proxy."
+msgstr "所有未列出的设备（包括物联网设备）都会走代理。"
 
 msgctxt "aether-proxy"
 msgid "(same as unlisted devices; has no effect)"
@@ -1261,12 +1261,16 @@ msgid "Device"
 msgstr "设备"
 
 msgctxt "aether-proxy"
-msgid "IP / subnet (optional)"
-msgstr "IP / 网段（可选）"
+msgid "IP / range / subnet (optional)"
+msgstr "IP / 范围 / 网段（可选）"
 
 msgctxt "aether-proxy"
 msgid "Match MAC or IP (either suffices). Use IP for fixed addresses, subnets or devices behind a router."
 msgstr "按 MAC 或 IP 匹配，任一命中即生效；同一设备一般只选设备。IP 用于固定地址、整个网段或经过另一台路由器的设备。"
+
+msgctxt "aether-proxy"
+msgid "Single 192.168.8.250; range 192.168.8.250-192.168.8.254; subnet 192.168.8.0/24."
+msgstr "单个 192.168.8.250、范围 192.168.8.250-192.168.8.254、网段 192.168.8.0/24。"
 
 msgctxt "aether-proxy"
 msgid "DNS uses the default mode. Web pages and most apps connect by domain name through the node."
@@ -1317,8 +1321,8 @@ msgid "Host %s: %s is also used by host %s."
 msgstr "主机 %s：%s 与主机 %s 重复。"
 
 msgctxt "aether-proxy"
-msgid "Host %s: %s is not a valid IPv4 address or CIDR."
-msgstr "主机 %s：%s 不是合法的 IPv4 地址或 CIDR。"
+msgid "Host %s: %s is not a valid IPv4 address, range or CIDR."
+msgstr "主机 %s：%s 不是合法的 IPv4 地址、范围或 CIDR。"
 
 msgctxt "aether-proxy"
 msgid "Host %s: %s is not a valid MAC address."

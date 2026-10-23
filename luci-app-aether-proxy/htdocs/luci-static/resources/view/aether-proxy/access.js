@@ -7,7 +7,7 @@
 'require aether-proxy.model.access as model';
 
 /*
- * Access control (docs/10 「访问控制页定案」 and 「r13 修正：访问控制页」).
+ * Access control (docs/10 「访问控制页定案」 and 「r14 修正：访问控制 IP 范围与说明」).
  * Action sizing follows docs/10 「r13 修正：块内行与表格操作列」.
  * The model owns wording, summaries and validation. Staged LuCI changes are
  * invisible to the command line, so both save buttons precheck them here;
@@ -198,11 +198,13 @@ return view.extend({
 			return E('span', { title: summary.title, style: 'white-space:nowrap' }, summary.text);
 		};
 
-		o = s.option(form.DynamicList, 'ip', _('IP / subnet (optional)', 'aether-proxy'));
+		o = s.option(form.DynamicList, 'ip', _('IP / range / subnet (optional)', 'aether-proxy'));
 		o.modalonly = true;
 		o.rmempty = true;
 		o.description = _(
 			'Match MAC or IP (either suffices). Use IP for fixed addresses, subnets or devices behind a router.',
+			'aether-proxy') + ' ' + _(
+			'Single 192.168.8.250; range 192.168.8.250-192.168.8.254; subnet 192.168.8.0/24.',
 			'aether-proxy');
 
 		o = s.option(form.ListValue, 'policy', _('Policy', 'aether-proxy'));

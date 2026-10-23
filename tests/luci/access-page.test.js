@@ -180,6 +180,64 @@ function host(id, policy, options = {}) {
 	return { '.name': id, policy, ip: [ '192.168.1.10' ], ...options };
 }
 
+test('T10.51 scenario 3: IP label and all three examples are translated; summaries retain range spelling', async () => {
+	const range = '192.168.8.250-192.168.8.254';
+	const singleRange = '192.168.8.7-192.168.8.7';
+	const f = fixture([ host('a', 'proxy', { ip: [ range ] }),
+		host('b', 'follow', { mac: [ MAC ], ip: [ range, singleRange ] }) ]);
+	await f.start();
+	assert.equal(f.option('ip').title, 'IP / 范围 / 网段（可选）');
+	assert.equal(f.option('ip').description, [
+		'按 MAC 或 IP 匹配，任一命中即生效；同一设备一般只选设备。IP 用于固定地址、整个网段或经过另一台路由器的设备。',
+		'单个 192.168.8.250、范围 192.168.8.250-192.168.8.254、网段 192.168.8.0/24。'
+	].join(' '));
+	const summary = f.option('_devices').textvalue('a');
+	assert.equal(summary.textContent, range);
+	assert.equal(summary.title, range);
+	const truncated = f.option('_devices').textvalue('b');
+	assert.equal(truncated.textContent, 'laptop、' + range + ' 等 3 项');
+	assert.equal(truncated.title, 'laptop、' + range + '、' + singleRange);
+});
+
+test('T10.51 scenario 4: unlisted notice keeps only first sentence and top instructions stay unchanged', async () => {
+	const f = fixture();
+	await f.start();
+	assert.equal(f.option('_notice').renderWidget().textContent, '所有未列出的设备（包括物联网设备）都会走代理。');
+	assert.equal(f.page.map.children[0].description, [
+		'想让所有设备走代理：未列出的设备选『跟随默认模式』，个别不需要代理的设备在下面设为『直连』。',
+		'只想让部分设备走代理：未列出的设备选『直连』，再在下面列出要走代理的设备。'
+	].join(' '));
+	f.inputs.main.unlisted_policy = 'direct';
+	f.option('unlisted_policy').onchange();
+	assert.equal(f.page.notice.textContent, '');
+	f.inputs.main.unlisted_policy = 'follow';
+	f.option('unlisted_policy').onchange();
+	assert.equal(f.page.notice.textContent, '所有未列出的设备（包括物联网设备）都会走代理。');
+});
+
+test('T10.51 save paths: overlapping ranges warn and save; duplicate and invalid ranges block both buttons',
+async () => {
+	const range = '192.168.8.250-192.168.8.254';
+	const cases = [
+		{ ip: '192.168.8.252', level: 'warning', saved: 1 },
+		{ ip: range, level: 'error', saved: 0 },
+		{ ip: '192.168.8.254-192.168.8.250', level: 'error', saved: 0 }
+	];
+	for (const apply of [ false, true ]) {
+		for (const c of cases) {
+			const f = fixture([ host('a', 'direct', { ip: [ range ] }),
+				host('b', 'proxy', { ip: [ c.ip ] }) ]);
+			await f.start();
+			if (apply) await f.page.handleSaveApply();
+			else await f.page.handleSave();
+			assert.equal(f.calls.save, c.saved);
+			assert.equal(f.calls.apply, apply ? c.saved : 0);
+			assert.equal(f.calls.notifications.length, 1);
+			assert.equal(f.calls.notifications[0].level, c.level);
+		}
+	}
+});
+
 test('T10.36 scenario 1: default-mode and five-policy wording reserve global for all traffic', async () => {
 	const f = fixture();
 	await f.start();
@@ -304,7 +362,7 @@ test('T10.36 scenario 7: device hints, optional name autofill and MAC-only selec
 	assert.equal(mac.modalonly, true);
 	assert.deepEqual(mac.choices[0], { key: MAC, label: 'laptop（192.168.1.10，aa:bb:cc:dd:ee:01）' });
 	assert.equal(mac.choices[1].label, '192.168.1.11，aa:bb:cc:dd:ee:02');
-	assert.equal(f.option('ip').title, 'IP / 网段（可选）');
+	assert.equal(f.option('ip').title, 'IP / 范围 / 网段（可选）');
 	assert.match(f.option('ip').description, /任一命中即生效/);
 	assert.equal(mac.onchange, undefined, 'selecting a device cannot copy a DHCP IP');
 
