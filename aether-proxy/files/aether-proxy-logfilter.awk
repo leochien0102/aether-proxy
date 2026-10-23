@@ -21,17 +21,18 @@ function summary() {
 	dropped = 0
 }
 
-# Only normalize recognized timestamp prefixes; the original line is always forwarded intact.
-# Spell out digit classes rather than intervals or awk extensions for firmware BusyBox awk.
+# Forwarded text (docs/09): drop every ESC[...m, then a leading timestamp and the whitespace
+# after it. Lines without a recognized timestamp only lose the colour codes. The result is
+# also the deduplication key.
+# TODO(design): chinadns-ng's level letter (W/I/E) follows the timestamp and its colour reset, so it
+# stays at the start of the forwarded line ("W [Upstream.zig..."); docs/09 does not say to drop it. Spell out digit classes rather than intervals or awk
+# extensions for firmware BusyBox awk.
 function message_key(line, message) {
 	message = line
-	sub(/^(\033\[[0-9;]*m)*/, "", message)
-	if (sub(DNS_TIMESTAMP, "", message) || sub(XRAY_TIMESTAMP, "", message)) {
-		# A timestamp's closing color reset may precede the separating space.
-		sub(/^([ \t]|\033\[[0-9;]*m)*/, "", message)
-		return message
-	}
-	return line
+	gsub(/\033\[[0-9;]*m/, "", message)
+	if (sub(DNS_TIMESTAMP, "", message) || sub(XRAY_TIMESTAMP, "", message))
+		sub(/^[ \t]+/, "", message)
+	return message
 }
 
 function repeat_summary(    i, message) {
@@ -55,11 +56,29 @@ function clear_repeats(    i) {
 	window_active = 0
 }
 
+# Free the earliest tracked slot whose repeat count is 0 (docs/09 "跟踪位满时让位"); later
+# entries shift down so the table stays in first-seen order. Returns 0 when every slot repeats.
+function make_room(    i, j) {
+	for (i = 1; i <= tracked; i++) {
+		if (repeats[messages[i]])
+			continue
+		delete repeats[messages[i]]
+		for (j = i; j < tracked; j++)
+			messages[j] = messages[j + 1]
+		delete messages[tracked]
+		tracked--
+		return 1
+	}
+	return 0
+}
+
 function duplicate(message) {
 	if (message in repeats) {
 		repeats[message]++
 		return 1
 	}
+	if (tracked >= REPEAT_LIMIT)
+		make_room()
 	if (tracked < REPEAT_LIMIT) {
 		messages[++tracked] = message
 		# Tracked even if the rate limit then drops this first line (docs/09):
@@ -95,7 +114,8 @@ function duplicate(message) {
 		window_active = 1
 	}
 	# Duplicates never reach the quota accounting, including its dropped-line counter.
-	if (duplicate(message_key($0)))
+	forwarded = message_key($0)
+	if (duplicate(forwarded))
 		next
 	for (second in accepted) {
 		if (second + 0 <= now - WINDOW_SECONDS) {
@@ -105,7 +125,7 @@ function duplicate(message) {
 	}
 	if (accepted[now] < SECOND_LIMIT && minute_count < MINUTE_LIMIT) {
 		summary()
-		printf "%s\n", $0
+		printf "%s\n", forwarded
 		fflush()
 		accepted[now]++
 		minute_count++

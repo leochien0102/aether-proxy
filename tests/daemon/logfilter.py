@@ -97,7 +97,7 @@ def exercise_dedup(awk):
 	# Each resolver produces 30 lines, alternating at 10 incoming lines per second.
 	messages = ['recv(tcp://8.8.8.8) failed', 'recv(tcp://1.1.1.1) failed']
 	lines = [f'{100 + i // 5} {dns_line(i, message)}' for i in range(30) for message in messages]
-	first = [dns_line(0, message) for message in messages]
+	first = messages  # T9.31: colour codes and timestamp removed from the forwarded line
 	summaries = [repeated(message, 29) for message in messages]
 	check(run(lines + ['110 window-end']) == first + summaries + ['window-end'],
 		f'{label}: r13 alternating resolvers each emit first line and repeated 29 at 10 seconds')
@@ -111,19 +111,21 @@ def exercise_dedup(awk):
 		'2026/10/23 12:00:03.654321 [Warning] transport: dial failed',
 		'2026/10/23 12:00:04.000001 [Info] app: listener ready']
 	check(run([f'100 {line}' for line in xray]) ==
-		[xray[0], xray[4], repeated('[Warning] transport: dial failed', 3)],
+		['[Warning] transport: dial failed', '[Info] app: listener ready', repeated('[Warning] transport: dial failed', 3)],
 		f'{label}: both Xray timestamp formats merge identical messages but preserve different messages')
 	plain_dns = '2026-10-23 12:00:00 [dns.zig:123 recv] failed'
 	colored_dns = '\x1b[33m\x1b[1m2026-10-23 12:00:01\x1b[0m [dns.zig:123 recv] failed'
 	check(run([f'100 {plain_dns}', f'101 {colored_dns}']) ==
-		[plain_dns, repeated('[dns.zig:123 recv] failed', 1)],
-		f'{label}: plain and colored chinadns timestamps share a key and preserve the first bytes')
+		['[dns.zig:123 recv] failed', repeated('[dns.zig:123 recv] failed', 1)],
+		f'{label}: plain and colored chinadns timestamps share a key and forward without timestamp')
 
 	# Stay below 20/s so this proves the tracking cap, not an incidental rate drop.
 	lines = [f'{100 + i // 11} unique-{i}' for i in range(33)]
+	# T9.31: message 33 now evicts the earliest zero-count entry (unique-0), so unique-32 is tracked
+	# and unique-0 is not; the untracked-33rd case with all 32 repeating is in exercise_yield.
 	check(run(lines + ['103 unique-0', '103 unique-32', '103 unique-32']) ==
-		[f'unique-{i}' for i in range(33)] + ['unique-32', 'unique-32', repeated('unique-0', 1)],
-		f'{label}: message 33 always passes through while message 1 remains tracked')
+		[f'unique-{i}' for i in range(33)] + ['unique-0', repeated('unique-32', 2)],
+		f'{label}: message 33 evicts the earliest unrepeated message and is itself tracked')
 	check(run(lines + ['110 unique-32', '110 unique-32']) ==
 		[f'unique-{i}' for i in range(33)] + ['unique-32', repeated('unique-32', 1)],
 		f'{label}: next window releases all 32 tracking slots')
@@ -170,16 +172,80 @@ def exercise_dedup(awk):
 		f'{label}: empty messages can be tracked without confusing absence with zero repeats')
 	untimestamped = '\x1b[32m[main.zig:1] ready\x1b[0m'
 	check(run([f'100 {untimestamped}', '100 [main.zig:1] ready']) ==
-		[untimestamped, '[main.zig:1] ready'],
-		f'{label}: unrecognized prefixes are not normalized or rewritten')
+		['[main.zig:1] ready', repeated('[main.zig:1] ready', 1)],
+		f'{label}: lines without a timestamp lose only colour codes and then share a key')
+
+
+def exercise_yield(awk):
+	"""T9.31: slot yielding and forwarded-text rules (docs/09)."""
+	label = ' '.join(awk)
+	argv = awk + ['-v', 'test_clock=1', '-v', 'name=fixture', '-f', str(FILTER)]
+
+	def run(lines):
+		p = subprocess.run(argv, input='\n'.join(lines) + '\n', text=True,
+			capture_output=True, env=ENV, check=True)
+		check(not p.stderr, f'{label}: yield emits no filter diagnostics')
+		return p.stdout.splitlines()
+
+	def repeated(message, count):
+		return f'aether-proxy: fixture repeated {count} more times: {message[:160]}'
+
+	# Scenario 1: the r14 sample (real chinadns-ng line layout, reset after the level letter).
+	def cdns(second, text, level='W'):
+		return (f'\x1b[33;1m2026-10-23 07:31:{second:02d} {level}\x1b[0m '
+			f'\x1b[1m[Upstream.zig:825 TCP.on_error]\x1b[0m {text}')
+
+	startup = [f'{100 + i // 10} ' + cdns(i % 60, f'config item {i}', 'I') for i in range(40)]
+	fail = [f'tcp://127.0.0.1#3108{n}' for n in (2, 3)]
+	failing = [f'connect({a}) failed: (111) Connection refused' for a in fail]
+	lines = startup[:]
+	for i in range(2000):
+		# 2000 lines over 4 seconds would exceed 20/s if they were not merged.
+		lines.append(f'{104 + i // 500} ' + cdns(40 + i // 500, failing[i % 2]))
+	out = run(lines + ['114 end'])
+	expect = [f'I [Upstream.zig:825 TCP.on_error] config item {i}' for i in range(40)]
+	expect += ['W [Upstream.zig:825 TCP.on_error] ' + m for m in failing]
+	expect += [repeated('W [Upstream.zig:825 TCP.on_error] ' + m, 999) for m in failing] + ['end']
+	check(out == expect,
+		f'{label}: r14 sample prints each failure once plus repeated 999, no rate-limit drops')
+	check(not any('rate limited' in line or '\x1b' in line for line in out),
+		f'{label}: r14 sample output has no drop summary and no ESC')
+
+	# Scenario 2: yielding order. 32 tracked, repeat 2nd, new message evicts the 1st (count 0).
+	base = [f'{100 + i // 10} m{i}' for i in range(32)]
+	out = run(base + ['104 m1', '104 new-a', '104 m0', '104 m1'])
+	check(out == [f'm{i}' for i in range(32)] + ['new-a', 'm0', repeated('m1', 2)],
+		f'{label}: new message evicts the earliest zero-count entry; evicted one re-enters untracked-then-tracked')
+	# Order stays first-seen: m5 and m9 repeat, new-a tracked after them.
+	out = run(base + ['104 m9', '104 m5', '104 new-a', '104 new-a', '104 m9'])
+	check(out[32:] == ['new-a', repeated('m5', 1), repeated('m9', 2), repeated('new-a', 1)],
+		f'{label}: summaries keep first-seen order after yielding')
+	# All 32 repeating: the 33rd passes but is not tracked.
+	lines = base + [f'{104 + i // 10} m{i}' for i in range(32)] + ['108 extra', '108 extra']
+	out = run(lines)
+	check(out == [f'm{i}' for i in range(32)] + ['extra', 'extra'] + [repeated(f'm{i}', 1) for i in range(32)],
+		f'{label}: all 32 repeated, 33rd message is forwarded but not tracked')
+
+	# Scenario 3: forwarded content.
+	ts = '\x1b[33;1m2026-10-23 07:31:53 W\x1b[0m \x1b[1m[a.zig:1 f]\x1b[0m hello'
+	check(run(['100 ' + ts]) == ['W [a.zig:1 f] hello'], f'{label}: chinadns-ng line loses ESC and timestamp (level letter stays)')
+	check(run(['100 2026/10/23 07:31:53 [Info] x', '100 2026/10/23 07:31:53.123456   [Info] y']) ==
+		['[Info] x', '[Info] y'], f'{label}: both Xray timestamp formats and trailing spaces removed')
+	odd = '\x1b[32mhello\x1b[0m  keep   spacing  2026-10-23 12:00:00 inside'
+	check(run(['100 ' + odd]) == ['hello  keep   spacing  2026-10-23 12:00:00 inside'],
+		f'{label}: no leading timestamp, only colour codes removed, rest unchanged')
+	check(run(['100 12:00:00 [Info] z', '100 20261023 12:00:00 q']) == ['12:00:00 [Info] z', '20261023 12:00:00 q'],
+		f'{label}: unrecognized timestamp shapes are untouched')
 
 
 if __name__ == '__main__':
 	exercise(['awk'])
 	exercise_dedup(['awk'])
+	exercise_yield(['awk'])
 	if shutil.which('busybox'):
 		exercise(['busybox', 'awk'])
 		exercise_dedup(['busybox', 'awk'])
+		exercise_yield(['busybox', 'awk'])
 	else:
 		print('WARN  BusyBox unavailable; native awk covered, firmware awk requires six-rootfs CI')
 	print('logfilter: all assertions passed')
