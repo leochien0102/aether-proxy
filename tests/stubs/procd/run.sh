@@ -37,7 +37,8 @@ run_init() {
 		procd_append_param() { printf 'append %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_close_instance() { printf 'close\n' >> "$PROCD_LOG"; }
 		procd_open_service() { printf 'open_service %s\n' "$*" >> "$PROCD_LOG"; }
-		procd_close_service() { printf 'close_service\n' >> "$PROCD_LOG"; }
+		# Like procd.sh: close_service adds service_triggers itself.
+		procd_close_service() { service_triggers; printf 'close_service\n' >> "$PROCD_LOG"; }
 		procd_add_reload_trigger() { printf 'trigger %s\n' "$*" >> "$PROCD_LOG"; }
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$PROCD_LOG"; return "${SIGNAL_RC:-0}"; }
 		logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
@@ -129,7 +130,8 @@ grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger reg
 
 # T9.32: a stateful procd stand-in (registry file) so trigger registration, service deletion
 # and the manual-stop marker can be asserted across a whole stop/reload/start sequence.
-# Like rc.common in procd mode: start = open_service; start_service; service_triggers; close;
+# Like rc.common in procd mode: start = open_service; start_service; close_service, and close_service
+# itself adds service_triggers (procd.sh); a trigger added before close lands inside "instances";
 # stop = stop_service; procd deletes the service (instances and triggers); service_stopped.
 F="$T/flow"
 mkdir -p "$F/run"
@@ -146,14 +148,16 @@ flow_op() {
 		procd_set_param() { :; }
 		procd_append_param() { :; }
 		procd_close_instance() { :; }
-		procd_add_reload_trigger() { echo "trigger $*" >> "$F/pending"; }
-		procd_close_service() { cp "$F/pending" "$F/svc"; printf 'close_service\n' >> "$F/log"; }
+		procd_add_reload_trigger() {
+			if [ "${_in_close:-0}" = 1 ]; then echo "trigger $*" >> "$F/pending"; else echo "misplaced_trigger $*" >> "$F/pending"; fi
+		}
+		procd_close_service() { _in_close=1; service_triggers; _in_close=0; cp "$F/pending" "$F/svc"; printf 'close_service\n' >> "$F/log"; }
 		procd_running() { grep -Fxq instance "$F/svc" 2>/dev/null; }
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$F/log"; }
 		logger() { :; }
 		. "$INIT"
 		AETHER_PROXY="$T/bin-aether-proxy"
-		start() { procd_open_service "$(basename "${basescript:-$initscript}")" "$initscript"; start_service "$@"; service_triggers; procd_close_service; }
+		start() { procd_open_service "$(basename "${basescript:-$initscript}")" "$initscript"; start_service "$@"; procd_close_service; }
 		stop() { stop_service "$@"; rm -f "$F/svc"; printf 'service_deleted\n' >> "$F/log"; service_stopped "$@"; }
 		restart() { stop "$@"; start "$@"; }
 		"$1"
@@ -175,6 +179,8 @@ grep -Fxq service_deleted "$F/log" && ok "T9.32 flow: stop deleted the service (
 flow_no_instance && flow_has 'trigger aetherproxy' \
 	&& ok "T9.32 flow: after enabled=0 stop the service is registered again, no instance, with trigger" \
 	|| bad "T9.32 flow: after enabled=0 stop the service is registered again, no instance, with trigger"
+! grep -q misplaced_trigger "$F/svc" && ok "T9.32 flow: re-registration adds triggers only through close_service" \
+	|| bad "T9.32 flow: re-registration adds triggers only through close_service"
 [ ! -e "$MARK" ] && ok "T9.32 flow: enabled=0 branch leaves no manual-stop marker" \
 	|| bad "T9.32 flow: enabled=0 branch leaves no manual-stop marker"
 echo 1 > "$F/enabled"; flow_op reload_service

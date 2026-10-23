@@ -87,11 +87,9 @@ service_stopped() {
 	# procd's stop deleted the service together with its reload trigger. Register it again with
 	# no instance, as boot does when enabled=0, so a later config change still reaches
 	# reload_service (docs/04 "配置变化的触发器在停止后也要保留").
-	# TODO(design): the register-after-delete order and the stop_service hook are only verified
-	# against a procd stub on the host; the reviewer confirms on H28K with
-	# `ubus call service list '{"name":"aether-proxy"}'` after a stop.
+	# rc.common (procd) runs stop_service, deletes the service, then service_stopped; procd_close_service
+	# adds service_triggers itself, so open + close registers the triggers with no instance.
 	procd_open_service "$(basename "${basescript:-${initscript:-aether-proxy}}")" "${initscript:-/etc/init.d/aether-proxy}"
-	service_triggers
 	procd_close_service
 	return "$rc"
 }
