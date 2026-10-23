@@ -8,6 +8,7 @@
 |---|---|---|---|
 | `stopped` | 未运行 | 无 | 无 |
 | `starting` | 启动流程进行中 | 无 → 末段加载 | 末段接管 |
+| `stopping` | 停止流程进行中（收到 SIGTERM 起，2026-10-23 r14 加：页面据此显示「正在停止」） | 摘除中 | 撤回中 |
 | `running` | Xray 存活且代理健康 | 有 | T1 |
 | `degraded` | Xray 存活但代理不健康，或节点解析失败 | 有（`fail_open=1` 且节点解析失败时除外） | T2/T3 |
 | `failsafe` | Xray 进程不可用 | **已摘除**（故障放行） | T2/T3 |
@@ -55,6 +56,7 @@
 
 顺序与启动相反，**每一步都要执行，前一步失败也不能跳过后续步骤**（失败记 ERR）：
 
+0. 先把 `state.json` 的 `state` 写为 `stopping`、`since` 为此刻，其余字段保留（2026-10-23 r14：原来停止期间一直显示旧的 `running`，页面点「重启」后会读到旧进程的「运行中」）。写失败只记 `FS_FAILED`，不影响后续步骤
 1. 退出 monitor 循环
 2. 导出动态集合（`gfw4`、`udirect4`、`uproxy4`）到 `/var/run/aether-proxy/sets.save`
 3. `nft delete table inet aetherproxy`；删除 ip rule / route。重复的 ip rule（异常退出后再次启动可能留下）逐条删除，**最多 16 次**：正常只有 0～1 条；上限只是防止 `ip rule del` 报成功而规则仍在时陷入死循环，超过仍有残留就报失败（2026-10-17 补理由，backlog B9）。
@@ -77,6 +79,7 @@
     （2026-10-23 改，r13 窗口：H28K 上这次 check 约 5–10 秒（新进程没有缓存，读配置与数据、渲染、`nft -c`、`xray run -test`），期间 `state.json` 仍是 `stopped`，
     页面点了「启用」「启动」看不到任何变化，重复点只会再排一次 check；daemon 随后又把同样的事做一遍。重载已在 2026-10-21 因同样理由去掉了这次 check。）
     **daemon 启动后第一件事**是写 `state.json`：`state: starting`、`since`、`node_id` 与 `mode` 取 UCI 原值（此时尚未校验），然后才读配置。
+    同时写 `dns_tier`：UCI 原值 `dns.direct_dns_enabled` 为 `1` 时 `T2`，否则 `T1`（与随后的初始级别一致；2026-10-23 r14：原来这份早期状态没有 `dns_tier`，启动的十几秒里状态页的 DNS 级别是空的）。
     配置无效等失败照「启动」各步记事件（`CONFIG_INVALID` 等）、进入 `error` 并按退避重试——页面经 T10.11 的失败原因能看到为什么。
   - `service_stopped`：执行 `aether-proxy cleanup --wait 35`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、
     杀掉残留子进程），兜底 daemon 被 SIGKILL 时来不及清理的情况。
@@ -86,6 +89,13 @@
     **还要等 daemon 进程退出**（2026-10-23 改，r13 窗口：daemon 在 monitor 阶段不持锁，`service_stopped` 的 cleanup 立刻拿到锁、先删了表，daemon 的有序退出再导出动态集合时表已不在，
     每次重启都记 `CMD_FAILED` 与 `START_FAILED {step: sets_export}`，动态集合也没能保留）：daemon 启动时写 `/var/run/aether-proxy/daemon.pid`；`--wait` 期间同时等「锁可拿到」与
     「该 pid 已不存在，或 `/proc/<pid>/cmdline` 不再是 `aether-proxy daemon`」，两者都满足才清理；等满仍不满足照原来的 `BUSY` 处理。daemon 正常退出时删除自己的 pid 文件；启动失败进入 `error` 退避重试时保留（进程还在）。pid 文件或 cmdline 读不了、内容损坏时一律当作 daemon 还在（宁可等满报 `BUSY`，也不在活着的 daemon 底下删表）；daemon 写不了 pid 文件就不启动（记 `FS_FAILED` 并退出，否则 cleanup 看不见它）。停止时 nft 的输出解析不了，只返回失败、不另记事件（执行失败已有 `CMD_FAILED`）。（T9.27 复核定）
+- **配置变化的触发器在停止后也要保留**（2026-10-23 定，r14 窗口：「启用」关掉再打开并应用，服务没有启动）。procd 的 `stop` 会删除整个服务连同 `procd_add_reload_trigger` 登记的触发器，
+  之后改配置不再触发 `reload_service`。开机时即使 `enabled=0` 也会登记一个不带实例的服务和触发器，所以只有「停过一次之后」才出问题。
+  做法：停止完成后（`service_stopped` 的清理之后）重新向 procd 登记不带实例的服务与 `service_triggers`，与 `enabled=0` 开机时相同。
+- **手动停止标记**（同日定，仓库所有者：手动点了「停止」，之后改配置不应把服务拉起来）：`/var/run/aether-proxy/stopped-by-user`（重启路由器自然清掉）。
+  - init 的 `stop`（页面「停止」、命令行 `/etc/init.d/aether-proxy stop`）写这个标记；`start`、`restart` 清掉它（`restart` 是先 stop 后 start，结果是清掉）。
+  - `reload_service`：`enabled=0` → 停止（若在运行）并**清掉标记**；`enabled=1` 且没在运行 → 有标记就什么都不做，没有才 `start`；在运行 → 照旧发 HUP。
+  - 结果：开关关着时改配置不启动；开关开着但手动停止后改配置不启动；开关从关到开（中间经过 `enabled=0` 分支清标记）会启动。
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
 - 收到停止信号时**不等锁**：monitor 阶段可能有一次性命令（如 `probe`）正持锁，停止流程照样按顺序清理。

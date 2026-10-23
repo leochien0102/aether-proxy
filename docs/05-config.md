@@ -44,7 +44,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `enabled` | bool | `1` | |
 | `name` | 字符串 | — | 仅用于显示 |
-| `ip` | list IPv4 或 CIDR | — | `ip` 和 `mac` 至少填一个 |
+| `ip` | list IPv4、CIDR 或地址范围 | — | `ip` 和 `mac` 至少填一个。地址范围写 `192.168.8.250-192.168.8.254`（起 ≤ 止，起 = 止时等同单个地址；2026-10-23 定，r14 窗口：小段连续地址按 CIDR 拆不直观）。nft 的主机集合本来就是区间集合，范围原样写入 |
 | `mac` | list MAC | — | 统一转为小写冒号格式 |
 | `policy` | enum(`follow`\|`direct`\|`bypass_cn`\|`gfw`\|`proxy`) | `follow` | 跟随默认模式 / 直连 / 绕过大陆 / 仅代理被墙网站 / 全局（`proxy`，所有流量走代理；值名沿用，旧配置不迁移）。`bypass_cn`、`gfw` 为 2026-10-22 加（r12 窗口，仓库所有者定：覆盖可以跳出默认模式），见 02 |
 | `udp` | bool | `0` | 游戏模式。`policy=direct` 时必须为 0 |
@@ -167,7 +167,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 ## 校验规则（`aether-proxy check` 必须全部实现）
 
 1. `enabled=1` 时 `node` 必须指向存在的节点。指向 stale 节点**允许**，但要在结果的 `warnings` 中返回 `NODE_STALE_IN_USE`，由调用方记录。
-2. host：`ip` 和 `mac` 至少一个；`direct` + `udp=1` 报错；不同 host 之间 IP、CIDR、MAC 完全相同报错。
+2. host：`ip` 和 `mac` 至少一个；`direct` + `udp=1` 报错；不同 host 之间 IP、CIDR、地址范围、MAC 完全相同报错（范围先规范化：起 = 止写成单个地址；只比完全相同，部分重叠不报错，与 CIDR 现在的做法一致）。
 3. `trust_dns` 1–2 项，每项为合法 IPv4，可带 `tcp://` 或 `udp://` 前缀（不接受端口与其他协议）；`china_dns` 每项为上游写法或字面值 `wan`。
 4. 所有 list 中的 IPv4/CIDR/MAC/域名语法合法。
 5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）。

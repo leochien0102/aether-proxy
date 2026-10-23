@@ -322,7 +322,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 `notices` 沿用已有的事件码（`UPDATE_AVAILABLE` 原本是 `update check` 的事件），但 `status` 只返回、不写事件日志；`notices` 中的 args 以上表为准。
 
 **页面内容**（模型 `model/overview.js` 计算，视图渲染）：
-- 状态：`state` 的中文名（`stopped` 已停止、`starting` 启动中——`waiting_network` 为真时显示「等待网络」、`running` 运行中、`degraded` 降级、`failsafe` 故障放行、`error` 启动失败），
+- 状态：`state` 的中文名（`stopped` 已停止、`starting` 启动中——`waiting_network` 为真时显示「等待网络」、`running` 运行中、`degraded` 降级、`failsafe` 故障放行、`error` 启动失败、`stopping` 正在停止——2026-10-23 r14 加），
   `dns_failsafe` 为真时另显示「DNS 已回退到原配置」；进入当前状态的时间（`since`，显示为「x 分钟前」之类的相对时间）；`last_error` 不为空时显示事件码。
 - DNS 级别 `dns_tier`；当前节点：用 UCI 中该节点的 `label`，找不到就显示段名，另附 `node_ip`。
 - 最近一次健康检测：`last_probe.ok` 为真显示「正常，<latency_ms> ms」，为假显示「失败」，没有就显示「尚未检测」，附相对时间。
