@@ -1261,20 +1261,12 @@ msgid "%s, %s"
 msgstr "%s、%s"
 
 msgctxt "aether-proxy"
-msgid "This corresponds to the three helloworld approaches as follows:"
-msgstr "与 helloworld 三种方式的对应关系："
+msgid "To proxy all devices, set Unlisted devices to Follow default mode, then set exceptions below to Direct."
+msgstr "想让所有设备走代理：未列出的设备选『跟随默认模式』，个别不需要代理的设备在下面设为『直连』。"
 
 msgctxt "aether-proxy"
-msgid "Disabled: unlisted_policy=follow, no host sections."
-msgstr "停用：unlisted_policy=follow，不建 host 段。"
-
-msgctxt "aether-proxy"
-msgid "Only allow listed hosts: unlisted_policy=direct, listed hosts use policy=follow."
-msgstr "仅允许列表内主机：unlisted_policy=direct，列表内主机 policy=follow。"
-
-msgctxt "aether-proxy"
-msgid "Also allow unlisted hosts: unlisted_policy=follow, listed hosts use policy=direct."
-msgstr "列表外也允许：unlisted_policy=follow，列表内主机 policy=direct。"
+msgid "To proxy only some devices, set Unlisted devices to Direct, then list the devices to proxy below."
+msgstr "只想让部分设备走代理：未列出的设备选『直连』，再在下面列出要走代理的设备。"
 
 msgctxt "aether-proxy"
 msgid "Follow default mode"

@@ -2,7 +2,9 @@
 
 /* T10.36 access-page contract tests (docs/10 访问控制页定案).
  * Form doubles follow the SDK's GridSection extension, modal option cloning,
- * optional-value remove path and synchronous UCI writes. No real RPC is used.
+ * optional-value remove path and synchronous UCI writes. Map redraws build
+ * detached sections while formvalue() still reads the old Map root, then
+ * replace the root contents (SDK Map.renderContents). No real RPC is used.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -69,6 +71,13 @@ function fixture(hosts = [], main = {}) {
 			data.push({ '.name': 'cfgnew', '.anonymous': this.anonymous });
 			return Promise.resolve({ modal: 'cfgnew' });
 		}
+		handleModalSave(modalMap) {
+			/* SDK saves the child first, then reloads and resets its parent. */
+			return modalMap.save().then(() => this.map.load()).then(() => this.map.reset());
+		}
+		renderSectionAdd() {
+			return E('div', {}, E('button', { class: 'cbi-button cbi-button-add' }, 'Add'));
+		}
 		renderContents(ids) {
 			const rows = ids.map((sid) => {
 				const cell = E('td');
@@ -87,7 +96,13 @@ function fixture(hosts = [], main = {}) {
 				}
 			};
 			rows.forEach((row) => { row.parentNode = parent; });
-			return { rows, querySelectorAll: () => rows.slice() };
+			const table = E('table');
+			const node = E('div', {}, [ table, this.renderSectionAdd() ]);
+			node.rows = rows;
+			node.querySelectorAll = () => rows.slice();
+			node.querySelector = (selector) => selector == 'table' ? table : null;
+			node.insertBefore = (child, before) => node.children.splice(node.children.indexOf(before), 0, child);
+			return node;
 		}
 	}
 	class Map {
@@ -101,8 +116,20 @@ function fixture(hosts = [], main = {}) {
 			return this.children.flatMap((s) => s.children).filter((o) => o.option == key);
 		}
 		parse() { return Promise.resolve(); }
-		reset() { calls.reset++; return Promise.resolve(); }
-		render() { return Promise.resolve(this); }
+		load() { return Promise.resolve(); }
+		reset() { calls.reset++; return this.renderContents(); }
+		render() { return this.load().then(() => this.renderContents()); }
+		renderContents() {
+			/* New widgets use loaded UCI; old widgets remain searchable until
+			   section rendering finishes and Map installs its new contents. */
+			const next = Object.fromEntries(data.map((h) => [ h['.name'], { ...h } ]));
+			const section = this.children[1];
+			section.renderContents(section.cfgsections(), []);
+			for (const sid of Object.keys(inputs))
+				delete inputs[sid];
+			Object.assign(inputs, next);
+			return Promise.resolve(this);
+		}
 	}
 	const form = { Map, NamedSection: Section, GridSection, Flag: Option, Value: Option,
 		DummyValue: Option, DynamicList: Option, ListValue: Option };
@@ -110,6 +137,7 @@ function fixture(hosts = [], main = {}) {
 	const page = loadModule(path.join(RES, 'view/aether-proxy/access.js'), {
 		view: { extend: (o) => o }, form, uci,
 		ui: {
+			createHandlerFn: (ctx, method) => (ev) => ctx[method](ev),
 			changes: { apply: () => { calls.apply++; return Promise.resolve(); } },
 			addNotification: (title, node, level) => calls.notifications.push({ node, level })
 		},
@@ -124,7 +152,14 @@ function fixture(hosts = [], main = {}) {
 		option: (key) => page.map.lookupOption(key)[0],
 		hints: (value) => { hintReply = value; },
 		async start() { await page.render(await page.load()); },
-		table() { return page.hostSection.renderContents(page.hostSection.cfgsections(), []); }
+		table() { return page.tableNode; },
+		modalSave(sid, values) {
+			return page.hostSection.handleModalSave({ save: () => {
+				for (const [key, value] of Object.entries(values))
+					uci.set('aetherproxy', sid, key, value);
+				return uci.save();
+			} });
+		}
 	};
 }
 
@@ -136,7 +171,7 @@ test('T10.36 scenario 1: default-mode and five-policy wording reserve global for
 	const f = fixture();
 	await f.start();
 	assert.equal(typeof f.page.map.children[0].description, 'string', 'NamedSection only renders string descriptions');
-	assert.match(f.page.map.children[0].description, /helloworld/);
+	assert.doesNotMatch(f.page.map.children[0].description, /helloworld|unlisted_policy|policy=|host/);
 	assert.equal(f.option('_mode').title, '默认模式');
 	assert.equal(f.option('_mode').cfgvalue(), '绕过大陆');
 	assert.equal(f.option('unlisted_policy').title, '未列出的设备');
@@ -252,7 +287,7 @@ test('T10.36 scenario 7: device hints, optional name autofill and MAC-only selec
 	await f.start();
 	assert.equal(f.calls.hints, 1);
 	const mac = f.option('mac');
-	assert.equal(f.page.hostSection.children[0], mac, 'device is first in the modal');
+	assert.equal(f.page.hostSection.children[2], mac, 'device follows enabled and name in the modal');
 	assert.equal(mac.modalonly, true);
 	assert.deepEqual(mac.choices[0], { key: MAC, label: 'laptop（192.168.1.10，aa:bb:cc:dd:ee:01）' });
 	assert.equal(mac.choices[1].label, '192.168.1.11，aa:bb:cc:dd:ee:02');
@@ -311,4 +346,110 @@ test('T10.36 scenario 9: overlaps use five-policy order, notify without blocking
 		assert.equal(f.calls.notifications[0].level, 'warning');
 		assert.match(f.calls.notifications[0].node.textContent, /直连 → 全局 → 绕过大陆 → 仅被墙 → 跟随/);
 	}
+});
+
+
+test('T10.42 scenario 1: modal fields are enabled, name, device, IP, policy and game mode', async () => {
+	const f = fixture();
+	await f.start();
+	/* SDK cloneOptions excludes modalonly=false, preserving registration order. */
+	const modalOptions = f.page.hostSection.children.filter((o) => o.modalonly !== false);
+	assert.deepEqual(modalOptions.map((o) => o.option), [ 'enabled', 'name', 'mac', 'ip', 'policy', 'udp' ]);
+});
+
+test('T10.42 scenario 2: page descriptions use plain language without application or UCI names', async () => {
+	const f = fixture();
+	await f.start();
+	assert.equal(f.page.map.children[0].description, [
+		'想让所有设备走代理：未列出的设备选『跟随默认模式』，个别不需要代理的设备在下面设为『直连』。',
+		'只想让部分设备走代理：未列出的设备选『直连』，再在下面列出要走代理的设备。'
+	].join(' '));
+	const visibleText = [ f.page.map.children[0].description,
+		...f.page.map.children.flatMap((s) => s.children.map((o) => o.title || '')) ].join(' ');
+	assert.doesNotMatch(visibleText, /helloworld|unlisted_policy|policy=|config host/);
+});
+
+test('T10.42 scenario 3: only one Add button is above the table in a right-aligned row and opens a modal',
+async () => {
+	const f = fixture();
+	await f.start();
+	const node = f.table();
+	const toolbar = node.children[0];
+	assert.equal(toolbar.tag, 'div');
+	assert.equal(node.children[1].tag, 'table', 'toolbar immediately precedes the table');
+	for (const rule of [ 'display:flex', 'justify-content:flex-end', 'align-items:center',
+		'gap:0.5em', 'flex-wrap:wrap', 'margin:0.5em 0 1em' ])
+		assert.ok(toolbar.style.includes(rule), rule);
+	const button = toolbar.children[0];
+	assert.match(button.class, /cbi-button-add/);
+	assert.equal(button.textContent, '添加');
+	assert.equal(button.disabled, false);
+	assert.deepEqual(f.page.hostSection.renderSectionAdd().children, [], 'stock lower-left Add is empty');
+	assert.equal(node.children[2].textContent, '', 'no stock button appears after the table');
+	assert.deepEqual(await button.click({}), { modal: 'cfgnew' });
+	assert.equal(f.data.at(-1)['.anonymous'], true, 'anonymous Add opens the editor without a name prompt');
+	f.page.map.readonly = true;
+	await f.page.map.reset();
+	assert.equal(f.table().children[0].children[0].disabled, true, 'read-only maps cannot add hosts');
+});
+
+test('T10.42 scenario 4: unsaved inline policy and game-mode changes immediately toggle no-effect marks', async () => {
+	for (const unlisted of [ 'follow', 'direct' ]) {
+		const f = fixture([ host('a', 'proxy', { udp: '0' }) ], { unlisted_policy: unlisted });
+		await f.start();
+		const before = JSON.stringify(f.data);
+		const row = f.table().rows[0];
+		f.inputs.a.policy = unlisted;
+		f.option('policy').onchange();
+		assert.equal(row.style.opacity, '0.6');
+		assert.match(row.cell.textContent, /不起作用/);
+		f.inputs.a.policy = 'proxy';
+		f.option('policy').onchange();
+		assert.equal(row.style.opacity, '');
+		assert.equal(row.cell.textContent, '');
+		assert.equal(JSON.stringify(f.data), before, 'inline editing has not written UCI');
+		assert.equal(f.calls.save, 0);
+		assert.equal(f.calls.apply, 0);
+	}
+	const f = fixture([ host('a', 'follow', { udp: '1' }) ]);
+	await f.start();
+	const row = f.table().rows[0];
+	f.inputs.a.udp = '0';
+	f.option('udp').onchange();
+	assert.equal(row.style.opacity, '0.6');
+	assert.match(row.cell.textContent, /不起作用/);
+	f.inputs.a.udp = '1';
+	f.option('udp').onchange();
+	assert.equal(row.style.opacity, '');
+	assert.equal(row.cell.textContent, '');
+	assert.equal(f.data[1].udp, '1');
+	assert.equal(f.calls.save, 0);
+});
+
+test('T10.42 scenario 4: modal saves recalculate no-effect marks from new widgets, not the old Map root', async () => {
+	for (const unlisted of [ 'follow', 'direct' ]) {
+		const f = fixture([ host('a', 'proxy', { udp: '0' }) ], { unlisted_policy: unlisted });
+		await f.start();
+		const oldRow = f.table().rows[0];
+		assert.equal(oldRow.style.opacity, '');
+		await f.modalSave('a', { policy: unlisted });
+		const newRow = f.table().rows[0];
+		assert.notEqual(newRow, oldRow, 'parent Map replaces the table');
+		assert.equal(f.data[1].policy, unlisted, 'modal save stages the new policy');
+		assert.equal(f.inputs.a.policy, unlisted, 'new parent widget reflects staged UCI');
+		assert.equal(newRow.style.opacity, '0.6');
+		assert.match(newRow.cell.textContent, /不起作用/);
+		assert.equal(f.calls.apply, 0, 'no apply is needed to update the mark');
+		await f.modalSave('a', { policy: 'proxy' });
+		assert.equal(f.table().rows[0].style.opacity, '');
+		assert.equal(f.table().rows[0].cell.textContent, '');
+	}
+	const f = fixture([ host('a', 'follow', { udp: '1' }) ]);
+	await f.start();
+	await f.modalSave('a', { udp: '0' });
+	assert.equal(f.table().rows[0].style.opacity, '0.6');
+	await f.modalSave('a', { udp: '1' });
+	assert.equal(f.table().rows[0].style.opacity, '');
+	assert.equal(f.table().rows[0].cell.textContent, '');
+	assert.equal(f.calls.apply, 0);
 });
