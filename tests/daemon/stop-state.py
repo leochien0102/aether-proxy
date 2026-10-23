@@ -203,7 +203,8 @@ exec "$(dirname "$0")/ip-original" "$@"
 	fixture.args[idx + 1] = str(local_bin)
 	with fixture.daemon() as child:
 		wait_for(lambda: fixture.state().get('waiting_network') is True, child)
-		check('network wait publishes starting', fixture.state()['state'] == 'starting')
+		check('network wait publishes starting and keeps the T1 dns_tier of the unset option',
+			fixture.state()['state'] == 'starting' and fixture.state()['dns_tier'] == 'T1')
 		(fixture.root / 'capture').touch()
 		child.terminate()
 		child.wait(timeout=12)

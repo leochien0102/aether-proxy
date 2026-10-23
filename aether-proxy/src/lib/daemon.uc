@@ -208,7 +208,7 @@ function wait_network(ctx, opts, snapshot, on_signal) {
 		return false;
 	let timeout = max(+(snapshot.main.boot_wait_timeout ?? 0), 0) * 1000;
 	let deadline = started + timeout;
-	let saved = write_state(ctx, { state: 'starting', dns_tier: 'T2', dns_failsafe: false,
+	let saved = write_state(ctx, { state: 'starting', dns_tier: snapshot.dns.direct_dns_enabled ? 'T2' : 'T1', dns_failsafe: false,
 		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time() });
 	if (!saved.ok)
 		return { ok: false, detail: saved.detail };
