@@ -79,7 +79,8 @@ export function run(c) {
 		if (name == 't14-single-trust')
 			cfg.snapshot.dns.direct_dns = [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ];
 		let ctx = json(fs.readfile(dir + '/context.json'));
-		if (chinadns.render(cfg.snapshot, ctx) != fs.readfile(dir + '/expected/chinadns.conf'))
+		// Frozen pre-T9.28 outputs: the fixtures' own expected files now show the default (off).
+		if (chinadns.render(cfg.snapshot, ctx) != fs.readfile(`tests/unit/data/direct_dns_enabled/${name}.conf`))
 			good = false;
 	}
 	let removed = sys.run([ 'rm', '-rf', tmp ]);

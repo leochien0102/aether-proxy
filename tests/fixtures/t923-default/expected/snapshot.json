@@ -32,9 +32,9 @@
       "8.8.8.8",
       "1.1.1.1"
     ],
+    "direct_dns_enabled": false,
     "direct_dns": [
-      "tcp://9.9.9.9",
-      "tcp://8.8.8.8"
+      "tcp://9.9.9.9"
     ],
     "allow_china_fallback": true,
     "dns_probe_domain": "www.google.com",

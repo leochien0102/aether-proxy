@@ -31,6 +31,7 @@
     "trust_dns": [
       "9.9.9.9"
     ],
+    "direct_dns_enabled": false,
     "direct_dns": [
       "tls://dns.google@8.8.8.8",
       "tcp://1.1.1.1"
