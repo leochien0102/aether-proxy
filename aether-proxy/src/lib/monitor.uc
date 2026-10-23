@@ -106,7 +106,8 @@ function observe(daemon) {
 	let xray_listening = port_listening(daemon, C.TPROXY_PORT);
 	let chinadns_listening = port_listening(daemon, C.CHINADNS_PORT);
 	let proxy = xray_listening ? probe_proxy(daemon, daemon.snapshot) : null;
-	let dns = !machine.dns_failsafe && (machine.dns_tier == 'T2' || machine.dns_tier == 'T3')
+	let dns = daemon.snapshot.dns.direct_dns_enabled && !machine.dns_failsafe &&
+		(machine.dns_tier == 'T2' || machine.dns_tier == 'T3')
 		? probe_dns(daemon, daemon.snapshot) : null;
 	// An inspection error counts as "present" for this round (04, failure semantics): rebuilding
 	// would fail the same way and could export empty sets.
@@ -443,11 +444,13 @@ initial_state = (service, now) => {
 // ordered so the executor can apply fail-open and DNS changes without hidden side effects.
 next = (state, obs, cfg) => {
 	let old = state ?? {};
+	let direct_enabled = cfg.dns.direct_dns_enabled == true;
+	let fallback_tier = direct_enabled ? 'T2' : (cfg.dns.allow_china_fallback ? 'T3' : 'T1');
 	let previous_service_state = old.state ?? 'starting';
 	let now = obs.now;
 	let out = {
 		state: old.state ?? 'starting',
-		dns_tier: old.dns_tier ?? 'T2',
+		dns_tier: old.dns_tier ?? (direct_enabled ? 'T2' : 'T1'),
 		dns_failsafe: old.dns_failsafe == true,
 		table_missing_count: old.table_missing_count ?? 0,
 		xray_down_count: old.xray_down_count ?? 0,
@@ -500,6 +503,11 @@ next = (state, obs, cfg) => {
 		}
 	};
 
+	// TODO(design): live disable during T2 is unspecified. Stop using the disabled
+	// upstream immediately; preserve health history and choose only T1/T3.
+	if (!direct_enabled && out.dns_tier == 'T2')
+		tier(out.state == 'running' || out.state == 'starting' ? 'T1' : fallback_tier, 'direct_dns_disabled');
+
 	// 1. Debounce a missing ruleset so transient observation gaps do not trigger a reload.
 	if (obs.table_present == false) {
 		out.table_missing_count = min(out.table_missing_count + 1, C.MONITOR_FAILSAFE_ROUNDS);
@@ -520,13 +528,13 @@ next = (state, obs, cfg) => {
 			if (cfg.main.fail_open == true) {
 				out.state = 'failsafe';
 				action('nft_flush_prerouting');
-				tier('T2', 'xray_down');
+				tier(fallback_tier, 'xray_down');
 				event('error', 'XRAY_DOWN_FAILOPEN', { port: C.TPROXY_PORT });
 			}
 			else {
 				if (out.state != 'failsafe')
 					out.state = 'degraded';
-				tier('T2', 'xray_down');
+				tier(fallback_tier, 'xray_down');
 				event('error', 'XRAY_DOWN', { port: C.TPROXY_PORT });
 			}
 		}
@@ -586,14 +594,14 @@ next = (state, obs, cfg) => {
 		if (out.proxy_fail_count >= fail_threshold && out.state != 'degraded' && out.state != 'failsafe') {
 			out.state = 'degraded';
 			out.since = now;
-			tier('T2', 'proxy_unhealthy');
+			tier(fallback_tier, 'proxy_unhealthy');
 			event('warn', 'PROXY_UNHEALTHY', { latency_ms: obs.proxy_latency_ms ?? null, fails: out.proxy_fail_count });
 		}
 	}
 
 	// 5. DNS checks run only while a DNS tier is in direct mode. A T3 retry probes T2 on
 	// the following observation; one failed T2 retry returns immediately to T3 per docs/03.
-	if (!out.dns_failsafe && (out.dns_tier == 'T2' || out.dns_tier == 'T3')) {
+	if (direct_enabled && !out.dns_failsafe && (out.dns_tier == 'T2' || out.dns_tier == 'T3')) {
 		if (out.dns_tier == 'T2' && out.t2_retry_pending) {
 			if (obs.dns_ok === true) {
 				out.t2_retry_pending = false;

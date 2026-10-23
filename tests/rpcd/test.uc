@@ -959,6 +959,33 @@ function scenario_mode_use() {
 			instrumented[method].call({ args: { id: node_id(1), mode: 'gfw' } }).timeout);
 }
 
+// T9.28: DNS tests are a parameterless job, never a synchronous DNS RPC.
+function scenario_dns_test() {
+	let data = { job: 'j_1760400000_1234' };
+	stub_ctrl({ exit: 0, stdout: show(data) });
+	let cases = [
+		{ name: 'empty args', args: { kind: 'dns_test', args: [] } },
+		{ name: 'default args', args: { kind: 'dns_test' } },
+		{ name: 'ubus_rpc_session', args: { kind: 'dns_test', args: [], ubus_rpc_session: 'session-token' } }
+	];
+	for (let c in cases) {
+		let argv_of = watch_cli();
+		let r = methods.job_start.call({ args: c.args });
+		check(`T9.28 dns_test ${c.name}: exact job argv and unchanged JSON`,
+			deep_eq(argv_of(), [ 'job', 'start', 'dns', 'test-direct', '--json' ]) && deep_eq(r, data), show(r));
+	}
+	for (let value in [ [ 'force' ], [ '--confdir', '/tmp' ], [ '--json' ], [ 1 ], 'test', {}, true ]) {
+		let argv_of = watch_cli();
+		let r = methods.job_start.call({ args: { kind: 'dns_test', args: value, ubus_rpc_session: 'token' } });
+		check(`T9.28 dns_test rejects ${show(value)}: USAGE without execution`,
+			r.ok === false && r.code == 'USAGE' && argv_of() == null, show(r));
+	}
+	let busy = { ok: false, code: 'BUSY', job: 'j_1_2' };
+	stub_ctrl({ exit: 3, stdout: show(busy) });
+	check('T9.28 dns_test BUSY: CLI JSON forwarded unchanged',
+		deep_eq(methods.job_start.call({ args: { kind: 'dns_test', args: [] } }), busy));
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -984,6 +1011,7 @@ scenario_sessions();
 scenario_node_probe();
 scenario_node_parse();
 scenario_mode_use();
+scenario_dns_test();
 
 print(`\n${pass} passed, ${fail} failed\n`);
 exit(fail == 0 ? 0 : 1);

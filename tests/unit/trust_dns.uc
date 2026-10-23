@@ -14,7 +14,8 @@ const DEFAULT = [ '8.8.8.8', '1.1.1.1' ];
 const MIXED = [ 'udp://8.8.8.8', '1.1.1.1' ];
 
 function snapshot(entries) {
-	let r = config.normalize({ dns: { trust_dns: entries } });
+	// T9.28: these protocol tests exercise all three tiers with direct DNS opted in.
+	let r = config.normalize({ dns: { trust_dns: entries, direct_dns_enabled: '1' } });
 	if (!r.ok)
 		die(sprintf('unexpected trust_dns errors: %.J', r.errors));
 	return r.snapshot;
@@ -59,14 +60,14 @@ function upstreams(c) {
 	return lines[0] == 'trust-dns ' + c.upstream &&
 		lines[1] == 'group-upstream ' + c.upstream &&
 		lines[2] == 'group-upstream 223.5.5.5,114.114.114.114' &&
-		lines[3] == 'group-upstream tcp://9.9.9.9,tcp://8.8.8.8';
+		lines[3] == 'group-upstream tcp://9.9.9.9';
 }
 
 function fallback(tier) {
 	let ctx = { runtime: { dns_tier: tier } };
 	let bare = chinadns.render(snapshot(DEFAULT), ctx);
 	let mixed = chinadns.render(snapshot(MIXED), ctx);
-	let expected = tier == 'T2' ? 'tcp://9.9.9.9,tcp://8.8.8.8' : '223.5.5.5,114.114.114.114';
+	let expected = tier == 'T2' ? 'tcp://9.9.9.9' : '223.5.5.5,114.114.114.114';
 	return bare == mixed && dns_lines(mixed)[0] == 'trust-dns ' + expected &&
 		dns_lines(mixed)[1] == 'group-upstream ' + expected;
 }

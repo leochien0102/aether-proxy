@@ -282,3 +282,11 @@ export const WAN_DNS_RELOAD_TIMEOUT_SECS = 10;
 
 // T9.27 (docs/04 process model): fallback cleanup waits for the supervisor, not just its lock.
 export const DAEMON_PID_FILE = 'daemon.pid';
+
+// T9.28 (docs/03 optional direct foreign DNS diagnostics).
+export const DNS_TEST_TIMEOUT_MS = 2000;
+export const DNS_TEST_ATTEMPTS = 3;
+export const DNS_TEST_FALLBACK_DOMAIN = 'www.microsoft.com';
+export const DNS_TEST_SAVEDIR_PREFIX = 'dns-test-uci.';
+// TODO(design): compression budgets are unspecified; bound hostile acyclic pointer chains.
+export const DNS_TEST_MAX_NAME_POINTERS = 128;

@@ -32,7 +32,10 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p "$T/bin" "$T/data" "$T/base" "$T/custom"
+mkdir -p "$T/bin" "$T/data" "$T/base" "$T/custom" "$T/enabled-conf"
+# Keep shared/golden inputs unchanged; legacy T2 scenarios explicitly opt in here.
+cp "$FIX/aetherproxy" "$T/enabled-conf/aetherproxy"
+printf "\nconfig dns 'dns'\n\toption direct_dns_enabled '1'\n" >> "$T/enabled-conf/aetherproxy"
 cp "$STUB_SRC/"* "$T/bin/"
 cp "$ROOT/tests/stubs/daemon-bin/curl" "$T/bin/curl"
 cp "$STUB_SRC/xray" "$T/bin/xray-original"
@@ -73,15 +76,20 @@ EOF
 }
 
 run_case() {
-	local name="$1" root="$T/$1"
+	local name="$1" root="$T/$1" conf="$T/enabled-conf"
+	if [[ "$name" = disabled-* ]]; then conf="$FIX"; fi
 	make_sysroot "$root"
 	CHILD_ROOTS+=("$root")
 	STUB_LOG="$root/var/run/aether-proxy/calls.log" \
 	SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/var/run/aether-proxy/curl-count" \
 	STUB_CURL_FAIL_FROM="${2:-999999}" PATH="$T/bin:$PATH" \
-		timeout 30s "$UCODE" "$DRIVER" -- "$name" "$root" "$FIX" "$T/data" "$T/base" "$T/custom" "$T/bin" || status=1
+		timeout 30s "$UCODE" "$DRIVER" -- "$name" "$root" "$conf" "$T/data" "$T/base" "$T/custom" "$T/bin" || status=1
 }
 
+for scenario in disabled-fallback disabled-no-fallback disabled-t3 disabled-stale-t2 disabled-outage; do
+	run_case "$scenario" 1
+done
+run_case disabled-recover
 run_case proxy-tier 2
 run_case node-refresh
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999

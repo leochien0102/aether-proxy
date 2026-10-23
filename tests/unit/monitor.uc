@@ -14,7 +14,7 @@ const BASE = {
 const CFG = {
 	main: { fail_open: true },
 	probe: { fail_threshold: 3, recover_threshold: 2 },
-	dns: { allow_china_fallback: true }
+	dns: { direct_dns_enabled: true, allow_china_fallback: true }
 };
 
 function test(name, state, obs, cfg, actions, codes, fields) {
@@ -23,6 +23,40 @@ function test(name, state, obs, cfg, actions, codes, fields) {
 
 export const cases = [
 	{ name: 'monitor cadence follows running state', expect: 'PASS', kind: 'interval' },
+	test('direct DNS default off sends unhealthy proxy directly to T3', { proxy_fail_count: 2 },
+		{ now: 1020, proxy_ok: false },
+		{ ...CFG, dns: { allow_china_fallback: true } },
+		[ 'set_tier:T3' ], [ 'DNS_TIER_CHANGED', 'PROXY_UNHEALTHY' ],
+		{ state: 'degraded', dns_tier: 'T3' }),
+	test('direct DNS off without fallback keeps unhealthy proxy on T1', { proxy_fail_count: 2 },
+		{ now: 1020, proxy_ok: false },
+		{ ...CFG, dns: { direct_dns_enabled: false, allow_china_fallback: false } },
+		[], [ 'PROXY_UNHEALTHY' ], { state: 'degraded', dns_tier: 'T1' }),
+	test('direct DNS off skips T3 retry even after five minutes',
+		{ state: 'degraded', dns_tier: 'T3', t3_since: 1000, last_t2_retry: 1000 },
+		{ now: 1300, dns_ok: true },
+		{ ...CFG, dns: { direct_dns_enabled: false, allow_china_fallback: true } },
+		[], [], { dns_tier: 'T3', last_t2_retry: 1000, t2_retry_pending: false }),
+	test('direct DNS off recovers from T3 to T1 after health threshold',
+		{ state: 'degraded', dns_tier: 'T3', proxy_ok_count: 1 },
+		{ now: 1040, proxy_ok: true },
+		{ ...CFG, dns: { direct_dns_enabled: false, allow_china_fallback: true } },
+		[ 'set_tier:T1' ], [ 'DNS_TIER_CHANGED', 'PROXY_HEALTHY' ],
+		{ state: 'running', dns_tier: 'T1' }),
+	test('direct DNS off sends Xray outage to T3 with fail-open', { xray_down_count: 1 },
+		{ now: 1020, xray_listening: false },
+		{ ...CFG, dns: { direct_dns_enabled: false, allow_china_fallback: true } },
+		[ 'nft_flush_prerouting', 'set_tier:T3' ], [ 'DNS_TIER_CHANGED', 'XRAY_DOWN_FAILOPEN' ],
+		{ state: 'failsafe', dns_tier: 'T3' }),
+	test('direct DNS off keeps Xray outage on T1 without fallback or fail-open', { xray_down_count: 1 },
+		{ now: 1020, xray_listening: false },
+		{ ...CFG, main: { fail_open: false }, dns: { direct_dns_enabled: false, allow_china_fallback: false } },
+		[], [ 'XRAY_DOWN' ], { state: 'degraded', dns_tier: 'T1' }),
+	test('disabling direct DNS leaves an existing unhealthy T2 without another probe',
+		{ state: 'degraded', dns_tier: 'T2', dns_fail_count: 1 },
+		{ now: 1020, dns_ok: false },
+		{ ...CFG, dns: { direct_dns_enabled: false, allow_china_fallback: true } },
+		[ 'set_tier:T3' ], [ 'DNS_TIER_CHANGED' ], { dns_tier: 'T3', dns_fail_count: 0 }),
 	{ name: 'first startup success uses T1 but later recovery still needs two successes',
 		expect: 'PASS', kind: 'startup-recovery' },
 	test('never-healthy degraded startup enters T1 on its first success',
@@ -82,7 +116,7 @@ export const cases = [
 		[ 'set_tier:T3' ], [ 'DNS_TIER_CHANGED' ], { dns_tier: 'T3', dns_fail_count: 0, t3_since: 1020, last_t2_retry: 1020 }),
 	test('two T2 DNS failures stay T2 without fallback permission', { state: 'degraded', dns_tier: 'T2', dns_fail_count: 1 },
 		{ now: 1020, table_present: true, xray_listening: true, chinadns_listening: true, dns_ok: false },
-		{ ...CFG, dns: { allow_china_fallback: false } }, [], [], { dns_tier: 'T2', dns_fail_count: 2 }),
+		{ ...CFG, dns: { direct_dns_enabled: true, allow_china_fallback: false } }, [], [], { dns_tier: 'T2', dns_fail_count: 2 }),
 	test('T3 does not retry before five minutes', { state: 'degraded', dns_tier: 'T3', t3_since: 1000, last_t2_retry: 1000 },
 		{ now: 1299, table_present: true, xray_listening: true, chinadns_listening: true, dns_ok: true }, CFG,
 		[], [], { dns_tier: 'T3' }),

@@ -512,7 +512,9 @@ function start_sequence(ctx, opts, signal_pending) {
 	}
 
 	step_started = monotonic_ms();
-	let initial_runtime = { node_ip: null, dns_tier: 'T2', restored: {} };
+	// docs/03: do not send direct foreign queries unless the user opted into T2.
+	let initial_tier = snapshot.dns.direct_dns_enabled ? 'T2' : 'T1';
+	let initial_runtime = { node_ip: null, dns_tier: initial_tier, restored: {} };
 	let initial = pipeline.build({ ...opts, runtime: initial_runtime });
 	if (!initial.ok) {
 		record_step(ctx, 'render_validate', step_started);
@@ -609,7 +611,7 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	if (!degraded) {
 		step_started = monotonic_ms();
-		let runtime = { node_ip, dns_tier: 'T2', restored: {} };
+		let runtime = { node_ip, dns_tier: initial_tier, restored: {} };
 		let resolved = pipeline.build({ ...opts, runtime });
 		if (!resolved.ok) {
 			record_step(ctx, 'xray_render_validate', step_started);
@@ -659,7 +661,8 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'sets_load', detail: saved_sets.detail, children };
 		}
-		let dataplane = pipeline.build({ ...opts, runtime: { node_ip, dns_tier: 'T2', restored: saved_sets.sets } });
+		let dataplane = pipeline.build({ ...opts,
+			runtime: { node_ip, dns_tier: initial_tier, restored: saved_sets.sets } });
 		if (!dataplane.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
@@ -697,7 +700,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	}
 
 	let initial_state = {
-		state: degraded ? 'degraded' : 'starting', dns_tier: 'T2', dns_failsafe: false,
+		state: degraded ? 'degraded' : 'starting', dns_tier: initial_tier, dns_failsafe: false,
 		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
 		components,

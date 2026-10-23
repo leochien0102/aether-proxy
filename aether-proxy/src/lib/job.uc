@@ -194,6 +194,9 @@ function kind_for(argv) {
 		return 'probe_nodes';
 	if (length(argv) >= 2 && argv[0] == 'sub' && argv[1] == 'update')
 		return 'sub_update';
+	// Unlike the update family, DNS tests keep their own kind lock (docs/10).
+	if (length(argv) >= 2 && argv[0] == 'dns' && argv[1] == 'test-direct')
+		return 'dns_test';
 	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'check')
 		return 'update_check';
 	if (length(argv) >= 2 && argv[0] == 'update' && argv[1] == 'data')
@@ -264,7 +267,7 @@ function launch_job(ctx, job) {
 	return { ok: true, job: job.id, exit: 0 };
 }
 
-// start(argv, opts) accepts only the two long-running command families documented in 10.
+// start(argv, opts) accepts only the long-running commands documented in docs/10.
 export function start(argv, opts) {
 	let kind = kind_for(argv);
 	if (kind == null)

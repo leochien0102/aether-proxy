@@ -1,11 +1,11 @@
 'use strict';
 
-// DNS default/override regression tests (docs/05 "config dns 'dns'", T8.22).
+// DNS default/override regression tests (docs/05 "config dns 'dns'", T8.22/T9.28).
 // Keep T1's trust_dns independent of the direct upstreams used by T2 and boot.
 
 import { normalize } from 'aetherproxy.config';
 
-const DEFAULT_DIRECT = [ 'tcp://9.9.9.9', 'tcp://8.8.8.8' ];
+const DEFAULT_DIRECT = [ 'tcp://9.9.9.9' ];
 const DEFAULT_TRUST = [ '8.8.8.8', '1.1.1.1' ];
 
 export const cases = [
@@ -37,5 +37,7 @@ export function run(c) {
 		return result.errors;
 
 	let dns = result.snapshot.dns;
+	if (dns.direct_dns_enabled !== false)
+		return 'FAIL: missing direct_dns_enabled must normalize to false';
 	return { direct_dns: dns.direct_dns, trust_dns: dns.trust_dns };
 };

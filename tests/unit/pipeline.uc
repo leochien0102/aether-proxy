@@ -53,9 +53,11 @@ export function run(c) {
 	}
 	if (c.isolation) {
 		let before = sprintf('%.J', loaded);
-		let initial = pipeline.render(loaded);
+		// T9.28: default T1 now equals LIVE's tier; compare T3/T1 to keep testing
+		// runtime isolation without re-enabling direct DNS in shared fixtures.
+		let initial = pipeline.render(loaded, { dns_tier: 'T3' });
 		let live = pipeline.render(loaded, LIVE);
-		let again = pipeline.render(loaded);
+		let again = pipeline.render(loaded, { dns_tier: 'T3' });
 		if (!initial.ok || !live.ok || !again.ok)
 			return 'FAIL: runtime render';
 		let changed = initial.artifacts.nft != live.artifacts.nft &&
