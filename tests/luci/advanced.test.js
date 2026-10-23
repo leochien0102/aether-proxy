@@ -15,6 +15,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo } = require('./loader');
+const { renderList, parseList } = require('./dynamic-list');
 
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
@@ -257,7 +258,7 @@ test('T8.11b scenario 4: switch descriptions and the debug hint carry the requir
    without a browser (docs/10 「页面卡的写法」). */
 function build_form() {
 	const created = [];
-	const state = { map: null };
+	const state = { map: null, writes: [] };
 
 	class Option {
 		constructor(tab, type, field, title, description) {
@@ -308,7 +309,14 @@ function build_form() {
 		}
 
 		render() {
+			for (const option of created.filter(o => ['DynamicList', 'DeviceSelect'].includes(o.type)))
+				option.input = renderList(option, 'main', option.default);
 			return Promise.resolve({});
+		}
+		parse() {
+			for (const option of created.filter(o => o.input))
+				parseList(option, 'main', option.input, option.default,
+					value => state.writes.push([option.field, value]), () => state.writes.push(['remove', option.field]));
 		}
 	}
 
@@ -319,6 +327,22 @@ function build_form() {
 
 	return { form, state, created };
 }
+
+test('T10.47 scenario 3: advanced DynamicList and DeviceSelect validate items plus empty add box on render', async () => {
+	const { form, state, created } = build_form();
+	const view = loadModule(VIEW, {
+		view: { extend: object => object }, form, uci: {},
+		'tools.widgets': { DeviceSelect: 'DeviceSelect' },
+		'aether-proxy.model.advanced': load_model()
+	}, { window: {}, document: {} });
+	await view.render();
+	for (const option of created.filter(o => o.input)) {
+		assert.deepEqual(option.input.validationCalls, [...option.default, '']);
+		assert.equal(option.input.isValid(), true);
+	}
+	state.map.parse();
+	assert.deepEqual(state.writes, []);
+});
 
 test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wiring', async () => {
 	const real = load_model();

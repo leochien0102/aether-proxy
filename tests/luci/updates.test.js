@@ -13,6 +13,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element } = require('./loader');
 const { actionRow, descendants, marginlessMessages } = require('./button-layout');
+const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -136,6 +137,7 @@ test('T8.9b scenario 6: every channel URL fixture agrees with real CLI validatio
 			assert.ok([ 0, 2 ].includes(r.status));
 			const errors = JSON.parse(r.stdout).errors ?? [];
 			const invalid = errors.some(e => e.field.startsWith('update.channel_urls'));
+			// A stored empty item is invalid; an unused add box is tested through the view below.
 			assert.equal(!invalid, model.validate_url(url) === true, JSON.stringify(url));
 			assert.equal(model.validate_url(url) === true, url.startsWith('http') &&
 				[ 'http://host', 'https://host', 'https://host:8443/path?q=x' ].includes(url));
@@ -205,9 +207,9 @@ function buttons(node) {
 		return [];
 	return (node.tag == 'button' ? [ node ] : []).concat(node.children.flatMap(buttons));
 }
-function load_view() {
+function load_view(config = {}) {
 	globalThis.E = element;
-	const calls = [], loads = [], timers = [], maps = [], jobs = [], confirmations = [];
+	const calls = [], loads = [], timers = [], maps = [], jobs = [], confirmations = [], writes = [];
 	const ap = {
 		call: method => {
 			let resolve;
@@ -240,8 +242,19 @@ function load_view() {
 			} };
 		}
 		render() {
-			this.node = E('form', {}, this.options.map(o => E(o.kind, { name: o.key }, o.label)));
+			this.node = E('form', {}, this.options.map(o => {
+				o.input = o.kind == form.DynamicList ? renderList(o, 'update', config[o.key] ?? o.default) :
+					E(o.kind, { name: o.key }, o.label);
+				return o.input;
+			}));
 			return Promise.resolve(this.node);
+		}
+		parse() {
+			for (const option of this.options.filter(o => o.kind == form.DynamicList))
+				parseList(option, 'update', option.input, config[option.key],
+					value => writes.push(['set', option.key, value]),
+					() => { if (config[option.key]?.length) writes.push(['unset', option.key]); });
+			return Promise.resolve();
 		}
 	};
 	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
@@ -251,7 +264,7 @@ function load_view() {
 		'aether-proxy.model.updates': model,
 		'aether-proxy.common': ap
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
-	return { page, calls, loads, timers, maps, jobs, ap, confirmations,
+	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -260,6 +273,34 @@ function load_view() {
 	};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test('T10.47 scenario 2: empty channel URLs save unchanged without errors or writes', async () => {
+	for (const config of [{}, { channel_urls: [] }]) {
+		const h = load_view(config);
+		await h.page.render();
+		const option = h.maps[0].options.find(o => o.key == 'channel_urls');
+		await h.maps[0].parse();
+		assert.deepEqual(option.input.validationCalls, ['']);
+		assert.equal(option.input.isValid(), true, 'optional empty add box has no validation error');
+		assert.deepEqual(option.input.value, [], 'placeholder is not a persisted channel');
+		assert.deepEqual(h.writes, [], 'removing an absent/zero-item UCI option is a no-op');
+		assert.deepEqual(h.jobs, []);
+	}
+});
+
+test('T10.47 scenarios 3/4: channel items and empty add box validate; illegal URLs still block Save', async () => {
+	const h = load_view({ channel_urls: ['https://channel.example/path', 'http://backup.example/'] });
+	await h.page.render();
+	const option = h.maps[0].options.find(o => o.key == 'channel_urls');
+	assert.deepEqual(option.input.validationCalls, ['https://channel.example/path', 'http://backup.example/', '']);
+	assert.equal(option.input.isValid(), true);
+	await h.maps[0].parse();
+	assert.deepEqual(h.writes, []);
+	option.input.value = ['ftp://invalid.example'];
+	assert.equal(option.input.triggerValidation(), false);
+	assert.throws(() => h.maps[0].parse(), /HTTP.*HTTPS/);
+	assert.deepEqual(h.writes, []);
+});
 
 test('T10.16 updates model: pending placeholders disable actions and settled failures clear them', () => {
 	const vm = model.table(undefined, false, 160);

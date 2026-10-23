@@ -130,7 +130,8 @@ return view.extend({
 			_('Leave empty to use the default release channel.', 'aether-proxy'));
 		// Empty means the built-in channel; a default would pin today's URL on Save.
 		option.placeholder = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
-		option.validate = function(section_id, value) { return model.validate_url(value); };
+		// The optional add box is validated even while empty (docs/10 r14); it is not a URL item.
+		option.validate = function(section_id, value) { return value === '' ? true : model.validate_url(value); };
 		return map.render().then(node => {
 			const root = E('div', {}, [ node, this.inventory ]);
 			// A new turn lets LuCI display the complete page before starting RPC.

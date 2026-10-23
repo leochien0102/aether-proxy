@@ -174,7 +174,10 @@ return view.extend({
 		china.rmempty = false;
 		china.default = [ 'wan', '114.114.114.114' ];
 		model.presets('china_dns').forEach(item => china.value(item[0], item[1]));
-		china.validate = function(section_id, value) { return model.validate('china_dns', value); };
+		// DynamicList validates its unused add box too; rmempty enforces a nonempty list (docs/10 r14).
+		china.validate = function(section_id, value) {
+			return value === '' ? true : model.validate('china_dns', value);
+		};
 		china.renderWidget = function(section_id, option_index, cfgvalue) {
 			/* form.Value only renders string descriptions; keep the asynchronous
 			 * hint in a DOM description owned by this widget instead. */
@@ -198,7 +201,9 @@ return view.extend({
 		direct.rmempty = false;
 		direct.default = [ 'tcp://9.9.9.9' ];
 		model.presets('direct_dns').forEach(item => direct.value(item[0], item[1]));
-		direct.validate = function(section_id, value) { return model.validate('direct_dns', value); };
+		direct.validate = function(section_id, value) {
+			return value === '' ? true : model.validate('direct_dns', value);
+		};
 		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
 			+ 'try tcp://9.9.9.9 first.', 'aether-proxy');
 		direct.renderWidget = function(section_id, option_index, cfgvalue) {
