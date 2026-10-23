@@ -3619,6 +3619,25 @@ for (const state of ['starting', 'running', 'degraded', 'failsafe', 'error']) {
 	});
 }
 
+test('T10.48 scenario 3: stopped before service acknowledgement already shows Starting', async () => {
+	let finishService;
+	const h = startupHarness({ service: () => new Promise(resolve => { finishService = resolve; }) });
+	h.status = { state: 'running', since: 10 };
+	h.page.refresh(h.status);
+	const pending = h.page.handleService('restart');
+	h.status = { state: 'stopping', since: 11 };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在停止…');
+	h.status = { state: 'stopped', since: 12 };
+	await h.clock.advance(2000);
+	assert.equal(h.page.vm.state_text, '正在启动…', 'the old process is gone even before init returns');
+	assert.ok(h.page.startup);
+	finishService({ ok: true });
+	await pending;
+	assert.equal(h.page.vm.state_text, '正在启动…');
+	h.events.dispatch('pagehide');
+});
+
 test('T10.48 scenario 3: acknowledged unknown status enters startup wait; failed reads do not reset its phase', async () => {
 	const h = startupHarness();
 	h.page.refresh({ state: 'running', since: 10 });

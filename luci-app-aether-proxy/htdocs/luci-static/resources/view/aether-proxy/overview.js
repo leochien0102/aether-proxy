@@ -342,8 +342,8 @@ return view.extend({
 			this.enabled = data.enabled;
 			this.refresh(this.status, undefined, this.latestEvents);
 		}).catch((e) => {
-			/* TODO(design): no UCI-refresh failure presentation is specified.
-			   Keep the last complete snapshot, never write guessed settings. */
+			/* A failed UCI read keeps the last complete snapshot and retries on
+			   the next refresh (docs/10 r14 概览页复审结论). */
 			console.warn('aether-proxy: reading overview configuration failed:', e);
 		}).finally(() => {
 			if (this.configRequest === request)
