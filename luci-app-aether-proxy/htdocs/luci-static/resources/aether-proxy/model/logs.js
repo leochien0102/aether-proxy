@@ -3,6 +3,7 @@
 
 /* Pure log-page presentation, per docs/10 「日志页」 and docs/09 event catalog.
  * T10.39 optionally resolves IDs using { nodes, subscriptions } name maps.
+ * T10.50 follows docs/10 "r14 修正：事件文字" for conditional text and mode names.
  * Templates use only catalog parameters; raw args remain available for hover.
  */
 const TEMPLATES = {
@@ -65,6 +66,13 @@ const LEGACY_TEMPLATES = {
 	NODE_STALE_IN_USE: _('Current node {node} ({label}) is stale', 'aether-proxy'),
 	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node} ({label})', 'aether-proxy')
 };
+const MODES = {
+	gfw: _('GFW only', 'aether-proxy'),
+	bypass_cn: _('Bypass China', 'aether-proxy'),
+	global: _('Global (all traffic through proxy)', 'aether-proxy'),
+	direct: _('Direct', 'aether-proxy'),
+	proxy: _('Global (all traffic through proxy)', 'aether-proxy')
+};
 const RANK = { error: 0, warn: 1, notice: 2 };
 const LEVELS = { error: _('Error', 'aether-proxy'), warn: _('Warning', 'aether-proxy'), notice: _('Notice', 'aether-proxy') };
 const CLASSES = { error: 'label danger', warn: 'label warning', notice: 'label notice' };
@@ -92,13 +100,26 @@ function name_text(args, key, names) {
 	return key === 'sub' ? _('Deleted subscription', 'aether-proxy') : _('Deleted node', 'aether-proxy');
 }
 
+function event_template(code, args, names) {
+	if (code === 'SUB_UPDATED' && !Object.values(args.skipped || {}).some(count => count > 0))
+		return _('Subscription {sub}: added {added}, updated {updated}, stale {stale}, removed {removed}',
+			'aether-proxy');
+	// Compare IDs, not display names: different nodes can have the same label.
+	// Missing endpoints must keep the usual "?", not claim that a node is unchanged.
+	if (code === 'RELOAD_APPLIED' && args.from_node != null && args.from_node !== '' &&
+		args.from_node === args.to_node)
+		return _('Configuration reloaded (node unchanged: {to_node}) in {elapsed_ms} ms', 'aether-proxy');
+	return !names && Object.prototype.hasOwnProperty.call(LEGACY_TEMPLATES, code)
+		? LEGACY_TEMPLATES[code] : TEMPLATES[code];
+}
+
 function message(event, names) {
 	const args = event.args || {};
 	if (!Object.prototype.hasOwnProperty.call(TEMPLATES, event.code))
 		return event.code + ' ' + JSON.stringify(args);
-	const template = !names && Object.prototype.hasOwnProperty.call(LEGACY_TEMPLATES, event.code)
-		? LEGACY_TEMPLATES[event.code] : TEMPLATES[event.code];
-	return template.replace(/\{(\w+)\}/g, (match, key) => {
+	return event_template(event.code, args, names).replace(/\{(\w+)\}/g, (match, key) => {
+		if (key === 'mode' && Object.prototype.hasOwnProperty.call(MODES, args[key]))
+			return MODES[args[key]];
 		if (names && ['node', 'from_node', 'to_node', 'sub'].includes(key))
 			return name_text(args, key, names);
 		return value_text(args[key]);

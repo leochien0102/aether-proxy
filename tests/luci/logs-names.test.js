@@ -24,7 +24,7 @@ const LABELS = { node: '节点甲', from_node: '节点甲', to_node: '节点乙'
 const CASES = [
 	['RELOAD_APPLIED', { from_node: 'n_a', to_node: 'n_b', elapsed_ms: 123 },
 		'已从节点 $from_node 重载到 $to_node，耗时 123 毫秒'],
-	['SERVICE_STOPPED', { mode: 'gfw', node: 'n_a' }, '服务已停止（模式 gfw，节点 $node）'],
+	['SERVICE_STOPPED', { mode: 'gfw', node: 'n_a' }, '服务已停止（模式 仅代理被墙网站（GFW），节点 $node）'],
 	['NODE_RESOLVE_FALLBACK', { node: 'n_a', domain: 'node.example', lkg_ip: '203.0.113.1' },
 		'节点 $node：为 node.example 使用最近可用地址 203.0.113.1'],
 	['NODE_RESOLVE_FAILED', { node: 'n_a', domain: 'node.example' }, '节点 $node：无法解析 node.example'],
