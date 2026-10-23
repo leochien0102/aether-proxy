@@ -12,6 +12,7 @@ STUB_SRC="$ROOT/tests/stubs/daemon-bin"
 export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
 python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
+python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
 T="$(mktemp -d)"
 QUIET="$T/cleanup.stderr"
 DAEMON_PID=''

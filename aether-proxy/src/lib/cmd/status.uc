@@ -25,7 +25,8 @@ function usage(args, detail) {
 function human_status(value) {
 	let lines = [ `state: ${value.state ?? 'unknown'}` ];
 
-	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'node_ip', 'since', 'last_probe', 'last_error', 'probe', 'updates_available', 'components', 'render_hash', 'notices' ])
+	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'mode', 'node_ip', 'since',
+		'last_probe', 'last_error', 'probe', 'updates_available', 'components', 'render_hash', 'notices' ])
 		if (value[field] != null)
 			push(lines, `${field}: ${sprintf('%J', value[field])}`);
 

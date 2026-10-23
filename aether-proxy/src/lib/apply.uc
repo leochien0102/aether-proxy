@@ -168,16 +168,19 @@ function decode_set(text, name) {
 	return { values: sort_values(values) };
 };
 
-function sets_export(ctx) {
+function sets_export(ctx, opts) {
 	setup_log(ctx);
 	let sets = {};
 	for (let name in C.NFT_DYNAMIC_SETS) {
 		let r = exec(ctx, 'nft', [ '-j', 'list', 'set', ...nft_table_args(), name ]);
-		if (r.code != 0)
-			return failed(ctx, 'sets_export', `nft list set ${name} failed (${r.code}): ${r.stderr}`);
+		if (r.code != 0) {
+			let detail = `nft list set ${name} failed (${r.code}): ${r.stderr}`;
+			// Stop is best-effort, not a failed startup; sys.run already recorded CMD_FAILED (04).
+			return opts?.on_stop ? { ok: false, detail } : failed(ctx, 'sets_export', detail);
+		}
 		let decoded = decode_set(r.stdout, name);
 		if (decoded.error)
-			return failed(ctx, 'sets_export', decoded.error);
+			return opts?.on_stop ? { ok: false, detail: decoded.error } : failed(ctx, 'sets_export', decoded.error);
 		sets[name] = decoded.values;
 	}
 	return result('dynamic sets exported', { sets });

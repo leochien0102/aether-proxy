@@ -328,9 +328,9 @@ function apply_cleanup(ctx) {
 		push(failures, `nft_table_exists: ${table.detail}`);
 	else if (table.exists) {
 		// Save the dynamic sets before the table goes (stop step 2), so a crashed or
-		// SIGKILLed daemon's sets survive. A failed export is logged by apply but must not
-		// keep the rest of the cleanup from running.
-		let exported = apply.sets_export(ctx);
+		// SIGKILLed daemon's sets survive. sys.run logs command failures as CMD_FAILED;
+		// an export error must not keep the rest of the cleanup from running.
+		let exported = apply.sets_export(ctx, { on_stop: true });
 		if (exported.ok)
 			apply.sets_save(ctx, exported.sets);
 		let r = apply.nft_delete(ctx);
@@ -372,17 +372,51 @@ function cleanup_run(parsed_opts) {
 	let opts = resolved_opts(parsed_opts);
 	let ctx = make_context(opts, lan_ifaces_from_config(opts));
 	setup_log(ctx);
+	function daemon_alive() {
+		let text = fs.readfile(`${run_dir(ctx)}/${C.DAEMON_PID_FILE}`);
+		if (text == null)
+			return fs.error() != 'No such file or directory';
+		let pid = trim(text);
+		// TODO(design): 04 does not define corrupt/unreadable pid or cmdline handling.
+		// Treat an unknown identity as busy rather than deleting a live daemon's table.
+		if (!match(pid, /^[1-9][0-9]*$/))
+			return true;
+		// Process identity is real even with --sys-root, just like supervise.kill_stale().
+		let cmdline = fs.readfile(`${C.PROC_DIR}/${pid}/cmdline`);
+		if (cmdline == null)
+			return fs.error() != 'No such file or directory';
+		let argv = split(cmdline, '\x00');
+		for (let i = 0; i < length(argv); i++) {
+			if (replace(argv[i], /^.*\//, '') != C.PROG)
+				continue;
+			// Host ucode needs -- before the subcommand; the installed shebang does not.
+			let next = i + 1;
+			if (argv[next] == '--') next++;
+			if (argv[next] == 'daemon') return true;
+		}
+		return false;
+	};
+
 	let lock_path = root_path(opts, C.LOCK_FILE);
-	let lock = sys.lock(lock_path);
-	// procd stops asynchronously: let the daemon finish before the fallback touches its state (docs/04).
-	// docs/04: sys.lock cannot tell contention from I/O failure; both retry, then report BUSY.
-	for (let remaining = opts.wait ?? 0; lock == null && remaining > 0; remaining--) {
-		sleep(1000);
+	let lock = null, detail = null;
+	// Never hold the lock while waiting for exit: the daemon may still need it to finish a round.
+	// Without --wait keep the original immediate, lock-only cleanup behavior (docs/04).
+	for (let remaining = opts.wait ?? 0; ; remaining--) {
 		lock = sys.lock(lock_path);
-	}
-	if (lock == null) {
-		log.event('warn', 'BUSY', { holder: 'daemon' });
-		return { ok: false, code: 3, detail: `BUSY: ${sys.error()}` };
+		detail = sys.error();
+		let alive = opts.wait != null && daemon_alive();
+		if (lock != null && !alive)
+			break;
+		if (lock != null) {
+			lock.close();
+			lock = null;
+		}
+		if (alive) detail = 'daemon is still running or its identity is unreadable';
+		if (remaining <= 0) {
+			log.event('warn', 'BUSY', { holder: 'daemon' });
+			return { ok: false, code: 3, detail: `BUSY: ${detail}` };
+		}
+		sleep(1000);
 	}
 	let failures = apply_cleanup(ctx);
 	let saved = write_state(ctx, { state: 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false });
@@ -715,23 +749,22 @@ function stop_children(ctx, children) {
 
 function shutdown(ctx, children, normal_stop) {
 	let failures = [];
-	// TODO(design): 04 releases the startup lock in monitor mode but does not specify whether a
-	// signal-driven stop waits for a one-shot command's lock or must clean immediately; shutdown
-	// proceeds to honor the required best-effort cleanup order.
+	// Stop takes priority over one-shot commands and never waits for their lock (docs/04).
 	if (ctx.monitor != null) {
 		ctx.monitor.cancel();
 		ctx.monitor = null;
 	}
 	let table = apply.nft_table_exists(ctx);
 	if (table.ok && table.exists) {
-		let exported = apply.sets_export(ctx);
+		let exported = apply.sets_export(ctx, { on_stop: true });
 		if (exported.ok) {
 			let saved = apply.sets_save(ctx, exported.sets);
 			if (!saved.ok)
 				push(failures, `sets_save: ${saved.detail}`);
 		}
-		else
-			push(failures, `sets_export: ${exported.detail}`);
+		// Export failure is already CMD_FAILED, not a startup failure; keep cleaning (04).
+		// TODO(design): successful nft output that cannot be decoded has no command failure.
+		// The stop-only export policy returns that error without adding an event.
 	}
 	else if (!table.ok)
 		push(failures, `nft_table_exists: ${table.detail}`);
@@ -743,6 +776,12 @@ function shutdown(ctx, children, normal_stop) {
 	if (!dnsmasq.ok) push(failures, `dnsmasq_remove: ${dnsmasq.detail}`);
 	stop_children(ctx, children);
 	remove_pidfiles(ctx);
+	// Startup rollback also uses shutdown; keep the pid while waiting in error/retrying.
+	if (normal_stop) {
+		let path = `${run_dir(ctx)}/${C.DAEMON_PID_FILE}`;
+		if (fs.stat(path) != null && !fs.unlink(path))
+			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs.error() ?? 'unknown error' });
+	}
 	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time() });
 	if (!saved.ok)
 		push(failures, saved.detail);
@@ -994,8 +1033,25 @@ function run(args) {
 	let ctx = make_context(opts, []);
 	setup_log(ctx);
 	let daemon_started_at = time();
+	// Publish before validation or component checks, including an invalid configuration (04).
+	let raw = uci.cursor(opts.confdir);
+	let early = write_state(ctx, { state: 'starting', since: daemon_started_at,
+		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode') });
+	if (!early.ok)
+		return 1;
+	let pid = fs.readlink(`${C.PROC_DIR}/self`);
+	let pid_file = `${run_dir(ctx)}/${C.DAEMON_PID_FILE}`;
+	if (pid == null || !sys.write_atomic(pid_file, `${pid}\n`)) {
+		// TODO(design): 04 does not specify pid publication failure. Do not start untrackable
+		// children: cleanup --wait could otherwise race the supervisor's orderly stop.
+		log.event('error', 'FS_FAILED', { op: 'write', path: pid_file,
+			detail: pid == null ? (fs.error() ?? 'cannot read own pid') : sys.error() });
+		return 1;
+	}
 	if (!uloop.init()) {
 		event_failure(ctx, 'uloop_init', 'cannot initialize uloop');
+		if (!fs.unlink(pid_file))
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: pid_file, detail: fs.error() ?? 'unknown error' });
 		return 1;
 	}
 	let signal = null, stopping = false;

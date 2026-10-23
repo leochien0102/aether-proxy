@@ -282,3 +282,6 @@ export const UPDATE_ROLLBACK_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-
 export const WAN_DNS_FALLBACK = '223.5.5.5';
 export const WAN_DNS_TIMEOUT_SECS = 3;
 export const WAN_DNS_RELOAD_TIMEOUT_SECS = 10;
+
+// T9.27 (docs/04 process model): fallback cleanup waits for the supervisor, not just its lock.
+export const DAEMON_PID_FILE = 'daemon.pid';
