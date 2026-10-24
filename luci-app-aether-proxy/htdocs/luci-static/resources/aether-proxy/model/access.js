@@ -4,7 +4,8 @@
 /*
  * Pure view model for the access control page (docs/10 「访问控制页」,
  * docs/10 「访问控制页定案」, 「r14 修正：访问控制 IP 范围与说明」
- * and 「r16 修正：访问控制编辑框里的校验与重叠提示」).
+ * and 「r16 修正：访问控制编辑框里的校验与重叠提示」,
+ * 「r17 修正：访问控制的反馈、措辞与名称不重复」).
  *
  * validate() mirrors the authoritative command-line host rules one to one, so
  * the page precheck agrees with `aether-proxy check` (docs/10: 最终仍以命令行
@@ -174,23 +175,29 @@ function enabled_of(h) {
 	return !(h.enabled === '0' || h.enabled === false || h.enabled === 0);
 }
 
-/* Error texts carry the section's name, or its 1-based position when the name
-   is missing (docs/tasks/m8.md T8.7 scenario 1). */
-function host_label(h, i) {
-	return (h.name == null || h.name === '') ? '#' + (i + 1) : String(h.name);
+/* Display order differs from UCI order; an address identifies an unnamed
+   rule without exposing a misleading configuration ordinal (docs/10 r17). */
+function host_label(h) {
+	const name = String(h.name ?? '');
+	return name.trim() ? name : fmt(_('%s (unnamed)', 'aether-proxy'),
+		list_items(h.ip)[0] || list_items(h.mac)[0] || '');
 }
 
 /* lib/config.uc note_value(): the first section claiming a value wins
    (seen[key] keeps its first index); a later section repeating it produces
    exactly one error per value, and a repeat inside the same section does not
    count (j == i). */
-function note_value(seen, reported, key, raw, i, field, labels, errors) {
+function note_value(seen, reported, key, raw, i, field, labels, errors, editing) {
 	const j = seen[key];
 
 	if (j != null && j != i && !reported[field + ':' + key]) {
+		const other = editing == i ? j : i;
+		const in_modal = editing == i || editing == j;
 		errors.push({
 			host: labels[i], other: labels[j], field: field, code: 'duplicate', value: raw,
-			text: fmt(_('Host %s: %s is also used by host %s.', 'aether-proxy'), labels[i], raw, labels[j])
+			text: in_modal
+				? fmt(_('%s is already used by host %s.', 'aether-proxy'), raw, labels[other])
+				: fmt(_('Host %s: %s is also used by host %s.', 'aether-proxy'), labels[i], raw, labels[j])
 		});
 
 		reported[field + ':' + key] = true;
@@ -262,6 +269,18 @@ return baseclass.extend({
 			: fmt(_('%s is not a valid IPv4 address, range or CIDR.', 'aether-proxy'), value);
 	},
 
+	validate_mac: function(value) {
+		return value === '' || normalize_mac(value) != null ? true
+			: fmt(_('%s is not a valid MAC address.', 'aether-proxy'), value);
+	},
+
+	/* Names are a modal-only UX constraint, not a backend configuration rule. */
+	validate_name: function(current, hosts) {
+		const name = String(current.name ?? '').trim();
+		return name && hosts.some((h) => h['.name'] != current['.name'] && String(h.name ?? '').trim() == name)
+			? fmt(_('The name “%s” is already used by another rule.', 'aether-proxy'), name) : null;
+	},
+
 	/* Rules 1-4 of docs/10 「访问控制页」, in the wording of docs/05 校验
 	   规则 2, evaluated on the raw uci.sections('aetherproxy', 'host') shape:
 	   1. at least one of ip and mac (judged on the raw values, so an invalid
@@ -276,15 +295,16 @@ return baseclass.extend({
 	   hints, mirroring the command line where invalid list items are dropped
 	   before check_hosts runs. Returns { errors, warnings }; warnings are the
 	   non-blocking nesting hints and never make a configuration invalid. */
-	validate: function(hosts) {
+	validate: function(hosts, editing_sid) {
 		const sections = Array.isArray(hosts) ? hosts : [];
 		const labels = [];
 		const entries = [];
 		const errors = [];
+		const editing = editing_sid == null ? -1 : sections.findIndex((h) => h?.['.name'] == editing_sid);
 
 		for (let i = 0; i < sections.length; i++) {
 			const h = (sections[i] != null && typeof sections[i] == 'object') ? sections[i] : {};
-			const label = host_label(h, i);
+			const label = host_label(h);
 
 			labels.push(label);
 
@@ -347,10 +367,10 @@ return baseclass.extend({
 			const reported = {};
 
 			for (const e of entries[i].ips)
-				note_value(seen_ip, reported, e.key, e.raw, i, 'ip', labels, errors);
+				note_value(seen_ip, reported, e.key, e.raw, i, 'ip', labels, errors, editing);
 
 			for (const e of entries[i].macs)
-				note_value(seen_mac, reported, e.key, e.raw, i, 'mac', labels, errors);
+				note_value(seen_mac, reported, e.key, e.raw, i, 'mac', labels, errors, editing);
 		}
 
 		/* docs/02 and docs/10 r14: overlapping IP entries are allowed and take effect in the

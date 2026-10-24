@@ -1357,6 +1357,26 @@ msgid "Host %s: game mode (UDP) cannot be enabled when the policy is direct."
 msgstr "主机 %s：策略为直连时不能开启游戏模式（UDP）。"
 
 msgctxt "aether-proxy"
+msgid "%s (unnamed)"
+msgstr "%s（未命名）"
+
+msgctxt "aether-proxy"
+msgid "%s is already used by host %s."
+msgstr "%s 已被主机 %s 使用"
+
+msgctxt "aether-proxy"
+msgid "%s is not a valid MAC address."
+msgstr "%s 不是合法的 MAC 地址。"
+
+msgctxt "aether-proxy"
+msgid "%s has unadded text “%s”: click “+” to add it, or clear it."
+msgstr "%s 还有未添加的内容「%s」：点「+」添加，或清空"
+
+msgctxt "aether-proxy"
+msgid "The name “%s” is already used by another rule."
+msgstr "名称「%s」已被另一条规则使用"
+
+msgctxt "aether-proxy"
 msgid "Host %s: %s is also used by host %s."
 msgstr "主机 %s：%s 与主机 %s 重复。"
 
