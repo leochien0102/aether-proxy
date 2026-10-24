@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T9.34 status CLI: isolated UCI files, sys-root and shared command substitutes."""
+"""T9.34/T9.35 status CLI: isolated UCI files, sys-root and shared command substitutes."""
 import json
 import os
 from pathlib import Path
@@ -89,7 +89,7 @@ with tempfile.TemporaryDirectory(prefix='aether-status-conflicts-') as temp:
         return [{'code': 'CONFLICT_ENABLED', 'args': {'plugin': plugin, 'boot': boot, 'configured': configured}}]
 
     reset(content="config global\n option global_server 'nil'\n", boot=True)
-    check('ssr-plus nil plus boot', notice(boot=True))
+    check('ssr-plus nil plus boot', [])
     reset(content=True)
     check('ssr-plus node without boot', notice(configured=True))
     reset(content=True, boot=True)
@@ -105,8 +105,13 @@ with tempfile.TemporaryDirectory(prefix='aether-status-conflicts-') as temp:
     for plugin in PLUGINS:
         reset(plugin, content=True)
         check(plugin + ' configured', notice(plugin, configured=True))
+        reset(plugin, content=True, boot=True)
+        check(plugin + ' configured plus boot', notice(plugin, boot=True, configured=True))
+        # A boot link alone does not enable any of these plugins (docs/04, T9.35).
+        reset(plugin, content=PLUGINS[plugin][1].replace("'node1'", "'nil'").replace("'1'", "'0'"), boot=True)
+        check(plugin + ' config disabled plus boot', [])
         reset(plugin, boot=True)
-        check(plugin + ' missing package still boot enabled', notice(plugin, boot=True))
+        check(plugin + ' missing package plus boot', [])
     reset('homeproxy', content="config homeproxy 'config'\n option main_node 'nil'\nconfig server 'server'\n option enabled '1'\n")
     check('homeproxy server alternative', notice('homeproxy', configured=True))
     reset('homeproxy', content="config homeproxy 'config'\n option main_node 'nil'\nconfig server 'server'\n option enabled '0'\n")
@@ -120,7 +125,7 @@ with tempfile.TemporaryDirectory(prefix='aether-status-conflicts-') as temp:
     reset('homeproxy', content=True, chains='table inet fw4 {\n chain homeproxy_test {\n }\n}\n')
     check('homeproxy chain suppresses notice', [])
     reset(content="not valid uci {\n", boot=True)
-    check('unreadable foreign package is not configured', notice(boot=True))
+    check('unreadable foreign package is not configured', [])
     reset(content=True, chains_rc=1)
     check('missing fw4 is harmless', notice(configured=True))
     reset(content=True, tables_rc=2)

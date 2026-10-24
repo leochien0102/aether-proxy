@@ -111,7 +111,8 @@ export function notices(ctx, cursor) {
 		let path = init_path(ctx, plugin);
 		let boot = sys.run([ path, 'enabled' ], { timeout: 10, quiet: true }).code == 0;
 		let enabled = configured(cursor, plugin);
-		if (boot || enabled)
+		// Boot enablement alone is harmless when the plugin is disabled in its config (docs/04, T9.35).
+		if (enabled)
 			push(notices, { code: 'CONFLICT_ENABLED', args: { plugin: plugin.name, boot, configured: enabled } });
 	}
 	return notices;
