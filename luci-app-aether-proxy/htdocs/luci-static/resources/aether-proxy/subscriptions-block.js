@@ -5,6 +5,7 @@
 // r13 pending-state and tooltip rules: docs/10「r13 修正：订阅编辑框与启用开关」.
 // Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
 // Saved disabled state and card alignment: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
+// Flag frames follow docs/10「r16 修正：窄屏卡片里开关与标签同一行」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -174,10 +175,17 @@ return baseclass.extend({
 		enabled.modalonly = false;
 		enabled.default = '1';
 		this.enabledOption = enabled;
-		const renderWidget = enabled.renderWidget;
-		enabled.renderWidget = function(...args) {
-			// Keep the theme's flag widget beside the card label, without changing its styling.
-			return E('span', { style: 'display:inline-flex; align-items:center' }, [renderWidget.apply(this, args)]);
+		const renderFrame = enabled.renderFrame;
+		enabled.renderFrame = function(id, in_table, index, nodes) {
+			const frame = renderFrame.call(this, id, in_table, index, nodes);
+			if (in_table) {
+				// Both SDK divs break after proton2025's inline card label; a widget-only wrapper cannot fix it.
+				frame.querySelector('[data-field]').style.display = 'inline';
+				const checkbox = frame.querySelector('.cbi-checkbox');
+				checkbox.style.display = 'inline-flex';
+				checkbox.style.alignItems = 'center';
+			}
+			return frame;
 		};
 		enabled.onchange = function() {
 			// uci.changes() cannot see a widget change before the form is saved.
