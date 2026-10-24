@@ -45,7 +45,8 @@ const INVALID = [
 		field: 'reality_pbk', code: 'invalid_reality_key',
 		detail: 'must be a 32-byte key in unpadded base64url (43 characters)' },
 	{ name: 'invalid REALITY short ID', extra: { reality_sid: 'a' },
-		field: 'reality_sid', code: 'invalid_short_id', detail: 'must be hex with an even length of at most 16 characters' },
+		field: 'reality_sid', code: 'invalid_short_id',
+		detail: 'must be hex with an even length of at most 16 characters' },
 	{ name: 'invalid certificate hash', extra: { pinned_cert_sha256: 'bad' },
 		field: 'pinned_cert_sha256', code: 'invalid_cert_hash', detail: '"bad" is not a SHA-256 hex digest' }
 ];
