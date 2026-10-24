@@ -146,8 +146,8 @@ test('T10.52 scenario 5: PRECHECK_FAILED formats conflicts but preserves origina
 	] };
 	const item = event('PRECHECK_FAILED', args);
 	assert.equal(logs.message(item),
-		'预检失败：与 ShadowSocksR Plus+ 冲突、与 clash 冲突、与 future 冲突；'
-		+ '缺少 无法检查其他代理插件（nft failed）、component:xray');
+		'预检失败：与 ShadowSocksR Plus+ 冲突、与 clash 冲突、与 future 冲突、'
+		+ '无法检查其他代理插件（nft failed）；缺少 component:xray');
 	const row = logs.events({ ok: true, events: [item] }).rows[0];
 	assert.equal(row.text, logs.message(item));
 	assert.equal(row.title, JSON.stringify(args));
