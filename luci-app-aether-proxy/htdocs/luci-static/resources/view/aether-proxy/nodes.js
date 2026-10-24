@@ -623,6 +623,9 @@ return view.extend({
 		o.validate = function(section_id, value) {
 			// Read the modal's live input, not just UCI: flow may have unsaved edits.
 			const flow = this.map.lookupOption('flow', section_id);
+			/* A hidden flow (non-VLESS) is deleted on save and never rendered (docs/10 r16, T9.36). */
+			if (flow?.[0] && !flow[0].isActive(section_id))
+				return true;
 			const current = flow?.[0].formvalue(section_id) ?? uci.get('aetherproxy', section_id, 'flow');
 			return value === '1' && /^xtls-rprx-vision(-udp443)?$/.test(current)
 				? _('Vision flow cannot be used with multiplexing enabled', 'aether-proxy') : true;
@@ -659,7 +662,9 @@ return view.extend({
 				return this.map.lookupOption('protocol', sid)?.[0].formvalue(sid) == 'vmess' ? 'auto' : null;
 			},
 			encryption: 'none'
-		}, { mux: { clear_inactive: true } });
+		/* Fields the backend checks for conflicts are deleted while hidden, like
+		   stock LuCI; other hidden fields are kept (docs/10 r16 复审结论). */
+		}, { mux: { clear_inactive: true }, flow: { clear_inactive: true } });
 		return m;
 	},
 

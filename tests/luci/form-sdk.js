@@ -30,7 +30,9 @@ class Value {
 			return this.active;
 		return !this.deplist.length || this.deplist.some(dep => {
 			const matches = Object.entries(dep).filter(([field]) => field != '!reverse').every(([field, expected]) => {
-				const value = this.map.lookupOption(field)?.[0].formvalue(id);
+				/* SDK isDependencySatisfied: a hidden dependency counts as no value. */
+				const ref = this.map.lookupOption(field)?.[0];
+				const value = ref && ref.isActive(id) ? ref.formvalue(id) : null;
 				return expected instanceof RegExp ? expected.test(value ?? '') : value === expected;
 			});
 			return dep['!reverse'] ? !matches : matches;

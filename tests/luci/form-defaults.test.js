@@ -256,3 +256,39 @@ test('T10.54 inactive node fields retain explicit values and invalid unchanged i
 	await assert.rejects(o.parse('node'), /invalid input/);
 	assert.deepEqual(h.calls, []);
 });
+
+/* Review additions (design lead, 2026-10-24; option A agreed with the backend). */
+test('T10.54 review: VLESS+Vision changed to Trojan deletes the hidden flow, so Mux can be enabled', async () => {
+	const h = await renderPage('nodes');
+	h.setSaved('node', 'protocol', 'vless');
+	h.setSaved('node', 'flow', 'xtls-rprx-vision');
+	const modal = h.modal('node');
+	const option = key => modal.options.find(o => o.option == key);
+	option('protocol').inputs.node = 'trojan';
+	option('mux').inputs.node = '1';
+	assert.equal(option('flow').isActive('node'), false, 'flow is VLESS-only');
+	assert.equal(option('mux').isActive('node'), true, 'a hidden flow counts as no value (SDK)');
+	assert.equal(option('mux').validate('node', '1'), true, 'a hidden Vision flow cannot block Mux');
+	await modal.parse();
+	assert.ok(h.calls.some(c => c[0] == 'unset' && c[3] == 'flow'), 'hidden conflicting flow is deleted');
+	assert.ok(h.calls.some(c => c[0] == 'set' && c[3] == 'mux' && c[4] == '1'));
+});
+
+test('T10.54 review: an active Vision flow still blocks Mux', async () => {
+	const h = await renderPage('nodes');
+	h.setSaved('node', 'protocol', 'vless');
+	const modal = h.modal('node');
+	const option = key => modal.options.find(o => o.option == key);
+	option('protocol').inputs.node = 'vless';
+	option('flow').inputs.node = 'xtls-rprx-vision';
+	assert.notEqual(option('mux').validate('node', '1'), true);
+});
+
+test('T10.54 review: reordering a list is a change and is written', async () => {
+	const h = await renderPage('rules');
+	h.setSaved('dns', 'china_dns', [ '223.5.5.5', '114.114.114.114' ]);
+	const o = h.options.find(o => o.option == 'china_dns');
+	o.inputs.dns = [ '114.114.114.114', '223.5.5.5' ];
+	await o.parse('dns');
+	assert.deepEqual(h.calls, [['set', 'aetherproxy', 'dns', 'china_dns', [ '114.114.114.114', '223.5.5.5' ]]]);
+});
