@@ -1055,6 +1055,23 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 
 **复审结论（2026-10-23，T10.51 已合并）**：重复检查照后端，在规范后的值上比较（`x`、`x/32`、`x-x` 算同一项）；重叠提示改为按区间求交集（范围之间可以部分重叠，网段只会互相包含），仍只提示、不拦保存（02）。
 
+### r15：启动失败时写明冲突的插件、`CONFLICT_ENABLED` 提示（2026-10-24 定，T10.52；r15 窗口；依赖后端 T9.34，已合并）
+
+依据 04「与其他代理插件的冲突」、09 `PRECHECK_FAILED`/`START_RETRY`、本章「概览页」`notices` 表的 `CONFLICT_ENABLED`。r15 里 ssr-plus 被重新拉起，aether-proxy 每次启动都被拒，页面只写「启动失败，详见日志页」，仓库所有者看不出原因。
+
+- **显示名**（一处定义，概览页与日志页共用；新建模型文件 `aether-proxy/model/conflicts.js`）：`ssr-plus` → ShadowSocksR Plus+、`passwall` → PassWall、`passwall2` → PassWall 2、`homeproxy` → HomeProxy、`openclash` → OpenClash、`nikki` → Nikki；`clash`、`mihomo` 与未知的名字原样显示。显示名是产品名，不翻译。
+1. **概览页：启动失败的原因**。`state` 为 `error` 时，`last_error` 只有 `START_FAILED`，原因在事件里：页面读最近 10 分钟 `warn` 及以上的事件（与切换原因共用一次 `events` 读取，同时只发一个），取最近一轮尝试：最近的 `START_FAILED`，以及它之前、上一条 `START_RETRY` 之后的 `PRECHECK_FAILED`。
+   - `missing` 里有 `conflict:<名>` →「检测到 <显示名> 正在运行，请先在它的页面停用，再启动。」多个插件用「、」连接，「它的」改为「它们的」。
+   - `missing` 里有 `conflict-check:<原因>` →「无法检查其他代理插件：<原因>」。
+   - `missing` 的其他项（如缺组件）→「启动前检查未通过：<各项>」。
+   - 不是 `precheck` 那一步失败，或找不到对应事件、事件读取失败 → 照旧「启动失败，详见日志页」。
+   - **自动重试**：这轮之后有 `START_RETRY`（`attempt`、`in_secs`）→ 在原因后接一句「将在约 N 秒后第 K 次重试」，N = 事件时间 + `in_secs` − 现在，向上取整；N ≤ 0 时写「即将第 K 次重试」。每次刷新重算。
+2. **`CONFLICT_ENABLED`**（概览页待处理提示，一个插件一条，替换现在的「Unhandled notice」兜底）：
+   「<显示名> 没在运行，但仍处于启用状态，配置变化或重启路由器时可能被重新拉起，与 aether-proxy 冲突。」后面按实际成立的项接：
+   `boot` 为真 →「请在『系统 → 启动项』里关闭它的开机自启。」；`configured` 为真 →「请在它的页面里停用。」两项都真就两句都写，都不真就只写前一句。
+   与后端建议文案的不同：分开写成两条做法，因为开机自启要在 LuCI 的启动项页面关，不在插件自己的页面。
+3. **日志页**：`PRECHECK_FAILED` 的 `{missing}` 里，`conflict:<名>` 显示为「与 <显示名> 冲突」，`conflict-check:<原因>` 显示为「无法检查其他代理插件（<原因>）」，其他项原样；模板不改，悬停仍是原始参数。概览页切换原因复用日志模型的地方跟着变。
+
 UI 规则：
 
 - 破坏性按钮（删除节点、删除订阅、回滚组件）使用 `cbi-button-remove`，并要求确认；不要使用 `cbi-button-reset`（那是中性的「撤销表单修改」）。
