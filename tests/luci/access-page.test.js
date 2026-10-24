@@ -183,6 +183,20 @@ function fixture(hosts = [], main = {}) {
 			   cloneOptions keeps custom handlers but replaces map and section.
 			   Child inputs must never read the parent's old inline widgets. */
 			const modalMap = { section: sid, parent: page.map };
+			/* Map.render() sets root to the editor's own form (SDK); errors shown
+			   while the modal is open must land here, not behind the overlay. */
+			const root = E('div');
+			root.insertBefore = (child, before) => {
+				const i = before == null ? -1 : root.children.indexOf(before);
+				root.children.splice(i < 0 ? 0 : i, 0, child);
+				child.parentNode = root;
+			};
+			root.removeChild = child => {
+				root.children = root.children.filter(c => c !== child);
+				child.parentNode = null;
+			};
+			Object.defineProperty(root, 'firstChild', { get() { return root.children[0]; } });
+			modalMap.root = root;
 			const current = { ...data.find(h => h['.name'] == sid), ...values };
 			const section = { map: modalMap, children: [] };
 			modalMap.children = [ section ];
@@ -231,15 +245,31 @@ function fixture(hosts = [], main = {}) {
 					}
 				}).then(cb).then(() => uci.save());
 			};
-			return { map: modalMap, option: key => modalMap.lookupOption(key)[0],
+			const alerts = () => root.children.filter(c => /alert-message error/.test(c.attrs?.class ?? ''));
+			return { map: modalMap, alerts, option: key => modalMap.lookupOption(key)[0],
 				save: () => page.hostSection.handleModalSave(modalMap, {}) };
 		},
-		modalSave(sid, values) { return this.openModal(sid, values).save(); }
+		async modalSave(sid, values) {
+			const modal = this.openModal(sid, values);
+			await modal.save();
+			this.lastModal = modal;
+			return modal;
+		}
 	};
 }
 
 function host(id, policy, options = {}) {
 	return { '.name': id, policy, ip: [ '192.168.1.10' ], ...options };
+}
+
+function assertModalError(f, modal, pattern) {
+	/* Review fix: the open editor shows the error; nothing goes behind the overlay. */
+	assert.deepEqual(f.calls.notifications, [], 'no page notification while the editor is open');
+	const alerts = modal.alerts();
+	assert.equal(alerts.length, 1, 'exactly one error box at the top of the editor');
+	assert.equal(modal.map.root.children[0], alerts[0]);
+	if (pattern)
+		assert.match(alerts[0].textContent, pattern);
 }
 
 test('T10.53 scenario 1: reversed range is invalid in the add box and modal Save leaves all UCI untouched',
@@ -252,6 +282,9 @@ async () => {
 	assert.equal(f.calls.closed, 0);
 	assert.equal(modal.option('ip').isValid('a'), false, 'SDK invalid class/error state on the add box');
 	assert.match(modal.option('ip').getValidationError('a'), /不是合法的 IPv4 地址、范围或 CIDR/);
+	assertModalError(f, modal, /不是合法的 IPv4 地址、范围或 CIDR/);
+	await modal.save();
+	assert.equal(modal.alerts().length, 1, 'a second attempt replaces, not stacks, the error box');
 	assert.equal(f.calls.save, 0);
 	assert.deepEqual(f.calls.writes, []);
 	assert.equal(JSON.stringify(f.data), before);
@@ -263,13 +296,12 @@ test('T10.53 scenario 2: duplicate IP or normalized MAC blocks modal Save before
 			host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
 		await f.start();
 		const before = JSON.stringify(f.data);
-		await f.modalSave('b', { ...values, name: 'changed' });
+		const modal = await f.modalSave('b', { ...values, name: 'changed' });
 		assert.equal(f.calls.save, 0);
 		assert.equal(f.calls.closed, 0);
 		assert.deepEqual(f.calls.writes, []);
 		assert.equal(JSON.stringify(f.data), before);
-		assert.equal(f.calls.notifications[0]?.level, 'error');
-		assert.match(f.calls.notifications[0]?.node.textContent ?? '', /重复/);
+		assertModalError(f, modal, /重复/);
 	}
 });
 
@@ -310,12 +342,12 @@ test('T10.53 modal precheck: invalid existing list item and missing match never 
 		const f = fixture([ host('a', 'proxy') ]);
 		await f.start();
 		const before = JSON.stringify(f.data);
-		await f.modalSave('a', { name: 'changed', ip, mac: [] });
+		const modal = await f.modalSave('a', { name: 'changed', ip, mac: [] });
 		assert.equal(f.calls.save, 0);
 		assert.equal(f.calls.closed, 0);
 		assert.deepEqual(f.calls.writes, []);
 		assert.equal(JSON.stringify(f.data), before);
-		assert.equal(f.calls.notifications[0].level, 'error');
+		assertModalError(f, modal);
 	}
 });
 
@@ -323,11 +355,11 @@ test('T10.53 modal precheck: other hosts use current session values rather than 
 	const f = fixture([ host('a', 'follow'), host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
 	await f.start();
 	f.data[1].ip = [ '192.168.8.2' ];
-	await f.modalSave('b', { ip: [ '192.168.8.2' ] });
+	const modal = await f.modalSave('b', { ip: [ '192.168.8.2' ] });
 	assert.equal(f.calls.save, 0);
 	assert.equal(f.calls.closed, 0);
 	assert.deepEqual(f.calls.writes, []);
-	assert.match(f.calls.notifications[0].node.textContent, /重复/);
+	assertModalError(f, modal, /重复/);
 });
 
 test('T10.53 modal save failure: keep editor open, report failure, never emit a success overlap warning', async () => {
@@ -335,12 +367,11 @@ test('T10.53 modal save failure: keep editor open, report failure, never emit a 
 		host('b', 'bypass_cn', { ip: [ '192.168.8.1' ] }) ]);
 	await f.start();
 	f.calls.saveError = new Error('session save failed');
-	await f.modalSave('b', { ip: [ '192.168.8.252' ] });
+	const modal = await f.modalSave('b', { ip: [ '192.168.8.252' ] });
 	assert.equal(f.calls.save, 1, 'precheck succeeds and actually attempts the session save');
 	assert.equal(f.calls.closed, 0);
 	assert.equal(f.calls.reset, 0);
-	assert.deepEqual(f.calls.notifications.map(n => n.level), [ 'error' ]);
-	assert.match(f.calls.notifications[0].node.textContent, /session save failed/);
+	assertModalError(f, modal, /session save failed/);
 });
 
 test('T10.53 scenario 5: empty add box is valid and Chinese IP sentences have no intervening space', async () => {

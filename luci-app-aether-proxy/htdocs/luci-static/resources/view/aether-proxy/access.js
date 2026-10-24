@@ -141,7 +141,7 @@ return view.extend({
 				   fields, even when a later widget rejects the save. */
 				const result = self.validateModal(modalMap);
 				if (result.errors.length) {
-					self.showErrors(result.errors);
+					self.showErrors(result.errors, modalMap);
 					return Promise.resolve();
 				}
 
@@ -153,7 +153,7 @@ return view.extend({
 					.then(() => this.map.reset())
 					.then(() => this.handleModalCancel(modalMap, ev, true))
 					.then(() => self.showWarnings(result.warnings))
-					.catch((e) => ui.addNotification(null, E('p', {}, e?.message || String(e)), 'error'));
+					.catch((e) => self.showModalError(modalMap, E('p', {}, e?.message || String(e))));
 			},
 			renderSectionAdd: function() { return E([]); },
 			renderRowActions: function(id) {
@@ -311,11 +311,29 @@ return view.extend({
 			ui.addNotification(null, E('ul', {}, warnings.map((w) => E('li', {}, w.text))), 'warning');
 	},
 
-	showErrors: function(errors) {
-		ui.addNotification(null, E('div', {}, [
+	showErrors: function(errors, modalMap) {
+		const content = E('div', {}, [
 			E('p', {}, _('The host configuration has %s error(s); nothing was saved.', 'aether-proxy')
 				.replace('%s', errors.length)),
 			E('ul', {}, errors.map((e) => E('li', {}, e.text)))
-		]), 'error');
+		]);
+		if (modalMap)
+			this.showModalError(modalMap, content);
+		else
+			ui.addNotification(null, content, 'error');
+	},
+
+	/* Page notifications go to #maincontent, behind the modal overlay: an open
+	   editor shows its own errors at its top, replacing the previous attempt's. */
+	showModalError: function(modalMap, content) {
+		const root = modalMap.root;
+		if (!root) {
+			ui.addNotification(null, content, 'error');
+			return;
+		}
+		if (this.modalAlert?.parentNode)
+			this.modalAlert.parentNode.removeChild(this.modalAlert);
+		this.modalAlert = E('div', { 'class': 'alert-message error' }, content);
+		root.insertBefore(this.modalAlert, root.firstChild);
 	}
 });
