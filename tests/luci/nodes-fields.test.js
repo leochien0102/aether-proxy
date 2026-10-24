@@ -66,7 +66,19 @@ function harness() {
 						depends(field, value) {
 							this.deps.push(typeof field === 'string' ? { [field]: value } : field);
 						},
-						formvalue: () => live[field]
+						formvalue: () => live[field],
+						/* SDK isDependencySatisfied: a hidden dependency counts as no value. */
+						isActive(id) {
+							return !this.deps.length || this.deps.some(dep => {
+								const hit = Object.entries(dep).filter(([key]) => key !== '!reverse')
+									.every(([key, want]) => {
+										const ref = options.get(key);
+										const val = ref && ref.isActive(id) ? live[key] : null;
+										return want instanceof RegExp ? want.test(val ?? '') : val === want;
+									});
+								return dep['!reverse'] ? !hit : hit;
+							});
+						}
 					});
 					Object.defineProperty(o, 'choices', {
 						get: () => o.keylist?.map((key, i) => [key, o.vallist[i]]) ?? []
@@ -126,6 +138,7 @@ test('T10.30 scenario 1: new modal fields use docs/05 names, widget types and ex
 
 test('T10.30 scenario 2: Vision hides Mux and validation rejects enabled Mux using live or stored flow', () => {
 	const { options, live, stored } = harness();
+	live.protocol = 'vless'; // flow is VLESS-only; a hidden flow is ignored (T10.54 review)
 	const mux = options.get('mux');
 	assert.equal(visible(mux, { flow: 'xtls-rprx-vision' }), false);
 	assert.equal(visible(mux, { flow: '' }), true);
@@ -139,6 +152,9 @@ test('T10.30 scenario 2: Vision hides Mux and validation rejects enabled Mux usi
 	stored.flow = '';
 	live.flow = 'xtls-rprx-vision';
 	assert.equal(mux.validate('n_edit', '1'), 'Vision 流控不能同时开启多路复用');
+	live.protocol = 'trojan';
+	assert.equal(mux.validate('n_edit', '1'), true, 'a hidden (non-VLESS) Vision flow cannot block Mux');
+	live.protocol = 'vless';
 	for (const field of ['mux_concurrency', 'mux_xudp_concurrency', 'mux_xudp_udp443']) {
 		for (const value of ['0', '', undefined])
 			assert.equal(visible(options.get(field), { mux: value }), false, field + ' hidden when off');
@@ -270,6 +286,7 @@ for (const [field, legacy, other] of [['flow', 'xtls-rprx-direct', 'old-flow'], 
 test('T10.33 scenario 3: both Vision flows hide Mux and reject enabled Mux against live and stored values', () => {
 	for (const flow of ['xtls-rprx-vision', 'xtls-rprx-vision-udp443']) {
 		const { options, live, stored } = harness();
+		live.protocol = 'vless'; // flow is VLESS-only; a hidden flow is ignored (T10.54 review)
 		const mux = options.get('mux');
 		assert.equal(visible(mux, { flow }), false, flow + ' hides Mux');
 		stored.flow = flow;
