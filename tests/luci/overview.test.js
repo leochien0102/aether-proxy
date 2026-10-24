@@ -130,7 +130,7 @@ test('scenario 7a: every documented state has its text; waiting_network and dns_
 	const cases = {
 		stopped: '已停止',
 		starting: '启动中',
-		stopping: '正在停止',
+		stopping: '停止中',
 		running: '运行中',
 		degraded: '降级',
 		failsafe: '故障放行',
@@ -809,7 +809,7 @@ test('T8.12c service refresh: stop schedules serialized status/stats even with a
 
 test('T10.3 scenario 1: state levels, duration buckets, missing since and DNS failsafe', () => {
 	const levels = {
-		stopped: 'neutral', starting: 'neutral', running: 'ok',
+		stopped: 'neutral', starting: 'busy', stopping: 'busy', running: 'ok',
 		degraded: 'warn', failsafe: 'warn', error: 'error', future: 'neutral'
 	};
 	for (const [state, level] of Object.entries(levels)) {
@@ -968,10 +968,11 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has no color', () => {
 	const colors = {
 		ok: 'var(--success-color-high, #2f855a)', warn: 'var(--warning-color, #b7791f)',
-		error: 'var(--error-color-high, #c53030)', neutral: ''
+		error: 'var(--error-color-high, #c53030)', busy: 'var(--primary-color-high, #2b6cb0)', neutral: ''
 	};
 	for (const [state, level] of [ [ 'running', 'ok' ], [ 'degraded', 'warn' ], [ 'failsafe', 'warn' ],
-		[ 'error', 'error' ], [ 'stopped', 'neutral' ], [ 'starting', 'neutral' ], [ 'future', 'neutral' ] ]) {
+		[ 'error', 'error' ], [ 'stopped', 'neutral' ], [ 'starting', 'busy' ], [ 'stopping', 'busy' ],
+		[ 'future', 'neutral' ] ]) {
 		for (const [probe, probeLevel] of [ [ { ok: true }, 'ok' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ]) {
 			const { root } = renderStatus({ ok: true, state, last_probe: probe });
 			const word = findAll(root, 'strong')[0];
@@ -3337,13 +3338,13 @@ for (const state of ['starting', 'running', 'degraded', 'failsafe', 'error']) {
 		const { page, clock } = h;
 		const start = runtimeButtons(page)[0];
 		const pending = start.attrs.click({ target: start });
-		assert.equal(page.vm.state_text, '正在启动…', 'feedback precedes the service reply');
+		assert.equal(page.vm.state_text, '启动中', 'feedback precedes the service reply');
 		assert.equal(runtimeButtons(page)[0].disabled, true);
 		assert.equal(runtimeButtons(page)[1].disabled, true);
 		await clock.advance(2000);
 		assert.equal(h.calls.filter(([method]) => method === 'status').length, 1,
 			'status polling starts even while the service request is in flight');
-		assert.equal(page.vm.state_text, '正在启动…');
+		assert.equal(page.vm.state_text, '启动中');
 		finishService({ ok: true });
 		await pending;
 		await start.attrs.click();
@@ -3352,7 +3353,7 @@ for (const state of ['starting', 'running', 'degraded', 'failsafe', 'error']) {
 		assert.equal(h.calls.filter(([method]) => method === 'status').length, 1);
 		await clock.advance(1);
 		assert.equal(h.calls.filter(([method]) => method === 'status').length, 2);
-		assert.equal(page.vm.state_text, '正在启动…', 'stopped keeps waiting');
+		assert.equal(page.vm.state_text, '启动中', 'stopped keeps waiting');
 		h.status = { state, last_error: state === 'error' ? 'NODE_RESOLVE_FAILED' : null };
 		await clock.advance(2000);
 		assert.equal(page.vm.state_text, build(h.status).state_text);
@@ -3374,7 +3375,7 @@ for (const reply of [{ state: 'stopped' }, { ok: false, code: 'TIMEOUT' }, { sta
 		await h.page.handleService('start');
 		h.status = reply;
 		await h.clock.advance(59999);
-		assert.equal(h.page.vm.state_text, '正在启动…');
+		assert.equal(h.page.vm.state_text, '启动中');
 		assert.equal(runtimeButtons(h.page)[0].disabled, true);
 		await h.clock.advance(1);
 		assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
@@ -3394,12 +3395,12 @@ test('T10.43 scenario 2: pre-acknowledgement running status cannot finish Restar
 	h.page.refresh(h.status);
 	const pending = h.page.handleService('restart');
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.vm.state_text, '停止中');
 	assert.ok(h.page.startup);
 	finishService({ ok: true });
 	await pending;
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在停止…', 'acknowledgement alone cannot identify a new process');
+	assert.equal(h.page.vm.state_text, '停止中', 'acknowledgement alone cannot identify a new process');
 	h.status = { state: 'running', since: 20 };
 	await h.clock.advance(2000);
 	assert.equal(h.page.vm.state_text, '运行中');
@@ -3418,7 +3419,7 @@ test('T10.43 scenario 1: slow status cannot extend deadline or overwrite a retry
 	resolve({ state: 'running' });
 	for (let i = 0; i < 16; i++)
 		await Promise.resolve();
-	assert.equal(h.page.vm.state_text, '正在启动…', 'late reply belongs to the previous wait');
+	assert.equal(h.page.vm.state_text, '启动中', 'late reply belongs to the previous wait');
 	assert.ok(h.page.startup);
 	h.events.dispatch('pagehide');
 	assert.equal(h.page.startup, null);
@@ -3440,12 +3441,12 @@ test('T10.43 scenario 2: Restart ignores intermediate stopped and ordinary refre
 	const h = startupHarness();
 	h.page.refresh({ state: 'running', since: 10 });
 	await runtimeButtons(h.page)[1].attrs.click();
-	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.vm.state_text, '停止中');
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	assert.ok(h.page.startup, 'stopped during restart is not completion');
 	await h.page.fetchRefresh();
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	h.status = { state: 'starting', since: 20, waiting_network: true };
 	await h.clock.advance(2000);
 	assert.equal(h.page.vm.state_text, '等待网络');
@@ -3467,11 +3468,11 @@ test('T10.43 scenario 3: Enable waits for uci-applied, not save or apply return;
 	assert.equal(h.page.startup, undefined, 'apply returned undefined but has not completed');
 	assert.deepEqual(h.calls, []);
 	h.events.dispatch('uci-applied');
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	assert.equal(runtimeButtons(h.page)[0].disabled, true);
 	assert.equal(h.listeners.get('uci-applied').size, 0, 'completion listener is one-shot');
 	await h.clock.advance(59999);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	await h.clock.advance(1);
 	assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
 	assert.ok(!h.calls.some(([method]) => method === 'service'), 'Enable never calls service');
@@ -3491,7 +3492,7 @@ for (const result of ['cancelled', 'failed', 'save failed', 'apply throws']) {
 		/* Real LuCI cancel and failed apply emit no uci-applied event. */
 		await h.clock.advance(120000);
 		assert.equal(h.page.startup, undefined);
-		assert.notEqual(h.page.vm.state_text, '正在启动…');
+		assert.notEqual(h.page.vm.state_text, '启动中');
 		assert.deepEqual(h.calls, []);
 		h.events.dispatch('pagehide');
 		assert.equal(h.listeners.get('uci-applied')?.size ?? 0, 0);
@@ -3556,7 +3557,7 @@ test('T10.43 scenario 1: stale startup read cannot complete over a newer ordinar
 	release({ state: 'running' });
 	for (let i = 0; i < 16; i++)
 		await Promise.resolve();
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	assert.ok(h.page.startup, 'discarded completion does not strand a waiting display with no poller');
 	h.events.dispatch('pagehide');
 });
@@ -3582,7 +3583,7 @@ test('T10.48 scenario 3: Restart stops, waits for startup, then shows the new st
 	h.status = { state: 'running', since: 10 };
 	h.page.refresh(h.status);
 	await runtimeButtons(h.page)[1].attrs.click();
-	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.vm.state_text, '停止中');
 	assert.equal(h.page.startup.baseline, 10);
 	assert.deepEqual(runtimeButtons(h.page).slice(0, 2).map(disabled), [true, true]);
 	for (const reply of [
@@ -3591,13 +3592,13 @@ test('T10.48 scenario 3: Restart stops, waits for startup, then shows the new st
 	]) {
 		h.status = reply;
 		await h.clock.advance(2000);
-		assert.equal(h.page.vm.state_text, '正在停止…', JSON.stringify(reply));
+		assert.equal(h.page.vm.state_text, '停止中', JSON.stringify(reply));
 		assert.ok(h.page.startup);
 		assert.deepEqual(runtimeButtons(h.page).slice(0, 2).map(disabled), [true, true]);
 	}
 	h.status = { state: 'stopped', since: 12 };
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	assert.ok(h.page.startup);
 	h.status = { state: 'starting', since: 13 };
 	await h.clock.advance(2000);
@@ -3634,14 +3635,14 @@ test('T10.48 scenario 3: stopped before service acknowledgement already shows St
 	const pending = h.page.handleService('restart');
 	h.status = { state: 'stopping', since: 11 };
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.vm.state_text, '停止中');
 	h.status = { state: 'stopped', since: 12 };
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…', 'the old process is gone even before init returns');
+	assert.equal(h.page.vm.state_text, '启动中', 'the old process is gone even before init returns');
 	assert.ok(h.page.startup);
 	finishService({ ok: true });
 	await pending;
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	h.events.dispatch('pagehide');
 });
 
@@ -3651,10 +3652,10 @@ test('T10.48 scenario 3: acknowledged unknown status enters startup wait; failed
 	await h.page.handleService('restart');
 	h.status = { state: 'unknown' };
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	h.status = { ok: false, code: 'TIMEOUT' };
 	await h.clock.advance(2000);
-	assert.equal(h.page.vm.state_text, '正在启动…');
+	assert.equal(h.page.vm.state_text, '启动中');
 	h.events.dispatch('pagehide');
 	assert.equal(h.timers.size, 0);
 });
@@ -3665,7 +3666,7 @@ test('T10.48 scenario 3: Restart never accepts the old running process and relea
 	h.page.refresh(h.status);
 	await h.page.handleService('restart');
 	await h.clock.advance(59999);
-	assert.equal(h.page.vm.state_text, '正在停止…');
+	assert.equal(h.page.vm.state_text, '停止中');
 	await h.clock.advance(1);
 	assert.equal(h.page.vm.state_text, '启动没有完成，可到日志页查看原因');
 	assert.equal(h.page.startup, null);
@@ -3679,7 +3680,7 @@ test('T10.48 scenario 4: Stop reads stopping as the normal translated state, wit
 	await runtimeButtons(h.page)[2].attrs.click();
 	h.status = { state: 'stopping', since: 11 };
 	await h.clock.advance(1500);
-	assert.equal(h.page.vm.state_text, '正在停止');
+	assert.equal(h.page.vm.state_text, '停止中');
 	assert.ok(!h.page.startup);
 	assert.deepEqual(runtimeButtons(h.page).map(disabled), [true, true, true]);
 	assert.deepEqual(h.calls.filter(([method]) => method === 'service'), [['service', { action: 'stop' }]]);
@@ -3713,3 +3714,61 @@ test('T10.52 scenario 1/6: error refresh reads warn events once and replaces the
 	assert.ok(visibleText(root).includes('检测到 ShadowSocksR Plus+ 正在运行，请先在它的页面停用，再启动。'));
 	assert.equal(calls.filter(call => call.method === 'events').length, 1);
 });
+
+/* T10.55: assert the rendered word, not just the model grade, so a missing
+   busy color or stale stopped opacity cannot pass through a correct model. */
+test('T10.55 scenarios 1/3: state words and scheme A colors reach the DOM; only stopped is dimmed', () => {
+	for (const [state, text, level, color] of [
+		['running', '运行中', 'ok', 'var(--success-color-high, #2f855a)'],
+		['starting', '启动中', 'busy', 'var(--primary-color-high, #2b6cb0)'],
+		['stopping', '停止中', 'busy', 'var(--primary-color-high, #2b6cb0)'],
+		['degraded', '降级', 'warn', 'var(--warning-color, #b7791f)'],
+		['failsafe', '故障放行', 'warn', 'var(--warning-color, #b7791f)'],
+		['error', '启动失败', 'error', 'var(--error-color-high, #c53030)'],
+		['stopped', '已停止', 'neutral', null],
+		['future', 'future', 'neutral', null]
+	]) {
+		const { page, root } = renderStatus({ state });
+		const word = findAll(root, 'strong')[0];
+		assert.equal(word.textContent, text, state);
+		assert.equal(page.vm.state_level, level, state);
+		assert.equal(page.vm.state_dimmed, state === 'stopped', state);
+		assert.equal(word.attrs.style.includes('color:'), color !== null, state);
+		if (color)
+			assert.ok(word.attrs.style.includes('color:' + color), state);
+		assert.equal(/opacity:\s*0\.7\b/.test(word.attrs.style), state === 'stopped', state);
+		/* Replacing a stopped render must remove its opacity, even for a
+		   neutral unknown/pending/error result with no explicit color. */
+		for (const status of [{ state: 'starting', waiting_network: true }, undefined, null]) {
+			page.refresh({ state: 'stopped' });
+			page.refresh(status);
+			assert.equal(page.vm.state_dimmed, false);
+			assert.doesNotMatch(findAll(root, 'strong')[0].attrs.style, /opacity/);
+		}
+	}
+	const waiting = renderStatus({ state: 'starting', waiting_network: true });
+	assert.equal(waiting.page.vm.state_text, '等待网络');
+	assert.equal(waiting.page.vm.state_level, 'busy');
+	assert.match(findAll(waiting.root, 'strong')[0].attrs.style, /var\(--primary-color-high, #2b6cb0\)/);
+});
+
+for (const action of ['start', 'restart', 'enable']) {
+	test(`T10.55 scenarios 1/3: ${action} waiting uses the same blue undimmed state word`, async () => {
+		const h = startupHarness();
+		/* A stopped baseline catches inherited opacity during either wait. */
+		if (action === 'enable') {
+			h.page.enabled = false;
+			await h.page.handleEnable(true);
+			h.events.dispatch('uci-applied');
+		}
+		else
+			await h.page.handleService(action);
+		const word = findAll(h.page.runtimeContent, 'strong')[0];
+		assert.equal(word.textContent, action === 'restart' ? '停止中' : '启动中');
+		assert.equal(h.page.vm.state_level, 'busy');
+		assert.match(word.attrs.style, /color:var\(--primary-color-high, #2b6cb0\)/);
+		assert.doesNotMatch(word.attrs.style, /opacity/);
+		assert.doesNotMatch(word.textContent, /正在|…/);
+		h.events.dispatch('pagehide');
+	});
+}
