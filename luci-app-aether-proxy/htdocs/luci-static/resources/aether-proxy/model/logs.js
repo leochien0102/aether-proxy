@@ -127,11 +127,12 @@ function precheck_missing(value) {
 	const blocked = [], missing = [];
 	for (const item of Array.isArray(value) ? value : [value]) {
 		const text = conflicts.format_log_item(item) ?? value_text(item);
-		(conflicts.parse_item(item).kind === 'conflict' ? blocked : missing).push(text);
+		/* Neither a running plugin nor a failed plugin check is a missing
+		   requirement: both read without 「缺少」 (docs/10 r17 复审结论). */
+		const kind = conflicts.parse_item(item).kind;
+		(kind === 'conflict' || kind === 'check' ? blocked : missing).push(text);
 	}
 	const parts = blocked.length ? [blocked.join('、')] : [];
-	// TODO(design): r17 does not specify separate wording for conflict-check
-	// diagnostics; keep their legacy missing-item wording rather than invent one.
 	if (missing.length || !blocked.length)
 		parts.push(_('Missing {missing}', 'aether-proxy').replace('{missing}', () => missing.join('、')));
 	return parts.length === 2
@@ -160,7 +161,7 @@ function start_detail(value) {
 	// daemon precheck detail is a comma-joined missing list. Do not rewrite
 	// arbitrary command diagnostics merely because they mention a conflict token.
 	const items = value.split(',');
-	if (items.some(item => conflicts.parse_item(item).kind === 'conflict'))
+	if (items.some(item => [ 'conflict', 'check' ].includes(conflicts.parse_item(item).kind)))
 		return precheck_missing(items);
 	return items.map(item => conflicts.format_log_item(item) ?? item).join(',');
 }
