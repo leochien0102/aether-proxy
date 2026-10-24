@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
 'require aether-proxy.common as ap';
@@ -168,6 +169,7 @@ return view.extend({
 		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
 		option.default = 'bypass_cn';
 		model.modes().forEach(item => option.value(item[0], item[1]));
+		form_defaults.section(section);
 		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings', 'aether-proxy'));
 		const wan_hint = E('div');
 		const china = section.option(form.DynamicList, 'china_dns', _('China DNS', 'aether-proxy'));
@@ -225,6 +227,10 @@ return view.extend({
 			o.validate = function(section_id, value) {
 				return field[0] == 'dns_probe_domain' && value === '' ? true : model.validate(field[0], value);
 			};
+		});
+		form_defaults.section(section, { dns_probe_domain: 'www.google.com' }, {
+			// The composite widget displays tcp://IP and bare IP identically.
+			trust_dns: { normalize: value => model.trust_values(model.trust_rows(value)) }
 		});
 		const inventory = E('div', {}, model.loading_text), summary = E('div'), progress = E('div');
 		const update = E('button', { type: 'button', class: 'cbi-button cbi-button-action',

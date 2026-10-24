@@ -58,6 +58,7 @@ function harness() {
 		section() {
 			const map = this;
 			return {
+				children: [],
 				option(kind, field, title) {
 					const o = Object.assign(Object.create(kind.prototype), {
 						kind: Object.keys(form).find(key => form[key] === kind),
@@ -70,6 +71,7 @@ function harness() {
 					Object.defineProperty(o, 'choices', {
 						get: () => o.keylist?.map((key, i) => [key, o.vallist[i]]) ?? []
 					});
+					this.children.push(o);
 					options.set(field, o);
 					return o;
 				}

@@ -100,7 +100,12 @@ function formDouble(effects, uci) {
 		Map: class {
 			section() {
 				return this.grid ??= {
-					option: () => ({ value() {}, depends() {} }),
+					children: [],
+					option(kind, field) {
+						const option = { option: field, value() {}, depends() {} };
+						this.children.push(option);
+						return option;
+					},
 					super(method, args) {
 						assert.equal(method, 'handleRemove');
 						effects.push([ 'super', ...args ]);

@@ -235,8 +235,8 @@ function load_view(config = {}) {
 		}
 		section(type, name, section_type, title) {
 			this.section_info = { type, name, section_type, title };
-			return { option: (kind, key, label) => {
-				const option = { kind, key, label, values: [], value(k, v) { this.values.push([ k, v ]); } };
+			return { children: this.options, option: (kind, key, label) => {
+				const option = { kind, key, option: key, label, values: [], value(k, v) { this.values.push([ k, v ]); } };
 				this.options.push(option);
 				return option;
 			} };

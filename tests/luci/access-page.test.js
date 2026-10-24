@@ -59,6 +59,9 @@ function fixture(hosts = [], main = {}) {
 		value(key, label) { this.choices.push({ key, label }); }
 		depends(value) { this.dependencies.push(value); }
 		formvalue(sid) { return inputs[sid]?.[this.option]; }
+		cfgvalue(sid) { return uci.get('aetherproxy', sid, this.option); }
+		write(sid, value) { return uci.set('aetherproxy', sid, this.option, value); }
+		remove(sid) { return uci.unset('aetherproxy', sid, this.option); }
 	}
 	class Section {
 		constructor(map, type) { Object.assign(this, { map, type, children: [] }); }
@@ -330,7 +333,7 @@ test('T10.53 scenario 4: modal uses cloned current values, not stale parent widg
 	await f.modalSave('a', { ip: [ '192.168.8.2' ], policy: 'follow', udp: '0' });
 	assert.equal(f.calls.save, 1);
 	assert.equal(f.calls.closed, 1);
-	assert.equal(f.data[1].policy, 'follow');
+	assert.equal(f.data[1].policy, undefined, 'T10.54: changing to the default removes the override');
 	assert.deepEqual(f.data[1].ip, [ '192.168.8.2' ]);
 	assert.equal(f.calls.notifications.length, 0, 'replacing the edited section cannot conflict with itself');
 	assert.equal(f.table().rows[0].style.opacity, '0.6');
@@ -573,12 +576,14 @@ test('T10.36 scenario 7: device hints, optional name autofill and MAC-only selec
 	assert.equal(mac.onchange, undefined, 'selecting a device cannot copy a DHCP IP');
 
 	/* SDK cloneOptions copies custom handlers but replaces map/section. */
-	const modalMac = Object.assign({}, mac, { formvalue: () => [ MAC.toUpperCase() ] });
-	const modalName = Object.assign({}, f.option('name'), {
+	const modalMac = Object.assign(Object.create(Object.getPrototypeOf(mac)), mac,
+		{ formvalue: () => [ MAC.toUpperCase() ] });
+	const source = f.option('name');
+	const modalName = Object.assign(Object.create(Object.getPrototypeOf(source)), source, {
 		map: { lookupOption: () => [ modalMac ] }
 	});
-	modalName.remove('a');
-	assert.equal(f.data[1].name, 'laptop', 'empty optional name uses remove, not write');
+	modalName.write('a', '');
+	assert.equal(f.data[1].name, 'laptop', 'a changed empty name still uses the custom device-name writer');
 	assert.deepEqual(f.data[1].ip, [], 'no DHCP IP written');
 	modalName.write('a', 'my label');
 	assert.equal(f.data[1].name, 'my label');
@@ -730,8 +735,9 @@ test('T10.42 scenario 4: modal saves recalculate no-effect marks from new widget
 		await f.modalSave('a', { policy: unlisted });
 		const newRow = f.table().rows[0];
 		assert.notEqual(newRow, oldRow, 'parent Map replaces the table');
-		assert.equal(f.data[1].policy, unlisted, 'modal save stages the new policy');
-		assert.equal(f.inputs.a.policy, unlisted, 'new parent widget reflects staged UCI');
+		assert.equal(f.data[1].policy, unlisted == 'follow' ? undefined : unlisted,
+			'T10.54: modal save removes the default override or stages the explicit policy');
+		assert.equal(f.inputs.a.policy ?? 'follow', unlisted, 'new parent widget reflects staged UCI or its default');
 		assert.equal(newRow.style.opacity, '0.6');
 		assert.match(newRow.cell.textContent, /不起作用/);
 		assert.equal(f.calls.apply, 0, 'no apply is needed to update the mark');

@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
 'require aether-proxy.common as ap';
@@ -132,6 +133,9 @@ return view.extend({
 		option.placeholder = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
 		// The optional add box is validated even while empty (docs/10 r14); it is not a URL item.
 		option.validate = function(section_id, value) { return value === '' ? true : model.validate_url(value); };
+		form_defaults.section(section, {
+			data_hour: '4', data_minute: '30', channel_urls: [option.placeholder]
+		});
 		return map.render().then(node => {
 			const root = E('div', {}, [ node, this.inventory ]);
 			// A new turn lets LuCI display the complete page before starting RPC.

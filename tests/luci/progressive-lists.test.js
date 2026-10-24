@@ -43,7 +43,10 @@ function optionDouble(uci, kind, field, title) {
 	// LuCI methods live on the prototype: cloneOptions only copies own properties.
 	class Option {
 		constructor() {
-			Object.assign(this, { kind, field, title });
+			Object.assign(this, { kind, field, option: field, title });
+			this.rmempty = true;
+			if (kind === 'Flag')
+				this.default = '0';
 			this.widgets = new Map();
 		}
 		depends() {}
@@ -84,15 +87,14 @@ function optionDouble(uci, kind, field, title) {
 				this.widgets.set(id, {});
 			this.widgets.get(id).value = value;
 		}
+		cfgvalue(id) { return uci.get('aetherproxy', id, field); }
+		isActive(id) { return this.widgets.has(id); }
+		isValid() { return true; }
+		write(id, value) { uci.set('aetherproxy', id, field, value); }
 		remove(id) { uci.unset('aetherproxy', id, field); }
-		async parse(id) {
-			if (!this.widgets.has(id))
-				return;
-			const value = this.formvalue(id);
-			if (this.rmempty && value === '')
-				this.remove(id);
-			else if (value !== uci.get('aetherproxy', id, field))
-				uci.set('aetherproxy', id, field, value);
+		parse(id) {
+			const Type = kind === 'Flag' ? require('./form-sdk').Flag : require('./form-sdk').Value;
+			return Type.prototype.parse.call(this, id);
 		}
 	}
 	return new Option();
@@ -182,6 +184,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 						[E('div', {}, original)]);
 				}
 			};
+			section.children = section.options;
 			this.sections.push(section);
 			return section;
 		}

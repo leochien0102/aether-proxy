@@ -143,6 +143,12 @@ function loadModule(file, modules, env) {
 	const factory = new Function(params.join(', '), source);
 
 	const instances = requires.map(function(r) {
+		/* Always exercise the real shared save adapter in older page tests too.
+		 * It has no runtime dependency beyond baseclass, unlike form/uci doubles. */
+		if (r.name == 'aether-proxy.form-defaults' && !(r.name in modules))
+			return loadModule(require('node:path').resolve(__dirname,
+				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/form-defaults.js'),
+			{ baseclass: { extend: object => object } }, env);
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');
 

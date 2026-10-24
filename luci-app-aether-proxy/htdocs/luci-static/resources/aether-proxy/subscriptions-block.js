@@ -8,6 +8,7 @@
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
 'require dom';
@@ -74,15 +75,8 @@ return baseclass.extend({
 		const kind = field === 'user_agent' ? form.Value : form.ListValue;
 		const o = section.option(kind, field, title);
 		o.rmempty = true;
-		if (inherited) {
+		if (inherited)
 			o.modalonly = true;
-			// AbstractValue.parse calls remove even when an optional field was absent.
-			// No-op modal Save must not issue an unset for an already inherited value.
-			o.remove = function(id) {
-				if (uci.get('aetherproxy', id, field) != null)
-					uci.unset('aetherproxy', id, field);
-			};
-		}
 		else if (field !== 'user_agent')
 			o.default = field === 'interval_hours' ? '24' : 'auto';
 		// Explicit values are preselected as stored; r13's 24 -> 0 is not reproducible
@@ -120,6 +114,7 @@ return baseclass.extend({
 			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
 			user_agent: this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), false)
 		};
+		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
 	result_content: function(result) {
 		return [result.text, E('br'), result.time, E('br'), result.skipped];
@@ -288,6 +283,7 @@ return baseclass.extend({
 		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
+		form_defaults.section(s);
 		return m.render().then(content => {
 			const updateAll = E('button', {
 				'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null,
