@@ -10,6 +10,7 @@
 /*
  * Access control (docs/10 「访问控制页定案」 and 「r14 修正：访问控制 IP 范围与说明」).
  * Action sizing follows docs/10 「r13 修正：块内行与表格操作列」.
+ * Table flag frames follow docs/10 「r16 修正：窄屏卡片里开关与标签同一行」.
  * The model owns wording, summaries and validation. Staged LuCI changes are
  * invisible to the command line, so footer and modal saves precheck them here
  * (docs/10 「r16 修正：访问控制编辑框里的校验与重叠提示」);
@@ -132,6 +133,32 @@ return view.extend({
 
 	},
 
+	inlineFlag: function(option) {
+		const renderFrame = option.renderFrame;
+		option.renderFrame = function(id, in_table, index, nodes) {
+			const frame = renderFrame.call(this, id, in_table, index, nodes);
+			if (in_table) {
+				// Editable flags have two block divs; read-only GridSection cells have neither.
+				const field = frame.querySelector('[data-field]');
+				field.style.display = field.classList.contains('hidden') ? 'none' : 'inline';
+				const checkbox = frame.querySelector('.cbi-checkbox');
+				checkbox.style.display = 'inline-flex';
+				checkbox.style.alignItems = 'center';
+			}
+			return frame;
+		};
+		const setActive = option.setActive;
+		option.setActive = function(id, active) {
+			const changed = setActive.call(this, id, active);
+			const field = this.map.findElement('data-field', this.cbid(id));
+			// Bootstrap's .hidden has no !important: do not let our inline display unhide Game mode.
+			// Modal frames keep the theme's own grid layout and dependency styling.
+			if (field?.parentNode.matches('td'))
+				field.style.display = active ? 'inline' : 'none';
+			return changed;
+		};
+	},
+
 	addHostOptions: function(m) {
 		const self = this;
 		let o;
@@ -188,6 +215,7 @@ return view.extend({
 		s.nodescriptions = true;
 
 		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy'));
+		this.inlineFlag(o);
 		o.editable = true;
 		o.default = '1';
 		o.onchange = function() { self.updateRows(); };
@@ -253,6 +281,7 @@ return view.extend({
 		o.onchange = function() { self.updateRows(); };
 
 		o = s.option(form.Flag, 'udp', _('Game mode', 'aether-proxy'));
+		this.inlineFlag(o);
 		o.editable = true;
 		o.default = '0';
 		for (const policy of [ 'follow', 'proxy', 'bypass_cn', 'gfw' ])

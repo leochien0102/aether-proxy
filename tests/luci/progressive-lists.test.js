@@ -11,6 +11,7 @@ const { loadModule, parsePo, element } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
 const { selectWidget } = require('./subscription-select');
+const { renderFrame: sdkFlagFrame, checkboxWidget } = require('./flag-frame');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -61,14 +62,12 @@ function optionDouble(uci, kind, field, title) {
 			let widget;
 			if (kind === 'Flag') {
 				// Render through the option hook, like LuCI, so flag wrappers are observable.
-				widget = E('span', {}, [E('input', {
-					type: 'checkbox', checked: initial !== '0' || null,
-					change: event => {
-						const value = event.target.checked ? '1' : '0';
-						this.setFormValue(id, value);
-						this.onchange(event, id, value);
-					}
-				})]);
+				widget = checkboxWidget(initial !== '0');
+				widget.children[0].change = event => {
+					const value = event.target.checked ? '1' : '0';
+					this.setFormValue(id, value);
+					this.onchange(event, id, value);
+				};
 				widget.value = initial ?? '';
 			}
 			else {
@@ -81,6 +80,11 @@ function optionDouble(uci, kind, field, title) {
 			}
 			this.widgets.set(id, widget);
 			return widget;
+		}
+		renderFrame(id, in_table, index, widget) {
+			const frame = sdkFlagFrame.call(this, id, in_table, index, widget);
+			frame.field = this.field;
+			return frame;
 		}
 		setFormValue(id, value) {
 			if (!this.widgets.has(id))
@@ -110,9 +114,9 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
 				section.options.filter(o => o.textvalue || o.editable).map(o => E('th', {}, o.title))),
 			...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
-				...section.options.filter(o => o.textvalue || o.editable).map(o =>
-					E('td', { field: o.field }, o.editable
-						? o.renderWidget(s['.name'], 0, s[o.field]) : o.textvalue(s['.name']))),
+				...section.options.filter(o => o.textvalue || o.editable).map(o => o.editable
+					? o.renderFrame(s['.name'], true, 0, o.renderWidget(s['.name'], 0, s[o.field]))
+					: E('td', { field: o.field }, o.textvalue(s['.name']))),
 				section.renderRowActions(s['.name'])
 			]))
 		]);
@@ -723,10 +727,13 @@ async () => {
 	const check = () => {
 		const row = gridRow(h, 's_a');
 		const cell = find(row, node => node.field === 'enabled')[0];
-		const wrapper = cell.children[0];
-		assert.equal(wrapper.tag, 'span');
-		assert.equal(wrapper.style, 'display:inline-flex; align-items:center');
-		assert.equal(find(wrapper, node => node.tag === 'input').length, 1, 'keep the native flag widget');
+		const field = cell.querySelector('[data-field]');
+		assert.equal(field.tag, 'div', 'exercise the SDK outer field that a widget-only wrapper missed');
+		assert.equal(field.style.display, 'inline');
+		const checkbox = cell.querySelector('.cbi-checkbox');
+		assert.equal(checkbox.tag, 'div');
+		assert.deepEqual(checkbox.style, { display: 'inline-flex', alignItems: 'center' });
+		assert.equal(find(checkbox, node => node.tag === 'input').length, 1, 'keep the native flag widget');
 		const result = h.page.resultCells.s_a;
 		assert.equal(result.tag, 'span');
 		assert.equal(result.style, 'display:inline-block; vertical-align:top');
