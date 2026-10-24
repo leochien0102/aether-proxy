@@ -217,7 +217,7 @@ async () => {
 	for (const page of ['rules', 'subscriptions', 'access', 'advanced', 'updates', 'nodes'])
 		checked.push(...check_list_validators(await page_options(page), page));
 	assert.deepEqual(checked.sort(), [
-		'access: host.ip',
+		'access: host.ip', 'access: host.mac',
 		'advanced: main.boot_check_targets', 'advanced: main.lan_ifaces',
 		'rules: dns.china_dns', 'rules: dns.direct_dns', 'updates: update.channel_urls'
 	]);

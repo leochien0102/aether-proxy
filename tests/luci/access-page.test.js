@@ -12,7 +12,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element: E } = require('./loader.js');
 const { nowrapActions } = require('./button-layout');
-const { renderList, parseList } = require('./dynamic-list');
+const { parseList } = require('./dynamic-list');
+const { textInput, renderAccessList } = require('./access-input');
 
 const APP = path.join(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -62,6 +63,12 @@ function fixture(hosts = [], main = {}) {
 		cfgvalue(sid) { return uci.get('aetherproxy', sid, this.option); }
 		write(sid, value) { return uci.set('aetherproxy', sid, this.option, value); }
 		remove(sid) { return uci.unset('aetherproxy', sid, this.option); }
+		renderWidget(sid, index, value) {
+			if ([ 'ip', 'mac' ].includes(this.option)) return renderAccessList(this, sid, value);
+			const input = textInput(value ?? '');
+			return { input, querySelector: () => input };
+		}
+		getUIElement() { return { node: this.widget }; }
 	}
 	class Section {
 		constructor(map, type) { Object.assign(this, { map, type, children: [] }); }
@@ -210,23 +217,20 @@ function fixture(hosts = [], main = {}) {
 					{ map: modalMap, section });
 				const value = current[o.option] ?? o.default;
 				if ([ 'ip', 'mac' ].includes(o.option)) {
-					o.widget = renderList(o, sid, value);
-					if (o.option == 'ip') {
-						/* SDK getValue excludes an invalid pending text input. The
-						   invalid add box still makes AbstractValue.parse reject. */
-						o.addError = typeof o.validate == 'function' ? o.validate(sid, addIP) : true;
-						if (addIP && o.addError === true && !o.widget.value.includes(addIP))
-							o.widget.value.push(addIP);
-					}
-					o.formvalue = () => o.widget.value;
+					o.widget = o.renderWidget(sid, 0, value);
+					if (o.option == 'ip') o.widget.input.edit(addIP);
+					o.formvalue = () => o.widget.getValue();
+				}
+				else if (o.option == 'name') {
+					o.widget = o.renderWidget(sid, 0, value);
+					o.formvalue = () => o.widget.input.value;
 				}
 				else {
 					o.formvalue = () => value ?? '';
 				}
 				o.isActive = () => o.option != 'udp' || current.policy != 'direct';
-				o.isValid = () => (!o.widget || o.widget.isValid()) && (o.addError ?? true) === true;
-				o.getValidationError = () => o.addError !== true && o.addError != null
-					? o.addError : o.widget?.getValidationError() ?? '';
+				o.isValid = () => !o.widget?.triggerValidation || o.widget.triggerValidation();
+				o.getValidationError = () => o.widget?.getValidationError() ?? '';
 				section.children.push(o);
 			}
 			modalMap.save = (cb, silent) => {
@@ -239,7 +243,7 @@ function fixture(hosts = [], main = {}) {
 						const write = value => o.write ? o.write(sid, value)
 							: uci.set('aetherproxy', sid, o.option, value);
 						const remove = () => o.remove ? o.remove(sid) : uci.unset('aetherproxy', sid, o.option);
-						if (o.widget)
+						if (o.widget?.getValue)
 							parseList(o, sid, o.widget, uci.get('aetherproxy', sid, o.option), write, remove);
 						else if (o.formvalue() === '')
 							remove();
@@ -304,7 +308,7 @@ test('T10.53 scenario 2: duplicate IP or normalized MAC blocks modal Save before
 		assert.equal(f.calls.closed, 0);
 		assert.deepEqual(f.calls.writes, []);
 		assert.equal(JSON.stringify(f.data), before);
-		assertModalError(f, modal, /重复/);
+		assertModalError(f, modal, /已被主机.*使用/);
 	}
 });
 
@@ -362,7 +366,7 @@ test('T10.53 modal precheck: other hosts use current session values rather than 
 	assert.equal(f.calls.save, 0);
 	assert.equal(f.calls.closed, 0);
 	assert.deepEqual(f.calls.writes, []);
-	assertModalError(f, modal, /重复/);
+	assertModalError(f, modal, /已被主机.*使用/);
 });
 
 test('T10.53 modal save failure: keep editor open, report failure, never emit a success overlap warning', async () => {
@@ -753,4 +757,133 @@ test('T10.42 scenario 4: modal saves recalculate no-effect marks from new widget
 	assert.equal(f.table().rows[0].style.opacity, '');
 	assert.equal(f.table().rows[0].cell.textContent, '');
 	assert.equal(f.calls.apply, 0);
+});
+
+function assertFeedback(input, pattern) {
+	assert.equal(input.style.borderColor, 'var(--error-color-high, #c53030)');
+	assert.match(input.accessFeedback.textContent, pattern);
+	assert.equal(input.parentNode.children.at(-1), input.accessFeedback, 'reason below input and its add button');
+	assert.equal(input.animations.at(-1).options.duration, 300);
+	assert.equal(input.animations.at(-1).frames.length, 4);
+}
+
+test('T10.59 scenario 1: invalid IP and MAC plus/Enter shake, show red reason, reject and reset on input', async () => {
+	for (const field of [ 'ip', 'mac' ]) {
+		for (const action of [ 'plus', 'enter' ]) {
+			const f = fixture([ host('a', 'follow') ]);
+			f.hints({ hosts: {} });
+			await f.start();
+			const modal = f.openModal('a');
+			const widget = modal.option(field).widget;
+			const before = [...widget.value];
+			widget.input.edit(field == 'ip' ? '192.168.8.200-192.168.8.100' : 'bad-mac');
+			widget.attempt(action);
+			assert.deepEqual(widget.value, before);
+			assert.equal(widget.input.animations.length, 1);
+			assertFeedback(widget.input, /不是合法的/);
+			widget.input.edit(field == 'ip' ? '192.168.8.1' : MAC);
+			assert.equal(widget.input.style.borderColor, 'original');
+			assert.equal(widget.input.accessFeedback.textContent, '');
+			widget.attempt(action);
+			assert.equal(widget.input.value, '');
+			assert.equal(widget.value.at(-1), field == 'ip' ? '192.168.8.1' : MAC);
+		}
+	}
+});
+
+test('T10.59 scenario 1: MAC dropdown Enter rejects invalid custom text before SDK creates it', async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const widget = f.openModal('a').option('mac').widget;
+	widget.input.edit('bad-mac');
+	widget.attempt('enter');
+	assert.deepEqual(widget.value, []);
+	assertFeedback(widget.input, /不是合法的 MAC/);
+	widget.input.edit(MAC);
+	widget.attempt('enter');
+	assert.deepEqual(widget.value, [ MAC ]);
+});
+
+test('T10.59 scenario 3: modal duplicates point to the other host regardless of edited UCI position', async () => {
+	for (const sid of [ 'a', 'b' ]) {
+		for (const field of [ 'ip', 'mac' ]) {
+			const f = fixture([ host('a', 'follow', { name: 'first', mac: [ MAC ] }),
+				host('b', 'proxy', { name: 'second', ip: [ '192.168.8.1' ], mac: [ 'aa:bb:cc:dd:ee:02' ] }) ]);
+			await f.start();
+			const other = f.data.find(h => h['.name'] == (sid == 'a' ? 'b' : 'a'));
+			const modal = await f.modalSave(sid, { [field]: other[field] });
+			assertModalError(f, modal, new RegExp(other[field][0] + ' 已被主机 ' + other.name + ' 使用'));
+			assert.doesNotMatch(modal.alerts()[0].textContent, /重复|主机 first：|主机 second：/);
+			assert.equal(f.calls.save, 0);
+			assert.deepEqual(f.calls.writes, []);
+		}
+	}
+});
+
+test('T10.59 scenario 4: pending valid/invalid plain/dropdown IP/MAC text blocks modal save without writes',
+async () => {
+	for (const field of [ 'ip', 'mac' ]) {
+		for (const dropdown of [ false, true ]) {
+			for (const valid of [ false, true ]) {
+				const f = fixture([ host('a', 'follow') ]);
+				f.hints({ hosts: {} });
+				await f.start();
+				if (dropdown) f.option(field).value('choice', 'choice');
+				const modal = f.openModal('a', { name: 'must not write' });
+				const widget = modal.option(field).widget;
+				const text = valid ? (field == 'ip' ? '192.168.8.1' : MAC) : 'invalid';
+				widget.input.edit(text);
+				assert.equal(widget.getValue().includes(text), valid && !dropdown,
+					'SDK saves valid pending plain text but drops dropdown text');
+				await modal.save();
+				assert.equal(f.calls.save, 0);
+				assert.equal(f.calls.closed, 0);
+				assert.deepEqual(f.calls.writes, []);
+				assertModalError(f, modal, /还有未添加的内容「.*」：点「\+」添加，或清空/);
+				assert.match(modal.alerts()[0].textContent, new RegExp(modal.option(field).title));
+				assertFeedback(widget.input, /还有未添加的内容/);
+				widget.input.edit(' \t ');
+				await modal.save();
+				assert.equal(f.calls.save, 1, 'whitespace-only pending input does not block saving');
+				assert.equal(f.calls.closed, 1);
+			}
+		}
+	}
+});
+
+test('T10.59 scenario 5: trimmed duplicate name blocks and feeds back; correction and unnamed rules save', async () => {
+	for (const names of [ [ 'same', 'same' ], [ ' same ', 'same ' ] ]) {
+		const f = fixture([ host('a', 'follow', { name: names[0] }),
+			host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
+		await f.start();
+		const modal = f.openModal('b', { name: names[1] });
+		await modal.save();
+		assert.equal(f.calls.save, 0);
+		assert.equal(f.calls.closed, 0);
+		assert.deepEqual(f.calls.writes, []);
+		assertModalError(f, modal, /名称「same」已被另一条规则使用/);
+		const input = modal.option('name').widget.input;
+		assertFeedback(input, /名称「same」/);
+		input.edit('different');
+		assert.equal(input.style.borderColor, 'original');
+		await modal.save();
+		assert.equal(f.calls.save, 1);
+		assert.equal(f.data[2].name, 'different');
+	}
+	const f = fixture([ host('a', 'follow'), host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
+	await f.start();
+	await f.modalSave('b', { name: '   ' });
+	assert.equal(f.calls.save, 1, 'two unnamed rules do not collide');
+});
+
+test('T10.59 scenario 5: footer Save and Save and Apply accept pre-existing duplicate names', async () => {
+	for (const apply of [ false, true ]) {
+		const f = fixture([ host('a', 'follow', { name: 'same' }),
+			host('b', 'proxy', { name: 'same', ip: [ '192.168.8.1' ] }) ]);
+		await f.start();
+		await f.page.saveChecked(apply);
+		assert.equal(f.calls.save, 1);
+		assert.equal(f.calls.apply, Number(apply));
+		assert.deepEqual(f.calls.notifications, []);
+	}
 });

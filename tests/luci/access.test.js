@@ -58,9 +58,33 @@ function host(dotname, opts) {
 	return Object.assign({ '.name': dotname, '.type': 'host', '.anonymous': true }, opts);
 }
 
+test('T10.59 scenario 2: warnings and errors identify unnamed rules by first IP or MAC, never ordinal', () => {
+	const unnamed = host('a', { ip: [ '192.168.8.0/24', '10.0.0.1' ], policy: 'gfw' });
+	let result = validate([ unnamed, host('b', { name: 'named', ip: [ '192.168.8.252' ], policy: 'proxy' }) ]);
+	assert.equal(result.warnings.length, 1);
+	assert.match(result.warnings[0].text, /192\.168\.8\.0\/24（未命名）.*named/);
+	assert.doesNotMatch(result.warnings[0].text, /#\d/);
+	result = validate([ host('a', { mac: [ 'aa:bb:cc:dd:ee:01' ] }),
+		host('b', { name: 'named', mac: [ 'AA-BB-CC-DD-EE-01' ] }) ]);
+	assert.equal(result.errors[0].other, 'aa:bb:cc:dd:ee:01（未命名）');
+	assert.match(result.errors[0].text, /主机 named：.*与主机 aa:bb:cc:dd:ee:01（未命名） 重复/);
+	result = validate([ host('a', { ip: [ '10.0.0.1' ], policy: 'direct', udp: '1' }) ]);
+	assert.match(result.errors[0].text, /10\.0\.0\.1（未命名）/);
+});
+
+test('T10.59 scenario 3: footer duplicate wording is unchanged and unrelated modal duplicates keep it', () => {
+	const hosts = [ host('a', { name: 'first', ip: [ '10.0.0.1' ] }),
+		host('b', { name: 'second', ip: [ '10.0.0.1' ] }),
+		host('c', { name: 'editing', ip: [ '10.0.0.2' ] }) ];
+	const text = '主机 second：10.0.0.1 与主机 first 重复。';
+	assert.equal(validate(hosts).errors[0].text, text);
+	assert.equal(model().validate(hosts, 'c').errors[0].text, text);
+});
+
 /* --- scenario 1: rule 1 ------------------------------------------------------ */
 
-test('scenario 1: rule 1 — ip and mac both empty is an error named by name or ordinal; only one filled is fine', () => {
+test('scenario 1: rule 1 — ip and mac both empty is an error named by name or unnamed label; only one filled is fine',
+() => {
 	let r = validate([ host('cfg1', { name: 'tv' }) ]);
 
 	assert.equal(r.errors.length, 1);
@@ -69,17 +93,16 @@ test('scenario 1: rule 1 — ip and mac both empty is an error named by name or 
 	assert.equal(r.errors[0].host, 'tv');
 	assert.match(r.errors[0].text, /tv/);
 
-	/* without a name the 1-based position names the host */
+	/* With no match address either, retain the unnamed label, never an ordinal. */
 	r = validate([ host('cfg1', {}) ]);
 
 	assert.equal(r.errors.length, 1);
-	assert.equal(r.errors[0].host, '#1');
-	assert.match(r.errors[0].text, /#1/);
+	assert.equal(r.errors[0].host, '（未命名）');
+	assert.doesNotMatch(r.errors[0].text, /#\d/);
 
-	/* the ordinal counts positions: the second host is #2 even with an empty
-	   name option in between */
+	/* Empty names do not reintroduce UCI-position labels. */
 	r = validate([ host('cfg1', { ip: [ '10.0.0.1' ] }), host('cfg2', { name: '' }), host('cfg3', {}) ]);
-	assert.deepEqual(r.errors.map((e) => e.host), [ '#2', '#3' ]);
+	assert.deepEqual(r.errors.map((e) => e.host), [ '（未命名）', '（未命名）' ]);
 
 	/* either value alone passes */
 	assert.equal(validate([ host('cfg1', { name: 'pc', ip: [ '10.0.0.1' ] }) ]).errors.length, 0);
@@ -123,8 +146,8 @@ test('scenario 3: rule 3 — same ip, x vs x/32, same CIDR, MAC case/separator; 
 
 	assert.equal(r.errors.length, 1);
 	assert.equal(r.errors[0].code, 'duplicate');
-	assert.equal(r.errors[0].host, '#2');
-	assert.equal(r.errors[0].other, '#1');
+	assert.equal(r.errors[0].host, '10.0.0.1（未命名）');
+	assert.equal(r.errors[0].other, '10.0.0.1（未命名）');
 	assert.equal(r.errors[0].value, '10.0.0.1');
 	assert.match(r.errors[0].text, /重复/);
 
@@ -169,7 +192,7 @@ test('scenario 3: rule 3 — same ip, x vs x/32, same CIDR, MAC case/separator; 
 	]);
 
 	assert.equal(r.errors.length, 2);
-	assert.deepEqual(r.errors.map((e) => e.host), [ '#2', '#3' ]);
+	assert.deepEqual(r.errors.map((e) => e.host), [ '10.0.0.9（未命名）', '10.0.0.9（未命名）' ]);
 });
 
 /* --- scenario 4: rule 4 ------------------------------------------------------ */

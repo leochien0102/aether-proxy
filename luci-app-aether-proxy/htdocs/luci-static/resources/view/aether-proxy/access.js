@@ -15,7 +15,38 @@
  * invisible to the command line, so footer and modal saves precheck them here
  * (docs/10 「r16 修正：访问控制编辑框里的校验与重叠提示」);
  * the backend remains authoritative. Display sorting must not reorder UCI.
+ * Local input feedback follows docs/10 「r17 修正：访问控制的反馈、措辞与名称不重复」.
  */
+
+/* Theme invalid classes alone are invisible in proton2025. Keep feedback next
+   to the actual input, and restore its original border when the user edits. */
+function inputError(input, text) {
+	if (!input)
+		return;
+	if (!input.accessFeedback) {
+		const message = E('div', { style: 'display:block; flex-basis:100%; color:var(--error-color-high, #c53030)' });
+		/* SDK's + handler reads previousElementSibling as the input. Append
+		   after the button, never between it and the input. */
+		input.parentNode.insertBefore(message, null);
+		input.parentNode.style.flexWrap = 'wrap';
+		const border = input.style.borderColor;
+		input.accessFeedback = message;
+		input.addEventListener('input', function() {
+			input.style.borderColor = border;
+			message.textContent = '';
+		});
+	}
+	input.accessFeedback.textContent = text;
+	input.style.borderColor = 'var(--error-color-high, #c53030)';
+	if (typeof input.animate == 'function')
+		input.animate([ { transform: 'translateX(0)' }, { transform: 'translateX(-0.4em)' },
+			{ transform: 'translateX(0.4em)' }, { transform: 'translateX(0)' } ], { duration: 300 });
+}
+
+function addInput(node) {
+	return node?.querySelector('.add-item > input[type="text"], .create-item-input');
+}
+
 return view.extend({
 	load: function() {
 		return Promise.all([
@@ -159,6 +190,36 @@ return view.extend({
 		};
 	},
 
+	/* Capture before SDK click/Enter handlers: dropdown creation happens on the
+	   input itself, before a bubbling listener on DynamicList could reject it. */
+	listFeedback: function(option, validate) {
+		/* Whitespace in an optional add box is not pending content. Stored
+		   whitespace list items are still rejected by the whole-host model. */
+		option.validate = function(sid, value) {
+			return typeof value == 'string' && !value.trim() ? true : validate(value);
+		};
+		const renderWidget = option.renderWidget;
+		option.renderWidget = function() {
+			const node = renderWidget.apply(this, arguments);
+			const attempt = function(ev) {
+				const input = addInput(node);
+				const enter = ev.type == 'keydown' && ev.keyCode == 13 && ev.target == input;
+				const plus = ev.type == 'click' && ev.target.closest('.cbi-button-add');
+				if (!input || (!enter && !plus))
+					return;
+				const error = validate(input.value);
+				if (error !== true) {
+					ev.preventDefault();
+					ev.stopPropagation();
+					inputError(input, error);
+				}
+			};
+			node.addEventListener('click', attempt, true);
+			node.addEventListener('keydown', attempt, true);
+			return node;
+		};
+	},
+
 	addHostOptions: function(m) {
 		const self = this;
 		let o;
@@ -250,6 +311,7 @@ return view.extend({
 		o = s.option(form.DynamicList, 'mac', _('Device', 'aether-proxy'));
 		o.modalonly = true;
 		o.rmempty = true;
+		this.listFeedback(o, model.validate_mac);
 		for (const c of self.candidates)
 			o.value(c.mac, c.label);
 
@@ -263,7 +325,7 @@ return view.extend({
 		o = s.option(form.DynamicList, 'ip', _('IP / range / subnet (optional)', 'aether-proxy'));
 		o.modalonly = true;
 		o.rmempty = true;
-		o.validate = function(sid, value) { return model.validate_ip(value); };
+		this.listFeedback(o, model.validate_ip);
 		o.description = _('%s %s', 'aether-proxy').replace('%s', _(
 			'Match MAC or IP (either suffices). Use IP for fixed addresses, subnets or devices behind a router.',
 			'aether-proxy')).replace('%s', _(
@@ -333,11 +395,27 @@ return view.extend({
 					delete current[key];
 				continue;
 			}
-			/* DynamicList.getValue() omits an invalid pending add-box value.
-			   Check its validity first or a bad input could look like no edit. */
+			/* SDK getValue includes valid pending plain text but drops dropdown
+			   text. Inspect both DOM shapes before either can be parsed. */
+			if (key == 'ip' || key == 'mac') {
+				const input = addInput(option.getUIElement(sid)?.node);
+				if (input?.value.trim()) {
+					const text = _('%s has unadded text “%s”: click “+” to add it, or clear it.', 'aether-proxy')
+						.replace('%s', option.title).replace('%s', input.value);
+					errors.push({ text: text });
+					inputError(input, text);
+				}
+			}
 			if (!option.isValid(sid))
 				errors.push({ text: option.getValidationError(sid) });
 			current[key] = option.formvalue(sid);
+		}
+		const hosts = uci.sections('aetherproxy', 'host');
+		const nameError = model.validate_name(current, hosts);
+		if (nameError) {
+			errors.push({ text: nameError });
+			const option = modalMap.lookupOption('name', sid)[0];
+			inputError(option.getUIElement(sid)?.node.querySelector('input'), nameError);
 		}
 		if (errors.length)
 			return { errors: errors, warnings: [] };
@@ -345,8 +423,7 @@ return view.extend({
 		/* Replace, never append: a rule must not conflict with its old values.
 		   Other rules come from the session; modal options are cloned and
 		   their current values must not be read from the parent Map. */
-		return model.validate(uci.sections('aetherproxy', 'host').map((host) =>
-			host['.name'] == sid ? current : host));
+		return model.validate(hosts.map((host) => host['.name'] == sid ? current : host), sid);
 	},
 
 	showWarnings: function(warnings) {
