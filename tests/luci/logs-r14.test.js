@@ -11,9 +11,13 @@ const { loadModule, parsePo, element } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const modelFile = path.join(RES, 'aether-proxy/model/logs.js');
+const conflictFile = path.join(RES, 'aether-proxy/model/conflicts.js');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = s => po[s] ?? s;
-const model = loadModule(modelFile, { baseclass: { extend: o => o } }, {});
+const conflicts = loadModule(conflictFile, { baseclass: { extend: o => o } }, {});
+const model = loadModule(modelFile, {
+	baseclass: { extend: o => o }, 'aether-proxy.model.conflicts': conflicts
+}, {});
 const names = {
 	nodes: { n_a: '节点甲', n_b: '节点乙', n_alias: '节点甲', n_plain: 'n_plain' },
 	subscriptions: { s_a: '订阅甲' }
@@ -116,7 +120,10 @@ test('T10.50 scenario 3: unknown and missing modes retain literal and question-m
 test('T10.50 scenarios 1-3: alternate templates and modes also render in English', () => {
 	globalThis._ = s => s;
 	try {
-		const english = loadModule(modelFile, { baseclass: { extend: o => o } }, {});
+		const englishConflicts = loadModule(conflictFile, { baseclass: { extend: o => o } }, {});
+		const english = loadModule(modelFile, {
+			baseclass: { extend: o => o }, 'aether-proxy.model.conflicts': englishConflicts
+		}, {});
 		assert.equal(english.message(event('SUB_UPDATED', updated), names),
 			'Subscription 订阅甲: added 1, updated 2, stale 3, removed 4');
 		assert.equal(english.message(event('RELOAD_APPLIED', {

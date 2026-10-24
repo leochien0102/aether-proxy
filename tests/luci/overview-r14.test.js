@@ -21,9 +21,12 @@ function all(node, tag) {
 
 function model() {
 	const baseclass = { extend: value => value };
-	const logs = loadModule(path.join(RES, 'aether-proxy/model/logs.js'), { baseclass }, {});
-	return loadModule(path.join(RES, 'aether-proxy/model/overview.js'),
-		{ baseclass, 'aether-proxy.model.logs': logs }, {});
+	const conflicts = loadModule(path.join(RES, 'aether-proxy/model/conflicts.js'), { baseclass }, {});
+	const logs = loadModule(path.join(RES, 'aether-proxy/model/logs.js'),
+		{ baseclass, 'aether-proxy.model.conflicts': conflicts }, {});
+	return loadModule(path.join(RES, 'aether-proxy/model/overview.js'), {
+		baseclass, 'aether-proxy.model.logs': logs, 'aether-proxy.model.conflicts': conflicts
+	}, {});
 }
 
 async function livePage(options = {}) {

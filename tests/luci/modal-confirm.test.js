@@ -32,6 +32,8 @@ function deferred() {
 
 function model(name) {
 	const modules = { baseclass: { extend: props => props } };
+	if (name === 'logs' || name === 'overview')
+		modules['aether-proxy.model.conflicts'] = model('conflicts');
 	if (name === 'overview')
 		modules['aether-proxy.model.logs'] = model('logs');
 	return loadModule(path.join(RES, 'aether-proxy/model', name + '.js'), modules, {});

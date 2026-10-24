@@ -14,16 +14,24 @@ const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const modelFile = path.join(RES, 'aether-proxy/model/logs.js');
+const conflictFile = path.join(RES, 'aether-proxy/model/conflicts.js');
 const viewFile = path.join(RES, 'view/aether-proxy/logs.js');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = s => po[s] ?? s;
-const model = loadModule(modelFile, { baseclass: { extend: o => o } }, { window: {}, document: {} });
+function loadLogsModel() {
+	const conflicts = loadModule(conflictFile, { baseclass: { extend: o => o } },
+		{ window: {}, document: {} });
+	return loadModule(modelFile, {
+		baseclass: { extend: o => o }, 'aether-proxy.model.conflicts': conflicts
+	}, { window: {}, document: {} });
+}
+const model = loadLogsModel();
 const event = (code, level = 'notice', ts = 1760400000, args = {}) => ({ code, level, ts, args });
 const payload = events => ({ ok: true, events, skipped: 0 });
 
 test('T8.10 scenario 1: every catalog event has a template using only documented parameters', () => {
 	globalThis._ = s => s;
-	const english = loadModule(modelFile, { baseclass: { extend: o => o } }, { window: {}, document: {} });
+	const english = loadLogsModel();
 	globalThis._ = s => po[s] ?? s;
 	const doc = fs.readFileSync(path.join(ROOT, 'docs/09-logging.md'), 'utf8');
 	const catalog = doc.split('## 事件码目录')[1].split('## logd 容量')[0];
@@ -49,7 +57,7 @@ test('T8.10 scenario 1: every catalog event has a template using only documented
 
 test('T9.8 scenario 7: RELOAD_APPLIED uses only docs/04 fields and shows Chinese nodes and duration', () => {
 	globalThis._ = s => s;
-	const english = loadModule(modelFile, { baseclass: { extend: o => o } }, { window: {}, document: {} });
+	const english = loadLogsModel();
 	globalThis._ = s => po[s] ?? s;
 	const doc = fs.readFileSync(path.join(ROOT, 'docs/04-lifecycle.md'), 'utf8');
 	const contract = doc.split('**完成后记 `RELOAD_APPLIED`**')[1].split('原来重载成功')[0];

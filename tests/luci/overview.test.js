@@ -426,14 +426,21 @@ test('scenario 9: static view checks — model only, stop button negative and co
 	assert.match(src, /ui\.addNotification\(/);
 });
 
-function logsModel() {
-	return loadModule(path.join(RES, 'aether-proxy', 'model', 'logs.js'),
+function conflictsModel() {
+	return loadModule(path.join(RES, 'aether-proxy', 'model', 'conflicts.js'),
 		{ baseclass: { extend: (o) => o } }, { window: {}, document: {} });
+}
+
+function logsModel() {
+	return loadModule(path.join(RES, 'aether-proxy', 'model', 'logs.js'), {
+		baseclass: { extend: (o) => o }, 'aether-proxy.model.conflicts': conflictsModel()
+	}, { window: {}, document: {} });
 }
 
 function dashboardModel() {
 	return loadModule(MODEL, {
-		baseclass: { extend: (o) => o }, 'aether-proxy.model.logs': logsModel()
+		baseclass: { extend: (o) => o }, 'aether-proxy.model.logs': logsModel(),
+		'aether-proxy.model.conflicts': conflictsModel()
 	}, { window: {}, document: {} });
 }
 
@@ -3676,4 +3683,33 @@ test('T10.48 scenario 4: Stop reads stopping as the normal translated state, wit
 	assert.ok(!h.page.startup);
 	assert.deepEqual(runtimeButtons(h.page).map(disabled), [true, true, true]);
 	assert.deepEqual(h.calls.filter(([method]) => method === 'service'), [['service', { action: 'stop' }]]);
+});
+
+test('T10.52 scenario 1/6: error refresh reads warn events once and replaces the generic reason', async () => {
+	const h = deferredPage('0');
+	const { page, calls } = h;
+	/* A previous switch floor must not remove the startup attempt, even when
+	   daemon events share one-second timestamps. */
+	page.reasonFloor = NOW;
+	const root = page.render(await page.load());
+	await Promise.resolve();
+	await h.reply('status', { state: 'error', last_error: 'START_FAILED' });
+	assert.ok(visibleText(root).includes('启动失败，详见日志页'), 'generic reason is safe while events are pending');
+	await h.reply('stats', readings(1000, 0, 0, 0, 0));
+	const eventCall = calls.find(call => call.method === 'events');
+	assert.deepEqual(eventCall.params, {
+		since: Math.floor(Date.now() / 1000) - 600,
+		level: 'warn'
+	});
+	await h.reply('events', { ok: true, events: [
+		{ code: 'PRECHECK_FAILED', level: 'error', ts: NOW - 2,
+			args: { missing: ['conflict:ssr-plus'] } },
+		{ code: 'START_FAILED', level: 'error', ts: NOW - 1,
+			args: { step: 'precheck', detail: 'failed' } },
+		{ code: 'START_RETRY', level: 'warn', ts: NOW,
+			args: { attempt: 3, in_secs: 300 } }
+	] });
+	await page.initialRequest;
+	assert.ok(visibleText(root).includes('检测到 ShadowSocksR Plus+ 正在运行，请先在它的页面停用，再启动。'));
+	assert.equal(calls.filter(call => call.method === 'events').length, 1);
 });
