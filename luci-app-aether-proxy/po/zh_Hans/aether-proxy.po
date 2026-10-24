@@ -54,7 +54,15 @@ msgstr "配置无效：{field}，{reason}"
 
 msgctxt "aether-proxy"
 msgid "Precheck failed: {missing}"
-msgstr "预检失败：缺少 {missing}"
+msgstr "预检失败：{missing}"
+
+msgctxt "aether-proxy"
+msgid "Missing {missing}"
+msgstr "缺少 {missing}"
+
+msgctxt "aether-proxy"
+msgid "{conflicts}; {missing}"
+msgstr "{conflicts}；{missing}"
 
 msgctxt "aether-proxy"
 msgid "Conflict with %s"
@@ -103,6 +111,118 @@ msgstr "渲染产物 {artifact} 无效：{detail}"
 msgctxt "aether-proxy"
 msgid "Start failed at {step}: {detail}"
 msgstr "启动在 {step} 失败：{detail}"
+
+msgctxt "aether-proxy"
+msgid "During reload: {step}"
+msgstr "重载时{step}"
+
+msgctxt "aether-proxy"
+msgid "During monitoring: {step}"
+msgstr "监控时{step}"
+
+msgctxt "aether-proxy"
+msgid "Acquire lock"
+msgstr "获取锁"
+
+msgctxt "aether-proxy"
+msgid "Read configuration"
+msgstr "读取配置"
+
+msgctxt "aether-proxy"
+msgid "Precheck"
+msgstr "预检"
+
+msgctxt "aether-proxy"
+msgid "Handle shutdown signal"
+msgstr "处理停止信号"
+
+msgctxt "aether-proxy"
+msgid "Wait for network"
+msgstr "等待网络"
+
+msgctxt "aether-proxy"
+msgid "Generate configuration"
+msgstr "生成配置"
+
+msgctxt "aether-proxy"
+msgid "Clean up previous state"
+msgstr "清理旧状态"
+
+msgctxt "aether-proxy"
+msgid "Publish configuration"
+msgstr "发布配置"
+
+msgctxt "aether-proxy"
+msgid "Hash configuration"
+msgstr "计算配置哈希"
+
+msgctxt "aether-proxy"
+msgid "Start chinadns-ng"
+msgstr "启动 chinadns-ng"
+
+msgctxt "aether-proxy"
+msgid "Install dnsmasq snippet"
+msgstr "安装 dnsmasq 片段"
+
+msgctxt "aether-proxy"
+msgid "Write bootstrap domain list"
+msgstr "写入引导域名列表"
+
+msgctxt "aether-proxy"
+msgid "Generate Xray configuration"
+msgstr "生成 Xray 配置"
+
+msgctxt "aether-proxy"
+msgid "Validate Xray configuration"
+msgstr "校验 Xray 配置"
+
+msgctxt "aether-proxy"
+msgid "Start Xray"
+msgstr "启动 Xray"
+
+msgctxt "aether-proxy"
+msgid "Wait for Xray listener"
+msgstr "等待 Xray 监听"
+
+msgctxt "aether-proxy"
+msgid "Load saved dynamic sets"
+msgstr "读取已保存的动态集合"
+
+msgctxt "aether-proxy"
+msgid "Generate nftables rules"
+msgstr "生成 nftables 规则"
+
+msgctxt "aether-proxy"
+msgid "Load nftables rules"
+msgstr "加载 nftables 规则"
+
+msgctxt "aether-proxy"
+msgid "Add policy routing"
+msgstr "添加策略路由"
+
+msgctxt "aether-proxy"
+msgid "Write service state"
+msgstr "写入服务状态"
+
+msgctxt "aether-proxy"
+msgid "Release lock"
+msgstr "释放锁"
+
+msgctxt "aether-proxy"
+msgid "Initialize event loop"
+msgstr "初始化事件循环"
+
+msgctxt "aether-proxy"
+msgid "Schedule subscription updates"
+msgstr "调度订阅更新"
+
+msgctxt "aether-proxy"
+msgid "Restart Xray on signal"
+msgstr "收到信号后重启 Xray"
+
+msgctxt "aether-proxy"
+msgid "Stop service for reload"
+msgstr "为重载停止服务"
 
 msgctxt "aether-proxy"
 msgid "Job {job} ({kind}) lost its worker"

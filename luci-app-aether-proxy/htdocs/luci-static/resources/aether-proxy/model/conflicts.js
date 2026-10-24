@@ -3,10 +3,13 @@
 
 /* Shared proxy-plugin conflict presentation (docs/10 「r15：启动失败时写明冲突的插件、
  * `CONFLICT_ENABLED` 提示」). Product names live here so overview notices,
- * startup diagnostics and log events cannot drift apart.
+ * startup diagnostics and log events cannot drift apart. T10.60 also recognizes
+ * pre-T9.34 nft table names in stored events (docs/10 r17).
  */
 const DISPLAY_NAMES = {
 	'ssr-plus': 'ShadowSocksR Plus+',
+	ss_spec: 'ShadowSocksR Plus+',
+	ss_spec_mangle: 'ShadowSocksR Plus+',
 	passwall: 'PassWall',
 	passwall2: 'PassWall 2',
 	homeproxy: 'HomeProxy',
@@ -43,14 +46,15 @@ function groups(missing) {
 function format_log_item(value) {
 	const parsed = item(value);
 	if (parsed.kind === 'conflict')
-		return _('Conflict with %s', 'aether-proxy').replace('%s', display_name(parsed.value));
+		return _('Conflict with %s', 'aether-proxy').replace('%s', () => display_name(parsed.value));
 	if (parsed.kind === 'check')
-		return _('Could not check other proxy plugins (%s)', 'aether-proxy').replace('%s', parsed.value);
+		return _('Could not check other proxy plugins (%s)', 'aether-proxy').replace('%s', () => parsed.value);
 	return null;
 }
 
 return baseclass.extend({
 	display_name: display_name,
+	parse_item: item,
 	groups: groups,
 	format_log_item: format_log_item
 });
