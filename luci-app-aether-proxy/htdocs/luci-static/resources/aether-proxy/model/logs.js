@@ -7,7 +7,9 @@
  * T10.50 follows docs/10 "r14 修正：事件文字" for conditional text and mode names.
  * T10.52 gives PRECHECK_FAILED conflict entries shared product names while raw
  * args remain unchanged for hover. T10.56 (docs/10 r16) omits the stderr suffix
- * of CMD_FAILED when no diagnostic was captured. Templates use only catalog parameters.
+ * of CMD_FAILED when no diagnostic was captured. T10.60 (docs/10 r17) separates
+ * conflicts from missing requirements and translates daemon failure steps.
+ * Templates use only catalog parameters.
  */
 const TEMPLATES = {
 	SERVICE_STARTED: _('Service started in {elapsed_ms} ms', 'aether-proxy'),
@@ -76,6 +78,37 @@ const MODES = {
 	direct: _('Direct', 'aether-proxy'),
 	proxy: _('Global (all traffic through proxy)', 'aether-proxy')
 };
+/* Failure steps, not SERVICE_STARTED timing keys: keep unknown values intact
+ * so newer backends remain diagnosable by older pages. */
+const START_STEPS = {
+	lock: _('Acquire lock', 'aether-proxy'),
+	config: _('Read configuration', 'aether-proxy'),
+	precheck: _('Precheck', 'aether-proxy'),
+	signal: _('Handle shutdown signal', 'aether-proxy'),
+	wait_network: _('Wait for network', 'aether-proxy'),
+	render: _('Generate configuration', 'aether-proxy'),
+	cleanup: _('Clean up previous state', 'aether-proxy'),
+	publish: _('Publish configuration', 'aether-proxy'),
+	hash: _('Hash configuration', 'aether-proxy'),
+	chinadns_start: _('Start chinadns-ng', 'aether-proxy'),
+	dnsmasq_install: _('Install dnsmasq snippet', 'aether-proxy'),
+	write_boot_list: _('Write bootstrap domain list', 'aether-proxy'),
+	xray_render: _('Generate Xray configuration', 'aether-proxy'),
+	xray_test: _('Validate Xray configuration', 'aether-proxy'),
+	xray_start: _('Start Xray', 'aether-proxy'),
+	xray_listen: _('Wait for Xray listener', 'aether-proxy'),
+	sets_load: _('Load saved dynamic sets', 'aether-proxy'),
+	nft_render: _('Generate nftables rules', 'aether-proxy'),
+	nft_load: _('Load nftables rules', 'aether-proxy'),
+	route_add: _('Add policy routing', 'aether-proxy'),
+	state: _('Write service state', 'aether-proxy'),
+	lock_release: _('Release lock', 'aether-proxy'),
+	uloop_init: _('Initialize event loop', 'aether-proxy'),
+	subscription_schedule: _('Schedule subscription updates', 'aether-proxy'),
+	sigusr2: _('Restart Xray on signal', 'aether-proxy'),
+	reload_stop: _('Stop service for reload', 'aether-proxy'),
+	stop: _('Stop service', 'aether-proxy')
+};
 const RANK = { error: 0, warn: 1, notice: 2 };
 const LEVELS = { error: _('Error', 'aether-proxy'), warn: _('Warning', 'aether-proxy'), notice: _('Notice', 'aether-proxy') };
 const CLASSES = { error: 'label danger', warn: 'label warning', notice: 'label notice' };
@@ -91,9 +124,45 @@ function value_text(value) {
 }
 
 function precheck_missing(value) {
-	if (!Array.isArray(value))
+	const blocked = [], missing = [];
+	for (const item of Array.isArray(value) ? value : [value]) {
+		const text = conflicts.format_log_item(item) ?? value_text(item);
+		(conflicts.parse_item(item).kind === 'conflict' ? blocked : missing).push(text);
+	}
+	const parts = blocked.length ? [blocked.join('、')] : [];
+	// TODO(design): r17 does not specify separate wording for conflict-check
+	// diagnostics; keep their legacy missing-item wording rather than invent one.
+	if (missing.length || !blocked.length)
+		parts.push(_('Missing {missing}', 'aether-proxy').replace('{missing}', () => missing.join('、')));
+	return parts.length === 2
+		? _('{conflicts}; {missing}', 'aether-proxy').replace(/\{(conflicts|missing)\}/g,
+			(match, key) => parts[key === 'conflicts' ? 0 : 1])
+		: parts[0];
+}
+
+function start_step(value) {
+	if (typeof value !== 'string')
 		return value_text(value);
-	return value.map(item => conflicts.format_log_item(item) ?? value_text(item)).join('、');
+	const prefixed = /^(reload|monitor):(.+)$/.exec(value);
+	const step = prefixed ? prefixed[2] : value;
+	if (!Object.prototype.hasOwnProperty.call(START_STEPS, step))
+		return value;
+	if (!prefixed)
+		return START_STEPS[step];
+	const template = prefixed[1] === 'reload'
+		? _('During reload: {step}', 'aether-proxy') : _('During monitoring: {step}', 'aether-proxy');
+	return template.replace('{step}', START_STEPS[step]);
+}
+
+function start_detail(value) {
+	if (typeof value !== 'string')
+		return value_text(value);
+	// daemon precheck detail is a comma-joined missing list. Do not rewrite
+	// arbitrary command diagnostics merely because they mention a conflict token.
+	const items = value.split(',');
+	if (items.some(item => conflicts.parse_item(item).kind === 'conflict'))
+		return precheck_missing(items);
+	return items.map(item => conflicts.format_log_item(item) ?? item).join(',');
 }
 
 function name_text(args, key, names) {
@@ -131,6 +200,10 @@ function message(event, names) {
 	return event_template(event.code, args, names).replace(/\{(\w+)\}/g, (match, key) => {
 		if (event.code === 'PRECHECK_FAILED' && key === 'missing')
 			return precheck_missing(args[key]);
+		if (event.code === 'START_FAILED' && key === 'step')
+			return start_step(args[key]);
+		if (event.code === 'START_FAILED' && key === 'detail')
+			return start_detail(args[key]);
 		if (key === 'mode' && Object.prototype.hasOwnProperty.call(MODES, args[key]))
 			return MODES[args[key]];
 		if (names && ['node', 'from_node', 'to_node', 'sub'].includes(key))
