@@ -14,8 +14,9 @@ aether-proxy 是 OpenWrt 上的透明代理：用 Xray 连接代理节点，用 
 | Xray | `xray-core` 26.3.27 或更新。可以从发布通道安装（见下文），也可以用软件源里的 |
 | ChinaDNS-NG | 2025.08.09 或更新。可以用软件源里的；官方 OpenWrt 的软件源里没有它，可以从发布页下载 `chinadns-ng` 包手工安装（见下文） |
 
-**不要和 ssr-plus、passwall、OpenClash 同时启用。** 它们都会接管 dnsmasq 和透明代理规则。aether-proxy 启动前会检查，
-发现其中任何一个在运行就拒绝启动（事件 `PRECHECK_FAILED`，缺失项写着 `conflict:<名称>`）。可以同时安装，但同一时间只启用一个。
+**不要和 ssr-plus、passwall、passwall2、homeproxy、OpenClash、nikki 同时启用。** 它们都会接管 dnsmasq 和透明代理规则。aether-proxy 启动前会检查，
+发现其中任何一个在运行就拒绝启动（概览页写明是哪个插件；事件 `PRECHECK_FAILED`，缺失项写着 `conflict:<插件名>`），对方停掉后会自动重试启动。可以同时安装，但同一时间只启用一个。
+**只「停止」不够，要在它自己的页面里「停用」**（例如 ssr-plus 把主服务器选为「停用」）：停止的服务在配置变化或重启路由器时可能被重新拉起。它仍处于启用状态时，概览页会提示。
 
 ## 2. 安装
 

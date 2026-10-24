@@ -50,6 +50,25 @@
 
 代理是否真正可用由 monitor 异步判定，LuCI 能看到状态变化。
 
+**与其他代理插件的冲突**（第 3 步的一部分；2026-10-24 定，r15 窗口：ssr-plus 被 `reload_config` 重新拉起，aether-proxy 每次启动都 `PRECHECK_FAILED conflict:ss_spec`，页面只写「启动失败，详见日志页」）。
+这些插件都接管 dnsmasq 与透明代理规则，同一时间只能有一个在运行。下表的名字已按各插件源码核实（2026-10-24：fw876/helloworld、Openwrt-Passwall/openwrt-passwall 与 openwrt-passwall2、immortalwrt/homeproxy、vernesong/OpenClash、nikkinikki-org/OpenWrt-nikki 的 master/main 分支）：
+
+| 插件（冲突名） | init 脚本 | 在运行的迹象（任一） | 配置里启用 |
+|---|---|---|---|
+| `ssr-plus` | `shadowsocksr`（传统 rc，**不经 procd**，`ubus call service list` 看不到） | nft 表 `inet ss_spec` 或 `ip ss_spec_mangle` | `shadowsocksr.@global[0].global_server` 存在且不是 `nil` |
+| `passwall` | `passwall`（传统 rc） | nft 表 `inet passwall` | `passwall.@global[0].enabled=1` |
+| `passwall2` | `passwall2`（传统 rc） | nft 表 `inet passwall2` | `passwall2.@global[0].enabled=1` |
+| `homeproxy` | `homeproxy`（procd） | `inet fw4` 里有 `homeproxy_` 开头的链（它不建自己的表） | `homeproxy.config.main_node` 存在且不是 `nil`，或 `homeproxy.server.enabled=1` |
+| `openclash` | `openclash`（procd） | `inet fw4` 里有 `openclash` 开头的链；或进程 `clash` | `openclash.config.enable=1` |
+| `nikki` | `nikki`（procd） | nft 表 `inet nikki`；或进程 `mihomo` | `nikki.config.enabled=1` |
+| `clash`、`mihomo` | — | 进程名（不属于上面插件的独立运行，原有检测保留） | — |
+
+- **正在运行**（任一迹象）→ 第 3 步失败：`PRECHECK_FAILED`，`missing` 里写 `conflict:<冲突名>`（原来写 nft 表名 `conflict:ss_spec`，改为插件名，页面据此写出插件的名字）。照旧按退避重试，对方停掉后下一次重试自动恢复。
+  检测用一次 `nft list tables` 与一次 `nft list chains inet fw4`（fw4 不在时不算错）加原有的进程检查；检查本身失败照旧记 `conflict-check:<原因>`。
+- **停着但仍处于启用状态**（init 脚本存在，且「开机自启已开」或「配置里启用」任一成立）：不拦启动，但 `status` 的 `notices` 给出 `CONFLICT_ENABLED`（[10](10-cli-luci.md)「概览页」）。
+  理由：「停止」不等于「停用」——这次 ssr-plus 已被 `/etc/init.d/shadowsocksr stop` 停掉，但配置里仍选着主服务器，它自己运行时改写过 `/etc/config/shadowsocksr`，`reload_config` 发现变化就通知 procd，对停着的服务 reload 等于启动。
+- 只认上表这些插件；dae/daed、v2rayA 等未核实，以后需要时按同样方法核实后补进表里。
+
 第 1 步的锁：daemon 在启动流程（第 2–11 步）期间持锁，进入 monitor 循环后释放，之后每次动作临时取锁。
 
 ## 停止（daemon 收到 SIGTERM；`cleanup` 是同样的步骤，只是不依赖 daemon 存活）
