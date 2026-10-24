@@ -290,6 +290,23 @@ const RANGE_FIXTURES = [
 	range_fixture('CIDR with trailing newline is rejected', [ '192.168.8.0/24\n' ], [ 'invalid_cidr' ])
 ];
 
+test('T10.53 single-item IP validator shares all range parser cases and permits only the empty add box', () => {
+	const m = model();
+	assert.equal(m.validate_ip(''), true);
+	for (const fixture of RANGE_FIXTURES) {
+		for (const section of fixture.sections) {
+			for (const ip of section.ip) {
+				const invalid = fixture.codes.includes('invalid_cidr');
+				assert.equal(m.validate_ip(ip) === true, !invalid, fixture.name);
+				if (invalid)
+					assert.match(m.validate_ip(ip), /不是合法的 IPv4 地址、范围或 CIDR/);
+			}
+		}
+	}
+	for (const value of [ '192.168.1.5/24', '1.2.3.4/33', '1.2.3.4/01', ' ', null, undefined ])
+		assert.notEqual(m.validate_ip(value), true, 'invalid item: ' + value);
+});
+
 for (const fixture of RANGE_FIXTURES) {
 	test('T10.51 ranges: ' + fixture.name, () => {
 		for (const sections of [ fixture.sections, fixture.sections.slice().reverse() ]) {

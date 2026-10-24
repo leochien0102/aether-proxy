@@ -1365,6 +1365,10 @@ msgid "Host %s: %s is also used by host %s."
 msgstr "主机 %s：%s 与主机 %s 重复。"
 
 msgctxt "aether-proxy"
+msgid "%s is not a valid IPv4 address, range or CIDR."
+msgstr "%s 不是合法的 IPv4 地址、范围或 CIDR。"
+
+msgctxt "aether-proxy"
 msgid "Host %s: %s is not a valid IPv4 address, range or CIDR."
 msgstr "主机 %s：%s 不是合法的 IPv4 地址、范围或 CIDR。"
 

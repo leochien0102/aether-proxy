@@ -3,7 +3,8 @@
 
 /*
  * Pure view model for the access control page (docs/10 「访问控制页」,
- * docs/10 「访问控制页定案」 and 「r14 修正：访问控制 IP 范围与说明」).
+ * docs/10 「访问控制页定案」, 「r14 修正：访问控制 IP 范围与说明」
+ * and 「r16 修正：访问控制编辑框里的校验与重叠提示」).
  *
  * validate() mirrors the authoritative command-line host rules one to one, so
  * the page precheck agrees with `aether-proxy check` (docs/10: 最终仍以命令行
@@ -253,6 +254,14 @@ function first_ipv4(h) {
 }
 
 return baseclass.extend({
+	/* docs/10 r16: share the exact backend-mirrored parser with the modal's
+	   single-item validator. Empty add boxes are optional (X14); whole-host
+	   required checks still belong to validate(). */
+	validate_ip: function(value) {
+		return value === '' || ip_or_range(value) != null ? true
+			: fmt(_('%s is not a valid IPv4 address, range or CIDR.', 'aether-proxy'), value);
+	},
+
 	/* Rules 1-4 of docs/10 「访问控制页」, in the wording of docs/05 校验
 	   规则 2, evaluated on the raw uci.sections('aetherproxy', 'host') shape:
 	   1. at least one of ip and mac (judged on the raw values, so an invalid
