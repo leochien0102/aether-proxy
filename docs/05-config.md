@@ -107,7 +107,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `grpc_multi_mode` | bool | grpc：渲染为 `grpcSettings.multiMode`；分享链接 `mode=multi` 为真、`mode=gun` 或没有为假（2026-10-22 加） |
 | `ws_heartbeat` | 整数（秒，1–3600） | ws：渲染为 `wsSettings.heartbeatPeriod`（2026-10-22 加）。**early data 不另设字段**：Xray 26 从 `path` 的 `?ed=<字节数>` 读取，写在 `path` 里即可 |
 | `xhttp_extra` | 字符串（JSON 对象） | xhttp：原样作为 `xhttpSettings.extra`；必须能解析为 JSON 对象，否则配置无效；分享链接参数 `extra`（URL 编码的 JSON）（2026-10-22 加） |
-| `mux` | bool | 渲染出站 `mux.enabled`；默认关。**与 `flow` 为 `xtls-rprx-vision` 或 `xtls-rprx-vision-udp443` 同时开 → 配置无效**（Vision 不支持 Mux；`-udp443` 在 Xray 中走同一段代码，r12 窗口补）（2026-10-22 加） |
+| `mux` | bool | 渲染出站 `mux.enabled`；默认关。**与 `flow` 为 `xtls-rprx-vision` 或 `xtls-rprx-vision-udp443` 同时开 → 配置无效**（Vision 不支持 Mux；`-udp443` 在 Xray 中走同一段代码，r12 窗口补）（2026-10-22 加）。**只在 `protocol` 为 `vless` 时检查**（2026-10-24 补，r16 后 T10.54 复审发现：`flow` 只对 VLESS 渲染，节点从 VLESS 改成 Trojan 等协议后留下的 `flow` 不生效，不应让开 Mux 的节点判为无效；与 T9.14 定的「不在用的字段保留、不报错、不渲染」一致） |
 | `mux_concurrency` / `mux_xudp_concurrency` | 整数（-1–1024） | `mux.concurrency` / `mux.xudpConcurrency`；不设则不渲染（用 Xray 的默认 8 / 16）；只在 `mux` 开时渲染 |
 | `mux_xudp_udp443` | enum(`reject`\|`allow`\|`skip`) | `mux.xudpProxyUDP443`；不设则不渲染（Xray 默认 `reject`）；只在 `mux` 开时渲染 |
 | `tcp_fast_open` / `tcp_mptcp` | bool | 渲染为出站 `streamSettings.sockopt.tcpFastOpen` / `tcpMptcp`；默认关，关时不渲染（2026-10-22 加） |
