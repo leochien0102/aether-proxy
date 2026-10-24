@@ -8,7 +8,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo } = require('./loader');
+const { modalElement: element } = require('./modal-dom');
+const { Value: SdkValue } = require('./form-sdk');
 const { widgetTypes, inputOf } = require('./node-input-widgets');
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.resolve(RES, '../../../po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -52,7 +54,8 @@ function optionSection(map) {
 		children: [],
 		option(kind, field, title) {
 			const option = Object.assign(Object.create(kind.prototype), {
-				field, option: field, title, map, depends() {}
+				field, option: field, title, map, deplist: [],
+				depends(field, value) { this.deplist.push(typeof field === 'string' ? { [field]: value } : field); }
 			});
 			this.children.push(option);
 			return option;
@@ -67,13 +70,28 @@ function gridDouble(map, h) {
 			.map(o => Object.assign(Object.create(Object.getPrototypeOf(o)), o));
 		this.addModalOptions(modal, id);
 		h.modal = { id, section: modal, widgets: {} };
+		// SDK passes the cloned map to handleModalSave; its live widgets are
+		// independent of the parent map and isActive follows dependencies.
+		h.modal.map = {
+			config: map.config, data: map.data,
+			section: id, children: [modal],
+			lookupOption: field => modal.children.filter(o => o.field === field),
+			findElement: (attr, cbid) => ({ querySelectorAll: () => [h.modal.widgets[cbid]] })
+		};
 		h.modal.node = E('div', {}, modal.children.map(o => {
+			o.map = h.modal.map;
+			o.cbid = () => o.field;
+			o.formvalue = () => h.modal.widgets[o.field]?.value;
+			o.cfgvalue = () => h.uci.get('aetherproxy', id, o.field);
+			o.isActive = () => SdkValue.prototype.isActive.call(o, id);
 			const cfgvalue = h.uci.get('aetherproxy', id, o.field);
 			const widget = o.renderWidget ? o.renderWidget(id, 0, cfgvalue)
 				: E('input', { value: cfgvalue ?? '' });
 			h.modal.widgets[o.field] = o.field === '_share' ? widget : inputOf(widget);
+			h.modal.widgets[o.field].style ??= {};
 			return E('label', {}, [o.title, widget]);
 		}));
+		h.modal.map.root = h.modal.node;
 	};
 	grid.handleModalCancel = async function(modal, ev, isSaving) {
 		h.calls.push(['grid.cancel', isSaving]);
@@ -274,7 +292,7 @@ async () => {
 	assert.deepEqual(node, { '.name': id, '.type': 'node', source: 'manual', ...parsedAgain });
 	assert.equal(h.modal.widgets.path.value, '', 'fields omitted by the second URI are cleared');
 	h.modal.widgets.label.value = 'Edited after parsing';
-	await h.page.nodeGrid.handleModalSave();
+	await h.page.nodeGrid.handleModalSave(h.modal.map);
 	assert.equal(node.label, 'Edited after parsing');
 	assert.match(h.root.textContent, /Edited after parsingTrojan/);
 	assert.equal(h.rpc.length, 2, 'Save must not import the parsed node');
@@ -311,7 +329,7 @@ test('T10.26 scenario 4: hand-filled Save stages the node without parsing, impor
 		password: 'secret', method: 'aes-128-gcm'
 	}))
 		h.modal.widgets[field].value = value;
-	await h.page.nodeGrid.handleModalSave();
+	await h.page.nodeGrid.handleModalSave(h.modal.map);
 	assert.equal(h.uci.get('aetherproxy', id, 'source'), 'manual');
 	assert.equal(h.uci.get('aetherproxy', id, 'label'), 'Hand filled');
 	assert.equal(h.uci.get('aetherproxy', 'main', 'mode'), 'global', 'unrelated staged edit stays intact');
@@ -336,7 +354,7 @@ test('T10.33 scenario 1/2: parsed legacy choices and long keys survive the Add m
 	const h = await harness();
 	const id = await add(h);
 	await parse(h, 'vless://opaque', { ok: true, node: {
-		protocol: 'vless', address: 'edge.example', port: '443',
+		protocol: 'vless', address: 'edge.example', port: '443', uuid: 'legacy-uuid',
 		flow: 'xtls-rprx-direct', fingerprint: '360',
 		reality_pqv: 'AB\n CD', ech_config_list: 'EF\t GH'
 	} });
@@ -344,7 +362,7 @@ test('T10.33 scenario 1/2: parsed legacy choices and long keys survive the Add m
 	assert.equal(h.modal.widgets.fingerprint.value, '360');
 	h.modal.widgets.reality_pqv.value = 'AB \nCD+/=';
 	h.modal.widgets.ech_config_list.value = '\tEF\r\nGH+/=';
-	await h.page.nodeGrid.handleModalSave();
+	await h.page.nodeGrid.handleModalSave(h.modal.map);
 	const saved = h.uci.get('aetherproxy', id);
 	assert.equal(saved.flow, 'xtls-rprx-direct');
 	assert.equal(saved.fingerprint, '360');
@@ -353,11 +371,34 @@ test('T10.33 scenario 1/2: parsed legacy choices and long keys survive the Add m
 	assert.equal(h.rpc.length, 1, 'only Parse uses RPC; modal Save stages the normalized values');
 });
 
+test('T10.58 scenario 1: actual Add with only name/Trojan keeps pendingAdd and can still be cancelled', async () => {
+	const h = await harness();
+	const id = await add(h);
+	h.modal.widgets.label.value = 'Name only';
+	h.modal.widgets.protocol.value = 'trojan';
+	const before = structuredClone(h.sections);
+	const callCount = h.calls.length;
+	await h.page.nodeGrid.handleModalSave(h.modal.map);
+	assert.deepEqual(h.sections, before);
+	assert.equal(h.calls.length, callCount, 'no save, write, notification or close is attempted');
+	assert.equal(h.page.pendingAdd.id, id);
+	assert.equal(h.page.nodeMap.addedSection, id);
+	assert.equal(h.modal.id, id);
+	assert.match(h.modal.node.textContent, /地址 为必填项。端口 为必填项。密码 为必填项。/);
+	for (const field of ['address', 'port', 'password'])
+		assert.equal(h.modal.widgets[field].style.borderColor, 'var(--error-color-high, #c53030)');
+	await h.page.nodeGrid.handleModalCancel(h.modal, {}, false);
+	assert.equal(h.uci.get('aetherproxy', id), undefined);
+	assert.equal(h.page.pendingAdd, null);
+});
+
 test('T10.26 defensive: invalid Save keeps the new node editable and later Cancel still removes it', async () => {
 	const h = await harness();
 	const id = await add(h);
+	Object.entries({ protocol: 'trojan', address: '192.168.1.2', port: '443', password: 'secret' })
+		.forEach(([field, value]) => { h.modal.widgets[field].value = value; });
 	h.invalid = true;
-	await h.page.nodeGrid.handleModalSave();
+	await h.page.nodeGrid.handleModalSave(h.modal.map);
 	assert.equal(h.page.pendingAdd.id, id);
 	assert.equal(h.page.pendingAdd.saving, false);
 	assert.equal(h.page.nodeMap.addedSection, id);
@@ -386,9 +427,11 @@ test('T10.26 defensive: Parse reply during Save is ignored without changing the 
 	const reply = deferred();
 	await parse(h, 'vless://pending', reply.promise);
 	h.modal.widgets.label.value = 'Manual save wins';
+	Object.entries({ protocol: 'trojan', address: '192.168.1.2', port: '443', password: 'secret' })
+		.forEach(([field, value]) => { h.modal.widgets[field].value = value; });
 	const modal = h.modal;
 	h.saveGate = deferred();
-	const saving = h.page.nodeGrid.handleModalSave();
+	const saving = h.page.nodeGrid.handleModalSave(h.modal.map);
 	assert.equal(h.page.pendingAdd.saving, true);
 	const callsBefore = h.calls.length;
 	reply.resolve({ ok: true, node: { label: 'Late parsed label' } });

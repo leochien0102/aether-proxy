@@ -6,6 +6,7 @@
 // Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
 // Saved disabled state and card alignment: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
 // Flag frames follow docs/10「r16 修正：窄屏卡片里开关与标签同一行」.
+// Node and subscription modal requirements follow docs/10「r17 修正：必填项的标注与保存前提示」.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -16,7 +17,102 @@
 'require aether-proxy.common as ap';
 'require aether-proxy.model.subscriptions as model';
 
+const REQUIRED_COLOR = 'var(--error-color-high, #c53030)';
+
+function requiredValue(map, id, field) {
+	// SDK lookupOption searches mounted frames; initial renderFrame runs before
+	// they are attached. The cloned section is already complete at that point.
+	const option = map.children[0].children.find(option => option.option === field);
+	return option?.formvalue(id) ?? option?.cfgvalue(id);
+}
+
+function isRequired(option, id, rules) {
+	const rule = rules[option.option];
+	if (!rule)
+		return false;
+	const protocol = requiredValue(option.map, id, 'protocol');
+	if (rule.protocols && !rule.protocols.includes(protocol))
+		return false;
+	if (rule.required === true || rule.required?.includes(protocol))
+		return true;
+	return !!rule.requires_when && requiredValue(option.map, id, rule.requires_when.field) === rule.requires_when.value;
+}
+
+function missingRequired(option, id, rules) {
+	return isRequired(option, id, rules) && option.isActive(id) && !String(option.formvalue(id) ?? '').trim();
+}
+
+function requiredBorder(option, id, invalid) {
+	const frame = option.map.findElement('data-field', option.cbid(id));
+	for (const input of frame.querySelectorAll('input, select, textarea'))
+		input.style.borderColor = invalid ? REQUIRED_COLOR : '';
+}
+
+function refreshRequired(map, id, rules) {
+	for (const option of map.children[0].children) {
+		if (option.requiredMarker)
+			option.requiredMarker.style.display = isRequired(option, id, rules) ? '' : 'none';
+		if (rules[option.option] && !missingRequired(option, id, rules))
+			requiredBorder(option, id, false);
+	}
+}
+
+/* One page owns both grids. Share their modal-only presentation/preflight here,
+ * not in common.js; the pure rule tables remain in their respective models.
+ * SDK cloneOptions copies these methods, but not map/section ownership. Always
+ * read the cloned map's live widgets, never the parent table or stored UCI. */
+function requiredOptions(grid, rules) {
+	for (const option of grid.children) {
+		if (option.modalonly === false)
+			continue;
+		const renderFrame = option.renderFrame;
+		option.renderFrame = function(id, in_table, index, nodes) {
+			const frame = renderFrame.call(this, id, in_table, index, nodes);
+			if (!in_table) {
+				if (rules[this.option]) {
+					this.requiredMarker = E('span', {
+						style: 'color:' + REQUIRED_COLOR + ';display:' + (isRequired(this, id, rules) ? '' : 'none')
+					}, ' *');
+					frame.querySelector('label').appendChild(this.requiredMarker);
+				}
+				// Runs after the SDK frame's dependency handler, including protocol/security changes.
+				frame.addEventListener('widget-change', () => refreshRequired(this.map, id, rules));
+			}
+			return frame;
+		};
+	}
+	const addModalOptions = grid.addModalOptions;
+	grid.addModalOptions = function(section, ...args) {
+		if (addModalOptions)
+			addModalOptions.call(this, section, ...args);
+		section.description = (section.description ? section.description + '<br>' : '')
+			+ _('Fields marked with * are required.', 'aether-proxy');
+	};
+	const save = grid.handleModalSave;
+	grid.handleModalSave = function(modalMap, ...args) {
+		const id = modalMap.section;
+		const options = modalMap.children[0].children;
+		const missing = options.filter(option => missingRequired(option, id, rules));
+		/* Never parse even the first field until all required inputs pass:
+		 * SDK parse can stage earlier values before a later field rejects. */
+		if (modalMap.requiredAlert)
+			modalMap.requiredAlert.remove();
+		for (const option of options.filter(option => rules[option.option]))
+			requiredBorder(option, id, missing.includes(option));
+		if (missing.length) {
+			modalMap.requiredAlert = E('div', { 'class': 'alert-message error' }, [
+				E('ul', {}, missing.map(option =>
+					E('li', {}, _('%s is required.', 'aether-proxy').format(option.title))))
+			]);
+			modalMap.root.insertBefore(modalMap.requiredAlert, modalMap.root.firstChild);
+			return Promise.resolve();
+		}
+		return save.call(this, modalMap, ...args);
+	};
+}
+
 return baseclass.extend({
+	required_options: requiredOptions,
 	load: function() {
 		return uci.load('aetherproxy').then(() => {
 			if (!uci.get('aetherproxy', 'sub'))
@@ -292,6 +388,7 @@ return baseclass.extend({
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
 		form_defaults.section(s);
+		requiredOptions(s, model.required_fields);
 		return m.render().then(content => {
 			const updateAll = E('button', {
 				'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null,

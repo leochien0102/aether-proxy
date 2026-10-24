@@ -30,6 +30,7 @@
  * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
  * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
  * The independent subscription map precedes this node region (「节点与订阅合并为一页」, T10.37).
+ * Both grids share modal required-field feedback (docs/10 r17, T10.58).
  */
 
 function compactKey(value) {
@@ -665,6 +666,7 @@ return view.extend({
 		/* Fields the backend checks for conflicts are deleted while hidden, like
 		   stock LuCI; other hidden fields are kept (docs/10 r16 复审结论). */
 		}, { mux: { clear_inactive: true }, flow: { clear_inactive: true } });
+		subscriptions.required_options(s, model.required_fields);
 		return m;
 	},
 

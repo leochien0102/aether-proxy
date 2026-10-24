@@ -18,6 +18,7 @@
  * Selection marks, stale names and switch locking follow 「节点页第二轮修正」 (T10.25).
  * Protocol columns and manual node IDs follow 「节点表的协议列」「添加节点」 (T10.26).
  * Parse cleanup includes the advanced options from 「节点编辑框新字段」 (T10.30).
+ * Required-field metadata mirrors schema.uc (docs/10 r17, T10.58).
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -127,6 +128,16 @@ const NODE_FIELDS = [
 return baseclass.extend({
 	probe_column,
 	node_fields: NODE_FIELDS,
+	required_fields: {
+		protocol: { required: true },
+		address: { required: true },
+		port: { required: true },
+		uuid: { protocols: ['vless', 'vmess'], required: true },
+		password: { protocols: ['trojan', 'shadowsocks'], required: true },
+		method: { protocols: ['shadowsocks', 'vmess'], required: ['shadowsocks'] },
+		sni: { requires_when: { field: 'security', value: 'reality' } },
+		reality_pbk: { requires_when: { field: 'security', value: 'reality' } }
+	},
 
 	/* Random bytes are injected by the view, keeping UUID/collision tests pure.
 	   Work on a copy so setting UUID bits never changes the caller's buffer. */
