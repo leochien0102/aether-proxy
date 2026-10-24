@@ -65,9 +65,8 @@ export function inspect(ctx) {
 				found ||= substr(chain, 0, length(prefix)) == prefix;
 		for (let process in plugin.processes) {
 			if (plugin.init != null) {
-				// TODO(design): process ownership is unspecified. An installed init script
-				// or plugin nft evidence attributes its core to that plugin; otherwise
-				// preserve the independent clash/mihomo name. This is not PID ownership.
+				// An installed init script or plugin nft evidence attributes the core to that
+				// plugin; otherwise keep the independent clash/mihomo name (docs/04).
 				if (found || fs.stat(init_path(ctx, plugin)) != null) {
 					owned[process] = true;
 					found ||= processes[process];
@@ -103,8 +102,7 @@ export function notices(ctx, cursor) {
 	if (!length(candidates))
 		return [];
 	let running = inspect(ctx), notices = [];
-	// TODO(design): status behavior on a failed runtime inspection is unspecified.
-	// Suppress enabled notices rather than claim that a possibly running plugin is stopped.
+	// A failed inspection gives no enabled notices rather than call a possibly running plugin stopped (docs/04).
 	if (!running.ok)
 		return notices;
 	for (let plugin in candidates) {

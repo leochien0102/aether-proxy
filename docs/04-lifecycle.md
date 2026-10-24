@@ -68,6 +68,8 @@
 - **停着但仍处于启用状态**（init 脚本存在，且「开机自启已开」或「配置里启用」任一成立）：不拦启动，但 `status` 的 `notices` 给出 `CONFLICT_ENABLED`（[10](10-cli-luci.md)「概览页」）。
   理由：「停止」不等于「停用」——这次 ssr-plus 已被 `/etc/init.d/shadowsocksr stop` 停掉，但配置里仍选着主服务器，它自己运行时改写过 `/etc/config/shadowsocksr`，`reload_config` 发现变化就通知 procd，对停着的服务 reload 等于启动。
 - 只认上表这些插件；dae/daed、v2rayA 等未核实，以后需要时按同样方法核实后补进表里。
+- 细节（T9.34 复核定）：进程 `clash`/`mihomo` 在装着 openclash/nikki 的 init 脚本（或已有它们的 nft 迹象）时算作该插件，否则保留独立的进程名；`status` 里运行检测本身失败时不给 `CONFLICT_ENABLED`（不能把可能在运行的插件说成停着），启动检查照旧报 `conflict-check:`。
+  H28K 实测一次扫描约 90 ms（`status` 每 5 秒一次，可接受）。
 
 第 1 步的锁：daemon 在启动流程（第 2–11 步）期间持锁，进入 monitor 循环后释放，之后每次动作临时取锁。
 
