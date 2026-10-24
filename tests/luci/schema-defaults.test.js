@@ -74,7 +74,12 @@ function recorder() {
 	form.NamedSection = Section;
 	form.GridSection = Section;
 	form.Map = class {
-		section(kind, name) { return new kind(name); }
+		constructor() { this.children = []; }
+		section(kind, name) {
+			const section = new kind(name);
+			this.children.push(section);
+			return section;
+		}
 		render() { return Promise.resolve(E('form')); }
 		renderContents() { return Promise.resolve(E('div')); }
 	};

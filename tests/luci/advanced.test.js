@@ -265,6 +265,7 @@ function build_form() {
 			this.tab = tab;
 			this.type = type;
 			this.field = field;
+			this.option = field;
 			this.title = title;
 			this.description = description;
 			this.ucisection = null;
@@ -281,6 +282,7 @@ function build_form() {
 			this.type = type;
 			this.title = title;
 			this.tabs = [];
+			this.children = [];
 		}
 
 		tab(name, title) {
@@ -289,7 +291,9 @@ function build_form() {
 		}
 
 		taboption(tab, type, field, title, description) {
-			return new Option(tab, type, field, title, description);
+			const option = new Option(tab, type, field, title, description);
+			this.children.push(option);
+			return option;
 		}
 	}
 

@@ -106,6 +106,9 @@ function formDouble(h) {
 	return { ...widgetTypes(), Map: class {
 		constructor(config) { this.config = config; this.data = h.uci; }
 		section() { this.grid = gridDouble(this, h); return this.grid; }
+		lookupOption(field) {
+			return [{ formvalue: () => h.modal?.widgets[field]?.value }];
+		}
 		async render() {
 			const columns = this.grid.children.filter(o => o.modalonly === false);
 			return E('form', {}, [

@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require tools.widgets as widgets';
 'require aether-proxy.model.advanced as model';
@@ -89,6 +90,7 @@ return view.extend({
 		option(s, 'components', form.Value, 'chinadns_bin', _('chinadns-ng binary', 'aether-proxy'));
 		option(s, 'components', form.Value, 'dnsmasq_instance', _('dnsmasq instance', 'aether-proxy'), 'dns');
 
+		form_defaults.section(s, Object.fromEntries(s.children.map(o => [o.option, model.default(o.option)])));
 		return m.render();
 	}
 });

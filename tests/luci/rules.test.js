@@ -354,9 +354,35 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 		}
 		section(type, name, section_type, title) {
 			const section = { type, name, section_type, title, options: [] };
+			section.children = section.options;
 			section.option = (kind, key, label) => {
-				const option = { kind, key, label, map: this, values: [],
+				const option = { kind, key, option: key, label, map: this, values: [], rmempty: true,
 					cbid: section_id => 'cbid.aetherproxy.' + section_id + '.' + key,
+					cfgvalue: () => dns_config[key],
+					isActive: () => true,
+					formvalue() {
+						return kind == form.DynamicList ? this.listInput.value : kind == form.Flag
+							? this.input.checked ? '1' : '0' : this.input.value ?? '';
+					},
+					isValid(id) {
+						return kind == form.DynamicList ? this.listInput.isValid()
+							: !this.validate || this.validate(id, this.formvalue(id)) === true;
+					},
+					write: (id, value) => this.data.set(this.config, id, key, value),
+					remove: id => this.data.unset(this.config, id, key),
+					parse(id) {
+						if (kind == form.DynamicList)
+							return parseList(this, id, this.listInput, dns_config[key],
+								value => this.write(id, value), () => this.remove(id));
+						assert.equal(this.isValid(id), true, key + ': valid on Save');
+						const value = this.formvalue(id);
+						if (kind == form.Flag) {
+							if (value == this.default && this.rmempty) this.remove(id);
+							else this.write(id, value);
+						}
+						else if (value == '' && this.rmempty) this.remove(id);
+						else if (value !== this.cfgvalue(id)) this.write(id, value);
+					},
 					value(k, v) { this.values.push([k, v]); } };
 				section.options.push(option);
 				return option;
@@ -383,24 +409,9 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 		 * Flags have a separate write path; optional blank Values remove keys.
 		 * Lists also check the empty add-box validation state before saving. */
 		parse() {
-			for (const section of this.sections) {
-				for (const option of section.options.filter(o => o.kind == form.DynamicList))
-					parseList(option, section.name, option.listInput, dns_config[option.key],
-						value => this.data.set(this.config, section.name, option.key, value),
-						() => this.data.unset(this.config, section.name, option.key));
-			}
-			for (const section of this.sections) {
-				for (const option of section.options) {
-					if (![form.Value, form.Flag].includes(option.kind) || option.renderWidget)
-						continue;
-					const value = option.kind == form.Flag ? (option.input.checked ? '1' : '0') : option.input.value;
-					assert.equal(option.validate(section.name, value), true, option.key + ': valid on Save');
-					if (value === '' && option.rmempty)
-						this.data.unset(this.config, section.name, option.key);
-					else if (option.kind == form.Flag || value !== dns_config[option.key])
-						this.data.set(this.config, section.name, option.key, value);
-				}
-			}
+			for (const section of this.sections)
+				for (const option of section.options)
+					option.parse(section.name);
 			return Promise.resolve();
 		}
 	};
@@ -1082,8 +1093,9 @@ test('T10.45 scenario 1: direct DNS defaults off above the editable list with th
 		assert.equal(dns_option(h, 'direct_dns').deps, undefined);
 		assert.deepEqual(h.writes, []);
 		await h.maps[0].parse();
-		assert.deepEqual(h.writes.find(write => write[2] == 'direct_dns_enabled'),
-			['aetherproxy', 'dns', 'direct_dns_enabled', value ?? '0']);
+		assert.equal(h.writes.find(write => write[2] == 'direct_dns_enabled'), undefined,
+			'T10.54: untouched absent or explicit values must not be rewritten');
+		assert.deepEqual(h.removals, [], 'an explicit default is not removed either');
 	}
 });
 

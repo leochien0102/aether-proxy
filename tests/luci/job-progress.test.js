@@ -80,9 +80,9 @@ function formDouble(uci) {
 		section(kind, name) {
 			const options = [];
 			const section = {
-				options,
-				option: () => {
-					const option = { value() {}, depends() {}, formvalue() {}, getUIElement() {} };
+				options, children: options,
+				option: (kind, field) => {
+					const option = { option: field, value() {}, depends() {}, formvalue() {}, getUIElement() {} };
 					options.push(option);
 					return option;
 				},

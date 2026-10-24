@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
 'require network';
@@ -93,6 +94,8 @@ return view.extend({
 		};
 		this.addMainOptions(m);
 		this.addHostOptions(m);
+		for (const section of m.children)
+			form_defaults.section(section, null, { udp: { clear_inactive: true } });
 		return m;
 	},
 
@@ -191,6 +194,17 @@ return view.extend({
 
 		o = s.option(form.Value, 'name', _('Name', 'aether-proxy'));
 		o.rmempty = true;
+		const nameValue = o.formvalue;
+		o.formvalue = function(sid) {
+			const value = nameValue.call(this, sid);
+			const mac = this.map.lookupOption('mac', sid)?.[0].formvalue(sid);
+			const saved = uci.get('aetherproxy', sid, 'mac');
+			/* Selecting a different device still supplies its suggested name.
+			 * An untouched unnamed rule must not acquire a name merely on Save. */
+			if (!value && !form_defaults.equal(mac, saved))
+				return model.default_name(mac, self.candidates) || value;
+			return value;
+		};
 		/* GridSection modals save independently of the page footer. Fill the
 		   name in both write/remove paths, including an empty optional field. */
 		o.write = function(sid, value) {

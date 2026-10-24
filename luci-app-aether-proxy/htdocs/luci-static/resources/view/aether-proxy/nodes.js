@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
 'require dom';
@@ -653,6 +654,12 @@ return view.extend({
 		o = s.option(form.Flag, 'tcp_mptcp', _('MPTCP', 'aether-proxy'));
 		o.modalonly = true;
 
+		form_defaults.section(s, {
+			method: function(sid) {
+				return this.map.lookupOption('protocol', sid)?.[0].formvalue(sid) == 'vmess' ? 'auto' : null;
+			},
+			encryption: 'none'
+		}, { mux: { clear_inactive: true } });
 		return m;
 	},
 
