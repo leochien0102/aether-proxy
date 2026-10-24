@@ -65,7 +65,9 @@
 
 - **正在运行**（任一迹象）→ 第 3 步失败：`PRECHECK_FAILED`，`missing` 里写 `conflict:<冲突名>`（原来写 nft 表名 `conflict:ss_spec`，改为插件名，页面据此写出插件的名字）。照旧按退避重试，对方停掉后下一次重试自动恢复。
   检测用一次 `nft list tables` 与一次 `nft list chains inet fw4`（fw4 不在时不算错）加原有的进程检查；检查本身失败照旧记 `conflict-check:<原因>`。
-- **停着但仍处于启用状态**（init 脚本存在，且「开机自启已开」或「配置里启用」任一成立）：不拦启动，但 `status` 的 `notices` 给出 `CONFLICT_ENABLED`（[10](10-cli-luci.md)「概览页」）。
+- **停着但配置里仍启用**（init 脚本存在，且「配置里启用」成立）：不拦启动，但 `status` 的 `notices` 给出 `CONFLICT_ENABLED`（[10](10-cli-luci.md)「概览页」）。
+  **只看「配置里启用」，不看开机自启**（2026-10-24 改，r16 窗口，仓库所有者定）：这几个插件配置里没启用时，被开机调起也什么都不做（ssr-plus `global_server=nil` 不装规则；passwall/passwall2 `enabled=0`；homeproxy 无节点且服务端关时退出；openclash `enable=0`、nikki `enabled=0` 不启动），开机自启本身不构成冲突。
+  r16 里 ssr-plus 主服务器已停用、只剩 `/etc/rc.d/S95shadowsocksr`，横幅却一直在；而 LuCI「系统 → 启动项」没列出 shadowsocksr（链接实际存在），提示里「去启动项关掉开机自启」用户照做也找不到。args 里的 `boot` 保留，仅供参考。
   理由：「停止」不等于「停用」——这次 ssr-plus 已被 `/etc/init.d/shadowsocksr stop` 停掉，但配置里仍选着主服务器，它自己运行时改写过 `/etc/config/shadowsocksr`，`reload_config` 发现变化就通知 procd，对停着的服务 reload 等于启动。
 - 只认上表这些插件；dae/daed、v2rayA 等未核实，以后需要时按同样方法核实后补进表里。
 - 细节（T9.34 复核定）：进程 `clash`/`mihomo` 在装着 openclash/nikki 的 init 脚本（或已有它们的 nft 迹象）时算作该插件，否则保留独立的进程名；`status` 里运行检测本身失败时不给 `CONFLICT_ENABLED`（不能把可能在运行的插件说成停着），启动检查照旧报 `conflict-check:`。

@@ -318,7 +318,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 | `UPDATE_AVAILABLE` | `updates.json` 中某个包 `newer == true`；`xray-core` 在 `update.xray_auto == 'off'` 时不提示 | `package`、`available` |
 | `IPV6_PRESENT` | `main.lan_ifaces` 中某个接口在 `/proc/net/if_inet6` 有全局地址（scope 字段为 `00`） | `iface` |
 | `DNSMASQ_EXTRA_SERVERS` | dnsmasq 生成的配置与 confdir 中（除自己的片段外）存在 `server=` 行——与启动时 `apply` 的检测相同，把检测部分抽成不记事件的共用函数 | `servers`（数组） |
-| `CONFLICT_ENABLED` | `main.enabled=1`，且 04「与其他代理插件的冲突」表中某插件没在运行、但 init 脚本存在且「开机自启已开」或「配置里启用」（2026-10-24 加） | `plugin`（冲突名）、`boot`（开机自启是否开着，bool）、`configured`（配置里是否启用，bool） |
+| `CONFLICT_ENABLED` | `main.enabled=1`，且 04「与其他代理插件的冲突」表中某插件没在运行、init 脚本存在且「配置里启用」（2026-10-24 加；r16 后不再看开机自启，04） | `plugin`（冲突名）、`boot`（开机自启是否开着，bool）、`configured`（配置里是否启用，bool） |
 
 `notices` 沿用已有的事件码（`UPDATE_AVAILABLE` 原本是 `update check` 的事件），但 `status` 只返回、不写事件日志；`notices` 中的 args 以上表为准。
 
