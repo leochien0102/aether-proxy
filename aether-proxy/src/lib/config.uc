@@ -331,8 +331,10 @@ function check_hosts(hosts, raw_hosts, errors) {
 
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
-	// UDP/443 Vision falls through to the same outbound path in Xray (docs/05 "config node").
-	if (n.mux && index([ 'xtls-rprx-vision', 'xtls-rprx-vision-udp443' ], n.flow) >= 0)
+	// Only VLESS renders flow; leftover Vision fields on other protocols are inert (docs/05).
+	// UDP/443 Vision falls through to the same outbound path in Xray.
+	if (n.protocol == 'vless' && n.mux
+		&& index([ 'xtls-rprx-vision', 'xtls-rprx-vision-udp443' ], n.flow) >= 0)
 		push(errors, { field: at + '.mux', code: 'conflict', detail: `Mux is incompatible with ${n.flow}` });
 
 	if (n.protocol == 'shadowsocks' && n.method != null && index(SS_METHODS, n.method) < 0)
