@@ -13,8 +13,11 @@ const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = s => po[s] ?? s;
 globalThis.E = element;
-const model = loadModule(path.join(RES, 'aether-proxy/model/logs.js'),
+const conflicts = loadModule(path.join(RES, 'aether-proxy/model/conflicts.js'),
 	{ baseclass: { extend: o => o } }, {});
+const model = loadModule(path.join(RES, 'aether-proxy/model/logs.js'), {
+	baseclass: { extend: o => o }, 'aether-proxy.model.conflicts': conflicts
+}, {});
 const names = Object.freeze({
 	nodes: Object.freeze({ n_a: '节点甲', n_b: '节点乙' }),
 	subscriptions: Object.freeze({ s_a: '订阅甲' })
@@ -201,7 +204,8 @@ async () => {
 test('T10.39 scenario 5: overview failure reason resolves node names and shares event-label and deletion fallbacks',
 () => {
 	const overview = loadModule(path.join(RES, 'aether-proxy/model/overview.js'), {
-		baseclass: { extend: o => o }, 'aether-proxy.model.logs': model
+		baseclass: { extend: o => o }, 'aether-proxy.model.logs': model,
+		'aether-proxy.model.conflicts': conflicts
 	}, {});
 	for (const [args, reason] of [
 		[{ node: 'n_b', domain: 'node.example' }, '节点 节点乙：无法解析 node.example'],

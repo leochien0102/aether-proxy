@@ -15,6 +15,7 @@
  * T10.38 follows docs/10 「概览页：默认模式下拉」 for one-shot node/mode apply.
  * T10.48 synchronizes UCI on refresh, preserves unapplied selections and
  * distinguishes restart's stopping phase from the new process's startup.
+ * T10.52 shares one event read between pending switches and startup failures.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
@@ -51,12 +52,16 @@ return view.extend({
 		});
 	},
 
-	/* Only mismatched runtime/configured settings need diagnostic events. ap.call
-	   settles RPC failures; the model treats those as a switch still in progress. */
-	switchEvents: function(status, configured_node, configured_mode) {
-		if (!model.switch_pending(status, configured_node, configured_mode))
+	/* Startup retries are warn events, while switch diagnostics need only errors.
+	   One cumulative warn request serves both when needed (docs/10 T10.52). */
+	diagnosticEvents: function(status, configured_node, configured_mode) {
+		const startup = model.startup_events_needed(status);
+		if (!startup && !model.switch_pending(status, configured_node, configured_mode))
 			return Promise.resolve(null);
-		return ap.call('events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' });
+		return ap.call('events', {
+			since: Math.floor(Date.now() / 1000) - 600,
+			level: startup ? 'warn' : 'error'
+		});
 	},
 
 	/* Toggle handler for the enable switch: stage the UCI value and go through
@@ -366,11 +371,21 @@ return view.extend({
 				return;
 			return this.refreshConfig(read, was_switching).then(() => ap.call('stats')).then((stats) => {
 				this.updateTraffic(stats);
-				return this.switchEvents(reply, this.currentNode, this.currentMode).then((events) => {
+				return this.diagnosticEvents(reply, this.currentNode, this.currentMode).then((events) => {
 					if (read !== this.acceptedRead)
 						return;
-					events = model.newer_events(events, this.reasonFloor);
+					const startup = model.startup_events_needed(reply);
+					/* A switch floor excludes an earlier target's failure. Startup attempts
+					   have their own START_RETRY boundaries and must keep same-second events. */
+					if (!startup)
+						events = model.newer_events(events, this.reasonFloor);
 					this.latestEvents = events;
+					/* Startup details live in the runtime block; switch diagnostics change only
+					   the banner and guards so edited controls stay mounted. */
+					if (startup) {
+						this.refresh(reply, undefined, events);
+						return;
+					}
 					const next = model.build(reply, this.version, this.labels,
 						Math.floor(Date.now() / 1000), this.enabled, this.currentNode, this.components,
 						events, this.manualProbe, this.currentMode);

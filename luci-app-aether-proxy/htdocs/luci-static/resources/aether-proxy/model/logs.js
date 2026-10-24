@@ -1,10 +1,12 @@
 'use strict';
 'require baseclass';
+'require aether-proxy.model.conflicts as conflicts';
 
 /* Pure log-page presentation, per docs/10 「日志页」 and docs/09 event catalog.
  * T10.39 optionally resolves IDs using { nodes, subscriptions } name maps.
  * T10.50 follows docs/10 "r14 修正：事件文字" for conditional text and mode names.
- * Templates use only catalog parameters; raw args remain available for hover.
+ * T10.52 gives PRECHECK_FAILED conflict entries shared product names while raw
+ * args remain unchanged for hover. Templates use only catalog parameters.
  */
 const TEMPLATES = {
 	SERVICE_STARTED: _('Service started in {elapsed_ms} ms', 'aether-proxy'),
@@ -87,6 +89,12 @@ function value_text(value) {
 	return String(value);
 }
 
+function precheck_missing(value) {
+	if (!Array.isArray(value))
+		return value_text(value);
+	return value.map(item => conflicts.format_log_item(item) ?? value_text(item)).join('、');
+}
+
 function name_text(args, key, names) {
 	// A missing reference keeps the page-wide “?” (design lead, 2026-10-22).
 	if (args[key] == null || args[key] === '')
@@ -118,6 +126,8 @@ function message(event, names) {
 	if (!Object.prototype.hasOwnProperty.call(TEMPLATES, event.code))
 		return event.code + ' ' + JSON.stringify(args);
 	return event_template(event.code, args, names).replace(/\{(\w+)\}/g, (match, key) => {
+		if (event.code === 'PRECHECK_FAILED' && key === 'missing')
+			return precheck_missing(args[key]);
 		if (key === 'mode' && Object.prototype.hasOwnProperty.call(MODES, args[key]))
 			return MODES[args[key]];
 		if (names && ['node', 'from_node', 'to_node', 'sub'].includes(key))

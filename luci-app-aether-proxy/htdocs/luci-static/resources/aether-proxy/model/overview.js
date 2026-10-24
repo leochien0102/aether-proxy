@@ -1,6 +1,7 @@
 'use strict';
 'require baseclass';
 'require aether-proxy.model.logs as logs';
+'require aether-proxy.model.conflicts as conflicts';
 
 /*
  * Pure overview model (docs/10 「概览页」「Dashboard：概览页升级」「其余页面先出页面」「概览页第六轮修正」).
@@ -15,6 +16,7 @@
  * T10.39 resolves switch failure reasons with the same node names as logs;
  * T10.43 supplies startup completion rules and waiting/timeout presentation;
  * T10.48 distinguishes the old restart process by its baseline since;
+ * T10.52 pairs daemon startup events and presents proxy-plugin conflicts;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -124,6 +126,82 @@ function notice_args(n) {
 	return (n && typeof n.args == 'object' && n.args != null) ? n.args : {};
 }
 
+/* daemon.uc appends each failed attempt in this order: PRECHECK_FAILED,
+   START_FAILED, START_RETRY. Pair by array position, not timestamps, because
+   all three can be written in the same second. */
+function start_attempt(reply) {
+	if (!reply || reply.ok === false || !Array.isArray(reply.events))
+		return null;
+	const events = reply.events;
+	let failed = -1;
+	for (let i = events.length - 1; i >= 0; i--)
+		if (events[i]?.code === 'START_FAILED') {
+			failed = i;
+			break;
+		}
+	if (failed < 0 || events[failed].args?.step !== 'precheck')
+		return null;
+	let boundary = -1;
+	for (let i = failed - 1; i >= 0; i--)
+		if (events[i]?.code === 'START_RETRY') {
+			boundary = i;
+			break;
+		}
+	let precheck = null;
+	for (let i = failed - 1; i > boundary; i--)
+		if (events[i]?.code === 'PRECHECK_FAILED') {
+			precheck = events[i];
+			break;
+		}
+	if (!precheck)
+		return null;
+	let retry = null;
+	for (let i = failed + 1; i < events.length; i++)
+		if (events[i]?.code === 'START_RETRY') {
+			retry = events[i];
+			break;
+		}
+	return { precheck, failed: events[failed], retry };
+}
+
+function missing_value(value) {
+	return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+function start_failure_text(reply, now) {
+	const attempt = start_attempt(reply);
+	if (!attempt)
+		return null;
+	const grouped = conflicts.groups(attempt.precheck.args?.missing);
+	const parts = [];
+	if (grouped.conflicts.length) {
+		const names = grouped.conflicts.map(conflicts.display_name).join('、');
+		parts.push(grouped.conflicts.length === 1
+			? fmt(_('Detected %s running. Stop it on its page, then start again.', 'aether-proxy'), names)
+			: fmt(_('Detected %s running. Stop them on their pages, then start again.', 'aether-proxy'), names));
+	}
+	for (const reason of grouped.checks)
+		parts.push(fmt(_('Could not check other proxy plugins: %s.', 'aether-proxy'), reason));
+	if (grouped.other.length)
+		parts.push(fmt(_('Startup precheck failed: %s.', 'aether-proxy'),
+			grouped.other.map(missing_value).join('、')));
+	if (!parts.length)
+		return null;
+	const retry = attempt.retry;
+	if (typeof retry?.ts === 'number' && typeof retry.args?.in_secs === 'number'
+		&& (typeof retry.args?.attempt === 'number' || typeof retry.args?.attempt === 'string')) {
+		const remaining = Math.ceil(retry.ts + retry.args.in_secs - now);
+		parts.push(remaining > 0
+			? fmt(_('In about %s seconds, retry %s will start.', 'aether-proxy'), remaining, retry.args.attempt)
+			: fmt(_('Retry %s is about to start.', 'aether-proxy'), retry.args.attempt));
+	}
+	return parts.join(' ');
+}
+
+function startup_events_needed(status) {
+	return !!status && status.ok !== false && status.state === 'error';
+}
+
 /* One line per notice, args filled in; an unknown code still produces a line
    naming the event code instead of throwing (docs/tasks/m8.md T8.4 scenario 8). */
 function notice_text(n) {
@@ -150,6 +228,17 @@ function notice_text(n) {
 			return fmt(
 				_('dnsmasq configuration contains server= lines that this service did not write: %s.', 'aether-proxy'),
 				(Array.isArray(args.servers) ? args.servers : []).join('; '));
+
+		case 'CONFLICT_ENABLED': {
+			const name = conflicts.display_name(args.plugin ?? '?');
+			let text = fmt(_('%s is not running but is still enabled. A configuration change or router restart '
+				+ 'may start it again and conflict with aether-proxy.', 'aether-proxy'), name);
+			if (args.boot === true)
+				text += ' ' + _('Disable its automatic startup under “System → Startup”.', 'aether-proxy');
+			if (args.configured === true)
+				text += ' ' + _('Disable it on its page.', 'aether-proxy');
+			return text;
+		}
 
 		default:
 			return fmt(_('Unhandled notice: %s.', 'aether-proxy'), n.code + ' ' + JSON.stringify(args));
@@ -358,6 +447,8 @@ return baseclass.extend({
 	},
 
 	switch_pending: switch_pending,
+	startup_events_needed: startup_events_needed,
+	start_failure_text: start_failure_text,
 
 	/* A retry with another node must not inherit the reason the previous target
 	   failed with: the events window is ten minutes. floor is that reason's ts
@@ -609,6 +700,8 @@ return baseclass.extend({
 			};
 		}
 
+		const startup_reason = state === 'error' && status.last_error === 'START_FAILED'
+			? start_failure_text(events, now) : null;
 		return {
 			ok: true,
 			error: null,
@@ -619,7 +712,7 @@ return baseclass.extend({
 			dns_failsafe: status.dns_failsafe === true,
 			state_level: state_level(state),
 			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,
-			error_text: error_text(status.last_error),
+			error_text: startup_reason ?? error_text(status.last_error),
 			dns_text: dns_text(state, status.dns_tier),
 			...nodes,
 			node_ip: (active && status.node_ip) ? String(status.node_ip) : null,
