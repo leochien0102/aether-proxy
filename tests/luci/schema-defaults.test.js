@@ -212,13 +212,14 @@ async () => {
 	for (const page of ['rules', 'subscriptions', 'access', 'advanced', 'updates', 'nodes'])
 		checked.push(...check_list_validators(await page_options(page), page));
 	assert.deepEqual(checked.sort(), [
+		'access: host.ip',
 		'advanced: main.boot_check_targets', 'advanced: main.lan_ifaces',
 		'rules: dns.china_dns', 'rules: dns.direct_dns', 'updates: update.channel_urls'
 	]);
 });
 
 test('T10.47 scenario 4: list gate rejects a validator that fails the empty add box', async () => {
-	for (const page of ['rules', 'advanced', 'updates']) {
+	for (const page of ['rules', 'access', 'advanced', 'updates']) {
 		const h = await page_options(page);
 		const option = h.options.find(o => o instanceof h.form.DynamicList && typeof o.validate == 'function');
 		const validate = option.validate;

@@ -1,6 +1,6 @@
 'use strict';
 
-/* T10.36 access-page contract tests (docs/10 访问控制页定案).
+/* Access-page contract tests (docs/10 访问控制页定案 and r16 modal validation).
  * Form doubles follow the SDK's GridSection extension, modal option cloning,
  * optional-value remove path and synchronous UCI writes. Map redraws build
  * detached sections while formvalue() still reads the old Map root, then
@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element: E } = require('./loader.js');
 const { nowrapActions } = require('./button-layout');
+const { renderList, parseList } = require('./dynamic-list');
 
 const APP = path.join(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -31,7 +32,7 @@ const HINTS = { hosts: {
 
 function fixture(hosts = [], main = {}) {
 	const data = [ { '.name': 'main', mode: 'bypass_cn', unlisted_policy: 'follow', ...main }, ...hosts ];
-	const calls = { save: 0, reset: 0, apply: 0, hints: 0, notifications: [], writes: [] };
+	const calls = { save: 0, reset: 0, apply: 0, hints: 0, closed: 0, notifications: [], writes: [] };
 	const inputs = {};
 	const uci = {
 		load: () => Promise.resolve(),
@@ -42,8 +43,14 @@ function fixture(hosts = [], main = {}) {
 			calls.writes.push({ sid, key, value });
 			data.find((h) => h['.name'] == sid)[key] = value;
 		},
-		unset: (config, sid, key) => { delete data.find((h) => h['.name'] == sid)[key]; },
-		save: () => { calls.save++; return Promise.resolve(); }
+		unset: (config, sid, key) => {
+			calls.writes.push({ sid, key, remove: true });
+			delete data.find((h) => h['.name'] == sid)[key];
+		},
+		save: () => {
+			calls.save++;
+			return calls.saveError ? Promise.reject(calls.saveError) : Promise.resolve();
+		}
 	};
 	class Option {
 		constructor(section, option, title) {
@@ -72,9 +79,12 @@ function fixture(hosts = [], main = {}) {
 			data.push({ '.name': 'cfgnew', '.anonymous': this.anonymous });
 			return Promise.resolve({ modal: 'cfgnew' });
 		}
-		handleModalSave(modalMap) {
-			/* SDK saves the child first, then reloads and resets its parent. */
-			return modalMap.save().then(() => this.map.load()).then(() => this.map.reset());
+		handleModalCancel() { calls.closed++; return Promise.resolve(); }
+		handleModalSave(modalMap, ev) {
+			/* SDK TableSection saves the active child silently, resets parents,
+			   then closes only on success. Its catch deliberately resolves. */
+			return modalMap.save(null, true).then(() => this.map.load()).then(() => this.map.reset())
+				.then(() => this.handleModalCancel(modalMap, ev, true)).catch(() => {});
 		}
 		renderRowActions(sid) {
 			// SDK GridSection keeps TableSection's action cell and its Edit/Delete handlers.
@@ -152,7 +162,9 @@ function fixture(hosts = [], main = {}) {
 		ui: {
 			createHandlerFn: (ctx, method) => (ev) => ctx[method](ev),
 			changes: { apply: () => { calls.apply++; return Promise.resolve(); } },
-			addNotification: (title, node, level) => calls.notifications.push({ node, level })
+			addNotification: (title, node, level) => calls.notifications.push({
+				node, level, savedAt: calls.save, closedAt: calls.closed
+			})
 		},
 		network: { getHostHints: () => { calls.hints++; return Promise.resolve().then(() => {
 			if (hintReply instanceof Error) throw hintReply;
@@ -166,19 +178,182 @@ function fixture(hosts = [], main = {}) {
 		hints: (value) => { hintReply = value; },
 		async start() { await page.render(await page.load()); },
 		table() { return page.tableNode; },
-		modalSave(sid, values) {
-			return page.hostSection.handleModalSave({ save: () => {
-				for (const [key, value] of Object.entries(values))
-					uci.set('aetherproxy', sid, key, value);
-				return uci.save();
-			} });
-		}
+		openModal(sid, values = {}, addIP = '') {
+			/* SDK renderMoreOptionsModal creates a child Map + NamedSection;
+			   cloneOptions keeps custom handlers but replaces map and section.
+			   Child inputs must never read the parent's old inline widgets. */
+			const modalMap = { section: sid, parent: page.map };
+			const current = { ...data.find(h => h['.name'] == sid), ...values };
+			const section = { map: modalMap, children: [] };
+			modalMap.children = [ section ];
+			modalMap.lookupOption = key => section.children.filter(o => o.option == key);
+			modalMap.checkDepends = () => {};
+			for (const source of page.hostSection.children.filter(o => o.modalonly !== false)) {
+				const o = Object.assign(Object.create(Object.getPrototypeOf(source)), source,
+					{ map: modalMap, section });
+				const value = current[o.option] ?? o.default;
+				if ([ 'ip', 'mac' ].includes(o.option)) {
+					o.widget = renderList(o, sid, value);
+					if (o.option == 'ip') {
+						/* SDK getValue excludes an invalid pending text input. The
+						   invalid add box still makes AbstractValue.parse reject. */
+						o.addError = typeof o.validate == 'function' ? o.validate(sid, addIP) : true;
+						if (addIP && o.addError === true && !o.widget.value.includes(addIP))
+							o.widget.value.push(addIP);
+					}
+					o.formvalue = () => o.widget.value;
+				}
+				else {
+					o.formvalue = () => value ?? '';
+				}
+				o.isActive = () => o.option != 'udp' || current.policy != 'direct';
+				o.isValid = () => (!o.widget || o.widget.isValid()) && (o.addError ?? true) === true;
+				o.getValidationError = () => o.addError !== true && o.addError != null
+					? o.addError : o.widget?.getValidationError() ?? '';
+				section.children.push(o);
+			}
+			modalMap.save = (cb, silent) => {
+				calls.modalSaveArgs = { cb, silent };
+				return Promise.resolve().then(() => {
+					for (const o of section.children) {
+						if (o.isActive() && !o.isValid())
+							throw new TypeError(o.getValidationError());
+						if (!o.isActive()) continue;
+						const write = value => o.write ? o.write(sid, value)
+							: uci.set('aetherproxy', sid, o.option, value);
+						const remove = () => o.remove ? o.remove(sid) : uci.unset('aetherproxy', sid, o.option);
+						if (o.widget)
+							parseList(o, sid, o.widget, uci.get('aetherproxy', sid, o.option), write, remove);
+						else if (o.formvalue() === '')
+							remove();
+						else if (o.formvalue() !== uci.get('aetherproxy', sid, o.option))
+							write(o.formvalue());
+					}
+				}).then(cb).then(() => uci.save());
+			};
+			return { map: modalMap, option: key => modalMap.lookupOption(key)[0],
+				save: () => page.hostSection.handleModalSave(modalMap, {}) };
+		},
+		modalSave(sid, values) { return this.openModal(sid, values).save(); }
 	};
 }
 
 function host(id, policy, options = {}) {
 	return { '.name': id, policy, ip: [ '192.168.1.10' ], ...options };
 }
+
+test('T10.53 scenario 1: reversed range is invalid in the add box and modal Save leaves all UCI untouched',
+async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const before = JSON.stringify(f.data);
+	const modal = f.openModal('a', { name: 'changed' }, '192.168.8.200-192.168.8.100');
+	await modal.save();
+	assert.equal(f.calls.closed, 0);
+	assert.equal(modal.option('ip').isValid('a'), false, 'SDK invalid class/error state on the add box');
+	assert.match(modal.option('ip').getValidationError('a'), /不是合法的 IPv4 地址、范围或 CIDR/);
+	assert.equal(f.calls.save, 0);
+	assert.deepEqual(f.calls.writes, []);
+	assert.equal(JSON.stringify(f.data), before);
+});
+
+test('T10.53 scenario 2: duplicate IP or normalized MAC blocks modal Save before any write', async () => {
+	for (const values of [ { ip: [ '192.168.1.10/32' ] }, { mac: [ 'AA-BB-CC-DD-EE-01' ] } ]) {
+		const f = fixture([ host('a', 'follow', { mac: [ MAC ], enabled: '0' }),
+			host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
+		await f.start();
+		const before = JSON.stringify(f.data);
+		await f.modalSave('b', { ...values, name: 'changed' });
+		assert.equal(f.calls.save, 0);
+		assert.equal(f.calls.closed, 0);
+		assert.deepEqual(f.calls.writes, []);
+		assert.equal(JSON.stringify(f.data), before);
+		assert.equal(f.calls.notifications[0]?.level, 'error');
+		assert.match(f.calls.notifications[0]?.node.textContent ?? '', /重复/);
+	}
+});
+
+test('T10.53 scenario 3: new overlapping bypass-China host stages, refreshes, closes and then warns', async () => {
+	const f = fixture([ host('a', 'gfw', { ip: [ '192.168.8.250-192.168.8.254' ] }) ]);
+	await f.start();
+	await f.page.hostSection.handleAdd();
+	await f.modalSave('cfgnew', { ip: [ '192.168.8.252' ], policy: 'bypass_cn' });
+	assert.equal(f.data[2].ip[0], '192.168.8.252');
+	assert.equal(f.data[2].policy, 'bypass_cn');
+	assert.equal(f.calls.save, 1);
+	assert.equal(f.calls.reset, 1);
+	assert.equal(f.calls.closed, 1);
+	assert.equal(f.calls.apply, 0);
+	assert.equal(f.calls.notifications.length, 1);
+	assert.equal(f.calls.notifications[0].level, 'warning');
+	assert.equal(f.calls.notifications[0].savedAt, 1);
+	assert.equal(f.calls.notifications[0].closedAt, 1, 'warning follows successful stock modal lifecycle');
+	assert.match(f.calls.notifications[0].node.textContent, /直连 → 全局 → 绕过大陆 → 仅被墙 → 跟随/);
+});
+
+test('T10.53 scenario 4: modal uses cloned current values, not stale parent widgets or its own old IP', async () => {
+	const f = fixture([ host('a', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
+	await f.start();
+	f.inputs.a.policy = 'direct';
+	await f.modalSave('a', { ip: [ '192.168.8.2' ], policy: 'follow', udp: '0' });
+	assert.equal(f.calls.save, 1);
+	assert.equal(f.calls.closed, 1);
+	assert.equal(f.data[1].policy, 'follow');
+	assert.deepEqual(f.data[1].ip, [ '192.168.8.2' ]);
+	assert.equal(f.calls.notifications.length, 0, 'replacing the edited section cannot conflict with itself');
+	assert.equal(f.table().rows[0].style.opacity, '0.6');
+	assert.match(f.table().rows[0].cell.textContent, /不起作用/);
+});
+
+test('T10.53 modal precheck: invalid existing list item and missing match never write earlier fields', async () => {
+	for (const ip of [ [ '192.168.8.200-192.168.8.100' ], [] ]) {
+		const f = fixture([ host('a', 'proxy') ]);
+		await f.start();
+		const before = JSON.stringify(f.data);
+		await f.modalSave('a', { name: 'changed', ip, mac: [] });
+		assert.equal(f.calls.save, 0);
+		assert.equal(f.calls.closed, 0);
+		assert.deepEqual(f.calls.writes, []);
+		assert.equal(JSON.stringify(f.data), before);
+		assert.equal(f.calls.notifications[0].level, 'error');
+	}
+});
+
+test('T10.53 modal precheck: other hosts use current session values rather than old table inputs', async () => {
+	const f = fixture([ host('a', 'follow'), host('b', 'proxy', { ip: [ '192.168.8.1' ] }) ]);
+	await f.start();
+	f.data[1].ip = [ '192.168.8.2' ];
+	await f.modalSave('b', { ip: [ '192.168.8.2' ] });
+	assert.equal(f.calls.save, 0);
+	assert.equal(f.calls.closed, 0);
+	assert.deepEqual(f.calls.writes, []);
+	assert.match(f.calls.notifications[0].node.textContent, /重复/);
+});
+
+test('T10.53 modal save failure: keep editor open, report failure, never emit a success overlap warning', async () => {
+	const f = fixture([ host('a', 'gfw', { ip: [ '192.168.8.250-192.168.8.254' ] }),
+		host('b', 'bypass_cn', { ip: [ '192.168.8.1' ] }) ]);
+	await f.start();
+	f.calls.saveError = new Error('session save failed');
+	await f.modalSave('b', { ip: [ '192.168.8.252' ] });
+	assert.equal(f.calls.save, 1, 'precheck succeeds and actually attempts the session save');
+	assert.equal(f.calls.closed, 0);
+	assert.equal(f.calls.reset, 0);
+	assert.deepEqual(f.calls.notifications.map(n => n.level), [ 'error' ]);
+	assert.match(f.calls.notifications[0].node.textContent, /session save failed/);
+});
+
+test('T10.53 scenario 5: empty add box is valid and Chinese IP sentences have no intervening space', async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const modal = f.openModal('a');
+	assert.equal(f.option('ip').validate('a', ''), true);
+	assert.equal(modal.option('ip').isValid('a'), true);
+	assert.match(f.option('ip').description, /设备。单个/);
+	await modal.save();
+	assert.equal(f.calls.save, 1);
+	assert.equal(f.calls.closed, 1);
+});
 
 test('T10.51 scenario 3: IP label and all three examples are translated; summaries retain range spelling', async () => {
 	const range = '192.168.8.250-192.168.8.254';
@@ -190,7 +365,7 @@ test('T10.51 scenario 3: IP label and all three examples are translated; summari
 	assert.equal(f.option('ip').description, [
 		'按 MAC 或 IP 匹配，任一命中即生效；同一设备一般只选设备。IP 用于固定地址、整个网段或经过另一台路由器的设备。',
 		'单个 192.168.8.250、范围 192.168.8.250-192.168.8.254、网段 192.168.8.0/24。'
-	].join(' '));
+	].join(''));
 	const summary = f.option('_devices').textvalue('a');
 	assert.equal(summary.textContent, range);
 	assert.equal(summary.title, range);

@@ -10,7 +10,8 @@
  * Access control (docs/10 「访问控制页定案」 and 「r14 修正：访问控制 IP 范围与说明」).
  * Action sizing follows docs/10 「r13 修正：块内行与表格操作列」.
  * The model owns wording, summaries and validation. Staged LuCI changes are
- * invisible to the command line, so both save buttons precheck them here;
+ * invisible to the command line, so footer and modal saves precheck them here
+ * (docs/10 「r16 修正：访问控制编辑框里的校验与重叠提示」);
  * the backend remains authoritative. Display sorting must not reorder UCI.
  */
 return view.extend({
@@ -135,6 +136,25 @@ return view.extend({
 			cfgsections: function() {
 				return model.sort_hosts(uci.sections('aetherproxy', 'host')).map((h) => h['.name']);
 			},
+			handleModalSave: function(modalMap, ev) {
+				/* Precheck before parse(): parsing may already write earlier
+				   fields, even when a later widget rejects the save. */
+				const result = self.validateModal(modalMap);
+				if (result.errors.length) {
+					self.showErrors(result.errors);
+					return Promise.resolve();
+				}
+
+				/* This page has one modal level. Keep the SDK save → parent
+				   reload/reset → cancel(isSaving) sequence, but report failures
+				   explicitly and warn only after a successful session save. */
+				return modalMap.save(null, true)
+					.then(() => this.map.load())
+					.then(() => this.map.reset())
+					.then(() => this.handleModalCancel(modalMap, ev, true))
+					.then(() => self.showWarnings(result.warnings))
+					.catch((e) => ui.addNotification(null, E('p', {}, e?.message || String(e)), 'error'));
+			},
 			renderSectionAdd: function() { return E([]); },
 			renderRowActions: function(id) {
 				const td = form.GridSection.prototype.renderRowActions.call(this, id);
@@ -201,11 +221,12 @@ return view.extend({
 		o = s.option(form.DynamicList, 'ip', _('IP / range / subnet (optional)', 'aether-proxy'));
 		o.modalonly = true;
 		o.rmempty = true;
-		o.description = _(
+		o.validate = function(sid, value) { return model.validate_ip(value); };
+		o.description = _('%s %s', 'aether-proxy').replace('%s', _(
 			'Match MAC or IP (either suffices). Use IP for fixed addresses, subnets or devices behind a router.',
-			'aether-proxy') + ' ' + _(
+			'aether-proxy')).replace('%s', _(
 			'Single 192.168.8.250; range 192.168.8.250-192.168.8.254; subnet 192.168.8.0/24.',
-			'aether-proxy');
+			'aether-proxy'));
 
 		o = s.option(form.ListValue, 'policy', _('Policy', 'aether-proxy'));
 		o.editable = true;
@@ -244,9 +265,7 @@ return view.extend({
 				return;
 			}
 
-			const warnings = result.warnings;
-			if (warnings.length)
-				ui.addNotification(null, E('ul', {}, warnings.map((w) => E('li', {}, w.text))), 'warning');
+			self.showWarnings(result.warnings);
 
 			return uci.save().then(function() {
 				if (apply_after_save)
@@ -257,6 +276,39 @@ return view.extend({
 			/* Widget validation failures must remain visible, like stock save. */
 			ui.addNotification(null, E('p', {}, e?.message || String(e)), 'error');
 		});
+	},
+
+	validateModal: function(modalMap) {
+		const sid = modalMap.section;
+		const current = Object.assign({}, uci.get('aetherproxy', sid));
+		const errors = [];
+		modalMap.checkDepends();
+		for (const option of modalMap.children[0].children) {
+			const key = option.option;
+			if (!option.isActive(sid)) {
+				if (!option.retain)
+					delete current[key];
+				continue;
+			}
+			/* DynamicList.getValue() omits an invalid pending add-box value.
+			   Check its validity first or a bad input could look like no edit. */
+			if (!option.isValid(sid))
+				errors.push({ text: option.getValidationError(sid) });
+			current[key] = option.formvalue(sid);
+		}
+		if (errors.length)
+			return { errors: errors, warnings: [] };
+
+		/* Replace, never append: a rule must not conflict with its old values.
+		   Other rules come from the session; modal options are cloned and
+		   their current values must not be read from the parent Map. */
+		return model.validate(uci.sections('aetherproxy', 'host').map((host) =>
+			host['.name'] == sid ? current : host));
+	},
+
+	showWarnings: function(warnings) {
+		if (warnings.length)
+			ui.addNotification(null, E('ul', {}, warnings.map((w) => E('li', {}, w.text))), 'warning');
 	},
 
 	showErrors: function(errors) {
