@@ -14,6 +14,7 @@ import * as config from 'aetherproxy.config';
 import * as state from 'aetherproxy.state';
 import * as check from 'aetherproxy.cmd.check';
 import * as apply from 'aetherproxy.apply';
+import * as conflicts from 'aetherproxy.conflicts';
 import * as updates_cache from 'aetherproxy.updates_cache';
 
 function usage(args, detail) {
@@ -136,7 +137,7 @@ function dnsmasq_notice(snapshot, opts) {
 	return { code: 'DNSMASQ_EXTRA_SERVERS', args: { servers: scan.servers } };
 }
 
-function collect_notices(snapshot, opts, updates) {
+function collect_notices(snapshot, opts, updates, cursor) {
 	let notices = component_notices(snapshot, opts);
 
 	for (let n in update_notices(snapshot, updates))
@@ -149,6 +150,10 @@ function collect_notices(snapshot, opts, updates) {
 	let extra = dnsmasq_notice(snapshot, opts);
 	if (extra != null)
 		push(notices, extra);
+
+	if (snapshot.main.enabled)
+		for (let notice in conflicts.notices({ root: root_prefix(opts), bin_dir: opts.bin_dir }, cursor))
+			push(notices, notice);
 
 	return notices;
 }
@@ -181,7 +186,8 @@ export function run(args) {
 	// TODO(design): docs/10 does not define status behavior for an invalid configuration,
 	// and nothing says whether config.load warnings should surface here; status is polled
 	// every few seconds, so they are neither logged nor returned for now.
-	let cfg = config.load(uci.cursor(parsed.opts.confdir));
+	let cursor = uci.cursor(parsed.opts.confdir);
+	let cfg = config.load(cursor);
 	if (!cfg.ok)
 		return pipeline.finish(parsed.opts,
 			{ ok: false, code: 'CONFIG_INVALID', detail: `${length(cfg.errors)} configuration error(s)`, errors: cfg.errors },
@@ -190,7 +196,7 @@ export function run(args) {
 	current.probe = probe_summary(run_dir);
 	let updates = updates_cache.read(run_dir, parsed.opts.sys_root);
 	current.updates_available = updates.stale ? null : updates.value;
-	current.notices = collect_notices(cfg.snapshot, parsed.opts, current.updates_available);
+	current.notices = collect_notices(cfg.snapshot, parsed.opts, current.updates_available, cursor);
 
 	return pipeline.finish(parsed.opts, current, 0, human_status(current));
 };

@@ -35,6 +35,12 @@ for name in xray chinadns-ng; do
 	printf '#!/bin/sh\nexit 0\n' > "$T/bin/$name"
 done
 cp "$T/bin/xray" "$T/bin-nochinadns/xray"
+# All conflict commands use shared substitutes, never host nft/killall.
+for bin in "$T/bin" "$T/bin-nochinadns"; do
+	cp "$ROOT/tests/stubs/bin/"{common.sh,nft,killall} "$bin/"
+done
+export STUB_LOG="$T/conflict-calls"
+printf "STUB_LOG='%s'\n" "$STUB_LOG" > "$T/stub.env"
 chmod +x "$T/bin/"* "$T/bin-nochinadns/"*
 
 PATH_BOTH="$T/bin:/usr/bin:/bin"
@@ -427,6 +433,9 @@ expect 'T9.32 probe now under stopping is NOT_RUNNING' NOT_RUNNING "$(printf '%s
 cmp -s "$T/stopping-before" "$R/state.json" \
 	&& ok 'T9.32 stopping state bytes unchanged by status and probe now' \
 	|| bad 'T9.32 stopping state bytes unchanged by status and probe now'
+
+# Shared T9.34 CLI scenarios (also exercised by the full status suite).
+bash "$ROOT/tests/status/conflicts.sh" || bad 'T9.34 conflict status scenarios'
 
 echo
 echo "$pass passed, $fail failed"

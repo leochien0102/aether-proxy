@@ -35,7 +35,14 @@ case " $* " in
 		[ -e "$SYSROOT/nft-table" ] && { echo 'table inet aetherproxy'; exit 0; }
 		echo 'Error: No such file or directory' >&2; exit 1
 		;;
-	*" list tables "*) [ -s "$SYSROOT/conflicts" ] && cat "$SYSROOT/conflicts"; exit 0 ;;
+	*" list tables "*)
+		[ -s "$SYSROOT/conflicts" ] && cat "$SYSROOT/conflicts"
+		if [ -f "$SYSROOT/nft-tables-rc" ]; then read -r rc < "$SYSROOT/nft-tables-rc"; exit "$rc"; fi
+		exit 0 ;;
+	*" list chains inet fw4 "*)
+		[ -s "$SYSROOT/conflict-chains" ] && cat "$SYSROOT/conflict-chains"
+		if [ -f "$SYSROOT/nft-chains-rc" ]; then read -r rc < "$SYSROOT/nft-chains-rc"; exit "$rc"; fi
+		exit 0 ;;
 	*" -j list set "*)
 		for name do :; done
 		elem='[]'

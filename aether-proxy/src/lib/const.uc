@@ -114,9 +114,7 @@ export const DNSMASQ_FRAGMENT = 'aether-proxy.conf';
 export const SETS_SAVE_FILE = 'sets.save';
 export const NODE_IP_FILE = 'node-ip.json';
 export const NFT_DYNAMIC_SETS = [ 'gfw4', 'udirect4', 'uproxy4' ];
-export const CONFLICT_NFT_SSR = 'ss_spec';
-export const CONFLICT_NFT_PASSWALL_PREFIX = 'passwall';
-export const CONFLICT_PROCESSES = [ 'clash', 'mihomo' ];
+// Conflict plugin identities and predicates live together in conflicts.uc (docs/04).
 
 // T2.4 (daemon lifecycle)
 export const CONFIG_DIR = '/etc/config';

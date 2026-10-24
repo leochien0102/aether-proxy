@@ -8,6 +8,7 @@ import * as C from 'aetherproxy.const';
 import * as net from 'aetherproxy.net';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
+import * as conflict_scan from 'aetherproxy.conflicts';
 
 function system_path(ctx, path) {
 	let root = ctx.root ?? '';
@@ -620,26 +621,8 @@ function write_boot_list(ctx, domains) {
 
 function conflicts(ctx) {
 	setup_log(ctx);
-	let table_list = exec(ctx, 'nft', [ 'list', 'tables' ]);
-	if (table_list.code != 0)
-		return failed(ctx, 'conflicts', `nft list tables failed (${table_list.code}): ${table_list.stderr}`);
-	let names = [];
-	for (let line in split(table_list.stdout, '\n')) {
-		let parts = split(trim(line), /[[:space:]]+/);
-		if (length(parts) >= 3 && parts[0] == 'table')
-			push(names, parts[2]);
-	}
-	let active = [];
-	for (let name in names)
-		if (name == C.CONFLICT_NFT_SSR || substr(name, 0, length(C.CONFLICT_NFT_PASSWALL_PREFIX)) == C.CONFLICT_NFT_PASSWALL_PREFIX)
-			push(active, name);
-	for (let process in C.CONFLICT_PROCESSES) {
-		// killall -0 verified on the lede busybox (2026-10-15): rc 0 when the process exists, 1 when it does not.
-		let check = exec(ctx, 'killall', [ '-0', process ], true);
-		if (check.code == 0)
-			push(active, process);
-	}
-	return result('conflicting services inspected', { conflicts: sort(active) });
+	let scan = conflict_scan.inspect(ctx);
+	return scan.ok ? scan : failed(ctx, 'conflicts', scan.detail);
 };
 
 function sha256_file(path) {
