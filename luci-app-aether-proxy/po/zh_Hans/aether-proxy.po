@@ -38,7 +38,7 @@ msgstr "已从节点 {from_node} 重载到 {to_node}，耗时 {elapsed_ms} 毫�
 
 msgctxt "aether-proxy"
 msgid "Configuration reloaded (node unchanged: {to_node}) in {elapsed_ms} ms"
-msgstr "已重载配置（节点未变：{to_node}），用时 {elapsed_ms} 毫秒"
+msgstr "已重载配置（节点未变：{to_node}），耗时 {elapsed_ms} 毫秒"
 
 msgctxt "aether-proxy"
 msgid "Service stopped (mode {mode}, node {node})"
@@ -299,6 +299,10 @@ msgstr "不支持的架构：{arch}"
 msgctxt "aether-proxy"
 msgid "Command {cmd} exited with {rc}: {stderr}"
 msgstr "命令 {cmd} 退出码 {rc}：{stderr}"
+
+msgctxt "aether-proxy"
+msgid "Command {cmd} exited with {rc}"
+msgstr "命令 {cmd} 退出码 {rc}"
 
 msgctxt "aether-proxy"
 msgid "File operation {op} failed for {path}: {detail}"

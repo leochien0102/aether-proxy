@@ -64,7 +64,7 @@ test('T10.50 scenario 2: same-node reload resolves names, section fallback, dele
 			actions: ['restart_xray'], steps: { validate: 12 }
 		});
 		assert.equal(model.message(event('RELOAD_APPLIED', args), maps),
-			'已重载配置（节点未变：' + name + '），用时 123 毫秒');
+			'已重载配置（节点未变：' + name + '），耗时 123 毫秒');
 	}
 });
 
@@ -168,7 +168,7 @@ test('T10.50 scenarios 1-3: real log view renders revised text safely and keeps 
 	}
 	assert.ok(rows.some(row => row.children[3].textContent === noSkipped));
 	assert.ok(rows.some(row => row.children[3].textContent ===
-		'已重载配置（节点未变：' + unsafe + '），用时 12 毫秒'));
+		'已重载配置（节点未变：' + unsafe + '），耗时 12 毫秒'));
 	assert.ok(!descendants(root).some(n => n.tag === 'img'));
 	assert.deepEqual(events.map(e => JSON.stringify(e.args)), originals);
 });

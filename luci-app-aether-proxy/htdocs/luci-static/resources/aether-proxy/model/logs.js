@@ -6,7 +6,8 @@
  * T10.39 optionally resolves IDs using { nodes, subscriptions } name maps.
  * T10.50 follows docs/10 "r14 修正：事件文字" for conditional text and mode names.
  * T10.52 gives PRECHECK_FAILED conflict entries shared product names while raw
- * args remain unchanged for hover. Templates use only catalog parameters.
+ * args remain unchanged for hover. T10.56 (docs/10 r16) omits the stderr suffix
+ * of CMD_FAILED when no diagnostic was captured. Templates use only catalog parameters.
  */
 const TEMPLATES = {
 	SERVICE_STARTED: _('Service started in {elapsed_ms} ms', 'aether-proxy'),
@@ -109,6 +110,8 @@ function name_text(args, key, names) {
 }
 
 function event_template(code, args, names) {
+	if (code === 'CMD_FAILED' && (args.stderr == null || args.stderr === ''))
+		return _('Command {cmd} exited with {rc}', 'aether-proxy');
 	if (code === 'SUB_UPDATED' && !Object.values(args.skipped || {}).some(count => count > 0))
 		return _('Subscription {sub}: added {added}, updated {updated}, stale {stale}, removed {removed}',
 			'aether-proxy');

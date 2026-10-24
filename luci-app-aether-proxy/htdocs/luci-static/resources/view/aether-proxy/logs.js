@@ -8,7 +8,8 @@
 /* Log-page controller (docs/10 「日志页」). Only events are polled; raw logs
  * can be large and are fetched on demand. All untrusted content is text.
  * T10.39 reads name maps from the already loaded UCI; hover keeps original IDs.
- * Block action rows follow docs/10 "UI 规则" (T10.27).
+ * Block action rows follow docs/10 "UI 规则" (T10.27); the wrapping filter row
+ * follows "r16 修正：日志页筛选行与事件文字" (T10.56).
  */
 return view.extend({
 	load: function() {
@@ -96,16 +97,31 @@ return view.extend({
 		this.tab = 'events';
 		this.auto = E('input', { type: 'checkbox', checked: true, change: () => this.startPolling() });
 		const refilter = () => this.showEvents(this.eventsReply);
-		this.level = E('select', { change: refilter }, [
+		this.level = E('select', { change: refilter, style: 'width:auto; max-width:100%' }, [
 			[ '', _('All', 'aether-proxy') ], [ 'error', _('Error', 'aether-proxy') ],
 			[ 'warn', _('Warning and above', 'aether-proxy') ], [ 'notice', _('Notice and above', 'aether-proxy') ]
 		].map(pair => E('option', { value: pair[0] }, pair[1])));
-		this.code = E('select', { change: refilter });
+		this.code = E('select', { change: refilter, style: 'width:auto; max-width:100%' });
 		this.eventContent = E('div', {});
 		this.eventPanel = E('div', {}, [
-			E('label', {}, [ this.auto, _('Automatic refresh', 'aether-proxy') ]),
-			E('label', {}, [ _('Level', 'aether-proxy'), this.level ]),
-			E('label', {}, [ _('Event code', 'aether-proxy'), this.code ]), this.eventContent
+			E('div', {
+				style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+			}, [
+				E('div', {
+					style: 'display:flex; align-items:center; gap:1em; flex-wrap:wrap; max-width:100%'
+				}, [
+					E('label', {
+						style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; max-width:100%'
+					}, [ E('span', { style: 'white-space:nowrap' }, _('Level', 'aether-proxy')), this.level ]),
+					E('label', {
+						style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; max-width:100%'
+					}, [ E('span', { style: 'white-space:nowrap' }, _('Event code', 'aether-proxy')), this.code ])
+				]),
+				E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
+					E('span', { style: 'white-space:nowrap' }, _('Automatic refresh', 'aether-proxy')), this.auto
+				])
+			]), this.eventContent
 		]);
 		this.source = E('select', {}, model.sources().map(pair => E('option', { value: pair[0] }, pair[1])));
 		this.lines = E('select', {}, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
