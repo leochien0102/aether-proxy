@@ -23,10 +23,7 @@ const NON_LITERAL_ALLOWLIST = new Map();
 /* Keys are exact source texts, values explain why the program name remains.
  * Reject unused entries so this temporary allowance cannot outlive its page card.
  */
-const DISPLAY_NAME_ALLOWLIST = new Map([
-	['%s is not running but is still enabled. A configuration change or router restart may start it again '
-		+ 'and conflict with aether-proxy.', 'T10.52 must identify the conflicting program in this warning.']
-]);
+const DISPLAY_NAME_ALLOWLIST = new Map();
 
 function files_under(dir, suffix) {
 	return fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })
@@ -419,11 +416,8 @@ test('T10.2 scenario 1: menu and overview titles use Aether Proxy with their own
 	}
 });
 
-test('T10.2 scenario 2 / T10.52: real UI texts pass the program-name gate with the conflict exception', () => {
-	assert.deepEqual([...DISPLAY_NAME_ALLOWLIST.keys()], [
-		'%s is not running but is still enabled. A configuration change or router restart may start it again '
-			+ 'and conflict with aether-proxy.'
-	]);
+test('T10.2 scenario 2: real UI texts pass the program-name gate without exceptions', () => {
+	assert.equal(DISPLAY_NAME_ALLOWLIST.size, 0);
 	assert.deepEqual(display_name_errors(real.entries), []);
 });
 

@@ -82,15 +82,15 @@ msgstr "启动前检查未通过：%s。"
 
 msgctxt "aether-proxy"
 msgid "In about %s seconds, retry %s will start."
-msgstr "将在约 %s 秒后第 %s 次重试"
+msgstr "将在约 %s 秒后第 %s 次重试。"
 
 msgctxt "aether-proxy"
 msgid "Retry %s is about to start."
-msgstr "即将第 %s 次重试"
+msgstr "即将第 %s 次重试。"
 
 msgctxt "aether-proxy"
-msgid "%s is not running but is still enabled. A configuration change or router restart may start it again and conflict with aether-proxy."
-msgstr "%s 没在运行，但仍处于启用状态，配置变化或重启路由器时可能被重新拉起，与 aether-proxy 冲突。"
+msgid "%s is not running but is still enabled. A configuration change or router restart may start it again and conflict with Aether Proxy."
+msgstr "%s 没在运行，但仍处于启用状态，配置变化或重启路由器时可能被重新拉起，与 Aether Proxy 冲突。"
 
 msgctxt "aether-proxy"
 msgid "Disable its automatic startup under “System → Startup”."
@@ -2295,3 +2295,7 @@ msgstr "%s：%s"
 msgctxt "aether-proxy"
 msgid "%s: %s; %s"
 msgstr "%s：%s；%s"
+
+msgctxt "aether-proxy"
+msgid "%s %s"
+msgstr "%s%s"

@@ -536,6 +536,6 @@ test('T10.15 scenario 4: chinadns-ng instructions embed optional arch; xray miss
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } }
 	] });
 	assert.equal(vm.notices[0],
-		'缺少组件 chinadns-ng，请先安装再启动服务。 或从发布页下载 chinadns-ng 包手工安装。');
+		'缺少组件 chinadns-ng，请先安装再启动服务。或从发布页下载 chinadns-ng 包手工安装。');
 	assert.equal(vm.notices[1], '缺少组件 xray，请先安装再启动服务。');
 });

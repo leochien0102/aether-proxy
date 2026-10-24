@@ -52,13 +52,13 @@ test('T10.52 scenario 1: current conflict and retry countdown use the paired dae
 	const events = attempt(['conflict:ssr-plus']);
 	assert.equal(build(events).error_text,
 		'检测到 ShadowSocksR Plus+ 正在运行，请先在它的页面停用，再启动。'
-		+ ' 将在约 300 秒后第 3 次重试');
+		+ '将在约 300 秒后第 3 次重试。');
 	assert.equal(build(events, NOW + 17).error_text,
 		'检测到 ShadowSocksR Plus+ 正在运行，请先在它的页面停用，再启动。'
-		+ ' 将在约 283 秒后第 3 次重试');
+		+ '将在约 283 秒后第 3 次重试。');
 	assert.equal(build(events, NOW + 300).error_text,
 		'检测到 ShadowSocksR Plus+ 正在运行，请先在它的页面停用，再启动。'
-		+ ' 即将第 3 次重试');
+		+ '即将第 3 次重试。');
 });
 
 test('T10.52 scenario 2: mixed precheck details are all shown and two plugins use plural wording', () => {
@@ -68,8 +68,8 @@ test('T10.52 scenario 2: mixed precheck details are all shown and two plugins us
 	]));
 	assert.equal(vm.error_text,
 		'检测到 ShadowSocksR Plus+、PassWall 2 正在运行，请先在它们的页面停用，再启动。'
-		+ ' 无法检查其他代理插件：nft list tables failed (2)。'
-		+ ' 启动前检查未通过：component:xray。 将在约 300 秒后第 3 次重试');
+		+ '无法检查其他代理插件：nft list tables failed (2)。'
+		+ '启动前检查未通过：component:xray。将在约 300 秒后第 3 次重试。');
 });
 
 test('T10.52 scenario 2: an older conflict cannot leak into the latest attempt', () => {
@@ -78,8 +78,16 @@ test('T10.52 scenario 2: an older conflict cannot leak into the latest attempt',
 		...attempt(['component:xray'], 2, NOW, 60)
 	];
 	assert.equal(build(events).error_text,
-		'启动前检查未通过：component:xray。 将在约 60 秒后第 2 次重试');
+		'启动前检查未通过：component:xray。将在约 60 秒后第 2 次重试。');
 	assert.doesNotMatch(build(events).error_text, /ShadowSocksR/);
+});
+
+test('T10.52 scenario 2: a latest precheck failure without its own PRECHECK_FAILED stops at the previous retry', () => {
+	/* Review addition: the START_RETRY boundary, not the nearest older precheck,
+	   delimits the latest attempt. */
+	const older = attempt(['conflict:ssr-plus'], 1, NOW - 60, 30);
+	const events = [ ...older, event('START_FAILED', { step: 'precheck' }) ];
+	assert.equal(build(events).error_text, '启动失败，详见日志页');
 });
 
 test('T10.52 scenario 2: non-precheck, absent and failed event reads keep the original wording', () => {
@@ -112,9 +120,9 @@ function notice(plugin, boot, configured) {
 
 test('T10.52 scenario 4: CONFLICT_ENABLED covers boot/configured combinations without fallback text', () => {
 	const base = 'PassWall 没在运行，但仍处于启用状态，配置变化或重启路由器时可能被重新拉起，'
-		+ '与 aether-proxy 冲突。';
-	const boot = ' 请在『系统 → 启动项』里关闭它的开机自启。';
-	const configured = ' 请在它的页面里停用。';
+		+ '与 Aether Proxy 冲突。';
+	const boot = '请在『系统 → 启动项』里关闭它的开机自启。';
+	const configured = '请在它的页面里停用。';
 	assert.equal(notice('passwall', false, false), base);
 	assert.equal(notice('passwall', true, false), base + boot);
 	assert.equal(notice('passwall', false, true), base + configured);

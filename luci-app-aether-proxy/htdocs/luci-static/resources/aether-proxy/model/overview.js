@@ -29,6 +29,12 @@ function fmt(s) {
 	return s;
 }
 
+/* Sentences joined by a translated separator: English needs a space, Chinese
+   full-width punctuation needs none (msgids carry no edge whitespace, m10 X3). */
+function sentences(parts) {
+	return parts.reduce((text, part) => text == null ? part : fmt(_('%s %s', 'aether-proxy'), text, part), null) ?? '';
+}
+
 /* docs/10 「概览页」: the state wording, with 「等待网络」 while --boot waits. */
 const STATE_TEXT = {
 	stopped: _('Stopped', 'aether-proxy'),
@@ -195,7 +201,7 @@ function start_failure_text(reply, now) {
 			? fmt(_('In about %s seconds, retry %s will start.', 'aether-proxy'), remaining, retry.args.attempt)
 			: fmt(_('Retry %s is about to start.', 'aether-proxy'), retry.args.attempt));
 	}
-	return parts.join(' ');
+	return sentences(parts);
 }
 
 function startup_events_needed(status) {
@@ -212,10 +218,10 @@ function notice_text(n) {
 
 	switch (n.code) {
 		case 'COMPONENT_MISSING':
-			return fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'),
-				args.component ?? '?') + (args.component == 'chinadns-ng' ? ' ' +
-				_('Or download the chinadns-ng package from the release page and install it manually.',
-					'aether-proxy') : '');
+			return sentences([ fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'),
+				args.component ?? '?'), ...(args.component == 'chinadns-ng' ? [
+				_('Or download the chinadns-ng package from the release page and install it manually.', 'aether-proxy')
+			] : []) ]);
 
 		case 'UPDATE_AVAILABLE':
 			return fmt(_('An update for %s is available (%s).', 'aether-proxy'), args.package ?? '?', args.available ?? '?');
@@ -231,13 +237,13 @@ function notice_text(n) {
 
 		case 'CONFLICT_ENABLED': {
 			const name = conflicts.display_name(args.plugin ?? '?');
-			let text = fmt(_('%s is not running but is still enabled. A configuration change or router restart '
-				+ 'may start it again and conflict with aether-proxy.', 'aether-proxy'), name);
+			const parts = [ fmt(_('%s is not running but is still enabled. A configuration change or router restart '
+				+ 'may start it again and conflict with Aether Proxy.', 'aether-proxy'), name) ];
 			if (args.boot === true)
-				text += ' ' + _('Disable its automatic startup under “System → Startup”.', 'aether-proxy');
+				parts.push(_('Disable its automatic startup under “System → Startup”.', 'aether-proxy'));
 			if (args.configured === true)
-				text += ' ' + _('Disable it on its page.', 'aether-proxy');
-			return text;
+				parts.push(_('Disable it on its page.', 'aether-proxy'));
+			return sentences(parts);
 		}
 
 		default:
