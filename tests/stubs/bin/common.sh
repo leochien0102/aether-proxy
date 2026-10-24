@@ -21,6 +21,17 @@ if [ "$name" = resolveip ] && [ -n "${STUB_RESOLVEIP_SEQUENCE:-}" ]; then
 	fi
 	if [ -f "$STUB_RESOLVEIP_SEQUENCE/$count.out" ]; then out="$STUB_RESOLVEIP_SEQUENCE/$count.out"; fi
 fi
+# T9.34: independent table/chain responses, retaining the old fallback.
+if [ "$name" = nft ]; then
+	case "$*" in
+		'list tables') rc=${STUB_NFT_TABLES_RC:-$rc}; out=${STUB_NFT_TABLES_FILE:-$out} ;;
+		'list chains inet fw4') rc=${STUB_NFT_CHAINS_RC:-$rc}; out=${STUB_NFT_CHAINS_FILE:-} ;;
+	esac
+fi
+if [ "$name" = killall ] && [ "$1" = -0 ] && [ -n "${STUB_PROCESSES_FILE:-}" ]; then
+	rc=1
+	while IFS= read -r process; do [ "$process" = "$2" ] && rc=0; done < "$STUB_PROCESSES_FILE"
+fi
 if [ "$name" = nft ]; then
 	case " $* " in
 		*" gfw4 "*) out=${STUB_NFT_GFW4_OUT_FILE:-$out} ;;

@@ -1,0 +1,6 @@
+#!/bin/sh
+# T9.34: copied to a private sys-root/etc/init.d/<plugin>.
+# Never invokes rc.common, procd or a real service; a sibling marker models boot enablement.
+[ -z "${STUB_LOG:-}" ] || printf 'init %s %s\n' "${0##*/}" "$*" >> "$STUB_LOG"
+[ "$#" -eq 1 ] && [ "$1" = enabled ] || exit 2
+[ -f "$0.boot" ]

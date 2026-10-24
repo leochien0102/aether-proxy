@@ -1,7 +1,13 @@
 #!/bin/sh
 printf 'killall %s\n' "$*" >> "$STUB_LOG"
 case "$1" in
-	-0) exit "${STUB_KILLALL_RC:-1}" ;;
+	-0)
+		if [ -f "$SYSROOT/conflict-processes" ]; then
+			rc=1
+			while IFS= read -r process; do [ "$process" = "$2" ] && rc=0; done < "$SYSROOT/conflict-processes"
+			exit "$rc"
+		fi
+		exit "${STUB_KILLALL_RC:-1}" ;;
 	-HUP) exit 0 ;;
 esac
 exit 0

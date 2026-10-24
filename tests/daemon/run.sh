@@ -611,7 +611,57 @@ expect "conflict records precheck step" precheck "$(jget failed_step < "$R6/var/
 ! has_line "$L6" 'nft -f ' && ok "conflict does not load nft" || bad "conflict does not load nft"
 ! has_line "$L6" 'dnsmasq restart' && ok "conflict does not restart dnsmasq" || bad "conflict does not restart dnsmasq"
 kill -0 "$DAEMON_PID" 2>>"$QUIET" && ok "conflict leaves daemon waiting" || bad "conflict leaves daemon waiting"
+event=$(grep '"code": "PRECHECK_FAILED"' "$R6/var/run/aether-proxy/events.jsonl" | sed -n '1p')
+expect 'T9.34 original ss_spec scenario identifies ssr-plus' conflict:ssr-plus "$(printf '%s\n' "$event" | jget args.missing.0)"
 stop_daemon; expect "conflict daemon stops" 0 "$?"
+
+# T9.34: every documented running indication reaches PRECHECK_FAILED, with one
+# plugin-level missing entry. All commands remain the tests/stubs substitutes.
+for scenario in ssr-mangle ssr-both passwall passwall2 homeproxy openclash-chain openclash-process nikki-table nikki-process clash mihomo tables-failed; do
+	RC="$T/sys-conflict-$scenario"; LC="$RC/calls.log"; make_root "$RC"; : > "$LC"
+	wanted="conflict:$scenario"
+	case "$scenario" in
+		ssr-mangle) printf 'table ip ss_spec_mangle\n' > "$RC/conflicts"; wanted=conflict:ssr-plus ;;
+		ssr-both) printf 'table inet ss_spec\ntable ip ss_spec_mangle\n' > "$RC/conflicts"; wanted=conflict:ssr-plus ;;
+		passwall|passwall2) printf 'table inet %s\n' "$scenario" > "$RC/conflicts" ;;
+		homeproxy) printf 'table inet fw4 {\n chain homeproxy_prerouting {\n }\n}\n' > "$RC/conflict-chains" ;;
+		openclash-chain) printf 'chain openclash_mangle {\n' > "$RC/conflict-chains"; wanted=conflict:openclash ;;
+		openclash-process|nikki-process)
+			plugin=${scenario%-process}; process=clash; [ "$plugin" != nikki ] || process=mihomo
+			cp "$ROOT/tests/stubs/bin/plugin-init" "$RC/etc/init.d/$plugin"
+			chmod +x "$RC/etc/init.d/$plugin"
+			printf '%s\n' "$process" > "$RC/conflict-processes"; wanted="conflict:$plugin" ;;
+		nikki-table) printf 'table inet nikki\n' > "$RC/conflicts"; wanted=conflict:nikki ;;
+		clash|mihomo) printf '%s\n' "$scenario" > "$RC/conflict-processes" ;;
+		tables-failed) printf '2\n' > "$RC/nft-tables-rc"; wanted='conflict-check:nft list tables failed (2): ' ;;
+	esac
+	start_daemon "$RC" "$LC"
+	wait_for "$RC/var/run/aether-proxy/events.jsonl" 'PRECHECK_FAILED' \
+		&& ok "T9.34 $scenario emits PRECHECK_FAILED" || bad "T9.34 $scenario emits PRECHECK_FAILED"
+	event=$(grep '"code": "PRECHECK_FAILED"' "$RC/var/run/aether-proxy/events.jsonl" | sed -n '1p')
+	expect "T9.34 $scenario missing plugin identity" "$wanted" "$(printf '%s\n' "$event" | jget args.missing.0)"
+	expect "T9.34 $scenario missing deduplicated" '<missing>' "$(printf '%s\n' "$event" | jget args.missing.1)"
+	expect "T9.34 $scenario one table snapshot" 1 "$(count_calls "$LC" 'nft list tables')"
+	if [ "$scenario" != tables-failed ]; then
+		expect "T9.34 $scenario one chain snapshot" 1 "$(count_calls "$LC" 'nft list chains inet fw4')"
+	fi
+	! has_line "$LC" 'nft -f ' && ok "T9.34 $scenario no nft load" || bad "T9.34 $scenario no nft load"
+	! has_line "$LC" 'dnsmasq restart' && ok "T9.34 $scenario no dnsmasq restart" || bad "T9.34 $scenario no dnsmasq restart"
+	stop_daemon; expect "T9.34 $scenario daemon stops" 0 "$?"
+done
+
+# T9.34: absent fw4 and arbitrary chain-query failure do not fail precheck.
+for chain_rc in 1 2; do
+	RC="$T/sys-no-fw4-$chain_rc"; LC="$RC/calls.log"; make_root "$RC"; : > "$LC"
+	printf '%s\n' "$chain_rc" > "$RC/nft-chains-rc"
+	start_daemon "$RC" "$LC"
+	wait_for "$RC/var/run/aether-proxy/events.jsonl" 'SERVICE_STARTED' \
+		&& ok "T9.34 chain rc=$chain_rc startup succeeds" || bad "T9.34 chain rc=$chain_rc startup succeeds"
+	! has_line "$RC/var/run/aether-proxy/events.jsonl" 'PRECHECK_FAILED' \
+		&& ok "T9.34 chain rc=$chain_rc no precheck failure" || bad "T9.34 chain rc=$chain_rc no precheck failure"
+	stop_daemon; expect "T9.34 chain rc=$chain_rc daemon stops" 0 "$?"
+	assert_no_children "$RC"
+done
 
 # 7. A second daemon sees BUSY while the first still holds its startup lock.
 R7="$T/sys7"; L7="$T/sys7/calls.log"; make_root "$R7"; : > "$L7"

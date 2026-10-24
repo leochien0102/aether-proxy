@@ -413,7 +413,7 @@ function run_misc() {
 	write(table_file, 'table inet fw4\ntable inet ss_spec\ntable inet passwall2\n');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + `STUB_NFT_OUT_FILE='${table_file}'\nSTUB_KILLALL_RC=0\n`);
 	let found = apply.conflicts(c);
-	if (!found.ok || sprintf('%.J', found.conflicts) != sprintf('%.J', [ 'clash', 'mihomo', 'passwall2', 'ss_spec' ]))
+	if (!found.ok || sprintf('%.J', found.conflicts) != sprintf('%.J', [ 'clash', 'mihomo', 'passwall2', 'ssr-plus' ]))
 		return fail(`conflict list: ${sprintf('%.J', found)}`);
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_NFT_RC=1\n');
 	return !apply.conflicts(c).ok ? 'PASS' : fail('nft failure in conflict check accepted');
