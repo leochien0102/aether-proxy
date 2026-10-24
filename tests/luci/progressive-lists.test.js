@@ -1317,7 +1317,8 @@ test('T10.19 scenario 4: anonymous grid hides section names without changing edi
 	const edit = buttons(actions(h, 'n_b')).find(node => text(node) === '编辑');
 	edit.click();
 	assert.equal(section.modal.description,
-		po['This node comes from a subscription; edits will be overwritten at the next subscription update.']);
+		po['This node comes from a subscription; edits will be overwritten at the next subscription update.']
+			+ '<br>' + po['Fields marked with * are required.']);
 	assert.ok(section.options.some(option => option.field === 'label' && option.modalonly));
 	let confirmations = 0;
 	h.ap.confirm = async () => { confirmations++; return false; };
@@ -1573,14 +1574,15 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 		await edit.click({ currentTarget: edit });
 		assert.equal(section.modal.id, id);
 		const modal = section.modal.node;
-		assert.equal(text(modal.children[0]), id === 'n_a' ? ''
-			: '此节点来自订阅，下次更新订阅时修改会被覆盖');
+		assert.equal(text(modal.children[0]), id === 'n_a' ? '带 * 的为必填项。'
+			: '此节点来自订阅，下次更新订阅时修改会被覆盖<br>带 * 的为必填项。');
 		for (const field of ['address', 'port'])
 			assert.ok(section.options.some(option => option.field === field && option.modalonly));
 		assert.match(text(modal), /地址端口/);
 	}
 	await buttons(actions(h, 'n_a')).find(node => text(node) === '编辑').click({});
-	assert.equal(text(section.modal.node.children[0]), '', 'manual modal must not inherit the previous hint');
+	assert.equal(text(section.modal.node.children[0]), '带 * 的为必填项。',
+		'manual modal must not inherit the previous subscription hint');
 });
 
 test('T10.25 scenario 4: only current row has a titled green check; stale name is faded', async () => {

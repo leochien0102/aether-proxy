@@ -3,6 +3,7 @@
 // Pure subscription presentation, ID generation and deletion plans for the LuCI view.
 // Design: docs/10「订阅页」「订阅页修正」「订阅：通用设置、获取方式与行首开关」.
 // Availability and hint priority: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
+// Required-field metadata mirrors schema.uc (docs/10 r17, T10.58).
 // Keep inheritance pure, URLs masked and the current node retained.
 
 function fmt(text, ...args) {
@@ -111,6 +112,7 @@ function job_error(failure) {
 		(failure.detail ? '（' + failure.detail + '）' : '');
 }
 return baseclass.extend({
+	required_fields: { url: { required: true } },
 	general_values,
 	interval_text,
 	fetch_text,

@@ -149,6 +149,15 @@ function loadModule(file, modules, env) {
 			return loadModule(require('node:path').resolve(__dirname,
 				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/form-defaults.js'),
 			{ baseclass: { extend: object => object } }, env);
+		/* Node-only tests stub subscription loading/rendering, not the shared
+		 * modal guard. Exercise the shipped guard rather than a no-op copy. */
+		if (r.name == 'aether-proxy.subscriptions-block' && modules[r.name] && !modules[r.name].required_options) {
+			const block = loadModule(require('node:path').resolve(__dirname,
+				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/subscriptions-block.js'),
+			{ ...modules, baseclass: { extend: object => object },
+				'aether-proxy.model.subscriptions': {} }, env);
+			modules[r.name].required_options = block.required_options;
+		}
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');
 

@@ -287,6 +287,50 @@ test('T10.41 scenario 3: overview Enable and mode use schema defaults without wr
 	// There are no mutating UCI methods in this double: a write would throw.
 });
 
+/* T10.58: use the same ucode export, not a second hand-maintained schema.
+ * Preserve protocols even when required is narrower (VMess/SS method). */
+function check_required(h, page, rules) {
+	const section = page === 'nodes' ? 'node' : 'subscription';
+	const expected = {};
+	for (const field of schema[section].filter(field => field.required || field.requires_when)) {
+		expected[field.name] = {};
+		for (const key of ['required', 'protocols', 'requires_when'])
+			if (field[key] != null)
+				expected[field.name][key] = field[key];
+	}
+	assert.deepEqual(rules, expected, section + ': required table differs from ucode schema');
+	for (const field of Object.keys(rules))
+		assert.ok(h.options.some(option => option.section.name === section && option.option === field
+			&& option.kind !== h.form.DummyValue && option.modalonly === true),
+			section + ': missing editable input ' + field);
+}
+
+for (const page of ['nodes', 'subscriptions']) {
+	test('T10.58 scenario 5: ' + page + ' required table and editable inputs agree with exported ucode schema',
+	async () => {
+		const h = await page_options(page);
+		const model = h.load('aether-proxy/model/' + page + '.js');
+		check_required(h, page, model.required_fields);
+	});
+	test('T10.58 scenario 5: gate rejects wrong requirement, protocol, condition and missing input on ' + page,
+	async () => {
+		const h = await page_options(page);
+		const model = h.load('aether-proxy/model/' + page + '.js');
+		const table = model.required_fields;
+		const mutations = page === 'nodes' ? [
+			{ ...table, address: { required: false } },
+			{ ...table, method: { ...table.method, required: true } },
+			{ ...table, uuid: { ...table.uuid, protocols: ['vless'] } },
+			{ ...table, sni: { requires_when: { field: 'security', value: 'tls' } } }
+		] : [{ url: { required: false } }, { ...table, name: { required: true } }];
+		for (const mutation of mutations)
+			assert.throws(() => check_required(h, page, mutation), /required table differs from ucode schema/);
+		const field = page === 'nodes' ? 'reality_pbk' : 'url';
+		h.options.splice(h.options.findIndex(option => option.option === field), 1);
+		assert.throws(() => check_required(h, page, table), /missing editable input/);
+	});
+}
+
 test('T10.41 scenario 2: the default gate covers every form page shipped in view/', () => {
 	const views = path.join(RES, 'view/aether-proxy');
 	const form_pages = fs.readdirSync(views).filter(file =>
