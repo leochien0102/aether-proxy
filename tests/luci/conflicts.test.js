@@ -118,15 +118,17 @@ function notice(plugin, boot, configured) {
 		notices: [{ code: 'CONFLICT_ENABLED', args: { plugin, boot, configured } }] }).notices[0];
 }
 
-test('T10.52 scenario 4: CONFLICT_ENABLED covers boot/configured combinations without fallback text', () => {
+test('T10.52 scenario 4 / T10.55 scenario 4: CONFLICT_ENABLED ignores boot and advises only configured plugins', () => {
 	const base = 'PassWall 没在运行，但仍处于启用状态，配置变化或重启路由器时可能被重新拉起，'
 		+ '与 Aether Proxy 冲突。';
-	const boot = '请在『系统 → 启动项』里关闭它的开机自启。';
 	const configured = '请在它的页面里停用。';
 	assert.equal(notice('passwall', false, false), base);
-	assert.equal(notice('passwall', true, false), base + boot);
+	assert.equal(notice('passwall', true, false), base);
 	assert.equal(notice('passwall', false, true), base + configured);
-	assert.equal(notice('passwall', true, true), base + boot + configured);
+	assert.equal(notice('passwall', true, true), base + configured);
+	for (const boot of [false, true])
+		for (const enabled of [false, true])
+			assert.doesNotMatch(notice('passwall', boot, enabled), /开机自启|启动项|Unhandled notice/);
 	const notices = build([], NOW, { state: 'running', last_error: null, notices: [
 		{ code: 'CONFLICT_ENABLED', args: { plugin: 'ssr-plus', boot: true, configured: false } },
 		{ code: 'CONFLICT_ENABLED', args: { plugin: 'nikki', boot: false, configured: true } }

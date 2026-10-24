@@ -17,6 +17,7 @@
  * T10.43 supplies startup completion rules and waiting/timeout presentation;
  * T10.48 distinguishes the old restart process by its baseline since;
  * T10.52 pairs daemon startup events and presents proxy-plugin conflicts;
+ * T10.55 follows docs/10 r16 for shared busy wording/colors and conflict advice;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -80,6 +81,8 @@ function state_duration(now, ts) {
 }
 
 function state_level(state) {
+	if (state == 'starting' || state == 'stopping')
+		return 'busy';
 	if (state == 'running')
 		return 'ok';
 	if (state == 'degraded' || state == 'failsafe')
@@ -239,8 +242,8 @@ function notice_text(n) {
 			const name = conflicts.display_name(args.plugin ?? '?');
 			const parts = [ fmt(_('%s is not running but is still enabled. A configuration change or router restart '
 				+ 'may start it again and conflict with Aether Proxy.', 'aether-proxy'), name) ];
-			if (args.boot === true)
-				parts.push(_('Disable its automatic startup under “System → Startup”.', 'aether-proxy'));
+			/* LuCI Startup omits traditional rc scripts; boot alone has no
+			   actionable advice, including notices from older backends (r16). */
 			if (args.configured === true)
 				parts.push(_('Disable it on its page.', 'aether-proxy'));
 			return sentences(parts);
@@ -440,10 +443,12 @@ return baseclass.extend({
 		const waiting = phase === 'waiting' || phase === 'stopping';
 		return {
 			...vm,
-			state_text: phase === 'stopping' ? _('Stopping…', 'aether-proxy')
-				: (waiting ? _('Starting…', 'aether-proxy')
+			state_text: phase === 'stopping' ? STATE_TEXT.stopping
+				: (waiting ? STATE_TEXT.starting
 					: _('Startup did not complete; see the logs page for the reason.', 'aether-proxy')),
-			state_level: waiting ? 'neutral' : 'warn',
+			state_level: waiting ? 'busy' : 'warn',
+			/* A wait can overlay stopped status; do not inherit its dimming. */
+			state_dimmed: false,
 			state_duration_text: null,
 			error_text: null,
 			dns_text: null,
@@ -686,6 +691,7 @@ return baseclass.extend({
 				traffic_note,
 				dns_failsafe: false,
 				state_level: 'neutral',
+				state_dimmed: false,
 				state_duration_text: null,
 				error_text: null,
 				dns_text: null,
@@ -717,6 +723,7 @@ return baseclass.extend({
 			traffic_note,
 			dns_failsafe: status.dns_failsafe === true,
 			state_level: state_level(state),
+			state_dimmed: state === 'stopped',
 			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,
 			error_text: startup_reason ?? error_text(status.last_error),
 			dns_text: dns_text(state, status.dns_tier),

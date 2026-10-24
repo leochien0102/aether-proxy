@@ -16,6 +16,7 @@
  * T10.48 synchronizes UCI on refresh, preserves unapplied selections and
  * distinguishes restart's stopping phase from the new process's startup.
  * T10.52 shares one event read between pending switches and startup failures.
+ * T10.55 maps docs/10 r16's busy grade to blue and dims only stopped status.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
@@ -659,6 +660,7 @@ return view.extend({
 	colorStyle: function(level) {
 		const colors = {
 			ok: 'var(--success-color-high, #2f855a)',
+			busy: 'var(--primary-color-high, #2b6cb0)',
 			warn: 'var(--warning-color, #b7791f)',
 			error: 'var(--error-color-high, #c53030)'
 		};
@@ -852,7 +854,10 @@ return view.extend({
 			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
 		}, [
 			E('div', {}, [
-				E('strong', { style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level) }, vm.state_text ?? '–'),
+				E('strong', {
+					style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level)
+						+ (vm.state_dimmed ? ';opacity:0.7' : '')
+				}, vm.state_text ?? '–'),
 				' ', E('span', {}, vm.state_duration_text ?? ''), ' ',
 				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
 					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : [])
