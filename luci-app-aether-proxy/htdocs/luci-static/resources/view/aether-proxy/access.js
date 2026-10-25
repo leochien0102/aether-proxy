@@ -17,12 +17,13 @@
  * (docs/10 「r16 修正：访问控制编辑框里的校验与重叠提示」);
  * the backend remains authoritative. Display sorting must not reorder UCI.
  * Local input feedback follows docs/10 「r17 修正：访问控制的反馈、措辞与名称不重复」;
- * pending text and device dropdown layout follow 「r18：访问控制的未添加内容与设备下拉」.
+ * pending text and device dropdown layout follow 「r18：访问控制的未添加内容与设备下拉」
+ * and 「r19：访问控制设备下拉的顺序与校验提示」.
  */
 
 /* Theme invalid classes alone are invisible in proton2025. Keep feedback next
    to the actual input, and restore its original border when the user edits. */
-function inputError(input, text) {
+function inputError(input, text, shake = true) {
 	if (!input)
 		return;
 	if (!input.accessFeedback) {
@@ -33,14 +34,15 @@ function inputError(input, text) {
 		input.parentNode.style.flexWrap = 'wrap';
 		const border = input.style.borderColor;
 		input.accessFeedback = message;
-		input.addEventListener('input', function() {
+		input.accessClearFeedback = function() {
 			input.style.borderColor = border;
 			message.textContent = '';
-		});
+		};
+		input.addEventListener('input', input.accessClearFeedback);
 	}
 	input.accessFeedback.textContent = text;
 	input.style.borderColor = 'var(--error-color-high, #c53030)';
-	if (typeof input.animate == 'function')
+	if (shake && typeof input.animate == 'function')
 		input.animate([ { transform: 'translateX(0)' }, { transform: 'translateX(-0.4em)' },
 			{ transform: 'translateX(0.4em)' }, { transform: 'translateX(0)' } ], { duration: 300 });
 }
@@ -218,6 +220,25 @@ return view.extend({
 			};
 			node.addEventListener('click', attempt, true);
 			node.addEventListener('keydown', attempt, true);
+			/* SDK sets tooltip attributes before dispatching these bubbling events.
+			   Only add boxes use inline reasons; stored items and other fields
+			   keep stock LuCI tooltips. Typing must not trigger the action shake. */
+			node.addEventListener('validation-failure', function(ev) {
+				const input = addInput(node);
+				if (ev.target != input)
+					return;
+				input.removeAttribute('data-tooltip');
+				input.removeAttribute('data-tooltip-style');
+				ui.hideTooltip({ target: input });
+				inputError(input, ev.detail.message, false);
+			});
+			node.addEventListener('validation-success', function(ev) {
+				const input = addInput(node);
+				if (ev.target == input) {
+					ui.hideTooltip({ target: input });
+					input.accessClearFeedback?.();
+				}
+			});
 			return node;
 		};
 	},
@@ -236,6 +257,11 @@ return view.extend({
 			const item = input.closest('li');
 			const list = item.parentNode;
 			item.style.order = '-1';
+			/* SDK's optional Combobox inserts li[placeholder] without data-value.
+			   Keep it above the custom entry so SDK's selected-item scroll is 0. */
+			const placeholder = list.querySelector('li[placeholder], li[data-value=""]');
+			if (placeholder)
+				placeholder.style.order = '-2';
 			const dropdown = dom.findClassInstance(input.closest('.cbi-dropdown'));
 			const open = dropdown.openDropdown;
 			const close = dropdown.closeDropdown;
