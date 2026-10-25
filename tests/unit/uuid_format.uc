@@ -30,6 +30,9 @@ const VALUES = [
 	{ name: 'one non-hex byte', value: 'z', valid: true },
 	{ name: '32 non-hex bytes', value: THIRTY + 'zz', valid: false },
 	{ name: '36 bytes with only 31 hex digits', value: '-----' + substr(HEX, 0, 31), valid: false },
+	// All 32 hex digits present but extra non-hex bytes around them: the whole value must be hex.
+	{ name: '34 bytes with non-hex prefix before 32 hex', value: 'zz' + HEX, valid: false },
+	{ name: '33 bytes with non-hex suffix after 32 hex', value: HEX + 'z', valid: false },
 	{ name: 'empty UUID remains required', value: '', required: true },
 	{ name: 'missing UUID remains required', value: null, required: true }
 ];
