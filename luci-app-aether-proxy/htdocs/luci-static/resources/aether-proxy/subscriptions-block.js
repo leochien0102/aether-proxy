@@ -96,7 +96,7 @@ function requiredOptions(grid, rules) {
 		const invalid = options.filter(option =>
 			option.isActive(id) && !missing.includes(option) && !option.isValid(id));
 		const errors = missing.map(option => _('%s is required.', 'aether-proxy').format(option.title))
-			.concat(invalid.map(option => option.title + ': ' + option.getValidationError(id)));
+			.concat(invalid.map(option => _('%s: %s', 'aether-proxy').format(option.title, option.getValidationError(id))));
 		/* Never parse even the first field until all required and format checks pass:
 		 * SDK parse can stage earlier values before a later field rejects. Its
 		 * notification would also be hidden behind the still-open modal. */

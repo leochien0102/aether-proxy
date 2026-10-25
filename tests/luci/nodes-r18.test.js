@@ -22,7 +22,7 @@ const FORMATS = {
 	address: {
 		good: ['0.0.0.0', '255.255.255.255', 'example.org', '_srv.a_b', 'a-b._',
 			'a'.repeat(63) + '.org', ['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(61)].join('.')],
-		bad: ['1.2.3.999', '01.2.3.4', '1.2.3', 'example.org.', '-a.org', 'a-.org', 'a..org',
+		bad: ['1.2.3.999', '1.2.3.256', '01.2.3.4', '1.2.3', 'example.org.', '-a.org', 'a-.org', 'a..org',
 			'a'.repeat(64) + '.org', ['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(62)].join('.'),
 			'::1', '2001:db8::1', 'edge.org\n', '1.2.3.4\n']
 	},
@@ -30,7 +30,7 @@ const FORMATS = {
 		good: ['00112233-4455-6677-8899-aabbccddeeff', '00112233445566778899AABBCCDDEEFF',
 			'a'.repeat(30), '汉'.repeat(10), 'é'.repeat(15), '😀'.repeat(7) + 'ab', 'short id',
 			'--00112233445566778899aabbccddeeff--'],
-		bad: ['a'.repeat(31), 'a'.repeat(37), 'g'.repeat(32), 'z'.repeat(36),
+		bad: ['a'.repeat(31), 'a'.repeat(37), '-----' + 'a'.repeat(32), 'g'.repeat(32), 'z'.repeat(36),
 			'汉'.repeat(10) + 'a', '😀'.repeat(8), 'a'.repeat(32) + '\n']
 	},
 	reality_pbk: {
@@ -47,7 +47,7 @@ const FORMATS = {
 	}
 };
 
-// UUID intentionally follows docs/05 ahead of T9.37; every other rule already exists in config.uc.
+// Every rule, including the UUID rule from T9.37, is compared with config.normalize.
 function backend_accepts(field, value) {
 	const root = path.resolve(__dirname, '../..');
 	const node = { ...base, [field]: value };
@@ -71,8 +71,7 @@ for (const [field, table] of Object.entries(FORMATS)) {
 			assert.equal(typeof result, 'string', field + ': invalid ' + JSON.stringify(value));
 			assert.ok(result.length > 0);
 		}
-		if (field !== 'uuid')
-			for (const [values, expected] of [[table.good, true], [table.bad, false]])
+		for (const [values, expected] of [[table.good, true], [table.bad, false]])
 				for (const value of values)
 					assert.equal(backend_accepts(field, value), expected,
 						field + ': backend parity ' + JSON.stringify(value));
@@ -169,6 +168,8 @@ async () => {
 	for (const message of ['Port is required.', 'SNI is required.', 'Address: Must be a valid IPv4',
 		'UUID: UUID must be', 'REALITY public key: REALITY public key must be', 'REALITY short ID: Short ID must be'])
 		assert.ok(text.includes(message), message);
+	for (const field of ['address', 'uuid', 'reality_pbk', 'reality_sid'])
+		assert.equal(h.option(field).input.style.borderColor, 'var(--error-color-high, #c53030)', field + ' border');
 	const previous = alert(h)[0];
 	await h.save();
 	assert.equal(alert(h).length, 1);

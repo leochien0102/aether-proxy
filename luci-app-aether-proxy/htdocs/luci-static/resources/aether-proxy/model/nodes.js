@@ -134,7 +134,7 @@ const SS_METHODS = [
 	'2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305'
 ];
 
-/* JS $ also matches before a final newline; backend POSIX regexes require the entire value. */
+/* Whole-value match, like the backend's anchored regexes. */
 function full_match(pattern, value) {
 	return value.match(pattern)?.[0] === value;
 }
