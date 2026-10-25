@@ -7,6 +7,8 @@
  * run before these SDK handlers, not after successful insertion/clearing.
  * The dropdown layout double follows SDK render/createItems: the custom li
  * stays last, new choices are inserted before it, and open clones a preview.
+ * T10.66 also models validation.js attributes/events and the optional selected
+ * placeholder. finishOpen runs the SDK scroll calculation after layout (rAF).
  */
 const { element: E } = require('./loader');
 const { renderList } = require('./dynamic-list');
@@ -18,9 +20,27 @@ function textInput(value = '') {
 	input.animations = [];
 	input.animate = (frames, options) => input.animations.push({ frames, options });
 	input.addEventListener = (type, fn) => { (listeners[type] ??= []).push(fn); };
+	input.dispatchEvent = event => {
+		event.target ??= input;
+		for (const fn of listeners[event.type] ?? []) fn(event);
+		if (event.bubbles) input.eventParent?.dispatchEvent(event);
+	};
 	input.edit = value => {
 		input.value = value;
-		for (const fn of listeners.input ?? []) fn({ target: input });
+		input.dispatchEvent({ type: 'input' });
+	};
+	// validation.js sets attributes before the bubbling CustomEvent, even on Save.
+	input.validationResult = result => {
+		if (result === true) {
+			input.removeAttribute('data-tooltip');
+			input.removeAttribute('data-tooltip-style');
+			input.dispatchEvent({ type: 'validation-success', bubbles: true });
+		}
+		else {
+			input.setAttribute('data-tooltip', result);
+			input.setAttribute('data-tooltip-style', 'error');
+			input.dispatchEvent({ type: 'validation-failure', bubbles: true, detail: { message: result } });
+		}
 	};
 	const parent = E('div', {}, [ input ]);
 	parent.style = {};
@@ -32,19 +52,64 @@ function textInput(value = '') {
 	return input;
 }
 
+function dropdownLayout(node, input, choices) {
+	const list = node.list = E('ul');
+	list.style = { display: '', flexDirection: '', alignItems: '' };
+	const item = node.customItem = E('li', { 'data-value': '-' }, input);
+	item.style = {};
+	item.parentNode = list;
+	input.parentNode = item;
+	item.insertBefore = (child, before) => {
+		const index = item.children.indexOf(before);
+		item.children.splice(index < 0 ? item.children.length : index, 0, child);
+	};
+	const placeholder = node.placeholder = E('li', { placeholder: '', selected: '' });
+	placeholder.style = {};
+	list.children = [ placeholder, ...choices.map(c => E('li', { 'data-value': c.key })), item ];
+	list.querySelector = selector => selector.split(', ').some(part =>
+		(part == 'li[placeholder]' && Object.hasOwn(placeholder.attrs, 'placeholder'))
+		|| (part == 'li[data-value=""]' && placeholder.attrs['data-value'] === '')) ? placeholder : null;
+	node.finishOpen = () => {
+		const visual = [...list.children];
+		if (list.style.display == 'flex')
+			visual.sort((a, b) => Number(a.style?.order ?? 0) - Number(b.style?.order ?? 0));
+		const selected = list.children.find(li => Object.hasOwn(li.attrs, 'selected'));
+		let offset = 0;
+		for (const li of visual) {
+			li.offsetHeight = li == item ? 40 : 20;
+			li.offsetTop = offset;
+			offset += li.offsetHeight;
+		}
+		list.scrollTop = node.scrollTop = selected ? Math.max(selected.offsetTop - selected.offsetHeight, 0) : 0;
+	};
+	const box = node.dropdown = {
+		openDropdown() {
+			node.previewStyle = { ...list.style };
+			node.open = true;
+		},
+		closeDropdown() { node.open = false; }
+	};
+	input.closest = selector => selector == 'li' ? item : selector == '.cbi-dropdown' ? box : null;
+}
+
 function renderAccessList(option, sid, value) {
 	const node = renderList(option, sid, value);
 	const input = node.input = textInput();
 	const dropdown = option.choices.length > 0;
 	const captures = {};
+	const listeners = {};
+	input.eventParent = node;
+	node.dispatchEvent = event => {
+		for (const fn of listeners[event.type] ?? []) fn(event);
+	};
 	const plus = { closest: selector => selector == '.cbi-button-add' ? plus : null,
 		get previousElementSibling() {
 			return input.parentNode.children[input.parentNode.children.indexOf(plus) - 1];
 		} };
 	if (!dropdown) input.parentNode.children.push(plus);
 	node.addEventListener = (type, fn, capture) => {
-		if (!capture) throw new Error('test expects pre-SDK capture handler');
-		captures[type] = fn;
+		if (capture) captures[type] = fn;
+		else (listeners[type] ??= []).push(fn);
 	};
 	node.querySelector = selector => {
 		if (selector.includes('.create-item-input'))
@@ -53,28 +118,8 @@ function renderAccessList(option, sid, value) {
 		return null;
 	};
 	input.closest = () => null;
-	if (dropdown) {
-		const list = node.list = E('ul');
-		list.style = { display: '', flexDirection: '', alignItems: '' };
-		const item = node.customItem = E('li', { 'data-value': '-' }, input);
-		item.style = {};
-		item.parentNode = list;
-		input.parentNode = item;
-		item.insertBefore = (child, before) => {
-			const index = item.children.indexOf(before);
-			item.children.splice(index < 0 ? item.children.length : index, 0, child);
-		};
-		list.children = option.choices.map(c => E('li', { 'data-value': c.key })).concat(item);
-		const box = node.dropdown = {
-			openDropdown() {
-				node.previewStyle = { ...list.style };
-				node.scrollTop = 0; // optional combobox starts unselected
-				node.open = true;
-			},
-			closeDropdown() { node.open = false; }
-		};
-		input.closest = selector => selector == 'li' ? item : selector == '.cbi-dropdown' ? box : null;
-	}
+	if (dropdown)
+		dropdownLayout(node, input, option.choices);
 	node.getValue = () => {
 		const values = [...node.value];
 		if (!dropdown && input.value.trim() && option.validate(sid, input.value) === true
@@ -85,12 +130,15 @@ function renderAccessList(option, sid, value) {
 	node.triggerValidation = () => {
 		validateItems.call(node);
 		const error = option.validate(sid, input.value);
+		input.validationResult(error);
 		if (error !== true) {
 			node.valid = false;
 			node.validationError = error;
 		}
 		return node.valid;
 	};
+	for (const event of [ 'keyup', 'blur' ])
+		input.addEventListener(event, () => node.triggerValidation());
 	node.attempt = type => {
 		const ev = { type: type == 'enter' ? 'keydown' : 'click', keyCode: 13,
 			target: type == 'enter' ? input : plus, stopped: false,

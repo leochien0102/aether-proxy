@@ -4,7 +4,9 @@
  * Form doubles follow the SDK's GridSection extension, modal option cloning,
  * optional-value remove path and synchronous UCI writes. Map redraws build
  * detached sections while formvalue() still reads the old Map root, then
- * replace the root contents (SDK Map.renderContents). No real RPC is used.
+ * replace the root contents (SDK Map.renderContents). T10.66 validation doubles
+ * use validation.js attributes and bubbling events; tooltip show/hide follows
+ * ui.js focus/mouseover handling. No real RPC is used.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -33,7 +35,8 @@ const HINTS = { hosts: {
 
 function fixture(hosts = [], main = {}) {
 	const data = [ { '.name': 'main', mode: 'bypass_cn', unlisted_policy: 'follow', ...main }, ...hosts ];
-	const calls = { save: 0, reset: 0, apply: 0, hints: 0, closed: 0, notifications: [], writes: [] };
+	const calls = { save: 0, reset: 0, apply: 0, hints: 0, closed: 0, notifications: [], writes: [],
+		tooltip: { opacity: 0, hides: [] } };
 	const inputs = {};
 	const uci = {
 		load: () => Promise.resolve(),
@@ -171,6 +174,12 @@ function fixture(hosts = [], main = {}) {
 		view: { extend: (o) => o }, form, uci,
 		dom: { findClassInstance: node => node },
 		ui: {
+			hideTooltip: ev => {
+				// ui.js accepts an event-like object; input is outside tooltipDiv.
+				assert.ok(ev.target);
+				calls.tooltip.hides.push(ev.target);
+				calls.tooltip.opacity = 0;
+			},
 			createHandlerFn: (ctx, method) => (ev) => ctx[method](ev),
 			changes: { apply: () => { calls.apply++; return Promise.resolve(); } },
 			addNotification: (title, node, level) => calls.notifications.push({
@@ -212,7 +221,10 @@ function fixture(hosts = [], main = {}) {
 			const section = { map: modalMap, children: [] };
 			modalMap.children = [ section ];
 			modalMap.lookupOption = key => section.children.filter(o => o.option == key);
-			modalMap.checkDepends = () => {};
+			modalMap.checkDepends = () => {
+				for (const option of section.children)
+					option.widget?.triggerValidation?.();
+			};
 			for (const source of page.hostSection.children.filter(o => o.modalonly !== false)) {
 				const o = Object.assign(Object.create(Object.getPrototypeOf(source)), source,
 					{ map: modalMap, section });
@@ -932,9 +944,11 @@ async () => {
 		dropdown.openDropdown();
 		assert.deepEqual(list.style, { display: 'flex', flexDirection: 'column', alignItems: 'stretch' });
 		assert.deepEqual(widget.previewStyle, { display: '', flexDirection: '', alignItems: '' });
-		assert.equal(widget.scrollTop, 0, 'SDK starts the optional, unselected combobox at the top');
-		assert.equal([...list.children].sort((a, b) => Number(a.style?.order ?? 0)
-			- Number(b.style?.order ?? 0))[0], customItem);
+		widget.finishOpen();
+		assert.equal(widget.scrollTop, 0, 'SDK scroll calculation keeps the selected placeholder at the top');
+		const visual = [...list.children].sort((a, b) => Number(a.style?.order ?? 0)
+			- Number(b.style?.order ?? 0));
+		assert.deepEqual(visual.slice(0, 2), [ widget.placeholder, customItem ]);
 		if (creation) {
 			widget.input.edit('11:22:33:44:55:66');
 			widget.attempt('enter');
@@ -957,6 +971,149 @@ async () => {
 	manual.hints({ hosts: {} });
 	await manual.start();
 	assert.equal(manual.openModal('a').option('mac').widget.list, undefined, 'plain manual fallback still renders');
+});
+
+test('T10.66 scenarios 1-2: placeholder/custom input keep DOM positions, visual order and SDK scroll after creation',
+async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const modal = f.openModal('a');
+	const widget = modal.option('mac').widget;
+	const { list, placeholder, customItem, dropdown } = widget;
+	const original = [...list.children];
+	assert.equal(placeholder.attrs['data-value'], undefined, 'SDK-generated placeholder has only [placeholder]');
+	for (const create of [ false, true ]) {
+		if (create) {
+			widget.input.edit('11:22:33:44:55:66');
+			widget.attempt('enter');
+			assert.equal(list.children.at(-2).attrs['data-value'], '11:22:33:44:55:66');
+			assert.deepEqual(list.children.slice(0, -2), original.slice(0, -1));
+		}
+		assert.equal(list.children[0], placeholder);
+		assert.equal(list.children.at(-1), customItem);
+		assert.equal(placeholder.style.order, '-2');
+		assert.equal(customItem.style.order, '-1');
+		dropdown.openDropdown();
+		widget.finishOpen();
+		assert.equal(placeholder.offsetTop, 0);
+		assert.equal(customItem.offsetTop, placeholder.offsetHeight);
+		assert.equal(list.scrollTop, 0, 'calculated from selected offsetTop - offsetHeight, not hard-coded');
+		dropdown.closeDropdown();
+	}
+	assert.equal(modal.option('ip').widget.list, undefined, 'plain IP add box is not decorated');
+	// Some choice providers supply the empty-value item instead of SDK's placeholder.
+	const explicit = renderAccessList({ choices: f.option('mac').choices, validate: () => true }, 'x', []);
+	delete explicit.placeholder.attrs.placeholder;
+	explicit.placeholder.attrs['data-value'] = '';
+	const option = { renderWidget: () => explicit };
+	f.page.deviceInputFirst(option);
+	option.renderWidget();
+	assert.equal(explicit.placeholder.style.order, '-2');
+});
+
+function showInputTooltip(calls, input, type) {
+	assert.ok([ 'focus', 'mouseover' ].includes(type));
+	// ui.js showTooltip returns without changing opacity when no ancestor has data-tooltip.
+	if (Object.hasOwn(input.attrs, 'data-tooltip'))
+		calls.tooltip.opacity = 1;
+}
+
+function assertNoTooltip(input) {
+	assert.equal(Object.hasOwn(input.attrs, 'data-tooltip'), false);
+	assert.equal(Object.hasOwn(input.attrs, 'data-tooltip-style'), false);
+}
+
+test('T10.66 scenario 3: IP and plain/dropdown MAC validation uses inline reasons without shake and clears on success',
+async () => {
+	for (const field of [ 'ip', 'mac' ]) {
+		for (const hints of [ HINTS, { hosts: {} } ]) {
+			const f = fixture([ host('a', 'follow') ]);
+			f.hints(hints);
+			await f.start();
+			const option = f.openModal('a').option(field);
+			const input = option.widget.input;
+			input.edit(field == 'ip' ? '192.168.8.200-192.168.8.100' : 'zz:zz');
+			const reason = option.validate('a', input.value);
+			// A previously open tooltip must also be hidden on failure.
+			f.calls.tooltip.opacity = 1;
+			for (const event of [ 'keyup', 'blur' ]) {
+				input.dispatchEvent({ type: event });
+				assert.equal(option.widget.valid, false);
+				assertNoTooltip(input);
+				assert.equal(input.accessFeedback.textContent, reason);
+				assert.equal(input.style.borderColor, 'var(--error-color-high, #c53030)');
+				assert.equal(input.animations.length, 0, 'typing and blur never shake');
+				assert.equal(f.calls.tooltip.hides.at(-1), input);
+				assert.equal(f.calls.tooltip.opacity, 0);
+				for (const type of [ 'focus', 'mouseover' ]) {
+					showInputTooltip(f.calls, input, type);
+					assert.equal(f.calls.tooltip.opacity, 0);
+				}
+			}
+			// Use keyup without input to prove validation-success, not the edit reset, clears feedback.
+			input.value = field == 'ip' ? '192.168.8.1' : MAC;
+			input.dispatchEvent({ type: 'keyup' });
+			assert.equal(option.widget.valid, true);
+			assert.equal(input.accessFeedback.textContent, '');
+			assert.equal(input.style.borderColor, 'original');
+			assert.equal(input.animations.length, 0);
+			assertNoTooltip(input);
+		}
+	}
+});
+
+test('T10.66 scenario 4: rejected plus/Enter and blocked Save still shake with red text but never show tooltips',
+async () => {
+	for (const field of [ 'ip', 'mac' ]) {
+		for (const action of [ 'plus', 'enter', 'save' ]) {
+			const f = fixture([ host('a', 'follow') ]);
+			if (action == 'plus') f.hints({ hosts: {} });
+			await f.start();
+			const modal = f.openModal('a', { name: 'must not write' });
+			const widget = modal.option(field).widget;
+			widget.input.edit('invalid');
+			f.calls.tooltip.opacity = 1;
+			if (action == 'save') await modal.save();
+			else widget.attempt(action);
+			assertFeedback(widget.input, /不是合法的/);
+			assert.equal(widget.input.animations.length, 1);
+			assertNoTooltip(widget.input);
+			assert.equal(f.calls.tooltip.opacity, 0);
+			for (const type of [ 'focus', 'mouseover' ]) {
+				showInputTooltip(f.calls, widget.input, type);
+				assert.equal(f.calls.tooltip.opacity, 0);
+			}
+			assert.equal(f.calls.save, 0);
+			assert.equal(f.calls.closed, 0);
+			assert.deepEqual(f.calls.writes, []);
+			assert.deepEqual(widget.value, field == 'ip' ? [ '192.168.1.10' ] : []);
+			if (action == 'save') assertModalError(f, modal, /不是合法的/);
+		}
+	}
+});
+
+test('T10.66 scenario 5: other modal fields, stored items and undecorated page inputs retain SDK tooltips',
+async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const modal = f.openModal('a');
+	const name = modal.option('name').widget.input;
+	const other = renderAccessList({ choices: [], validate: () => 'other page error' }, 'x', []);
+	const stored = textInput('stored');
+	stored.eventParent = modal.option('ip').widget;
+	for (const input of [ name, other.input, stored ]) {
+		const hides = f.calls.tooltip.hides.length;
+		input.validationResult('SDK reason');
+		assert.equal(input.attrs['data-tooltip'], 'SDK reason');
+		assert.equal(input.attrs['data-tooltip-style'], 'error');
+		assert.equal(input.accessFeedback, undefined);
+		assert.equal(f.calls.tooltip.hides.length, hides, 'unrelated validation must not hide its tooltip');
+		for (const type of [ 'focus', 'mouseover' ]) {
+			f.calls.tooltip.opacity = 0;
+			showInputTooltip(f.calls, input, type);
+			assert.equal(f.calls.tooltip.opacity, 1);
+		}
+	}
 });
 
 test('T10.59 scenario 5: footer Save and Save and Apply accept pre-existing duplicate names', async () => {
