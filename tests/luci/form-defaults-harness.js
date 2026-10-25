@@ -168,7 +168,8 @@ async function renderPage(page, explicit = false, adapter) {
 	};
 	const setSaved = (section, field, value) => {
 		data[section][field] = value;
-		for (const o of options.filter(o => o.option == field && (o.ucisection ?? o.section.name) == section))
+		for (const o of options.filter(o =>
+			(o.ucioption ?? o.option) == field && (o.ucisection ?? o.section.name) == section))
 			o.loaded[o.section.name] = value;
 	};
 	const modal = type => cloneModal(form, sections.find(s => s.name == type), type);

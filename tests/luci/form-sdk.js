@@ -21,7 +21,7 @@ class Value {
 	depends(field, value) { this.deplist.push(typeof field == 'string' ? { [field]: value } : field); }
 	cfgvalue(id) {
 		return this.loaded && Object.hasOwn(this.loaded, id) ? this.loaded[id]
-			: this.map.data.get(this.map.config, this.ucisection ?? id, this.option);
+			: this.map.data.get(this.map.config, this.ucisection ?? id, this.ucioption ?? this.option);
 	}
 	formvalue(id) { return this.inputs[id] ?? this.cfgvalue(id) ?? this.default ?? ''; }
 	getUIElement() { return null; }
@@ -38,7 +38,19 @@ class Value {
 			return dep['!reverse'] ? !matches : matches;
 		});
 	}
-	isValid(id) { return !this.validate || this.validate(id, this.formvalue(id)) === true; }
+	getValidationError(id) {
+		const value = this.formvalue(id);
+		if (value != null && value !== '') {
+			if (this.datatype === 'port' && !(/^[0-9]+$/.test(value) && +value >= 1 && +value <= 65535))
+				return 'Must be a valid port';
+			const range = this.datatype?.match(/^range\((-?\d+),(-?\d+)\)$/);
+			if (range && !(/^-?[0-9]+$/.test(value) && +value >= +range[1] && +value <= +range[2]))
+				return 'Must be within range';
+		}
+		const result = this.validate?.(id, value);
+		return result == null || result === true ? '' : result;
+	}
+	isValid(id) { return this.getValidationError(id) === ''; }
 	parse(id) {
 		if (!this.isActive(id))
 			return Promise.resolve(this.retain ? undefined : this.remove(id));
@@ -52,8 +64,17 @@ class Value {
 		}
 		return Promise.resolve(this.forcewrite || !equal(this.cfgvalue(id), value) ? this.write(id, value) : undefined);
 	}
-	write(id, value) { return this.map.data.set(this.map.config, this.ucisection ?? id, this.option, value); }
-	remove(id) { return this.map.data.unset(this.map.config, this.ucisection ?? id, this.option); }
+	write(id, value) {
+		return this.map.data.set(this.map.config, this.ucisection ?? id, this.ucioption ?? this.option, value);
+	}
+	remove(id) {
+		// SDK aliases share storage: another active alias prevents a hidden sibling deleting it.
+		const field = this.ucioption ?? this.option;
+		if (this.section.children?.some(sibling => sibling !== this && sibling.ucioption != null
+			&& (sibling.ucioption ?? sibling.option) === field && sibling.isActive(id)))
+			return;
+		return this.map.data.unset(this.map.config, this.ucisection ?? id, field);
+	}
 }
 class Flag extends Value {
 	constructor(...args) { super(...args); this.default = '0'; this.enabled = '1'; this.disabled = '0'; }

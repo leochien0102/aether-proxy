@@ -31,10 +31,13 @@ function widgetTypes() {
 				const frame = this.map.findElement('data-field', this.cbid(id));
 				return frame != null && !frame.classList.contains('hidden');
 			},
-			renderWidget(id) {
-				const input = E(name === 'TextValue' ? 'textarea' : 'input', {
-					value: Kind.prototype.formvalue.call(this, id)
-				});
+			renderWidget(id, index, cfgvalue) {
+				const select = name === 'ListValue';
+				const value = cfgvalue ?? this.default ?? '';
+				const input = E(select ? 'select' : name === 'TextValue' ? 'textarea' : 'input', {
+					value
+				}, select ? this.keylist.map((key, i) => E('option', { value: key }, this.vallist[i])) : []);
+				input.value = value;
 				this.input = input;
 				return name === 'TextValue' ? E('div', {}, [input]) : input;
 			},
@@ -44,6 +47,9 @@ function widgetTypes() {
 					?? Kind.prototype.formvalue.call(this, id) : null;
 			},
 			renderFrame(id, in_table, index, nodes) {
+				// Preserved-list render uses a temporary option; mounted widgets still belong to the real clone.
+				this.input = ['input', 'select', 'textarea'].includes(nodes.tag) ? nodes
+					: nodes.querySelector('input, select, textarea');
 				const frame = E('div', { class: this.deplist.length ? 'cbi-value hidden' : 'cbi-value' }, [
 					E('label', {}, this.title), E('div', {}, nodes)
 				]);

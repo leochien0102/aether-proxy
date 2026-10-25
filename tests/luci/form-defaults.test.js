@@ -170,13 +170,18 @@ test('T10.54 placeholder fallbacks use current UA and protocol, not a static hin
 	assert.deepEqual(subscriptions.calls, [['unset', 'aetherproxy', 'sub', 'user_agent']]);
 	for (const protocol of ['vmess', 'shadowsocks']) {
 		const nodes = await renderPage('nodes');
-		const method = nodes.options.find(o => o.option == 'method');
+		const method = nodes.options.find(o => o.option == (protocol == 'vmess' ? 'method_vmess' : 'method'));
 		nodes.options.find(o => o.option == 'protocol').inputs.node = protocol;
 		nodes.setSaved('node', 'method', 'old');
 		method.inputs.node = 'auto';
-		await method.parse('node');
-		assert.deepEqual(nodes.calls, protocol == 'vmess' ? [['unset', 'aetherproxy', 'node', 'method']]
-			: [['set', 'aetherproxy', 'node', 'method', 'auto']]);
+		if (protocol == 'vmess') {
+			await method.parse('node');
+			assert.deepEqual(nodes.calls, [['unset', 'aetherproxy', 'node', 'method']]);
+		}
+		else {
+			await assert.rejects(method.parse('node'), /invalid input value/);
+			assert.deepEqual(nodes.calls, [], 'SS cannot save the VMess auto method');
+		}
 	}
 });
 

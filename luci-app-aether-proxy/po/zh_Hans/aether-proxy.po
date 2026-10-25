@@ -5,8 +5,32 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
-msgid "auto (VMess)"
-msgstr "auto（VMess 默认）"
+msgid "-- Please choose --"
+msgstr "-- 请选择 --"
+
+msgctxt "aether-proxy"
+msgid "Must be a valid IPv4 address or domain name"
+msgstr "须为合法的 IPv4 地址或域名"
+
+msgctxt "aether-proxy"
+msgid "UUID must be 32 hexadecimal digits (hyphens allowed), or a string of at most 30 bytes"
+msgstr "UUID 应为 32 位十六进制（可带 -），或不超过 30 字节的字符串"
+
+msgctxt "aether-proxy"
+msgid "Unsupported encryption method"
+msgstr "不支持的加密方式"
+
+msgctxt "aether-proxy"
+msgid "REALITY public key must be 43 base64url characters"
+msgstr "REALITY 公钥应为 43 个字符的 base64url"
+
+msgctxt "aether-proxy"
+msgid "Short ID must be hexadecimal, with an even length of at most 16"
+msgstr "short ID 应为十六进制，长度为偶数且不超过 16"
+
+msgctxt "aether-proxy"
+msgid "Each item must be 64 hexadecimal digits (colons allowed)"
+msgstr "每项应为 64 位十六进制（可带冒号）"
 
 msgctxt "aether-proxy"
 msgid "Page scripts are out of date: installed %s, but the browser is still using %s. Clear your browser cache and reload the page (some third-party themes do not automatically refresh page scripts after an upgrade)."

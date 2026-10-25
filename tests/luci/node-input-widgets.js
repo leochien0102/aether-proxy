@@ -18,9 +18,9 @@ function widgetTypes() {
 			(this.keylist ??= []).push(String(key));
 			(this.vallist ??= []).push(String(label ?? key));
 		}
-		remove(id) { return this.map.data.unset(this.map.config, id, this.option); }
+		remove(id) { return this.map.data.unset(this.map.config, id, this.ucioption ?? this.option); }
 		write(id, value) {
-			return this.map.data.set(this.map.config, id, this.option, value);
+			return this.map.data.set(this.map.config, id, this.ucioption ?? this.option, value);
 		}
 	}
 	class ListValue extends Value {
