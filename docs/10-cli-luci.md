@@ -246,9 +246,9 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
 | 订阅 | 订阅列表与编辑；「立即更新」；最近一次结果（时间、节点数、按原因统计的跳过数） |
 | 访问控制 | `unlisted_policy`；主机表（名称、IP、MAC、策略、游戏模式）。MAC 输入框提供 DHCP 租约下拉。冲突在保存前校验 |
 | 规则与 DNS | 模式；自定义直连/代理的域名与 IP（四个 textarea）；DNS 设置；数据版本与「立即更新」 |
+| 高级 | `lan_ifaces`、`quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`、日志等级、开机等待、健康检测参数、二进制路径 |
 | 更新 | 组件版本（当前、previous、最新）、安装/回滚按钮、更新策略（不提供手动上传，见 [08](08-updates.md)「软件包安装」） |
 | 日志 | 事件页（默认）+ 原始日志页（[09](09-logging.md)） |
-| 高级 | `lan_ifaces`、`quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`、日志等级、开机等待、健康检测参数、二进制路径 |
 
 ### 公共模块与菜单（2026-10-16 定，T8.3）
 
@@ -266,7 +266,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   `job_start` 返回 `BUSY` 且带 `job` → 改为轮询那个正在运行的作业（结果中 `attached: true`），不报错；
   其他失败（`USAGE`、`RPC_FAILED`、`TIMEOUT`、`job_status` 返回 `JOB_NOT_FOUND` 等）→ resolve 该失败对象并停止；总时长超过 `ap.TIMEOUTS.job`（默认 620 秒，作业上限 600 秒）→ `{ ok: false, code: "TIMEOUT" }`。
 - **菜单**：服务 → Aether Proxy（显示名，2026-10-20 起；之前为 `aether-proxy`）为父节点（`firstchild`），下设 8 个子页面：概览 `overview`、节点 `nodes`、订阅 `subscriptions`、访问控制 `access`、
-  规则与 DNS `rules`、更新 `updates`、日志 `logs`、高级 `advanced`（顺序同 10「LuCI 页面」表），视图 `aether-proxy/<名称>`，都依赖 ACL `luci-app-aether-proxy`。
+  规则与 DNS `rules`、高级 `advanced`、更新 `updates`、日志 `logs`（顺序同 10「LuCI 页面」表；2026-10-25 r18 起高级在更新之前、日志最后，T10.64），视图 `aether-proxy/<名称>`，都依赖 ACL `luci-app-aether-proxy`。
   T8.3 只建空页面（标题 + 「此页面尚未实现」），各页面的卡再填内容；概览保留现在的版本显示，改用 `ap.call('version')`。
 - 写法跟随 LuCI 自身代码（`'use strict'`、`'require …'`、`baseclass.extend`/`view.extend`）。界面文字一律 `_()`，中文翻译写进 `po/zh_Hans/aether-proxy.po`。
 
@@ -1150,6 +1150,41 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 2. `START_FAILED`：步骤名译成中文（`precheck` 预检、`config` 读取配置、`render` 生成配置……，以 `lib/daemon.uc` 里实际出现的步骤为准逐个列出；`reload:<步骤>` 写「重载时<步骤>」、`monitor:<步骤>` 写「监控时<步骤>」；未知步骤原样）；`detail` 里的冲突项用 1 的写法。悬停仍是原始参数。
 
 **复审结论（2026-10-24，T10.60 已合并）**：「无法检查其他代理插件（原因）」也不写「缺少」，与冲突项同一组（实现时留了 TODO(design)，复审定）；例：「预检失败：无法检查其他代理插件（…）；缺少 component:xray」。参数里的 `$&` 等替换字符原样显示。
+
+### r18：节点编辑框的加密方式下拉与格式检查（2026-10-25 定，T10.61；r18 窗口前端第 4、5 条，仓库所有者提）
+
+1. **加密方式按协议给下拉框**。现在是一个 Shadowsocks 与 VMess 共用的文本框，切到 Shadowsocks 时还显示 VMess 的「auto」占位。改为两个 `ListValue`，都设 `ucioption = 'method'`（SDK 的 `remove` 认这种别名：另一个同名选项在显示时不删），一个只在 Shadowsocks 下显示、一个只在 VMess 下显示：
+   - Shadowsocks：后端 `SS_METHODS` 的 9 种，顺序照抄；必选、没有默认值，首项「-- 请选择 --」（值 `''`），必填标注与保存前提示沿用 T10.58（`method` 在必填表里的键不变，表里的字段名对应到这个选项）。
+   - VMess：`auto`、`aes-128-gcm`、`chacha20-poly1305`、`none`、`zero`，默认 `auto`；按 X15，没设过的节点选 `auto` 不写、改回 `auto` 删除该项。
+   - 已保存的值不在列表里：照 `renderPreservedList` 原样显示为一项，不改不写。Shadowsocks 下这样的值同时报「不支持的加密方式」（后端 `unsupported_method`，配置会无效）；VMess 下不报（Xray 把不认识的值当 `auto`，后端不查，docs/05 校验规则 7）。
+   - 切协议后：隐藏的那个不动配置（T9.14「不在用的字段保留」）；显示出来的那个读同一个 `method`，值不在它的列表里就按上一条显示。
+   - 页面的 `SS_METHODS` 写在节点模型里，加静态测试：用宿主机 ucode 导出后端的 `SS_METHODS`，与页面的列表逐项、按顺序对照（同 T10.58 的做法）。
+2. **格式检查，同「端口」一样即时提示**：用选项的 `validate`（与 `datatype` 同一套机制，输入时、离开时提示，和端口一致）。**页面只查后端查的、不比后端严**：比后端严会让订阅导入的、后端认可的节点在页面上存不了。逐项：
+   - `address`：照后端 `config.uc` 的 `address`——全是数字和点时必须是 IPv4；否则按 `net.uc` 的 `domain`（总长 1–253，每段 1–63 个 `[A-Za-z0-9_-]`、首尾不是 `-`，不接受末尾的点）。替换现在的 `datatype = 'host'`（LuCI 的 `host` 接受 IPv6 和末尾的点，后端不接受）。**IPv6 地址暂不接受**：后端 `address` 现在不收 IPv6，交接里写的「域名、IPv4、IPv6」与后端对不上，已告诉后端；后端改了 docs/05 与 schema，页面再跟。
+   - `uuid`（VLESS、VMess）：按 docs/05 校验规则 7 的 UUID 一项，按 UTF-8 字节计长度（`TextEncoder`）：1–30 字节任意；32–36 字节时去掉 `-` 后恰好 32 位十六进制；其余报错。不等后端 T9.37 合并。
+   - `reality_pbk`：恰好 43 个 `[A-Za-z0-9_-]`；`reality_sid`：十六进制、偶数长度、不超过 16（空不报）；`pinned_cert_sha256`：逗号分隔，每项去掉首尾空白与冒号后是 64 位十六进制（空项跳过）。都照 `config.uc` 的 `check_node`。
+   - 已有的不变：端口、`ws_heartbeat`、Mux 两个并发数（范围）、`xhttp_extra`（JSON 对象）、Mux 与 Vision。
+   - **不加检查**：SNI、Host、路径、gRPC 服务名、XHTTP 模式、按名称校验证书、spiderX、ALPN、ECH、PQV。后端对它们只要求是字符串（ECH、PQV 是 T9.14 定的不透明字符串），由 Xray 判断。要查得先改后端与 docs/05。
+   - 错误文字说清格式，例如「不是合法的 IPv4 地址或域名」「REALITY 公钥应为 43 个字符的 base64url」「UUID 应为 32 位十六进制（可带 -），或不超过 30 字节的字符串」「short ID 应为十六进制，长度为偶数且不超过 16」「每项应为 64 位十六进制（可带冒号）」。
+   - 空值不在这里报（X14 的精神；必填交给 T10.58 的保存前提示）。被隐藏的字段不检查（`isActive`）。
+3. **编辑框「保存」也列出格式错误**：T10.58 的保存前检查只查必填；现在一并收集显示着且 `isValid` 为假的选项，把 `getValidationError` 列进同一个错误框（与访问控制 `validateModal` 的做法一致），编辑框不关、不暂存。否则 SDK 解析失败的提示走 `ui.addNotification`，被编辑框的遮罩挡住。
+
+### r18：概览页的检测结果、组件读取与站点列表（2026-10-25 定，T10.62；r18 窗口前端第 1–3 条）
+
+1. **延迟与节点 IP 一起显示、一起隐藏**：只在 `running`、`degraded`、`failsafe` 下显示最近一次检测（延迟或失败）和节点地址；`starting`、`stopping`、`stopped`、`error` 下两者都不显示（检测栏显示「–」，不显示「多久之前」）。现在 `node_ip` 只在运行中给、`last_probe` 一直给，启动中约 20 秒里出现「有延迟、无 IP」，而那个延迟是上一次运行的。运行中但 `node_ip` 暂缺时只是不显示地址，不连带隐藏检测。手动检测的结果（`manual`）同样只在这三种状态下显示。
+2. **组件读取超时后自动重试一次**：`components` 返回 `TIMEOUT` 时（设备忙，重启后重读可能超过 20 秒）不立即显示错误，界面保持「读取中…」，自动再发一次；第二次仍失败才显示现在的错误与「重试」。只对 `TIMEOUT`，其他失败照旧立即显示；每一代读取（页面加载、重启后、点「重试」）各自最多自动重试一次。重试期间如果又开始了新一代读取，旧的那次的结果丢弃（沿用 `componentRequest` 的判断）。
+3. **站点列表先取**：`probe_sites` 只要 0.12 秒，但排在 status、version、components 后面（同时最多 2 个请求），每次进页都先看到「读取中」。改为 `render` 里第一个发出（站点 → 状态 → 版本 → 组件），页面出来时下拉基本已填好。不放进 `load()`：`load()` 等它的话，rpcd 卡住时整页要白屏到超时（15 秒）。
+
+### r18：访问控制的未添加内容与设备下拉（2026-10-25 定，T10.63；r18 窗口前端第 6–8 条）
+
+1. **未添加的内容不合法时直接说不合法**：编辑框保存时 `ip`、`mac` 添加框有非空白文字，先用该列表自己的单项校验（`validate_ip`、`validate_mac`）判断：不合法 → 错误框写校验的原文（如「192.168.8.200-192.168.8.100 不是合法的 IPv4 地址、范围或 CIDR。」），前面带字段名；合法 → 照旧「点「+」添加，或清空」。输入框的反馈（抖动、红框、原因文字）同 T10.59。
+2. **提示里的字段名**：不用选项标题（`IP / 范围 / 网段（可选）`，带「（可选）」），用不带「（可选）」的短名「IP / 范围 / 网段」「设备」，放在书名号里，不留空格：「「IP / 范围 / 网段」里还有未添加的内容「…」：点「+」添加，或清空」「「设备」里的「zz:zz」不是合法的 MAC 地址。」。英文原文同样改写，字段名作为参数传入（不再 `%s has …`）。编辑框标题本身不改。
+3. **设备下拉框的自定义输入放到最上面**（仓库所有者提）：设备多时要拉到底才能输入。SDK 的 `Dropdown` 把输入框那一项（`li[data-value="-"]`）放在列表最后，并且多处依赖它是最后一个（新建项 `insertBefore(ul.lastElementChild)`、键盘导航），所以**不移动 DOM**，只在显示上提前：展开的列表是 flex 列（两个主题里 `.cbi-dropdown > ul` 本来就是 `display:flex`，展开时的方向以实际为准，必要时同时写 `flex-direction:column`），给这一项 `order:-1`。只作用于访问控制页的「设备」字段（页面自己的 class 或内联样式，X7 只用排版类）。键盘方向键仍按 DOM 顺序走（输入框在最后一个设备之后），可以接受。用 bootstrap 与 proton2025 的展开样式核对：列表展开后滚动位置在顶部（没有选中项时 SDK 滚到 0），输入框可见。
+
+### r18：日志事件的启动失败与标签页顺序（2026-10-25 定，T10.64；r18 窗口前端第 9、10 条）
+
+1. `START_FAILED`：「启动在 预检 失败：…」改为「启动失败（预检）：与 ShadowSocksR Plus+ 冲突」。英文 `Start failed ({step}): {detail}`。`reload:`、`monitor:` 前缀照 T10.60 的写法放在括号里（「启动失败（重载时生成配置）：…」——以现有译文为准，括号里不再套括号）。悬停仍是原始参数。概览页启动失败原因如果用到同一模板，跟着变。
+2. **标签页顺序**（仓库所有者定）：概览 → 节点与订阅 → 访问控制 → 规则与 DNS → 高级 → 更新 → 日志。改 `menu.d` 的 `order`（`advanced` 排在 `rules` 后、`updates` 前，`logs` 最后）与 `tests/luci/menu.test.js` 的顺序；本文「LuCI 页面」表与「公共模块与菜单」里的顺序同步。以后的 `rN-frontend-checklist.md` 按这个顺序（概览因要停启服务仍放最后）。
 
 UI 规则：
 
