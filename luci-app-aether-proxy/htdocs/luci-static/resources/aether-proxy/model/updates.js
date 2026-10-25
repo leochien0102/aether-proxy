@@ -52,6 +52,7 @@ function failure(r) {
 }
 function companion_result(r) {
 	// The backend reports only the first failed companion's cause at the top level.
+	// The refresh sentence names no package: the interface itself may have failed.
 	// Keep backend order rather than object insertion order when assigning that cause.
 	const pages = [
 		{ name: 'luci-app-aether-proxy', label: _('Interface', 'aether-proxy') },
@@ -80,7 +81,7 @@ function companion_result(r) {
 	const text = _('%s.', 'aether-proxy').format(
 		parts.reduce((a, b) => _('%s; %s', 'aether-proxy').format(a, b)));
 	return installed.length ? _('%s %s', 'aether-proxy').format(text,
-		_('Interface updated; please refresh the page.', 'aether-proxy')) : text;
+		_('Please refresh the page.', 'aether-proxy')) : text;
 }
 function package_result(name, r) {
 	if (r.rolled_back)

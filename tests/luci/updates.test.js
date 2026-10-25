@@ -656,7 +656,7 @@ function group_result(app = 'installed', translation = 'installed', overrides = 
 			'luci-app-aether-proxy': app, 'luci-i18n-aether-proxy-zh-cn': translation
 		}, ...overrides };
 }
-const refresh_page = '界面已更新，请刷新页面。';
+const refresh_page = '请刷新页面。';
 const backend_updated = 'aether-proxy 已从 0.3.0-r1 更新到 0.3.1-r1';
 async function display_group_result(result, expected) {
 	// A click on the UI package still returns package=aether-proxy from the CLI.
@@ -774,7 +774,7 @@ test('T10.67 scenario 8: failure code/detail and grouped punctuation use transla
 		globalThis._ = s => s;
 		assert.equal(model.job_result('update_package', 'luci-app-aether-proxy', { result: group_result() }),
 			'aether-proxy updated from 0.3.0-r1 to 0.3.1-r1; Interface, Translation updated together. ' +
-			'Interface updated; please refresh the page.');
+			'Please refresh the page.');
 		assert.equal(model.job_result('update_check', null, { ok: false, code: 'BUSY', detail: 'locked' }),
 			'Another update job is running: locked');
 	}
