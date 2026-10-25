@@ -1489,8 +1489,16 @@ msgid "%s is not a valid MAC address."
 msgstr "%s 不是合法的 MAC 地址。"
 
 msgctxt "aether-proxy"
-msgid "%s has unadded text “%s”: click “+” to add it, or clear it."
-msgstr "%s 还有未添加的内容「%s」：点「+」添加，或清空"
+msgid "In “%s” there is unadded text “%s”: click “+” to add it, or clear it."
+msgstr "「%s」里还有未添加的内容「%s」：点「+」添加，或清空"
+
+msgctxt "aether-proxy"
+msgid "IP / range / subnet"
+msgstr "IP / 范围 / 网段"
+
+msgctxt "aether-proxy"
+msgid "In “%s”, “%s” %s"
+msgstr "「%s」里的「%s」%s"
 
 msgctxt "aether-proxy"
 msgid "The name “%s” is already used by another rule."

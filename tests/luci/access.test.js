@@ -81,6 +81,38 @@ test('T10.59 scenario 3: footer duplicate wording is unchanged and unrelated mod
 	assert.equal(model().validate(hosts, 'c').errors[0].text, text);
 });
 
+test('T10.63 scenarios 1-2: pending text uses the list validator and quoted short names in Chinese and English', () => {
+	const chinese = globalThis._;
+	try {
+		for (const english of [ false, true ]) {
+			globalThis._ = english ? text => text : chinese;
+			const m = model();
+			for (const field of [ 'ip', 'mac' ]) {
+				const label = field == 'ip' ? (english ? 'IP / range / subnet' : 'IP / 范围 / 网段')
+					: (english ? 'Device' : '设备');
+				for (const valid of [ false, true ]) {
+					const value = field == 'ip'
+						? (valid ? '192.168.8.1' : '192.168.8.200-192.168.8.100')
+						: (valid ? 'aa:bb:cc:dd:ee:01' : 'zz:zz');
+					const error = field == 'ip' ? m.validate_ip(value) : m.validate_mac(value);
+					const text = m.pending_text(field, value);
+					const expected = english
+						? (valid ? `In “${label}” there is unadded text “${value}”: click “+” to add it, or clear it.`
+							: `In “${label}”, ${error.replace(value, '“' + value + '”')}`)
+						: (valid ? `「${label}」里还有未添加的内容「${value}」：点「+」添加，或清空`
+							: `「${label}」里的「${value}」${error.slice(value.length).trimStart()}`);
+					assert.equal(text, expected);
+					assert.doesNotMatch(text, /optional|可选|「\s|\s」|“\s|\s”/);
+					assert.equal(text.includes(english ? 'click “+”' : '点「+」'), valid);
+				}
+			}
+		}
+	}
+	finally {
+		globalThis._ = chinese;
+	}
+});
+
 /* --- scenario 1: rule 1 ------------------------------------------------------ */
 
 test('scenario 1: rule 1 — ip and mac both empty is an error named by name or unnamed label; only one filled is fine',

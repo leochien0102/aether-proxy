@@ -5,7 +5,8 @@
  * Pure view model for the access control page (docs/10 「访问控制页」,
  * docs/10 「访问控制页定案」, 「r14 修正：访问控制 IP 范围与说明」
  * and 「r16 修正：访问控制编辑框里的校验与重叠提示」,
- * 「r17 修正：访问控制的反馈、措辞与名称不重复」).
+ * 「r17 修正：访问控制的反馈、措辞与名称不重复」
+ * and 「r18：访问控制的未添加内容与设备下拉」).
  *
  * validate() mirrors the authoritative command-line host rules one to one, so
  * the page precheck agrees with `aether-proxy check` (docs/10: 最终仍以命令行
@@ -272,6 +273,18 @@ return baseclass.extend({
 	validate_mac: function(value) {
 		return value === '' || normalize_mac(value) != null ? true
 			: fmt(_('%s is not a valid MAC address.', 'aether-proxy'), value);
+	},
+
+	/* Short field names belong to feedback, not the editor's optional titles.
+	   Both validators put the raw value first. Quote it in the field wrapper;
+	   let the wrapper translation own the spacing before the unchanged reason. */
+	pending_text: function(field, value) {
+		const label = field == 'ip' ? _('IP / range / subnet', 'aether-proxy') : _('Device', 'aether-proxy');
+		const error = field == 'ip' ? this.validate_ip(value) : this.validate_mac(value);
+		if (error !== true)
+			return fmt(_('In “%s”, “%s” %s', 'aether-proxy'), label, value, error.slice(value.length).trimStart());
+		return fmt(_('In “%s” there is unadded text “%s”: click “+” to add it, or clear it.',
+			'aether-proxy'), label, value);
 	},
 
 	/* Names are a modal-only UX constraint, not a backend configuration rule. */

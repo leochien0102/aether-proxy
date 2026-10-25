@@ -169,6 +169,7 @@ function fixture(hosts = [], main = {}) {
 	let hintReply = HINTS;
 	const page = loadModule(path.join(RES, 'view/aether-proxy/access.js'), {
 		view: { extend: (o) => o }, form, uci,
+		dom: { findClassInstance: node => node },
 		ui: {
 			createHandlerFn: (ctx, method) => (ev) => ctx[method](ev),
 			changes: { apply: () => { calls.apply++; return Promise.resolve(); } },
@@ -839,9 +840,18 @@ async () => {
 				assert.equal(f.calls.save, 0);
 				assert.equal(f.calls.closed, 0);
 				assert.deepEqual(f.calls.writes, []);
-				assertModalError(f, modal, /还有未添加的内容「.*」：点「\+」添加，或清空/);
-				assert.match(modal.alerts()[0].textContent, new RegExp(modal.option(field).title));
-				assertFeedback(widget.input, /还有未添加的内容/);
+				const label = field == 'ip' ? 'IP / 范围 / 网段' : '设备';
+				const expected = valid
+					? '「' + label + '」里还有未添加的内容「' + text + '」：点「+」添加，或清空'
+					: '「' + label + '」里的「' + text + '」不是合法的 '
+						+ (field == 'ip' ? 'IPv4 地址、范围或 CIDR。' : 'MAC 地址。');
+				assertModalError(f, modal);
+				assert.ok(modal.alerts()[0].textContent.includes(expected));
+				assert.doesNotMatch(modal.alerts()[0].textContent, /（可选）|「\s|\s」/);
+				if (!valid)
+					assert.doesNotMatch(modal.alerts()[0].textContent, /点「\+」添加/);
+				assertFeedback(widget.input, /不是合法的|还有未添加的内容/);
+				assert.equal(widget.input.accessFeedback.textContent, expected);
 				widget.input.edit(' \t ');
 				await modal.save();
 				assert.equal(f.calls.save, 1, 'whitespace-only pending input does not block saving');
@@ -874,6 +884,79 @@ test('T10.59 scenario 5: trimmed duplicate name blocks and feeds back; correctio
 	await f.start();
 	await f.modalSave('b', { name: '   ' });
 	assert.equal(f.calls.save, 1, 'two unnamed rules do not collide');
+});
+
+test('T10.63 scenarios 1-2: pending reversed IP range and invalid dropdown MAC show exact short-field errors',
+async () => {
+	for (const [field, text, reason] of [
+		[ 'ip', '192.168.8.200-192.168.8.100', 'IPv4 地址、范围或 CIDR。' ],
+		[ 'mac', 'zz:zz', 'MAC 地址。' ]
+	]) {
+		const f = fixture([ host('a', 'follow') ]);
+		await f.start();
+		const before = JSON.stringify(f.data);
+		const modal = f.openModal('a', { name: 'must not write' });
+		const option = modal.option(field);
+		option.widget.input.edit(text);
+		await modal.save();
+		const label = field == 'ip' ? 'IP / 范围 / 网段' : '设备';
+		const expected = '「' + label + '」里的「' + text + '」不是合法的 ' + reason;
+		assertModalError(f, modal);
+		assert.ok(modal.alerts()[0].textContent.includes(expected));
+		assert.equal(modal.alerts()[0].children[0].children[1].children.length, 1,
+			'the pending error is not repeated as an unlabelled widget error');
+		assert.doesNotMatch(modal.alerts()[0].textContent, /点「\+」添加|（可选）/);
+		assert.equal(option.widget.input.accessFeedback.textContent, expected);
+		assertFeedback(option.widget.input, /不是合法的/);
+		assert.equal(f.option('ip').title, 'IP / 范围 / 网段（可选）');
+		assert.equal(f.option('mac').title, '设备');
+		assert.equal(f.calls.save, 0);
+		assert.equal(f.calls.closed, 0);
+		assert.deepEqual(f.calls.writes, []);
+		assert.equal(JSON.stringify(f.data), before);
+	}
+});
+
+test('T10.63 scenario 3: device custom item stays DOM-last before/after creation; only its open list is flex-first',
+async () => {
+	const f = fixture([ host('a', 'follow') ]);
+	await f.start();
+	const modal = f.openModal('a');
+	const widget = modal.option('mac').widget;
+	const { list, customItem, dropdown } = widget;
+	const original = [...list.children];
+	assert.equal(list.children.at(-1), customItem);
+	assert.equal(customItem.style.order, '-1');
+	assert.equal(list.style.display, '', 'closed layout belongs to the theme');
+	for (const creation of [ false, true ]) {
+		dropdown.openDropdown();
+		assert.deepEqual(list.style, { display: 'flex', flexDirection: 'column', alignItems: 'center' });
+		assert.deepEqual(widget.previewStyle, { display: '', flexDirection: '', alignItems: '' });
+		assert.equal(widget.scrollTop, 0, 'SDK starts the optional, unselected combobox at the top');
+		assert.equal([...list.children].sort((a, b) => Number(a.style?.order ?? 0)
+			- Number(b.style?.order ?? 0))[0], customItem);
+		if (creation) {
+			widget.input.edit('11:22:33:44:55:66');
+			widget.attempt('enter');
+			assert.equal(list.children.at(-2).attrs['data-value'], '11:22:33:44:55:66');
+			assert.equal(widget.value.at(-1), '11:22:33:44:55:66');
+			assert.deepEqual(list.children.slice(0, -2), original.slice(0, -1));
+		}
+		assert.equal(list.children.at(-1), customItem);
+		assert.equal(customItem.style.order, '-1');
+		dropdown.closeDropdown();
+		assert.deepEqual(list.style, { display: '', flexDirection: '', alignItems: '' });
+	}
+	// The IP field and an otherwise identical list not decorated by the page stay untouched.
+	assert.equal(modal.option('ip').widget.list, undefined);
+	const other = renderAccessList({ choices: f.option('mac').choices, validate: () => true }, 'x', []);
+	other.dropdown.openDropdown();
+	assert.deepEqual(other.list.style, { display: '', flexDirection: '', alignItems: '' });
+	assert.equal(other.customItem.style.order, undefined);
+	const manual = fixture([ host('a', 'follow') ]);
+	manual.hints({ hosts: {} });
+	await manual.start();
+	assert.equal(manual.openModal('a').option('mac').widget.list, undefined, 'plain manual fallback still renders');
 });
 
 test('T10.59 scenario 5: footer Save and Save and Apply accept pre-existing duplicate names', async () => {
