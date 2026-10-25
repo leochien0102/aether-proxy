@@ -82,9 +82,11 @@ function gridDouble(map, h) {
 			o.map = h.modal.map;
 			o.cbid = () => o.field;
 			o.formvalue = () => h.modal.widgets[o.field]?.value;
-			o.cfgvalue = () => h.uci.get('aetherproxy', id, o.field);
+			o.cfgvalue = () => h.uci.get('aetherproxy', id, o.ucioption ?? o.field);
 			o.isActive = () => SdkValue.prototype.isActive.call(o, id);
-			const cfgvalue = h.uci.get('aetherproxy', id, o.field);
+			o.getValidationError = () => SdkValue.prototype.getValidationError.call(o, id);
+			o.isValid = () => SdkValue.prototype.isValid.call(o, id);
+			const cfgvalue = h.uci.get('aetherproxy', id, o.ucioption ?? o.field);
 			const widget = o.renderWidget ? o.renderWidget(id, 0, cfgvalue)
 				: E('input', { value: cfgvalue ?? '' });
 			h.modal.widgets[o.field] = o.field === '_share' ? widget : inputOf(widget);
@@ -109,7 +111,7 @@ function gridDouble(map, h) {
 			return;
 		const modal = h.modal;
 		for (const o of modal.section.children) {
-			if (o.field !== '_share')
+			if (o.field !== '_share' && (!o.ucioption || o.isActive(modal.id)))
 				o.write(modal.id, modal.widgets[o.field].value);
 		}
 		await this.handleModalCancel(modal, {}, true);

@@ -19,6 +19,8 @@
  * Protocol columns and manual node IDs follow 「节点表的协议列」「添加节点」 (T10.26).
  * Parse cleanup includes the advanced options from 「节点编辑框新字段」 (T10.30).
  * Required-field metadata mirrors schema.uc (docs/10 r17, T10.58).
+ * Format validators and protocol method choices follow docs/10 r18 (T10.61),
+ * config.uc/check_node and net.uc; UUID follows docs/05 rule 7 ahead of T9.37.
  */
 
 /* Replaces each %s with the corresponding extra argument, in order. */
@@ -125,8 +127,55 @@ const NODE_FIELDS = [
 	'mux_xudp_concurrency', 'mux_xudp_udp443', 'tcp_fast_open', 'tcp_mptcp'
 ];
 
+/* Keep this ordered list in sync with schema.uc; the test exports it through ucode. */
+const SS_METHODS = [
+	'aes-128-gcm', 'aes-256-gcm', 'chacha20-poly1305', 'chacha20-ietf-poly1305',
+	'xchacha20-poly1305', 'xchacha20-ietf-poly1305',
+	'2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305'
+];
+
+/* JS $ also matches before a final newline; backend POSIX regexes require the entire value. */
+function full_match(pattern, value) {
+	return value.match(pattern)?.[0] === value;
+}
+
+function valid_address(value) {
+	if (/^[0-9.]+$/.test(value)) {
+		const octets = value.split('.');
+		return octets.length === 4 && octets.every(o => full_match(/^(0|[1-9][0-9]{0,2})$/, o) && +o <= 255);
+	}
+	return value.length <= 253 && value.split('.').every(label =>
+		label.length <= 63 && full_match(/^[A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?$/, label));
+}
+
+function valid_uuid(value) {
+	const bytes = new TextEncoder().encode(value).length;
+	if (bytes >= 1 && bytes <= 30)
+		return true;
+	return bytes >= 32 && bytes <= 36 && full_match(/^[0-9a-fA-F]{32}$/, value.replace(/-/g, ''));
+}
+
+/* Optional emptiness is handled by modal required-field preflight, not format checks. */
+function optional_format(check, message) {
+	return (id, value) => value == null || value === '' || check(value) ? true : message;
+}
+
 return baseclass.extend({
 	probe_column,
+	ss_methods: SS_METHODS,
+	validate_address: optional_format(valid_address,
+		_('Must be a valid IPv4 address or domain name', 'aether-proxy')),
+	validate_uuid: optional_format(valid_uuid,
+		_('UUID must be 32 hexadecimal digits (hyphens allowed), or a string of at most 30 bytes', 'aether-proxy')),
+	validate_method: optional_format(value => SS_METHODS.includes(value),
+		_('Unsupported encryption method', 'aether-proxy')),
+	validate_reality_pbk: optional_format(value => full_match(/^[A-Za-z0-9_-]{43}$/, value),
+		_('REALITY public key must be 43 base64url characters', 'aether-proxy')),
+	validate_reality_sid: optional_format(value => full_match(/^([0-9a-fA-F]{2}){0,8}$/, value),
+		_('Short ID must be hexadecimal, with an even length of at most 16', 'aether-proxy')),
+	validate_pinned_cert_sha256: optional_format(value => value.split(',').every(item =>
+		item.trim() === '' || full_match(/^[0-9a-fA-F]{64}$/, item.trim().replace(/:/g, ''))),
+		_('Each item must be 64 hexadecimal digits (colons allowed)', 'aether-proxy')),
 	node_fields: NODE_FIELDS,
 	required_fields: {
 		protocol: { required: true },

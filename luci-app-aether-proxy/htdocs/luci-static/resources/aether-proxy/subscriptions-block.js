@@ -6,7 +6,7 @@
 // Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
 // Saved disabled state and card alignment: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
 // Flag frames follow docs/10「r16 修正：窄屏卡片里开关与标签同一行」.
-// Node and subscription modal requirements follow docs/10「r17 修正：必填项的标注与保存前提示」.
+// Node/subscription preflight follows docs/10 r17 required fields and r18 format-error collection.
 // Initial RPC reads only fill cells/placeholders; never redraw an open edit modal for them.
 'require baseclass';
 'require form';
@@ -44,7 +44,7 @@ function missingRequired(option, id, rules) {
 
 function requiredBorder(option, id, invalid) {
 	const frame = option.map.findElement('data-field', option.cbid(id));
-	for (const input of frame.querySelectorAll('input, select, textarea'))
+	for (const input of frame?.querySelectorAll('input, select, textarea') ?? [])
 		input.style.borderColor = invalid ? REQUIRED_COLOR : '';
 }
 
@@ -52,7 +52,7 @@ function refreshRequired(map, id, rules) {
 	for (const option of map.children[0].children) {
 		if (option.requiredMarker)
 			option.requiredMarker.style.display = isRequired(option, id, rules) ? '' : 'none';
-		if (rules[option.option] && !missingRequired(option, id, rules))
+		if (!missingRequired(option, id, rules) && (!option.isActive(id) || option.isValid(id)))
 			requiredBorder(option, id, false);
 	}
 }
@@ -93,16 +93,20 @@ function requiredOptions(grid, rules) {
 		const id = modalMap.section;
 		const options = modalMap.children[0].children;
 		const missing = options.filter(option => missingRequired(option, id, rules));
-		/* Never parse even the first field until all required inputs pass:
-		 * SDK parse can stage earlier values before a later field rejects. */
+		const invalid = options.filter(option =>
+			option.isActive(id) && !missing.includes(option) && !option.isValid(id));
+		const errors = missing.map(option => _('%s is required.', 'aether-proxy').format(option.title))
+			.concat(invalid.map(option => option.title + ': ' + option.getValidationError(id)));
+		/* Never parse even the first field until all required and format checks pass:
+		 * SDK parse can stage earlier values before a later field rejects. Its
+		 * notification would also be hidden behind the still-open modal. */
 		if (modalMap.requiredAlert)
 			modalMap.requiredAlert.remove();
-		for (const option of options.filter(option => rules[option.option]))
-			requiredBorder(option, id, missing.includes(option));
-		if (missing.length) {
+		for (const option of options)
+			requiredBorder(option, id, missing.includes(option) || invalid.includes(option));
+		if (errors.length) {
 			modalMap.requiredAlert = E('div', { 'class': 'alert-message error' }, [
-				E('ul', {}, missing.map(option =>
-					E('li', {}, _('%s is required.', 'aether-proxy').format(option.title))))
+				E('ul', {}, errors.map(text => E('li', {}, text)))
 			]);
 			modalMap.root.insertBefore(modalMap.requiredAlert, modalMap.root.firstChild);
 			return Promise.resolve();

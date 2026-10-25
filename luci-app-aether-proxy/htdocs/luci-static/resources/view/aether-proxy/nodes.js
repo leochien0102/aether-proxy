@@ -30,7 +30,8 @@
  * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
  * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
  * The independent subscription map precedes this node region (「节点与订阅合并为一页」, T10.37).
- * Both grids share modal required-field feedback (docs/10 r17, T10.58).
+ * Both grids share modal required/format feedback (docs/10 r17–r18, T10.58/T10.61).
+ * Protocol-specific method aliases retain inactive and unknown values (docs/10 r18).
  */
 
 function compactKey(value) {
@@ -452,7 +453,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
-		o.datatype = 'host';
+		o.validate = model.validate_address;
 
 		o = s.option(form.Value, 'port', _('Port', 'aether-proxy'));
 		o.modalonly = true;
@@ -470,6 +471,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'uuid', _('UUID', 'aether-proxy'));
 		o.modalonly = true;
+		o.validate = model.validate_uuid;
 		o.depends('protocol', 'vless');
 		o.depends('protocol', 'vmess');
 
@@ -478,11 +480,25 @@ return view.extend({
 		o.depends('protocol', 'trojan');
 		o.depends('protocol', 'shadowsocks');
 
-		o = s.option(form.Value, 'method', _('Encryption method', 'aether-proxy'));
-		// Shared with Shadowsocks, whose method is required: do not materialize VMess's default.
-		o.placeholder = _('auto (VMess)', 'aether-proxy');
+		/* Distinct widgets share one UCI field. SDK remove() recognizes aliases;
+		 * form_defaults also preserves the inactive widget without writes/deletes. */
+		o = s.option(form.ListValue, 'method', _('Encryption method', 'aether-proxy'));
+		o.ucioption = 'method';
 		o.modalonly = true;
+		o.value('', _('-- Please choose --', 'aether-proxy'));
+		for (const method of model.ss_methods)
+			o.value(method, method);
+		o.renderWidget = renderPreservedList;
+		o.validate = model.validate_method;
 		o.depends('protocol', 'shadowsocks');
+
+		o = s.option(form.ListValue, 'method_vmess', _('Encryption method', 'aether-proxy'));
+		o.ucioption = 'method';
+		o.modalonly = true;
+		for (const method of ['auto', 'aes-128-gcm', 'chacha20-poly1305', 'none', 'zero'])
+			o.value(method, method);
+		o.default = 'auto';
+		o.renderWidget = renderPreservedList;
 		o.depends('protocol', 'vmess');
 
 		o = s.option(form.Value, 'encryption', _('Encryption', 'aether-proxy'));
@@ -583,6 +599,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'pinned_cert_sha256', _('Pinned certificate SHA-256', 'aether-proxy'));
 		o.modalonly = true;
+		o.validate = model.validate_pinned_cert_sha256;
 		o.depends('security', 'tls');
 
 		o = s.option(form.Value, 'verify_name', _('Verify certificate by name', 'aether-proxy'));
@@ -599,10 +616,12 @@ return view.extend({
 
 		o = s.option(form.Value, 'reality_pbk', _('REALITY public key', 'aether-proxy'));
 		o.modalonly = true;
+		o.validate = model.validate_reality_pbk;
 		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'reality_sid', _('REALITY short ID', 'aether-proxy'));
 		o.modalonly = true;
+		o.validate = model.validate_reality_sid;
 		o.depends('security', 'reality');
 
 		o = s.option(form.Value, 'reality_spx', _('REALITY spiderX', 'aether-proxy'));
@@ -659,9 +678,6 @@ return view.extend({
 		o.modalonly = true;
 
 		form_defaults.section(s, {
-			method: function(sid) {
-				return this.map.lookupOption('protocol', sid)?.[0].formvalue(sid) == 'vmess' ? 'auto' : null;
-			},
 			encryption: 'none'
 		/* Fields the backend checks for conflicts are deleted while hidden, like
 		   stock LuCI; other hidden fields are kept (docs/10 r16 复审结论). */

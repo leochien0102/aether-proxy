@@ -25,8 +25,8 @@ String.prototype.format = function(...args) {
 
 function read_schema() {
 	const reply = spawnSync(path.join(ROOT, 'tests/host/ucode'), ['-e',
-		"import { SCHEMA } from 'aetherproxy.schema'; import * as C from 'aetherproxy.const'; " +
-		"printf('%.J', { schema: SCHEMA, version: C.VERSION });"],
+		"import { SCHEMA, SS_METHODS } from 'aetherproxy.schema'; import * as C from 'aetherproxy.const'; " +
+		"printf('%.J', { schema: SCHEMA, ss_methods: SS_METHODS, version: C.VERSION });"],
 	{ cwd: ROOT, encoding: 'utf8' });
 	assert.equal(reply.error, undefined);
 	assert.equal(reply.status, 0, reply.stderr);
@@ -141,7 +141,7 @@ function check_options(h, page) {
 	const checked = [];
 	for (const option of h.options) {
 		const section = option.ucisection ?? option.section.name;
-		const field = schema[section]?.find(field => field.name == option.option);
+		const field = schema[section]?.find(field => field.name == (option.ucioption ?? option.option));
 		if (!field) {
 			assert.ok(option.option.startsWith('_'), page + ': unmapped configuration field ' +
 				section + '.' + option.option);
@@ -151,8 +151,10 @@ function check_options(h, page) {
 		checked.push(section + '.' + field.name);
 		if (option.kind == h.form.Flag && typeof field.default == 'boolean')
 			assert.ok(Object.hasOwn(option, 'default'), label + ': Flag must declare its default');
+		const protocol = option.option === 'method_vmess' ? 'vmess' : null;
+		const effectiveDefault = protocol ? field.proto_default[protocol] : field.default;
 		if (Object.hasOwn(option, 'default'))
-			assert.deepEqual(option.default, widget_default(field.default), label + ': default differs from schema');
+			assert.deepEqual(option.default, widget_default(effectiveDefault), label + ': default differs from schema');
 		/* A list whose empty value means "use the backend default" shows it as a
 		 * hint instead, so Save never pins today's default (updates.channel_urls). */
 		if (Array.isArray(field.default) && field.default.length > 0 && !LIST_HINTS.includes(label))
@@ -163,8 +165,14 @@ function check_options(h, page) {
 		}
 		if ([h.form.ListValue, h.form.RichListValue].includes(option.kind) && field.default != null)
 			assert.equal(option.default, widget_default(field.default), label + ': select must show schema default');
-		/* Protocol defaults must stay placeholders: method is shared with SS,
-		 * where auto is not a valid fallback. Qualify a shared field's hint. */
+		/* T10.61 splits the method select by protocol. SS has no default;
+		 * VMess displays auto, while change-aware parse keeps absent UCI absent. */
+		if (field.name === 'method') {
+			assert.equal(option.kind, h.form.ListValue, label + ': method must be a select');
+			assert.equal(option.default, protocol ? field.proto_default[protocol] : undefined,
+				label + ': method protocol default');
+			continue;
+		}
 		for (const [protocol, value] of Object.entries(field.proto_default ?? {})) {
 			const hint = field.protocols.length > 1 ? widget_default(value) + ' (' +
 				({ vmess: 'VMess', vless: 'VLESS' }[protocol] ?? protocol) + ')' : widget_default(value);
@@ -330,6 +338,15 @@ for (const page of ['nodes', 'subscriptions']) {
 		assert.throws(() => check_required(h, page, table), /missing editable input/);
 	});
 }
+
+test('T10.61 scenario 4: SS methods exactly match the ordered ucode export; mutation fails', async () => {
+	const h = await page_options('nodes');
+	const model = h.load('aether-proxy/model/nodes.js');
+	const check = methods => assert.deepEqual(methods, backend.ss_methods, 'ordered SS_METHODS must match');
+	check(model.ss_methods);
+	assert.throws(() => check(['wrong', ...model.ss_methods.slice(1)]), /ordered SS_METHODS must match/);
+	assert.throws(() => check(model.ss_methods.slice().reverse()), /ordered SS_METHODS must match/);
+});
 
 test('T10.41 scenario 2: the default gate covers every form page shipped in view/', () => {
 	const views = path.join(RES, 'view/aether-proxy');
