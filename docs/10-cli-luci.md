@@ -453,7 +453,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - 操作：「安装」（`installed` 为 `null` 且 `asset` 不为空）或「更新」（`installed` 不为空且 `newer` 为真）→ `ap.run_job('update_package', [<包>])`；
     「回滚到 <previous>」（`previous` 不为空且 `installed` 不为空且 `installed` 不等于 `previous`）→ 确认后 `ap.run_job('update_package', [<包>, '--previous'])`，按钮用 `cbi-button-remove`。
     确认框写明「将安装 <previous>，替换当前的 <installed>」；`aether-proxy` 与两个 luci 包另加一句「服务会重启」。
-  - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。
+  - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。2026-10-25 起 `aether-proxy` 与 `luci-app-aether-proxy` 一起更新，结果文字与刷新提示见「B17：更新页显示「一起更新」的结果」（T10.67）。
   - 表下一行：上次检查时间（相对时间）与清单地址（`url`）；`updates_available` 为 `null` 时显示「尚未检查」。
 - **运行中的组件**：`status.components` 中 `xray`、`chinadns-ng` 的版本（`null` 显示「未知」）与路径。chinadns-ng 另注「不进发布通道，请在软件包页面从软件源安装或更新」，附 `arch`（没有 `updates_available` 时不显示 arch）。
   **2026-10-21 改（T10.15，跨页面问题 X6 与 r8 窗口前端第 6 条）**：chinadns-ng 的说明改为「不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 `chinadns-ng` 包（本机架构 <arch>）手工安装。」，
@@ -1211,6 +1211,22 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
    - 只作用于这两个添加框，别的输入框和别的页面仍用 LuCI 的浮层。
 
 **复审结论（2026-10-25，T10.66 已合并）**：第 1 条写的占位项选择器不对——SDK 的 `Dropdown.bind()` 生成的是 `li[placeholder]`（没有 `data-value`），实现两种都认。第 2 条：「▲」浮层不是保存直接弹出的。保存经 `checkDepends()` 重新校验，又打上 `data-tooltip`，之后聚焦或悬停就会显示；实现在失败事件里去掉属性，并用 `ui.hideTooltip({ target })` 收起已经显示的浮层。复审没有改动。
+
+### B17：更新页显示「一起更新」的结果（2026-10-25 定，T10.67；交接 `frontend-entry-b17.md`，依赖后端 T9.38、T9.39，已合并）
+
+后端（08「更新一起更新」）：点 `aether-proxy` 或 `luci-app-aether-proxy` 的「更新」，一次作业装整组——先 `aether-proxy`（有新版才装，装后检查），再两个页面包。结果的 `package`、`from`、`to`、`rolled_back` 仍描述 `aether-proxy` 主事务（跳过时 `from` = `to`），另有 `companions: { "luci-app-aether-proxy": "installed" | "skipped" | "failed", "luci-i18n-aether-proxy-zh-cn": … }`。某个页面包失败时整体 `ok` 为假，`code`/`detail` 取第一个失败的；`aether-proxy` 检查失败而回滚时页面包不动。
+
+1. **结果文字**（模型 `job_result`，只对带 `companions` 的结果；没有 `companions` 的照旧，例如 `xray-core`、翻译包单独更新）。按顺序拼成一段：同一句里的几个分句用可翻译的 `_('%s; %s')`（中文 `%s；%s`）连接，末尾加句号；第 2 条的刷新提示是另一句，用 UI 规则「多句拼接」的 `_('%s %s')` 接在后面：
+   - `rolled_back` 为真 → 照旧「安装后检查失败，已回滚到 <from>」，页面包没动，不再说别的。
+   - 主事务：`from` 不等于 `to` →「aether-proxy 已从 <from> 更新到 <to>」（沿用原句）；`from` = `to`（后端没有新版、被跳过）→ **不写这一句**。
+   - 页面包：`installed` 的按「界面」（`luci-app-aether-proxy`）、「翻译」（`luci-i18n-aether-proxy-zh-cn`）列出，用「、」连接；主事务更新了写「界面、翻译已同时更新」，主事务被跳过写「界面、翻译已更新」。`failed` 的写「界面更新失败：<原因>」（原因用 `failure()` 对 `code`/`detail` 的写法；多个失败只有第一个有原因，其余只写「翻译更新失败」）。`skipped` 不写。
+   - 什么都没装（主事务跳过、页面包全 `skipped`，`ok` 不为假）→「已是最新」。
+   - 主事务本身失败（下载、校验等，`ok` 为假且没有 `failed` 的页面包）→ 照旧只显示 `failure()`。
+   - 例：「aether-proxy 已从 0.3.0-r1 更新到 0.3.1-r1；界面、翻译已同时更新。界面已更新，请刷新页面。」「界面已更新；翻译更新失败：校验失败。界面已更新，请刷新页面。」
+2. **刷新提示**：有页面包 `installed` 时，末尾加「界面已更新，请刷新页面。」——正在运行的就是旧脚本，换掉的视图与翻译要刷新才生效。只更新了 `aether-proxy`（页面包都 `skipped`）时不加。没有 `companions` 的结果沿用原来的「页面文件可能已变化，请刷新浏览器。」规则。不在这里调用 T10.12 的过期检测：刚更新完时旧脚本是预期的，那条横幅的措辞（「请清除浏览器缓存」）不适合；刷新后仍是旧脚本时由 T10.12 照常提示。
+3. **进度文字**：点 `aether-proxy` 或 `luci-app-aether-proxy` 的「更新」时写「正在更新 aether-proxy 及其界面…」；表格里 `aether-proxy` 那一行 `newer` 为真（后端有新版）时再加一句「服务会短暂中断」。翻译包、`xray-core` 照旧「正在安装 <包>…」。
+4. **错误原因的冒号**：`failure()` 里的 `code` 与 `detail` 现在用写死的 `': '` 拼接，中文页面上是半角冒号；改用可翻译的 `_('%s: %s')`（已有条目，中文「%s：%s」）。同一类问题 T10.61 复审改过。
+5. **兼容**：`companions` 是 08「更新接口（固定）」允许新增的字段，旧页面不认识它、照旧只显示主事务。**不改 `tests/compat/fixtures/`**（冻结的 0.3.0-r1 页面文件，发正式版后由后端会话替换）；`tests/compat/` 的测试照常要通过。
 
 UI 规则：
 
