@@ -18,6 +18,8 @@
  * T10.48 distinguishes the old restart process by its baseline since;
  * T10.52 pairs daemon startup events and presents proxy-plugin conflicts;
  * T10.55 follows docs/10 r16 for shared busy wording/colors and conflict advice;
+ * T10.62 follows docs/10 r18 for runtime-only probe/address visibility and
+ * timeout-only inventory retry eligibility;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -477,6 +479,10 @@ return baseclass.extend({
 	components_failed: components_failed,
 	component_error: component_error,
 
+	component_retryable: function(reply) {
+		return reply?.code === 'TIMEOUT';
+	},
+
 	/* docs/10 T10.22: apply commits the entire session, not just this switch.
 	   Only an option set/removal is superseded; section edits still matter. */
 	staged_confirmation: function(changes) {
@@ -649,6 +655,9 @@ return baseclass.extend({
 		const components = component_rows(version, inventory);
 		const state = (status?.ok === false ? null : status?.state) ?? 'unknown';
 		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(state);
+		/* Startup can retain the previous run's probe; an IP need not be available
+		   yet even during a running state, so do not use it as the visibility gate. */
+		const show_probe = ['running', 'degraded', 'failsafe'].includes(state);
 		/* WAN counters also include other services; missing proxy counters cannot imply direct traffic. */
 		const traffic_note = active || status === undefined ? null
 			: _('The service is not running; proxy and direct traffic cannot be distinguished.', 'aether-proxy');
@@ -728,10 +737,11 @@ return baseclass.extend({
 			error_text: startup_reason ?? error_text(status.last_error),
 			dns_text: dns_text(state, status.dns_tier),
 			...nodes,
-			node_ip: (active && status.node_ip) ? String(status.node_ip) : null,
-			node_address_text: (active && status.node_ip)
+			node_ip: (show_probe && status.node_ip) ? String(status.node_ip) : null,
+			node_address_text: (show_probe && status.node_ip)
 				? fmt(_('Node address %s', 'aether-proxy'), status.node_ip) : null,
-			...(manual && manual.monitor_at === status.last_probe?.at ? {
+			...(!show_probe ? { probe_text: null, probe_since_text: null, probe_level: 'neutral' }
+				: manual && manual.monitor_at === status.last_probe?.at ? {
 				probe_text: manual.text,
 				probe_since_text: rel_time(now, manual.at),
 				probe_level: manual.ok ? 'ok' : 'error'
