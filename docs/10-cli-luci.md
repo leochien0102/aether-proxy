@@ -1185,10 +1185,14 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 2. **提示里的字段名**：不用选项标题（`IP / 范围 / 网段（可选）`，带「（可选）」），用不带「（可选）」的短名「IP / 范围 / 网段」「设备」，放在书名号里，不留空格：「「IP / 范围 / 网段」里还有未添加的内容「…」：点「+」添加，或清空」「「设备」里的「zz:zz」不是合法的 MAC 地址。」。英文原文同样改写，字段名作为参数传入（不再 `%s has …`）。编辑框标题本身不改。
 3. **设备下拉框的自定义输入放到最上面**（仓库所有者提）：设备多时要拉到底才能输入。SDK 的 `Dropdown` 把输入框那一项（`li[data-value="-"]`）放在列表最后，并且多处依赖它是最后一个（新建项 `insertBefore(ul.lastElementChild)`、键盘导航），所以**不移动 DOM**，只在显示上提前：展开的列表是 flex 列（两个主题里 `.cbi-dropdown > ul` 本来就是 `display:flex`，展开时的方向以实际为准，必要时同时写 `flex-direction:column`），给这一项 `order:-1`。只作用于访问控制页的「设备」字段（页面自己的 class 或内联样式，X7 只用排版类）。键盘方向键仍按 DOM 顺序走（输入框在最后一个设备之后），可以接受。用 bootstrap 与 proton2025 的展开样式核对：列表展开后滚动位置在顶部（没有选中项时 SDK 滚到 0），输入框可见。
 
+**复审结论（2026-10-25，T10.63 已合并）**：第 3 条的前提写错了——bootstrap 与 proton2025 展开时都把列表改成 `display:block`（`.cbi-dropdown[open] > ul.dropdown`），只加 `order:-1` 不起作用。实现在这个控件的 `openDropdown` 之后给列表内联 `display:flex; flex-direction:column`，`closeDropdown` 时还原，输入框那一项仍是 DOM 里最后一个。复审把实现写的 `align-items:center` 改为 `stretch`：竖排列表要和原来的 block 一样每行占满宽度，「flex 容器写 align-items（一般为 center）」那条是针对横排按钮行的。提示文字里的原因取自单项校验的译文（去掉开头的值），所以 `validate_ip`/`validate_mac` 的译文要保持「值在最前」。
+
 ### r18：日志事件的启动失败与标签页顺序（2026-10-25 定，T10.64；r18 窗口前端第 9、10 条）
 
 1. `START_FAILED`：「启动在 预检 失败：…」改为「启动失败（预检）：与 ShadowSocksR Plus+ 冲突」。英文 `Start failed ({step}): {detail}`。`reload:`、`monitor:` 前缀照 T10.60 的写法放在括号里（「启动失败（重载时生成配置）：…」——以现有译文为准，括号里不再套括号）。悬停仍是原始参数。概览页启动失败原因如果用到同一模板，跟着变。
 2. **标签页顺序**（仓库所有者定）：概览 → 节点与订阅 → 访问控制 → 规则与 DNS → 高级 → 更新 → 日志。改 `menu.d` 的 `order`（`advanced` 排在 `rules` 后、`updates` 前，`logs` 最后）与 `tests/luci/menu.test.js` 的顺序；本文「LuCI 页面」表与「公共模块与菜单」里的顺序同步。以后的 `rN-frontend-checklist.md` 按这个顺序（概览因要停启服务仍放最后）。
+
+**复审结论（2026-10-25，T10.64 已合并）**：照设计实现，没有改动。
 
 UI 规则：
 
@@ -1236,7 +1240,7 @@ UI 规则：
   布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
   和**相对**字号（`em`），不写 `px` 字号；颜色只用主题的 CSS 变量，并带上回退值：`var(--success-color-high, #2f855a)`、`var(--warning-color, #b7791f)`、`var(--error-color-high, #c53030)`
   （bootstrap 与 proton2025 都定义了前两个 success/error 变量，warning 只有 proton2025 有，2026-10-20 核对）。**不要用 `label success` 之类的修饰类着色**：proton2025 只有 `.label`，没有这些修饰类。
-  控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。flex 容器一律写 `align-items`（一般为 `center`）：默认的 `stretch` 会把按钮拉高（2026-10-20 真机发现，T10.4）。
+  控件多的行用 `flex-wrap: wrap`，窄屏时自动换行。flex 容器一律写 `align-items`（一般为 `center`）：默认的 `stretch` 会把按钮拉高（2026-10-20 真机发现，T10.4）。竖排（`flex-direction:column`）的列表用 `stretch`，每行占满宽度（2026-10-25，T10.63 复审）。
   放在 flex 行里的 `select` 写 `width:auto`：主题会把它设成 `width: 100%`（proton2025），在 flex 行里会占满整行、把同一行的按钮挤到下一行（2026-10-20 真机发现，T10.6 之后补）。
 - 翻译包 `luci-i18n-aether-proxy-zh-cn` 与功能包分开生成。修改 po 后两个包要一起安装。
 - **翻译一律带上下文 `aether-proxy`**（2026-10-20 定，T10.1）：界面文字写成 `_('Refresh', 'aether-proxy')`，po 中对应条目带 `msgctxt "aether-proxy"`。
