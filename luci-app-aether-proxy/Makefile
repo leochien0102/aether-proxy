@@ -5,8 +5,8 @@ LUCI_DEPENDS:=+aether-proxy +luci-base +rpcd-mod-ucode
 LUCI_PKGARCH:=all
 
 PKG_NAME:=luci-app-aether-proxy
-PKG_VERSION:=0.2.0
-PKG_RELEASE:=6
+PKG_VERSION:=0.3.0
+PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=LICENSE
