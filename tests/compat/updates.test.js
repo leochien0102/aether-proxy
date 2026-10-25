@@ -15,18 +15,18 @@ const { promisify } = require('node:util');
 const { loadModule, createRpc, element } = require('../luci/loader');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '../..');
-const FROZEN = path.join(__dirname, 'fixtures/0.3.0-r1');
+const FROZEN = path.join(__dirname, 'fixtures/0.3.1-r1');
 const RES = path.join(FROZEN, 'htdocs/luci-static/resources');
 const PLUGIN = path.join(FROZEN, 'root/usr/share/rpcd/ucode/aetherproxy.uc');
 const UCODE = path.join(ROOT, 'tests/host/ucode');
 const ENTRY = path.join(ROOT, 'aether-proxy/src/aether-proxy');
 const USIGN = path.join(ROOT, 'tests/host/prefix/bin/usign');
 const NAMES = ['xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'];
-const CURRENT = { 'xray-core': '26.10.10-r1', 'aether-proxy': '0.3.1-r1',
-	'luci-app-aether-proxy': '0.3.1-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
+const CURRENT = { 'xray-core': '26.10.10-r1', 'aether-proxy': '0.3.2-r1',
+	'luci-app-aether-proxy': '0.3.2-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
 // The backend is already new: the previous release's page must update itself.
 const INSTALLED = { 'xray-core': '26.9.30-r1', 'aether-proxy': CURRENT['aether-proxy'],
-	'luci-app-aether-proxy': '0.3.0-r1', 'luci-i18n-aether-proxy-zh-cn': '26.298.00000~abcdef0' };
+	'luci-app-aether-proxy': '0.3.1-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
 
 globalThis._ = text => text;
 globalThis.E = element;
@@ -185,14 +185,16 @@ function assert_package_text(model, job) {
 	assert.equal(r.to, CURRENT[r.package]);
 	assert.equal(r.rolled_back, false);
 	assert.equal(r.code, null);
+	// The 0.3.1-r1 page reads the grouped result (T9.38/T10.67): the backend was already
+	// current, so it must not claim an aether-proxy update, only the two page packages.
+	assert.deepEqual(r.companions, { 'luci-app-aether-proxy': 'installed', 'luci-i18n-aether-proxy-zh-cn': 'installed' });
 	const text = model.job_result('update_package', 'luci-app-aether-proxy', job);
-	assert.equal(text, `luci-app-aether-proxy updated from ${r.from} to ${CURRENT[r.package]} ` +
-		'Page files may have changed; please refresh your browser.');
+	assert.equal(text, 'Interface, Translation updated. Please refresh the page.');
 	assert.doesNotMatch(text, /Operation failed|Unknown|undefined|failed/i);
 	return text;
 }
 
-test('T9.39 frozen 0.3.0-r1 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
+test('T9.39 frozen 0.3.1-r1 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
 	const f = await fixture();
 	t.after(() => f.close());
 	const replies = [];
@@ -258,7 +260,7 @@ test('T9.39 frozen 0.3.0-r1 clients can update themselves through current CLI', 
 		const calls = fs.readFileSync(f.env.UPDATE_PACKAGE_CALLS, 'utf8').trim().split('\n');
 		assert.equal(calls.filter(line => line.includes('luci-app-aether-proxy_')).length, 1);
 		assert.ok(f.requests.includes('/manifest.json.sig'));
-		assert.ok(f.requests.includes('/luci-app-aether-proxy_0.3.1-r1_all.ipk'));
+		assert.ok(f.requests.includes(`/luci-app-aether-proxy_${CURRENT['luci-app-aether-proxy']}_all.ipk`));
 		const cli_calls = fs.readFileSync(path.join(f.dir, 'cli-calls'), 'utf8');
 		assert.ok(cli_calls.includes(`job run ${package_job}`));
 		assert.ok(cli_calls.includes('update package luci-app-aether-proxy'));

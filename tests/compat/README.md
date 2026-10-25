@@ -57,8 +57,10 @@ files from tags at test runtime. When publishing version `<version>`:
    weakening assertions, then run this suite and all existing suites. Commit
    the frozen files, hashes and harness changes together.
 
-The contract wording in docs/08 mentions `ok` and a `job` object. Existing
-successful `status`/`job start` omit `ok`; `job status` returns the flat job record.
-The frozen old client accepts these shapes. The test preserves these real wire
-shapes rather than inventing an envelope or changing production code; see the
-`TODO(design)` beside `assert_inventory` and the task report.
+docs/08 "更新接口（固定）" describes the wire shapes this suite pins: successful
+`status`/`job start` omit `ok` (the frozen client reads `ok !== false`), and
+`job status` returns the flat job record (settled in the T9.39 review).
+
+Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (after the 0.3.1-r1 release — the
+frozen page now reads grouped results, so the install text expects the
+companions wording and the simulated channel moved one version ahead).

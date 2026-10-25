@@ -11,6 +11,7 @@
  * Defer the initial status read until render returns (docs/10 "其余页面先出页面").
  * Refresh only the inventory, leaving unsaved policy edits intact.
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
+ * Group update progress comes from the model (docs/10 "B17").
  * Xray-only rollback and manual installation guidance follow docs/10 "r13：取消三包手动回滚".
  * Centered inline feedback follows docs/10 "r13 修正：块内行与表格操作列".
  */
@@ -24,8 +25,7 @@ return view.extend({
 		try {
 			this.summary.textContent = '';
 			this.show_inventory();
-			const text = kind == 'update_check' ? _('Checking for updates…', 'aether-proxy') :
-				(previous ? _('Rolling back %s…', 'aether-proxy') : _('Installing %s…', 'aether-proxy')).format(name);
+			const text = model.job_progress(kind, name, previous, this.status);
 			timer = ap.job_progress(this.progress, text);
 			const job = kind == 'update_check' ? await ap.run_job('update_check', []) :
 				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);

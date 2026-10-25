@@ -5,6 +5,7 @@
  * Asset availability comes from the CLI; never infer it from a version or arch.
  * Undefined status means the initial read is pending (docs/10 "其余页面先出页面").
  * Manual rollback is Xray-only, per docs/10 "r13：取消三包手动回滚".
+ * Grouped forward updates follow docs/10 "B17：更新页显示「一起更新」的结果".
  */
 const PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 /* Keep whitespace out of msgids: po2lmo stores it but _() trims it, so a
@@ -46,11 +47,47 @@ function failure(r) {
 		NO_SPACE: _('Not enough space', 'aether-proxy'),
 		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy')
 	};
-	return (messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy')) + (r.detail ? ': ' + r.detail : '');
+	const reason = messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy');
+	return r.detail ? _('%s: %s', 'aether-proxy').format(reason, r.detail) : reason;
+}
+function companion_result(r) {
+	// The backend reports only the first failed companion's cause at the top level.
+	// The refresh sentence names no package: the interface itself may have failed.
+	// Keep backend order rather than object insertion order when assigning that cause.
+	const pages = [
+		{ name: 'luci-app-aether-proxy', label: _('Interface', 'aether-proxy') },
+		{ name: 'luci-i18n-aether-proxy-zh-cn', label: _('Translation', 'aether-proxy') }
+	];
+	const installed = pages.filter(p => r.companions[p.name] == 'installed');
+	const failed = pages.filter(p => r.companions[p.name] == 'failed');
+	if (r.ok === false && !failed.length)
+		return failure(r);
+	const updated = r.from != r.to;
+	const parts = [];
+	if (updated)
+		parts.push(r.from == null ? _('%s installed: %s', 'aether-proxy').format(r.package, r.to) :
+			_('%s updated from %s to %s', 'aether-proxy').format(r.package, r.from, r.to));
+	if (installed.length) {
+		const labels = installed.map(p => p.label).reduce((a, b) => _('%s, %s', 'aether-proxy').format(a, b));
+		parts.push((updated ? _('%s updated together', 'aether-proxy') : _('%s updated', 'aether-proxy'))
+			.format(labels));
+	}
+	failed.forEach((p, i) => {
+		const text = _('%s update failed', 'aether-proxy').format(p.label);
+		parts.push(i == 0 ? _('%s: %s', 'aether-proxy').format(text, failure(r)) : text);
+	});
+	if (!parts.length)
+		parts.push(_('Already up to date', 'aether-proxy'));
+	const text = _('%s.', 'aether-proxy').format(
+		parts.reduce((a, b) => _('%s; %s', 'aether-proxy').format(a, b)));
+	return installed.length ? _('%s %s', 'aether-proxy').format(text,
+		_('Please refresh the page.', 'aether-proxy')) : text;
 }
 function package_result(name, r) {
 	if (r.rolled_back)
 		return _('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from);
+	if (r.companions)
+		return companion_result(r);
 	if (!r.ok)
 		return failure(r);
 	const text = r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
@@ -59,6 +96,18 @@ function package_result(name, r) {
 		' ' + _('Page files may have changed; please refresh your browser.', 'aether-proxy') : '');
 }
 return baseclass.extend({
+	job_progress: function(kind, name, previous, status) {
+		if (kind == 'update_check')
+			return _('Checking for updates…', 'aether-proxy');
+		if (previous)
+			return _('Rolling back %s…', 'aether-proxy').format(name);
+		if (name != 'aether-proxy' && name != 'luci-app-aether-proxy')
+			return _('Installing %s…', 'aether-proxy').format(name);
+		const text = _('Updating %s and its interface…', 'aether-proxy').format('aether-proxy');
+		return status?.updates_available?.packages?.['aether-proxy']?.newer === true ?
+			_('%s %s', 'aether-proxy').format(text,
+				_('The service will be briefly interrupted.', 'aether-proxy')) : text;
+	},
 	manual_install_note: function() {
 		return _('To install another version: download the three packages for that version from the release page, '
 			+ 'then upload and install them on the system Software page, or use opkg install. '
