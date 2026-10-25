@@ -206,3 +206,14 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 来源：仓库所有者在更新页逐个点 `aether-proxy`、`luci-app-aether-proxy` 的「立即更新」时提出——先更新的一个与另一个不匹配，最坏时页面坏掉、无法再用页面更新另一个。
 - 现状：每个「立即更新」只装自己那个包；页面与 rpcd 插件都在 `luci-app-aether-proxy`，只依赖后端的 `status`、`job start update …`、`job status`。0.3.0-r1 与设备上的 r20 代码相同，这次没有风险。
 - 退路（与本项无关，一直可用）：ssh 运行 `aether-proxy update package luci-app-aether-proxy`；OpenWrt「系统 → 软件包」上传 Release 页的 ipk；`opkg install`。前后端不匹配只影响管理页面，代理本身照常。
+
+## B18 chinadns-ng 停更与 DNS 组件的替代（2026-10-25，观察项）
+
+- 状态：**观察项**，不出卡；随 B1「自定义分流」的调研一起看（两者都落在「一个 Xray 进程 + 路由规则」上）。
+- 事实（2026-10-25 查）：
+  - zfl9/chinadns-ng 最后一次发版与提交都是 2025-08-09（2025.08.09），之后一年多没有动静；仓库未归档。
+  - 上游 luci-app-ssr-plus 197（2026-10-21，「disable legacy package defaults」）把 ChinaDNS-NG 与 MosDNS 改为默认不装；默认 DNS 模式是 DNS2TCP，并从 2026-05 起提供「Prefer module built-in DNS」（用 Xray / Mihomo 自带的 DNS），2026-10 仍在修。
+  - 我们的 2025.08.09 构建在真机上稳定；固件里由 openwrt-actions 显式选中（不随 ssr-plus 默认值）。
+- 依赖面：本设计的 DNS 全部建立在 chinadns-ng 上——[03](03-dns.md) 的 china/trust 分组、tag:none 判定、自定义组 boot/udirect/uproxy 与 nft 集合写入，[ADR-0004](adr/0004-dns-tier-switching.md) 的级别切换。替换是重新设计，不是换个程序。
+- 备选（待调研，不提前定方案）：Xray 内置 DNS + routing（与 B1 同一机制；要核实能否按 chnlist/gfwlist 分组、能否把解析结果写进 nft 集合、缓存与污染处理）；MosDNS；只用 dnsmasq 的 nftset 加转发。
+- 触发重新评估的条件：chinadns-ng 在新固件/新内核上出现无法绕过的问题，或 B1 的设计需要把 DNS 判定交给 Xray。
