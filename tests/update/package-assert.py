@@ -18,7 +18,9 @@ restarts = (root / 'init-calls').read_text().splitlines()
 signals = (root / 'signals').read_text().splitlines()
 queries = (root / 'package-queries').read_text().splitlines()
 cache = json.loads((root / 'run/updates.json').read_text())
-assert 'companions' not in result, result
+grouped = mode == 'automatic' or mode in ('forward:' + backend, 'forward:' + app)
+if not grouped:
+    assert 'companions' not in result, result
 
 
 def asset_call(package, version, previous):
@@ -44,7 +46,8 @@ if mode.startswith('reject:'):
         assert (inventory / package).read_text().strip() == expected
 elif mode == 'automatic':
     assert result == {'ok': False, 'package': backend, 'from': old, 'to': current,
-                      'rolled_back': True, 'code': 'UPDATE_VERIFY_FAILED'}, result
+                      'rolled_back': True, 'code': 'UPDATE_VERIFY_FAILED',
+                      'companions': {app: 'skipped', i18n: 'skipped'}}, result
     assert calls == [asset_call(backend, current, False), asset_call(backend, old, True)], calls
     assert restarts == ['restart', 'restart'] and not signals, (restarts, signals)
     assert (inventory / backend).read_text().strip() == old
@@ -55,6 +58,15 @@ elif mode == 'automatic':
     assert [(event['code'], event['args']['package'], event['args']['version'])
             for event in update_events] == [
                 ('UPDATE_VERIFY_FAILED', backend, current), ('UPDATE_ROLLED_BACK', backend, old)]
+elif grouped:
+    # T9.38: an already-current group is a no-op, even from the page entry point.
+    assert result == {'ok': True, 'package': backend, 'from': current, 'to': current,
+                      'rolled_back': False, 'code': None,
+                      'companions': {app: 'skipped', i18n: 'skipped'}}, result
+    assert not calls and not restarts and not signals
+    assert not any(event['code'] == 'UPDATE_INSTALLED' for event in events)
+    for package in (backend, app, i18n, 'xray-core'):
+        assert queries.count(package) == (1 if package == 'xray-core' else 2), queries
 else:
     direction, package = mode.split(':')
     previous = direction == 'previous'
