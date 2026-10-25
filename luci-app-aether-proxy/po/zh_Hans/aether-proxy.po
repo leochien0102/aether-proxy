@@ -2479,3 +2479,47 @@ msgstr "%s：%s；%s"
 msgctxt "aether-proxy"
 msgid "%s %s"
 msgstr "%s%s"
+
+msgctxt "aether-proxy"
+msgid "Interface"
+msgstr "界面"
+
+msgctxt "aether-proxy"
+msgid "Translation"
+msgstr "翻译"
+
+msgctxt "aether-proxy"
+msgid "%s updated together"
+msgstr "%s已同时更新"
+
+msgctxt "aether-proxy"
+msgid "%s updated"
+msgstr "%s已更新"
+
+msgctxt "aether-proxy"
+msgid "%s update failed"
+msgstr "%s更新失败"
+
+msgctxt "aether-proxy"
+msgid "Already up to date"
+msgstr "已是最新"
+
+msgctxt "aether-proxy"
+msgid "%s; %s"
+msgstr "%s；%s"
+
+msgctxt "aether-proxy"
+msgid "%s."
+msgstr "%s。"
+
+msgctxt "aether-proxy"
+msgid "Interface updated; please refresh the page."
+msgstr "界面已更新，请刷新页面。"
+
+msgctxt "aether-proxy"
+msgid "Updating %s and its interface…"
+msgstr "正在更新 %s 及其界面…"
+
+msgctxt "aether-proxy"
+msgid "The service will be briefly interrupted."
+msgstr "服务会短暂中断。"

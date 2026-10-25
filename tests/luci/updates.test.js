@@ -2,6 +2,7 @@
 
 /* T8.9b update-page contracts and T10.16 progressive status loading.
  * T10.46 replaces grouped rollback with Xray-only rollback and manual install guidance.
+ * T10.67 adds grouped forward-update results using the real backend wire shape.
  * Cover pure decisions, CLI URL parity and actual view rendering/clicks.
  * Translations are loaded so assertions cover the text actually shown to users.
  */
@@ -76,7 +77,7 @@ test('T8.9b scenario 4: check and install result messages cover success, rollbac
 		JOB_LOST: '作业进程意外退出', FUTURE: 'FUTURE'
 	};
 	for (const [code, text] of Object.entries(errors)) {
-		assert.equal(model.job_result('update_check', null, { ok: false, code, detail: 'WHY' }), text + ': WHY');
+		assert.equal(model.job_result('update_check', null, { ok: false, code, detail: 'WHY' }), text + '：WHY');
 		assert.equal(model.job_result('update_package', 'xray-core',
 			{ state: 'failed', result: { ok: false, code } }), text);
 	}
@@ -98,7 +99,7 @@ test('T8.9b scenario 4: check and install result messages cover success, rollbac
 		[ 'NO_SPACE', '空间不足' ], [ 'ARCH_UNSUPPORTED', '本机不可用' ], [ 'NEW_CODE', 'NEW_CODE' ] ]) {
 		for (const detail of [ undefined, 'WHY' ])
 			assert.equal(model.job_result('update_package', 'xray-core', { result: { ok: false, code, detail } }),
-				expected + (detail ? ': WHY' : ''));
+				expected + (detail ? '：WHY' : ''));
 	}
 });
 test('T8.9b scenario 5: running versions, paths and optional architecture note', () => {
@@ -321,7 +322,7 @@ test('T10.16 updates model: pending placeholders disable actions and settled fai
 	for (const code of [ 'TIMEOUT', 'RPC_FAILED', 'UPDATE_FETCH_FAILED' ]) {
 		const result = { ok: false, code, detail: 'offline' };
 		const failed = model.table(result, false, 160);
-		assert.equal(failed.error, (code == 'UPDATE_FETCH_FAILED' ? '连不上发布通道' : code) + ': offline');
+		assert.equal(failed.error, (code == 'UPDATE_FETCH_FAILED' ? '连不上发布通道' : code) + '：offline');
 		assert.equal(failed.can_check, true);
 		assert.equal(model.table(result, true, 160).can_check, false);
 		assert.doesNotMatch(JSON.stringify([ failed, model.components(result) ]), /读取中…/);
@@ -411,7 +412,7 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		h.start();
 		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
 		await settle();
-		assert.equal(text(h.page.inventory.children[0]), code + ': offline');
+		assert.equal(text(h.page.inventory.children[0]), code + '：offline');
 		assert.doesNotMatch(text(root), /读取中…/);
 		const actions = buttons(h.page.inventory);
 		assert.equal(actions.length, 1);
@@ -586,7 +587,8 @@ test('T10.46 scenario 1: Xray keeps single-package confirmation, cancellation, d
 test('T10.46 scenario 2: model and view contain no grouped rollback or manual refresh UI', () => {
 	for (const file of ['aether-proxy/model/updates.js', 'view/aether-proxy/updates.js']) {
 		const source = fs.readFileSync(path.join(RES, file), 'utf8');
-		assert.doesNotMatch(source, /companions|grouped_|ROLLBACK_GROUP|rolls_back_together/);
+		// Forward-update companions are allowed by T10.67; grouped manual rollback is still forbidden.
+		assert.doesNotMatch(source, /grouped_rollback|ROLLBACK_GROUP|rolls_back_together/);
 		assert.doesNotMatch(source, /page_rolled_back|refreshWarning|show_refresh_warning|location.reload/);
 		assert.doesNotMatch(source, /These three packages|Roll back Aether Proxy|Refresh page/);
 	}
@@ -615,7 +617,7 @@ test('T10.46 scenario 4: automatic recovery text remains unchanged for Xray and 
 			} });
 			await h.page.run('update_package', name, false);
 			assert.equal(text(h.page.summary), rolled_back ?
-				'安装后检查失败，已回滚到 CURRENT' : '校验失败: <probe failed>');
+				'安装后检查失败，已回滚到 CURRENT' : '校验失败：<probe failed>');
 			assert.equal(h.page.busy, false);
 			assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
 			assert.doesNotMatch(text(h.root), /两个页面包没有改动|后端已回滚|页面已换成旧版本/);
@@ -646,13 +648,148 @@ test('T10.46 scenario 5: every package still installs and updates without previo
 		assert.deepEqual(h.confirmations, []);
 	}
 });
+// update.uc update_together() emits a backend transaction plus string-valued companion
+// statuses. Failed pages share the first failure's top-level code/detail, not per-page objects.
+function group_result(app = 'installed', translation = 'installed', overrides = {}) {
+	return { ok: true, package: 'aether-proxy', from: '0.3.0-r1', to: '0.3.1-r1',
+		rolled_back: false, code: null, companions: {
+			'luci-app-aether-proxy': app, 'luci-i18n-aether-proxy-zh-cn': translation
+		}, ...overrides };
+}
+const refresh_page = '界面已更新，请刷新页面。';
+const backend_updated = 'aether-proxy 已从 0.3.0-r1 更新到 0.3.1-r1';
+async function display_group_result(result, expected) {
+	// A click on the UI package still returns package=aether-proxy from the CLI.
+	const h = await ready_view();
+	h.ap.run_job = async (kind, args) => {
+		assert.equal(kind, 'update_package');
+		assert.deepEqual(args, ['luci-app-aether-proxy']);
+		return { state: result.ok ? 'ok' : 'failed', result };
+	};
+	const table = h.page.inventory.children.find(node => node.tag == 'table');
+	const row = table.children.find(node => text(node.children[0]) == 'luci-app-aether-proxy');
+	await buttons(row).find(b => text(b) == '立即更新').click();
+	assert.equal(text(h.page.summary), expected);
+	assert.equal(h.page.busy, false);
+	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+	return h;
+}
+test('T10.67 scenario 1: backend and both pages installed render one grouped result and refresh sentence', async () => {
+	await display_group_result(group_result(), backend_updated + '；界面、翻译已同时更新。' + refresh_page);
+});
+test('T10.67 scenario 2: unchanged backend never claims an update while installed pages request refresh', async () => {
+	const h = await display_group_result(group_result('installed', 'installed', { to: '0.3.0-r1' }),
+		'界面、翻译已更新。' + refresh_page);
+	assert.doesNotMatch(text(h.page.summary), /aether-proxy|已从/);
+	await display_group_result(group_result('skipped', 'installed', { to: '0.3.0-r1' }),
+		'翻译已更新。' + refresh_page);
+});
+test('T10.67 scenario 3: skipped pages leave only the backend update and never request refresh', async () => {
+	await display_group_result(group_result('skipped', 'skipped'), backend_updated + '。');
+});
+test('T10.67 scenario 4: one or two page failures retain backend success and only the first cause', async () => {
+	for (const [app, translation, suffix, refresh] of [
+		['failed', 'skipped', '界面更新失败：校验失败：<bad hash>', false],
+		['skipped', 'failed', '翻译更新失败：校验失败：<bad hash>', false],
+		['failed', 'failed', '界面更新失败：校验失败：<bad hash>；翻译更新失败', false],
+		['failed', 'installed', '翻译已同时更新；界面更新失败：校验失败：<bad hash>', true],
+		['installed', 'failed', '界面已同时更新；翻译更新失败：校验失败：<bad hash>', true]
+	]) {
+		await display_group_result(group_result(app, translation, {
+			ok: false, code: 'UPDATE_VERIFY_FAILED', detail: '<bad hash>'
+		}), backend_updated + '；' + suffix + '。' + (refresh ? refresh_page : ''));
+	}
+	await display_group_result(group_result('installed', 'failed', {
+		ok: false, to: '0.3.0-r1', code: 'UPDATE_VERIFY_FAILED'
+	}), '界面已更新；翻译更新失败：校验失败。' + refresh_page);
+	await display_group_result(group_result('failed', 'failed', {
+		ok: false, to: '0.3.0-r1', code: 'CMD_FAILED', detail: 'opkg exited 1',
+		// Object order is not the backend's installation order.
+		companions: { 'luci-i18n-aether-proxy-zh-cn': 'failed', 'luci-app-aether-proxy': 'failed' }
+	}), '界面更新失败：CMD_FAILED：opkg exited 1；翻译更新失败。');
+});
+test('T10.67 scenario 5: all skipped, automatic rollback and primary failures preserve truthful results', async () => {
+	await display_group_result(group_result('skipped', 'skipped', { to: '0.3.0-r1' }), '已是最新。');
+	await display_group_result(group_result('skipped', 'skipped', {
+		ok: false, rolled_back: true, code: 'UPDATE_VERIFY_FAILED'
+	}), '安装后检查失败，已回滚到 0.3.0-r1');
+	for (const code of ['UPDATE_FETCH_FAILED', 'ARCH_UNSUPPORTED', 'UPDATE_VERIFY_FAILED']) {
+		const result = group_result('skipped', 'skipped', { ok: false, code, detail: 'WHY' });
+		const expected = model.job_result('update_package', 'aether-proxy', {
+			state: 'failed', result: { ok: false, code, detail: 'WHY' }
+		});
+		await display_group_result(result, expected);
+	}
+});
+test('T10.67 scenario 6: ungrouped Xray and translation updates keep their exact previous messages', () => {
+	for (const [name, expected] of [
+		['xray-core', 'xray-core 已从 OLD 更新到 NEW'],
+		['luci-i18n-aether-proxy-zh-cn',
+			'luci-i18n-aether-proxy-zh-cn 已从 OLD 更新到 NEW 页面文件可能已变化，请刷新浏览器。']
+	]) {
+		assert.equal(model.job_result('update_package', name, {
+			state: 'ok', result: { ok: true, package: name, from: 'OLD', to: 'NEW', rolled_back: false, code: null }
+		}), expected);
+	}
+});
+test('T10.67 scenario 7: clicked package progress warns only when the backend row is newer', async () => {
+	for (const newer of [true, false]) {
+		for (const name of names) {
+			const s = all_packages_status();
+			s.updates_available.packages['aether-proxy'].newer = newer;
+			const h = await ready_view(s);
+			let finish;
+			h.ap.run_job = () => new Promise(resolve => { finish = resolve; });
+			const progress = [];
+			h.ap.job_progress = (target, prompt) => {
+				progress.push(prompt);
+				target.textContent = prompt;
+				return { stop() { target.textContent = ''; } };
+			};
+			// Exercise the real package-button handler even when the backend itself has no update.
+			const row = model.table(s, false, 160).rows.find(r => r.name == name);
+			const pending = h.page.package_button(row, 'install', false).click();
+			const grouped = name == 'aether-proxy' || name == 'luci-app-aether-proxy';
+			assert.deepEqual(progress, [grouped ? '正在更新 aether-proxy 及其界面…' +
+				(newer ? '服务会短暂中断。' : '') : '正在安装 ' + name + '…']);
+			assert.ok(buttons(h.page.inventory).every(b => b.disabled));
+			finish({ state: 'ok', result: { ok: true, package: name, from: 'OLD', to: 'NEW' } });
+			await pending;
+			assert.equal(text(h.page.progress), '');
+			assert.equal(h.page.busy, false);
+		}
+	}
+	assert.equal(model.job_progress('update_check'), '正在检查更新…');
+	assert.equal(model.job_progress('update_package', 'xray-core', true), '正在回滚 xray-core…');
+});
+test('T10.67 scenario 8: failure code/detail and grouped punctuation use translated format strings', () => {
+	assert.equal(model.job_result('update_check', null, { ok: false, code: 'BUSY', detail: 'locked' }),
+		'另一个更新作业正在运行：locked');
+	assert.equal(model.job_result('update_package', 'xray-core', {
+		result: { ok: false, code: 'FUTURE', detail: '<detail>' }
+	}), 'FUTURE：<detail>');
+	// English must retain ASCII separators and spaces between complete sentences.
+	const translate = globalThis._;
+	try {
+		globalThis._ = s => s;
+		assert.equal(model.job_result('update_package', 'luci-app-aether-proxy', { result: group_result() }),
+			'aether-proxy updated from 0.3.0-r1 to 0.3.1-r1; Interface, Translation updated together. ' +
+			'Interface updated; please refresh the page.');
+		assert.equal(model.job_result('update_check', null, { ok: false, code: 'BUSY', detail: 'locked' }),
+			'Another update job is running: locked');
+	}
+	finally {
+		globalThis._ = translate;
+	}
+});
+
 test('T10.46 scenario 5: pre-install and transport failures retain causes without grouped rollback claims', () => {
 	for (const code of ['UPDATE_FETCH_FAILED', 'MANIFEST_BAD_SIGNATURE', 'BUSY', 'JOB_LOST', 'RPC_FAILED']) {
 		for (const name of names) {
 			const r = { ok: false, code, detail: 'WHY' };
 			const result = model.job_result('update_package', name, { state: 'failed', result: r });
 			assert.equal(result, model.job_result('update_package', name, r));
-			assert.ok(result.endsWith(': WHY'));
+			assert.ok(result.endsWith('：WHY'));
 			assert.doesNotMatch(result, /两个页面包没有改动|后端已回滚|已回滚到/);
 		}
 	}
