@@ -6,8 +6,9 @@ Run after `bash tests/host/bootstrap.sh`:
 bash tests/compat/run.sh
 ```
 
-The frozen 0.3.0-r1 page, update model, common job helper, rpcd plugin and ACL
-are unmodified files from `v0.3.0-r1`. The directory preserves paths relative
+The frozen page, update model, common job helper, rpcd plugin and ACL are
+unmodified files from the latest formal release tag (see "Snapshot history"
+below). The directory preserves paths relative
 to `luci-app-aether-proxy/`. CI needs no tags or historical checkout;
 `frozen.sha256` guards against accidentally editing the old client. Frozen files
 live under `tests/compat/fixtures/`, not `tests/fixtures/`: the latter enumerates
