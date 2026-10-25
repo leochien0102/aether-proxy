@@ -88,14 +88,14 @@ for manager in opkg apk; do
 	out=$(policy_run aether-proxy)
 	expect "T9.29 $manager backend automatic recovery exit 1" 1 "$?"
 	unset UPDATE_INIT_FAIL
-	policy_assert 'backend automatic recovery unchanged without companions' automatic
+	policy_assert 'backend automatic recovery leaves companions skipped' automatic
 
-	# Preserve the original per-package forward and Xray manual rollback assertions.
+	# T9.38 groups backend/app forward requests; keep standalone and manual rollback coverage.
 	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn xray-core; do
 		policy_reset
 		out=$(policy_run "$package")
 		expect "T9.29 $manager $package forward exit" 0 "$?"
-		policy_assert "$package forward unchanged" "forward:$package"
+		policy_assert "$package forward respects group policy" "forward:$package"
 	done
 	policy_reset
 	out=$(policy_run xray-core --previous)

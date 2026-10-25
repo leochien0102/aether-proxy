@@ -290,3 +290,6 @@ export const DNS_TEST_FALLBACK_DOMAIN = 'www.microsoft.com';
 export const DNS_TEST_SAVEDIR_PREFIX = 'dns-test-uci.';
 // docs/03: bound hostile acyclic compression pointer chains per name.
 export const DNS_TEST_MAX_NAME_POINTERS = 128;
+
+// T9.38 (docs/08 "更新一起更新"): page assets follow the backend in this order.
+export const UPDATE_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];

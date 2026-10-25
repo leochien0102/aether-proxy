@@ -343,13 +343,24 @@ t=open(sys.argv[1]).read(); assert t.startswith('call service signal '), t
 r=json.loads(t[len('call service signal '):]); assert r=={'name':'aether-proxy','signal':12}, r
 PY
 grep -q 'UPDATE_INSTALLED' "$T/run/events.jsonl" && ok 'successful package logs UPDATE_INSTALLED' || bad 'successful package logs UPDATE_INSTALLED'
+# T9.38: grouped requests need independent versions; one shared state file would
+# make the page appear installed as soon as the backend is installed.
+legacy_group_inventory() {
+	export UPDATE_PACKAGE_STATE_DIR="$T/legacy-group-inventory"
+	mkdir -p "$UPDATE_PACKAGE_STATE_DIR"
+	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
+		printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/$package"
+	done
+}
 # apk command line and installed version handling
+legacy_group_inventory
 cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin/apk"; : > "$UPDATE_PACKAGE_CALLS"
 printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
 out=$(ap update package luci-app-aether-proxy --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin")
 expect 'apk package install succeeds' 0 "$?"
 grep -q 'add --allow-untrusted .*luci-app-aether-proxy-0.2.0-r1_aarch64_generic.apk' "$UPDATE_PACKAGE_CALLS" && ok 'apk uses --allow-untrusted and selected asset' || bad 'apk uses --allow-untrusted and selected asset'
 rm "$T/bin/apk"
+unset UPDATE_PACKAGE_STATE_DIR
 # T9.6: real signed installs refresh installed versions after the stub touches the
 # package database. A later external package install invalidates only the presentation.
 for manager in opkg apk; do
@@ -363,6 +374,7 @@ for manager in opkg apk; do
 	mkdir -p "$(dirname "$database")"
 	touch -d @1760400000 "$database"
 	export UPDATE_PACKAGE_DB_FILE="$database"
+	legacy_group_inventory
 	printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
 	out=$(ap update package luci-app-aether-proxy --json --confdir "$T/conf" \
 		--run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin")
@@ -404,13 +416,14 @@ PY
 	cmp -s "$T/post-install-cache" "$T/run/updates.json" \
 		&& ok "T9.6 $manager external install preserves cache bytes" \
 		|| bad "T9.6 $manager external install preserves cache bytes"
-	unset UPDATE_PACKAGE_DB_FILE
+	unset UPDATE_PACKAGE_DB_FILE UPDATE_PACKAGE_STATE_DIR
 	rm "$database"
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
 done
 
 # T9.29 reuses the signed manifests, package-manager stubs and restart fixture above.
 source "$ROOT/tests/update/package-policy.sh"
+source "$ROOT/tests/update/update-together.sh"
 
 # Invalid hashes and unsupported architectures never reach the package manager.
 : > "$UPDATE_PACKAGE_CALLS"
@@ -455,6 +468,7 @@ make_manifest; unset UPDATE_SIGNAL_NO_PROBE AETHER_PROXY_TEST_UPDATE_WAIT_SECS
 out=$(ap update package xray-core --previous --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect '--previous install succeeds' 0 "$?"
 grep -q -- '--force-downgrade .*26.7.28-r1' "$UPDATE_PACKAGE_CALLS" && ok '--previous installs previous with force-downgrade' || bad '--previous installs previous with force-downgrade'
 printf '{"state":"running"}\n' > "$UPDATE_STATE_FILE"; : > "$UPDATE_INIT_CALLS"
+printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_FILE"
 out=$(ap update package aether-proxy --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'aether-proxy package update succeeds' 0 "$?"
 grep -q '^restart$' "$UPDATE_INIT_CALLS" && ok 'aether-proxy update invokes init restart' || bad 'aether-proxy update invokes init restart'
 out=$(ap update package unknown --json); expect 'unknown package is USAGE' USAGE "$(get "$out" code)"
@@ -553,9 +567,10 @@ else
 	bad 'T8.23 rollback signal failure logs CMD_FAILED'
 fi
 unset UPDATE_SIGNAL_EXIT
-# LuCI's version mismatch triggers rollback but never a service activation.
+# T9.38: app requests now check the backend, so its mismatch recovers with restart.
+# Standalone i18n still rolls back without activating the service.
 export UPDATE_STATUS_VERSION=0.0.0-r0
-rollback_case 'luci app rollback has no activation' luci-app-aether-proxy running no none 0 0
+rollback_case 'luci app group backend mismatch activates recovery' luci-app-aether-proxy running no none 2 0
 rollback_case 'luci i18n rollback has no activation' luci-i18n-aether-proxy-zh-cn running no none 0 0
 unset UPDATE_STATUS_VERSION
 rm "$T/bin/xray"
@@ -899,6 +914,9 @@ done
 : > "$UPDATE_PM_PATH_CALLS"
 export UPDATE_PACKAGE_STATE_FILE="$T/path-installed-version"
 printf '%s\n' 0.1.0-r1 > "$UPDATE_PACKAGE_STATE_FILE"
+# T9.38: the page entry now verifies the backend; keep this PATH-only fixture
+# running so verification polls state, rather than needing a CLI binary in PATH.
+printf '{"state":"running"}\n' > "$UPDATE_STATE_FILE"
 out=$(cd "$ROOT" && path_ap "$T/path-tools:$relative_dir" update package luci-app-aether-proxy \
 	--json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root")
 expect 'T8.16 PATH package install succeeds' 0 "$?"

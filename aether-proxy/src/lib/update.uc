@@ -1,7 +1,7 @@
 'use strict';
 
 // Device-side update discovery, PATH package-manager lookup and shared local-data hashes
-// (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 取消三包手动回滚").
+// (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 更新一起更新").
 // Downloaded metadata is never trusted before usign succeeds.
 
 import * as fs from 'fs';
@@ -808,6 +808,64 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 		value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: true, code: 'UPDATE_VERIFY_FAILED' } };
 }
 
+// UI packages follow only a verified (or unchanged) backend. Their failures never
+// trigger backend recovery: the new backend still serves the old UI (docs/08).
+function update_companion(opts, ctx, selected, plat, name) {
+	let installed = installed_version(ctx, plat.pm, name);
+	if (!installed.ok)
+		return { status: 'failed', code: 'CMD_FAILED', detail: installed.detail };
+	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, false);
+	if (installed.version == null || asset == null || !version_newer(asset.version, installed.version))
+		return { status: 'skipped' };
+	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
+	if (!downloaded.ok)
+		return { status: 'failed', code: downloaded.code, detail: downloaded.detail ?? downloaded.code };
+	let result = install_package(ctx, plat.pm, downloaded.path, false);
+	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
+		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
+	if (!result.ok)
+		return { status: 'failed', code: 'CMD_FAILED', detail: result.detail };
+	log.event('notice', 'UPDATE_INSTALLED', { package: name, version: asset.version });
+	return { status: 'installed' };
+}
+
+function group_failure(code, detail) {
+	let companions = {};
+	for (let name in C.UPDATE_COMPANIONS)
+		companions[name] = 'skipped';
+	return { ok: false, code, detail, exit: 1,
+		value: { ok: false, package: C.PROG, from: null, to: null,
+			rolled_back: false, code, detail, companions } };
+}
+
+function update_together(opts, ctx, selected, plat, asset) {
+	let from = installed_version(ctx, plat.pm, C.PROG);
+	if (!from.ok)
+		return group_failure('CMD_FAILED', from.detail);
+	let result = version_newer(asset.version, from.version)
+		? install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, false)
+		: { ok: true, exit: 0, value: { ok: true, package: C.PROG, from: from.version,
+			to: from.version, rolled_back: false, code: null } };
+	let companions = {}, failure = null;
+	for (let name in C.UPDATE_COMPANIONS) {
+		// Do not change page files after any backend failure, including automatic recovery.
+		let outcome = result.ok ? update_companion(opts, ctx, selected, plat, name) : { status: 'skipped' };
+		companions[name] = outcome.status;
+		if (outcome.status != 'failed')
+			continue;
+		log.event('error', 'CMD_FAILED', { cmd: `update package ${name}`, rc: 1, stderr: outcome.detail });
+		if (failure == null)
+			failure = outcome;
+	}
+	if (failure != null)
+		result = { ...result, ok: false, exit: 1, code: failure.code, detail: failure.detail,
+			value: { ...result.value, ok: false, code: failure.code, detail: failure.detail } };
+	result.value ??= { ok: false, package: C.PROG, from: from.version, to: asset.version,
+		rolled_back: false, code: result.code, detail: result.detail };
+	result.value.companions = companions;
+	return result;
+}
+
 export function package_update(opts, name, previous) {
 	opts ??= {};
 	if (index(C.UPDATE_PACKAGES, name) < 0) {
@@ -826,12 +884,19 @@ export function package_update(opts, name, previous) {
 	if (!plat.ok)
 		return plat;
 	let arch = plat.arch, pm = plat.pm;
-	let asset = package_asset(selected.manifest, name, arch, pm, previous == true);
+	let together = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]);
+	let primary = together ? C.PROG : name;
+	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });
-		return { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail: `no ${pm} asset for ${name} on ${arch}` };
+		let detail = `no ${pm} asset for ${primary} on ${arch}`;
+		// TODO(design): 08 does not specify grouping without a usable backend current asset.
+		// Preserve the existing refusal rather than updating pages against an unknown backend.
+		return together ? group_failure('ARCH_UNSUPPORTED', detail)
+			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
 	}
-	let result = install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
+	let result = together ? update_together(opts, ctx, selected, plat, asset)
+		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
 	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
 	// offering what was just installed. The install outcome stands even if the refresh fails.
 	let refreshed = write_updates(ctx, selected, plat);
