@@ -890,8 +890,8 @@ export function package_update(opts, name, previous) {
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });
 		let detail = `no ${pm} asset for ${primary} on ${arch}`;
-		// TODO(design): 08 does not specify grouping without a usable backend current asset.
-		// Preserve the existing refusal rather than updating pages against an unknown backend.
+		// No usable backend asset: refuse the whole group rather than update pages against an
+		// unknown backend (docs/08 "更新一起更新", settled in the T9.38 review).
 		return together ? group_failure('ARCH_UNSUPPORTED', detail)
 			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
 	}

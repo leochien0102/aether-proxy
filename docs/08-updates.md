@@ -221,6 +221,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - luci 包本机没装、清单里没有它对本机可用的 `current`、或 `current` 不比已装的新（08「版本比较」）→ 跳过它；某个 luci 包下载、校验或安装失败 → 记 `CMD_FAILED`，不回退已装好的 `aether-proxy`，其余 luci 包照常处理；整体退出码 1，`code`/`detail` 取第一个失败的。
 - 结果：`package`、`from`、`to`、`rolled_back` 等原有字段仍描述 `aether-proxy` 主事务（被跳过时 `from` = `to` = 已装版本）；新增 `companions: { "<包>": "installed" | "skipped" | "failed", … }`。旧页面不认识 `companions`，照旧只显示主事务——这是下面「更新接口」允许的「只加字段」。
 - 组里没有一个包需要更新时，结果与现在「已是最新」相同（退出码 0）。
+- 清单里没有本机可用的 `aether-proxy` `current` 资产（`ARCH_UNSUPPORTED`）时整组拒绝、页面包也不装，`companions` 全为 `skipped`：不在后端未知的情况下改页面（2026-10-25 T9.38 复核定，原为实现中的 TODO(design)）。
 
 **更新接口（固定）**（2026-10-25 定，backlog B17）：页面与 rpcd 插件都在 `luci-app-aether-proxy` 里，只有它们调用的命令行属于 `aether-proxy`。为保证「先更新了后端，旧页面仍能把自己更新掉」，下面这些对**上一个正式版**的页面与插件保持兼容：以后的后端**只能加字段、加可选参数，不能删除、改名或改变含义**。
 - 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。

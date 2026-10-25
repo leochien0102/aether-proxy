@@ -202,7 +202,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 ## B17 更新时前后端不匹配（2026-10-25，0.3.0-r1 发布后）
 
-- 状态：**已设计**，见 [08](08-updates.md)「软件包安装」的「更新一起更新」与「更新接口（固定）」；卡 T9.38、T9.39。
+- 状态：**已完成**（2026-10-25，T9.38、T9.39 合并），见 [08](08-updates.md)「软件包安装」的「更新一起更新」与「更新接口（固定）」。以后每次发正式版，把 `tests/compat/fixtures/` 换成刚发布的这一版（`tests/compat/README.md`）。
 - 来源：仓库所有者在更新页逐个点 `aether-proxy`、`luci-app-aether-proxy` 的「立即更新」时提出——先更新的一个与另一个不匹配，最坏时页面坏掉、无法再用页面更新另一个。
 - 现状：每个「立即更新」只装自己那个包；页面与 rpcd 插件都在 `luci-app-aether-proxy`，只依赖后端的 `status`、`job start update …`、`job status`。0.3.0-r1 与设备上的 r20 代码相同，这次没有风险。
 - 退路（与本项无关，一直可用）：ssh 运行 `aether-proxy update package luci-app-aether-proxy`；OpenWrt「系统 → 软件包」上传 Release 页的 ipk；`opkg install`。前后端不匹配只影响管理页面，代理本身照常。

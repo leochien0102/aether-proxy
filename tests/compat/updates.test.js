@@ -157,8 +157,8 @@ function old_clients(transport) {
 }
 
 function assert_inventory(model, status, installed) {
-	// TODO(design): successful status/job start omit ok in both released and
-	// current CLIs; preserve the frozen client's `ok !== false` interpretation.
+	// Successful status/job start omit ok; the frozen client reads `ok !== false`
+	// (docs/08 "更新接口（固定）", settled in the T9.39 review).
 	assert.notEqual(status.ok, false);
 	const table = model.table(status, false, status.updates_available.checked + 10);
 	assert.equal(table.error, null);
