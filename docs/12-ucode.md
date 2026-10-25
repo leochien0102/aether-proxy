@@ -176,6 +176,11 @@ ucode 固定为提交 `3f64c808`（即最低支持版本），cmake 选项：`-D
 - `postinst` / `postrm`：在非 `IPKG_INSTROOT`（即真机安装）时执行 `fw4 reload`，见 [02](02-dataplane.md)「与 fw4 的对接」。
 - `luci-app-aether-proxy/Makefile` 使用 `luci.mk`，`LUCI_DEPENDS:=+aether-proxy +rpcd-mod-ucode`。
 - 版本号：`PKG_VERSION` 采用 `MAJOR.MINOR.PATCH`，首个版本为 `0.1.0`；`PKG_RELEASE` 从 `1` 开始。apk 要求版本号符合其格式，不要带字母后缀。
+  规则（2026-10-25 定，仓库所有者）：
+  - **升号**：一批新功能升 `MINOR`（`0.3.0` → `0.4.0`），只修缺陷的正式版升 `PATCH`（`0.3.0` → `0.3.1`）；`PKG_VERSION` 一变，`PKG_RELEASE` 回到 `1`。两个包（`aether-proxy`、`luci-app-aether-proxy`）同时改、保持同号；`luci-i18n-*` 的版本由 git 历史算出，不用管。`1.0.0` 留到进入常规维护、迁到新仓库时。
+  - **候选版就是普通版本号**：每次做真机候选包，先在 `main` 上把两个 Makefile 的 `PKG_RELEASE` 加一并提交，再编包；不再临时改号、编完还原（r7–r20 的测试包都是临时号，号被设备占用，正式版只能跳到 `0.3.0`）。窗口通过就把**同一版本号**发到发布通道，没通过就修好后用下一个号再测。版本号只增不减，正式版是候选版的子集，正式版的 release 号可以跳着走。
+  - **不用预发布后缀**：opkg 与 apk 没有共同的写法（2026-10-25 实测：`0.3.0_rc1` 在 opkg 24.10 里比 `0.3.0` 大、在 apk 里比 `0.3.0` 小；`0.3.0~rc1` 在 opkg 里比 `0.3.0` 小，但 apk 不接受），08「版本比较」也只认 `-rN` / `-N`。
+  - **发布标记**：发到发布通道的版本在本仓库打标签 `v<PKG_VERSION>-r<PKG_RELEASE>`（如 `v0.3.0-r1`），指向发布仓库 `AETHER_PROXY_REF` 里的同一个提交。是不是正式版看有没有这个标签，不看版本号。
 - 包构建 CI（`.github/workflows/build.yml`）使用 `openwrt/gh-action-sdk`，矩阵为 x86_64 架构的 24.10.8（产出 ipk）和 25.12.5（产出 apk）。
   以下参数由 S5 确认（[spikes/S5/README.md](../spikes/S5/README.md)）：
   - `ARCH` 是步骤级环境变量，值就是 `ghcr.io/openwrt/sdk` 的镜像标签：`x86_64-24.10.8`、`x86_64-25.12.5`（必须带版本后缀，只写 `x86_64` 得到的是 master）。
