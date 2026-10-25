@@ -17,6 +17,7 @@
  * distinguishes restart's stopping phase from the new process's startup.
  * T10.52 shares one event read between pending switches and startup failures.
  * T10.55 maps docs/10 r16's busy grade to blue and dims only stopped status.
+ * T10.62 follows docs/10 r18: sites first, one timeout retry per inventory generation.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
@@ -762,7 +763,13 @@ return view.extend({
 			return this.componentRequest;
 		this.components = undefined;
 		this.updateComponents();
-		const request = Promise.resolve().then(() => ap.call('components')).then((reply) => {
+		const request = Promise.resolve().then(() => ap.call('components')).then(async (reply) => {
+			if (this.componentRequest !== request)
+				return;
+			/* Keep the loading cells during the single retry. The generation guard
+			   applies both before sending it and after its reply (docs/10 r18). */
+			if (model.component_retryable(reply))
+				reply = await ap.call('components');
 			if (this.componentRequest === request) {
 				this.components = reply ?? null;
 				this.updateComponents();
@@ -794,11 +801,12 @@ return view.extend({
 
 		this.interval = interval;
 		/* Microtasks run after render returns its complete, UCI-backed skeleton.
-		   Enqueue requests in page order; common.js owns the concurrency limit. */
+		   Sites go first so slow inventory cannot block the small dropdown read;
+		   common.js still owns the shared concurrency limit (docs/10 r18). */
+		this.sitesRequest = this.loadProbeSites();
 		this.initialRequest = Promise.resolve().then(() => this.fetchRefresh());
 		this.loadVersion();
 		this.loadComponents();
-		this.sitesRequest = this.loadProbeSites();
 
 		return root;
 	},
