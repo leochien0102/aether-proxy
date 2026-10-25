@@ -1160,7 +1160,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
    - 切协议后：隐藏的那个不动配置（T9.14「不在用的字段保留」）；显示出来的那个读同一个 `method`，值不在它的列表里就按上一条显示。
    - 页面的 `SS_METHODS` 写在节点模型里，加静态测试：用宿主机 ucode 导出后端的 `SS_METHODS`，与页面的列表逐项、按顺序对照（同 T10.58 的做法）。
 2. **格式检查，同「端口」一样即时提示**：用选项的 `validate`（与 `datatype` 同一套机制，输入时、离开时提示，和端口一致）。**页面只查后端查的、不比后端严**：比后端严会让订阅导入的、后端认可的节点在页面上存不了。逐项：
-   - `address`：照后端 `config.uc` 的 `address`——全是数字和点时必须是 IPv4；否则按 `net.uc` 的 `domain`（总长 1–253，每段 1–63 个 `[A-Za-z0-9_-]`、首尾不是 `-`，不接受末尾的点）。替换现在的 `datatype = 'host'`（LuCI 的 `host` 接受 IPv6 和末尾的点，后端不接受）。**IPv6 地址暂不接受**：后端 `address` 现在不收 IPv6，交接里写的「域名、IPv4、IPv6」与后端对不上，已告诉后端；后端改了 docs/05 与 schema，页面再跟。
+   - `address`：照后端 `config.uc` 的 `address`——全是数字和点时必须是 IPv4；否则按 `net.uc` 的 `domain`（总长 1–253，每段 1–63 个 `[A-Za-z0-9_-]`、首尾不是 `-`，不接受末尾的点）。替换现在的 `datatype = 'host'`（LuCI 的 `host` 接受 IPv6 和末尾的点，后端不接受）。**不接受 IPv6**：按设计只支持 IPv4（docs/05 `address` 为「域名或 IPv4」；节点 IP 要进 nft 的 `node_ip4` 集合，见 `render/nft.uc`）。r18 结论里的「含 IPv6」是笔误，后端已更正。
    - `uuid`（VLESS、VMess）：按 docs/05 校验规则 7 的 UUID 一项，按 UTF-8 字节计长度（`TextEncoder`）：1–30 字节任意；32–36 字节时去掉 `-` 后恰好 32 位十六进制；其余报错。不等后端 T9.37 合并。
    - `reality_pbk`：恰好 43 个 `[A-Za-z0-9_-]`；`reality_sid`：十六进制、偶数长度、不超过 16（空不报）；`pinned_cert_sha256`：逗号分隔，每项去掉首尾空白与冒号后是 64 位十六进制（空项跳过）。都照 `config.uc` 的 `check_node`。
    - 已有的不变：端口、`ws_heartbeat`、Mux 两个并发数（范围）、`xhttp_extra`（JSON 对象）、Mux 与 Vision。
