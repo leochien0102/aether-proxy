@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require dom';
 'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require ui';
@@ -15,7 +16,8 @@
  * invisible to the command line, so footer and modal saves precheck them here
  * (docs/10 「r16 修正：访问控制编辑框里的校验与重叠提示」);
  * the backend remains authoritative. Display sorting must not reorder UCI.
- * Local input feedback follows docs/10 「r17 修正：访问控制的反馈、措辞与名称不重复」.
+ * Local input feedback follows docs/10 「r17 修正：访问控制的反馈、措辞与名称不重复」;
+ * pending text and device dropdown layout follow 「r18：访问控制的未添加内容与设备下拉」.
  */
 
 /* Theme invalid classes alone are invisible in proton2025. Keep feedback next
@@ -220,6 +222,39 @@ return view.extend({
 		};
 	},
 
+	/* SDK creation and arrow navigation require the custom entry to remain last.
+	   Both themes turn the open list into a block; override only this instance
+	   after SDK clones its closed preview, and restore layout on close. */
+	deviceInputFirst: function(option) {
+		const renderWidget = option.renderWidget;
+		option.renderWidget = function() {
+			const node = renderWidget.apply(this, arguments);
+			const input = node.querySelector('.create-item-input');
+			if (!input)
+				return node;
+			const item = input.closest('li');
+			const list = item.parentNode;
+			item.style.order = '-1';
+			const dropdown = dom.findClassInstance(input.closest('.cbi-dropdown'));
+			const open = dropdown.openDropdown;
+			const close = dropdown.closeDropdown;
+			const layout = [ list.style.display, list.style.flexDirection, list.style.alignItems ];
+			dropdown.openDropdown = function() {
+				const result = open.apply(this, arguments);
+				list.style.display = 'flex';
+				list.style.flexDirection = 'column';
+				list.style.alignItems = 'center';
+				return result;
+			};
+			dropdown.closeDropdown = function() {
+				const result = close.apply(this, arguments);
+				[ list.style.display, list.style.flexDirection, list.style.alignItems ] = layout;
+				return result;
+			};
+			return node;
+		};
+	},
+
 	addHostOptions: function(m) {
 		const self = this;
 		let o;
@@ -312,6 +347,7 @@ return view.extend({
 		o.modalonly = true;
 		o.rmempty = true;
 		this.listFeedback(o, model.validate_mac);
+		this.deviceInputFirst(o);
 		for (const c of self.candidates)
 			o.value(c.mac, c.label);
 
@@ -400,10 +436,12 @@ return view.extend({
 			if (key == 'ip' || key == 'mac') {
 				const input = addInput(option.getUIElement(sid)?.node);
 				if (input?.value.trim()) {
-					const text = _('%s has unadded text “%s”: click “+” to add it, or clear it.', 'aether-proxy')
-						.replace('%s', option.title).replace('%s', input.value);
+					const text = model.pending_text(key, input.value);
 					errors.push({ text: text });
 					inputError(input, text);
+					/* The widget validates this same pending value too; do not
+					   repeat its error without the short field name below. */
+					continue;
 				}
 			}
 			if (!option.isValid(sid))
