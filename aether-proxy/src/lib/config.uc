@@ -331,6 +331,15 @@ function check_hosts(hosts, raw_hosts, errors) {
 
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
+	if (index([ 'vless', 'vmess' ], n.protocol) >= 0 && n.uuid != null) {
+		// Xray hashes short IDs; longer IDs must be UUID hex, without fixed hyphen positions (docs/05 rule 7).
+		let size = length(n.uuid);
+		let short_id = size >= 1 && size <= 30;
+		let hex_id = size >= 32 && size <= 36 && match(replace(n.uuid, /-/g, ''), /^[0-9a-fA-F]{32}$/) != null;
+		if (!short_id && !hex_id)
+			push(errors, { field: at + '.uuid', code: 'invalid_uuid' });
+	}
+
 	// Only VLESS renders flow; leftover Vision fields on other protocols are inert (docs/05).
 	// UDP/443 Vision falls through to the same outbound path in Xray.
 	if (n.protocol == 'vless' && n.mux
