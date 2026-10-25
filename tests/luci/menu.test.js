@@ -1,6 +1,8 @@
 'use strict';
 
-/* Menu structure test (docs/tasks/m8.md T8.3 scenario 8). */
+/* Menu structure test (docs/tasks/m8.md T8.3 scenario 8).
+ * T10.64 follows docs/10 r18: advanced precedes updates; logs is last.
+ */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +14,7 @@ const MENU = path.join(APP, 'root', 'usr', 'share', 'luci', 'menu.d', 'luci-app-
 const VIEWS = path.join(APP, 'htdocs', 'luci-static', 'resources', 'view', 'aether-proxy');
 
 /* docs/10 「节点与订阅合并为一页」: seven visible pages and a hidden legacy alias. */
-const PAGES = [ 'overview', 'nodes', 'access', 'rules', 'updates', 'logs', 'advanced' ];
+const PAGES = [ 'overview', 'nodes', 'access', 'rules', 'advanced', 'updates', 'logs' ];
 
 test('scenario 8: menu — firstchild parent, seven visible pages in order, existing views, ACL dependency', () => {
 	const menu = JSON.parse(fs.readFileSync(MENU, 'utf8'));
@@ -24,6 +26,10 @@ test('scenario 8: menu — firstchild parent, seven visible pages in order, exis
 	const childKeys = Object.keys(menu).filter((k) => k != parent && menu[k].title);
 	assert.deepEqual(childKeys, PAGES.map((name) => `${parent}/${name}`),
 		'exactly the seven documented visible pages, in the documented order');
+
+	const visibleByOrder = childKeys.slice().sort((a, b) => menu[a].order - menu[b].order);
+	assert.deepEqual(visibleByOrder, PAGES.map(name => `${parent}/${name}`),
+		'T10.64: LuCI numeric order matches the documented visible page order');
 
 	assert.equal(Object.keys(menu).length, 9, 'parent, seven pages and one legacy alias');
 	assert.equal(menu[`${parent}/nodes`].title, 'Nodes & Subscriptions');

@@ -3,6 +3,7 @@
 /* T10.60, docs/10 r17: conditional precheck wording, historical nft names and
  * daemon failure steps. Use the real PO and shared models, leaving raw event
  * arguments immutable. The source gate catches newly introduced daemon steps.
+ * T10.64 updates only START_FAILED expectations to the docs/10 r18 template.
  */
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -95,7 +96,7 @@ for (const [step, expected] of Object.entries(STEPS)) {
 		for (const [prefix, context] of [['', ''], ['reload:', '重载时'], ['monitor:', '监控时']]) {
 			const args = Object.freeze({ step: prefix + step, detail: 'conflict:ss_spec' });
 			const failed = event('START_FAILED', args);
-			const text = '启动在 ' + context + expected + ' 失败：与 ShadowSocksR Plus+ 冲突';
+			const text = '启动失败（' + context + expected + '）：与 ShadowSocksR Plus+ 冲突';
 			assert.equal(logs.message(failed), text);
 			const row = logs.events({ ok: true, events: [failed] }).rows[0];
 			assert.equal(row.text, text);
@@ -108,9 +109,9 @@ test('T10.60 scenario 3: unknown steps and ordinary detail remain byte-identical
 	for (const step of ['future_step', 'reload:future_step', 'monitor:future_step', 'constructor', 'toString']) {
 		for (const detail of ['command failed, exit 2', 'mentions conflict:ss_spec in prose', '', '$&', 'a\nb'])
 			assert.equal(logs.message(event('START_FAILED', { step, detail })),
-				'启动在 ' + step + ' 失败：' + detail);
+				'启动失败（' + step + '）：' + detail);
 	}
-	assert.equal(logs.message(event('START_FAILED', {})), '启动在 ? 失败：?');
+	assert.equal(logs.message(event('START_FAILED', {})), '启动失败（?）：?');
 });
 
 test('T10.60 scenario 3: detail formats conflict lists, missing entries, checks and unknown plugin names', () => {
@@ -121,7 +122,7 @@ test('T10.60 scenario 3: detail formats conflict lists, missing entries, checks 
 		['conflict-check:nft $& failed', '无法检查其他代理插件（nft $& failed）']
 	])
 		assert.equal(logs.message(event('START_FAILED', { step: 'precheck', detail })),
-			'启动在 预检 失败：' + expected);
+			'启动失败（预检）：' + expected);
 });
 
 function descendants(node) {
@@ -138,7 +139,7 @@ test('T10.60 scenario 3: rendered conflict diagnostics are text nodes and hover 
 	const args = Object.freeze({ step: 'precheck', detail: 'conflict:<img src=x onerror=alert(1)>' });
 	page.showEvents({ ok: true, events: [event('START_FAILED', args)] });
 	const row = descendants(root).find(node => node.tag === 'tr' && node.attrs.title);
-	assert.equal(row.children[3].textContent, '启动在 预检 失败：与 <img src=x onerror=alert(1)> 冲突');
+	assert.equal(row.children[3].textContent, '启动失败（预检）：与 <img src=x onerror=alert(1)> 冲突');
 	assert.equal(row.attrs.title, JSON.stringify(args));
 	assert.ok(!descendants(root).some(node => node.tag === 'img'));
 });
@@ -157,9 +158,9 @@ function checkStepTranslations(source) {
 	assert.ok(steps.size >= 27, 'the gate must detect returned and directly logged failure steps');
 	for (const step of steps) {
 		const text = logs.message(event('START_FAILED', { step, detail: 'test' }));
-		assert.doesNotMatch(text, new RegExp('启动在 ' + step + ' 失败'), 'missing translation: ' + step);
+		assert.doesNotMatch(text, new RegExp('启动失败（' + step + '）'), 'missing translation: ' + step);
 		assert.ok(Object.prototype.hasOwnProperty.call(STEPS, step), 'missing expected Chinese step: ' + step);
-		assert.equal(text, '启动在 ' + STEPS[step] + ' 失败：test', 'missing Chinese translation: ' + step);
+		assert.equal(text, '启动失败（' + STEPS[step] + '）：test', 'missing Chinese translation: ' + step);
 	}
 }
 
@@ -182,7 +183,7 @@ test('T10.60 scenarios 1-3: English text and translated placeholder composition 
 		assert.equal(english.message(event('PRECHECK_FAILED', { missing: ['component:xray'] })),
 			'Precheck failed: Missing component:xray');
 		assert.equal(english.message(event('START_FAILED', { step: 'reload:precheck', detail: 'conflict:ss_spec' })),
-			'Start failed at During reload: Precheck: Conflict with ShadowSocksR Plus+');
+			'Start failed (During reload: Precheck): Conflict with ShadowSocksR Plus+');
 	} finally {
 		globalThis._ = translate;
 	}

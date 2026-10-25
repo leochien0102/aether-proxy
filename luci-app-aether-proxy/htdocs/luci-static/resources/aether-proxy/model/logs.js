@@ -9,6 +9,7 @@
  * args remain unchanged for hover. T10.56 (docs/10 r16) omits the stderr suffix
  * of CMD_FAILED when no diagnostic was captured. T10.60 (docs/10 r17) separates
  * conflicts from missing requirements and translates daemon failure steps.
+ * T10.64 (docs/10 r18) encloses the failure step and its context in parentheses.
  * Templates use only catalog parameters.
  */
 const TEMPLATES = {
@@ -19,7 +20,7 @@ const TEMPLATES = {
 	CONFIG_INVALID: _('Invalid configuration: {field}, {reason}', 'aether-proxy'),
 	PRECHECK_FAILED: _('Precheck failed: {missing}', 'aether-proxy'),
 	RENDER_INVALID: _('Invalid artifact {artifact}: {detail}', 'aether-proxy'),
-	START_FAILED: _('Start failed at {step}: {detail}', 'aether-proxy'),
+	START_FAILED: _('Start failed ({step}): {detail}', 'aether-proxy'),
 	JOB_LOST: _('Job {job} ({kind}) lost its worker', 'aether-proxy'),
 	START_RETRY: _('Start retry {attempt} in {in_secs} seconds', 'aether-proxy'),
 	NET_WAIT_TIMEOUT: _('Network wait timed out after {waited} seconds', 'aether-proxy'),
