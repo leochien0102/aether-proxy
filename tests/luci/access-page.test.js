@@ -930,7 +930,7 @@ async () => {
 	assert.equal(list.style.display, '', 'closed layout belongs to the theme');
 	for (const creation of [ false, true ]) {
 		dropdown.openDropdown();
-		assert.deepEqual(list.style, { display: 'flex', flexDirection: 'column', alignItems: 'center' });
+		assert.deepEqual(list.style, { display: 'flex', flexDirection: 'column', alignItems: 'stretch' });
 		assert.deepEqual(widget.previewStyle, { display: '', flexDirection: '', alignItems: '' });
 		assert.equal(widget.scrollTop, 0, 'SDK starts the optional, unselected combobox at the top');
 		assert.equal([...list.children].sort((a, b) => Number(a.style?.order ?? 0)

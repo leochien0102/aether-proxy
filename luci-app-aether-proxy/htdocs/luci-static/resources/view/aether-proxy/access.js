@@ -224,7 +224,8 @@ return view.extend({
 
 	/* SDK creation and arrow navigation require the custom entry to remain last.
 	   Both themes turn the open list into a block; override only this instance
-	   after SDK clones its closed preview, and restore layout on close. */
+	   after SDK clones its closed preview, and restore layout on close.
+	   A column keeps full-width rows with stretch, as the block layout did. */
 	deviceInputFirst: function(option) {
 		const renderWidget = option.renderWidget;
 		option.renderWidget = function() {
@@ -243,7 +244,7 @@ return view.extend({
 				const result = open.apply(this, arguments);
 				list.style.display = 'flex';
 				list.style.flexDirection = 'column';
-				list.style.alignItems = 'center';
+				list.style.alignItems = 'stretch';
 				return result;
 			};
 			dropdown.closeDropdown = function() {
