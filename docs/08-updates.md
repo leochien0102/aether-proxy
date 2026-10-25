@@ -214,6 +214,21 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - `updates.json` 的 `packages.<包>.previous` 照旧写出（页面只对 `xray-core` 显示回滚按钮）。
 - 需要别的版本时：从发布页下载对应版本的三个包，在 LuCI 的「软件包」页面上传安装或 `opkg install`；降级前注意新版本的设置旧版本可能不认识，必要时先恢复默认配置（用户文档第 6 节、更新页说明）。
 
+**更新一起更新**（2026-10-25 定，仓库所有者；backlog B17）：0.3.0-r1 发布后在更新页逐个点「立即更新」，仓库所有者担心先更新的一个与另一个不匹配，最坏时页面坏掉、无法再更新另一个。所以正向更新也按组处理（与上面已废止的「回滚一起回滚」同一结构，方向相反）：
+- 组：`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。`update package aether-proxy` 与 `update package luci-app-aether-proxy`（不带 `--previous`）都处理**整组**，主事务是 `aether-proxy`；`update package luci-i18n-aether-proxy-zh-cn` 与 `xray-core` 只装自己。
+- 顺序：先 `aether-proxy`——清单里它比已装的新时，照上面第 1–4 步安装并检查；不比已装的新（只有页面改了）就跳过它。**`aether-proxy` 装好且检查通过（或被跳过）之后**，才依次安装两个 luci 包的 `current` 资产（不做检查，同上）。`aether-proxy` 检查失败而自动恢复原版时，luci 包不动——页面与后端始终同一版。
+  先后端、后页面的理由：新后端必须继续服务上一个正式版的页面（下面「更新接口」），反过来不保证。
+- luci 包本机没装、清单里没有它对本机可用的 `current`、或 `current` 不比已装的新（08「版本比较」）→ 跳过它；某个 luci 包下载、校验或安装失败 → 记 `CMD_FAILED`，不回退已装好的 `aether-proxy`，其余 luci 包照常处理；整体退出码 1，`code`/`detail` 取第一个失败的。
+- 结果：`package`、`from`、`to`、`rolled_back` 等原有字段仍描述 `aether-proxy` 主事务（被跳过时 `from` = `to` = 已装版本）；新增 `companions: { "<包>": "installed" | "skipped" | "failed", … }`。旧页面不认识 `companions`，照旧只显示主事务——这是下面「更新接口」允许的「只加字段」。
+- 组里没有一个包需要更新时，结果与现在「已是最新」相同（退出码 0）。
+
+**更新接口（固定）**（2026-10-25 定，backlog B17）：页面与 rpcd 插件都在 `luci-app-aether-proxy` 里，只有它们调用的命令行属于 `aether-proxy`。为保证「先更新了后端，旧页面仍能把自己更新掉」，下面这些对**上一个正式版**的页面与插件保持兼容：以后的后端**只能加字段、加可选参数，不能删除、改名或改变含义**。
+- 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。
+- `status` 中更新页用到的字段：`ok`、`components`、`updates_available` 及其下的 `checked`、`arch`、`packages.<包>.installed` / `available` / `previous` / `newer`。
+- 作业：`job start` 结果的 `ok`、`job`（作业 id）；`job status` 结果的 `job` 对象中的 `state`（`running` / `ok` / `failed`）、`code`、`error`、`result`；`update package` 结果（即 `result`）的 `ok`、`package`、`code`、`detail`、`from`、`to`、`rolled_back`；`update check` 结果的 `packages`。
+- 检查办法：发布正式版时，把**这一版**的 `luci-app-aether-proxy` 中更新页用到的文件（`view/aether-proxy/updates.js`、`aether-proxy/model/updates.js`、`aether-proxy/common.js` 的作业部分所在文件、rpcd 插件 `aetherproxy.uc` 与 ACL）冻结到 `tests/fixtures/compat/<版本>/`，替换上一版的冻结件；兼容测试用冻结的旧插件调用当前命令行、用冻结的旧模型解析当前输出，走一遍「读状态 → 检查更新 → 更新 `luci-app-aether-proxy`」。CI 的检出不带标签，所以不在运行时从标签取旧文件。
+- 确实要改这些接口时，先在设计里写明迁移办法（例如新旧两种输出并存一个版本），再改。
+
 更新 `aether-proxy` 自身时，执行更新的是作业进程：ucode 在启动时就加载完了全部模块，安装过程中替换磁盘上的文件不影响它跑完。
 不提供「手动上传二进制」：没有通道时，用户可以在 LuCI 的软件包页面或 `opkg install` 直接安装软件源里的包。
 

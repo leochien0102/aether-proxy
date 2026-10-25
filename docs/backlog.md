@@ -199,3 +199,10 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
    要再快需把解析结果落盘（例如规则数据更新时顺带写一份预解析文件，启动时按 `size`/`mtime`/`inode` 判断能否直接用），这是设计改动，先不做。其余大头：`dnsmasq_install` 3.0 s、`resolve_node` 2.5 s。
 2. 观察：chinadns-ng 对阿里 DNS 的 TCP 查询（`tcpi://223.5.5.5`）每几分钟超时一次，一行 W 级日志；它同时用 UDP，解析不受影响。先不处理。
 3. 观察（r16）：chinadns-ng 每次启动约 20 行 I 级配置信息（`tag:chn upstream: …` 等），超过每秒 20 行的限流、跟一行「dropped 19 lines」。信息本身用处不大，可考虑在过滤器里按级别或前缀压掉启动信息。先不做。
+
+## B17 更新时前后端不匹配（2026-10-25，0.3.0-r1 发布后）
+
+- 状态：**已设计**，见 [08](08-updates.md)「软件包安装」的「更新一起更新」与「更新接口（固定）」；卡 T9.38、T9.39。
+- 来源：仓库所有者在更新页逐个点 `aether-proxy`、`luci-app-aether-proxy` 的「立即更新」时提出——先更新的一个与另一个不匹配，最坏时页面坏掉、无法再用页面更新另一个。
+- 现状：每个「立即更新」只装自己那个包；页面与 rpcd 插件都在 `luci-app-aether-proxy`，只依赖后端的 `status`、`job start update …`、`job status`。0.3.0-r1 与设备上的 r20 代码相同，这次没有风险。
+- 退路（与本项无关，一直可用）：ssh 运行 `aether-proxy update package luci-app-aether-proxy`；OpenWrt「系统 → 软件包」上传 Release 页的 ipk；`opkg install`。前后端不匹配只影响管理页面，代理本身照常。
