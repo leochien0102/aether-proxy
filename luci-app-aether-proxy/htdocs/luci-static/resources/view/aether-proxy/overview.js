@@ -18,6 +18,7 @@
  * T10.52 shares one event read between pending switches and startup failures.
  * T10.55 maps docs/10 r16's busy grade to blue and dims only stopped status.
  * T10.62 follows docs/10 r18: sites first, one timeout retry per inventory generation.
+ * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
  *
@@ -879,7 +880,7 @@ return view.extend({
 			details.push(E('div', { style: this.colorStyle('error') },
 				_('Reason: %s', 'aether-proxy').replace('%s', vm.error_text)));
 		if (vm.dns_text != null)
-			details.push(E('p', {},
+			details.push(E('div', {},
 				_('Overseas domain resolution: %s', 'aether-proxy').replace('%s', vm.dns_text)));
 		if (details.length)
 			stateRows.push(E('div', {}, details));
@@ -890,11 +891,15 @@ return view.extend({
 			this.nodeControl ?? E('p', {}, vm.node_text),
 			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 				...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
-				E('span', { style: this.colorStyle(vm.probe_level) }, vm.probe_text ?? '–'),
+				E('span', { style: this.colorStyle(vm.probe_level) },
+					vm.probe_text ?? _('Latency: –', 'aether-proxy')),
 				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
 			])
 		]));
-		dom.content(this.runtimeContent, this.section(_('Runtime status', 'aether-proxy'), stateRows));
+		/* Only present rows take a gap; div details avoid theme-specific paragraph margins. */
+		dom.content(this.runtimeContent, this.section(_('Runtime status', 'aether-proxy'), [ E('div', {
+			style: 'display:flex; flex-direction:column; align-items:stretch; gap:0.75em'
+		}, stateRows) ]));
 		/* Status may change the WAN explanation, but it must not consume a
 			second counter sample or replace the independent component table. */
 		if (stats !== undefined || !this.traffic)

@@ -911,9 +911,14 @@ function sections(root) {
 	return findAll(root, 'div').filter((el) => el.attrs.class === 'cbi-section');
 }
 
-/* The node controls are the last row of the merged runtime section. */
+/* T10.65 groups the runtime rows in one column, independently of the heading. */
+function runtimeRows(root) {
+	return sections(root)[0].children[1];
+}
+
+/* The node controls remain the last row, with or without the details row. */
 function nodeRow(root) {
-	return sections(root).find((s) => s.children[0].textContent === '运行状态').children.at(-1);
+	return runtimeRows(root).children.at(-1);
 }
 
 function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
@@ -981,7 +986,7 @@ test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has
 			if (level !== 'neutral')
 				assert.ok(word.attrs.style.includes(colors[level]));
 			const visible = ['running', 'degraded', 'failsafe'].includes(state);
-			const text = !visible ? '–' : probe ? (probe.ok ? tr('Healthy, %s ms', '?') : tr('Probe failed'))
+			const text = !visible ? '延迟：–' : probe ? (probe.ok ? tr('Healthy, %s ms', '?') : tr('Probe failed'))
 				: tr('Not probed yet');
 			const result = findAll(nodeRow(root), 'span').find((n) => visibleText(n) === text);
 			assert.ok(result, 'health result is in the runtime node row');
@@ -1160,7 +1165,8 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	for (const tag of [ 'div', 'label' ]) {
 		for (const element of findAll(root, tag)) {
 			if (/display:\s*flex/.test(element.attrs.style ?? ''))
-				assert.match(element.attrs.style, /align-items:\s*(center|flex-end)/);
+				assert.match(element.attrs.style, /flex-direction:\s*column/.test(element.attrs.style)
+					? /align-items:\s*stretch/ : /align-items:\s*(center|flex-end)/);
 		}
 	}
 });
@@ -1171,7 +1177,8 @@ test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; n
 	assert.ok(styles.length >= 8, 'all remaining flex declarations are examined');
 	for (const [, style] of styles)
 		/* docs/10 「样式」 requires an explicit value, usually center. */
-		assert.match(style, /align-items:\s*(center|flex-end)/);
+		assert.match(style, /flex-direction:\s*column/.test(style)
+			? /align-items:\s*stretch/ : /align-items:\s*(center|flex-end)/);
 	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
 
@@ -1469,7 +1476,7 @@ test('T10.6 scenario 2c: no nodes replaces only the left group; inactive address
 	assert.equal(findAll(row.children[0], 'button').length, 0);
 	const right = row.children[1];
 	assert.equal(right.children.length, 3, 'result, relative time and probe controls without address');
-	assert.equal(right.children[0].textContent, '–');
+	assert.equal(right.children[0].textContent, '延迟：–');
 	assert.equal(right.children[1].tag, 'small');
 	assert.equal(right.children[1].textContent, '');
 	assert.equal(findAll(right, 'button')[0].textContent, '检测真实延迟');
@@ -1584,22 +1591,24 @@ test('T10.9 scenario 5: one runtime block has state/buttons, optional details an
 		const blocks = sections(root);
 		assert.deepEqual(blocks.map((n) => visibleText(n.children[0])), [ '运行状态', '流量与连接', '组件版本' ]);
 		const block = blocks[0];
-		const [left, right] = block.children[1].children;
+		assert.equal(block.children.length, 2, 'heading and runtime column');
+		const rows = runtimeRows(root).children;
+		const [left, right] = rows[0].children;
 		assert.equal(findAll(left, 'strong')[0].textContent, '运行中');
 		assert.ok(visibleText(left).includes('已持续'));
 		assert.ok(visibleText(left).includes('DNS 已回退到原配置'));
 		assert.deepEqual(findAll(right, 'button').map(visibleText), [ '启动', '重启', '停止' ]);
-		assert.equal(findAll(block.children[1], 'input').length, 0);
-		assert.match(block.children[1].attrs.style, /justify-content:\s*space-between/);
+		assert.equal(findAll(rows[0], 'input').length, 0);
+		assert.match(rows[0].attrs.style, /justify-content:\s*space-between/);
 		const hasDetails = !!(last_error || dns_tier);
-		assert.equal(block.children.length, hasDetails ? 4 : 3, 'heading, state, optional details, node row');
+		assert.equal(rows.length, hasDetails ? 3 : 2, 'state, optional details, node row');
 		if (hasDetails) {
-			const details = block.children[2];
+			const details = rows[1];
 			assert.equal(visibleText(details).includes('原因：配置无效'), !!last_error);
 			assert.equal(visibleText(details).includes('境外域名解析：经节点解析（正常）'), !!dns_tier);
 			assert.equal(details.children.length, Number(!!last_error) + Number(!!dns_tier));
 		}
-		assert.equal(block.children.at(-1), nodeRow(root));
+		assert.equal(rows.at(-1), nodeRow(root));
 		assert.equal(findAll(nodeRow(root), 'select')[0], findAll(page.nodeControl, 'select')[0]);
 		assert.ok(!findAll(root, 'h3').some((n) => [ '状态', '当前节点', '待处理提示' ].includes(visibleText(n))));
 	}
@@ -2035,7 +2044,7 @@ function disabled(button) {
 }
 
 function serviceButtons(root) {
-	return findAll(sections(root)[0].children[1], 'button');
+	return findAll(runtimeRows(root).children[0], 'button');
 }
 
 function ownVersion(root) {
@@ -3744,7 +3753,7 @@ for (const state of [...RUNTIME_STATES, ...INACTIVE_STATES]) {
 				assert.equal(visibleText(right).includes('节点地址'), visible && !!node_ip);
 				assert.equal(findAll(right, 'small')[0].textContent !== '', visible);
 				if (!visible) {
-					assert.equal(right.children[0].textContent, '–');
+					assert.equal(right.children[0].textContent, '延迟：–');
 					assert.doesNotMatch(visibleText(right), /正常|检测失败|秒前|分钟前/);
 				}
 			}
@@ -3936,6 +3945,80 @@ test('T10.62 scenario 4: real common queue sends sites/status/version/components
 	await Promise.all([page.initialRequest, page.sitesRequest, page.versionRequest, page.componentRequest]);
 	assert.equal(inflight, 0);
 	assert.equal(peak, 2);
+});
+
+/* T10.65 (docs/10 r19): inspect the actual column and its direct children,
+   so empty detail wrappers or paragraph margins cannot masquerade as spacing. */
+test('T10.65 scenario 1: runtime column uses one gap and omits absent details; detail texts are divs', () => {
+	for (const [status, expected] of [
+		[{ state: 'stopped' }, []],
+		[{ state: 'error', last_error: 'CONFIG_INVALID' }, ['原因：配置无效，详见日志页']],
+		[{ state: 'running', dns_tier: 'T1' }, ['境外域名解析：经节点解析（正常）']],
+		[{ state: 'running', last_error: 'CONFIG_INVALID', dns_tier: 'T1' },
+			['原因：配置无效，详见日志页', '境外域名解析：经节点解析（正常）']]
+	]) {
+		const { root } = renderStatus(status);
+		const block = sections(root)[0];
+		assert.equal(block.children.length, 2, 'only the heading and one column are in the section');
+		const column = runtimeRows(root);
+		assert.equal(column.tag, 'div');
+		for (const rule of [/display:\s*flex/, /flex-direction:\s*column/, /align-items:\s*stretch/,
+			/gap:\s*0\.75em(?:;|$)/])
+			assert.match(column.attrs.style, rule);
+		const rows = column.children;
+		assert.equal(rows.length, expected.length ? 3 : 2, 'absent details do not consume another gap');
+		assert.equal(rows[0].tag, 'div');
+		assert.ok(findTag(rows[0], 'strong'));
+		assert.deepEqual(findAll(rows[0], 'button').map(visibleText), ['启动', '重启', '停止']);
+		assert.equal(rows.at(-1), nodeRow(root));
+		assert.ok(findTag(rows.at(-1), 'select'));
+		for (const row of rows)
+			assert.doesNotMatch(row.attrs.style ?? '', /margin/);
+		if (expected.length) {
+			assert.deepEqual(rows[1].children.map(visibleText), expected);
+			assert.ok(rows[1].children.every(child => child.tag === 'div'));
+			assert.equal(findAll(rows[1], 'p').length, 0, 'theme paragraph margins never enter details');
+			for (const child of rows[1].children)
+				assert.doesNotMatch(child.attrs.style ?? '', /margin/);
+		}
+	}
+});
+
+test('T10.65 scenario 2: empty latency is labeled in both languages; runtime probe wording stays unchanged', t => {
+	let chinese = false;
+	t.mock.method(globalThis, '_', text => chinese ? (po[text] ?? text) : text);
+	for (const language of [false, true]) {
+		chinese = language;
+		for (const state of INACTIVE_STATES) {
+			const { root, page } = renderStatus({ state, node_ip: 'stale',
+				last_probe: { ok: true, latency_ms: 23, at: NOW - 30 } });
+			const result = nodeRow(root).children[1];
+			assert.equal(result.children[0].textContent, chinese ? '延迟：–' : 'Latency: –', state);
+			assert.equal(result.children[1].textContent, '', 'no stale probe age');
+			assert.equal(page.vm.probe_text, null, 'the model still suppresses the old result');
+			assert.doesNotMatch(visibleText(result), /stale|23/);
+		}
+		for (const state of RUNTIME_STATES) {
+			for (const [last_probe, english, translated] of [
+				[{ ok: true, latency_ms: 23 }, 'Healthy, 23 ms', '正常，23 ms'],
+				[{ ok: false }, 'Probe failed', '检测失败'],
+				[undefined, 'Not probed yet', '尚未检测']
+			]) {
+				const { root } = renderStatus({ state, last_probe });
+				assert.equal(nodeRow(root).children[1].children[0].textContent,
+					chinese ? translated : english, state);
+			}
+		}
+	}
+});
+
+test('T10.65 scenario 3: the empty latency msgid is whole, contextual and has no edge whitespace', () => {
+	const source = fs.readFileSync(VIEW, 'utf8');
+	const latencyCall = /_\('([^']*Latency[^']*)', 'aether-proxy'\)/g;
+	const ids = [...source.matchAll(latencyCall)].map(match => match[1]);
+	assert.deepEqual(ids, ['Latency: –']);
+	assert.equal(ids[0].trim(), ids[0]);
+	assert.match(fs.readFileSync(PO, 'utf8'), /msgctxt "aether-proxy"\nmsgid "Latency: –"\nmsgstr "延迟：–"/);
 });
 
 /* T10.55: assert the rendered word, not just the model grade, so a missing
