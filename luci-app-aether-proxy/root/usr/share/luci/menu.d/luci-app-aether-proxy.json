@@ -69,9 +69,21 @@
 		}
 	},
 
+	"admin/services/aether-proxy/advanced": {
+		"title": "Advanced",
+		"order": 6,
+		"action": {
+			"type": "view",
+			"path": "aether-proxy/advanced"
+		},
+		"depends": {
+			"acl": [ "luci-app-aether-proxy" ]
+		}
+	},
+
 	"admin/services/aether-proxy/updates": {
 		"title": "Updates",
-		"order": 6,
+		"order": 7,
 		"action": {
 			"type": "view",
 			"path": "aether-proxy/updates"
@@ -83,22 +95,10 @@
 
 	"admin/services/aether-proxy/logs": {
 		"title": "Logs",
-		"order": 7,
-		"action": {
-			"type": "view",
-			"path": "aether-proxy/logs"
-		},
-		"depends": {
-			"acl": [ "luci-app-aether-proxy" ]
-		}
-	},
-
-	"admin/services/aether-proxy/advanced": {
-		"title": "Advanced",
 		"order": 8,
 		"action": {
 			"type": "view",
-			"path": "aether-proxy/advanced"
+			"path": "aether-proxy/logs"
 		},
 		"depends": {
 			"acl": [ "luci-app-aether-proxy" ]

@@ -133,8 +133,8 @@ msgid "Invalid artifact {artifact}: {detail}"
 msgstr "渲染产物 {artifact} 无效：{detail}"
 
 msgctxt "aether-proxy"
-msgid "Start failed at {step}: {detail}"
-msgstr "启动在 {step} 失败：{detail}"
+msgid "Start failed ({step}): {detail}"
+msgstr "启动失败（{step}）：{detail}"
 
 msgctxt "aether-proxy"
 msgid "During reload: {step}"
