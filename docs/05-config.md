@@ -177,6 +177,8 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    - `reality_pbk`：无填充 base64url 编码的 32 字节（恰好 43 个字符 `[A-Za-z0-9_-]`），否则 `invalid_reality_key`
    - `reality_sid`：十六进制、长度为偶数且不超过 16，否则 `invalid_short_id`
    - `pinned_cert_sha256`：逗号分隔的每一项去掉冒号后是 64 位十六进制，否则 `invalid_cert_hash`
+   - `uuid`（vless / vmess）：按字节计 1–30 字节的任意字符串（Xray 用 UUIDv5 换算），或 32–36 字节且去掉 `-` 后恰好 32 位十六进制（不查版本、不查横线位置），其余（31 字节、超过 36 字节、32–36 字节里有非十六进制字符）报 `invalid_uuid`；订阅中这样的节点按 `invalid_value` 跳过（2026-10-25 r18 窗口，在 H28K 上用 Xray 26.9.30 `run -test` 逐项实测，对照 `common/uuid` 的 `ParseString`）
+   - vmess 的 `method`（即 `security`）：Xray 对不认识的值一律按 `auto` 处理、不报错（同日实测 `legacy`、`aes-256-gcm` 都能启动），后端不查；页面给下拉框 `auto`、`aes-128-gcm`、`chacha20-poly1305`、`none`、`zero`
    - `flow`：只能为空、`xtls-rprx-vision` 或 `xtls-rprx-vision-udp443`（2026-10-22，核对 v26.9.30 与 v26.10.21 的 `infra/conf/vless.go`），否则按 enum 报错；订阅中带其他值的节点按 `invalid_value` 跳过
    - **明文禁令**：`trojan`，以及 `encryption` 为空或 `none` 的 `vless`，当 `security=none` 时，`address` 必须是私有 IPv4
      （`10/8`、`100.64/10`、`127/8`、`169.254/16`、`172.16/12`、`192.168/16`），否则 `insecure_transport`。
