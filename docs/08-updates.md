@@ -226,7 +226,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。
 - `status` 中更新页用到的字段：`ok`、`components`、`updates_available` 及其下的 `checked`、`arch`、`packages.<包>.installed` / `available` / `previous` / `newer`。
 - 作业：`job start` 结果的 `ok`、`job`（作业 id）；`job status` 结果的 `job` 对象中的 `state`（`running` / `ok` / `failed`）、`code`、`error`、`result`；`update package` 结果（即 `result`）的 `ok`、`package`、`code`、`detail`、`from`、`to`、`rolled_back`；`update check` 结果的 `packages`。
-- 检查办法：发布正式版时，把**这一版**的 `luci-app-aether-proxy` 中更新页用到的文件（`view/aether-proxy/updates.js`、`aether-proxy/model/updates.js`、`aether-proxy/common.js` 的作业部分所在文件、rpcd 插件 `aetherproxy.uc` 与 ACL）冻结到 `tests/fixtures/compat/<版本>/`，替换上一版的冻结件；兼容测试用冻结的旧插件调用当前命令行、用冻结的旧模型解析当前输出，走一遍「读状态 → 检查更新 → 更新 `luci-app-aether-proxy`」。CI 的检出不带标签，所以不在运行时从标签取旧文件。
+- 检查办法：发布正式版时，把**这一版**的 `luci-app-aether-proxy` 中更新页用到的文件（`view/aether-proxy/updates.js`、`aether-proxy/model/updates.js`、`aether-proxy/common.js` 的作业部分所在文件、rpcd 插件 `aetherproxy.uc` 与 ACL）冻结到 `tests/compat/fixtures/<版本>/`（不放 `tests/fixtures/`：那里每个子目录都是渲染夹具，2026-10-25 T9.39 开工时发现），替换上一版的冻结件；兼容测试用冻结的旧插件调用当前命令行、用冻结的旧模型解析当前输出，走一遍「读状态 → 检查更新 → 更新 `luci-app-aether-proxy`」。CI 的检出不带标签，所以不在运行时从标签取旧文件。
 - 确实要改这些接口时，先在设计里写明迁移办法（例如新旧两种输出并存一个版本），再改。
 
 更新 `aether-proxy` 自身时，执行更新的是作业进程：ucode 在启动时就加载完了全部模块，安装过程中替换磁盘上的文件不影响它跑完。
