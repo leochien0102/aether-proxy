@@ -83,6 +83,9 @@ jobs:
       - name: Run update check tests
         run: bash tests/update/run.sh
 
+      - name: Run previous-release update compatibility tests
+        run: bash tests/compat/run.sh
+
       - name: Test rule-data generator
         run: python3 -m unittest tools/data/test_build.py
 
