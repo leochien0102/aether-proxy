@@ -224,8 +224,9 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 **更新接口（固定）**（2026-10-25 定，backlog B17）：页面与 rpcd 插件都在 `luci-app-aether-proxy` 里，只有它们调用的命令行属于 `aether-proxy`。为保证「先更新了后端，旧页面仍能把自己更新掉」，下面这些对**上一个正式版**的页面与插件保持兼容：以后的后端**只能加字段、加可选参数，不能删除、改名或改变含义**。
 - 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。
-- `status` 中更新页用到的字段：`ok`、`components`、`updates_available` 及其下的 `checked`、`arch`、`packages.<包>.installed` / `available` / `previous` / `newer`。
-- 作业：`job start` 结果的 `ok`、`job`（作业 id）；`job status` 结果的 `job` 对象中的 `state`（`running` / `ok` / `failed`）、`code`、`error`、`result`；`update package` 结果（即 `result`）的 `ok`、`package`、`code`、`detail`、`from`、`to`、`rolled_back`；`update check` 结果的 `packages`。
+- `status` 中更新页用到的字段：`components`、`updates_available` 及其下的 `checked`、`arch`、`packages.<包>.installed` / `available` / `previous` / `newer`；失败时的 `ok: false`、`code`。
+- 作业：`job start` 成功时输出 `{ "job": <id> }`（不带 `ok`），失败时带 `ok: false`、`code`；`job status` 成功时输出**平铺**的作业记录，其中 `state`（`running` / `ok` / `failed`）、`code`、`error`、`result`；`update package` 结果（即 `result`）的 `ok`、`package`、`code`、`detail`、`from`、`to`、`rolled_back`；`update check` 结果的 `packages`。
+  成功时不带 `ok` 的写法也是接口的一部分：上一正式版的页面按 `ok !== false` 判断成功（2026-10-25 T9.39 复核按实际输出更正，原写「`ok`」「`job` 对象」有误）。
 - 检查办法：发布正式版时，把**这一版**的 `luci-app-aether-proxy` 中更新页用到的文件（`view/aether-proxy/updates.js`、`aether-proxy/model/updates.js`、`aether-proxy/common.js` 的作业部分所在文件、rpcd 插件 `aetherproxy.uc` 与 ACL）冻结到 `tests/compat/fixtures/<版本>/`（不放 `tests/fixtures/`：那里每个子目录都是渲染夹具，2026-10-25 T9.39 开工时发现），替换上一版的冻结件；兼容测试用冻结的旧插件调用当前命令行、用冻结的旧模型解析当前输出，走一遍「读状态 → 检查更新 → 更新 `luci-app-aether-proxy`」。CI 的检出不带标签，所以不在运行时从标签取旧文件。
 - 确实要改这些接口时，先在设计里写明迁移办法（例如新旧两种输出并存一个版本），再改。
 
