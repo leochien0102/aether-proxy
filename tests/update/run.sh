@@ -927,4 +927,62 @@ else
 	bad 'T8.16 package install calls discovered absolute path'
 fi
 
+# T9.42 (security F2): a signed manifest's asset name is a file name, never a
+# path; and a failed size/sha256 check must not delete or overwrite whatever
+# already sits at the target path.
+cat > "$T/dl.uc" <<'UCODE'
+'use strict';
+import * as update from 'aetherproxy.update';
+let result = update.download_asset({ sys_root: ARGV[0] }, ARGV[1],
+	{ url: ARGV[2], size: +ARGV[3], sha256: ARGV[4] }, ARGV[5]);
+print(sprintf('%.J', result), '\n');
+UCODE
+download_asset() {
+	AETHER_PROXY_TEST_TMP_FREE=99999999 "$UCODE" "$T/dl.uc" "$T/root" "$1" "$2" "$3" "$4" "$5"
+}
+DL_ROOT="$T/root/tmp/aether-proxy-dl"
+BASE="http://127.0.0.1:$PORT1/"
+mkdir -p "$DL_ROOT" "$T/ch1/sub"
+printf 'PAYLOAD-FROM-CHANNEL\n' > "$T/ch1/asset.bin"
+printf 'PAYLOAD-FROM-CHANNEL\n' > "$T/ch1/victim.txt"
+asset_sha=$(sha256sum "$T/ch1/asset.bin" | cut -d' ' -f1)
+asset_size=$(stat -c %s "$T/ch1/asset.bin")
+# `../victim.txt` resolves on the channel to a real file: the request itself succeeds,
+# which is what made the traversal reachable before the name check existed.
+printf 'OUTSIDE-FILE\n' > "$T/root/tmp/victim.txt"
+out=$(download_asset "$BASE" '../victim.txt' "$asset_size" "$asset_sha" '../victim.txt'); rc=$?
+expect 'T9.42 traversal asset name is rejected' 0 "$rc"
+expect 'T9.42 traversal asset name is not a path' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+expect 'T9.42 traversal leaves the outside file untouched' OUTSIDE-FILE "$(cat "$T/root/tmp/victim.txt")"
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" 'sub/asset.bin'); rc=$?
+expect 'T9.42 asset name with a separator is rejected' 0 "$rc"
+expect 'T9.42 asset name with a separator is not a path' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+[ ! -e "$DL_ROOT/sub" ] && ok 'T9.42 separator name creates no subdirectory' \
+	|| bad 'T9.42 separator name creates no subdirectory'
+printf 'PRE-EXISTING\n' > "$DL_ROOT/asset.bin"
+out=$(download_asset "$BASE" 'asset.bin' 3 "$asset_sha" 'asset.bin'); rc=$?
+expect 'T9.42 mismatched size fails' 0 "$rc"
+expect 'T9.42 mismatched size reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+expect 'T9.42 failed verification keeps the existing file' PRE-EXISTING "$(cat "$DL_ROOT/asset.bin")"
+bad_sha=$(printf 'f%.0s' $(seq 1 64))
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$bad_sha" 'asset.bin'); rc=$?
+expect 'T9.42 mismatched sha256 fails' 0 "$rc"
+expect 'T9.42 sha256 mismatch reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+expect 'T9.42 sha256 mismatch keeps the existing file' PRE-EXISTING "$(cat "$DL_ROOT/asset.bin")"
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" 'asset.bin'); rc=$?
+expect 'T9.42 verified download succeeds' 0 "$rc"
+expect 'T9.42 verified download reports the final path' "$DL_ROOT/asset.bin" "$(get "$out" path)"
+expect 'T9.42 verified download replaces the target' PAYLOAD-FROM-CHANNEL "$(cat "$DL_ROOT/asset.bin")"
+# The published charset is [A-Za-z0-9._-], but a raw LuCI-i18n asset name carries
+# '~'. The frozen 0.3.1-r1 interface (tests/compat) must keep accepting it.
+i18n_asset='luci-i18n-aether-proxy-zh-cn_26.287.20981~ba764d5_all.ipk'
+printf 'I18N-PACKAGE\n' > "$T/ch1/$i18n_asset"
+i18n_sha=$(sha256sum "$T/ch1/$i18n_asset" | cut -d' ' -f1)
+i18n_size=$(stat -c %s "$T/ch1/$i18n_asset")
+out=$(download_asset "$BASE" "$i18n_asset" "$i18n_size" "$i18n_sha" "$i18n_asset"); rc=$?
+expect 'T9.42 a tilde in a version is still a valid file name' 0 "$rc"
+expect 'T9.42 tilde asset downloads' "$DL_ROOT/$i18n_asset" "$(get "$out" path)"
+leftover=$(find "$DL_ROOT" -name '*.part*' | wc -l)
+expect 'T9.42 no temporary download file is left behind' 0 "$leftover"
+
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

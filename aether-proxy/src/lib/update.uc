@@ -67,6 +67,20 @@ function unlink_file(path) {
 	return fs.unlink(path) ? true : null;
 }
 
+// A signed manifest may still carry a bad or hostile asset name, so an asset
+// name must be a file name and never a path (security review F2). The published
+// charset is [A-Za-z0-9._-] (08 "发布仓库的实现"), but the device accepts any
+// single path component: a raw luci-i18n version carries '~' (26.287.20981~ba764d5),
+// and the frozen 0.3.1-r1 interface must keep updating itself from such a manifest.
+// TODO(design): 08 "发布仓库的实现" publishes only [A-Za-z0-9._-], while this check
+// must keep accepting the frozen 0.3.1-r1 manifest (its names still contain '~').
+// Tighten to the published charset once tests/compat/fixtures moves past 0.3.1-r1.
+function asset_filename(value) {
+	if (type(value) != 'string' || value == '' || value == '.' || value == '..')
+		return null;
+	return index(value, '/') < 0 && index(value, '\\') < 0 ? value : null;
+}
+
 function fetch_file(ctx, url, path, max_size, proxied_first) {
 	if (!sys.mkdir_p(ctx.download_dir))
 		return false;
@@ -261,8 +275,10 @@ function package_asset(manifest, name, arch, pm, previous) {
 		return null;
 	let asset_set = release.assets[arch] ?? release.assets.all;
 	let asset = asset_set?.[asset_format(pm)] ?? null;
-	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
-		? { ...asset, version } : null;
+	if (type(asset) != 'object' || type(version) != 'string')
+		return null;
+	let url = asset_filename(asset.url);
+	return url == null ? null : { ...asset, url, version };
 }
 
 function build_result(ctx, manifest, base, arch, pm) {
@@ -273,8 +289,8 @@ function build_result(ctx, manifest, base, arch, pm) {
 		if (type(entry) != 'object' || type(entry.current) != 'object')
 			continue;
 		let current = entry.current;
-		let asset_set = current.assets?.[arch] ?? current.assets?.all;
-		let asset = asset_set?.[asset_format(pm)] ?? null;
+		// Same validation as package_update: an unusable name is not offered as an asset.
+		let asset = package_asset(manifest, name, arch, pm, false);
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
@@ -330,7 +346,15 @@ export function download_asset(opts, base, asset, name) {
 		tmp_dir: system_path(root, C.TMP_DIR),
 		download_dir: system_path(root, C.DOWNLOAD_DIR)
 	};
-	let path = `${ctx.download_dir}/${name}`;
+	// Both names are validated: the URL comes from the manifest, the target name
+	// from the caller. Neither may become a path (security review F2).
+	let remote = asset_filename(asset?.url), target = asset_filename(name);
+	if (remote == null || target == null)
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset name is not a plain file name' };
+	let path = `${ctx.download_dir}/${target}`;
+	// Download beside the target and only rename after size and sha256 match, so a
+	// failed attempt never deletes or overwrites what is already at `path`.
+	let temp = `${path}.part`;
 	let free = free_bytes(ctx);
 	if (free == null || free < asset.size + C.UPDATE_SPACE_RESERVE) {
 		log.event('error', 'NO_SPACE', { need: asset.size + C.UPDATE_SPACE_RESERVE, free: free ?? 0 });
@@ -341,13 +365,19 @@ export function download_asset(opts, base, asset, name) {
 	for (let channel in bases) {
 		let routes = proxied ? [ true, false ] : [ false ];
 		for (let via_proxy in routes) {
-			if (!fetch_file(ctx, channel_url(channel, asset.url), path, asset.size, via_proxy))
+			if (!fetch_file(ctx, channel_url(channel, remote), temp, asset.size, via_proxy))
 				continue;
-			let stat = fs.stat(path), hash = file_sha256(path);
-			if (stat != null && stat.size == asset.size && hash == lc(asset.sha256))
+			let stat = fs.stat(temp), hash = file_sha256(temp);
+			if (stat != null && stat.size == asset.size && hash == lc(asset.sha256)) {
+				if (!fs.rename(temp, path)) {
+					let detail = `rename ${temp} -> ${path}: ${fs_error()}`;
+					unlink_file(temp);
+					return { ok: false, code: 'FS_FAILED', detail };
+				}
 				return { ok: true, path };
-			if (unlink_file(path) == null)
-				return { ok: false, code: 'FS_FAILED', detail: `cannot remove invalid asset ${path}: ${fs_error()}` };
+			}
+			if (unlink_file(temp) == null)
+				return { ok: false, code: 'FS_FAILED', detail: `cannot remove invalid asset ${temp}: ${fs_error()}` };
 		}
 	}
 	return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset size or sha256 mismatch, or download failed' };
