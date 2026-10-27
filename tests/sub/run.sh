@@ -499,5 +499,42 @@ expect 'T9.18 sub.json stores three valid nodes' 3 \
 expect 'T9.18 sub.json stores two invalid_value skips' 2 \
 	"$(jget s_00000001.skipped.invalid_value < "$R/etc/aether-proxy/state/sub.json")"
 
+# T9.42 (security F1): a line that decodes as Base64 but not as a JSON object is
+# one skip reason. It must not end the update: the remaining lines, the other
+# enabled subscription and the sub.json status record are still processed.
+make_root "$T/root-badvmess"
+write_config
+BODY="$FIX/bad-vmess.txt"
+export STUB_CURL_BODY_ALT="$FIX/one-node.txt"
+out=$(ap --json 2>"$T/badvmess.stderr"); rc=$?
+unset STUB_CURL_BODY_ALT
+expect 'T9.42 non-JSON vmess line exits successfully' 0 "$rc"
+expect 'T9.42 the mixed subscription is applied' true "$(printf '%s\n' "$out" | jget subs.s_00000001.ok)"
+expect 'T9.42 the valid line after the bad one is imported' 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+expect 'T9.42 the bad line is counted as malformed' 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+expect 'T9.42 the second subscription is still processed' true "$(printf '%s\n' "$out" | jget subs.s_00000002.ok)"
+expect 'T9.42 both subscriptions were downloaded' 2 "$(grep -c '^curl ' "$R/calls.log" 2>/dev/null || echo 0)"
+has_line "$R/etc/config/aetherproxy" "option address 'mixed.example.com'" \
+	&& ok 'T9.42 the surviving node is committed' || bad 'T9.42 the surviving node is committed'
+[ -s "$R/etc/aether-proxy/state/sub.json" ] && ok 'T9.42 sub.json is written' || bad 'T9.42 sub.json is written'
+expect 'T9.42 sub.json records the malformed skip' 1 \
+	"$(jget s_00000001.skipped.malformed < "$R/etc/aether-proxy/state/sub.json")"
+[ ! -s "$T/badvmess.stderr" ] && ok 'T9.42 no exception escapes to stderr' \
+	|| bad 'T9.42 no exception escapes to stderr' "$(cat "$T/badvmess.stderr")"
+
+# A corrupt state.json is not an update failure: proxy_running() only needs
+# "not running", and an exception here used to abort the whole update (T9.42).
+make_root "$T/root-corrupt-state"
+write_config
+# auto reads proxy_running(); direct would never touch state.json.
+sed -i "s/fetch_via 'direct'/fetch_via 'auto'/" "$R/etc/config/aetherproxy"
+printf '{broken' > "$R/var/run/aether-proxy/state.json"
+BODY="$FIX/one-node.txt"
+out=$(ap --json s_00000001 2>"$T/corrupt-state.stderr"); rc=$?
+expect 'T9.42 corrupt state.json does not abort the update' 0 "$rc"
+expect 'T9.42 corrupt state.json still imports the node' 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+[ ! -s "$T/corrupt-state.stderr" ] && ok 'T9.42 corrupt state.json leaves no exception' \
+	|| bad 'T9.42 corrupt state.json leaves no exception' "$(cat "$T/corrupt-state.stderr")"
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -167,6 +167,31 @@ export const cases = [
 		expect: { skip: 'ss_plugin' }
 	},
 	{
+		/* A valid Base64 payload that is not JSON must not escape as an exception:
+		 * every subscription line yields one node or one skip reason (docs/06). */
+		name: 'vmess payload that is not JSON', fn: 'line', input: 'vmess://bm90IGpzb24=',
+		expect: { skip: 'malformed' }
+	},
+	{
+		name: 'vmess payload with invalid JSON syntax', fn: 'line',
+		input: 'vmess://' + b64enc('{"add": "vm.example.com", '),
+		expect: { skip: 'malformed' }
+	},
+	{
+		name: 'vmess payload that is a JSON array', fn: 'line',
+		input: 'vmess://' + b64enc('[1,2,3]'),
+		expect: { skip: 'malformed' }
+	},
+	{
+		name: 'vmess payload that is empty', fn: 'line', input: 'vmess://' + b64enc(''),
+		expect: { skip: 'malformed' }
+	},
+	{
+		name: 'vmess payload that is a JSON string', fn: 'line',
+		input: 'vmess://' + b64enc('"not an object"'),
+		expect: { skip: 'malformed' }
+	},
+	{
 		name: 'vmess alterId', fn: 'line',
 		input: 'vmess://' + b64enc(sprintf('%.J', { add: 'vm.example.com', port: '443', id: UUID, aid: 1 })),
 		expect: { skip: 'vmess_alterid' }
@@ -244,6 +269,14 @@ export const cases = [
 		name: 'decoded body with no valid nodes has a distinct error', fn: 'body',
 		input: 'hysteria2://token@h.example:443\n',
 		expect: { ok: false, nodes: [], skipped: { unsupported_scheme: 1 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
+	},
+	{
+		/* One bad line must not abort the rest of the body (docs/06 step 3). */
+		name: 'body keeps parsing after a non-JSON vmess line', fn: 'body',
+		input: 'vmess://bm90IGpzb24=\n' + BODY_URI,
+		expect: { ok: true, nodes: [
+			{ protocol: 'vless', address: 'body.example', port: 443, uuid: UUID, label: 'body', transport: 'raw', security: 'tls', encryption: 'none' }
+		], skipped: { malformed: 1 }, warnings: [], error: null }
 	},
 	{
 		name: 'parse_body keeps duplicates (sub.plan deduplicates)', fn: 'body',
