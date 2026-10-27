@@ -68,17 +68,23 @@ function unlink_file(path) {
 }
 
 // A signed manifest may still carry a bad or hostile asset name, so an asset
-// name must be a file name and never a path (security review F2). The published
-// charset is [A-Za-z0-9._-] (08 "发布仓库的实现"), but the device accepts any
-// single path component: a raw luci-i18n version carries '~' (26.287.20981~ba764d5),
-// and the frozen 0.3.1-r1 interface must keep updating itself from such a manifest.
-// TODO(design): 08 "发布仓库的实现" publishes only [A-Za-z0-9._-], while this check
-// must keep accepting the frozen 0.3.1-r1 manifest (its names still contain '~').
-// Tighten to the published charset once tests/compat/fixtures moves past 0.3.1-r1.
+// name must be a published file name and never a path (security review F2,
+// decision 6.1). 08 "发布仓库的实现" only publishes [A-Za-z0-9._-]; the device
+// enforces the same set, so a name with a separator, a space, a '~' or any
+// other character is rejected.
 function asset_filename(value) {
-	if (type(value) != 'string' || value == '' || value == '.' || value == '..')
+	if (type(value) != 'string' || match(value, /^[A-Za-z0-9._-]+$/) == null)
 		return null;
-	return index(value, '/') < 0 && index(value, '\\') < 0 ? value : null;
+	return value == '.' || value == '..' ? null : value;
+}
+
+// A manifest entry is only usable when its verification fields have the
+// documented types (复核 6.4): size is a non-negative int and sha256 is 64 hex
+// digits. Anything else is rejected before a download starts, so a wrong type
+// cannot reach the size arithmetic, curl or the comparison.
+function asset_verifiable(asset) {
+	return type(asset.size) == 'int' && asset.size >= 0
+		&& type(asset.sha256) == 'string' && match(asset.sha256, /^[0-9a-fA-F]{64}$/) != null;
 }
 
 function fetch_file(ctx, url, path, max_size, proxied_first) {
@@ -278,7 +284,7 @@ function package_asset(manifest, name, arch, pm, previous) {
 	if (type(asset) != 'object' || type(version) != 'string')
 		return null;
 	let url = asset_filename(asset.url);
-	return url == null ? null : { ...asset, url, version };
+	return url == null || !asset_verifiable(asset) ? null : { ...asset, url, version };
 }
 
 function build_result(ctx, manifest, base, arch, pm) {
@@ -351,6 +357,10 @@ export function download_asset(opts, base, asset, name) {
 	let remote = asset_filename(asset?.url), target = asset_filename(name);
 	if (remote == null || target == null)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset name is not a plain file name' };
+	// Defence in depth for direct callers: package_asset() already drops such
+	// entries, but download_asset() must not trust its argument's types either.
+	if (!asset_verifiable(asset))
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset size or sha256 in the manifest is invalid' };
 	let path = `${ctx.download_dir}/${target}`;
 	// Download beside the target and only rename after size and sha256 match, so a
 	// failed attempt never deletes or overwrites what is already at `path`.

@@ -927,62 +927,200 @@ else
 	bad 'T8.16 package install calls discovered absolute path'
 fi
 
-# T9.42 (security F2): a signed manifest's asset name is a file name, never a
-# path; and a failed size/sha256 check must not delete or overwrite whatever
-# already sits at the target path.
+# T9.42 (security F2, rework R1): published asset names only use
+# [A-Za-z0-9._-] and must be a single file name, not '.' or '..' (docs/08,
+# decision 6.1). A failed size/sha256 check also must not delete or overwrite
+# whatever already sits at the target path.
 cat > "$T/dl.uc" <<'UCODE'
 'use strict';
 import * as update from 'aetherproxy.update';
-let result = update.download_asset({ sys_root: ARGV[0] }, ARGV[1],
-	{ url: ARGV[2], size: +ARGV[3], sha256: ARGV[4] }, ARGV[5]);
+
+function name_arg(value) {
+	return value == 'MISSING' || value == 'NULL' ? null : value;
+}
+function size_arg(value) {
+	if (value == 'MISSING' || value == 'NULL')
+		return null;
+	if (substr(value, 0, 4) == 'STR:')
+		return substr(value, 4);
+	if (substr(value, 0, 6) == 'FLOAT:')
+		return +substr(value, 6);
+	return +value;
+}
+function sha_arg(value) {
+	return value == 'MISSING' || value == 'NULL' ? null : value;
+}
+
+let asset = {};
+if (ARGV[2] != 'MISSING')
+	asset.url = name_arg(ARGV[2]);
+if (ARGV[3] != 'MISSING')
+	asset.size = size_arg(ARGV[3]);
+if (ARGV[4] != 'MISSING')
+	asset.sha256 = sha_arg(ARGV[4]);
+let bases = split(ARGV[1], ',');
+let result = update.download_asset({ sys_root: ARGV[0] },
+	length(bases) == 1 ? bases[0] : bases, asset, name_arg(ARGV[5]));
 print(sprintf('%.J', result), '\n');
 UCODE
 download_asset() {
-	AETHER_PROXY_TEST_TMP_FREE=99999999 "$UCODE" "$T/dl.uc" "$T/root" "$1" "$2" "$3" "$4" "$5"
+	# `--` stops ucode's own option parsing: a negative size value starts with '-'.
+	AETHER_PROXY_TEST_TMP_FREE=99999999 "$UCODE" "$T/dl.uc" -- "$T/root" "$1" "$2" "$3" "$4" "$5"
+}
+pkg_update() {
+	ap update package "$1" --json --confdir "$T/conf" --run-dir "$T/run" \
+		--sys-root "$T/root" --bin-dir "$T/bin"
 }
 DL_ROOT="$T/root/tmp/aether-proxy-dl"
 BASE="http://127.0.0.1:$PORT1/"
-mkdir -p "$DL_ROOT" "$T/ch1/sub"
+BASE2="http://127.0.0.1:$PORT2/"
+mkdir -p "$DL_ROOT"
 printf 'PAYLOAD-FROM-CHANNEL\n' > "$T/ch1/asset.bin"
 printf 'PAYLOAD-FROM-CHANNEL\n' > "$T/ch1/victim.txt"
+# Names inside the published charset: dots in the middle and a leading dot are
+# still plain components, so the validator must accept them.
+printf 'DOTTED\n' > "$T/ch1/a..b.ipk"
+printf 'HIDDEN\n' > "$T/ch1/.hidden.ipk"
 asset_sha=$(sha256sum "$T/ch1/asset.bin" | cut -d' ' -f1)
 asset_size=$(stat -c %s "$T/ch1/asset.bin")
-# `../victim.txt` resolves on the channel to a real file: the request itself succeeds,
-# which is what made the traversal reachable before the name check existed.
+part_count() { find "$DL_ROOT" -name '*.part*' | wc -l; }
+sentinel() { printf 'SENTINEL:%s\n' "$1" > "$DL_ROOT/keep.bin"; }
+name_detail='asset name is not a plain file name'
+type_detail='asset size or sha256 in the manifest is invalid'
+
+# -- 1. the remote URL name and the local target name are checked separately --
 printf 'OUTSIDE-FILE\n' > "$T/root/tmp/victim.txt"
-out=$(download_asset "$BASE" '../victim.txt' "$asset_size" "$asset_sha" '../victim.txt'); rc=$?
-expect 'T9.42 traversal asset name is rejected' 0 "$rc"
-expect 'T9.42 traversal asset name is not a path' UPDATE_VERIFY_FAILED "$(get "$out" code)"
-expect 'T9.42 traversal leaves the outside file untouched' OUTSIDE-FILE "$(cat "$T/root/tmp/victim.txt")"
-out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" 'sub/asset.bin'); rc=$?
-expect 'T9.42 asset name with a separator is rejected' 0 "$rc"
-expect 'T9.42 asset name with a separator is not a path' UPDATE_VERIFY_FAILED "$(get "$out" code)"
-[ ! -e "$DL_ROOT/sub" ] && ok 'T9.42 separator name creates no subdirectory' \
-	|| bad 'T9.42 separator name creates no subdirectory'
-printf 'PRE-EXISTING\n' > "$DL_ROOT/asset.bin"
-out=$(download_asset "$BASE" 'asset.bin' 3 "$asset_sha" 'asset.bin'); rc=$?
-expect 'T9.42 mismatched size fails' 0 "$rc"
-expect 'T9.42 mismatched size reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
-expect 'T9.42 failed verification keeps the existing file' PRE-EXISTING "$(cat "$DL_ROOT/asset.bin")"
-bad_sha=$(printf 'f%.0s' $(seq 1 64))
-out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$bad_sha" 'asset.bin'); rc=$?
-expect 'T9.42 mismatched sha256 fails' 0 "$rc"
+out=$(download_asset "$BASE" '../victim.txt' "$asset_size" "$asset_sha" 'ok.bin'); rc=$?
+expect 'T9.42 remote traversal name is rejected' 0 "$rc"
+expect 'T9.42 remote traversal is a name failure' "$name_detail" "$(get "$out" detail)"
+expect 'T9.42 remote traversal never writes outside the download directory' OUTSIDE-FILE \
+	"$(cat "$T/root/tmp/victim.txt")"
+[ ! -e "$DL_ROOT/ok.bin" ] && ok 'T9.42 rejected remote name downloads nothing' \
+	|| bad 'T9.42 rejected remote name downloads nothing'
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" '../victim.txt'); rc=$?
+expect 'T9.42 target traversal name is rejected' 0 "$rc"
+expect 'T9.42 target traversal is a name failure' "$name_detail" "$(get "$out" detail)"
+expect 'T9.42 target traversal never touches the outside file' OUTSIDE-FILE "$(cat "$T/root/tmp/victim.txt")"
+for bad in '' '.' '..' 'a/b' 'a\b' 'a b.ipk' 'pkg~r.ipk' 'café.ipk'; do
+	out=$(download_asset "$BASE" "$bad" "$asset_size" "$asset_sha" 'ok.bin'); rc=$?
+	expect "T9.42 remote name <$bad> is rejected" 0 "$rc"
+	expect "T9.42 remote name <$bad> reports a name failure" "$name_detail" "$(get "$out" detail)"
+	out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" "$bad"); rc=$?
+	expect "T9.42 target name <$bad> is rejected" 0 "$rc"
+	expect "T9.42 target name <$bad> reports a name failure" "$name_detail" "$(get "$out" detail)"
+done
+for spec in 'MISSING' 'NULL'; do
+	out=$(download_asset "$BASE" "$spec" "$asset_size" "$asset_sha" 'ok.bin'); rc=$?
+	expect "T9.42 remote name $spec is rejected" "$name_detail" "$(get "$out" detail)"
+	out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" "$spec"); rc=$?
+	expect "T9.42 target name $spec is rejected" "$name_detail" "$(get "$out" detail)"
+done
+for good in 'a..b.ipk' '.hidden.ipk'; do
+	good_sha=$(sha256sum "$T/ch1/$good" | cut -d' ' -f1)
+	good_size=$(stat -c %s "$T/ch1/$good")
+	out=$(download_asset "$BASE" "$good" "$good_size" "$good_sha" "$good"); rc=$?
+	expect "T9.42 charset-legal name <$good> is accepted" 0 "$rc"
+	expect "T9.42 charset-legal name <$good> downloads" "$DL_ROOT/$good" "$(get "$out" path)"
+done
+expect 'T9.42 name checks leave no temporary file' 0 "$(part_count)"
+
+# -- 2. size/sha256 types from the manifest (decision 6.4) -------------------
+for spec in 'STR:21' 'FLOAT:3.5' 'NULL' 'MISSING' '-1'; do
+	out=$(download_asset "$BASE" 'asset.bin' "$spec" "$asset_sha" 'keep.bin'); rc=$?
+	expect "T9.42 size $spec is rejected" 0 "$rc"
+	expect "T9.42 size $spec is a type failure" "$type_detail" "$(get "$out" detail)"
+done
+bad_shas=$(printf 'f%.0s' $(seq 1 64))
+short=$(printf 'a%.0s' $(seq 1 63))
+long=$(printf 'a%.0s' $(seq 1 65))
+nonhex=$(printf 'z%.0s' $(seq 1 64))
+for spec in 'NULL' 'MISSING' 'deadbeef' "$short" "$long" "$nonhex"; do
+	out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$spec" 'keep.bin'); rc=$?
+	expect "T9.42 sha256 ${spec:0:12}… is rejected" 0 "$rc"
+	expect "T9.42 sha256 ${spec:0:12}… is a type failure" "$type_detail" "$(get "$out" detail)"
+done
+upper_sha=$(printf '%s' "$asset_sha" | tr 'a-f' 'A-F')
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$upper_sha" 'upper.bin'); rc=$?
+expect 'T9.42 uppercase hex sha256 is accepted' 0 "$rc"
+
+# -- 3. verification failure keeps the existing final file ------------------
+check_sentinel() {
+	[ "$(cat "$DL_ROOT/keep.bin" 2>&1)" = "SENTINEL:$1" ] \
+		&& ok "T9.42 $1 keeps the existing final file" \
+		|| bad "T9.42 $1 keeps the existing final file" "$(cat "$DL_ROOT/keep.bin" 2>&1)"
+}
+sentinel 'size'; out=$(download_asset "$BASE" 'asset.bin' 3 "$asset_sha" 'keep.bin'); rc=$?
+expect 'T9.42 size mismatch exits cleanly' 0 "$rc"
+expect 'T9.42 size mismatch reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+check_sentinel 'size'
+sentinel 'sha'; out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$bad_shas" 'keep.bin'); rc=$?
 expect 'T9.42 sha256 mismatch reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
-expect 'T9.42 sha256 mismatch keeps the existing file' PRE-EXISTING "$(cat "$DL_ROOT/asset.bin")"
-out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" 'asset.bin'); rc=$?
-expect 'T9.42 verified download succeeds' 0 "$rc"
-expect 'T9.42 verified download reports the final path' "$DL_ROOT/asset.bin" "$(get "$out" path)"
-expect 'T9.42 verified download replaces the target' PAYLOAD-FROM-CHANNEL "$(cat "$DL_ROOT/asset.bin")"
-# The published charset is [A-Za-z0-9._-], but a raw LuCI-i18n asset name carries
-# '~'. The frozen 0.3.1-r1 interface (tests/compat) must keep accepting it.
-i18n_asset='luci-i18n-aether-proxy-zh-cn_26.287.20981~ba764d5_all.ipk'
-printf 'I18N-PACKAGE\n' > "$T/ch1/$i18n_asset"
-i18n_sha=$(sha256sum "$T/ch1/$i18n_asset" | cut -d' ' -f1)
-i18n_size=$(stat -c %s "$T/ch1/$i18n_asset")
-out=$(download_asset "$BASE" "$i18n_asset" "$i18n_size" "$i18n_sha" "$i18n_asset"); rc=$?
-expect 'T9.42 a tilde in a version is still a valid file name' 0 "$rc"
-expect 'T9.42 tilde asset downloads' "$DL_ROOT/$i18n_asset" "$(get "$out" path)"
-leftover=$(find "$DL_ROOT" -name '*.part*' | wc -l)
-expect 'T9.42 no temporary download file is left behind' 0 "$leftover"
+check_sentinel 'sha'
+sentinel 'missing-asset'
+out=$(download_asset "$BASE" 'never-on-the-channel.bin' "$asset_size" "$asset_sha" 'keep.bin'); rc=$?
+expect 'T9.42 a missing asset reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+check_sentinel 'missing-asset'
+sentinel 'int-zero'; out=$(download_asset "$BASE" 'asset.bin' 0 "$asset_sha" 'keep.bin'); rc=$?
+expect 'T9.42 int size 0 is a verification failure, not a type failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+expect 'T9.42 int size 0 is checked against the real file' \
+	'asset size or sha256 mismatch, or download failed' "$(get "$out" detail)"
+check_sentinel 'int-zero'
+# The first channel serves the wrong bytes, the second one the real asset.
+printf 'CH1-PAYLOAD\n' > "$T/ch1/mirror.bin"
+printf 'CH2-PAYLOAD\n' > "$T/ch2/mirror.bin"
+mirror_sha=$(sha256sum "$T/ch2/mirror.bin" | cut -d' ' -f1)
+mirror_size=$(stat -c %s "$T/ch2/mirror.bin")
+sentinel 'mirror-fallback'
+out=$(download_asset "$BASE,$BASE2" 'mirror.bin' "$mirror_size" "$mirror_sha" 'keep.bin'); rc=$?
+expect 'T9.42 mirror fallback succeeds' 0 "$rc"
+expect 'T9.42 mirror fallback keeps the second channel data' CH2-PAYLOAD "$(cat "$DL_ROOT/keep.bin")"
+expect 'T9.42 mirror fallback leaves no temporary file' 0 "$(part_count)"
+sentinel 'all-channels-fail'
+out=$(download_asset "$BASE,$BASE2" 'asset.bin' "$asset_size" "$bad_shas" 'keep.bin'); rc=$?
+expect 'T9.42 both channels failing reports verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+check_sentinel 'all-channels-fail'
+expect 'T9.42 failed downloads leave no temporary file' 0 "$(part_count)"
+sentinel 'success'
+out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$asset_sha" 'keep.bin'); rc=$?
+expect 'T9.42 verified download reports the final path' "$DL_ROOT/keep.bin" "$(get "$out" path)"
+expect 'T9.42 verified download replaces the target' PAYLOAD-FROM-CHANNEL "$(cat "$DL_ROOT/keep.bin")"
+expect 'T9.42 successful download leaves no temporary file' 0 "$(part_count)"
+
+# -- 4. the same contract applies when `update check` reads the manifest -----
+python3 - "$T" <<'PY'
+import json, os, sys
+for channel in ('ch1', 'ch2'):
+    path = os.path.join(sys.argv[1], channel, 'manifest.json')
+    manifest = json.load(open(path))
+    def ipk(name):
+        return manifest['packages'][name]['current']['assets']['aarch64_generic']['ipk']
+    ipk('xray-core')['url'] = '../evil.ipk'
+    ipk('aether-proxy')['size'] = '19'
+    ipk('luci-i18n-aether-proxy-zh-cn')['sha256'] = 'deadbeef'
+    json.dump(manifest, open(path, 'w'))
+PY
+for channel in ch1 ch2; do
+	"$USIGN" -S -m "$T/$channel/manifest.json" -s "$T/sec" >/dev/null 2>&1
+done
+out=$(run_check)
+expect 'T9.42 check rejects a traversal asset name' '<null>' "$(get "$out" packages.xray-core.asset)"
+expect 'T9.42 check does not call a bad name newer' false "$(get "$out" packages.xray-core.newer)"
+expect 'T9.42 check rejects a string size' '<null>' "$(get "$out" packages.aether-proxy.asset)"
+expect 'T9.42 check rejects a short sha256' '<null>' "$(get "$out" packages.luci-i18n-aether-proxy-zh-cn.asset)"
+expect 'T9.42 check still offers the untouched asset' luci-app-aether-proxy_0.2.0-r1_aarch64_generic.ipk \
+	"$(get "$out" packages.luci-app-aether-proxy.asset)"
+# The install path must refuse the same entries, without invoking a package manager.
+: > "$UPDATE_PACKAGE_CALLS"
+out=$(pkg_update xray-core); rc=$?
+expect 'T9.42 install refuses a traversal asset name' 1 "$rc"
+expect 'T9.42 install reports ARCH_UNSUPPORTED for a bad name' ARCH_UNSUPPORTED "$(get "$out" code)"
+out=$(pkg_update luci-i18n-aether-proxy-zh-cn); rc=$?
+expect 'T9.42 install refuses a short sha256' 1 "$rc"
+expect 'T9.42 install reports ARCH_UNSUPPORTED for a bad sha256' ARCH_UNSUPPORTED "$(get "$out" code)"
+out=$(pkg_update aether-proxy); rc=$?
+expect 'T9.42 grouped install refuses a string size' 1 "$rc"
+expect 'T9.42 grouped install reports ARCH_UNSUPPORTED for a bad size' ARCH_UNSUPPORTED "$(get "$out" code)"
+[ ! -s "$UPDATE_PACKAGE_CALLS" ] && ok 'T9.42 rejected assets never reach the package manager' \
+	|| bad 'T9.42 rejected assets never reach the package manager' "$(cat "$UPDATE_PACKAGE_CALLS")"
 
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]
