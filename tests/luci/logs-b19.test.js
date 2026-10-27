@@ -6,7 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -36,7 +36,7 @@ test('T10.68 scenario 4: degradation and restoration use Chinese mode names and 
 	const page = loadModule(path.join(RES, 'view/aether-proxy/logs.js'), {
 		view: { extend: value => value }, uci: { sections: () => [] },
 		'aether-proxy.model.logs': logs, 'aether-proxy.common': {},
-		dom: { content: (node, children) => node.replaceChildren(...children) }
+		dom: { content: (node, children) => contentChildren(node, children) }
 	}, { window: { setTimeout() {} }, document: {} });
 	const root = page.render();
 	for (const [mode, label] of MODES) {

@@ -95,8 +95,8 @@ return view.extend({
 			}
 			catch (e) {
 				ui.addNotification(null, E('p', {},
-					_('Reading unapplied changes failed, so Enable was not turned off: %s', 'aether-proxy')
-						.replace('%s', e?.message ?? String(e))), 'error');
+					[ _('Reading unapplied changes failed, so Enable was not turned off: %s', 'aether-proxy')
+						.replace('%s', e?.message ?? String(e)) ]), 'error');
 				return;
 			}
 			const staged = model.staged_confirmation(changes);
@@ -261,8 +261,8 @@ return view.extend({
 				this.refresh(this.status, undefined, this.latestEvents);
 			}
 			ui.addNotification(null,
-				E('p', {}, _('The service action failed: %s (%s).', 'aether-proxy')
-					.replace('%s', res.code).replace('%s', res.detail ?? '')), 'error');
+				E('p', {}, [ _('The service action failed: %s (%s).', 'aether-proxy')
+					.replace('%s', res.code).replace('%s', res.detail ?? '') ]), 'error');
 		}
 		else if (this.startup === session && session)
 			session.ready = true;
@@ -459,19 +459,20 @@ return view.extend({
 			}
 			const text = model.node_use_message(reply, this.status, request.kind);
 			if (text)
-				ui.addNotification(null, E('p', {}, text), reply.ok ? 'info' : 'error');
+				/* The message names the node: text node, never markup. */
+				ui.addNotification(null, E('p', {}, [ text ]), reply.ok ? 'info' : 'error');
 		}
 		catch (e) {
 			/* ap.call never rejects, so reaching here means the write already
 			   succeeded and only the page refresh failed: never call it a failed
 			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
 			ui.addNotification(null, E('p', {},
-				(request.kind === 'node'
+				[ (request.kind === 'node'
 					? _('The node was switched, but refreshing the page data failed: %s. Reload the page.',
 						'aether-proxy')
 					: _('Settings were switched, but refreshing the page data failed: %s. Reload the page.',
 						'aether-proxy'))
-					.replace('%s', e?.message ?? String(e))), 'warning');
+					.replace('%s', e?.message ?? String(e)) ]), 'warning');
 		}
 		finally {
 			this.switching = false;
@@ -495,7 +496,7 @@ return view.extend({
 				this.refresh(this.status, undefined, this.latestEvents);
 			}
 			else
-				ui.addNotification(null, E('p', {}, model.probe_error(reply)), 'error');
+				ui.addNotification(null, E('p', {}, [ model.probe_error(reply) ]), 'error');
 		}).finally(() => {
 			this.probing = false;
 			dom.content(this.probeButton, _('Test real latency', 'aether-proxy'));
@@ -508,7 +509,7 @@ return view.extend({
 	},
 
 	probeSitePlaceholder: function(text) {
-		dom.content(this.probeSites, [ E('option', { disabled: true, selected: true }, text) ]);
+		dom.content(this.probeSites, [ E('option', { disabled: true, selected: true }, [ text ]) ]);
 		this.probeSites.disabled = true;
 	},
 
@@ -543,7 +544,7 @@ return view.extend({
 			this.siteOptions = sites.options;
 			if (sites.error) {
 				this.probeSitePlaceholder(_('Reading failed', 'aether-proxy'));
-				dom.content(this.probeMessage, [ E('span', {}, sites.error), E('button', {
+				dom.content(this.probeMessage, [ E('span', {}, [ sites.error ]), E('button', {
 					'class': 'cbi-button cbi-button-action', click: () => this.loadProbeSites()
 				}, _('Retry', 'aether-proxy')) ]);
 			}
@@ -552,7 +553,7 @@ return view.extend({
 				const selected = sites.options.find(option => option.value === saved) ?? sites.options[0];
 				dom.content(this.probeSites, sites.options.map((option) => E('option', {
 					value: option.value, selected: option === selected ? 'selected' : null
-				}, option.text)));
+				}, [ option.text ])));
 				this.probeSites.value = selected.value;
 				this.probeSites.disabled = false;
 			}
@@ -571,7 +572,7 @@ return view.extend({
 		const select = E('select', { change: (ev) => this.setInterval(ev.target.value) },
 			model.refresh_options().map((option) => E('option', {
 				value: option.value, selected: Number(option.value) * 1000 === interval ? 'selected' : null
-			}, option.text)));
+			}, [ option.text ])));
 		return E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; '
 				+ 'flex-wrap:wrap; margin-bottom:1em'
@@ -613,11 +614,11 @@ return view.extend({
 			style: 'width:auto; min-width:min(16em, 100%); max-width:24em'
 		}, vm.node_options.map((option) => E('option', {
 			value: option.value, selected: option.value === current ? 'selected' : null
-		}, option.text)));
+		}, [ option.text ])));
 		const modes = E('select', { style: 'width:auto; min-width:0' },
 			model.mode_options().map((option) => E('option', {
 				value: option.value, selected: option.value === vm.current_mode ? 'selected' : null
-			}, option.text)));
+			}, [ option.text ])));
 		/* Do not let the browser silently select its first mode when runtime mode is unknown. */
 		modes.value = selected.mode ?? vm.current_mode ?? '';
 		if (selected.node && vm.node_options.some(option => option.value === selected.node))
@@ -686,8 +687,8 @@ return view.extend({
 				/* The inactive note sits under the WAN label: it explains why only
 				   this row has rates (owner's choice, 2026-10-20). */
 				E('td', { title: key === 'total' ? traffic.total_title : null },
-					key === 'total' && note ? [ title, E('br'), E('small', {}, note) ] : title),
-				E('td', {}, traffic[key].tx), E('td', {}, traffic[key].rx)
+					key === 'total' && note ? [ title, E('br'), E('small', {}, [ note ]) ] : [ title ]),
+				E('td', {}, [ traffic[key].tx ]), E('td', {}, [ traffic[key].rx ])
 			]));
 		return this.section(_('Traffic and connections', 'aether-proxy'), [
 			E('table', { 'class': 'table' }, rows),
@@ -711,9 +712,9 @@ return view.extend({
 
 		for (const c of components)
 			rows.push(E('tr', {}, [
-				E('td', {}, c.name),
-				E('td', {}, c.version ?? '–'),
-				E('td', {}, c.path ?? '–')
+				E('td', {}, [ c.name ]),
+				E('td', {}, [ c.version ?? '–' ]),
+				E('td', {}, [ c.path ?? '–' ])
 			]));
 
 		return E('table', { 'class': 'table', 'style': 'font-size: 0.9em' }, rows);
@@ -729,7 +730,7 @@ return view.extend({
 				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
 			}, [
-				E('span', {}, error.text),
+				E('span', {}, [ error.text ]),
 				E('button', {
 					'class': 'cbi-button cbi-button-action',
 					click: ui.createHandlerFn(this, this.loadComponents)
@@ -866,12 +867,12 @@ return view.extend({
 				E('strong', {
 					style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level)
 						+ (vm.state_dimmed ? ';opacity:0.7' : '')
-				}, vm.state_text ?? '–'),
-				' ', E('span', {}, vm.state_duration_text ?? ''), ' ',
+				}, [ vm.state_text ?? '–' ]),
+				' ', E('span', {}, [ vm.state_duration_text ?? '' ]), ' ',
 				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
 					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : []),
 				...(vm.degradation_notice ? [ ' ', E('span', { style: this.colorStyle('warn') },
-					vm.degradation_notice) ] : [])
+					[ vm.degradation_notice ]) ] : [])
 			]),
 			this.buttonBar(vm.buttons)
 		]) ];
@@ -880,22 +881,22 @@ return view.extend({
 		   Chinese page a half-width colon (and a stray space after 「：」). */
 		if (vm.error_text != null)
 			details.push(E('div', { style: this.colorStyle('error') },
-				_('Reason: %s', 'aether-proxy').replace('%s', vm.error_text)));
+				[ _('Reason: %s', 'aether-proxy').replace('%s', vm.error_text) ]));
 		if (vm.dns_text != null)
 			details.push(E('div', {},
-				_('Overseas domain resolution: %s', 'aether-proxy').replace('%s', vm.dns_text)));
+				[ _('Overseas domain resolution: %s', 'aether-proxy').replace('%s', vm.dns_text) ]));
 		if (details.length)
 			stateRows.push(E('div', {}, details));
 
 		stateRows.push(E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
 		}, [
-			this.nodeControl ?? E('p', {}, vm.node_text),
+			this.nodeControl ?? E('p', {}, [ vm.node_text ]),
 			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-				...(vm.node_address_text ? [ E('span', {}, vm.node_address_text) ] : []),
+				...(vm.node_address_text ? [ E('span', {}, [ vm.node_address_text ]) ] : []),
 				E('span', { style: this.colorStyle(vm.probe_level) },
-					vm.probe_text ?? _('Latency: –', 'aether-proxy')),
-				E('small', {}, vm.probe_since_text ?? ''), this.probeControl
+					[ vm.probe_text ?? _('Latency: –', 'aether-proxy') ]),
+				E('small', {}, [ vm.probe_since_text ?? '' ]), this.probeControl
 			])
 		]));
 		/* Only present rows take a gap; div details avoid theme-specific paragraph margins. */
@@ -929,16 +930,18 @@ return view.extend({
 				vm.error,
 				...(vm.error_detail ? [ E('details', {}, [
 					E('summary', {}, _('Details', 'aether-proxy')),
-					E('pre', {}, vm.error_detail)
+					/* Backend diagnostics may quote configuration text or Xray output. */
+					E('pre', {}, [ vm.error_detail ])
 				]) ] : [])
 			]));
 		if (vm.disabled_notice)
-			parts.push(E('div', { 'class': 'alert-message warning' }, vm.disabled_notice));
+			parts.push(E('div', { 'class': 'alert-message warning' }, [ vm.disabled_notice ]));
+		/* DNSMASQ_EXTRA_SERVERS and the other notices carry local dnsmasq lines. */
 		if (vm.notices.length)
 			parts.push(E('ul', {}, vm.notices.map((text) =>
-				E('li', { 'class': 'alert-message warning' }, text))));
+				E('li', { 'class': 'alert-message warning' }, [ text ]))));
 		if (vm.switch_notice)
-			parts.push(E('div', { 'class': 'alert-message warning' }, vm.switch_notice));
+			parts.push(E('div', { 'class': 'alert-message warning' }, [ vm.switch_notice ]));
 		dom.content(this.noticeContent, parts);
 	},
 

@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -142,9 +142,9 @@ function descendants(node) {
 	return [node].concat((node.childNodes || []).flatMap(descendants));
 }
 function content(node, children) {
-	node.replaceChildren(...(Array.isArray(children) ? children : [children]));
+	contentChildren(node, children);
 	if (node.tag === 'select')
-		node.value = node.children[0]?.value ?? '';
+		node.value = node.childNodes[0]?.value ?? '';
 }
 
 test('T10.39 scenarios 1/3: log view builds UCI maps with section fallbacks and renders safe names plus raw titles',

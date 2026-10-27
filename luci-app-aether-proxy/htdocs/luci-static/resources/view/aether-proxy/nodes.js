@@ -395,26 +395,29 @@ return view.extend({
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
-			return E('span', { 'style': row?.stale ? 'opacity:0.6' : null }, row ? row.name : section_id);
+			/* The label comes from a share link or subscription: text node only. */
+			return E('span', { 'style': row?.stale ? 'opacity:0.6' : null },
+				[ row ? row.name : section_id ]);
 		};
 
 		o = s.option(form.DummyValue, '_protocol', _('Protocol', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
-			return rowMap[section_id]?.protocol ?? '–';
+			return E('span', {}, [ rowMap[section_id]?.protocol ?? '–' ]);
 		};
 
 		o = s.option(form.DummyValue, '_transport_security', _('Transport / Security', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
-			return rowMap[section_id]?.transport_security ?? 'raw / none';
+			return E('span', {}, [ rowMap[section_id]?.transport_security ?? 'raw / none' ]);
 		};
 
 		o = s.option(form.DummyValue, '_source', _('Source', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
-			return row ? row.source : '–';
+			/* The subscription name is user input (docs/10 「UI 规则」). */
+			return E('span', {}, [ row ? row.source : '–' ]);
 		};
 
 		o = s.option(form.DummyValue, '_current', _('In use', 'aether-proxy'));
@@ -704,8 +707,8 @@ return view.extend({
 			uci.remove('aetherproxy', id);
 			delete this.nodeMap.addedSection;
 			this.pendingAdd = null;
-			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
-				.format(e?.message ?? String(e))));
+			ui.addNotification(null, E('p', [ _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e)) ]));
 		}
 	},
 
@@ -796,8 +799,8 @@ return view.extend({
 			await this.nodeMap.save(null, true);
 		}
 		catch (e) {
-			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
-				.format(e?.message ?? String(e))));
+			ui.addNotification(null, E('p', [ _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e)) ]));
 		}
 		finally {
 			this.deleting = false;
@@ -911,11 +914,11 @@ return view.extend({
 			await this.refreshResults();
 			const text = model.job_failure_text(job);
 			if (text)
-				ui.addNotification(null, E('p', text));
+				ui.addNotification(null, E('p', [ text ]));
 		}
 		catch (e) {
-			ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
-				.format(e?.message ?? String(e))));
+			ui.addNotification(null, E('p', [ _('Operation failed: %s', 'aether-proxy')
+				.format(e?.message ?? String(e)) ]));
 		}
 		finally {
 			await refresh;
@@ -924,8 +927,8 @@ return view.extend({
 				this.setProbing(false);
 			}
 			catch (e) {
-				ui.addNotification(null, E('p', _('Operation failed: %s', 'aether-proxy')
-					.format(e?.message ?? String(e))));
+				ui.addNotification(null, E('p', [ _('Operation failed: %s', 'aether-proxy')
+					.format(e?.message ?? String(e)) ]));
 			}
 		}
 	},
@@ -1015,7 +1018,8 @@ return view.extend({
 			const text = model.node_use_message(reply, status,
 				uci.get('aetherproxy', 'main', 'node'), uci.sections('aetherproxy', 'node'));
 			if (text) {
-				const content = E('p', {}, text);
+				/* The message names the node: render it as text (docs/10 「UI 规则」). */
+				const content = E('p', {}, [ text ]);
 				const element = ui.addNotification(null, content, reply.ok ? 'info' : 'error');
 				if (reply.ok && model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
 					const node = uci.get('aetherproxy', section_id);
@@ -1031,8 +1035,8 @@ return view.extend({
 			   succeeded and only the page refresh failed: never call it a failed
 			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
 			ui.addNotification(null, E('p', {},
-				_('The node was switched, but refreshing the page data failed: %s. Reload the page.', 'aether-proxy')
-					.replace('%s', e?.message ?? String(e))), 'warning');
+				[ _('The node was switched, but refreshing the page data failed: %s. Reload the page.', 'aether-proxy')
+					.replace('%s', e?.message ?? String(e)) ]), 'warning');
 		}
 		finally {
 			this.switching = false;
@@ -1064,11 +1068,11 @@ return view.extend({
 		return chain.then(function() {
 			const sum = model.summarize_import(lines, replies);
 			const items = sum.failed.map(function(f) {
-				return E('li', {}, `#${f.line} ${f.code}` + (f.detail !== '' ? `: ${f.detail}` : ''));
+				return E('li', {}, [ `#${f.line} ${f.code}` + (f.detail !== '' ? `: ${f.detail}` : '') ]);
 			});
 
 			dom.content(self.importResult, [
-				E('p', {}, sum.text),
+				E('p', {}, [ sum.text ]),
 				items.length ? E('ul', {}, items) : E([])
 			]);
 

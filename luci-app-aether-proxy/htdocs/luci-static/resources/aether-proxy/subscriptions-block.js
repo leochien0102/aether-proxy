@@ -106,7 +106,7 @@ function requiredOptions(grid, rules) {
 			requiredBorder(option, id, missing.includes(option) || invalid.includes(option));
 		if (errors.length) {
 			modalMap.requiredAlert = E('div', { 'class': 'alert-message error' }, [
-				E('ul', {}, errors.map(text => E('li', {}, text)))
+				E('ul', {}, errors.map(text => E('li', {}, [ text ])))
 			]);
 			modalMap.root.insertBefore(modalMap.requiredAlert, modalMap.root.firstChild);
 			return Promise.resolve();
@@ -218,7 +218,13 @@ return baseclass.extend({
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
 	result_content: function(result) {
-		return [result.text, E('br'), result.time, E('br'), result.skipped];
+		/* Subscription names and backend detail text are user input, so each line
+		 * is appended as a text child (a bare string would be innerHTML; a nested
+		 * array would be stringified by luci-base's append). */
+		return [ 'text', 'time', 'skipped' ].map((field, index) => [
+			...(index ? [ E('br') ] : []),
+			E('span', {}, [ result[field] ])
+		]).flat();
 	},
 	show_results: function() {
 		const vm = model.build(uci.sections('aetherproxy', 'subscription'),
@@ -303,7 +309,7 @@ return baseclass.extend({
 				const row = model.row(uci.get('aetherproxy', id), self.status, Date.now() / 1000,
 					self.busy, uci.get('aetherproxy', 'sub'));
 				if (!row)
-					return '–';
+					return E('span', {}, [ '–' ]);
 				if (field === '_result') {
 					// An edit can make GridSection render cells again on the same map.
 					// One inline block keeps all result lines in the card's value column.
@@ -312,7 +318,8 @@ return baseclass.extend({
 					self.resultCells[id] = span;
 					return span;
 				}
-				return row[field.slice(1)];
+				/* A string textvalue is rendered as HTML by luci-base (docs/10 「UI 规则」). */
+				return E('span', {}, [ row[field.slice(1)] ]);
 			};
 		}
 	},
@@ -439,9 +446,9 @@ return baseclass.extend({
 			timer.stop();
 			const lines = model.job_result(job, id => uci.get('aetherproxy', id)?.name || id);
 			// Paragraph margins would offset multi-subscription results from the adjacent buttons.
-			this.summary.replaceChildren(...lines.map(text => E('div', { style: 'margin:0' }, text)));
+			this.summary.replaceChildren(...lines.map(text => E('div', { style: 'margin:0' }, [ text ])));
 			if (lines.length)
-				ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, text))));
+				ui.addNotification(null, E('div', {}, lines.map(text => E('p', {}, [ text ]))));
 			// unload is synchronous in luci-base; only load returns a Promise.
 			uci.unload('aetherproxy');
 			const data = await Promise.all([this.load(), ap.call('sub_status')]);

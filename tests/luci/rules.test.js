@@ -1205,3 +1205,41 @@ for (const stage of ['reject', 'sync throw', 'result rendering', 'progress setup
 		assert.deepEqual(h.writes, []);
 	});
 }
+
+/* T9.42 (D-疑问4): the WAN DNS hint quotes resolv.conf values read by the
+ * backend. They are diagnostics, so they must stay text even if they look
+ * like markup. */
+/* Rendered-tree walkers: `children` keeps raw arguments, while childNodes is
+ * what the browser would actually mount (text nodes included). */
+function renderedText(node) {
+	if (node == null)
+		return '';
+	if (typeof node === 'string')
+		return node;
+	if (node.tag === '#text')
+		return node.text;
+	return (node.childNodes ?? []).map(renderedText).join('');
+}
+function renderedFind(node, predicate) {
+	if (node == null || typeof node !== 'object')
+		return [];
+	const here = predicate(node) ? [ node ] : [];
+	return here.concat((node.childNodes ?? []).flatMap(child => renderedFind(child, predicate)));
+}
+
+test('T9.42: a hostile WAN DNS entry stays literal text in the runtime hint', async () => {
+	const unsafe = '<img src=x onerror=alert(1)>';
+	const h = load_view();
+	await h.page.load();
+	const root = await h.page.render();
+	h.document.body.replaceChildren(root);
+	h.start();
+	h.calls.find(call => call.method == 'status').resolve({ ok: true, state: 'running', wan_dns: [ unsafe ] });
+	await settle();
+	const hint = renderedFind(root, node => node.tag === 'div'
+		&& renderedText(node).startsWith('运营商下发的 DNS 当前为'))[0];
+	assert.ok(hint, 'the runtime hint is rendered');
+	assert.ok(renderedText(hint).includes(unsafe), 'the resolver value is quoted verbatim as text');
+	assert.deepEqual(renderedFind(hint, node => node.tag === 'img'), [],
+		'a hostile resolver value never builds an element');
+});

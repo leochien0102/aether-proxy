@@ -184,12 +184,32 @@ function parsePo(text) {
 	return entries;
 }
 
-/* Shared mutable E() double (docs/10 UI rules, T10.18). LuCI skips only
+/* Text node double. Real `document.createTextNode()` produces exactly this:
+ * a node whose text is never parsed as markup. */
+function textNode(text) {
+	const value = String(text);
+
+	return { tag: '#text', text: value, textContent: value, childNodes: [], attrs: {} };
+}
+
+/* True for nodes created by element() (and by the CBI doubles that reuse it),
+ * mirroring the `dom.elem()` check of luci-base. */
+function isElement(node) {
+	return node != null && typeof node === 'object' && node.tag != null && Array.isArray(node.children);
+}
+
+/* Shared mutable E() double (docs/10 UI rules, T10.18, T9.42). LuCI skips only
  * null/undefined attributes: even false creates a boolean HTML attribute.
  * Keep raw attrs for source-level assertions, but read runtime state through
  * DOM properties so a later `button.disabled = false` takes effect.
- * Children stay inspectable without a browser; childNodes exposes text nodes
- * for the log-page injection tests, never parses strings as HTML.
+ *
+ * Children follow luci-base `dom.append()` exactly (luci.js:1311-1335), which
+ * is the whole point of T9.42: an ARRAY appends each item as an element or a
+ * text node, while a SINGLE non-array value is converted to a string and
+ * assigned to `innerHTML`. Scalar writes are recorded in `html` so a test can
+ * assert that user-controlled text never took the HTML path; the double does
+ * not parse markup, so `textContent` of a scalar write is the empty string
+ * whenever it contains a `<` (the browser would build elements there).
  */
 function element(tag, attrs = {}, children = []) {
 	if (Array.isArray(tag)) {
@@ -201,20 +221,53 @@ function element(tag, attrs = {}, children = []) {
 		attrs = {};
 	}
 	attrs ??= {};
+	if (typeof children === 'function')
+		children = children(null);
+
 	const node = {
 		tag, attrs, ...attrs, value: attrs.value ?? '',
-		children: Array.isArray(children) ? children : [children],
+		/* Raw children list: array items (elements or strings) as passed, kept
+		 * for the tests that inspect option lists and action rows. */
+		children: Array.isArray(children) ? children : (children == null ? [] : [ children ]),
+		/* Scalar (non-array) children were assigned through innerHTML. */
+		scalarHtml: !Array.isArray(children) && children != null && !isElement(children),
+		html: !Array.isArray(children) && children != null && !isElement(children) ? [ String(children) ] : [],
 		get childNodes() {
-			return this.children.map(child => typeof child === 'string'
-				? { tag: '#text', text: child, textContent: child, childNodes: [] } : child);
+			if (this.scalarHtml) {
+				const html = this.html.join('');
+
+				/* A markup-free scalar is a single text node in the browser; markup
+				 * needs a parser this double does not have (recorded in `html`). */
+				return html.length && !html.includes('<') ? [ textNode(html) ] : [];
+			}
+			return this.children.map(child => isElement(child)
+				? child
+				: (child != null && typeof child === 'object' && child.tag === '#text'
+					? child : textNode(child)));
 		},
-		get lastChild() { return this.children.at(-1); },
+		get lastChild() { return this.childNodes.at(-1) ?? null; },
+		get firstChild() { return this.childNodes[0] ?? null; },
+		get innerHTML() { return this.html.join(''); },
+		set innerHTML(value) {
+			this.html = value == null ? [] : [ String(value) ];
+			this.children = [];
+			this.scalarHtml = true;
+		},
 		get textContent() {
-			return this.children.map(child => child != null && typeof child === 'object'
-				? child.textContent : String(child ?? '')).join('');
+			return this.childNodes.map(child => child.textContent).join('');
 		},
-		set textContent(value) { this.children = [String(value)]; },
-		replaceChildren(...nodes) { this.children = nodes; },
+		set textContent(value) {
+			/* A text write creates a text node, not markup (luci.js never uses
+			 * innerHTML for this; the browser's textContent setter does not parse). */
+			this.html = [];
+			this.scalarHtml = false;
+			this.children = [ String(value) ];
+		},
+		replaceChildren(...nodes) {
+			this.html = [];
+			this.scalarHtml = false;
+			this.children = nodes;
+		},
 		// T10.40: wrapper tooltips are removed when the row becomes available.
 		setAttribute(name, value) { this.attrs[name] = this[name] = String(value); },
 		removeAttribute(name) { delete this.attrs[name]; delete this[name]; },
@@ -223,10 +276,51 @@ function element(tag, attrs = {}, children = []) {
 	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ])
 		node[name] = attrs[name] != null;
 	if (tag === 'select') {
-		const options = node.children;
+		const options = node.childNodes;
 		node.value = (options.find(option => option?.selected) ?? options[0])?.value ?? '';
 	}
 	return node;
 }
 
-module.exports = { scanRequires, createDocument, createRpc, loadModule, parsePo, element };
+/* LuCI `dom.append()` semantics for a node that already exists: array items
+ * that are not elements become text nodes, a scalar value replaces the node's
+ * content through innerHTML. Shared by the `dom.content` doubles in the test
+ * files so every page is held to the same rendering rules (T9.42). */
+function appendChildren(node, children) {
+	if (typeof children === 'function')
+		return appendChildren(node, children(node));
+	if (Array.isArray(children)) {
+		for (const child of children)
+			if (isElement(child))
+				node.children.push(child);
+			else
+				node.children.push(textNode(child));
+
+		return node.lastChild;
+	}
+	if (isElement(children)) {
+		node.children.push(children);
+		return children;
+	}
+	if (children !== null && children !== undefined) {
+		/* innerHTML assignment drops the previous children. */
+		node.children.length = 0;
+		node.html = [ String(children) ];
+		node.scalarHtml = true;
+		return null;
+	}
+	return null;
+}
+
+/* LuCI `dom.content()`: drop the children, then append following the rules. */
+function contentChildren(node, children) {
+	node.html = [];
+	node.scalarHtml = false;
+	node.children.length = 0;
+	return appendChildren(node, children);
+}
+
+module.exports = {
+	scanRequires, createDocument, createRpc, loadModule, parsePo, element,
+	textNode, isElement, appendChildren, contentChildren
+};

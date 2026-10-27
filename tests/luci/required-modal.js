@@ -6,7 +6,7 @@
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const types = require('./form-sdk');
-const { loadModule } = require('./loader');
+const { loadModule, contentChildren } = require('./loader');
 const { modalElement: E } = require('./modal-dom');
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 
@@ -151,7 +151,7 @@ async function harness(page, saved = {}) {
 		baseclass: { extend: object => object }, view: { extend: object => object }, form, uci: h.uci,
 		ui: { createHandlerFn: () => () => {},
 			addNotification: () => assert.fail('modal error must stay inside modal') },
-		dom: { content: (node, children) => node.replaceChildren(...[children].flat()) },
+		dom: { content: (node, children) => contentChildren(node, children) },
 		'aether-proxy.common': {}
 	};
 	const env = { window: { setTimeout() {} }, document: {} };

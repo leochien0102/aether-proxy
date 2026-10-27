@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const assert = require('node:assert/strict');
-const { loadModule, element: E } = require('./loader');
+const { loadModule, element: E, contentChildren } = require('./loader');
 const types = require('./form-sdk');
 const ROOT = path.resolve(__dirname, '../..');
 const RES = path.join(ROOT, 'luci-app-aether-proxy/htdocs/luci-static/resources');
@@ -68,7 +68,7 @@ function pageModules(form, uci, env, adapter) {
 	const modules = {
 		baseclass: { extend: o => o }, view: { extend: o => o }, form, uci,
 		ui: { createHandlerFn: () => () => {} },
-		dom: { content: (node, children) => node.replaceChildren(...children) },
+		dom: { content: (node, children) => contentChildren(node, children) },
 		network: {}, 'tools.widgets': { DeviceSelect: form.DynamicList },
 		'aether-proxy.common': { call: async () => ({ ok: true, version }) },
 		'aether-proxy.subscriptions-block': {}

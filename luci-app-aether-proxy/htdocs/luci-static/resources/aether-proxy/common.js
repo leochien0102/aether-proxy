@@ -239,7 +239,9 @@ var ap = baseclass.extend({
 			};
 
 			ui.showModal(options.title, [
-				E('p', options.text),
+				/* The body may name a node or subscription: never parse it as HTML.
+				 * `?? ''` keeps an absent body from rendering the string "undefined". */
+				E('p', {}, [ options.text ?? '' ]),
 				E('div', { 'class': 'right' }, [
 					E('button', {
 						'type': 'button',
@@ -251,7 +253,7 @@ var ap = baseclass.extend({
 						'type': 'button',
 						'class': 'cbi-button ' + (options.destructive ? 'cbi-button-remove' : 'cbi-button-action'),
 						'click': function() { finish(true); }
-					}, options.ok)
+					}, [ options.ok ])
 				])
 			]);
 		});

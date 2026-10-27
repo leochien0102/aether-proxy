@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const { actionRow } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
@@ -139,11 +139,12 @@ test('T8.10 scenario 5: raw source/line parameters, debug-only hint and error de
 /* Strings become text nodes, never interpreted markup. The test traverses
  * rendered descendants rather than accepting the model's safe string alone.
  */
+/* luci-base dom.content(): arrays append text/element nodes, a scalar is an
+ * innerHTML write (see loader.contentChildren). */
 function setContent(node, children) {
-	const flat = (Array.isArray(children) ? children : [ children ]).flat(Infinity);
-	node.replaceChildren(...flat);
+	contentChildren(node, children);
 	if (node.tag == 'select')
-		node.value = node.children[0]?.value ?? '';
+		node.value = node.childNodes[0]?.value ?? '';
 }
 function descendants(node) {
 	return [ node ].concat((node.childNodes || []).flatMap(descendants));

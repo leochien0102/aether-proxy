@@ -4177,3 +4177,31 @@ test('T10.68 scenario 2: entering and leaving degradation preserve both selector
 		assert.equal(apply.disabled, false);
 	}
 });
+
+/* T9.42 (D-疑问4): DNSMASQ_EXTRA_SERVERS carries raw lines scanned from
+ * dnsmasq's generated configuration and confdir. They are diagnostics, not
+ * markup, so they must reach the page as text nodes. */
+function htmlWrites(node) {
+	if (!node || typeof node !== 'object')
+		return [];
+	return [ ...(node.html ?? []) ].concat((node.childNodes ?? []).flatMap(htmlWrites));
+}
+
+test('T9.42: DNSMASQ_EXTRA_SERVERS lines render as text and never build elements', async () => {
+	const h = deferredPage();
+	const { page } = h;
+	page.render(await page.load());
+	await Promise.resolve();
+	const servers = [ 'server=8.8.8.8', 'server=<img src=x onerror=alert(1)>', 'server=a&b"c' ];
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a',
+		notices: [ { code: 'DNSMASQ_EXTRA_SERVERS', args: { servers } } ] });
+	const items = findAll(page.noticeContent, 'li');
+	assert.equal(items.length, 1, 'one warning line per notice');
+	assert.equal(items[0].textContent, page.vm.notices[0], 'the scanned lines are the rendered text');
+	assert.equal(items[0].attr, undefined);
+	for (const line of servers)
+		assert.ok(items[0].textContent.includes(line), 'kept verbatim: ' + line);
+	assert.deepEqual(findAll(page.noticeContent, 'img'), [], 'no element is created from a server line');
+	assert.deepEqual(htmlWrites(page.noticeContent).filter((text) => text.includes('server=')), [],
+		'server lines never take the innerHTML path');
+});

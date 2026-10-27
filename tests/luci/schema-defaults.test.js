@@ -11,7 +11,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { loadModule, element: E } = require('./loader');
+const { loadModule, element: E, contentChildren } = require('./loader');
 const { renderList, parseList } = require('./dynamic-list');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -90,7 +90,7 @@ function recorder() {
 	const modules = {
 		baseclass: { extend: object => object }, view: { extend: object => object }, form, uci,
 		ui: { createHandlerFn: () => () => {} },
-		dom: { content: (node, children) => node.replaceChildren(...children) },
+		dom: { content: (node, children) => contentChildren(node, children) },
 		network: {}, 'tools.widgets': { DeviceSelect: form.DynamicList },
 		'aether-proxy.common': { call: async () => ({ ok: true, version: backend.version }) },
 		'aether-proxy.subscriptions-block': {}

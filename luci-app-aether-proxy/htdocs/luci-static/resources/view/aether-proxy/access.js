@@ -160,9 +160,9 @@ return view.extend({
 		};
 		o = s.option(form.DummyValue, '_notice');
 		o.renderWidget = function() {
-			self.notice = E('span', {}, model.unlisted_notice(
+			self.notice = E('span', {}, [ model.unlisted_notice(
 				uci.get('aetherproxy', 'main', 'unlisted_policy') || 'follow',
-				uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn'));
+				uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn') ]);
 			return self.notice;
 		};
 
@@ -306,7 +306,7 @@ return view.extend({
 					.then(() => this.map.reset())
 					.then(() => this.handleModalCancel(modalMap, ev, true))
 					.then(() => self.showWarnings(result.warnings))
-					.catch((e) => self.showModalError(modalMap, E('p', {}, e?.message || String(e))));
+					.catch((e) => self.showModalError(modalMap, E('p', {}, [ e?.message || String(e) ])));
 			},
 			renderSectionAdd: function() { return E([]); },
 			renderRowActions: function(id) {
@@ -382,7 +382,8 @@ return view.extend({
 		o.modalonly = false;
 		o.textvalue = function(sid) {
 			const summary = model.device_summary(uci.get('aetherproxy', sid), self.candidates);
-			return E('span', { title: summary.title, style: 'white-space:nowrap' }, summary.text);
+			/* The summary contains DHCP host names and entered IP/MAC text. */
+			return E('span', { title: summary.title, style: 'white-space:nowrap' }, [ summary.text ]);
 		};
 
 		o = s.option(form.DynamicList, 'ip', _('IP / range / subnet (optional)', 'aether-proxy'));
@@ -442,7 +443,7 @@ return view.extend({
 			});
 		}).catch(function(e) {
 			/* Widget validation failures must remain visible, like stock save. */
-			ui.addNotification(null, E('p', {}, e?.message || String(e)), 'error');
+			ui.addNotification(null, E('p', {}, [ e?.message || String(e) ]), 'error');
 		});
 	},
 
@@ -493,14 +494,14 @@ return view.extend({
 
 	showWarnings: function(warnings) {
 		if (warnings.length)
-			ui.addNotification(null, E('ul', {}, warnings.map((w) => E('li', {}, w.text))), 'warning');
+			ui.addNotification(null, E('ul', {}, warnings.map((w) => E('li', {}, [ w.text ]))), 'warning');
 	},
 
 	showErrors: function(errors, modalMap) {
 		const content = E('div', {}, [
 			E('p', {}, _('The host configuration has %s error(s); nothing was saved.', 'aether-proxy')
 				.replace('%s', errors.length)),
-			E('ul', {}, errors.map((e) => E('li', {}, e.text)))
+			E('ul', {}, errors.map((e) => E('li', {}, [ e.text ])))
 		]);
 		if (modalMap)
 			this.showModalError(modalMap, content);

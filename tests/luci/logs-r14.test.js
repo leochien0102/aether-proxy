@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const modelFile = path.join(RES, 'aether-proxy/model/logs.js');
@@ -149,7 +149,7 @@ test('T10.50 scenarios 1-3: real log view renders revised text safely and keeps 
 			sections: (config, type, cb) => (type === 'node'
 				? [{ '.name': 'n_a', label: unsafe }] : [{ '.name': 's_a', name: '订阅甲' }]).forEach(cb)
 		},
-		dom: { content: (node, children) => node.replaceChildren(...(Array.isArray(children) ? children : [children])) }
+		dom: { content: (node, children) => contentChildren(node, children) }
 	}, { window: { setTimeout() {} }, document: {} });
 	const root = page.render();
 	const events = [

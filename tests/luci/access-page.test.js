@@ -1127,3 +1127,24 @@ test('T10.59 scenario 5: footer Save and Save and Apply accept pre-existing dupl
 		assert.deepEqual(f.calls.notifications, []);
 	}
 });
+
+/* T9.42: a host name comes from the DHCP hints or the user's input, and the
+ * device summary also folds in entered IP/MAC text. It must reach the table as
+ * text nodes: luci-base writes a single string child through innerHTML. */
+function renderTree(node) {
+	return [ node ].concat((node?.childNodes ?? []).flatMap(renderTree));
+}
+
+test('T9.42: a hostile DHCP host name stays literal text in the device summary', async () => {
+	const unsafe = '<img src=x onerror=alert(1)>';
+	const f = fixture([ host('a', 'proxy', { mac: [ MAC ], ip: [ '10.0.0.0/8' ] }) ]);
+	f.hints({ hosts: { [MAC]: { name: unsafe } } });
+	await f.start();
+	const summary = f.option('_devices').textvalue('a');
+	assert.equal(summary.textContent, unsafe + '、10.0.0.0/8');
+	assert.equal(summary.title, unsafe + '、10.0.0.0/8');
+	assert.deepEqual(renderTree(summary).filter((node) => node.tag === 'img'), [],
+		'a hostile name never builds an element');
+	assert.ok(renderTree(summary).some((node) => node.tag === '#text' && node.text.includes(unsafe)),
+		'the name is present as a text node');
+});

@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, createRpc, element } = require('./loader');
+const { loadModule, parsePo, createRpc, element, contentChildren } = require('./loader');
 
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -129,7 +129,7 @@ function view(name, ap, uci, effects) {
 			changes: { apply: async rollback => { effects.push([ 'apply', rollback ]); } },
 			addNotification: () => { effects.push([ 'notification' ]); }
 		},
-		dom: { content: (element, children) => { element.children = children; } },
+		dom: { content: (element, children) => contentChildren(element, children) },
 		'aether-proxy.common': ap,
 		['aether-proxy.model.' + name]: model(name),
 		'aether-proxy.subscriptions-block': {}
