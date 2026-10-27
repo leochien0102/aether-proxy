@@ -2529,6 +2529,10 @@ msgid "Node unavailable; Bypass China is temporarily routing as “%s”."
 msgstr "节点不可用，绕过大陆已临时按「%s」分流"
 
 msgctxt "aether-proxy"
+msgid "Node unavailable; Bypass China is temporarily routing as “%s” (%s)."
+msgstr "节点不可用，绕过大陆已临时按「%s」分流（%s）"
+
+msgctxt "aether-proxy"
 msgid "Proxy only blocked sites when the node is unavailable"
 msgstr "节点不可用时只代理被墙网站"
 

@@ -79,3 +79,12 @@ test('T10.68 scenario 4: DNS endpoints remain tiers and unknown mode arguments s
 	assert.equal(logs.message({ code: 'MODE_RESTORED', args: {} }),
 		'节点已恢复，分流已还原（默认模式：?）');
 });
+
+test('T10.68 review: docs/09 catalog lists both mode events with their parameters', () => {
+	const doc = fs.readFileSync(path.resolve(__dirname, '../../docs/09-logging.md'), 'utf8');
+	const catalog = doc.split('## 事件码目录')[1].split('## logd 容量')[0];
+	const row = catalog.split('\n').find(line => line.includes('`MODE_DEGRADED`'));
+	assert.ok(row, 'MODE_DEGRADED catalog row');
+	for (const part of ['`MODE_RESTORED`', 'warn / notice', '`from`', '`to`', '`mode`'])
+		assert.ok(row.includes(part), part);
+});

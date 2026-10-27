@@ -362,10 +362,13 @@ const MODE_TEXT = {
 function degradation_notice(status, now) {
 	if (status.degraded_mode !== 'gfw')
 		return null;
-	const text = fmt(_('Node unavailable; Bypass China is temporarily routing as “%s”.', 'aether-proxy'),
-		MODE_TEXT.gfw);
-	return typeof status.degraded_since === 'number'
-		? sentences([text, state_duration(now, status.degraded_since)]) : text;
+	/* One sentence with the duration in parentheses: the Chinese text has no
+	   final period, so joining it as two sentences ran the clauses together. */
+	if (typeof status.degraded_since !== 'number')
+		return fmt(_('Node unavailable; Bypass China is temporarily routing as “%s”.', 'aether-proxy'),
+			MODE_TEXT.gfw);
+	return fmt(_('Node unavailable; Bypass China is temporarily routing as “%s” (%s).', 'aether-proxy'),
+		MODE_TEXT.gfw, state_duration(now, status.degraded_since));
 }
 
 function mode_changed(status, configured_mode) {

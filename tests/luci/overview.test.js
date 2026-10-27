@@ -4095,7 +4095,7 @@ function degradedModel(status = DEGRADED_STATUS, mode = 'bypass_cn') {
 test('T10.68 scenario 1: degradation warning uses the mode label and its own duration buckets', () => {
 	for (const [age, duration] of [[45, '45 秒'], [120, '2 分钟'], [7200, '2 小时'], [172800, '2 天']]) {
 		const vm = degradedModel({ ...DEGRADED_STATUS, since: NOW - 900, degraded_since: NOW - age });
-		assert.equal(vm.degradation_notice, DEGRADED_NOTICE + '已持续 ' + duration);
+		assert.equal(vm.degradation_notice, DEGRADED_NOTICE + '（已持续 ' + duration + '）');
 		assert.equal(vm.state_duration_text, '已持续 15 分钟', 'service and degradation clocks are independent');
 	}
 	for (const since of [undefined, null, '123', {}, false]) {
@@ -4103,6 +4103,10 @@ test('T10.68 scenario 1: degradation warning uses the mode label and its own dur
 		assert.equal(vm.degradation_notice, DEGRADED_NOTICE);
 		assert.doesNotMatch(vm.degradation_notice, /已持续/);
 	}
+	// Only the documented override value is presented; unknown values stay silent (review).
+	for (const other of ['global', 'bypass_cn', 'GFW', 1, true])
+		assert.equal(degradedModel({ ...DEGRADED_STATUS, degraded_mode: other }).degradation_notice, null,
+			JSON.stringify(other));
 });
 
 test('T10.68 scenario 1: null, old backend and failed status suppress the degradation warning', () => {
