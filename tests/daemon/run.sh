@@ -568,7 +568,8 @@ assert_no_children "$R4"
 # 5. Node DNS failure enters degraded with DNS service retained and no proxy dataplane.
 R5="$T/sys5"; L5="$T/sys5/calls.log"; make_root "$R5"; : > "$L5"
 STUB_RESOLVE_FAIL=1 start_daemon "$R5" "$L5"
-if wait_for "$R5/var/run/aether-proxy/state.json" 'degraded'; then
+# Match the state value, not the new degraded_mode/degraded_since field names.
+if wait_for "$R5/var/run/aether-proxy/state.json" '"state": "degraded"'; then
 	ok "unresolved node enters degraded"
 else
 	bad "unresolved node enters degraded" "$(cat "$R5/daemon.stderr")"
@@ -585,7 +586,7 @@ R5B="$T/sys5b"; L5B="$T/sys5b/calls.log"; make_root "$R5B"; : > "$L5B"
 FO_CONF="$T/failopen-off-conf"; mkdir -p "$FO_CONF"
 sed "/option enabled '1'/a\\	option fail_open '0'" "$FIX/aetherproxy" > "$FO_CONF/aetherproxy"
 STUB_RESOLVE_FAIL=1 start_daemon "$R5B" "$L5B" --confdir "$FO_CONF"
-if wait_for "$R5B/var/run/aether-proxy/state.json" 'degraded'; then
+if wait_for "$R5B/var/run/aether-proxy/state.json" '"state": "degraded"'; then
 	ok "fail_open=0: unresolved node enters degraded"
 else
 	bad "fail_open=0: unresolved node enters degraded" "$(cat "$R5B/daemon.stderr")"
@@ -771,7 +772,7 @@ for mode in fail malformed delay; do
 	esac
 	version_start=$SECONDS
 	STUB_RESOLVE_FAIL=1 start_daemon "$RV" "$LV"
-	if wait_for "$RV/var/run/aether-proxy/state.json" 'degraded' 240; then
+	if wait_for "$RV/var/run/aether-proxy/state.json" '"state": "degraded"' 240; then
 		ok "version $mode still reaches degraded"
 	else
 		bad "version $mode still reaches degraded" "$(cat "$RV/daemon.stderr")"

@@ -209,7 +209,8 @@ function wait_network(ctx, opts, snapshot, on_signal) {
 	let timeout = max(+(snapshot.main.boot_wait_timeout ?? 0), 0) * 1000;
 	let deadline = started + timeout;
 	let saved = write_state(ctx, { state: 'starting', dns_tier: snapshot.dns.direct_dns_enabled ? 'T2' : 'T1', dns_failsafe: false,
-		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time() });
+		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time(),
+		degraded_mode: null, degraded_since: null });
 	if (!saved.ok)
 		return { ok: false, detail: saved.detail };
 	while (true) {
@@ -417,10 +418,17 @@ function cleanup_run(parsed_opts) {
 		}
 		sleep(1000);
 	}
+	let previous = state.read(run_dir(ctx));
+	if (previous == null)
+		log.event('error', 'FS_FAILED', { op: 'read', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
+			detail: state.error() ?? 'unknown error' });
 	let failures = apply_cleanup(ctx);
-	let saved = write_state(ctx, { state: 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false });
+	let saved = write_state(ctx, { state: 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false,
+		degraded_mode: null, degraded_since: null });
 	if (!saved.ok)
 		push(failures, saved.detail);
+	else if (previous?.degraded_mode == 'gfw')
+		log.event(null, 'MODE_RESTORED', { mode: previous.mode });
 	lock.close();
 	return length(failures) ? { ok: false, code: 1, detail: join('; ', failures) } : { ok: true, code: 0 };
 };
@@ -702,6 +710,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	let initial_state = {
 		state: degraded ? 'degraded' : 'starting', dns_tier: initial_tier, dns_failsafe: false,
 		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
+		degraded_mode: null, degraded_since: null,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
 		components,
 		wan_dns: initial.wan_dns,
@@ -762,13 +771,13 @@ function write_stopping(ctx) {
 		log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
 			detail: state.error() ?? sys.error() ?? 'unknown error' });
 	}
+	return obj;
 };
 
 function shutdown(ctx, children, normal_stop) {
 	let failures = [];
 	// Startup rollback (normal_stop false) is not a stop: its state stays starting/error.
-	if (normal_stop)
-		write_stopping(ctx);
+	let stopping_state = normal_stop ? write_stopping(ctx) : null;
 	// Stop takes priority over one-shot commands and never waits for their lock (docs/04).
 	if (ctx.monitor != null) {
 		ctx.monitor.cancel();
@@ -801,11 +810,16 @@ function shutdown(ctx, children, normal_stop) {
 		if (fs.stat(path) != null && !fs.unlink(path))
 			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs.error() ?? 'unknown error' });
 	}
-	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time() });
+	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time(),
+		degraded_mode: null, degraded_since: null });
 	if (!saved.ok)
 		push(failures, saved.detail);
 	if (normal_stop) {
 		setup_log(ctx);
+		// Stopping exits the runtime override too (docs/02), but never emits a second
+		// restoration when healthy recovery or switch-off already cleared it.
+		if (saved.ok && stopping_state?.degraded_mode == 'gfw')
+			log.event(null, 'MODE_RESTORED', { mode: stopping_state.mode });
 		log.event('notice', 'SERVICE_STOPPED', { mode: ctx.service_mode ?? '', node: ctx.service_node ?? '' });
 	}
 	return failures;
@@ -1056,7 +1070,8 @@ function run(args) {
 	let raw = uci.cursor(opts.confdir);
 	let early = write_state(ctx, { state: 'starting', since: daemon_started_at,
 		dns_tier: raw.get(C.UCI_PACKAGE, 'dns', 'direct_dns_enabled') == '1' ? 'T2' : 'T1',
-		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode') });
+		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode'),
+		degraded_mode: null, degraded_since: null });
 	if (!early.ok)
 		return 1;
 	let pid = fs.readlink(`${C.PROC_DIR}/self`);
@@ -1096,7 +1111,8 @@ function run(args) {
 	function run_monitor(result, children) {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
-		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children, state: result.state });
+		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children,
+			state: result.state, reload: reload.run_live });
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
@@ -1156,25 +1172,14 @@ function run(args) {
 				signal = null;
 				while (monitor_daemon?.busy)
 					uloop.run(C.DAEMON_POLL_MS);
-				// Use live runtime and output hashes; monitor actions may have changed current/.
-				let live = hash_artifacts(ctx, `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`);
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
-				if (live.ok) {
-					base.render_hash = live.hashes;
-					// The referenced lists are not part of current/, so re-reading them now would
-					// already see the edit. Keep the live config hash but the list hashes recorded
-					// when this render was applied (start or last reload).
-					let stored = monitor_daemon.state.render_hash?.chinadns;
-					if (type(stored) == 'string')
-						base.render_hash.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);
-				}
 				let old_node = monitor_daemon.snapshot.main.node;
 				let old_ip = base.node_ip;
 				// Reload pumps uloop while stopping/starting children. Timer callbacks must
 				// not sample the intentional listener gap or mutate current/ mid-transaction.
 				monitor_daemon.busy = true;
-				let changed = reload.run({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children },
+				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children },
 					started_ms);
 				monitor_daemon.busy = false;
 				if (changed.stop) {
@@ -1195,6 +1200,8 @@ function run(args) {
 					monitor_daemon.snapshot = changed.snapshot;
 					monitor_daemon.state = changed.state;
 					monitor_daemon.machine.node_ip = changed.state.node_ip;
+					monitor_daemon.machine.degraded_mode = changed.state.degraded_mode;
+					monitor_daemon.machine.degraded_since = changed.state.degraded_since;
 					subscription_jitter = reconcile_subscription_jitter(ctx,
 						changed.snapshot.subscriptions, subscription_jitter);
 					// docs/10 Dashboard part 2: measure the new route after it is fully applied.
@@ -1229,6 +1236,7 @@ function run(args) {
 		let configuration_error = result.step == 'config';
 		let saved = write_state(ctx, {
 			state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
+			degraded_mode: null, degraded_since: null,
 			last_error: configuration_error ? 'CONFIG_INVALID' : 'START_FAILED',
 			failed_step: result.step,
 			steps: { ...ctx.start_steps },

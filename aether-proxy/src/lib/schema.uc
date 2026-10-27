@@ -48,6 +48,7 @@ const main = [
 	{ name: 'ipv6_filter', type: 'bool', default: true },
 	{ name: 'filter_https_rr', type: 'bool', default: true },
 	{ name: 'fail_open', type: 'bool', default: true },
+	{ name: 'degrade_gfw', type: 'bool', default: true },
 	{ name: 'sniffing', type: 'bool', default: true },
 	{ name: 'log_level', type: 'enum', enum: [ 'error', 'warn', 'notice', 'info', 'debug' ], default: 'notice' },
 	{ name: 'xray_log_level', type: 'enum', enum: [ 'error', 'warning', 'info', 'debug' ], default: 'warning' },

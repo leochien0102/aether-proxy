@@ -133,6 +133,7 @@ export function render(snapshot, ctx) {
 	let data = ctx.data ?? {};
 	let restored = ctx.runtime?.restored ?? {};
 	let node_ip = ctx.runtime?.node_ip;
+	let degraded = ctx.runtime?.degraded_mode == 'gfw';
 
 	let mark = split(C.FWMARK, '/')[0];
 	let quic = main.quic_block == true;
@@ -165,6 +166,8 @@ export function render(snapshot, ctx) {
 
 	// Fixed precedence, independent of UCI order; absent overrides add no output bytes.
 	let host_modes = filter([ 'bypass_cn', 'gfw' ], p => host[p] != null);
+	// During degradation both device modes reference GFW; never emit an unused bypass chain.
+	let chain_modes = degraded && length(host_modes) > 0 ? [ 'gfw' ] : host_modes;
 	let out = [];
 
 	push(out, sprintf('table %s', C.NFT_TABLE));
@@ -227,8 +230,9 @@ export function render(snapshot, ctx) {
 	push(out, `${T}${T}ether saddr @host_proxy_mac goto proxy`);
 
 	for (let p in host_modes) {
-		push(out, `${T}${T}ip saddr @host_${p}4 goto mode_${p}`);
-		push(out, `${T}${T}ether saddr @host_${p}_mac goto mode_${p}`);
+		let target = degraded ? 'gfw' : p;
+		push(out, `${T}${T}ip saddr @host_${p}4 goto mode_${target}`);
+		push(out, `${T}${T}ether saddr @host_${p}_mac goto mode_${target}`);
 	}
 
 	push(out, `${T}${T}ip saddr @host_follow4 goto by_mode`);
@@ -240,9 +244,9 @@ export function render(snapshot, ctx) {
 	push(out, `${T}}`);
 	push(out, '');
 
-	push(out, ...mode_chain('by_mode', main.mode));
+	push(out, ...mode_chain('by_mode', degraded && main.mode == 'bypass_cn' ? 'gfw' : main.mode));
 
-	for (let p in host_modes)
+	for (let p in chain_modes)
 		push(out, ...mode_chain('mode_' + p, p));
 
 	let tp = `meta mark set meta mark | ${mark} tproxy ip to :${C.TPROXY_PORT} accept`;

@@ -277,17 +277,20 @@ function component_metadata(previous, components) {
 
 // Binary overrides and WAN observations need fresh metadata even when outputs do not change.
 // The documented action plan still depends only on rendered outputs, not UCI inputs.
-function retain_metadata(daemon, components, wan_dns) {
+function retain_metadata(daemon, components, wan_dns, metadata) {
 	let previous = daemon.state.components;
 	// WAN can become available with the same address as the fallback, leaving all
 	// artifact hashes unchanged. Still record the observation or every hotplug reloads.
 	let changed = sprintf('%.J', daemon.state.wan_dns) != sprintf('%.J', wan_dns);
+	for (let key, value in metadata)
+		if (daemon.state[key] != value)
+			changed = true;
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
 		if (previous?.[name]?.path != components[name].path)
 			changed = true;
 	if (!changed)
 		return { ok: true };
-	let updated = { ...daemon.state, wan_dns, components: component_metadata(previous, components) };
+	let updated = { ...daemon.state, ...metadata, wan_dns, components: component_metadata(previous, components) };
 	if (!state_file.write(run_dir(daemon), updated))
 		return { ok: false, detail: `cannot update reload metadata: ${state_file.error()}` };
 	daemon.state = updated;
@@ -295,7 +298,7 @@ function retain_metadata(daemon, components, wan_dns) {
 };
 
 function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_artifacts, old_components,
-	old_lan_ifaces, new_lan_ifaces, new_node_id, new_mode, wan_dns, detail) {
+	old_lan_ifaces, new_lan_ifaces, metadata, wan_dns, detail) {
 	let current = `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
 	let previous = `${run_dir(daemon)}/${C.DAEMON_PREVIOUS_DIR}`;
@@ -321,8 +324,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	}
 	let updated = {
 		...daemon.state,
-		node_id: new_node_id,
-		mode: new_mode,
+		...metadata,
 		wan_dns,
 		components: component_metadata(daemon.state.components, components),
 		render_hash: stage_hashes
@@ -369,7 +371,14 @@ function run(daemon, started_ms) {
 	step_started = monotonic_ms();
 	// Resolve first, then render once from the same snapshot/data. Rereading here could
 	// mix configurations or duplicate warnings as well as wasting a full render pass.
-	let runtime = { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {} };
+	// A user reload carries the applied override, including node/mode switches. Only an
+	// explicit monitor request or disabling the switch may remove it (docs/02).
+	let degraded_mode = snapshot.main.degrade_gfw == false ? null :
+		(daemon.degradation_request != null ? daemon.degradation_request.mode : daemon.state.degraded_mode ?? null);
+	let degraded_since = degraded_mode == null ? null :
+		(daemon.state.degraded_mode == degraded_mode ? daemon.state.degraded_since : time());
+	let metadata = { node_id: snapshot.main.node, mode: snapshot.main.mode, degraded_mode, degraded_since };
+	let runtime = { node_ip, dns_tier: daemon.state.dns_tier ?? 'T2', restored: {}, degraded_mode };
 	detail_started = monotonic_ms();
 	let built = pipeline.render(loaded, runtime);
 	record_detail(detail, 'render', detail_started);
@@ -418,7 +427,7 @@ function run(daemon, started_ms) {
 	if (!length(rough_plan)) {
 		if (!discard_stage(daemon, stage))
 			return failure(daemon, 'staging_cleanup', `cannot discard ${stage}`);
-		let retained = retain_metadata(daemon, validated.components, loaded.wan_dns);
+		let retained = retain_metadata(daemon, validated.components, loaded.wan_dns, metadata);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
 		return { ok: true, actions: [], snapshot, state: daemon.state };
@@ -498,7 +507,7 @@ function run(daemon, started_ms) {
 
 	if (!length(actions)) {
 		discard_stage(daemon, stage);
-		let retained = retain_metadata(daemon, components, loaded.wan_dns);
+		let retained = retain_metadata(daemon, components, loaded.wan_dns, metadata);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
 		daemon.ctx.lan_ifaces = snapshot.main.lan_ifaces ?? [];
@@ -511,7 +520,7 @@ function run(daemon, started_ms) {
 	daemon.state = { ...daemon.state, node_ip };
 	step_started = monotonic_ms();
 	let applied = apply_plan(daemon, actions, artifacts, components, hashes, old_artifacts, old_components,
-		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], snapshot.main.node, snapshot.main.mode, loaded.wan_dns, detail);
+		old_lan_ifaces, snapshot.main.lan_ifaces ?? [], metadata, loaded.wan_dns, detail);
 	if (!applied.ok) {
 		daemon.state = old_state;
 		daemon.ctx.dnsmasq_instance = old_instance;
@@ -529,4 +538,30 @@ function run(daemon, started_ms) {
 	return { ok: true, actions, snapshot, state: applied.state };
 };
 
-export { plan, run };
+// Both user and monitor reloads compare installed outputs. The caller owns busy and,
+// for monitor actions, the global lock; do not recursively acquire that same flock.
+function run_live(daemon, started_ms, degradation_request) {
+	let live = apply.artifact_hashes(daemon.ctx, `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`);
+	if (!live.ok)
+		return failure(daemon, 'hash_current', live.detail);
+	let stored = daemon.state.render_hash?.chinadns;
+	if (type(stored) == 'string')
+		live.hashes.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);
+	let old_mode = daemon.state.degraded_mode ?? null;
+	let working = { ...daemon, degradation_request,
+		state: { ...daemon.state, render_hash: live.hashes } };
+	let result = run(working, started_ms);
+	if (result.ok && !result.stop) {
+		let mode = result.state.degraded_mode ?? null;
+		if (old_mode != mode) {
+			setup_log(daemon);
+			if (mode == 'gfw')
+				log.event(null, 'MODE_DEGRADED', { from: result.state.mode, to: 'gfw' });
+			else
+				log.event(null, 'MODE_RESTORED', { mode: result.state.mode });
+		}
+	}
+	return result;
+};
+
+export { plan, run, run_live };

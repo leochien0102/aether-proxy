@@ -156,6 +156,7 @@ function runtime_for(daemon, tier, node_ip, restored) {
 	return {
 		node_ip: node_ip ?? daemon.machine.node_ip ?? null,
 		dns_tier: tier ?? daemon.machine.dns_tier,
+		degraded_mode: daemon.state.degraded_mode ?? null,
 		restored: restored ?? {}
 	};
 };
@@ -280,6 +281,27 @@ function update_node_ip(daemon, machine, done) {
 };
 
 function run_action(daemon, machine, name, done) {
+	if (name == 'set_degraded_mode') {
+		// Inject the reload entry to avoid a module cycle (reload already uses monitor's
+		// readiness check). It stages, validates and rolls back exactly like user reloads.
+		if (daemon.reload == null) {
+			done('missing degradation reload handler');
+			return;
+		}
+		let live = { ...daemon, state: { ...daemon.state, dns_tier: machine.dns_tier, node_ip: machine.node_ip } };
+		let changed = daemon.reload(live, null, { mode: machine.degraded_mode });
+		if (!changed.ok || changed.stop) {
+			done(changed.detail ?? 'service stop requested during degradation reload');
+			return;
+		}
+		daemon.state = changed.state;
+		daemon.snapshot = changed.snapshot;
+		machine.node_ip = changed.state.node_ip;
+		machine.degraded_mode = changed.state.degraded_mode;
+		machine.degraded_since = changed.state.degraded_since;
+		done(null);
+		return;
+	}
 	if (name == 'nft_reload') {
 		let r = action_nft_reload(daemon, machine);
 		done(r.ok ? null : r.detail);
@@ -337,6 +359,8 @@ function persist_state(daemon, machine) {
 		dns_tier: machine.dns_tier,
 		dns_failsafe: machine.dns_failsafe,
 		node_ip: machine.node_ip,
+		degraded_mode: machine.degraded_mode,
+		degraded_since: machine.degraded_since,
 		since: machine.since,
 		last_probe: machine.last_probe,
 		monitor: machine
@@ -435,6 +459,8 @@ initial_state = (service, now) => {
 		t2_retry_pending: false,
 		last_node_refresh: now,
 		node_ip: service?.node_ip ?? null,
+		degraded_mode: service?.degraded_mode ?? null,
+		degraded_since: service?.degraded_since ?? null,
 		last_probe: service?.last_probe ?? null,
 		since: service?.since ?? now
 	};
@@ -466,6 +492,8 @@ next = (state, obs, cfg) => {
 		t2_retry_pending: old.t2_retry_pending == true,
 		last_node_refresh: old.last_node_refresh ?? now,
 		node_ip: old.node_ip ?? null,
+		degraded_mode: old.degraded_mode ?? null,
+		degraded_since: old.degraded_since ?? null,
 		last_probe: old.last_probe ?? null,
 		since: old.since ?? now
 	};
@@ -635,6 +663,24 @@ next = (state, obs, cfg) => {
 	}
 	if (out.state != previous_service_state)
 		out.since = now;
+
+	// Last action: no later failure may discard an already applied mode transition.
+	// Test the sustained health verdict, not just its edge: a failed transaction retries
+	// next round, and a never-healthy startup can already be in `degraded` (docs/02).
+	let target = out.degraded_mode;
+	let has_targets = cfg.main.mode == 'bypass_cn' ||
+		length(filter(cfg.hosts ?? [], h => h.enabled != false && h.policy == 'bypass_cn')) > 0;
+	if (cfg.main.degrade_gfw == false || out.state == 'running')
+		target = null;
+	else if (cfg.main.degrade_gfw != false && obs.xray_listening == true && out.state != 'failsafe') {
+		if (out.proxy_fail_count >= fail_threshold && has_targets)
+			target = 'gfw';
+	}
+	if (target != out.degraded_mode) {
+		out.degraded_mode = target;
+		out.degraded_since = target == null ? null : now;
+		action('set_degraded_mode');
+	}
 
 	return { state: out, actions, events };
 };
