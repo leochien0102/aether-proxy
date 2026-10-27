@@ -244,7 +244,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 
 | 故障 | 用户可见的结果 |
 |---|---|
-| 节点不通（Xray 存活） | `degrade_gfw=1`（默认）：临时按仅被墙分流——被墙站点打不开，其余境外与国内正常；`degrade_gfw=0`：代理目标访问失败。DNS 降到 T2/T3 |
+| 节点不通（Xray 存活） | 绕过大陆且 `degrade_gfw=1`（默认）：临时按仅被墙分流——被墙站点打不开，其余境外与国内正常；全局、仅被墙或 `degrade_gfw=0`：代理目标访问失败。DNS 降到 T2/T3 |
 | Xray 崩溃且 procd 无法拉起 | `fail_open=1`：全部直连（被墙站点打不开，其余正常）；`fail_open=0`：代理目标访问失败 |
 | chinadns-ng 崩溃 | DNS 回到用户原配置（ISP DNS），分流精度下降，网络可用 |
 | dnsmasq 被用户重启 | conf-dir 片段仍在，自动恢复对接 |

@@ -74,12 +74,13 @@ MAC 匹配用 `ether saddr`，只对在二层直连 LAN 网桥的主机有效（
 - **开关**：`main.degrade_gfw`（默认 1，[05](05-config.md)）。为 0 时行为同以前。
 - **进入**：monitor 的代理健康检测从健康（或从未健康）变为**不健康**（连续 `fail_threshold` 次失败，[07](07-probe.md)），且 Xray 存活、不在 `failsafe`。启动以来从未健康过的情形同样适用（节点开机即不通时网络不至于全断）。
 - **退出**：健康检测恢复为健康（连续 `recover_threshold` 次成功）；用户停止服务；开关在运行中改为 0（随该次重载退出）。
-- **作用范围**（降级期间的**实际生效**模式，配置不变）：
-  - 默认模式为 `bypass_cn` 或 `global` → 按 `gfw` 渲染 `by_mode`；默认模式本来就是 `gfw` → 不变。
-  - 设备覆盖为 `bypass_cn` 或 `global` 的主机 → 按 `gfw` 处理（`bypass_cn` 覆盖走 `mode_gfw`；`global` 覆盖原本直接 `goto proxy`，降级期间同样改走 `mode_gfw`）。
-  - 主机策略 `proxy`（强制代理）与 `direct` **不变**：用户明确要求它们一律走代理 / 直连。
-  - 目的地例外（`direct_ip4`/`udirect4`/`proxy_ip4`/`uproxy4`）、游戏模式、QUIC 拒绝不变。
-  - 没有任何目标需要改变（默认 `gfw`、没有 `bypass_cn`/`global` 覆盖）时什么都不做、不记事件。
+- **作用范围**（降级期间的**实际生效**模式，配置不变；2026-10-27 复核 T9.40 时修订，**只降绕过大陆**）：
+  - 默认模式为 `bypass_cn` → 按 `gfw` 渲染 `by_mode`；默认模式为 `gfw` 或 `global` → 不变。
+  - 设备覆盖为 `bypass_cn` 的主机 → 改走 `mode_gfw`；其余设备策略不变。
+  - **全局一律不降**：默认模式 `global` 与设备「全局」（`policy=proxy`，页面上没有单独的「强制代理」）。全局的意义是「绝不直连」——海外账号防风控、以海外身份测试、隐私、泄漏检查；降级会让没被墙的站点用国内 IP 直连，违背初衷。
+  - `direct`、目的地例外（`direct_ip4`/`udirect4`/`proxy_ip4`/`uproxy4`）、游戏模式、QUIC 拒绝不变。
+  - 没有任何目标需要改变（默认模式不是 `bypass_cn`、也没有 `bypass_cn` 设备覆盖）时什么都不做、不记事件。
+  - 默认模式为 `global` 而有 `bypass_cn` 设备覆盖时，降级后这些设备走 `mode_gfw`，chinadns-ng 要像有 `gfw` 设备覆盖时一样填充 `gfw4`。
 - **实现**：同「切换默认模式」的重载路径（nft 整表替换 + 必要时重启 chinadns-ng，不重启 Xray，约 2 秒），渲染上下文多一个运行时覆盖 `degraded_mode: "gfw"`，**不写 UCI**。
   降级期间用户的重载、切换节点、切换模式照常进行，渲染时继续带着覆盖，直到退出条件成立。拿不到全局锁时本轮跳过、下一轮再试（同 04「monitor 循环」）。
 - **状态**：`state.json`/`status` 增加 `degraded_mode`（`"gfw"` 或 `null`）与 `degraded_since`。**`mode` 仍是配置并已应用的默认模式**——概览页靠 `mode` ≠ `main.mode` 判断「正在切换」，降级不能改它（10「概览页：默认模式下拉」）。
