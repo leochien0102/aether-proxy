@@ -31,10 +31,5 @@ config host
 	list mac 'AA-BB-CC-DD-EE-19'
 
 config host
-	option policy 'bypass_cn'
-	option udp '1'
-	list ip '192.168.19.0/24'
-
-config host
 	option policy 'proxy'
 	list ip '192.168.20.1'

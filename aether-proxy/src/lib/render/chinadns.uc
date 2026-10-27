@@ -36,8 +36,9 @@ function trust_upstreams(dns, tier, china) {
 export function render(snapshot, ctx) {
 	let main = snapshot?.main ?? {};
 	let dns = snapshot?.dns ?? {};
-	// docs/02: temporary routing uses GFW lists too, without changing the DNS tier.
-	let mode = ctx?.runtime?.degraded_mode == 'gfw' ? 'gfw' : main.mode;
+	// docs/02: only bypass_cn degrades; global must never allow unintended direct traffic.
+	let degraded = ctx?.runtime?.degraded_mode == 'gfw';
+	let mode = degraded && main.mode == 'bypass_cn' ? 'gfw' : main.mode;
 	let paths = ctx?.paths ?? {};
 	// docs/03 "直连境外 DNS（可选）": T2 is opt-in, including bootstrapping.
 	let tier = ctx?.runtime?.dns_tier ?? (dns.direct_dns_enabled ? 'T2' : 'T1');
@@ -48,8 +49,9 @@ export function render(snapshot, ctx) {
 	let china = expand_china_dns(dns.china_dns, ctx?.wan_dns);
 	let direct = dns.direct_dns_enabled ? (dns.direct_dns ?? []) : china;
 	let trust = trust_upstreams(dns, tier, china);
-	// Device overrides share default-mode DNS; degradation changes that effective default.
-	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false && h.policy == 'gfw')) > 0;
+	// Global DNS still needs to fill gfw4 for bypass_cn devices temporarily using mode_gfw.
+	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false &&
+		(h.policy == 'gfw' || (degraded && h.policy == 'bypass_cn')))) > 0;
 	let out = [];
 
 	// A line that needs a path is skipped when the caller did not supply it.

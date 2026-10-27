@@ -11,6 +11,7 @@
   "ipv6_filter": true,
   "filter_https_rr": true,
   "fail_open": true,
+  "degrade_gfw": true,
   "sniffing": true,
   "log_level": "notice",
   "xray_log_level": "warning",

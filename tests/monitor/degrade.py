@@ -84,7 +84,9 @@ exec "$HOST_SHA256" "$@"
 			text += f"\nconfig node '{NODE_B}'\n\toption protocol 'trojan'\n\toption security 'tls'\n"
 			text += "\toption address 'second.example.com'\n\toption port '443'\n\toption password 'other'\n"
 			if hosts:
-				for policy, ip in (('bypass_cn', '10'), ('proxy', '11'), ('direct', '12')):
+				policies = (('proxy', '11'),) if hosts == 'proxy' else (
+					('bypass_cn', '10'), ('proxy', '11'), ('direct', '12'))
+				for policy, ip in policies:
 					text += f"\nconfig host\n\toption policy '{policy}'\n\tlist ip '192.168.1.{ip}'\n"
 			self.config.write_text(text)
 			(self.root / 'var/etc/dnsmasq.conf.test').write_text(
@@ -166,7 +168,7 @@ exec "$HOST_SHA256" "$@"
 				and s['dns_tier'] == 'T3'
 				and 'default-tag chn' in (self.run / 'current/chinadns.conf').read_text())
 
-	for mode in ('bypass_cn', 'global'):
+	for mode in ('bypass_cn',):
 		f = Fixture(mode, mode)
 		with f.daemon() as child:
 			original = f.nft()
@@ -214,8 +216,10 @@ exec "$HOST_SHA256" "$@"
 			f.state()['state'] == 'stopped' and f.state()['degraded_mode'] is None
 			and f.state()['degraded_since'] is None)
 
-	for name, mode, disabled in (('no-target', 'gfw', False), ('disabled', 'global', True)):
-		f = Fixture(name, mode, disabled=disabled)
+	for name, mode, disabled, hosts in (
+			('no-target', 'gfw', False, False), ('disabled', 'bypass_cn', True, False),
+			('global-no-target', 'global', False, False), ('global-proxy', 'global', False, 'proxy')):
+		f = Fixture(name, mode, disabled=disabled, hosts=hosts)
 		with f.daemon() as child:
 			original = f.nft()
 			loads = f.count('nft -f ')
@@ -224,6 +228,39 @@ exec "$HOST_SHA256" "$@"
 				f.state()['state'] == 'degraded' and f.state()['degraded_mode'] is None
 				and f.nft() == original and f.count('nft -f ') == loads
 				and not f.events('MODE_DEGRADED') and not f.events('MODE_RESTORED'))
+			if mode == 'global':
+				check(name + ' keeps global DNS and null degradation timestamps',
+					'default-tag gfw\n' in (f.run / 'current/chinadns.conf').read_text()
+					and 'add-taggfw-ip' not in (f.run / 'current/chinadns.conf').read_text()
+					and f.state()['mode'] == 'global' and f.state()['degraded_since'] is None)
+
+	f = Fixture('global-bypass-host', 'global', hosts=True)
+	with f.daemon() as child:
+		original = f.nft()
+		starts = f.count('xray run -c ')
+		xray_pid = (f.run / 'xray.pid').read_text()
+		f.unhealthy(child)
+		gfw_body = ('\t\tip daddr @proxy_ip4 goto proxy\n\t\tip daddr @uproxy4 goto proxy\n'
+			'\t\tip daddr @gfw4 goto proxy\n\t\tip daddr @gfw_static4 goto proxy\n')
+		expected = original.replace('mode_bypass_cn', 'mode_gfw').replace(
+			chain(original, 'mode_bypass_cn'), gfw_body)
+		check('global bypass device alone changes nft to mode_gfw while proxy and other rules stay exact',
+			f.nft() == expected and '@host_proxy4 goto proxy' in f.nft()
+			and f.state()['mode'] == 'global' and f.state()['degraded_mode'] == 'gfw'
+			and f.state()['degraded_since'] > 0)
+		dns = (f.run / 'current/chinadns.conf').read_text()
+		check('global bypass device fills gfw4 without changing global DNS default or restarting Xray',
+			'default-tag gfw\n' in dns and 'add-taggfw-ip inet@aetherproxy@gfw4,null\n' in dns
+			and 'gfwlist-file ' in dns and len(f.events('MODE_DEGRADED')) == 1
+			and f.events('MODE_DEGRADED')[0]['args'] == {'from': 'global', 'to': 'gfw'}
+			and f.count('xray run -c ') == starts and (f.run / 'xray.pid').read_text() == xray_pid)
+		(f.root / 'health-fail').unlink()
+		f.tick(child)
+		f.tick(child)
+		check('global bypass device recovery restores exact nft and removes temporary gfw4 filling',
+			f.nft() == original and f.state()['degraded_mode'] is None
+			and 'add-taggfw-ip' not in (f.run / 'current/chinadns.conf').read_text()
+			and len(f.events('MODE_RESTORED')) == 1)
 
 	f = Fixture('gfw-bypass-host', 'gfw', hosts=True)
 	with f.daemon() as child:
@@ -258,11 +295,19 @@ exec "$HOST_SHA256" "$@"
 		check('node switch retains applied override and original since',
 			f.state()['degraded_mode'] == 'gfw' and f.state()['degraded_since'] == since
 			and '@gfw4 goto proxy' in chain(f.nft(), 'by_mode'))
-		f.config.write_text(f.config.read_text().replace("option mode 'bypass_cn'", "option mode 'global'"))
-		f.reload(child, lambda: f.state().get('mode') == 'global')
+		before_mode_switch = f.nft()
+		f.config.write_text(f.config.read_text().replace("option mode 'bypass_cn'", "option mode 'gfw'"))
+		f.reload(child, lambda: f.state().get('mode') == 'gfw')
 		check('mode switch with byte-identical degraded artifacts updates mode but retains override',
 			f.state()['degraded_mode'] == 'gfw' and f.state()['degraded_since'] == since
+			and f.nft() == before_mode_switch
 			and len(f.events('MODE_DEGRADED')) == 1 and not f.events('MODE_RESTORED'))
+		f.config.write_text(f.config.read_text().replace("option mode 'gfw'", "option mode 'global'"))
+		f.reload(child, lambda: f.state().get('mode') == 'global')
+		check('mode switch to global keeps bypass device degraded but never degrades global default',
+			f.state()['degraded_mode'] == 'gfw' and f.state()['degraded_since'] == since
+			and '@gfw4 goto proxy' not in chain(f.nft(), 'by_mode')
+			and '@host_bypass_cn4 goto mode_gfw' in f.nft() and '@host_proxy4 goto proxy' in f.nft())
 		f.config.write_text(f.config.read_text().replace(
 			"option enabled '1'", "option enabled '1'\n\toption degrade_gfw '0'"))
 		f.reload(child, lambda: f.state().get('degraded_mode') is None and len(f.events('MODE_RESTORED')) == 1)
@@ -271,7 +316,7 @@ exec "$HOST_SHA256" "$@"
 			and '@host_bypass_cn4 goto mode_bypass_cn' in f.nft()
 			and len(f.events('MODE_RESTORED')) == 1)
 
-	f = Fixture('locked-and-failed', 'global')
+	f = Fixture('locked-and-failed', 'bypass_cn')
 	with f.daemon() as child:
 		(f.root / 'health-fail').touch()
 		f.tick(child)

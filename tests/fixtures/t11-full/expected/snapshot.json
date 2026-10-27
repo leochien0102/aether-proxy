@@ -13,6 +13,7 @@
     "ipv6_filter": false,
     "filter_https_rr": false,
     "fail_open": false,
+    "degrade_gfw": true,
     "sniffing": false,
     "log_level": "debug",
     "xray_log_level": "info",

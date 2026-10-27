@@ -150,7 +150,7 @@ export function render(snapshot, ctx) {
 		if (h.enabled == false)
 			continue;
 
-		if (h.policy in [ 'bypass_cn', 'gfw', 'global' ])
+		if (h.policy in [ 'bypass_cn', 'gfw' ])
 			host[h.policy] ??= { ip: [], mac: [] };
 
 		let pol = host[h.policy] ?? host.follow;
@@ -165,11 +165,9 @@ export function render(snapshot, ctx) {
 	}
 
 	// Fixed precedence, independent of UCI order; absent overrides add no output bytes.
-	let host_modes = filter([ 'bypass_cn', 'gfw', 'global' ], p => host[p] != null);
-	let gfw_chain = degraded && length(host_modes) > 0;
-	// TODO(design): docs/02 mentions a distinct global override, but docs/05 only accepts
-	// proxy (which must never degrade). Keep proxy intact; handle global only if supplied
-	// explicitly in a renderer snapshot, without inventing a new persisted policy.
+	let host_modes = filter([ 'bypass_cn', 'gfw' ], p => host[p] != null);
+	// During degradation both device modes reference GFW; never emit an unused bypass chain.
+	let chain_modes = degraded && length(host_modes) > 0 ? [ 'gfw' ] : host_modes;
 	let out = [];
 
 	push(out, sprintf('table %s', C.NFT_TABLE));
@@ -246,9 +244,9 @@ export function render(snapshot, ctx) {
 	push(out, `${T}}`);
 	push(out, '');
 
-	push(out, ...mode_chain('by_mode', degraded ? 'gfw' : main.mode));
+	push(out, ...mode_chain('by_mode', degraded && main.mode == 'bypass_cn' ? 'gfw' : main.mode));
 
-	for (let p in (gfw_chain ? [ 'gfw' ] : host_modes))
+	for (let p in chain_modes)
 		push(out, ...mode_chain('mode_' + p, p));
 
 	let tp = `meta mark set meta mark | ${mark} tproxy ip to :${C.TPROXY_PORT} accept`;

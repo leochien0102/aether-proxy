@@ -668,8 +668,8 @@ next = (state, obs, cfg) => {
 	// Test the sustained health verdict, not just its edge: a failed transaction retries
 	// next round, and a never-healthy startup can already be in `degraded` (docs/02).
 	let target = out.degraded_mode;
-	let has_targets = cfg.main.mode in [ 'bypass_cn', 'global' ] ||
-		length(filter(cfg.hosts ?? [], h => h.enabled != false && h.policy in [ 'bypass_cn', 'global' ])) > 0;
+	let has_targets = cfg.main.mode == 'bypass_cn' ||
+		length(filter(cfg.hosts ?? [], h => h.enabled != false && h.policy == 'bypass_cn')) > 0;
 	if (cfg.main.degrade_gfw == false || out.state == 'running')
 		target = null;
 	else if (cfg.main.degrade_gfw != false && obs.xray_listening == true && out.state != 'failsafe') {
