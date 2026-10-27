@@ -157,7 +157,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 切换节点不会让局域网连不上设备，LuCI 的回滚保护在这里没有作用；而 LuCI 的应用还会把会话里**所有**暂存的改动一起提交。所以改为由后端直接切换：
 
 - `node use <id>`：`<id>` 必须是已存在的 `node` 段，否则 `USAGE`（退出码 2）。读当前 `main.node`；相同 → `{ "ok": true, "node": <id>, "previous": <id>, "reload": false }`，什么都不做。
-  不同 → 用 `uci` 写 `main.node` 并 `commit aetherproxy`（只改这一个选项；LuCI 会话中暂存的改动在 rpcd 的会话目录里，不会被带上），
+  不同 → **先预检**（2026-10-27 定，交叉审查 B-F1、复核 Q5）：用目标节点生成 Xray 配置并 `xray run -test`，失败 → 不写配置，返回 `{ "ok": false, "code": "CONFIG_INVALID", "detail": <Xray 的错误摘要> }`（退出码 1）；Xray 不存在或版本未知时跳过预检、照旧写入（服务启动时的检查兜底）。预检通过才用 `uci` 写 `main.node` 并 `commit aetherproxy`（只改这一个选项；LuCI 会话中暂存的改动在 rpcd 的会话目录里，不会被带上），
   服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`/`failsafe`）时执行 `/etc/init.d/aether-proxy reload`（init 只发 SIGHUP，04「重载」），**不等重载完成**就返回
   `{ "ok": true, "node": <id>, "previous": <原值>, "reload": true }`；服务没在运行时只写配置，`reload: false`（下次启动用新节点）。不记事件（重载本身记 `RELOAD_APPLIED`，失败照 04 记）。
 - 写配置失败 → `FS_FAILED`（`op: uci-commit`），退出码 1；发重载失败 → `CMD_FAILED`，退出码 1（配置已改，下次重载或启动会生效）。
@@ -1288,6 +1288,7 @@ UI 规则：
   | 更新页回滚 | 回滚 <包名> | 回滚（destructive） | 原 `row.confirmation` |
   确认框是异步的：调用处等 `ap.confirm` 的结果再继续；取消时的行为与原来相同（概览页关闭「启用」时取消 → 开关恢复为开、不改 UCI）。
 - 前端同时发出的请求不超过 2 个（为 uhttpd 的 `max_requests 3` 留出余量）。
+- **动态文本一律按文本渲染**（2026-10-27 定，交叉审查 luci F1/F3、复核 D-疑问2）：LuCI 的 `E(tag, attrs, <字符串>)` 与 `dom.content(node, <字符串>)` 把**单个字符串当 HTML**（`innerHTML`），只有数组里的字符串才成为文本节点（luci-base `luci.js`）。所以凡是来自配置、订阅、分享链接、DHCP、事件参数、日志、后端回复的字符串，传给 `E()`/`dom.content()` 时必须放进数组（`E('td', {}, [ name ])`）或用 `textContent`；只有页面自己写死的标记才允许单值字符串。`form` 控件的 `textvalue`/`cfgvalue` 返回字符串时同样当 HTML，要先转义或返回节点。测试替身必须照真实语义（单值字符串 = HTML），并有用例断言 `<img src=x onerror=…>` 之类的名称显示为原文、不产生元素。
 - **样式**（2026-10-20 定，T10.3 起；跨页面问题 X7）：页面要在用户的任意主题下可用（H28K 用第三方主题 `proton2025`，另装 bootstrap、argon-plus），所以：
   布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
   和**相对**字号（`em`），不写 `px` 字号；颜色只用主题的 CSS 变量，并带上回退值：`var(--success-color-high, #2f855a)`、`var(--warning-color, #b7791f)`、`var(--error-color-high, #c53030)`

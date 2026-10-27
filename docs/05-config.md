@@ -67,7 +67,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `enabled` | bool | `1` | |
 | `name` | 字符串 | — | |
-| `url` | URL | — | 必填 |
+| `url` | URL | — | 必填；格式与后端 `url` 校验相同，页面保存前即时检查（2026-10-27 定，复核 Q3） |
 | `user_agent` | 字符串 | 空 = 跟随 `sub.user_agent` | 设了就只用于这个订阅 |
 | `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | 空 = 跟随 `sub.fetch_via` | 同上 |
 | `interval_hours` | int ≥ 0 | 空 = 跟随 `sub.interval_hours` | 同上 |
@@ -141,7 +141,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|
 | `url` | `https://www.gstatic.com/generate_204` | 代理健康检测 |
 | `expect_code` | `204` | |
-| `timeout` | `5` | 秒 |
+| `timeout` | `5` | 秒，1–30（2026-10-27 定，复核 Q4：页面与 rpcd 的等待预算按 30 秒加余量，不再无上限） |
 | `fail_threshold` | `3` | 连续失败几次判为不健康 |
 | `recover_threshold` | `2` | 连续成功几次判为健康 |
 | `node_timeout` | `3` | 节点 TCP 检测超时，秒 |

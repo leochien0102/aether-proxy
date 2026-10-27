@@ -85,7 +85,7 @@
 3. `nft delete table inet aetherproxy`；删除 ip rule / route。重复的 ip rule（异常退出后再次启动可能留下）逐条删除，**最多 16 次**：正常只有 0～1 条；上限只是防止 `ip rule del` 报成功而规则仍在时陷入死循环，超过仍有残留就报失败（2026-10-17 补理由，backlog B9）。
 4. 删除 dnsmasq 片段并重启 dnsmasq
 5. 停止 chinadns-ng、Xray
-6. 状态写为 `stopped`
+6. 状态写为 `stopped`（只写停止相关的字段：`state`、`since` 等；组件版本、节点、模式、哈希不保留——概览页的组件表走独立的 `components` 接口；2026-10-27 定，复核 Q2）
 
 ### 进程模型（已定）
 
@@ -237,6 +237,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
   文件格式：`{ "gfw4": ["1.2.3.4", …], "udirect4": […], "uproxy4": […] }`，元素为裸 IPv4 字符串（不带超时等属性），即渲染上下文 `ctx.runtime.restored` 的格式。
 - `nft -j` 的元素格式：普通元素是裸值（`"1.2.3.4"`、`{"prefix":…}`、`{"range":[…]}`），只有带超时、计数器、注释的元素才包成 `{"elem":{"val":…}}`。两种都要解析（真机验收时发现只认包装格式导致导出全部失败）。
 - 恢复：渲染 nft 文件时如果存在 `sets.save`，把元素作为集合初值写进去。**`nft -f` 加载成功之后才删除 `sets.save`**（2026-10-17 改，backlog B9）：之前解析成功即删除，加载失败后的退避重试只能用空集合重建，导出的动态集合全部丢失。启动与 monitor 的「表丢失后重建」两处都按此顺序。
+  **`sets.save` 损坏或不认识**（不是 JSON、结构不对、元素不合法；2026-10-27 定，复核 Q1）：把它改名为 `sets.save.bad`（只留一份，覆盖旧的），记 WARN `SETS_RESTORE_FAILED {detail}`，用空集合继续启动——可用性优先，坏文件留作排查。文件不存在照旧按空集合，不记事件。
 - 会导出的地方：stop、`cleanup`（表还在时，兜底 daemon 被 SIGKILL 的情况；导出失败只记日志，不阻断清理）、reload（整表替换）、failsafe 恢复。
   **停止时表已不存在**（被 cleanup、`fw4 flush` 或他人删掉）= 没有集合可导出：跳过导出，不记 `CMD_FAILED`。停止过程中的其他失败照记 `CMD_FAILED`，**不记 `START_FAILED`**（那是启动失败的事件码；2026-10-23，r13 窗口）。
 
