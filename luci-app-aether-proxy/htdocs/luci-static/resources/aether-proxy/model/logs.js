@@ -10,6 +10,7 @@
  * of CMD_FAILED when no diagnostic was captured. T10.60 (docs/10 r17) separates
  * conflicts from missing requirements and translates daemon failure steps.
  * T10.64 (docs/10 r18) encloses the failure step and its context in parentheses.
+ * T10.68 (docs/10 B19) maps MODE_DEGRADED endpoints as modes, not DNS tiers.
  * Templates use only catalog parameters.
  */
 const TEMPLATES = {
@@ -34,6 +35,9 @@ const TEMPLATES = {
 	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node}', 'aether-proxy'),
 	PROXY_HEALTHY: _('Proxy healthy: {latency_ms} ms', 'aether-proxy'),
 	PROXY_UNHEALTHY: _('Proxy unhealthy: {fails} failures', 'aether-proxy'),
+	MODE_DEGRADED: _('Node unavailable; Bypass China temporarily routes as “{to}” (default mode: {from})',
+		'aether-proxy'),
+	MODE_RESTORED: _('Node recovered; routing restored (default mode: {mode})', 'aether-proxy'),
 	DNS_TIER_CHANGED: _('DNS changed from {from} to {to} (reason: {reason})', 'aether-proxy'),
 	XRAY_DOWN_FAILOPEN: _('Xray down on port {port}; traffic goes directly', 'aether-proxy'),
 	XRAY_DOWN: _('Xray down on port {port}', 'aether-proxy'),
@@ -206,7 +210,9 @@ function message(event, names) {
 			return start_step(args[key]);
 		if (event.code === 'START_FAILED' && key === 'detail')
 			return start_detail(args[key]);
-		if (key === 'mode' && Object.prototype.hasOwnProperty.call(MODES, args[key]))
+		// DNS_TIER_CHANGED also uses from/to, but those values are tier codes.
+		const mode_param = key === 'mode' || (event.code === 'MODE_DEGRADED' && ['from', 'to'].includes(key));
+		if (mode_param && Object.prototype.hasOwnProperty.call(MODES, args[key]))
 			return MODES[args[key]];
 		if (names && ['node', 'from_node', 'to_node', 'sub'].includes(key))
 			return name_text(args, key, names);

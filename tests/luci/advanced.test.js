@@ -378,7 +378,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 
 	const expected = {
 		intercept: [ 'lan_ifaces', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
-			'fail_open', 'sniffing' ],
+			'fail_open', 'degrade_gfw', 'sniffing' ],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
 			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],
@@ -416,7 +416,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	}
 
 	for (const field of [ 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
-		'fail_open', 'sniffing' ])
+		'fail_open', 'degrade_gfw', 'sniffing' ])
 		assert.equal(created.find((o) => o.field == field).default, '1', field + ': defaults on');
 
 	assert.equal(created.find((o) => o.field == 'log_level').default, 'notice');
@@ -443,5 +443,52 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 		const text = fs.readFileSync(file, 'utf8');
 		for (const match of text.matchAll(/_\('([^']*)', 'aether-proxy'\)/g))
 			assert.ok(PO[match[1]], 'missing translation: ' + match[1]);
+	}
+});
+
+/* T10.68 / docs/10 B19: declare the switch in the interception tab and use
+ * the existing X15 save adapter, including reverting an explicit override. */
+test('T10.68 scenario 3: degrade_gfw is an enabled Flag immediately after fail_open with the required wording',
+async () => {
+	const model = load_model();
+	const { form, created } = build_form();
+	const view = loadModule(VIEW, {
+		view: { extend: o => o }, form, uci: {},
+		'tools.widgets': { DeviceSelect: 'DeviceSelect' }, 'aether-proxy.model.advanced': model
+	}, { window: {}, document: {} });
+	await view.render();
+	const index = created.findIndex(o => o.field === 'fail_open');
+	const flag = created[index + 1];
+	assert.equal(flag.field, 'degrade_gfw');
+	assert.equal(flag.tab, 'intercept');
+	assert.equal(flag.type, form.Flag);
+	assert.equal(flag.default, '1');
+	assert.equal(flag.title, '节点不可用时只代理被墙网站');
+	assert.equal(flag.description, '节点不可用时，绕过大陆临时只代理被墙网站，其余直连；恢复后自动还原。全局模式不受影响。');
+	assert.equal(model.validate('degrade_gfw', '0'), true);
+	assert.equal(model.validate('degrade_gfw', '1'), true);
+	assert.equal(model.validate('degrade_gfw', 'invalid'), '请输入 0 或 1。');
+});
+
+test('T10.68 scenario 3: absent degrade_gfw saves nothing, off writes 0, on removes the override', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		const flag = h.options.find(o => o.option === 'degrade_gfw');
+		assert.ok(flag);
+		assert.equal(flag.formvalue('main'), '1');
+		await h.parse();
+		assert.deepEqual(h.calls, []);
+		flag.inputs.main = '0';
+		await h.parse();
+		assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', 'degrade_gfw', '0']]);
+		h.setSaved('main', 'degrade_gfw', '0');
+		h.calls.length = 0;
+		flag.inputs.main = '1';
+		await h.parse();
+		assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'main', 'degrade_gfw']]);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
 	}
 });

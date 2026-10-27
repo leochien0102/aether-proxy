@@ -32,7 +32,7 @@ const INT_BOUNDS = {
 
 /* schema.uc: bool fields. LuCI Flag values are always the strings '0'/'1'. */
 const BOOL_FIELDS = [ 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
-	'fail_open', 'sniffing' ];
+	'fail_open', 'degrade_gfw', 'sniffing' ];
 
 const LOG_LEVELS = [ 'error', 'warn', 'notice', 'info', 'debug' ];
 const XRAY_LOG_LEVELS = [ 'error', 'warning', 'info', 'debug' ];
@@ -43,7 +43,7 @@ const XRAY_LOG_LEVELS = [ 'error', 'warning', 'info', 'debug' ];
 const DEFAULTS = {
 	lan_ifaces: [ 'br-lan' ],
 	quic_block: '1', dns_hijack: '1', ipv6_filter: '1', filter_https_rr: '1',
-	fail_open: '1', sniffing: '1',
+	fail_open: '1', degrade_gfw: '1', sniffing: '1',
 	log_level: 'notice', xray_log_level: 'warning',
 	boot_wait_timeout: '120', boot_check_targets: [ '223.5.5.5:53', '114.114.114.114:53' ],
 	url: 'https://www.gstatic.com/generate_204',
@@ -66,6 +66,9 @@ const FIELD_TEXT = {
 	ipv6_filter: _('All AAAA queries return an empty answer so devices use IPv4 only. IPv6 address assignment on the LAN is not affected.', 'aether-proxy'),
 	filter_https_rr: _('Filter HTTPS RR records (qtype 65).', 'aether-proxy'),
 	fail_open: _('Remove the interception rules while Xray is down so traffic goes direct. When disabled, proxied traffic is interrupted while Xray is unavailable instead of falling back to direct.', 'aether-proxy'),
+	degrade_gfw: _('When the node is unavailable, Bypass China temporarily proxies only blocked sites; '
+		+ 'other traffic goes direct. Routing is restored automatically when the node recovers. '
+		+ 'Global mode is unaffected.', 'aether-proxy'),
 	sniffing: _('Xray inbound sniffing for http/tls/quic with routeOnly=false (the node connects by domain).', 'aether-proxy'),
 	url: _('URL polled by the health check; must start with http:// or https:// and contain no whitespace.', 'aether-proxy'),
 	boot_wait_timeout: _('Seconds to wait for the network at boot; 0 disables the wait.', 'aether-proxy'),

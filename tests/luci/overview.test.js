@@ -4078,3 +4078,98 @@ for (const action of ['start', 'restart', 'enable']) {
 		h.events.dispatch('pagehide');
 	});
 }
+
+/* T10.68 / docs/10 B19: runtime degradation is independent of the applied
+ * default mode, so it must not lock selectors or look like a pending switch. */
+const DEGRADED_NOTICE = '节点不可用，绕过大陆已临时按「仅代理被墙网站（GFW）」分流';
+const DEGRADED_STATUS = {
+	state: 'degraded', node_id: 'n_a', mode: 'bypass_cn',
+	degraded_mode: 'gfw', degraded_since: NOW - 120
+};
+
+function degradedModel(status = DEGRADED_STATUS, mode = 'bypass_cn') {
+	return dashboardModel().build(status, null, { n_a: 'Alpha', n_b: 'Beta' }, NOW,
+		true, 'n_a', null, null, null, mode);
+}
+
+test('T10.68 scenario 1: degradation warning uses the mode label and its own duration buckets', () => {
+	for (const [age, duration] of [[45, '45 秒'], [120, '2 分钟'], [7200, '2 小时'], [172800, '2 天']]) {
+		const vm = degradedModel({ ...DEGRADED_STATUS, since: NOW - 900, degraded_since: NOW - age });
+		assert.equal(vm.degradation_notice, DEGRADED_NOTICE + '已持续 ' + duration);
+		assert.equal(vm.state_duration_text, '已持续 15 分钟', 'service and degradation clocks are independent');
+	}
+	for (const since of [undefined, null, '123', {}, false]) {
+		const vm = degradedModel({ ...DEGRADED_STATUS, degraded_since: since });
+		assert.equal(vm.degradation_notice, DEGRADED_NOTICE);
+		assert.doesNotMatch(vm.degradation_notice, /已持续/);
+	}
+});
+
+test('T10.68 scenario 1: null, old backend and failed status suppress the degradation warning', () => {
+	const legacy = { ...DEGRADED_STATUS };
+	delete legacy.degraded_mode;
+	for (const status of [legacy, { ...DEGRADED_STATUS, degraded_mode: null },
+		{ ...DEGRADED_STATUS, ok: false, code: 'TIMEOUT' }]) {
+		assert.equal(degradedModel(status).degradation_notice, null);
+		const { root } = renderStatus(status);
+		assert.doesNotMatch(visibleText(root), /节点不可用，绕过大陆/);
+	}
+});
+
+test('T10.68 scenario 1: view renders the warning on the state row with the DNS fallback warning color', () => {
+	const { page, root } = renderStatus({ ...DEGRADED_STATUS, dns_failsafe: true });
+	const row = runtimeRows(root).children[0];
+	const warning = findAll(row, 'span').find(node => visibleText(node).startsWith(DEGRADED_NOTICE));
+	const fallback = findAll(row, 'span').find(node => visibleText(node) === 'DNS 已回退到原配置');
+	assert.ok(warning, 'warning is beside the state, not in a separate banner');
+	assert.match(visibleText(warning), /已持续/);
+	assert.equal(warning.attrs.style, fallback.attrs.style);
+	assert.equal(warning.attrs.style, 'color:var(--warning-color, #b7791f)');
+	page.refresh({ ...DEGRADED_STATUS, degraded_mode: null });
+	assert.doesNotMatch(visibleText(root), /节点不可用，绕过大陆/);
+});
+
+test('T10.68 scenario 2: only applied versus configured mode controls switching during degradation', () => {
+	for (const degraded_mode of ['gfw', null, undefined]) {
+		const status = { ...DEGRADED_STATUS, degraded_mode };
+		const same = degradedModel(status);
+		assert.equal(same.switch_notice, null);
+		assert.equal(same.switch_busy, false);
+		assert.equal(same.current_mode, 'bypass_cn');
+		assert.equal(same.current_node, 'n_a');
+		const different = degradedModel(status, 'global');
+		assert.equal(different.switch_notice, '正在切换默认模式到「全局（所有流量走代理）」…');
+		assert.equal(different.switch_busy, true);
+	}
+});
+
+test('T10.68 scenario 2: entering and leaving degradation preserve both selectors and user edits', () => {
+	const page = loadView({ ap: { call: () => new Promise(() => {}) } });
+	page.render({ labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: 'bypass_cn', enabled: true });
+	page.refresh({ ...DEGRADED_STATUS, degraded_mode: null });
+	const [node, mode] = findAll(page.nodeControl, 'select');
+	const apply = findAll(page.nodeControl, 'button')[0];
+	assert.equal(node.value, 'n_a');
+	assert.equal(mode.value, 'bypass_cn');
+	assert.equal(apply.disabled, true);
+	for (const degraded_mode of ['gfw', null]) {
+		page.refresh({ ...DEGRADED_STATUS, degraded_mode });
+		assert.equal(page.vm.switch_notice, null);
+		assert.equal(node.disabled, false);
+		assert.equal(mode.disabled, false);
+		assert.equal(node.value, 'n_a');
+		assert.equal(mode.value, 'bypass_cn');
+		assert.equal(apply.disabled, true);
+	}
+	node.value = 'n_b';
+	mode.value = 'global';
+	mode.attrs.change();
+	for (const degraded_mode of ['gfw', null]) {
+		page.refresh({ ...DEGRADED_STATUS, degraded_mode });
+		assert.equal(findAll(page.nodeControl, 'select')[0], node);
+		assert.equal(findAll(page.nodeControl, 'select')[1], mode);
+		assert.equal(node.value, 'n_b');
+		assert.equal(mode.value, 'global');
+		assert.equal(apply.disabled, false);
+	}
+});

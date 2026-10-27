@@ -68,6 +68,8 @@ return view.extend({
 		option(s, 'intercept', form.Flag, 'ipv6_filter', _('Filter IPv6', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'filter_https_rr', _('Filter HTTPS RR', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'fail_open', _('Fail open', 'aether-proxy'));
+		option(s, 'intercept', form.Flag, 'degrade_gfw',
+			_('Proxy only blocked sites when the node is unavailable', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'sniffing', _('Sniffing', 'aether-proxy'));
 
 		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level', 'aether-proxy'));

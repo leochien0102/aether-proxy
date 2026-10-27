@@ -198,7 +198,8 @@ for (const page of ['rules', 'subscriptions', 'access', 'advanced', 'updates', '
 			for (const field of ['sub.interval_hours', 'sub.fetch_via', 'sub.user_agent', 'subscription.enabled'])
 				assert.ok(checked.includes(field), field + ': common settings and row flag are recorded');
 		if (page == 'advanced')
-			for (const field of ['main.quic_block', 'probe.url', 'probe.timeout', 'dns.dnsmasq_instance'])
+			for (const field of ['main.quic_block', 'main.degrade_gfw', 'probe.url', 'probe.timeout',
+				'dns.dnsmasq_instance'])
 				assert.ok(checked.includes(field), field + ': per-option section overrides are recorded');
 	});
 }

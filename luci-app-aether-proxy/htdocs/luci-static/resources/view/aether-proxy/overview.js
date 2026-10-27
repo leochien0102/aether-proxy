@@ -869,7 +869,9 @@ return view.extend({
 				}, vm.state_text ?? '–'),
 				' ', E('span', {}, vm.state_duration_text ?? ''), ' ',
 				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
-					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : [])
+					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : []),
+				...(vm.degradation_notice ? [ ' ', E('span', { style: this.colorStyle('warn') },
+					vm.degradation_notice) ] : [])
 			]),
 			this.buttonBar(vm.buttons)
 		]) ];

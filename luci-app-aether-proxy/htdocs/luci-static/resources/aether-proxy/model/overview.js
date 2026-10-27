@@ -20,6 +20,8 @@
  * T10.55 follows docs/10 r16 for shared busy wording/colors and conflict advice;
  * T10.62 follows docs/10 r18 for runtime-only probe/address visibility and
  * timeout-only inventory retry eligibility;
+ * T10.68 presents docs/10 B19 degradation without changing effective selections
+ * or the configured-versus-applied mode comparison;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -354,6 +356,17 @@ const MODE_TEXT = {
 	gfw: _('GFW only', 'aether-proxy'),
 	global: _('Global (all traffic through proxy)', 'aether-proxy')
 };
+
+/* Degradation is a runtime routing override, not an unapplied default-mode
+   change. Keep its warning separate from switch_pending and both selectors. */
+function degradation_notice(status, now) {
+	if (status.degraded_mode !== 'gfw')
+		return null;
+	const text = fmt(_('Node unavailable; Bypass China is temporarily routing as “%s”.', 'aether-proxy'),
+		MODE_TEXT.gfw);
+	return typeof status.degraded_since === 'number'
+		? sentences([text, state_duration(now, status.degraded_since)]) : text;
+}
 
 function mode_changed(status, configured_mode) {
 	return !!MODE_TEXT[configured_mode] && !!MODE_TEXT[status?.mode] && configured_mode !== status.mode;
@@ -699,6 +712,7 @@ return baseclass.extend({
 				probe_disabled: true,
 				traffic_note,
 				dns_failsafe: false,
+				degradation_notice: null,
 				state_level: 'neutral',
 				state_dimmed: false,
 				state_duration_text: null,
@@ -731,6 +745,7 @@ return baseclass.extend({
 			state_text: state_text(state, status.waiting_network === true),
 			traffic_note,
 			dns_failsafe: status.dns_failsafe === true,
+			degradation_notice: degradation_notice(status, now),
 			state_level: state_level(state),
 			state_dimmed: state === 'stopped',
 			state_duration_text: (typeof status.since == 'number') ? state_duration(now, status.since) : null,

@@ -2523,3 +2523,23 @@ msgstr "正在更新 %s 及其界面…"
 msgctxt "aether-proxy"
 msgid "The service will be briefly interrupted."
 msgstr "服务会短暂中断。"
+
+msgctxt "aether-proxy"
+msgid "Node unavailable; Bypass China is temporarily routing as “%s”."
+msgstr "节点不可用，绕过大陆已临时按「%s」分流"
+
+msgctxt "aether-proxy"
+msgid "Proxy only blocked sites when the node is unavailable"
+msgstr "节点不可用时只代理被墙网站"
+
+msgctxt "aether-proxy"
+msgid "When the node is unavailable, Bypass China temporarily proxies only blocked sites; other traffic goes direct. Routing is restored automatically when the node recovers. Global mode is unaffected."
+msgstr "节点不可用时，绕过大陆临时只代理被墙网站，其余直连；恢复后自动还原。全局模式不受影响。"
+
+msgctxt "aether-proxy"
+msgid "Node unavailable; Bypass China temporarily routes as “{to}” (default mode: {from})"
+msgstr "节点不可用，绕过大陆临时按「{to}」分流（默认模式：{from}）"
+
+msgctxt "aether-proxy"
+msgid "Node recovered; routing restored (default mode: {mode})"
+msgstr "节点已恢复，分流已还原（默认模式：{mode}）"

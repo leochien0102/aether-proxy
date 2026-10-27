@@ -114,6 +114,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `NODE_INSECURE_IGNORED` | warn | `node`、`label` |
 | `PROXY_HEALTHY` / `PROXY_UNHEALTHY` | notice / warn | `latency_ms`、`fails` |
 | `DNS_TIER_CHANGED` | warn（降级）/ notice（恢复） | `from`、`to`、`reason` |
+| `MODE_DEGRADED` / `MODE_RESTORED` | warn / notice | `from`、`to`；`mode` |
 | `XRAY_DOWN_FAILOPEN` / `XRAY_DOWN` / `XRAY_RECOVERED` | error / error / notice | `port` |
 | `CHILD_STARTED` | info | `name`、`pid` |
 | `CHILD_CRASHED` | warn | `name`、`pid`、`code`、`restart_in`（秒）。子进程不是因主动停止而退出时记录（[04](04-lifecycle.md)「进程模型」） |
