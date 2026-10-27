@@ -19,6 +19,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `ipv6_filter` | bool | `1` | 过滤 AAAA |
 | `filter_https_rr` | bool | `1` | 过滤 HTTPS RR（qtype 65） |
 | `fail_open` | bool | `1` | Xray 不可用时摘除拦截规则 |
+| `degrade_gfw` | bool | `1` | 节点不健康（Xray 存活、代理健康检测判为不健康）时，把绕过大陆与全局临时按「仅被墙」分流，恢复健康后还原；不写配置（[02](02-dataplane.md)「节点不健康时的分流降级」，2026-10-27 定） |
 | `sniffing` | bool | `1` | Xray 入站嗅探 http/tls/quic，`routeOnly=false`（由节点按域名连接） |
 | `log_level` | enum(`error`\|`warn`\|`notice`\|`info`\|`debug`) | `notice` | aether-proxy 自身的日志等级（[09](09-logging.md)） |
 | `xray_log_level` | enum(`error`\|`warning`\|`info`\|`debug`) | `warning` | |

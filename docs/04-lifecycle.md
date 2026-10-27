@@ -15,7 +15,7 @@
 | `dns_failsafe` | chinadns-ng 不可用（可与以上状态叠加，作为标志位） | 不变 | **已撤回**，dnsmasq 回到原配置 |
 | `error` | 启动失败，已回滚 | 无 | 无 |
 
-`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`mode`（当前生效的默认模式：启动或重载**成功应用**后写入，失败的重载不改；与 `node_id` 同理，2026-10-22 加，供概览页判断只换模式的切换何时完成，10「概览页：默认模式下拉」）、`node_ip`、`since`（进入当前状态的时间戳）、
+`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`mode`（当前生效的默认模式：启动或重载**成功应用**后写入，失败的重载不改；与 `node_id` 同理，2026-10-22 加，供概览页判断只换模式的切换何时完成，10「概览页：默认模式下拉」）、`node_ip`、`degraded_mode`、`degraded_since`（分流降级，02「节点不健康时的分流降级」，2026-10-27）、`since`（进入当前状态的时间戳）、
 `last_probe`（`ok`、`latency_ms`、`at`）、`last_error`（事件码）、`components`（各组件的版本与路径）、`render_hash`（各产物的哈希）、
 `wan_dns`（本次成功应用的渲染所用的运营商下发 IPv4 DNS，按接口名排序、保持接口内顺序并去重；`china_dns` 含 `wan` 但取不到时为 `[]`，此时渲染用 `223.5.5.5`；不含 `wan` 时为 `null`。启动和重载成功应用后更新，产物没变也更新；失败的重载不覆盖原值。2026-10-22 T9.23）。
 
@@ -222,7 +222,7 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
    - 端口恢复监听 → 重新加载整表，回到 `degraded`，等健康检测通过后升为 `running`。
 3. **chinadns-ng 进程**：`CHINADNS_PORT` 没有监听，持续 2 轮 → 删除 dnsmasq 片段、重启 dnsmasq，
    置 `dns_failsafe=true`，记 ERR `DNS_DOWN_FAILSAFE`。端口恢复后重新写入片段，清除标志。
-4. **代理健康检测**（[07](07-probe.md)）：根据连续成功/失败的次数在 `running` ↔ `degraded` 之间切换，并驱动 DNS 级别（[03](03-dns.md)）。
+4. **代理健康检测**（[07](07-probe.md)）：根据连续成功/失败的次数在 `running` ↔ `degraded` 之间切换，并驱动 DNS 级别（[03](03-dns.md)）与分流降级（[02](02-dataplane.md)「节点不健康时的分流降级」：判为不健康且 `degrade_gfw=1` → 临时按仅被墙分流；恢复健康 → 还原）。
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
 6. **节点 IP 刷新**：距上次超过 10 分钟就重新解析（[03](03-dns.md)）。
 
@@ -244,7 +244,7 @@ monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要�
 
 | 故障 | 用户可见的结果 |
 |---|---|
-| 节点不通（Xray 存活） | 代理目标访问失败；国内站点正常；DNS 降到 T2/T3 |
+| 节点不通（Xray 存活） | `degrade_gfw=1`（默认）：临时按仅被墙分流——被墙站点打不开，其余境外与国内正常；`degrade_gfw=0`：代理目标访问失败。DNS 降到 T2/T3 |
 | Xray 崩溃且 procd 无法拉起 | `fail_open=1`：全部直连（被墙站点打不开，其余正常）；`fail_open=0`：代理目标访问失败 |
 | chinadns-ng 崩溃 | DNS 回到用户原配置（ISP DNS），分流精度下降，网络可用 |
 | dnsmasq 被用户重启 | conf-dir 片段仍在，自动恢复对接 |
