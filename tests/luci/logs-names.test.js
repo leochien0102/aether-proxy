@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element, contentChildren } = require('./loader');
+const { loadModule, parsePo, element, contentChildren, htmlWrites } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -193,6 +193,8 @@ async () => {
 	}
 	assert.ok(descendants(root).some(node => node.tag === '#text' && node.text.includes(unsafe)));
 	assert.ok(!descendants(root).some(node => node.tag === 'img'));
+	assert.deepEqual(htmlWrites(root).filter(text => text.includes(unsafe)), [],
+		'event parameters never take the innerHTML path');
 	page.code.value = 'NODE_RESOLVE_FAILED';
 	page.code.attrs.change();
 	assert.ok(page.eventContent.textContent.includes(unsafe), 'refilter keeps name maps');

@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element, contentChildren } = require('./loader');
+const { loadModule, parsePo, element, contentChildren, htmlWrites } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
 const { selectWidget } = require('./subscription-select');
@@ -453,7 +453,11 @@ test('T10.34 scenario 1: missing general section is added once empty and display
 	assert.equal(h.page.generalOptions.fetch_via.getUIElement('sub').value, 'auto');
 	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').value, '');
 	/* textvalue returns a node: a string would be written as innerHTML (T9.42). */
-	assert.equal(text(subOption(h, '_interval').textvalue('s_a')), '1 天（通用）');
+	const intervalValue = subOption(h, '_interval').textvalue('s_a');
+	assert.equal(typeof intervalValue, 'object', 'textvalue returns a node, not a string');
+	assert.equal(intervalValue.tag, 'span');
+	assert.equal(intervalValue.children[0].tag, '#text', 'the value is a text child, not markup');
+	assert.equal(text(intervalValue), '1 天（通用）');
 	assert.equal(text(subOption(h, '_via').textvalue('s_a')), '自动（先直连，失败经当前节点）（通用）');
 });
 
@@ -574,6 +578,8 @@ test('T10.34 scenario 4: effective table values mark inheritance and both dropdo
 	// Table cells read saved session values rather than a captured initial row.
 	h.uci.set('aetherproxy', 'sub', 'interval_hours', '0');
 	h.uci.set('aetherproxy', 'sub', 'fetch_via', 'direct');
+	assert.equal(typeof interval.textvalue('s_a'), 'object', 'textvalue keeps returning a node');
+	assert.equal(interval.textvalue('s_a').tag, 'span');
 	assert.equal(text(interval.textvalue('s_a')), '不自动更新（通用）');
 	assert.equal(text(via.textvalue('s_a')), '直连（通用）');
 });
@@ -1995,8 +2001,14 @@ test('T9.42: a hostile node name stays literal text on the nodes page', async ()
 	const cell = (id, field) => find(gridRow(h, id), node => node.field === field)[0];
 	assert.equal(text(cell('n_a', '_label')), unsafe, 'node name is a text node');
 	assert.equal(text(cell('n_b', '_source')), unsafe, 'source column shows the subscription name as text');
+	/* The DummyValue returns a node whose child is a text node, so luci-base's
+	 * form.js renderTextValue (E('td', ..., value)) cannot see HTML. */
+	assert.equal(cell('n_a', '_label').children[0].tag, 'span', 'textvalue returns an element');
+	assert.equal(cell('n_a', '_label').children[0].children[0].tag, '#text');
 	assert.equal(find(h.root, node => node.tag === 'img').length, 0,
 		'a hostile name never builds an element, including its onerror handler');
+	assert.deepEqual(htmlWrites(h.root).filter(text => text.includes(unsafe)), [],
+		'the hostile name never takes the innerHTML path');
 });
 
 test('T9.42: a hostile subscription name stays literal text in the subscription grid', async () => {
@@ -2006,5 +2018,8 @@ test('T9.42: a hostile subscription name stays literal text in the subscription 
 	await render(h);
 	const cell = find(gridRow(h, 's_a'), node => node.field === '_name')[0];
 	assert.equal(text(cell), unsafe, 'subscription name is a text node');
+	assert.equal(cell.children[0].tag, 'span', 'textvalue returns an element, never a string');
 	assert.equal(find(h.root, node => node.tag === 'img').length, 0, 'a hostile name never builds an element');
+	assert.deepEqual(htmlWrites(h.root).filter(text => text.includes(unsafe)), [],
+		'the hostile name never takes the innerHTML path');
 });

@@ -15,7 +15,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo, element, createRpc } = require('./loader');
+const { loadModule, parsePo, element, createRpc, htmlWrites } = require('./loader');
 const { actionRow } = require('./button-layout');
 const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
@@ -293,7 +293,15 @@ test('T8.8 scenario 9: form, independent file saves, model validation, job API a
 
 globalThis.E = element;
 function text(node) {
-	return typeof node == 'object' && node !== null ? node.children.map(text).join('') : String(node);
+	if (node == null)
+		return '';
+	if (typeof node != 'object')
+		return String(node);
+	if (node.tag === '#text')
+		return node.text;
+	if (typeof node.textContent == 'string' && node.tag != null)
+		return node.textContent;
+	return (node.children ?? []).map(text).join('');
 }
 function deferred() {
 	let resolve, reject;
@@ -968,9 +976,10 @@ test('T10.35 scenario 3: deferred status shows current WAN DNS or fallback only 
 		else
 			calls[0].resolve(reply);
 		await settle();
+		/* The hint is one div with a single text child (E('div', {}, [message])). */
 		const current = descendants(root).filter(node => node.tag == 'div' &&
-			node.children.length == 1 && typeof node.children[0] == 'string' &&
-			node.children[0].startsWith('运营商下发的 DNS '));
+			node.children.length == 1 && node.children[0].tag === '#text' &&
+			node.children[0].text.startsWith('运营商下发的 DNS '));
 		assert.deepEqual(current.map(text), expected == null ? [] : [expected]);
 		assert.equal(text(regions(root).inventory), '读取中…', 'hint is independent of other pending reads');
 		assert.deepEqual(h.writes, []);
@@ -1242,4 +1251,6 @@ test('T9.42: a hostile WAN DNS entry stays literal text in the runtime hint', as
 	assert.ok(renderedText(hint).includes(unsafe), 'the resolver value is quoted verbatim as text');
 	assert.deepEqual(renderedFind(hint, node => node.tag === 'img'), [],
 		'a hostile resolver value never builds an element');
+	assert.deepEqual(htmlWrites(hint).filter(value => value.includes(unsafe)), [],
+		'the resolver value never takes the innerHTML path');
 });

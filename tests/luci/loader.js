@@ -185,17 +185,24 @@ function parsePo(text) {
 }
 
 /* Text node double. Real `document.createTextNode()` produces exactly this:
- * a node whose text is never parsed as markup. */
+ * a node whose text is never parsed as markup. `children` is an empty list so
+ * traversal helpers can treat every node the same way. */
 function textNode(text) {
 	const value = String(text);
 
-	return { tag: '#text', text: value, textContent: value, childNodes: [], attrs: {} };
+	return { tag: '#text', text: value, textContent: value, childNodes: [], children: [], attrs: {} };
 }
 
-/* True for nodes created by element() (and by the CBI doubles that reuse it),
- * mirroring the `dom.elem()` check of luci-base. */
+/* DOM node discriminator: only nodes created by this double carry a string
+ * `tag` (elements, fragments and #text nodes). Used where luci-base calls
+ * `dom.elem(node)` before deciding between appendChild and innerHTML. */
+function isDomNode(node) {
+	return node != null && typeof node === 'object' && typeof node.tag === 'string';
+}
+
+/* Elements and document fragments (everything except text nodes). */
 function isElement(node) {
-	return node != null && typeof node === 'object' && node.tag != null && Array.isArray(node.children);
+	return isDomNode(node) && node.tag !== '#text';
 }
 
 /* Shared mutable E() double (docs/10 UI rules, T10.18, T9.42). LuCI skips only
@@ -203,76 +210,79 @@ function isElement(node) {
  * Keep raw attrs for source-level assertions, but read runtime state through
  * DOM properties so a later `button.disabled = false` takes effect.
  *
- * Children follow luci-base `dom.append()` exactly (luci.js:1311-1335), which
- * is the whole point of T9.42: an ARRAY appends each item as an element or a
- * text node, while a SINGLE non-array value is converted to a string and
- * assigned to `innerHTML`. Scalar writes are recorded in `html` so a test can
- * assert that user-controlled text never took the HTML path; the double does
- * not parse markup, so `textContent` of a scalar write is the empty string
- * whenever it contains a `<` (the browser would build elements there).
+ * Children follow luci-base `dom.create()` -> `dom.append()` (luci.js:1311-1335,
+ * :1504-1543 in 24.10.8, same logic in 25.12.5):
+ *   - an ARRAY appends every item: a DOM node keeps its identity, any other
+ *     value (including null/undefined and array holes) becomes a text node;
+ *   - a FUNCTION is called with the target node and its result is appended;
+ *   - a DOM node is appended as-is;
+ *   - any other non-null value is converted to a string and assigned to
+ *     `innerHTML`, which replaces the previous children.
+ * Scalar writes are recorded in `html` so a test can assert that user text
+ * never took the HTML path; the double has no HTML parser, so a scalar that
+ * contains `<` produces no text node (the browser would parse elements).
+ * Text children are synthesized on read, except text nodes passed in as
+ * children: those keep their identity, exactly like appendChild(textNode).
  */
 function element(tag, attrs = {}, children = []) {
 	if (Array.isArray(tag)) {
 		children = tag;
 		tag = 'fragment';
 	}
-	if (typeof attrs === 'string' || Array.isArray(attrs)) {
+	if (typeof attrs === 'string' || Array.isArray(attrs) || typeof attrs === 'function') {
 		children = attrs;
 		attrs = {};
 	}
 	attrs ??= {};
-	if (typeof children === 'function')
-		children = children(null);
 
 	const node = {
 		tag, attrs, ...attrs, value: attrs.value ?? '',
-		/* Raw children list: array items (elements or strings) as passed, kept
-		 * for the tests that inspect option lists and action rows. */
-		children: Array.isArray(children) ? children : (children == null ? [] : [ children ]),
-		/* Scalar (non-array) children were assigned through innerHTML. */
-		scalarHtml: !Array.isArray(children) && children != null && !isElement(children),
-		html: !Array.isArray(children) && children != null && !isElement(children) ? [ String(children) ] : [],
+		/* Raw child list: values exactly as appended (strings stay strings, so
+		 * tests can inspect the arguments that produced the DOM). */
+		children: [],
+		html: [],
+		scalarHtml: false,
 		get childNodes() {
-			if (this.scalarHtml) {
-				const html = this.html.join('');
-
-				/* A markup-free scalar is a single text node in the browser; markup
-				 * needs a parser this double does not have (recorded in `html`). */
-				return html.length && !html.includes('<') ? [ textNode(html) ] : [];
-			}
-			return this.children.map(child => isElement(child)
-				? child
-				: (child != null && typeof child === 'object' && child.tag === '#text'
-					? child : textNode(child)));
+			/* children are already materialized nodes: appendChildren pushes text
+			 * nodes for non-node values, and an innerHTML write materializes its
+			 * markup-free text immediately (so lastChild keeps its identity). */
+			return this.children.slice();
 		},
 		get lastChild() { return this.childNodes.at(-1) ?? null; },
 		get firstChild() { return this.childNodes[0] ?? null; },
 		get innerHTML() { return this.html.join(''); },
 		set innerHTML(value) {
-			this.html = value == null ? [] : [ String(value) ];
+			/* HTML spec: [LegacyNullToEmptyString] DOMString. */
+			this.html = value === null ? [] : [ String(value) ];
 			this.children = [];
 			this.scalarHtml = true;
+			materializeHtml(this);
 		},
 		get textContent() {
 			return this.childNodes.map(child => child.textContent).join('');
 		},
 		set textContent(value) {
-			/* A text write creates a text node, not markup (luci.js never uses
-			 * innerHTML for this; the browser's textContent setter does not parse). */
+			/* HTML spec: [LegacyNullToEmptyString] DOMString; null becomes '',
+			 * undefined becomes "undefined" (WebIDL DOMString conversion). */
 			this.html = [];
 			this.scalarHtml = false;
-			this.children = [ String(value) ];
+			this.children = [ textNode(value === null ? '' : String(value)) ];
 		},
 		replaceChildren(...nodes) {
+			/* replaceChildren() converts DOMString arguments to text nodes; it
+			 * never parses markup (unlike innerHTML). */
 			this.html = [];
 			this.scalarHtml = false;
-			this.children = nodes;
+			this.children = nodes.map(node => isDomNode(node) ? node : textNode(node));
 		},
 		// T10.40: wrapper tooltips are removed when the row becomes available.
 		setAttribute(name, value) { this.attrs[name] = this[name] = String(value); },
 		removeAttribute(name) { delete this.attrs[name]; delete this[name]; },
 		addEventListener(event, fn) { this.attrs[event] = fn; this[event] = fn; }
 	};
+
+	appendChildren(node, children);
+
 	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ])
 		node[name] = attrs[name] != null;
 	if (tag === 'select') {
@@ -282,45 +292,77 @@ function element(tag, attrs = {}, children = []) {
 	return node;
 }
 
-/* LuCI `dom.append()` semantics for a node that already exists: array items
- * that are not elements become text nodes, a scalar value replaces the node's
- * content through innerHTML. Shared by the `dom.content` doubles in the test
- * files so every page is held to the same rendering rules (T9.42). */
+/* innerHTML without a parser: a markup-free scalar is one text node; markup
+ * would be parsed into elements by the browser, so this double leaves the
+ * subtree empty and only records the write in `html`. */
+function materializeHtml(node) {
+	const html = node.html.join('');
+	if (html.length && !html.includes('<'))
+		node.children.push(textNode(html));
+}
+
+/* LuCI `dom.append()` semantics for an existing node. Shared by the
+ * `dom.content` doubles in the test files so every page is held to the same
+ * rendering rules (T9.42/R2). Returns what luci-base returns: the appended
+ * node for a single DOM child, the new last child for arrays and innerHTML
+ * writes, null when nothing was appended. */
 function appendChildren(node, children) {
+	/* luci.js returns null when the target is not a DOM elem (undefined slots
+	 * included), so callers cannot trip over a missing container. */
+	if (!isDomNode(node))
+		return null;
 	if (typeof children === 'function')
 		return appendChildren(node, children(node));
+
 	if (Array.isArray(children)) {
-		for (const child of children)
-			if (isElement(child))
-				node.children.push(child);
-			else
-				node.children.push(textNode(child));
+		/* Index loop, not map(): a real array hole must become the text
+		 * "undefined" (the SDK interpolates children[i] with a template string). */
+		for (let i = 0; i < children.length; i++) {
+			const child = children[i];
+			node.children.push(isDomNode(child) ? child : textNode(child));
+		}
 
 		return node.lastChild;
 	}
-	if (isElement(children)) {
+
+	if (isDomNode(children)) {
+		/* A DOM node (element or text node) keeps its identity, like appendChild(). */
 		node.children.push(children);
 		return children;
 	}
+
 	if (children !== null && children !== undefined) {
-		/* innerHTML assignment drops the previous children. */
+		/* innerHTML assignment replaces the previous children; returns lastChild
+		 * in the SDK (null here when the markup contains '<'). */
 		node.children.length = 0;
 		node.html = [ String(children) ];
 		node.scalarHtml = true;
-		return null;
+		materializeHtml(node);
+		return node.lastChild;
 	}
+
 	return null;
 }
 
 /* LuCI `dom.content()`: drop the children, then append following the rules. */
 function contentChildren(node, children) {
+	if (!isDomNode(node))
+		return null;
 	node.html = [];
 	node.scalarHtml = false;
 	node.children.length = 0;
 	return appendChildren(node, children);
 }
 
+/* Every innerHTML write recorded by the double, including nested children.
+ * Tests use it to show that user-controlled text never took the HTML path. */
+function htmlWrites(node) {
+	if (!node || typeof node !== 'object')
+		return [];
+	return [ ...(node.html ?? []) ].concat((node.children ?? []).flatMap(htmlWrites));
+}
+
 module.exports = {
 	scanRequires, createDocument, createRpc, loadModule, parsePo, element,
-	textNode, isElement, appendChildren, contentChildren
+	textNode, isDomNode, isElement, appendChildren, contentChildren, htmlWrites
 };

@@ -12,7 +12,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element: E } = require('./loader.js');
+const { loadModule, parsePo, element: E, htmlWrites } = require('./loader.js');
 const { nowrapActions } = require('./button-layout');
 const { parseList } = require('./dynamic-list');
 const { textInput, renderAccessList } = require('./access-input');
@@ -1143,8 +1143,12 @@ test('T9.42: a hostile DHCP host name stays literal text in the device summary',
 	const summary = f.option('_devices').textvalue('a');
 	assert.equal(summary.textContent, unsafe + '、10.0.0.0/8');
 	assert.equal(summary.title, unsafe + '、10.0.0.0/8');
-	assert.deepEqual(renderTree(summary).filter((node) => node.tag === 'img'), [],
+	assert.equal(summary.tag, 'span', 'textvalue returns an element, never a string');
+	assert.equal(renderTree(summary).filter((node) => node.tag === 'img').length, 0,
 		'a hostile name never builds an element');
 	assert.ok(renderTree(summary).some((node) => node.tag === '#text' && node.text.includes(unsafe)),
 		'the name is present as a text node');
+	/* The render tree has no HTML sink at all: every child is a node. */
+	assert.deepEqual(htmlWrites(summary).filter(text => text.includes(unsafe)), [],
+		'the hostile name never takes the innerHTML path');
 });

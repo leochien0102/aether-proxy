@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const RES = path.join(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(RES, '../../../po/zh_Hans/aether-proxy.po'), 'utf8'));
 globalThis._ = text => po[text] ?? text;
@@ -58,7 +58,7 @@ async function livePage(options = {}) {
 			changes: { apply() {} },
 			addNotification: (title, body, kind) => h.notes.push({ text: body.textContent, kind })
 		},
-		dom: { content: (node, value) => { node.children = Array.isArray(value) ? value : [value]; } },
+		dom: { content: (node, value) => contentChildren(node, value) },
 		'aether-proxy.model.overview': model(),
 		'aether-proxy.common': {
 			confirm: async () => true,
@@ -260,7 +260,7 @@ test('T10.48 scenario 5: mode label, dropdown and Apply form one nowrap group; n
 	assert.match(modeGroup.attrs.style, /white-space:\s*nowrap/);
 	assert.match(modeGroup.attrs.style, /max-width:\s*100%/);
 	assert.match(mode.attrs.style, /min-width:\s*0/);
-	assert.equal(modeGroup.children[0].children[0], '默认模式');
+	assert.equal(modeGroup.children[0].children[0].text, '默认模式');
 	assert.equal(modeGroup.children[0].children[1], mode);
 	assert.equal(modeGroup.children[1], apply);
 	node.value = 'n_b';

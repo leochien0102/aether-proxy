@@ -47,7 +47,8 @@ test('T10.18 shared E: short calls, text-only children, selected options and mut
 	node.replaceChildren(E('span', {}, 'new'), ' text');
 	assert.equal(node.textContent, 'new text');
 	node.textContent = 'replacement';
-	assert.deepEqual(node.children, ['replacement']);
+	assert.equal(node.childNodes[0].tag, '#text');
+	assert.equal(node.textContent, 'replacement');
 });
 
 /* T9.42/D-F3: the double must follow luci-base `dom.append()` for every input
@@ -109,4 +110,84 @@ test('T9.42: dom.content/contentChildren applies the same rules as E()', () => {
 	assert.equal(node.childNodes.length, 2);
 	assert.equal(node.childNodes[1].tag, 'b');
 	assert.ok(!node.childNodes.some(child => child.tag === 'img'));
+});
+
+/* T9.42/R2: the review compared the double with the real SDK `append()` and
+ * found five differences (function argument, true sparse arrays, text-node
+ * identity, state after an innerHTML write, return values). These cases pin
+ * the SDK behaviour; they are a contract test, not a browser HTML parser. */
+test('T9.42/R2: E()/append() match the SDK for functions, holes, text nodes and returns', () => {
+	const { appendChildren, textNode, isDomNode } = require('./loader');
+
+	/* A function child is called with the target node; its result is appended. */
+	let seen = null;
+	const fn = E('div', {}, node => { seen = node; return [ 'from function' ]; });
+	assert.equal(seen, fn, 'the callback receives the node being built');
+	assert.equal(fn.textContent, 'from function');
+
+	/* Array holes and null items become text, exactly like `${children[i]}`. */
+	const sparse = E('p', {}, Array(1));
+	assert.equal(sparse.childNodes.length, 1);
+	assert.equal(sparse.childNodes[0].tag, '#text');
+	assert.equal(sparse.childNodes[0].text, 'undefined');
+	assert.equal(E('p', {}, [ undefined ]).textContent, 'undefined');
+	assert.equal(E('p', {}, [ null ]).textContent, 'null');
+
+	/* Scalar null/undefined/'' append nothing (no innerHTML write). */
+	for (const absent of [ null, undefined, '' ]) {
+		const node = E('p', {}, absent);
+		assert.deepEqual(node.childNodes, []);
+		assert.equal(node.textContent, '');
+	}
+	assert.deepEqual(E('p', {}, null).html, [], 'null is not an HTML write');
+
+	/* Text nodes keep their identity in both the array and scalar position. */
+	const direct = textNode('direct');
+	assert.equal(E('p', {}, direct).childNodes[0], direct);
+	const nested = textNode('nested');
+	assert.equal(E('p', {}, [ nested ]).childNodes[0], nested);
+
+	/* A text node or fragment is a DOM node (never stringified); plain objects
+	 * are not, so they become text. */
+	assert.equal(isDomNode(textNode('x')), true);
+	assert.equal(isDomNode(E([ 'x' ])), true, 'a fragment is a DOM node');
+	assert.equal(isDomNode({ tag: undefined }), false);
+	assert.equal(E('p', {}, E([ E('b', {}, [ 'x' ]) ])).textContent, 'x',
+		'a fragment is appended as a node instead of "[object Object]"');
+
+	/* Appending after an innerHTML write keeps the earlier content. */
+	const mixed = E('p', {}, 'before');
+	assert.equal(appendChildren(mixed, [ 'after' ]), mixed.lastChild);
+	assert.equal(mixed.textContent, 'beforeafter');
+	assert.deepEqual(mixed.childNodes.map(node => node.tag), [ '#text', '#text' ]);
+
+	/* Return values follow luci.js append(). */
+	const block = E('div');
+	assert.equal(appendChildren(block, [ 'a', 'b' ]), block.lastChild);
+	const span = E('span');
+	assert.equal(appendChildren(block, span), span, 'a DOM child is returned as-is');
+	assert.equal(appendChildren(block, 'html'), block.lastChild, 'innerHTML writes return lastChild');
+	assert.equal(appendChildren(block, '<img src=x>'), null, 'markup has no parsed lastChild here');
+	assert.equal(appendChildren(block, null), null);
+
+	/* DOMString conversions: LegacyNullToEmptyString for innerHTML/textContent. */
+	assert.equal(E('p', {}, '').innerHTML, '');
+	const writers = E('p');
+	writers.innerHTML = null;
+	assert.equal(writers.innerHTML, '', 'innerHTML = null is the empty string');
+	writers.innerHTML = undefined;
+	assert.equal(writers.innerHTML, 'undefined');
+	writers.textContent = null;
+	assert.equal(writers.children.length, 1);
+	assert.equal(writers.children[0].tag, '#text');
+	assert.equal(writers.textContent, '', 'textContent = null is the empty string');
+	writers.textContent = undefined;
+	assert.equal(writers.textContent, 'undefined');
+
+	/* replaceChildren() never parses markup: strings become text nodes. */
+	const replaced = E('p');
+	replaced.replaceChildren('<img src=x>');
+	assert.equal(replaced.innerHTML, '');
+	assert.equal(replaced.textContent, '<img src=x>');
+	assert.equal(replaced.childNodes[0].tag, '#text');
 });
