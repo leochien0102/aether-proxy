@@ -237,3 +237,13 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 代价（方案 3）：较合理的混合是 nft 继续直放国内地址，境外全部进 Xray 由它判定——境外直连也经过 Xray，CPU 与「Xray 故障的影响面」变大；geosite.dat / geoip.dat 数 MB 到十几 MB，要占空间并经发布通道更新。
 - 参考（2026-10-27 查）：ssr-plus 的 Xray **不用** geo 数据分流——`gen_config.lua` 不引用 geosite/geoip；它的「Geo 数据库更新」页（2026-05-02）与 v2ray-geosite/geoip 包（2026-04-30）随 Mihomo 内核加入，供 Clash 配置使用；分流仍是 nft/ipset 的 chnroute + gfwlist。要借鉴「代理内核里按 geosite 分流」得看 passwall / passwall2 / homeproxy（sing-box）/ OpenClash（Mihomo）。
 - 暂时的手动补漏：漏网网站加进「代理域名」名单（`proxy_domain.txt`，保存后自动重载生效）。
+
+## B21 发布复用 RC 的包：编一次、验证、提升（2026-10-27，待设计）
+
+- 状态：**待设计**，额度宽松时出设计与卡（仓库所有者定）。
+- 来源：发 0.4.0-r1 时仓库所有者指出发布又完整跑一遍 CI 是重复——RC 已经编过、验过，正式版应直接复用 RC 的包。
+- 现状的两个问题：
+  1. 重复编译：aether-proxy 的 `build` 编出的包（架构无关 `all`），发布仓库 `packages` 又从源码重编一遍；两段串行，发一次版约 50 分钟。
+  2. **验证的不是发布的**：候选包在本地 SDK 编、装到 H28K；正式版由发布仓库 CI 重编，字节不同（0.3.0 时翻译包哈希就不同）。
+- 方向（草案）：RC 由 aether-proxy CI 编（测试、两个 SDK 编包、六格冒烟照旧），产物存成 GitHub 预发布（Actions 产物只留 90 天）；H28K 装这份 CI 产物验证；打标签后发布仓库只下载该 RC 的包、按 sha256 核对、写进清单并签名（私钥仍只在发布仓库），xray-core / chinadns-ng 只在自身版本变化时编译。正式版与 RC 同一份文件，发布只需几分钟。
+- 涉及：两个仓库的工作流、发布仓库的 `scripts/publish.sh` 与 `tools/channel/build.py`（`--packages` 来源）、docs/08 发布流程与 docs/12 版本号规则（候选版即普通 release 号的说法不变）。
