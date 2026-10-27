@@ -1288,6 +1288,7 @@ UI 规则：
   | 更新页回滚 | 回滚 <包名> | 回滚（destructive） | 原 `row.confirmation` |
   确认框是异步的：调用处等 `ap.confirm` 的结果再继续；取消时的行为与原来相同（概览页关闭「启用」时取消 → 开关恢复为开、不改 UCI）。
 - 前端同时发出的请求不超过 2 个（为 uhttpd 的 `max_requests 3` 留出余量）。
+- **权限边界**（2026-10-27，复核 6.2）：ACL 给 LuCI 会话 `uci aetherproxy` 写权限，配置里的组件路径（`xray_bin`、`chinadns_bin`）会被以 root 执行，所以**能登录 LuCI 管理本应用 = root**。OpenWrt 默认只有 root 能登录，现状接受；按用户拆分权限记 backlog B22。
 - **动态文本一律按文本渲染**（2026-10-27 定，交叉审查 luci F1/F3、复核 D-疑问2）：LuCI 的 `E(tag, attrs, <字符串>)` 与 `dom.content(node, <字符串>)` 把**单个字符串当 HTML**（`innerHTML`），只有数组里的字符串才成为文本节点（luci-base `luci.js`）。所以凡是来自配置、订阅、分享链接、DHCP、事件参数、日志、后端回复的字符串，传给 `E()`/`dom.content()` 时必须放进数组（`E('td', {}, [ name ])`）或用 `textContent`；只有页面自己写死的标记才允许单值字符串。`form` 控件的 `textvalue`/`cfgvalue` 返回字符串时同样当 HTML，要先转义或返回节点。测试替身必须照真实语义（单值字符串 = HTML），并有用例断言 `<img src=x onerror=…>` 之类的名称显示为原文、不产生元素。
 - **样式**（2026-10-20 定，T10.3 起；跨页面问题 X7）：页面要在用户的任意主题下可用（H28K 用第三方主题 `proton2025`，另装 bootstrap、argon-plus），所以：
   布局与组件只用 LuCI 标准类名（`cbi-section`、`cbi-value`、`cbi-button-*`、`alert-message <等级>`、`table`）；内联样式只用于排版（`display:flex`、`gap`、`flex-wrap`、`justify-content`、`margin`）
