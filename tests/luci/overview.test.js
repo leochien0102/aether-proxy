@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo, element, contentChildren, htmlWrites } = require('./loader.js');
+const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
 const { actionRow } = require('./button-layout');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
@@ -4189,6 +4189,7 @@ test('T10.68 scenario 2: entering and leaving degradation preserve both selector
 test('T9.42: DNSMASQ_EXTRA_SERVERS lines render as text and never build elements', async () => {
 	const h = deferredPage();
 	const { page } = h;
+	const writeMark = htmlWriteMark();
 	page.render(await page.load());
 	await Promise.resolve();
 	const servers = [ 'server=8.8.8.8', 'server=<img src=x onerror=alert(1)>', 'server=a&b"c' ];
@@ -4201,6 +4202,6 @@ test('T9.42: DNSMASQ_EXTRA_SERVERS lines render as text and never build elements
 	for (const line of servers)
 		assert.ok(items[0].textContent.includes(line), 'kept verbatim: ' + line);
 	assert.deepEqual(findAll(page.noticeContent, 'img'), [], 'no element is created from a server line');
-	assert.deepEqual(htmlWrites(page.noticeContent).filter((text) => text.includes('server=')), [],
+	assert.deepEqual(htmlWritesSince(writeMark).filter((text) => text.includes('server=')), [],
 		'server lines never take the innerHTML path');
 });

@@ -205,6 +205,25 @@ function isElement(node) {
 	return isDomNode(node) && node.tag !== '#text';
 }
 
+/* Append-only log of every innerHTML write the double performs. A node's own
+ * `html` array only describes its current content: a later textContent/content
+ * replace resets it and a removed subtree is unreachable from the root. Tests
+ * that must show "user text never took the HTML path" therefore take a mark
+ * before rendering and inspect htmlWritesSince(mark). */
+const html_write_log = [];
+
+function recordHtmlWrite(value) {
+	html_write_log.push(String(value));
+}
+
+function htmlWriteMark() {
+	return html_write_log.length;
+}
+
+function htmlWritesSince(mark) {
+	return html_write_log.slice(mark);
+}
+
 /* Shared mutable E() double (docs/10 UI rules, T10.18, T9.42). LuCI skips only
  * null/undefined attributes: even false creates a boolean HTML attribute.
  * Keep raw attrs for source-level assertions, but read runtime state through
@@ -252,28 +271,42 @@ function element(tag, attrs = {}, children = []) {
 		get firstChild() { return this.childNodes[0] ?? null; },
 		get innerHTML() { return this.html.join(''); },
 		set innerHTML(value) {
-			/* HTML spec: [LegacyNullToEmptyString] DOMString. */
+			/* HTML spec: `[LegacyNullToEmptyString] DOMString innerHTML`; unlike
+			 * textContent, null becomes '' but a string is parsed as markup. */
 			this.html = value === null ? [] : [ String(value) ];
 			this.children = [];
 			this.scalarHtml = true;
+			if (value !== null)
+				recordHtmlWrite(value);
 			materializeHtml(this);
 		},
 		get textContent() {
 			return this.childNodes.map(child => child.textContent).join('');
 		},
 		set textContent(value) {
-			/* HTML spec: [LegacyNullToEmptyString] DOMString; null becomes '',
-			 * undefined becomes "undefined" (WebIDL DOMString conversion). */
+			/* DOM: `attribute DOMString? textContent` (nullable). WebIDL maps
+			 * both null and undefined to IDL null, the setter treats null as the
+			 * empty string, and replacing with '' empties the children without
+			 * creating a text node. */
+			const text = value === null || value === undefined ? '' : String(value);
 			this.html = [];
 			this.scalarHtml = false;
-			this.children = [ textNode(value === null ? '' : String(value)) ];
+			this.children.length = 0;
+			if (text !== '')
+				this.children.push(textNode(text));
 		},
 		replaceChildren(...nodes) {
-			/* replaceChildren() converts DOMString arguments to text nodes; it
-			 * never parses markup (unlike innerHTML). */
+			/* replaceChildren() converts DOMString arguments to text nodes (no
+			 * markup parsing) and inserts DOM nodes; fragments are unwrapped. */
 			this.html = [];
 			this.scalarHtml = false;
-			this.children = nodes.map(node => isDomNode(node) ? node : textNode(node));
+			this.children.length = 0;
+			for (const value of nodes) {
+				if (isDomNode(value))
+					insertDomNode(this.children, value);
+				else
+					this.children.push(textNode(value));
+			}
 		},
 		// T10.40: wrapper tooltips are removed when the row becomes available.
 		setAttribute(name, value) { this.attrs[name] = this[name] = String(value); },
@@ -289,6 +322,24 @@ function element(tag, attrs = {}, children = []) {
 		const options = node.childNodes;
 		node.value = (options.find(option => option?.selected) ?? options[0])?.value ?? '';
 	}
+	return node;
+}
+
+/* Native DOM insertion: a DocumentFragment moves its children into the parent
+ * and is left empty (nested fragments unwrap the same way). The fragment
+ * object is still what appendChild() returns, so callers see the same value
+ * the browser returns even though it is no longer part of the tree. */
+function insertDomNode(list, node) {
+	if (node.tag === 'fragment') {
+		const children = node.children.slice();
+		node.children.length = 0;
+		node.html = [];
+		node.scalarHtml = false;
+		for (const child of children)
+			insertDomNode(list, child);
+		return node;
+	}
+	list.push(node);
 	return node;
 }
 
@@ -319,15 +370,19 @@ function appendChildren(node, children) {
 		 * "undefined" (the SDK interpolates children[i] with a template string). */
 		for (let i = 0; i < children.length; i++) {
 			const child = children[i];
-			node.children.push(isDomNode(child) ? child : textNode(child));
+			if (isDomNode(child))
+				insertDomNode(node.children, child);
+			else
+				node.children.push(textNode(child));
 		}
 
 		return node.lastChild;
 	}
 
 	if (isDomNode(children)) {
-		/* A DOM node (element or text node) keeps its identity, like appendChild(). */
-		node.children.push(children);
+		/* A DOM node keeps its identity, like appendChild(); a fragment moves
+		 * its children into the parent and is returned empty. */
+		insertDomNode(node.children, children);
 		return children;
 	}
 
@@ -337,6 +392,7 @@ function appendChildren(node, children) {
 		node.children.length = 0;
 		node.html = [ String(children) ];
 		node.scalarHtml = true;
+		recordHtmlWrite(children);
 		materializeHtml(node);
 		return node.lastChild;
 	}
@@ -354,8 +410,9 @@ function contentChildren(node, children) {
 	return appendChildren(node, children);
 }
 
-/* Every innerHTML write recorded by the double, including nested children.
- * Tests use it to show that user-controlled text never took the HTML path. */
+/* innerHTML writes still recorded on the nodes of this tree. This is a final
+ * snapshot, not a history: an overwritten write or a removed subtree is gone.
+ * Use htmlWriteMark()/htmlWritesSince() to assert on the whole rendering. */
 function htmlWrites(node) {
 	if (!node || typeof node !== 'object')
 		return [];
@@ -364,5 +421,6 @@ function htmlWrites(node) {
 
 module.exports = {
 	scanRequires, createDocument, createRpc, loadModule, parsePo, element,
-	textNode, isDomNode, isElement, appendChildren, contentChildren, htmlWrites
+	textNode, isDomNode, isElement, appendChildren, contentChildren,
+	htmlWrites, htmlWriteMark, htmlWritesSince
 };

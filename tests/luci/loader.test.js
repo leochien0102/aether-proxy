@@ -152,8 +152,21 @@ test('T9.42/R2: E()/append() match the SDK for functions, holes, text nodes and 
 	assert.equal(isDomNode(textNode('x')), true);
 	assert.equal(isDomNode(E([ 'x' ])), true, 'a fragment is a DOM node');
 	assert.equal(isDomNode({ tag: undefined }), false);
-	assert.equal(E('p', {}, E([ E('b', {}, [ 'x' ]) ])).textContent, 'x',
-		'a fragment is appended as a node instead of "[object Object]"');
+
+	/* Inserting a fragment moves its children into the parent and empties the
+	 * fragment; appendChild still returns the fragment (DOM standard). */
+	const child = E('b', {}, [ 'fragment child' ]);
+	const fragment = E([ child ]);
+	const host = E('p');
+	assert.equal(appendChildren(host, fragment), fragment, 'appendChild returns the fragment');
+	assert.equal(host.firstChild, child, 'the fragment child, not the fragment, is in the tree');
+	assert.equal(fragment.childNodes.length, 0, 'the inserted fragment is emptied');
+	assert.equal(host.textContent, 'fragment child');
+	assert.equal(host.childNodes.includes(fragment), false);
+	/* In the array branch luci.js returns the parent's lastChild instead. */
+	const arrayHost = E('p', {}, [ E([ E('i', {}, [ 'a' ]) ]), 'b' ]);
+	assert.deepEqual(arrayHost.childNodes.map(node => node.tag), [ 'i', '#text' ]);
+	assert.equal(arrayHost.lastChild.tag, '#text');
 
 	/* Appending after an innerHTML write keeps the earlier content. */
 	const mixed = E('p', {}, 'before');
@@ -170,19 +183,29 @@ test('T9.42/R2: E()/append() match the SDK for functions, holes, text nodes and 
 	assert.equal(appendChildren(block, '<img src=x>'), null, 'markup has no parsed lastChild here');
 	assert.equal(appendChildren(block, null), null);
 
-	/* DOMString conversions: LegacyNullToEmptyString for innerHTML/textContent. */
+	/* innerHTML is a [LegacyNullToEmptyString] DOMString: null is '', while
+	 * undefined becomes the string "undefined". */
 	assert.equal(E('p', {}, '').innerHTML, '');
 	const writers = E('p');
 	writers.innerHTML = null;
 	assert.equal(writers.innerHTML, '', 'innerHTML = null is the empty string');
 	writers.innerHTML = undefined;
 	assert.equal(writers.innerHTML, 'undefined');
-	writers.textContent = null;
-	assert.equal(writers.children.length, 1);
-	assert.equal(writers.children[0].tag, '#text');
-	assert.equal(writers.textContent, '', 'textContent = null is the empty string');
-	writers.textContent = undefined;
-	assert.equal(writers.textContent, 'undefined');
+
+	/* textContent is a nullable DOMString: WebIDL turns null AND undefined into
+	 * null, and the setter treats null as the empty string. Replacing with ''
+	 * empties the children without creating a text node. */
+	for (const empty of [ null, undefined, '' ]) {
+		const node = E('p', {}, [ 'previous' ]);
+		node.textContent = empty;
+		assert.equal(node.textContent, '');
+		assert.equal(node.childNodes.length, 0, 'no text node for ' + String(empty));
+	}
+	const filled = E('p');
+	filled.textContent = 'x';
+	assert.equal(filled.childNodes.length, 1);
+	filled.textContent = null;
+	assert.equal(filled.childNodes.length, 0, 'a later null also clears the children');
 
 	/* replaceChildren() never parses markup: strings become text nodes. */
 	const replaced = E('p');
@@ -190,4 +213,29 @@ test('T9.42/R2: E()/append() match the SDK for functions, holes, text nodes and 
 	assert.equal(replaced.innerHTML, '');
 	assert.equal(replaced.textContent, '<img src=x>');
 	assert.equal(replaced.childNodes[0].tag, '#text');
+});
+
+/* T9.42/M3: the per-node html array is a final snapshot. A later textContent
+ * replace clears it and a removed subtree becomes unreachable, so a guarantee
+ * about the whole rendering needs the append-only write log. */
+test('T9.42/M3: htmlWriteMark()/htmlWritesSince() record writes the final tree has lost', () => {
+	const { appendChildren, htmlWrites, htmlWriteMark, htmlWritesSince } = require('./loader');
+
+	const mark = htmlWriteMark();
+	const node = E('p', {}, 'plain marker');
+	appendChildren(node, [ 'after' ]);
+	node.textContent = 'replacement';
+	assert.deepEqual(htmlWrites(node), [], 'the final snapshot no longer records the write');
+	assert.ok(htmlWritesSince(mark).includes('plain marker'), 'the write log still has it');
+	assert.deepEqual(htmlWritesSince(mark).filter(text => text.includes('after')), [],
+		'an array append is not an HTML write');
+
+	const removedMark = htmlWriteMark();
+	const host = E('div', {}, [ E('span', {}, 'removed marker') ]);
+	assert.deepEqual(htmlWrites(host), [ 'removed marker' ]);
+	host.textContent = '';
+	assert.deepEqual(htmlWrites(host), []);
+	assert.ok(htmlWritesSince(removedMark).includes('removed marker'),
+		'a removed subtree stays in the write log');
+	assert.equal(htmlWritesSince(removedMark + 1).length, 0, 'the mark slices the log');
 });

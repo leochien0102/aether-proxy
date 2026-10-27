@@ -15,7 +15,7 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo, element, createRpc, htmlWrites } = require('./loader');
+const { loadModule, parsePo, element, createRpc, htmlWriteMark, htmlWritesSince } = require('./loader');
 const { actionRow } = require('./button-layout');
 const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
@@ -1240,6 +1240,7 @@ test('T9.42: a hostile WAN DNS entry stays literal text in the runtime hint', as
 	const unsafe = '<img src=x onerror=alert(1)>';
 	const h = load_view();
 	await h.page.load();
+	const writeMark = htmlWriteMark();
 	const root = await h.page.render();
 	h.document.body.replaceChildren(root);
 	h.start();
@@ -1251,6 +1252,6 @@ test('T9.42: a hostile WAN DNS entry stays literal text in the runtime hint', as
 	assert.ok(renderedText(hint).includes(unsafe), 'the resolver value is quoted verbatim as text');
 	assert.deepEqual(renderedFind(hint, node => node.tag === 'img'), [],
 		'a hostile resolver value never builds an element');
-	assert.deepEqual(htmlWrites(hint).filter(value => value.includes(unsafe)), [],
+	assert.deepEqual(htmlWritesSince(writeMark).filter(value => value.includes(unsafe)), [],
 		'the resolver value never takes the innerHTML path');
 });

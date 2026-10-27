@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element, contentChildren, htmlWrites } = require('./loader');
+const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
 const { selectWidget } = require('./subscription-select');
@@ -1997,6 +1997,7 @@ test('T9.42: a hostile node name stays literal text on the nodes page', async ()
 	const h = await harness('nodes');
 	h.nodes[0].label = unsafe;
 	h.subs[0].name = unsafe;
+	const writeMark = htmlWriteMark();
 	await render(h);
 	const cell = (id, field) => find(gridRow(h, id), node => node.field === field)[0];
 	assert.equal(text(cell('n_a', '_label')), unsafe, 'node name is a text node');
@@ -2007,7 +2008,7 @@ test('T9.42: a hostile node name stays literal text on the nodes page', async ()
 	assert.equal(cell('n_a', '_label').children[0].children[0].tag, '#text');
 	assert.equal(find(h.root, node => node.tag === 'img').length, 0,
 		'a hostile name never builds an element, including its onerror handler');
-	assert.deepEqual(htmlWrites(h.root).filter(text => text.includes(unsafe)), [],
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
 		'the hostile name never takes the innerHTML path');
 });
 
@@ -2015,11 +2016,12 @@ test('T9.42: a hostile subscription name stays literal text in the subscription 
 	const unsafe = '<img src=x onerror=alert(1)>';
 	const h = await harness('subscriptions');
 	h.subs[0].name = unsafe;
+	const writeMark = htmlWriteMark();
 	await render(h);
 	const cell = find(gridRow(h, 's_a'), node => node.field === '_name')[0];
 	assert.equal(text(cell), unsafe, 'subscription name is a text node');
 	assert.equal(cell.children[0].tag, 'span', 'textvalue returns an element, never a string');
 	assert.equal(find(h.root, node => node.tag === 'img').length, 0, 'a hostile name never builds an element');
-	assert.deepEqual(htmlWrites(h.root).filter(text => text.includes(unsafe)), [],
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
 		'the hostile name never takes the innerHTML path');
 });

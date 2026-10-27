@@ -12,7 +12,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element: E, htmlWrites } = require('./loader.js');
+const { loadModule, parsePo, element: E, htmlWriteMark, htmlWritesSince } = require('./loader.js');
 const { nowrapActions } = require('./button-layout');
 const { parseList } = require('./dynamic-list');
 const { textInput, renderAccessList } = require('./access-input');
@@ -702,7 +702,9 @@ async () => {
 	assert.equal(button.textContent, '添加');
 	assert.equal(button.disabled, false);
 	assert.deepEqual(f.page.hostSection.renderSectionAdd().children, [], 'stock lower-left Add is empty');
-	assert.equal(node.children[2].textContent, '', 'no stock button appears after the table');
+	/* renderSectionAdd() returns an empty fragment: appending a fragment moves
+	 * its (zero) children, so after the table there is no stock Add node. */
+	assert.deepEqual(node.children.slice(2), [], 'no stock button appears after the table');
 	assert.deepEqual(await button.click({}), { modal: 'cfgnew' });
 	assert.equal(f.data.at(-1)['.anonymous'], true, 'anonymous Add opens the editor without a name prompt');
 	f.page.map.readonly = true;
@@ -1139,6 +1141,7 @@ test('T9.42: a hostile DHCP host name stays literal text in the device summary',
 	const unsafe = '<img src=x onerror=alert(1)>';
 	const f = fixture([ host('a', 'proxy', { mac: [ MAC ], ip: [ '10.0.0.0/8' ] }) ]);
 	f.hints({ hosts: { [MAC]: { name: unsafe } } });
+	const writeMark = htmlWriteMark();
 	await f.start();
 	const summary = f.option('_devices').textvalue('a');
 	assert.equal(summary.textContent, unsafe + '、10.0.0.0/8');
@@ -1149,6 +1152,6 @@ test('T9.42: a hostile DHCP host name stays literal text in the device summary',
 	assert.ok(renderTree(summary).some((node) => node.tag === '#text' && node.text.includes(unsafe)),
 		'the name is present as a text node');
 	/* The render tree has no HTML sink at all: every child is a node. */
-	assert.deepEqual(htmlWrites(summary).filter(text => text.includes(unsafe)), [],
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
 		'the hostile name never takes the innerHTML path');
 });

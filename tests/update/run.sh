@@ -1042,6 +1042,9 @@ done
 upper_sha=$(printf '%s' "$asset_sha" | tr 'a-f' 'A-F')
 out=$(download_asset "$BASE" 'asset.bin' "$asset_size" "$upper_sha" 'upper.bin'); rc=$?
 expect 'T9.42 uppercase hex sha256 is accepted' 0 "$rc"
+expect 'T9.42 uppercase hex sha256 succeeds' true "$(get "$out" ok)"
+expect 'T9.42 uppercase hex sha256 reports the final path' "$DL_ROOT/upper.bin" "$(get "$out" path)"
+expect 'T9.42 uppercase hex sha256 keeps the asset bytes' PAYLOAD-FROM-CHANNEL "$(cat "$DL_ROOT/upper.bin")"
 
 # -- 3. verification failure keeps the existing final file ------------------
 check_sentinel() {
