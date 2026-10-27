@@ -497,7 +497,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分四个标签（`s.tab`）：
 
 - **拦截**（`main` 段）：`lan_ifaces`（LuCI `tools.widgets` 的 `DeviceSelect`，`multiple`，至少一个；说明「拦截哪些入接口，通常是 br-lan」）、
-  `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
+  `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`degrade_gfw`（2026-10-27 加，T10.68，见「B19」）、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
   - `fail_open`：「关闭后，Xray 不可用时被代理的流量会中断，而不是改为直连」；
   - `dns_hijack`：「关闭后，自己指定了 DNS 的设备会绕过分流」；
   - `ipv6_filter`：「所有 AAAA 查询返回空结果，让设备只用 IPv4 访问；LAN 侧的 IPv6 地址分配不受影响」（03「IPv6」）。
@@ -1229,6 +1229,20 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 5. **兼容**：`companions` 是 08「更新接口（固定）」允许新增的字段，旧页面不认识它、照旧只显示主事务。**不改 `tests/compat/fixtures/`**（冻结的 0.3.0-r1 页面文件，发正式版后由后端会话替换）；`tests/compat/` 的测试照常要通过。
 
 **复审结论（2026-10-25，T10.67 已合并）**：结果的形状与 `update.uc` 逐项对照一致（页面包按后端顺序认第一个失败的）。复审改了刷新提示（见第 2 条）。`tests/compat/` 没动，冻结的 0.3.0-r1 页面仍能经当前命令行更新自己。
+
+### B19：节点不健康时的分流降级——概览提示、高级页开关、事件文案（2026-10-27 定，T10.68；交接 `frontend-entry-b19.md`，依赖后端 T9.40，已合并）
+
+后端（02「节点不健康时的分流降级」）：节点不健康、Xray 存活、`main.degrade_gfw` 开着时，**只有绕过大陆**临时按「仅被墙」分流（默认模式为 `bypass_cn` 的，以及设备覆盖为 `bypass_cn` 的设备）；全局、仅被墙、直连不变；恢复健康后还原；不写 UCI。`status` 多了 `degraded_mode`（`"gfw"` 或 `null`）与 `degraded_since`（秒）。
+
+1. **概览页提示**：`status.degraded_mode === 'gfw'` 时，在状态那一行（与「DNS 已回退到原来的上游配置」同一处、同样用警告色）显示「节点不可用，绕过大陆已临时按「<仅被墙的模式名>」分流」，后面接持续时间（`state_duration(now, degraded_since)`，「已持续 N 分钟」；`degraded_since` 不是数字时不写持续时间）。模式名用页面现有的 `MODE_TEXT.gfw`（与默认模式下拉一致）。`degraded_mode` 为 `null` 或没有该字段（旧后端）时不显示。状态读取失败（`ok === false`）时不显示。
+   - **不参与「正在切换默认模式」的判断**：`status.mode` 降级时不变，仍是配置并已应用的默认模式；`mode_changed` 照旧只比 `mode` 与 `main.mode`，不看 `degraded_mode`。测试要覆盖「降级中、`mode` = `main.mode`」时没有切换提示。
+   - 默认模式下拉、节点下拉不因降级变化。
+2. **高级页开关**：`main.degrade_gfw`，`Flag`，默认 1（schema `default: true`，X15：没设过的不改不写），放在「拦截」标签、`fail_open` 之后。标题「节点不可用时只代理被墙网站」；说明「节点不可用时，绕过大陆临时只代理被墙网站，其余直连；恢复后自动还原。全局模式不受影响。」。同时加进模型的 `BOOL_FIELDS`、默认值表与说明表；`tests/luci/schema-defaults.test.js` 的对照随之覆盖它。
+3. **事件**：docs/09「事件码目录」加一行 `MODE_DEGRADED` / `MODE_RESTORED`｜warn / notice｜`from`、`to`；`mode`。页面模板（`model/logs.js`），模式参数都显示成模式名：
+   - `MODE_DEGRADED`：「节点不可用，绕过大陆临时按「{to}」分流（默认模式：{from}）」——`from` 是默认模式，默认模式为全局而只有设备覆盖被降级时，它会是「全局」，所以写成括号里的「默认模式」，不写成「从 {from} 改为 {to}」。
+   - `MODE_RESTORED`：「节点已恢复，分流已还原（默认模式：{mode}）」。
+   - `from`、`to` 只对这个事件按模式名显示（`DNS_TIER_CHANGED` 的 `from`/`to` 是 T1/T2，不能套用）；`mode` 沿用现有的映射。悬停仍是原始参数。
+4. 09 的目录行与页面模板必须在同一个提交里加（logs 测试要求目录里每个码都有模板，先加目录会让 main 的测试失败）。所以 T10.68 破例允许实现者改 docs/09，只限「事件码目录」里这一行。
 
 UI 规则：
 
