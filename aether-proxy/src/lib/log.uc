@@ -23,6 +23,8 @@ const EVENTS = {
 	NODE_STALE: 'warn', NODE_STALE_IN_USE: 'warn',
 	NODE_INSECURE_IGNORED: 'warn',
 	PROXY_HEALTHY: 'notice', PROXY_UNHEALTHY: 'warn',
+	// T9.40: docs/02; docs/09 and page templates follow in the frontend card.
+	MODE_DEGRADED: 'warn', MODE_RESTORED: 'notice',
 	DNS_TIER_CHANGED: 'warn',
 	XRAY_DOWN_FAILOPEN: 'error', XRAY_DOWN: 'error', XRAY_RECOVERED: 'notice',
 	DNS_DOWN_FAILSAFE: 'error', DNS_RECOVERED: 'notice',

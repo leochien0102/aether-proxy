@@ -166,6 +166,7 @@ export function render(loaded, runtime, only) {
 		runtime: {
 			node_ip: runtime.node_ip ?? null,
 			dns_tier: runtime.dns_tier ?? 'T2',
+			degraded_mode: runtime.degraded_mode ?? null,
 			restored: runtime.restored ?? {}
 		},
 		paths: loaded.paths

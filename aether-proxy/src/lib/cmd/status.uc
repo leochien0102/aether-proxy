@@ -26,8 +26,8 @@ function usage(args, detail) {
 function human_status(value) {
 	let lines = [ `state: ${value.state ?? 'unknown'}` ];
 
-	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'mode', 'node_ip', 'since',
-		'last_probe', 'last_error', 'probe', 'updates_available', 'components', 'render_hash', 'notices' ])
+	for (let field in [ 'dns_tier', 'dns_failsafe', 'node_id', 'mode', 'node_ip',
+		'degraded_mode', 'degraded_since', 'since', 'last_probe', 'last_error', 'probe', 'updates_available', 'components', 'render_hash', 'notices' ])
 		if (value[field] != null)
 			push(lines, `${field}: ${sprintf('%J', value[field])}`);
 
@@ -193,6 +193,9 @@ export function run(args) {
 			{ ok: false, code: 'CONFIG_INVALID', detail: `${length(cfg.errors)} configuration error(s)`, errors: cfg.errors },
 			2, pipeline.describe_errors({ code: 'CONFIG_INVALID', detail: 'configuration invalid', errors: cfg.errors }));
 
+	// Old or stopped state files predate the runtime-only fields (docs/02).
+	current.degraded_mode ??= null;
+	current.degraded_since ??= null;
 	current.probe = probe_summary(run_dir);
 	let updates = updates_cache.read(run_dir, parsed.opts.sys_root);
 	current.updates_available = updates.stale ? null : updates.value;

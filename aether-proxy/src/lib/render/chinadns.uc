@@ -36,6 +36,8 @@ function trust_upstreams(dns, tier, china) {
 export function render(snapshot, ctx) {
 	let main = snapshot?.main ?? {};
 	let dns = snapshot?.dns ?? {};
+	// docs/02: temporary routing uses GFW lists too, without changing the DNS tier.
+	let mode = ctx?.runtime?.degraded_mode == 'gfw' ? 'gfw' : main.mode;
 	let paths = ctx?.paths ?? {};
 	// docs/03 "直连境外 DNS（可选）": T2 is opt-in, including bootstrapping.
 	let tier = ctx?.runtime?.dns_tier ?? (dns.direct_dns_enabled ? 'T2' : 'T1');
@@ -46,7 +48,7 @@ export function render(snapshot, ctx) {
 	let china = expand_china_dns(dns.china_dns, ctx?.wan_dns);
 	let direct = dns.direct_dns_enabled ? (dns.direct_dns ?? []) : china;
 	let trust = trust_upstreams(dns, tier, china);
-	// DNS still follows main.mode; device GFW overrides only need its IP set populated (docs/03).
+	// Device overrides share default-mode DNS; degradation changes that effective default.
 	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false && h.policy == 'gfw')) > 0;
 	let out = [];
 
@@ -64,11 +66,11 @@ export function render(snapshot, ctx) {
 	push(out, 'ipset-name4 ' + nft_set(C.CHINADNS_SET_CHNROUTE4));
 	push(out, 'ipset-name6 null');
 
-	if (main.mode == 'gfw') {
+	if (mode == 'gfw') {
 		put_path('gfwlist-file', paths.gfwlist);
 		push(out, 'default-tag chn');
 	}
-	else if (main.mode == 'bypass_cn') {
+	else if (mode == 'bypass_cn') {
 		put_path('gfwlist-file', paths.gfwlist);
 		let lists = filter([ paths.chnlist, paths.apple ], p => p != null && p != '');
 		if (length(lists))
@@ -83,7 +85,7 @@ export function render(snapshot, ctx) {
 		push(out, 'default-tag gfw');
 	}
 
-	if (main.mode == 'gfw' || host_gfw)
+	if (mode == 'gfw' || host_gfw)
 		push(out, 'add-taggfw-ip ' + nft_set(C.CHINADNS_SET_GFW4) + ',null');
 
 	// Custom groups: declaration order = priority, low to high.

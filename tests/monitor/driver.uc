@@ -31,6 +31,8 @@ function settings(root, confdir, data_dir, baseline_dir, custom_dir, bin_dir) {
 	let cfg = config.load(uci.cursor(confdir, root + '/uci-savedir'));
 	if (!cfg.ok)
 		return { error: `config invalid: ${sprintf('%.J', cfg.errors)}` };
+	// Legacy scenarios isolate DNS/failsafe actions; T9.40's real-daemon suite covers degradation.
+	cfg.snapshot.main.degrade_gfw = false;
 	let built = pipeline.build({ ...opts, runtime: { node_ip: '203.0.113.20', dns_tier: 'T2', restored: {} } });
 	if (!built.ok)
 		return { error: `pipeline failed: ${built.detail}` };
@@ -138,6 +140,7 @@ if (match(scenario, /^disabled-/)) {
 else if (scenario == 'proxy-tier') {
 	let d = opts.daemon;
 	let state = config.load(uci.cursor(opts.opts.confdir, opts.ctx.root + '/uci-savedir')).snapshot;
+	state.main.degrade_gfw = false;
 	state.probe.fail_threshold = 3;
 	state.probe.recover_threshold = 1;
 	d.snapshot = state;

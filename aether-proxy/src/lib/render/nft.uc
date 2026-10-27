@@ -133,6 +133,7 @@ export function render(snapshot, ctx) {
 	let data = ctx.data ?? {};
 	let restored = ctx.runtime?.restored ?? {};
 	let node_ip = ctx.runtime?.node_ip;
+	let degraded = ctx.runtime?.degraded_mode == 'gfw';
 
 	let mark = split(C.FWMARK, '/')[0];
 	let quic = main.quic_block == true;
@@ -149,7 +150,7 @@ export function render(snapshot, ctx) {
 		if (h.enabled == false)
 			continue;
 
-		if (h.policy in [ 'bypass_cn', 'gfw' ])
+		if (h.policy in [ 'bypass_cn', 'gfw', 'global' ])
 			host[h.policy] ??= { ip: [], mac: [] };
 
 		let pol = host[h.policy] ?? host.follow;
@@ -164,7 +165,11 @@ export function render(snapshot, ctx) {
 	}
 
 	// Fixed precedence, independent of UCI order; absent overrides add no output bytes.
-	let host_modes = filter([ 'bypass_cn', 'gfw' ], p => host[p] != null);
+	let host_modes = filter([ 'bypass_cn', 'gfw', 'global' ], p => host[p] != null);
+	let gfw_chain = degraded && length(host_modes) > 0;
+	// TODO(design): docs/02 mentions a distinct global override, but docs/05 only accepts
+	// proxy (which must never degrade). Keep proxy intact; handle global only if supplied
+	// explicitly in a renderer snapshot, without inventing a new persisted policy.
 	let out = [];
 
 	push(out, sprintf('table %s', C.NFT_TABLE));
@@ -227,8 +232,9 @@ export function render(snapshot, ctx) {
 	push(out, `${T}${T}ether saddr @host_proxy_mac goto proxy`);
 
 	for (let p in host_modes) {
-		push(out, `${T}${T}ip saddr @host_${p}4 goto mode_${p}`);
-		push(out, `${T}${T}ether saddr @host_${p}_mac goto mode_${p}`);
+		let target = degraded ? 'gfw' : p;
+		push(out, `${T}${T}ip saddr @host_${p}4 goto mode_${target}`);
+		push(out, `${T}${T}ether saddr @host_${p}_mac goto mode_${target}`);
 	}
 
 	push(out, `${T}${T}ip saddr @host_follow4 goto by_mode`);
@@ -240,9 +246,9 @@ export function render(snapshot, ctx) {
 	push(out, `${T}}`);
 	push(out, '');
 
-	push(out, ...mode_chain('by_mode', main.mode));
+	push(out, ...mode_chain('by_mode', degraded ? 'gfw' : main.mode));
 
-	for (let p in host_modes)
+	for (let p in (gfw_chain ? [ 'gfw' ] : host_modes))
 		push(out, ...mode_chain('mode_' + p, p));
 
 	let tp = `meta mark set meta mark | ${mark} tproxy ip to :${C.TPROXY_PORT} accept`;
