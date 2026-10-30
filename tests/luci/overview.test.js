@@ -1012,7 +1012,7 @@ test('T10.3 scenario 6c: reason, DNS, address, traffic table, connection tooltip
 	assert.equal(reason.attrs.style, 'color:var(--error-color-high, #c53030)');
 	const fallback = findAll(blocks[0], 'span').find((n) => visibleText(n) === 'DNS 已回退到原配置');
 	assert.equal(fallback.attrs.style, 'color:var(--warning-color, #b7791f)');
-	const address = findAll(nodeRow(root), 'span').find((n) => n.textContent === '节点地址 203.0.113.10');
+	const address = findAll(nodeRow(root), 'span').find((n) => n.textContent === '节点地址 ***.***.***.10');
 	assert.ok(address);
 	assert.equal(address.attrs.title, undefined);
 	assert.ok(!findAll(nodeRow(root), 'span').some((n) => n.attrs.style === 'font-size: 1.2em'));
@@ -1221,7 +1221,7 @@ test('T10.5 scenario 1b: address text requires an active service and nonempty ru
 		for (const node_ip of [ undefined, null, '', '203.0.113.10' ]) {
 			const vm = build({ ok: true, state, node_ip });
 			const visible = ['running', 'degraded', 'failsafe'].includes(state) && !!node_ip;
-			assert.equal(vm.node_address_text, visible ? '节点地址 203.0.113.10' : null);
+			assert.equal(vm.node_address_text, visible ? '节点地址 ***.***.***.10' : null);
 		}
 	}
 	assert.equal(build({ ok: false, state: 'running', node_ip: 'stale' }).node_address_text, null);
@@ -1347,7 +1347,7 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	select.attrs.change();
 	assert.equal(button.disabled, true, 'T10.24 locks a runtime/configured mismatch without a failure reason');
 	assert.equal(select.disabled, true);
-	assert.match(visibleText(second), /节点地址 203\.0\.113\.10.*正常，12 ms.*检测真实延迟/);
+	assert.match(visibleText(second), /节点地址 \*\*\*\.\*\*\*\.\*\*\*\.10.*正常，12 ms.*检测真实延迟/);
 	assert.ok(findAll(second, 'small')[0].textContent.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
@@ -1459,7 +1459,7 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	assert.match(left.children[1].attrs.style, /flex-wrap:\s*nowrap/);
 	assert.match(findAll(left, 'select')[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
-	assert.equal(right.children[0].textContent, '节点地址 203.0.113.10');
+	assert.equal(right.children[0].textContent, '节点地址 ***.***.***.10');
 	assert.equal(right.children[1].textContent, '正常，12 ms');
 	assert.equal(right.children[1].attrs.style, 'color:var(--success-color-high, #2f855a)');
 	assert.equal(right.children[2].tag, 'small');
@@ -1817,7 +1817,7 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 			assert.deepEqual(sections(root).map((s) => visibleText(s.children[0])),
 				[ '运行状态', '流量与连接', '组件版本' ]);
 			assert.equal(findAll(root, 'strong')[0].textContent, '运行中');
-			assert.ok(visibleText(nodeRow(root)).includes('节点地址 203.0.113.10'));
+			assert.ok(visibleText(nodeRow(root)).includes('节点地址 ***.***.***.10'));
 			assert.equal(componentCells(root).length, 2);
 			await page.fetchRefresh();
 		}
@@ -3756,7 +3756,7 @@ for (const state of [...RUNTIME_STATES, ...INACTIVE_STATES]) {
 				const status = { state, node_ip, last_probe: { ok, latency_ms: 23, at: NOW - 30 } };
 				const { page, root } = renderStatus(status);
 				assert.equal(page.vm.node_ip, visible && node_ip ? node_ip : null);
-				assert.equal(page.vm.node_address_text, visible && node_ip ? '节点地址 ' + node_ip : null);
+				assert.equal(page.vm.node_address_text, visible && node_ip ? '节点地址 ***.***.***.10' : null);
 				assert.equal(page.vm.probe_text, !visible ? null : ok ? '正常，23 ms' : '检测失败');
 				assert.equal(!!page.vm.probe_since_text, visible);
 				const right = nodeRow(root).children[1];
@@ -4209,4 +4209,92 @@ test('T9.42: DNSMASQ_EXTRA_SERVERS lines render as text and never build elements
 	assert.deepEqual(findAll(page.noticeContent, 'img'), [], 'no element is created from a server line');
 	assert.deepEqual(htmlWritesSince(writeMark).filter((text) => text.includes('server=')), [],
 		'server lines never take the innerHTML path');
+});
+
+/* T10.69: only the real-latency address label is masked; runtime data and the
+ * left selector group keep their existing contracts (docs/10 「地址脱敏」). */
+const MASKED_ADDRESSES = [
+	['1.2.3.4', '***.***.***.4'],
+	['10.0.0.255', '***.***.***.255'],
+	['172.16.254.1', '***.***.***.1'],
+	['255.255.255.255', '***.***.***.255']
+];
+
+for (const [address, masked] of MASKED_ADDRESSES) {
+	test(`T10.69 scenario 1: ${address} masks only the first three parts`, () => {
+		const model = dashboardModel();
+		assert.equal(model.mask_node_address(address), masked);
+		const status = Object.freeze({ state: 'running', node_ip: address });
+		const vm = build(status);
+		assert.equal(vm.node_address_text, '节点地址 ' + masked);
+		assert.equal(status.node_ip, address, 'the RPC input is unchanged');
+		assert.equal(vm.node_ip, address, 'the raw model field is unchanged');
+	});
+}
+
+test('T10.69 scenario 2: malformed addresses mask fully; empty addresses omit the label', () => {
+	const model = dashboardModel();
+	const malformed = [
+		'edge.example.com', '::1', '1.2.3', '1.2.3.4.5', '1..3.4', '1.2.3.x',
+		'1.2.3.4\n', ' 1.2.3.4', '<img src=x onerror=alert(1)>', 123, {}, [], '', null, undefined
+	];
+	for (const address of malformed) {
+		assert.equal(model.mask_node_address(address), '***', String(address));
+		const mark = htmlWriteMark();
+		const { root, page } = renderStatus({ state: 'running', node_ip: address });
+		assert.equal(page.vm.node_address_text, address ? '节点地址 ***' : null);
+		assert.equal(visibleText(root).includes('节点地址'), !!address);
+		assert.deepEqual(findAll(root, 'img'), [], 'malformed input cannot create elements');
+		if (typeof address === 'string' && address) {
+			assert.ok(domStrings(root).every(value => !value.includes(address)), 'unexpected input is never echoed');
+			assert.deepEqual(htmlWritesSince(mark).filter(text => text.includes(address)), [],
+				'unexpected input never takes the innerHTML path');
+		}
+	}
+	assert.equal(model.mask_node_address('1.2.3.004'), '***.***.***.004', 'last part stays verbatim');
+});
+
+/* Inspect actual DOM text and attributes only, not the view's raw RPC state. */
+function domStrings(node) {
+	return [node.textContent, ...Object.values(node.attrs ?? {}).filter(value => typeof value === 'string'),
+		...(node.children ?? []).flatMap(domStrings)];
+}
+
+test('T10.69 scenario 3: DOM has masked text only, no raw-address attributes, and stays in the probe group', () => {
+	for (const state of RUNTIME_STATES) {
+		for (const [address, masked] of MASKED_ADDRESSES) {
+			const mark = htmlWriteMark();
+			const { root, page } = renderStatus({ state, node_ip: address,
+				last_probe: { ok: true, latency_ms: 12, at: NOW - 30 } });
+			const [left, right] = nodeRow(root).children;
+			const label = right.children[0];
+			assert.equal(label.textContent, '节点地址 ' + masked);
+			assert.equal(label.childNodes.length, 1);
+			assert.equal(label.firstChild.tag, '#text', 'address label is a text node');
+			assert.equal(label.scalarHtml, false, 'address label did not use innerHTML');
+			assert.deepEqual(label.attrs, {}, 'no title or tooltip on the address');
+			assert.ok(domStrings(root).every(value => !value.includes(address)),
+				'no complete address in any DOM text or attribute');
+			assert.deepEqual(htmlWritesSince(mark).filter(text => text.includes('节点地址')
+				|| text.includes(address) || text.includes(masked)), [], 'address never takes the HTML path');
+			assert.ok(!visibleText(left).includes('节点地址'), 'no address in the selector group');
+			assert.equal(right.children[1].textContent, '正常，12 ms');
+			assert.match(right.children[2].textContent, /前$/);
+			assert.equal(right.children[3], page.probeControl, 'address precedes the same probe control');
+			assert.ok(findAll(right, 'button').includes(page.probeButton), 'button stays in the right group');
+		}
+	}
+});
+
+test('T10.69 scenario 4: inactive and failed statuses omit even a retained address', () => {
+	const address = '1.2.3.4';
+	for (const status of [
+		...INACTIVE_STATES.map(state => ({ state, node_ip: address })),
+		{ ok: false, state: 'running', node_ip: address }
+	]) {
+		const { root, page } = renderStatus(status);
+		assert.equal(page.vm.node_address_text, null);
+		assert.ok(!visibleText(root).includes('节点地址'));
+		assert.ok(domStrings(root).every(value => !value.includes(address) && !value.includes('***')));
+	}
 });

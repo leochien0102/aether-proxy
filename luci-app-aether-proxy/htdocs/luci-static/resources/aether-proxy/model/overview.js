@@ -22,6 +22,7 @@
  * timeout-only inventory retry eligibility;
  * T10.68 presents docs/10 B19 degradation without changing effective selections
  * or the configured-versus-applied mode comparison;
+ * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -337,6 +338,15 @@ function probe_fields(probe, now) {
 	};
 }
 
+/* resolveip -4 supplies four numeric parts; never echo unexpected input into
+   the address display. Keep the last part verbatim, not numerically normalized. */
+function mask_node_address(address) {
+	const parts = typeof address === 'string' ? address.split('.') : [];
+	if (parts.length !== 4 || parts.some(part => !part || /[^0-9]/.test(part)))
+		return '***';
+	return '***.***.***.' + parts[3];
+}
+
 function node_options(labels, current) {
 	return Object.keys(labels ?? {}).sort().map((id) => ({
 		value: id,
@@ -621,6 +631,7 @@ return baseclass.extend({
 		return null;
 	},
 
+	mask_node_address: mask_node_address,
 	node_options: node_options,
 
 	mode_options: function() {
@@ -757,7 +768,7 @@ return baseclass.extend({
 			...nodes,
 			node_ip: (show_probe && status.node_ip) ? String(status.node_ip) : null,
 			node_address_text: (show_probe && status.node_ip)
-				? fmt(_('Node address %s', 'aether-proxy'), status.node_ip) : null,
+				? fmt(_('Node address %s', 'aether-proxy'), mask_node_address(status.node_ip)) : null,
 			...(!show_probe ? { probe_text: null, probe_since_text: null, probe_level: 'neutral' }
 				: manual && manual.monitor_at === status.last_probe?.at ? {
 				probe_text: manual.text,
