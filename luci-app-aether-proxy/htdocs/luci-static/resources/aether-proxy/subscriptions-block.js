@@ -394,7 +394,10 @@ return baseclass.extend({
 		};
 		this.table_columns(s);
 		let o = s.option(form.Value, 'name', _('Name', 'aether-proxy')); o.modalonly = true;
-		o = s.option(form.Value, 'url', _('Subscription URL', 'aether-proxy')); o.modalonly = true; o.password = true; o.rmempty = false;
+		o = s.option(form.Value, 'url', _('Subscription URL', 'aether-proxy')); o.password = true;
+		o.modalonly = true;
+		o.rmempty = false;
+		o.validate = function(id, value) { return model.validate_url(value); };
 		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
