@@ -99,4 +99,5 @@ done
 python3 "$ROOT/tests/monitor/degrade.py" || status=1
 python3 "$ROOT/tests/monitor/applied-context.py" || status=1
 python3 "$ROOT/tests/monitor/frozen-paths.py" || status=1
+python3 "$ROOT/tests/monitor/debug-logging.py" || status=1
 exit "$status"

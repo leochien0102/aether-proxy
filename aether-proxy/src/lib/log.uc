@@ -211,8 +211,17 @@ function event(level, code, args, message) {
 	return syslog.syslog(PRIORITY[level], '%s', format_line(code, args, message));
 }
 
+// Round observations are diagnostics, not transition events: do not invent an event
+// code or touch the JSONL history for unchanged health samples (docs/07, docs/09).
+function debug(message, args) {
+	if (RANK.debug > RANK[threshold])
+		return false;
+	open_syslog();
+	return syslog.syslog(PRIORITY.debug, '%s', format_line(message, args));
+}
+
 function set_run_dir(path) {
 	event_run_dir = path ?? C.RUN_DIR;
 }
 
-export { event, set_level, set_run_dir, format_line };
+export { event, debug, set_level, set_run_dir, format_line };

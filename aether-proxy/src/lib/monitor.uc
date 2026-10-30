@@ -113,7 +113,7 @@ function observe(daemon) {
 	// would fail the same way and could export empty sets.
 	if (!table.ok)
 		log_failure(daemon, 'nft_table_exists', table.detail);
-	return {
+	let observation = {
 		now: time(),
 		table_present: table.ok ? table.exists : true,
 		xray_listening,
@@ -122,6 +122,17 @@ function observe(daemon) {
 		proxy_latency_ms: proxy?.latency_ms ?? null,
 		dns_ok: dns
 	};
+	let dns_reason = dns == null ? 'proxy_healthy' : (dns ? 'healthy' : 'unhealthy');
+	if (!daemon.snapshot.dns.direct_dns_enabled)
+		dns_reason = 'disabled';
+	else if (machine.dns_failsafe)
+		dns_reason = 'failsafe';
+	log.debug('monitor observation', {
+		...observation,
+		proxy_reason: proxy == null ? 'not_running' : (proxy.ok ? 'healthy' : 'unhealthy'),
+		dns_reason
+	});
+	return observation;
 };
 
 function supervisor_for(daemon, key, name, argv) {

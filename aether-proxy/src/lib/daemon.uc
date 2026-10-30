@@ -484,9 +484,12 @@ function start_sequence(ctx, opts, signal_pending) {
 	step_started = monotonic_ms();
 	let pre = check.precheck(snapshot, staging, { sys_root: ctx.root, bin_dir: ctx.bin_dir });
 	let failed_pre = filter(pre.items, item => !item.ok);
-	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
-		if (!pre.components[name]?.found)
+	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+		if (!pre.components[name]?.found) {
+			log.event('error', 'COMPONENT_MISSING', { component: name });
 			push(failed_pre, { item: `component:${name}`, ok: false, detail: `${name} missing` });
+		}
+	}
 	record_step(ctx, 'precheck', step_started);
 	if (length(failed_pre)) {
 		locked.close();
