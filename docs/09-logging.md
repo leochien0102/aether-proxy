@@ -107,7 +107,8 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `JOB_LOST` | warn | `job`、`kind`（作业文件为 running 但工作进程已不存在，见 10「作业机制」） |
 | `START_RETRY` | warn | `attempt`、`in_secs`（启动失败后 daemon 内的退避重试，见 04） |
 | `NET_WAIT_TIMEOUT` | warn | `waited` |
-| `COMPONENT_MISSING` / `COMPONENT_TOO_OLD` | error | `component`、`version`、`min` |
+| `COMPONENT_MISSING` | error | `component` |
+| `COMPONENT_TOO_OLD` | error | `component`、`version`、`min` |
 | `NODE_RESOLVE_FALLBACK` / `NODE_RESOLVE_FAILED` | warn / error | `node`、`domain`、`lkg_ip` |
 | `NODE_IP_CHANGED` | notice | `node`、`old`、`new` |
 | `NODE_STALE` / `NODE_STALE_IN_USE` | warn | `node`、`label` |
@@ -133,7 +134,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `UPDATE_FETCH_FAILED` | error | `urls`（所有发布通道地址都连不上；与验签失败区分，见 08「检查」） |
 | `NO_SPACE` / `ARCH_UNSUPPORTED` | error | `need`、`free` / `arch` |
 | `CMD_FAILED` | error | `cmd`、`rc`、`stderr`；作业工作进程记录时另有 `code`、`detail`（子命令 `--json` 输出中的错误码与原因，没有就不带；`code` 不是字符串时两项都不带，`detail` 不是字符串时只带 `code`；2026-10-22 加，r11 窗口：`sub update` 未知订阅时 `stderr` 为空，看不出原因） |
-| `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出） |
+| `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出；`cmd`/stderr 中的 URL 去掉 userinfo 与 query） |
 | `FS_FAILED` | error | `op`（open/read/parse/write/rename/unlink/mkdir/stat/list，以及 `reload-config` 等说明具体步骤的值）、`path`、`detail`（调用方在 `sys.write_atomic` 等返回失败时记录） |
 
 新增事件码时同步修改本表、LuCI 的翻译模板和 po 文件。
