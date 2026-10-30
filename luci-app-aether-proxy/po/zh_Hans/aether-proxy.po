@@ -40,13 +40,9 @@ msgctxt "aether-proxy"
 msgid "Switching to “%s”…"
 msgstr "正在切换到「%s」…"
 
-msgctxt "aether-proxy"
-msgid "Switched to “%s”"
-msgstr "已切换到「%s」"
 
-msgctxt "aether-proxy"
-msgid "Switching to “%s” has not finished yet; see the overview or logs for the reason."
-msgstr "切换到「%s」还没有完成，可到概览页或日志页查看原因"
+
+
 
 msgctxt "aether-proxy"
 msgid "Switching to “%s” did not take effect; the service is still using “%s”. Reason: %s (%s). Click Restart to start with the configured node (this briefly interrupts proxy traffic), or see the logs page for details."
@@ -1004,13 +1000,9 @@ msgctxt "aether-proxy"
 msgid "Probe"
 msgstr "检测"
 
-msgctxt "aether-proxy"
-msgid "Set as current"
-msgstr "设为当前"
 
-msgctxt "aether-proxy"
-msgid "Set this node as the current node"
-msgstr "将此节点设为当前节点"
+
+
 
 msgctxt "aether-proxy"
 msgid "Probe the TCP reachability of this node"
@@ -1020,9 +1012,7 @@ msgctxt "aether-proxy"
 msgid "Really delete this node?"
 msgstr "确定要删除这个节点吗？"
 
-msgctxt "aether-proxy"
-msgid "The current node cannot be deleted."
-msgstr "当前节点不能删除。"
+
 
 msgctxt "aether-proxy"
 msgid "Edit"
@@ -2240,9 +2230,7 @@ msgctxt "aether-proxy"
 msgid "Set as the current node; it will be used on the next start."
 msgstr "已设为当前节点，下次启动时使用"
 
-msgctxt "aether-proxy"
-msgid "The node was switched, but refreshing the page data failed: %s. Reload the page."
-msgstr "已切换节点，但刷新页面数据失败：%s。请刷新页面。"
+
 
 msgctxt "aether-proxy"
 msgid "IPv6 address"
@@ -2412,9 +2400,7 @@ msgctxt "aether-proxy"
 msgid "Settings saved; they will be used on the next start."
 msgstr "设置已保存，下次启动时使用"
 
-msgctxt "aether-proxy"
-msgid "Settings were switched, but refreshing the page data failed: %s. Reload the page."
-msgstr "已切换设置，但刷新页面数据失败：%s。请刷新页面。"
+
 
 msgctxt "aether-proxy"
 msgid "Startup did not complete; see the logs page for the reason."
@@ -2555,3 +2541,63 @@ msgstr "节点不可用，绕过大陆临时按「{to}」分流（默认模式�
 msgctxt "aether-proxy"
 msgid "Node recovered; routing restored (default mode: {mode})"
 msgstr "节点已恢复，分流已还原（默认模式：{mode}）"
+
+msgctxt "aether-proxy"
+msgid "Not selected"
+msgstr "未选择"
+
+msgctxt "aether-proxy"
+msgid "Close"
+msgstr "关闭"
+
+msgctxt "aether-proxy"
+msgid "Please select a node and apply first."
+msgstr "请先选择节点并应用。"
+
+msgctxt "aether-proxy"
+msgid "The switch result is uncertain. Check the overview or logs."
+msgstr "切换结果不确定，请查看概览或日志。"
+
+msgctxt "aether-proxy"
+msgid "Switching has not finished. Check the overview or logs."
+msgstr "切换尚未完成，请查看概览或日志。"
+
+msgctxt "aether-proxy"
+msgid "Switching settings…"
+msgstr "正在切换节点/模式…"
+
+msgctxt "aether-proxy"
+msgid "Switch successful."
+msgstr "切换成功。"
+
+msgctxt "aether-proxy"
+msgid "The switch was not committed; configuration is unchanged."
+msgstr "切换未提交，配置未变。"
+
+msgctxt "aether-proxy"
+msgid "Switch failed; restoring previous settings…"
+msgstr "切换失败，正在恢复原设置…"
+
+msgctxt "aether-proxy"
+msgid "Switch failed; previous settings restored."
+msgstr "切换失败，已恢复原设置。"
+
+msgctxt "aether-proxy"
+msgid "Switch failed and previous settings could not be restored."
+msgstr "切换失败，恢复原设置也失败。"
+
+msgctxt "aether-proxy"
+msgid "Settings changed in another page; they were not overwritten."
+msgstr "设置已被其他页面修改，未覆盖。"
+
+msgctxt "aether-proxy"
+msgid "Previous settings cannot be restored automatically. Check the overview or logs."
+msgstr "无法自动恢复原设置，请查看概览或日志。"
+
+msgctxt "aether-proxy"
+msgid "To switch nodes, select a node on the Overview page and click Apply."
+msgstr "切换节点请到概览页选择后点「应用」。"
+
+msgctxt "aether-proxy"
+msgid "The current node cannot be deleted. Switch to another node on the Overview page first."
+msgstr "当前节点不可删除，请先在概览页切换到其他节点。"

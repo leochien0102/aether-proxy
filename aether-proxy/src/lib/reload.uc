@@ -362,6 +362,7 @@ function run_candidate(daemon, started_ms, transaction) {
 	// Monitor degradation/restoration uses the full transaction machinery, but only
 	// changes runtime. A user reload is the sole entry allowed to read new inputs.
 	let loaded = daemon.degradation_request != null ? daemon.applied_context : pipeline.read(daemon.opts);
+	transaction.target = loaded?.snapshot?.main;
 	if (loaded == null)
 		return failure(daemon, 'context', 'missing applied render context');
 	record_detail(detail, 'read', detail_started);
@@ -556,6 +557,30 @@ function run_candidate(daemon, started_ms, transaction) {
 	return applied_result(daemon, loaded, actions);
 };
 
+// T10.71 / handoff §2.2: publish completion separately from applied runtime metadata.
+// Failure must name the attempted target, not the still-running previous node.
+function record_reload(daemon, result, target) {
+	let stamp = clock();
+	let detail = result.detail ?? 'reload failed';
+	if (type(detail) != 'string')
+		detail = sprintf('%.J', detail);
+	let last_reload = { at: stamp[0] + stamp[1] / 1000000000.0, target_node: target?.node ?? null,
+		target_mode: target?.mode ?? null, ok: result.ok == true, error: result.ok ? null : detail };
+	let current = state_file.read(run_dir(daemon));
+	if (current == null) {
+		log.event('error', 'FS_FAILED', { op: 'read', path: run_dir(daemon), detail: state_file.error() });
+		return result;
+	}
+	if (!state_file.write(run_dir(daemon), { ...current, last_reload })) {
+		log.event('error', 'FS_FAILED', { op: 'write', path: run_dir(daemon), detail: state_file.error() });
+		return result;
+	}
+	result.last_reload = last_reload;
+	if (result.state != null)
+		result.state.last_reload = last_reload;
+	return result;
+};
+
 // One cleanup boundary covers every early return, including rendering, validation and
 // rollback failures. A reused current generation is never treated as a disposable candidate.
 function run(daemon, started_ms) {
@@ -565,15 +590,17 @@ function run(daemon, started_ms) {
 		pipeline.discard_frozen(transaction.loaded, previous);
 	else
 		pipeline.prune_frozen(daemon.ctx, result.applied_context);
-	return result;
+	return record_reload(daemon, result, transaction.target);
 };
 
 // Both user and monitor reloads compare installed outputs. The caller owns busy and,
 // for monitor actions, the global lock; do not recursively acquire that same flock.
 function run_live(daemon, started_ms, degradation_request) {
 	let live = apply.artifact_hashes(daemon.ctx, `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`);
-	if (!live.ok)
-		return failure(daemon, 'hash_current', live.detail);
+	if (!live.ok) {
+		// TODO(design): target is unknown before configuration is read; never attribute this failure to old UCI.
+		return record_reload(daemon, failure(daemon, 'hash_current', live.detail), null);
+	}
 	let stored = daemon.state.render_hash?.chinadns;
 	if (type(stored) == 'string')
 		live.hashes.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);

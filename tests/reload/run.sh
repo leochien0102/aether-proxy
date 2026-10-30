@@ -71,6 +71,8 @@ wait_field() {
 # Count only rendered-table validation, not precheck's separate kernel-feature probe.
 artifact_checks() { grep -Ec 'nft -c -f .*/aether-proxy\.nft$' "$LOG"; }
 reload_checkpoint() {
+	last_reload_before=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("last_reload", {}).get("at", 0))' \
+		< "$SYSROOT/var/run/aether-proxy/state.json")
 	applied_before=$(count_calls "$EVENTS" 'RELOAD_APPLIED')
 	tests_before=$(count_calls "$LOG" 'xray run -test')
 	checks_before=$(artifact_checks)
@@ -84,6 +86,17 @@ reload_checkpoint() {
 		budget_before[$hook]=$(count_calls "$T/daemon.stderr" "TRACE T9.9 $hook")
 	done
 }
+# T10.71: completion is later than RELOAD_APPLIED; wait for its own publication.
+assert_completion() {
+	local label="$1" node="$2" mode="$3" success="$4"
+	if python3 "$ROOT/tests/reload/assert-last-reload.py" \
+		"$SYSROOT/var/run/aether-proxy/state.json" "$node" "$mode" "$success" "${last_reload_before:-0}"; then
+		ok "T10.71 $label last_reload matches target outcome and preserves runtime fields"
+	else
+		bad "T10.71 $label last_reload matches target outcome and preserves runtime fields"
+	fi
+}
+
 # Entry traces come from real functions in a temporary module copy, not mocked renderers.
 # Regressing to build() after resolution or sets export increments these counts.
 declare -A budget_before
@@ -217,6 +230,8 @@ expect 'T9.8 unchanged reload skips Xray test' "$tests_before" "$(count_calls "$
 expect 'T9.8 unchanged reload validates artifact once' "$((checks_before + 1))" "$(artifact_checks)"
 expect 'T9.8 unchanged reload prechecks once' "$((pre_before + 1))" "$(count_calls "$LOG" 'ip rule help')"
 
+assert_completion external-noop "$NODE_A" gfw true
+
 # Mode change: nft and chinadns outputs change; Xray's process must retain its pid.
 reload_checkpoint
 xray_before=$(cat "$SYSROOT/xray.pid")
@@ -237,6 +252,7 @@ done
 xray_after=$(cat "$SYSROOT/xray.pid")
 expect "mode reload leaves xray pid unchanged" "$xray_before" "$xray_after"
 assert_applied mode "$NODE_A" "$NODE_A" nft_replace,restart_chinadns
+assert_completion mode "$NODE_A" bypass_cn true
 expect 'T9.26 mode-only reload updates mode' bypass_cn \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")"
 expect 'T9.26 mode-only reload preserves node_id' "$NODE_A" \
@@ -352,6 +368,7 @@ expect 'T9.5 transient DNS failure emits no resolve events' 0 \
 	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_')"
 
 assert_applied node "$NODE_A" "$NODE_B" nft_replace,restart_xray
+assert_completion node "$NODE_B" bypass_cn true
 assert_budget node 1
 assert_build_bytes node '{}'
 expect 'T9.9 node configuration warning emitted once not per render' 1 \
@@ -495,6 +512,18 @@ assert_failed() {
 	if [ "$label" != action-failure ]; then
 		expect "T9.8 $label never loads nft" "$nft_loads_before" "$(count_calls "$LOG" 'nft -f ')"
 	fi
+	local target_node="$NODE_A" target_mode=gfw
+	[ "$label" = invalid-restored-nft ] || [ "$label" = action-failure ] && target_mode=bypass_cn
+	if [ "$label" = invalid-config ]; then target_node=-; target_mode=-; fi
+	assert_completion "$label" "$target_node" "$target_mode" false
+	# A monitor tick after failure must not overwrite the failed completion.
+	local completion_before
+	completion_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload \
+		< "$SYSROOT/var/run/aether-proxy/state.json")
+	kill -USR1 "$DAEMON_PID"
+	sleep 0.2
+	expect "T10.71 $label monitor preserves last_reload" "$completion_before" \
+		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload < "$SYSROOT/var/run/aether-proxy/state.json")"
 	cp "$T/good-config" "$T/conf/aetherproxy"
 }
 
@@ -581,6 +610,16 @@ done
 wait "$DAEMON_PID"; rc=$?; DAEMON_PID=''
 expect "disable reload exits through stop" 0 "$rc"
 expect "disable reload writes stopped state" stopped "$("$UCODE" "$ROOT/tests/cli/jget.uc" -- state < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T10.71 disable reload preserves successful completion through stopping/stopped' true \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload.ok < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T10.71 disable reload preserves target through stopping/stopped' "$NODE_A" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload.target_node < "$SYSROOT/var/run/aether-proxy/state.json")"
+
+if python3 "$ROOT/tests/reload/monitor-last-reload.py"; then
+	ok 'T10.71 real monitor failure completions survive persist_state'
+else
+	bad 'T10.71 real monitor failure completions survive persist_state'
+fi
 
 echo "reload: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

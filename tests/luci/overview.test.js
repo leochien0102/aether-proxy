@@ -350,6 +350,7 @@ test('T8.11a scenario 3b: toggling writes UCI, saves and applies with rollback, 
 	});
 
 	page.vm = build({ ok: true, state: 'running' });
+	page.currentNode = 'n_a'; // Enable tests assume an applied node (T10.71).
 	await page.handleEnable(true);
 	assert.deepEqual(order, [ [ 'set', 'aetherproxy', 'main', 'enabled', '1' ], [ 'save' ], [ 'apply', true ] ]);
 	assert.equal(page.enabled, true);
@@ -635,67 +636,7 @@ test('T8.12c scenario 4a: render, sequential serialized refresh, interval replac
 	assert.deepEqual(calls, [ 'status', 'stats' ]);
 });
 
-test('T10.23 scenario 4: overview selection uses node_use, reloads UCI then refreshes status', async t => {
-	// Keep the exact events.since assertion stable when the async flow crosses a second boundary.
-	t.mock.method(Date, 'now', () => NOW * 1000);
-	const order = [];
-	const page = loadView({
-		ap: {
-			call: async (method, params) => {
-				order.push([method, params]);
-				return method === 'status' ? { ok: true, state: 'running', node_id: 'n_a' } : { ok: true };
-			},
-			poll: () => ({ stop() {} })
-		},
-		uci: {
-			sections: (cfg, type, cb) => {
-				if (type === 'node') {
-					cb({ '.name': 'n_a', label: 'Alpha' });
-					cb({ '.name': 'n_b' });
-				}
-			},
-			get: (cfg, sec, opt) => opt === 'node' ? (order.some(c => c[0] === 'node_use') ? 'n_b' : 'n_a') : '1',
-			load: async config => { order.push(['load', config]); },
-			unload: config => { order.push(['unload', config]); },
-			set: () => assert.fail('node switch must not set session UCI'),
-			save: () => assert.fail('node switch must not save session UCI'),
-			changes: () => assert.fail('node switch must not inspect staged changes')
-		},
-		ui: { changes: { apply: () => assert.fail('node switch must not apply session UCI') } }
-	});
-	const root = page.render(await page.load());
-	await page.initialRequest;
-	await page.sitesRequest;
-	order.length = 0;
-	const nodes = findAll(root, 'select')[1];
-	assert.equal(nodes.children[0].textContent, 'Alpha（当前）');
-	assert.equal(nodes.children[0].attrs.selected, 'selected');
-	assert.equal(nodes.children[1].textContent, 'n_b');
-	const use = findAll(root, 'button').find((b) => b.textContent === '应用');
-	assert.equal(use.disabled, true, 'current node cannot be applied again');
-	nodes.value = 'n_b';
-	nodes.attrs.change();
-	assert.equal(use.disabled, false, 'another node can be applied');
-	nodes.value = 'n_a';
-	nodes.attrs.change();
-	assert.equal(use.disabled, true, 'reselecting the current node disables apply again');
-	nodes.value = 'n_b';
-	nodes.attrs.change();
-	await use.attrs.click();
-	assert.deepEqual(order, [ ['node_use', { id: 'n_b' }], ['unload', 'aetherproxy'],
-		['load', 'aetherproxy'], ['status', undefined], ['stats', undefined],
-		['events', { since: Math.floor(Date.now() / 1000) - 600, level: 'error' }] ]);
-	assert.equal(page.vm.switch_notice, '正在切换到「n_b」…');
-	assert.equal(use.disabled, true, 'pending switch stays locked after node_use completes');
-	assert.equal(nodes.disabled, true);
-
-	const emptyPage = loadView();
-	const emptyRoot = emptyPage.render(await emptyPage.load());
-	const emptyUse = findAll(emptyRoot, 'button').find((b) => b.textContent === '应用');
-	assert.equal(emptyUse, undefined, 'an empty node list has no apply button');
-	assert.equal(findAll(emptyRoot, 'select').length, 2, 'refresh and site selectors remain');
-});
-
+// T10.71 switch interaction scenarios live in overview-switch.test.js.
 function timerQueue() {
 	const timers = [];
 	return {
@@ -705,9 +646,9 @@ function timerQueue() {
 			timers.push(timer);
 			return timer;
 		},
-		clearTimeout: (timer) => { if (timer) timer.cleared = true; },
-		run: async (ms) => {
-			const timer = timers.find((t) => t.ms === ms && !t.cleared);
+		clearTimeout: timer => { if (timer) timer.cleared = true; },
+		run: async ms => {
+			const timer = timers.find(t => t.ms === ms && !t.cleared);
 			assert.ok(timer, `pending ${ms}ms timer exists`);
 			timer.cleared = true;
 			await timer.fn();
@@ -948,10 +889,10 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
 		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
 	] };
-	const { root } = renderStatus(status);
+	const { root, page } = renderStatus(status);
 	assert.deepEqual(sections(root).map((s) => s.children[0].textContent),
 		[ '运行状态', '流量与连接', '组件版本' ]);
-	const title = root.children[0];
+	const title = page.actionFields.children[0];
 	assert.equal(findAll(title, 'h2')[0].textContent, '以太跃迁');
 	assert.equal(findAll(title, 'select').length, 1);
 	assert.equal(findAll(title, 'button')[0].textContent, '刷新');
@@ -966,7 +907,7 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	assert.deepEqual(sections(clean).map((s) => s.children[0].textContent),
 		[ '运行状态', '流量与连接', '组件版本' ]);
 	const failure = renderStatus({ ok: false, code: 'TIMEOUT', detail: 'offline' }, undefined, false).root;
-	const pending = failure.children[1];
+	const pending = failure.children[0].children[1];
 	assert.doesNotMatch(visibleText(pending), /待处理提示/);
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message error'
 		&& visibleText(n.children[0]) === '读取状态失败（TIMEOUT），稍后自动重试'
@@ -1160,7 +1101,7 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	await page.fetchRefresh();
 	assert.equal(calls.filter((m) => m === 'components').length, 1, 'poll/manual refresh must not rediscover versions');
 	assert.deepEqual(page.vm.components.slice(1).map((c) => c.path), [ '/usr/bin/xray', '未找到' ]);
-	const title = root.children[0];
+	const title = page.actionFields.children[0];
 	assert.match(title.attrs.style, /margin-bottom:\s*1em/);
 	const label = findAll(title, 'label').find((el) => visibleText(el).includes('自动刷新'));
 	assert.ok(findAll(label, 'span').some((n) => n.textContent === '自动刷新'
@@ -1503,7 +1444,7 @@ test('T10.9 scenario 1: disable confirmation and enable tooltip come from the mo
 test('T10.9 scenario 2: title left group has heading then tooltip-only enable; right group has refresh controls',
 	() => {
 	const { page, root } = renderStatus({ ok: true, state: 'running' });
-	const title = root.children[0];
+	const title = page.actionFields.children[0];
 	assert.equal(title.children.length, 2);
 	const [left, right] = title.children;
 	assert.deepEqual(left.children.map((n) => n.tag), [ 'h2', 'label' ]);
@@ -1538,7 +1479,7 @@ test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm
 			},
 			ui: { changes: { apply: (rollback) => order.push([ 'apply', rollback ]) } }
 		});
-		const root = page.render({ labels: {}, enabled: initial });
+		const root = page.render({ labels: { n_a: 'Alpha' }, node: 'n_a', enabled: initial });
 		/* A sentinel proves the handler uses the model field, not copied wording. */
 		page.vm.disable_confirmation = 'model confirmation';
 		const box = findAll(root, 'input')[0];
@@ -1561,8 +1502,8 @@ test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm
 test('T10.9 scenario 4: banners follow title before first section with original severity and order; clean has none',
 	() => {
 	const { page, root } = renderStatus({ ok: false, code: 'TIMEOUT' }, undefined, false);
-	assert.equal(root.children[0].children[0].children[0].tag, 'h2');
-	assert.equal(root.children[1], page.content, 'banners occupy the content immediately after the title');
+	assert.equal(page.actionFields.children[0].children[0].children[0].tag, 'h2');
+	assert.equal(page.actionFields.children[1], page.content, 'banners occupy the content immediately after the title');
 	let parts = pageParts(page);
 	assert.deepEqual(parts.map((n) => n.attrs.class), [
 		'alert-message error', 'alert-message warning', 'cbi-section', 'cbi-section', 'cbi-section'
@@ -2458,6 +2399,7 @@ test('T10.22 scenario 3: enabling never reads changes or asks for confirmation',
 		ui: { changes: { apply: rollback => effects.push([ 'apply', rollback ]) } }
 	});
 	page.enabled = false;
+	page.currentNode = 'n_a';
 	const box = findTag(page.enableSwitch('note'), 'input');
 	box.checked = true;
 	await box.attrs.change({ target: box });
@@ -2493,115 +2435,6 @@ test('T10.22 defensive: failed changes read notifies, writes nothing and restore
 	assert.equal(notes.length, 1);
 	assert.equal(notes[0].kind, 'error');
 	assert.equal(notes[0].body.textContent, '读取未应用的更改失败，没有关闭『启用』：uci changes failed');
-});
-
-for (const failure of [
-	{ code: 'FS_FAILED', detail: 'uci-commit' },
-	{ code: 'CONFIG_INVALID', detail: 'xray run -test: invalid mldsa65Verify: <GARBAGE>' }
-]) {
- test('T10.23 / T9.41: overview node_use ' + failure.code + ' shows reason and never touches UCI',
-	async () => {
-	const calls = [], notes = [];
-	const failedPage = loadView({
-		ap: { call: (method, params) => new Promise(resolve => calls.push({ method, params, resolve })) },
-		uci: {
-			set: () => assert.fail('must not set UCI'), save: () => assert.fail('must not save UCI'),
-			unload: () => assert.fail('failed switch must not unload UCI'),
-			changes: () => assert.fail('must not inspect session changes')
-		},
-		ui: {
-			addNotification: (title, body, kind) => notes.push({ body, kind }),
-			changes: { apply: () => assert.fail('must not apply session changes') }
-		}
-	});
-	failedPage.labels = { n_a: 'Alpha', n_b: 'Beta' };
-	failedPage.content = E('div');
-	failedPage.currentNode = 'n_a';
-	failedPage.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const select = findAll(failedPage.nodeControl, 'select')[0];
-	const button = findAll(failedPage.nodeControl, 'button')[0];
-	select.value = 'n_b';
-	select.attrs.change();
-	const pending = button.attrs.click();
-	assert.equal(button.disabled, true);
-	assert.equal(await button.attrs.click(), undefined, 'duplicate switch is ignored');
-	assert.equal(calls.length, 1);
-	calls[0].resolve({ ok: false, ...failure });
-	await pending;
-	assert.equal(button.disabled, false);
-	assert.equal(notes[0].body.textContent, `切换节点失败（${failure.code}）: ${failure.detail}`);
-	assert.equal(notes[0].kind, 'error');
-	assert.equal(failedPage.switching, false);
- });
-}
-
-test('T10.23 defensive: overview UCI refresh rejection notifies and restores switch button without retry',
-	async () => {
-	const notes = [], calls = [];
-	const page = loadView({
-		ap: { call: async method => { calls.push(method); return { ok: true, reload: true }; } },
-		uci: { unload: () => { throw new Error('UCI unavailable'); } },
-		ui: { addNotification: (title, body, kind) => notes.push([body.textContent, kind]) }
-	});
-	page.content = E('div');
-	page.labels = { n_a: 'Alpha', n_b: 'Beta' };
-	page.refresh({ ok: true, state: 'running', node_id: 'n_a' });
-	const select = findAll(page.nodeControl, 'select')[0];
-	const button = findAll(page.nodeControl, 'button')[0];
-	select.value = 'n_b';
-	select.attrs.change();
-	await button.attrs.click();
-	assert.equal(button.disabled, false);
-	assert.equal(page.switching, false);
-	/* node_use succeeded; only the refresh failed, so it must not read as a failed switch */
-	assert.deepEqual(notes, [['已切换节点，但刷新页面数据失败：UCI unavailable。请刷新页面。', 'warning']]);
-	assert.deepEqual(calls, ['node_use']);
-});
-
-test('T10.23 scenario 4: overview reload:false only notifies when refreshed service is stopped/error', async () => {
-	for (const state of ['stopped', 'error', 'running', 'degraded', 'starting', 'failsafe']) {
-		const notes = [], order = [];
-		let current = 'n_a';
-		const page = loadView({
-			ap: {
-				call: async method => {
-					order.push(method);
-					if (method === 'node_use') {
-						current = 'n_b';
-						return { ok: true, reload: false };
-					}
-					return { ok: true, state, node_id: 'n_b' };
-				}
-			},
-			uci: { get: (config, section, option) => option === 'node' ? current : '1' },
-			ui: { addNotification: (title, body) => notes.push(body.textContent) }
-		});
-		page.labels = {};
-		page.content = E('div');
-		await page.handleNode('n_b');
-		assert.equal(order[0], 'node_use');
-		assert.ok(order.includes('status'));
-		assert.deepEqual(notes, ['stopped', 'error'].includes(state) ? ['已设为当前节点，下次启动时使用'] : []);
-	}
-});
-
-test('T10.23 scenario 4: node switch waits out older refresh and issues a new post-UCI status read', async () => {
-	const h = deferredPage('0');
-	const { page, calls } = h;
-	page.render(await page.load());
-	await Promise.resolve();
-	const pending = page.handleNode('n_b');
-	/* The original status is still pending when node_use succeeds. */
-	await h.reply('node_use', { ok: true, reload: true });
-	assert.equal(calls.filter(call => call.method === 'status').length, 1);
-	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-	await h.reply('stats', readings(1000, 0, 0, 0, 0));
-	await page.initialRequest;
-	assert.equal(calls.filter(call => call.method === 'status').length, 2);
-	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-	await h.reply('stats', readings(2000, 0, 0, 0, 0));
-	await pending;
-	assert.equal(page.switching, false);
 });
 
 test('T10.24 scenario 1: first since is baseline; changed since rereads versions once with loading cells',
@@ -2852,67 +2685,6 @@ test('T10.24 scenario 4: pending switch locks both controls; failure or completi
 	}
 });
 
-test('T10.24 review: retrying with another node ignores the reason found for the previous target', async () => {
-	const calls = [];
-	let configured = 'n_b';
-	const page = loadView({
-		ap: {
-			call: (method, params) => new Promise((resolve) => { calls.push({ method, params, resolve }); }),
-			poll: () => ({ stop() {} })
-		},
-		uci: {
-			load: async () => {},
-			unload: () => {},
-			sections: (config, type, cb) => {
-				if (type === 'node')
-					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta'], ['n_c', 'Gamma']])
-						cb({ '.name': name, label });
-			},
-			get: (config, section, option) => option === 'node' ? configured : '1'
-		},
-		ui: { addNotification: () => {} },
-		window: { localStorage: { getItem: () => '0', setItem: () => {} } }
-	});
-	const reply = async (method, value) => {
-		const call = calls.find((c) => c.method === method && !c.settled);
-		assert.ok(call, `outstanding ${method} request exists`);
-		call.settled = true;
-		call.resolve(value);
-		for (let i = 0; i < 12; i++)
-			await Promise.resolve();
-	};
-	page.render(await page.load());
-	await Promise.resolve();
-	const event = { ts: NOW, code: 'NODE_RESOLVE_FAILED', args: { domain: 'node.example' } };
-	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-	await reply('stats', readings(1000, 0, 0, 0, 0));
-	await reply('events', { ok: true, events: [event] });
-	await page.initialRequest;
-	assert.ok(page.vm.switch_notice.includes('未生效'), 'failure reason for Beta is shown');
-	const nodes = findAll(page.nodeControl, 'select')[0];
-	assert.equal(nodes.disabled, false, 'failure reason unlocks the selector for a retry');
-	const switching = page.handleNode('n_c');
-	configured = 'n_c';
-	await reply('node_use', { ok: true, node: 'n_c', previous: 'n_b', reload: true });
-	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-	assert.equal(page.vm.switch_notice, '正在切换到「Gamma」…', 'the old reason is not reported for Gamma');
-	assert.equal(page.vm.switch_busy, true, 'controls stay locked for the new switch');
-	await reply('stats', readings(2000, 0, 0, 0, 0));
-	await reply('events', { ok: true, events: [event] });
-	await switching;
-	assert.equal(page.vm.switch_notice, '正在切换到「Gamma」…', 'Beta\'s failure event is older than the retry');
-	assert.equal(findAll(page.nodeControl, 'select')[0].disabled, true);
-	const later = { ts: NOW + 5, code: 'CONFIG_INVALID', args: {} };
-	const poll = page.fetchRefresh();
-	await reply('status', { ok: true, state: 'running', node_id: 'n_a' });
-	await reply('stats', readings(3000, 0, 0, 0, 0));
-	await reply('events', { ok: true, events: [event, later] });
-	await poll;
-	assert.ok(page.vm.switch_notice.includes('Gamma') && page.vm.switch_notice.includes('未生效'),
-		'a newer failure is reported for Gamma');
-	assert.equal(page.nodeControl.children[0].disabled, false);
-});
-
 test('T8.12c scenario 6: safe DOM, guarded storage and all Dashboard translations', () => {
 	const src = fs.readFileSync(VIEW, 'utf8');
 	assert.doesNotMatch(src, /rpc\s*\.\s*declare|cbi-button-reset|innerHTML/);
@@ -3052,9 +2824,9 @@ for (const [kind, node, mode, expected] of [
 		assert.equal(controls.apply.disabled, true);
 		await controls.apply.attrs.click();
 		assert.equal(h.calls.length, 1, 'duplicate click does not write twice');
-		resolve({ ok: true, reload: true });
+		resolve({ ok: true, committed: true, previous: 'n_a', previous_mode: 'bypass_cn', reload: true });
 		await pending;
-		assert.deepEqual(h.order, [expected[0], 'unload', 'load', 'status', 'stats', 'events']);
+		assert.deepEqual(h.order, [expected[0], 'unload', 'load', 'status']);
 		assert.equal(page.vm.switch_busy, true, 'RPC returns before the reload takes effect');
 		assert.deepEqual(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)), [expected]);
 		const banner = kind === 'both' ? '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…'
@@ -3166,75 +2938,6 @@ test('T10.38 scenario 3: combined failure names both targets and effective value
 		assert.equal(h.page.vm.switch_notice, '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…');
 		assert.equal(h.controls().mode.disabled, true);
 	}
-});
-
-test('T10.38 scenario 3: a new mode switch ignores the previous target failure and accepts only newer reasons',
-	async () => {
-	const old = { ts: NOW, code: 'CONFIG_INVALID', args: {} };
-	const h = await modePage({ configured: { mode: 'global' }, events: { ok: true, events: [old] } });
-	const controls = h.controls();
-	assert.ok(h.page.vm.switch_notice.includes('未生效'));
-	controls.mode.value = 'gfw';
-	controls.mode.attrs.change();
-	await controls.apply.attrs.click();
-	assert.equal(h.page.vm.switch_notice, '正在切换默认模式到「仅代理被墙网站（GFW）」…');
-	assert.equal(h.page.vm.switch_busy, true);
-	assert.equal(h.controls().mode.disabled, true);
-	h.events = { ok: true, events: [old, { ts: NOW + 1, code: 'RENDER_INVALID', args: {} }] };
-	await h.page.fetchRefresh();
-	assert.ok(h.page.vm.switch_notice.includes('未生效'));
-	assert.equal(h.controls().mode.disabled, false);
-});
-
-for (const kind of ['node', 'mode', 'both']) {
-	test(`T10.38 scenario 4: ${kind} RPC failure reports code/detail and restores both dropdowns and Apply`,
-		async () => {
-		const h = await modePage({ write: () => ({ ok: false, code: 'FS_FAILED', detail: 'uci-commit' }) });
-		const controls = h.controls();
-		if (kind !== 'mode')
-			controls.node.value = 'n_b';
-		if (kind !== 'node')
-			controls.mode.value = 'global';
-		controls.mode.attrs.change();
-		await controls.apply.attrs.click();
-		assert.equal(controls.node.disabled, false);
-		assert.equal(controls.mode.disabled, false);
-		assert.equal(controls.apply.disabled, false);
-		const prefix = kind === 'node' ? '切换节点' : kind === 'mode' ? '切换默认模式' : '切换节点与默认模式';
-		assert.deepEqual(h.notes, [{ text: `${prefix}失败（FS_FAILED）: uci-commit`, kind: 'error' }]);
-		assert.deepEqual(h.order, [kind === 'mode' ? 'mode_use' : 'node_use'],
-			'failed write does not reload UCI/status');
-	});
-}
-
-test('T10.38 scenario 4: reload:false mode and combined settings notify only when stopped/error', async () => {
-	for (const state of ['stopped', 'error', 'running', 'starting', 'degraded', 'failsafe']) {
-		for (const both of [false, true]) {
-			const h = await modePage({ runtime: { state }, write: () => ({ ok: true, reload: false }) });
-			const controls = h.controls();
-			controls.mode.value = 'global';
-			if (both)
-				controls.node.value = 'n_b';
-			controls.mode.attrs.change();
-			await controls.apply.attrs.click();
-			assert.deepEqual(h.notes, ['stopped', 'error'].includes(state)
-				? [{ text: '设置已保存，下次启动时使用', kind: 'info' }] : []);
-			assert.equal(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)).length, 1);
-		}
-	}
-});
-
-test('T10.38 scenario 4: successful mode write followed by refresh failure warns without retrying the write',
-	async () => {
-	const h = await modePage({ unload: () => { throw new Error('UCI unavailable'); } });
-	const controls = h.controls();
-	controls.mode.value = 'global';
-	controls.mode.attrs.change();
-	await controls.apply.attrs.click();
-	assert.deepEqual(h.calls, [['mode_use', { mode: 'global' }]]);
-	assert.deepEqual(h.notes, [{ text: '已切换设置，但刷新页面数据失败：UCI unavailable。请刷新页面。', kind: 'warning' }]);
-	assert.equal(controls.mode.disabled, false);
-	assert.equal(controls.apply.disabled, false);
 });
 
 test('T10.38 review: Apply compares with the effective mode, not the configured one', async () => {

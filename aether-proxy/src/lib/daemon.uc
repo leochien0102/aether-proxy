@@ -869,7 +869,8 @@ function shutdown(ctx, children, normal_stop) {
 			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs.error() ?? 'unknown error' });
 	}
 	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time(),
-		degraded_mode: null, degraded_since: null });
+		degraded_mode: null, degraded_since: null,
+		...(stopping_state?.last_reload != null ? { last_reload: stopping_state.last_reload } : {}) });
 	// Stop writes already report FS_FAILED; do not relabel the same I/O error as a command failure.
 	if (!saved.ok && !normal_stop)
 		push(failures, saved.detail);
@@ -1250,6 +1251,9 @@ function run(args) {
 				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot,
 					applied_context: monitor_daemon.applied_context, state: base, children }, started_ms);
 				monitor_daemon.busy = false;
+				// Keep failed reload completion across subsequent monitor state writes (T10.71).
+				if (changed.last_reload != null)
+					monitor_daemon.state.last_reload = changed.last_reload;
 				if (changed.stop) {
 					stopping = true;
 					cancel_subscription_timer();

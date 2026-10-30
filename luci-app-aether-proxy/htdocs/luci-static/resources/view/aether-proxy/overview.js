@@ -71,6 +71,8 @@ return view.extend({
 	   LuCI's standard save & apply with rollback confirmation. No `service` call is made:
 	   the reload trigger starts or stops the service. */
 	handleEnable: async function(checked) {
+		if (this.switching || (checked && !this.currentNode))
+			return;
 		this.enabling = true;
 		try {
 			/* Finish an already-issued cache read before staging a local write. */
@@ -84,6 +86,8 @@ return view.extend({
 	},
 
 	saveEnable: async function(checked) {
+		if (this.switching || (checked && !this.currentNode))
+			return;
 		/* Disabling is persistent and immediately stops traffic interception;
 		   cancelling must leave both the local setting and UCI untouched. */
 		if (this.enabled && !checked) {
@@ -235,6 +239,8 @@ return view.extend({
 	},
 
 	handleService: async function(action) {
+		if (this.switching)
+			return;
 		if (action !== 'stop' && this.startup)
 			return;
 
@@ -413,6 +419,8 @@ return view.extend({
 	},
 
 	setInterval: function(value) {
+		if (this.switching)
+			return;
 		try {
 			window.localStorage.setItem('aether-proxy.refresh', value);
 		}
@@ -430,58 +438,267 @@ return view.extend({
 	},
 
 	handleNode: async function(node, mode) {
-		if (this.switching || this.vm?.switch_busy)
+		if (this.switching || this.enabling || this.startup || this.localSwitchBusy())
 			return;
 		const request = model.switch_request(node, mode, this.vm?.current_node, this.vm?.current_mode);
 		if (!request)
 			return;
-		this.switching = true;
-		this.nodeEdited = false;
-		this.modeEdited = false;
-		this.updateNodeButton?.();
+		const session = this.beginSwitch(node, mode || this.currentMode, request.kind);
+		this.nodeEdited = this.modeEdited = false;
 		try {
 			if (this.configRequest)
 				await this.configRequest;
+			if (!this.switchActive(session))
+				return;
 			const reply = await ap.call(request.method, request.params);
-			if (reply.ok) {
-				uci.unload('aetherproxy');
-				const data = await this.load();
-				this.currentNode = data.node;
-				this.currentMode = data.mode;
-				this.labels = data.labels;
-				this.enabled = data.enabled;
-				/* A reason found for the previous target is not about this switch. */
-				this.reasonFloor = model.switch_floor(this.latestEvents, this.reasonFloor);
-				this.latestEvents = null;
-				/* An older in-flight read cannot stand in for the post-switch status. */
-				await this.refreshing;
-				await this.fetchRefresh();
+			if (!this.switchActive(session))
+				return;
+			session.reply = reply;
+			if (reply?.committed === false) {
+				this.switchPhase(session, 'preflight-failed', model.node_use_message(reply, this.status, request.kind));
+				return;
 			}
-			const text = model.node_use_message(reply, this.status, request.kind);
-			if (text)
-				/* The message names the node: text node, never markup. */
-				ui.addNotification(null, E('p', {}, [ text ]), reply.ok ? 'info' : 'error');
+			/* Missing/null committed is indeterminate, never permission to overwrite UCI. */
+			if (reply?.committed !== true) {
+				this.switchPhase(session, 'timeout', _('The switch result is uncertain. Check the overview or logs.',
+					'aether-proxy'));
+				return;
+			}
+			await this.readSwitchConfig(session);
+			if (!this.switchActive(session))
+				return;
+			if (!reply.ok)
+				await this.rollbackSwitch(session);
+			else if (reply.reload === false)
+				await this.finishSwitch(session, 'success');
+			else
+				await this.pollSwitch(session);
 		}
 		catch (e) {
-			/* ap.call never rejects, so reaching here means the write already
-			   succeeded and only the page refresh failed: never call it a failed
-			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
-			ui.addNotification(null, E('p', {},
-				[ (request.kind === 'node'
-					? _('The node was switched, but refreshing the page data failed: %s. Reload the page.',
-						'aether-proxy')
-					: _('Settings were switched, but refreshing the page data failed: %s. Reload the page.',
-						'aether-proxy'))
-					.replace('%s', e?.message ?? String(e)) ]), 'warning');
-		}
-		finally {
-			this.switching = false;
-			this.updateNodeButton?.();
+			if (this.switchActive(session))
+				this.switchPhase(session, 'timeout', String(e?.message ?? e));
 		}
 	},
 
+	localSwitchBusy: function() {
+		const released = this.releasedSwitch;
+		return !!this.vm?.switch_busy && !(released && released.node === this.currentNode
+			&& released.mode === this.currentMode);
+	},
+
+	/* T10.71 / handoff §2.2: only Apply creates a session. External changes keep
+	   the ordinary banner. Session identity fences every late RPC and timer. */
+	beginSwitch: function(node, mode, kind) {
+		const session = { node, mode, kind, phase: 'switching', started: Date.now() / 1000,
+			baseline: JSON.stringify(this.status?.last_reload) };
+		this.switchSession = session;
+		this.switching = true;
+		this.switchBanner = null;
+		this.releasedSwitch = null;
+		this.reasonFloor = model.switch_floor(this.latestEvents, this.reasonFloor);
+		this.latestEvents = null;
+		if (this.actionFields)
+			this.actionFields.disabled = true;
+		session.cleanup = () => this.closeSwitch(true);
+		window.addEventListener('pagehide', session.cleanup);
+		session.deadline = window.setTimeout(() => {
+			const failed = ['timeout', 'rollback-failed', 'preflight-failed'].includes(session.phase);
+			if (this.switchSession === session && !failed)
+				this.switchPhase(session, 'timeout');
+		}, 60000);
+		this.drawSwitch();
+		this.updateNodeButton?.();
+		return session;
+	},
+
+	switchActive: function(session) {
+		return this.switchSession === session && ['switching', 'rolling-back'].includes(session.phase);
+	},
+
+	switchPhase: function(session, phase, detail) {
+		if (this.switchSession !== session)
+			return;
+		session.phase = phase;
+		session.detail = detail;
+		if (!this.switchActive(session)) {
+			session.poller?.stop();
+			if (!['success', 'rolled-back'].includes(phase))
+				window.clearTimeout(session.deadline);
+		}
+		if (['rollback-failed', 'timeout'].includes(phase))
+			this.switchBanner = detail || (phase === 'rollback-failed'
+				? _('Switch failed and previous settings could not be restored.', 'aether-proxy')
+				: _('Switching has not finished. Check the overview or logs.', 'aether-proxy'));
+		this.drawSwitch();
+		this.updateNotices?.();
+	},
+
+	drawSwitch: function() {
+		const session = this.switchSession;
+		if (!this.switchOverlay || !session)
+			return;
+		const texts = {
+			'switching': _('Switching settings…', 'aether-proxy'),
+			'success': _('Switch successful.', 'aether-proxy'),
+			'preflight-failed': _('The switch was not committed; configuration is unchanged.', 'aether-proxy'),
+			'rolling-back': _('Switch failed; restoring previous settings…', 'aether-proxy'),
+			'rolled-back': _('Switch failed; previous settings restored.', 'aether-proxy'),
+			'rollback-failed': _('Switch failed and previous settings could not be restored.', 'aether-proxy'),
+			'timeout': _('Switching has not finished. Check the overview or logs.', 'aether-proxy')
+		};
+		const closable = ['preflight-failed', 'rollback-failed', 'timeout'].includes(session.phase);
+		dom.content(this.switchOverlay, E('div', {
+			role: 'dialog', 'aria-modal': 'true', 'aria-live': 'polite',
+			style: 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,.65); '
+				+ 'display:flex; align-items:center; justify-content:center'
+		}, [E('div', { 'class': 'cbi-section', style: 'max-width:36em; padding:2em' }, [
+			E('h3', {}, [texts[session.phase]]),
+			...(session.detail ? [E('p', {}, [session.detail])] : []),
+			...(closable ? [E('button', { 'class': 'cbi-button', click: () => this.closeSwitch() },
+				[_('Close', 'aether-proxy')])] : [])
+		])]));
+	},
+
+	closeSwitch: function(force) {
+		const session = this.switchSession;
+		if (!session || (!force && this.switchActive(session)))
+			return;
+		session.poller?.stop();
+		window.clearTimeout(session.deadline);
+		window.clearTimeout(session.closeTimer);
+		window.removeEventListener('pagehide', session.cleanup);
+		if (['timeout', 'rollback-failed'].includes(session.phase))
+			this.releasedSwitch = { node: this.currentNode, mode: this.currentMode };
+		this.switchSession = null;
+		this.switching = false;
+		if (this.actionFields)
+			this.actionFields.disabled = false;
+		if (this.switchOverlay)
+			dom.content(this.switchOverlay, []);
+		this.updateNodeButton?.();
+	},
+
+	readSwitchConfig: async function(session) {
+		uci.unload('aetherproxy');
+		const data = await this.load();
+		if (session && this.switchSession !== session)
+			return;
+		this.currentNode = data.node;
+		this.currentMode = data.mode;
+		this.labels = data.labels;
+		this.enabled = data.enabled;
+	},
+
+	pollSwitch: async function(session) {
+		if (!this.switchActive(session) || session.reading)
+			return;
+		session.poller ??= ap.poll(() => this.pollSwitch(session), 2000);
+		session.reading = true;
+		try {
+			const read = this.nextStatusRead();
+			const status = await ap.call('status');
+			if (!this.switchActive(session))
+				return;
+			this.acceptStatus(status, read);
+			const result = model.reload_result(status, session);
+			if (result?.ok === true)
+				await this.finishSwitch(session, session.phase === 'rolling-back' ? 'rolled-back' : 'success');
+			else if (result?.ok === false) {
+				if (session.phase === 'rolling-back')
+					this.switchPhase(session, 'rollback-failed', result.error);
+				else
+					await this.rollbackSwitch(session);
+			}
+		}
+		catch (e) {
+			/* A failed read proves nothing; keep the independent deadline, never guess a rollback. */
+			console.warn('aether-proxy: switch status read failed:', e);
+		}
+		finally {
+			session.reading = false;
+		}
+	},
+
+	rollbackSwitch: async function(session) {
+		if (!this.switchActive(session) || session.phase === 'rolling-back')
+			return;
+		this.switchPhase(session, 'rolling-back');
+		try {
+			await this.readSwitchConfig(session);
+			if (!this.switchActive(session))
+				return;
+			if (this.currentNode !== session.node || this.currentMode !== session.mode) {
+				this.switchPhase(session, 'rollback-failed',
+					_('Settings changed in another page; they were not overwritten.', 'aether-proxy'));
+				return;
+			}
+			const reply = session.reply;
+			/* TODO(design): node_use cannot restore an unset node/mode. Do not invent
+			   an old value or issue a partial restore when the API cannot express it. */
+			if (!reply.previous_mode || (session.kind !== 'mode' && !reply.previous)) {
+				this.switchPhase(session, 'rollback-failed',
+					_('Previous settings cannot be restored automatically. Check the overview or logs.',
+						'aether-proxy'));
+				return;
+			}
+			const method = session.kind === 'mode' ? 'mode_use' : 'node_use';
+			const params = method === 'mode_use' ? { mode: reply.previous_mode }
+				: { id: reply.previous, mode: reply.previous_mode };
+			session.node = method === 'mode_use' ? session.node : reply.previous;
+			session.mode = reply.previous_mode;
+			session.started = Date.now() / 1000;
+			session.baseline = JSON.stringify(this.status?.last_reload);
+			const restored = await ap.call(method, params);
+			if (!this.switchActive(session))
+				return;
+			if (restored?.ok !== true || restored.committed !== true) {
+				this.switchPhase(session, 'rollback-failed', restored?.detail || restored?.code);
+				return;
+			}
+			await this.readSwitchConfig(session);
+			if (restored.reload === false)
+				await this.finishSwitch(session, 'rolled-back');
+			else
+				session.poller ??= ap.poll(() => this.pollSwitch(session), 2000);
+		}
+		catch (e) {
+			if (this.switchActive(session))
+				this.switchPhase(session, 'rollback-failed', String(e?.message ?? e));
+		}
+	},
+
+	finishSwitch: async function(session, phase) {
+		if (!this.switchActive(session))
+			return;
+		await this.readSwitchConfig(session);
+		if (!this.switchActive(session))
+			return;
+		this.reasonFloor = model.switch_floor(this.latestEvents, this.reasonFloor);
+		this.latestEvents = null;
+		this.refresh(this.status, undefined, null);
+		this.switchPhase(session, phase);
+		session.closeTimer = window.setTimeout(async () => {
+			if (this.switchSession !== session)
+				return;
+			try {
+				await this.readSwitchConfig(session);
+				const read = this.nextStatusRead();
+				const status = await ap.call('status');
+				if (this.switchSession !== session)
+					return;
+				if (session.phase !== phase)
+					return;
+				this.acceptStatus(status, read);
+				this.closeSwitch();
+			}
+			catch (e) {
+				this.switchPhase(session, 'timeout', String(e?.message ?? e));
+			}
+		}, 2000);
+	},
+
 	handleProbe: function() {
-		if (this.probing || this.probeButton.disabled)
+		if (this.switching || this.probing || this.probeButton.disabled)
 			return;
 		const site = this.probeSites.value;
 		const label = this.siteOptions.find(option => option.value === site).text;
@@ -564,7 +781,8 @@ return view.extend({
 
 	button: function(text, fn) {
 		return E('button', {
-			'class': 'cbi-button cbi-button-apply', click: ui.createHandlerFn(this, fn)
+			'class': 'cbi-button cbi-button-apply',
+			click: ui.createHandlerFn(this, (...args) => this.switching ? undefined : fn.apply(this, args))
 		}, text);
 	},
 
@@ -620,6 +838,7 @@ return view.extend({
 				value: option.value, selected: option.value === vm.current_mode ? 'selected' : null
 			}, [ option.text ])));
 		/* Do not let the browser silently select its first mode when runtime mode is unknown. */
+		nodes.value = current ?? '';
 		modes.value = selected.mode ?? vm.current_mode ?? '';
 		if (selected.node && vm.node_options.some(option => option.value === selected.node))
 			nodes.value = selected.node;
@@ -629,9 +848,12 @@ return view.extend({
 			'class': 'cbi-button cbi-button-apply', click: () => this.handleNode(nodes.value, modes.value)
 		}, _('Apply', 'aether-proxy'));
 		const update = this.updateNodeButton = () => {
-			const busy = !!this.switching || !!this.vm.switch_busy;
+			const busy = !!this.switching || this.localSwitchBusy();
 			nodes.disabled = busy;
 			modes.disabled = busy || !vm.current_mode;
+			this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
+			this.enableControl.title = !this.currentNode
+				? _('Please select a node and apply first.', 'aether-proxy') : this.vm.enabled_note;
 			button.disabled = busy || !model.switch_request(nodes.value, modes.value, current, vm.current_mode);
 			nodes.title = this.vm.switch_title ?? this.labels[nodes.value] ?? nodes.value;
 			for (const control of [modes, button])
@@ -796,10 +1018,13 @@ return view.extend({
 		this.refresh(undefined);
 		const interval = this.readInterval();
 
-		const root = E('div', { 'class': 'cbi-map' }, [
-			this.titleLine(interval),
-			this.content
+		/* Native fieldset disabling also covers late-created retry buttons and selects.
+		   The overlay is a sibling so its Close button remains usable on failure. */
+		this.actionFields = E('fieldset', { style: 'border:0; padding:0; margin:0; min-width:0' }, [
+			this.titleLine(interval), this.content
 		]);
+		this.switchOverlay = E('div', {});
+		const root = E('div', { 'class': 'cbi-map' }, [this.actionFields, this.switchOverlay]);
 
 		this.interval = interval;
 		/* Microtasks run after render returns its complete, UCI-backed skeleton.
@@ -831,6 +1056,9 @@ return view.extend({
 		   reset an edited selection, the enable switch or an in-flight probe. */
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
 		this.enableInput.checked = this.enabled;
+		this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
+		this.enableControl.title = !this.currentNode
+			? _('Please select a node and apply first.', 'aether-proxy') : vm.enabled_note;
 		/* Rebase current labels and guards, but keep each independently edited
 		   dropdown even when an external change moves the effective settings. */
 		const labels = JSON.stringify(vm.node_options);
@@ -940,6 +1168,8 @@ return view.extend({
 		if (vm.notices.length)
 			parts.push(E('ul', {}, vm.notices.map((text) =>
 				E('li', { 'class': 'alert-message warning' }, [ text ]))));
+		if (this.switchBanner)
+			parts.push(E('div', { 'class': 'alert-message warning' }, [this.switchBanner]));
 		if (vm.switch_notice)
 			parts.push(E('div', { 'class': 'alert-message warning' }, [ vm.switch_notice ]));
 		dom.content(this.noticeContent, parts);

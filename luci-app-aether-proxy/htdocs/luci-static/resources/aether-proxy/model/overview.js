@@ -348,11 +348,14 @@ function mask_node_address(address) {
 }
 
 function node_options(labels, current) {
-	return Object.keys(labels ?? {}).sort().map((id) => ({
+	const options = Object.keys(labels ?? {}).sort().map((id) => ({
 		value: id,
 		text: id === current
 			? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)
 	}));
+	if (!current && options.length)
+		options.unshift({ value: '', text: _('Not selected', 'aether-proxy') });
+	return options;
 }
 
 /* Reload failures leave runtime status unchanged. Compare against UCI instead
@@ -640,12 +643,29 @@ return baseclass.extend({
 
 	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */
 	switch_request: function(node, mode, current_node, current_mode) {
-		const change_node = !!node && node !== current_node;
+		if (!node)
+			return null;
+		const change_node = node !== current_node;
 		const change_mode = !!MODE_TEXT[mode] && mode !== current_mode;
 		if (change_node)
 			return { method: 'node_use', params: change_mode ? { id: node, mode } : { id: node },
 				kind: change_mode ? 'both' : 'node' };
 		return change_mode ? { method: 'mode_use', params: { mode }, kind: 'mode' } : null;
+	},
+
+	/* A previous reload (including the same target) is not evidence for this request.
+	   Fractional epoch seconds avoid accepting a prior completion in the same second. */
+	reload_result: function(status, session) {
+		const result = status?.ok === false ? null : status?.last_reload;
+		/* TODO(design): clock-skew reconciliation is unspecified. Keep the strict
+		   time floor and time out conservatively, rather than accept an old result. */
+		if (!result || !Number.isFinite(result.at) || result.at <= session.started)
+			return null;
+		if (JSON.stringify(result) === session.baseline)
+			return null;
+		if (result.target_node !== session.node || result.target_mode !== session.mode)
+			return null;
+		return typeof result.ok === 'boolean' ? result : null;
 	},
 
 	can_switch: function(selected, current) {

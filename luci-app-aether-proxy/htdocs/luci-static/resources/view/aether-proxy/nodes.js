@@ -17,17 +17,16 @@
  * reachability column wording, the progress line and the allowed per-row
  * operations are all decided in the model. Probing runs through ap.run_job()
  * (docs/10 「作业机制」); after every job status update the probe results are
- * fetched once and the probe column and progress line are refreshed. Setting a
- * node as current uses node_use without applying session changes, then rereads
- * UCI and runtime status (docs/10 「检测真实延迟与切换节点」). Node edits use the
+ * fetched once and the probe column and progress line are refreshed.
+ * T10.71 makes Overview the sole UI switch entry. Node edits use the
  * GridSection modal and form.Map's standard save flow. Probe recovery follows docs/10 「UI 规则」.
  * Defer the first result read until after rendering (docs/10 「其余页面先出页面」).
  * Row actions and immediate probe feedback follow docs/10 「节点页修正」 (T10.19).
- * Editing, multi-delete and bounded switch locking follow 「节点页第二轮修正」 (T10.25).
+ * Editing and multi-delete follow 「节点页第二轮修正」 (T10.25).
  * Manual additions and separate protocol columns follow 「添加节点」「节点表的协议列」 (T10.26).
  * Collapsible bulk imports retain input and results across redraws (「节点页第三轮修正」, T10.29).
  * Transport, security and Mux modal options follow 「节点编辑框新字段」 (T10.30).
- * Synchronous UCI unload and switch-banner cleanup follow 「r12 缺陷修正」 (T10.32).
+ * Synchronous UCI unload follows 「r12 缺陷修正」 (T10.32).
  * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
  * The independent subscription map precedes this node region (「节点与订阅合并为一页」, T10.37).
  * Both grids share modal required/format feedback (docs/10 r17–r18, T10.58/T10.61).
@@ -93,7 +92,6 @@ return view.extend({
 			self.updateProbeColumns();
 			window.setTimeout(() => {
 				self.refreshResults();
-				self.refreshSwitchStatus();
 			}, 0);
 			return E('div', {}, [
 				E('h2', {}, _('Nodes & Subscriptions', 'aether-proxy')),
@@ -132,7 +130,6 @@ return view.extend({
 	},
 
 	buildPage: function() {
-		this.clearSwitchNotification();
 		const self = this;
 		const vm = model.build(
 			uci.sections('aetherproxy', 'node'),
@@ -147,7 +144,6 @@ return view.extend({
 
 		this.probeCells = {};
 		this.probeButtons = [];
-		this.switchButtons = [];
 		this.selectionBoxes = {};
 
 		this.progressEl = E('div', { 'class': 'cbi-map-descr' });
@@ -209,6 +205,7 @@ return view.extend({
 			return E('div', {}, [
 				E('h3', {}, _('Nodes', 'aether-proxy')),
 				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
+				E('p', {}, _('To switch nodes, select a node on the Overview page and click Apply.', 'aether-proxy')),
 				controls,
 				mapNode,
 				importBox
@@ -236,25 +233,11 @@ return view.extend({
 			return E([]);
 		};
 
-		/* The per-row operations: 设为当前 / 检测 come first, then the built-in
-		   Edit and Delete buttons of the grid section. */
+		/* Probe first, then the built-in Edit and Delete buttons (T10.71). */
 		s.renderRowActions = function(section_id) {
 			const tdEl = this.super('renderRowActions', [ section_id, _('Edit', 'aether-proxy') ]);
 			const row = rowMap[section_id];
 			const extra = [];
-
-			if (row && row.can_set_current) {
-				const button = E('button', {
-					'class': 'btn cbi-button cbi-button-positive',
-					/* Not createHandlerFn: it returns nothing and re-enables the button
-					   when done, which would undo the switch lock. handleSetCurrent
-					   disables the buttons and restores them itself. */
-					'click': ev => self.handleSetCurrent(section_id, ev)
-				}, [ _('Set as current', 'aether-proxy') ]);
-				self.switchButtons.push(button);
-				self.updateSwitchButtons();
-				extra.push(button);
-			}
 
 			const probeBtn = E('button', {
 				'class': 'btn cbi-button cbi-button-neutral',
@@ -292,7 +275,9 @@ return view.extend({
 			const row = rowMap[section_id];
 
 			if (row && !row.can_delete) {
-				ui.addNotification(null, E('p', _('The current node cannot be deleted.', 'aether-proxy')));
+				ui.addNotification(null, E('p', _(
+					'The current node cannot be deleted. Switch to another node on the Overview page first.',
+					'aether-proxy')));
 				return;
 			}
 
@@ -376,7 +361,9 @@ return view.extend({
 			const box = E('input', {
 				'type': 'checkbox',
 				'disabled': (!row?.can_delete) || null,
-				'title': row?.can_delete ? row.name : _('The current node cannot be deleted.', 'aether-proxy'),
+				'title': row?.can_delete ? row.name : _(
+					'The current node cannot be deleted. Switch to another node on the Overview page first.',
+					'aether-proxy'),
 				'checked': (row?.can_delete && self.selectedNodes.has(section_id)) || null,
 				'change': ev => {
 					if (row?.can_delete && ev.currentTarget.checked)
@@ -808,83 +795,6 @@ return view.extend({
 		}
 	},
 
-	updateSwitchButtons: function() {
-		for (const button of this.switchButtons ?? []) {
-			button.disabled = !!(this.switching || this.switchPending);
-			button.title = this.switchPending
-				? _('Switching nodes, please wait', 'aether-proxy')
-				: _('Set this node as the current node', 'aether-proxy');
-		}
-	},
-
-	clearSwitchNotification: function() {
-		if (this.switchNoticeTimer != null)
-			window.clearTimeout(this.switchNoticeTimer);
-		this.switchNoticeTimer = null;
-		this.switchNotice?.element.remove();
-		this.switchNotice = null;
-	},
-
-	finishSwitch: function(timedOut) {
-		this.stopSwitchWatch();
-		this.switchOutcome = timedOut ? 'timeout' : 'complete';
-		const notice = this.switchNotice;
-		if (!notice)
-			return;
-		// Replace only our content: keep LuCI's banner and its Dismiss button intact.
-		notice.content.textContent = (timedOut
-			? _('Switching to “%s” has not finished yet; see the overview or logs for the reason.', 'aether-proxy')
-			: _('Switched to “%s”', 'aether-proxy')).format(notice.name);
-		if (!timedOut)
-			this.switchNoticeTimer = window.setTimeout(() => this.clearSwitchNotification(), 5000);
-	},
-
-	stopSwitchWatch: function() {
-		this.switchEpoch = (this.switchEpoch ?? 0) + 1;
-		if (this.switchPoll != null)
-			window.clearTimeout(this.switchPoll);
-		if (this.switchDeadline != null)
-			window.clearTimeout(this.switchDeadline);
-		this.switchPoll = this.switchDeadline = null;
-		this.switchPending = false;
-		this.updateSwitchButtons();
-	},
-
-	/* The deadline is independent of RPC completion, so even an in-flight read
-	   cannot keep the controls locked beyond 60 seconds. Epochs discard late
-	   replies from the initial read or a previous node_use. */
-	watchSwitch: function(status) {
-		this.stopSwitchWatch();
-		this.switchOutcome = null;
-		if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node')))
-			return;
-		this.switchPending = true;
-		this.updateSwitchButtons();
-		const epoch = this.switchEpoch;
-		this.switchDeadline = window.setTimeout(() => this.finishSwitch(true), 60000);
-		this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);
-	},
-
-	refreshSwitchStatus: async function(epoch = this.switchEpoch ?? 0) {
-		const status = await ap.call('status');
-		if (epoch !== (this.switchEpoch ?? 0))
-			return;
-		/* A failed read proves nothing either way (design lead, 2026-10-22):
-		   keep an existing lock until its deadline, start none, notify nothing. */
-		if (status && status.ok !== false) {
-			if (!this.switchPending) {
-				this.watchSwitch(status);
-				return;
-			}
-			if (!model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
-				this.finishSwitch(false);
-				return;
-			}
-		}
-		if (this.switchPending)
-			this.switchPoll = window.setTimeout(() => this.refreshSwitchStatus(epoch), 3000);
-	},
-
 	/* 「检测全部」 / per-row 「检测」: run the probe as a background job and
 	   refresh the results and the progress line after every status update
 	   (docs/10 「节点页」). Both probe buttons are unavailable while the job
@@ -992,57 +902,6 @@ return view.extend({
 		// LuCI stringifies null children; an absent progress line must stay empty.
 		dom.content(this.progressEl, vm.progress == null ? [] : [ vm.progress ]);
 		this.progressEl.hidden = vm.progress == null;
-	},
-
-	/* Direct switching must not commit unrelated staged session changes. */
-	handleSetCurrent: async function(section_id, ev) {
-		if (this.switching || this.switchPending)
-			return;
-		this.switching = true;
-		this.clearSwitchNotification();
-		this.stopSwitchWatch();
-		const button = ev.currentTarget;
-		button.disabled = true;
-		try {
-			const reply = await ap.call('node_use', { id: section_id });
-			let status;
-			if (reply.ok) {
-				uci.unload('aetherproxy');
-				await this.load();
-				status = await ap.call('status');
-				this.watchSwitch(status);
-				const content = await this.buildPage();
-				dom.content(this.root, content);
-				this.updateProbeColumns();
-			}
-			const text = model.node_use_message(reply, status,
-				uci.get('aetherproxy', 'main', 'node'), uci.sections('aetherproxy', 'node'));
-			if (text) {
-				/* The message names the node: render it as text (docs/10 「UI 规则」). */
-				const content = E('p', {}, [ text ]);
-				const element = ui.addNotification(null, content, reply.ok ? 'info' : 'error');
-				if (reply.ok && model.switch_pending(status, uci.get('aetherproxy', 'main', 'node'))) {
-					const node = uci.get('aetherproxy', section_id);
-					this.switchNotice = { element, content, name: node?.label || section_id };
-					// Form rendering may outlast the watch; never leave a stale pending banner.
-					if (this.switchOutcome)
-						this.finishSwitch(this.switchOutcome === 'timeout');
-				}
-			}
-		}
-		catch (e) {
-			/* ap.call never rejects, so reaching here means node_use already
-			   succeeded and only the page refresh failed: never call it a failed
-			   switch (design lead, T10.23 TODO, 2026-10-21). No write is retried. */
-			ui.addNotification(null, E('p', {},
-				[ _('The node was switched, but refreshing the page data failed: %s. Reload the page.', 'aether-proxy')
-					.replace('%s', e?.message ?? String(e)) ]), 'warning');
-		}
-		finally {
-			this.switching = false;
-			button.disabled = false;
-			this.updateSwitchButtons();
-		}
 	},
 
 	handleImport: function(ev) {

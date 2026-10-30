@@ -164,7 +164,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 - 写配置失败 → `FS_FAILED`（`op: uci-commit`），退出码 1；发重载失败 → `CMD_FAILED`，退出码 1（配置已改，下次重载或启动会生效）。
   `state.json` 读不了或损坏 → `FS_FAILED`（`op: read`），退出码 1，**不改配置**：猜成「服务没在运行」会悄悄漏掉该做的重载（2026-10-21 T9.10 复核定）。
   只读 `/etc/config/aetherproxy` 本身，不带上 `/tmp/.uci` 或会话里暂存的改动（libuci 用绝对路径加载时不回放暂存改动）。
-- 页面（前端）：概览「使用此节点」、节点页「设为当前」改调 rpcd `node_use`，返回后重新读 UCI 与 `status`，「正在切换到…」的提示（「切换节点未生效时提示」）立即出现。
+- 页面（前端，T10.71）：唯一切换入口为概览页「下拉 + 应用」，调用 rpcd `node_use` / `mode_use`，不应用其它会话暂存配置。节点页不再切换。结果与回滚见下方「概览页切换遮罩」。
 
 ### 切换默认模式（`mode use`、`node use --mode`，2026-10-22 定，r12 窗口）
 
@@ -349,14 +349,24 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   （服务没在运行时，reload 触发器会执行 `start`，见 04「重载」。）
 - 模型的按钮函数增加 `enabled` 参数；提示文字与确认文字也由模型给出。
 
-### 节点页（2026-10-16 定，T8.5）
+### 概览页切换遮罩（T10.71）
+
+以下取代本文历史段落中的节点页「设为当前」及概览页切换后的通知流程，后端原子/锁语义不变。
+
+- 无当前节点时，节点下拉显示空值「未选择」，应用禁用；启用禁用并提示先选择节点并应用。服务未运行时，应用只保存节点/模式，之后可启用。
+- 仅概览页「应用」创建遮罩；外部切换仍只用原横幅。遮罩期间禁用所有动作（含 Stop、Refresh、下拉、启用及重试按钮）。
+- `switching` 不可关闭；本次匹配的 reload 成功 → `success`，刷新 UCI/status，2 秒后关闭。预检/提交失败（`committed:false`）→ `preflight-failed`，可关闭、不回滚。`committed:null` 或缺失按结果不确定处理。
+- 已提交且重载失败 → `rolling-back`；仅使用返回的 `previous` / `previous_mode`。回滚前重新读 UCI，节点/模式不是本次目标时不覆盖。回滚调用 `node_use` / `mode_use`，并等待自己的 reload 结果；成功 → `rolled-back`，2 秒关闭；失败 → `rollback-failed`，可关闭、保留横幅。
+- 60 秒期限独立于 RPC/轮询。超时可关闭并保留横幅，不根据超时猜测失败、不盲目回滚；关闭后恢复动作。当前 RPC 无法恢复未设置的旧节点/模式时保守报回滚失败，不猜旧值。页面关闭或断网不保证恢复。
+- 每次 reload 完成在 `state.json` 发布 `last_reload { at, target_node, target_mode, ok, error }`。`at` 为含小数的 Unix 秒；失败 `error` 为非空诊断字符串，成功为 null。页面只接受开始之后、target 两项匹配的本次结果，且仅 `ok === true` 判成功；既有记录、失败的 status 读取均不算成功。读配置前已失败时 target 无法确定，写 null，页面保守超时。运行态字段不被 completion 替换。
+
+### 节点页（2026-10-16 定，T8.5；T10.71 移除切换入口）
 
 - 列表用 LuCI 的 `form.GridSection`（`aetherproxy` 的 `node` 段），一行一个节点，列：名称（`label`）、地址（`address:port`）、协议/传输/安全层（如 `vless / ws / tls`）、
   来源（`手动` 或订阅的 `name`，找不到订阅就显示段名）、标记（当前节点、`stale`）、**TCP 可达／延迟**（[07](07-probe.md) 的列名）。
   检测结果的文字：段名在 `pending` 中 → 「检测中」；有结果且 `ok > 0` → 「<median_ms> ms（<ok>/3）」；`ok == 0` → 按 `error` 显示「解析失败」「超时」「拒绝连接」「不可达」「其他错误」；没有结果 → 「未检测」。
-- 每行的操作：「设为当前」（当前节点不显示）、「检测」（只测这一个）、编辑（GridSection 自带的模态框）、删除（`cbi-button-remove`，要确认；**当前节点不能删除**）。
+- 每行的操作：「检测」（只测这一个）、编辑（GridSection 自带的模态框）、删除（`cbi-button-remove`，要确认；**当前节点不能删除**，提示先在概览页切换）。保留「使用中」标记，表格上方提示“切换节点请到概览页选择后点『应用』”。
   列表上方：「检测全部」、导入 URI。
-- 设为当前：`uci.set('aetherproxy', 'main', 'node', <段名>)`、`uci.save()`，然后走 LuCI 标准的保存并应用（`ui.changes.apply()`，带回滚确认）。
 - 检测：`ap.run_job('probe_nodes', [<段名>…])`（全部检测时为空数组）；作业进行中每次 `on_update` 后取一次 `probe_results` 并刷新检测列，同时显示进度「检测中 <done>/<total>」；
   作业期间两个检测按钮不可用。页面加载时取一次 `probe_results`。
 - 编辑模态框：`label`、`protocol`、`address`、`port`，以及按 `protocol`、`transport`、`security` 显示的字段（05「`config node`」，用 `depends`）；`source`、`stale`、`match_*` 不显示、不可改。
