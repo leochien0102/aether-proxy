@@ -151,8 +151,9 @@ function run_sets() {
 	if (apply.sets_save(c, { gfw4: [ 'bad' ], udirect4: [], uproxy4: [] }).ok)
 		return fail('invalid set data accepted');
 	write(`${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`, '{invalid json');
-	if (apply.sets_load(c).ok || fs.stat(`${t.base}/var/run/aether-proxy/${C.SETS_SAVE_FILE}`) == null)
-		return fail('corrupt sets.save should fail and remain available for diagnosis');
+	if (!apply.sets_load(c).ok || fs.stat(saved_path) != null ||
+	    read(`${t.base}/var/run/aether-proxy/${C.SETS_BAD_FILE}`) != '{invalid json')
+		return fail('corrupt sets.save should be quarantined and allow recovery');
 	write(`${t.base}/block`, 'file');
 	let blocked = { ...c, run_dir: '/block/subdir' };
 	if (apply.sets_save(blocked, exported.sets).ok)

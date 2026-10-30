@@ -28,7 +28,7 @@ const EVENTS = {
 	DNS_TIER_CHANGED: 'warn',
 	XRAY_DOWN_FAILOPEN: 'error', XRAY_DOWN: 'error', XRAY_RECOVERED: 'notice',
 	DNS_DOWN_FAILSAFE: 'error', DNS_RECOVERED: 'notice',
-	NFT_TABLE_RESTORED: 'warn',
+	NFT_TABLE_RESTORED: 'warn', SETS_RESTORE_FAILED: 'warn',
 	DNSMASQ_CONFDIR_NOT_FOUND: 'error', DNSMASQ_EXTRA_SERVERS: 'warn',
 	IPV6_PRESENT: 'warn',
 	SUB_UPDATED: 'notice',

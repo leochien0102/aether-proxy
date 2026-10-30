@@ -310,3 +310,6 @@ export const APPLIED_FILES = {
 
 // T9.45: Linux IFNAMSIZ includes the terminating NUL byte.
 export const IFNAMSIZ = 16;
+
+// T9.48 (docs/04 Q1): one diagnostic copy, never a recovery input.
+export const SETS_BAD_FILE = 'sets.save.bad';

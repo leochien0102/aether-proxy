@@ -46,6 +46,7 @@ const TEMPLATES = {
 	DNS_DOWN_FAILSAFE: _('DNS down; original upstream configuration restored', 'aether-proxy'),
 	DNS_RECOVERED: _('DNS recovered', 'aether-proxy'),
 	NFT_TABLE_RESTORED: _('Missing nftables table restored', 'aether-proxy'),
+	SETS_RESTORE_FAILED: _('Saved dynamic sets quarantined; continuing with empty sets: {detail}', 'aether-proxy'),
 	DNSMASQ_CONFDIR_NOT_FOUND: _('dnsmasq configuration directory not found', 'aether-proxy'),
 	DNSMASQ_EXTRA_SERVERS: _('Additional dnsmasq servers: {servers}', 'aether-proxy'),
 	IPV6_PRESENT: _('Global IPv6 address present on {iface}', 'aether-proxy'),

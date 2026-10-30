@@ -140,6 +140,33 @@ exec "$(dirname "$0")/nft-original" "$@"
 			check('stop removes child pid files',
 				not (self.run / 'xray.pid').exists() and not (self.run / 'chinadns-ng.pid').exists())
 
+	# T9.48: exercise the real startup caller with each corruption class.
+	for label, text in (
+			('json', '{broken'), ('structure', '[]'), ('missing', '{"gfw4":[]}'),
+			('element', '{"gfw4":["bad"],"udirect4":[],"uproxy4":[]}')):
+		fixture = Fixture('sets-' + label)
+		save = fixture.run / 'sets.save'
+		bad = fixture.run / 'sets.save.bad'
+		save.write_text(text)
+		bad.write_text('old quarantine')
+		with fixture.daemon() as child:
+			wait_for(lambda: fixture.state().get('state') in ('running', 'error'), child)
+			check('T9.48 startup ' + label + ' continues running with empty sets',
+				fixture.state()['state'] == 'running'
+				and all('elements = {' not in (fixture.run / 'current/aether-proxy.nft').read_text()
+					.split('set ' + name + ' {')[1].split('}')[0]
+					for name in ('gfw4', 'udirect4', 'uproxy4')))
+			warnings = [e for e in fixture.events() if e['code'] == 'SETS_RESTORE_FAILED']
+			check('T9.48 startup ' + label + ' quarantines exact bytes and emits WARN once',
+				not save.exists() and bad.read_text() == text and len(warnings) == 1
+				and warnings[0]['level'] == 'warn' and bool(warnings[0]['args']['detail']))
+			child.send_signal(signal.SIGUSR1)
+			time.sleep(0.3)
+			check('T9.48 startup ' + label + ' polling preserves bad file without repeat warning',
+				bad.read_text() == text
+				and len([e for e in fixture.events() if e['code'] == 'SETS_RESTORE_FAILED']) == 1)
+			fixture.stop(child)
+
 	invalid = Fixture('invalid')
 	conf = invalid.conf / 'aetherproxy'
 	conf.write_text(conf.read_text().replace("option mode 'gfw'", "option mode 'raw-invalid-mode'")

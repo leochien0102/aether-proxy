@@ -121,6 +121,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `CHILD_CRASHED` | warn | `name`、`pid`、`code`、`restart_in`（秒）。子进程不是因主动停止而退出时记录（[04](04-lifecycle.md)「进程模型」） |
 | `DNS_DOWN_FAILSAFE` / `DNS_RECOVERED` | error / notice | — |
 | `NFT_TABLE_RESTORED` | warn | — |
+| `SETS_RESTORE_FAILED` | warn | `detail`（损坏的 sets.save 已隔离为 sets.save.bad，用空集合继续） |
 | `DNSMASQ_CONFDIR_NOT_FOUND` / `DNSMASQ_EXTRA_SERVERS` | error / warn | `servers` |
 | `IPV6_PRESENT` | warn | `iface` |
 | `SUB_UPDATED` | notice | `sub`、`added`、`updated`、`stale`、`removed`、`skipped`（按原因计数的对象） |
