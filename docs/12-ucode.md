@@ -77,7 +77,7 @@ import * as nft from 'aetherproxy.render.nft';
    // 返回 { code, stdout, stderr }；code != 0 时自动记 CMD_FAILED（opts.quiet 为 true 时除外，调用方必须自己处理）
    sys.run(['nft', '-f', path], { timeout: 10 });
    ```
-   参数必须以**数组**传入，由 `sys.run` 负责 shell 转义（单引号包裹，内部单引号转写为 `'\''`）。不准拼接 shell 字符串。
+   参数必须以**数组**传入，`sys.run` 以 `sh -c '… "$@"'` 的位置参数传给子进程，不拼接 shell 字符串，因此不需要单引号转义辅助函数（`sys.q` 已在 T9.42 删除）。
    超时：到时先向命令发 SIGTERM，1 秒后仍在则 SIGKILL，结果为 124。**超时机制本身不能依赖 SIGTERM 能送达**：OpenWrt 的 `rc.common`
    在 `restart` 的 stop 期间执行 `trap '' TERM`，进入时就被忽略的信号会传给所有子进程，sh 也无法再为它设 trap（POSIX）。
    2026-10-20 真机：此时每个带超时的调用都等满超时，`cleanup` 从 0 秒变成 41 秒，更新的安装后检查因此超时并回滚。
