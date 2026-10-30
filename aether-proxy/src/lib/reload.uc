@@ -352,7 +352,7 @@ function applied_result(daemon, loaded, actions) {
 	return { ok: true, actions, snapshot: daemon.snapshot, applied_context: loaded, state: daemon.state };
 };
 
-function run(daemon, started_ms) {
+function run_candidate(daemon, started_ms, transaction) {
 	started_ms ??= monotonic_ms();
 	let step_started = monotonic_ms();
 	let detail = {};
@@ -367,6 +367,12 @@ function run(daemon, started_ms) {
 	record_detail(detail, 'read', detail_started);
 	if (!loaded.ok)
 		return config_failure(daemon, loaded);
+	if (daemon.degradation_request == null) {
+		loaded = pipeline.freeze(loaded, daemon.ctx, daemon.applied_context);
+		if (!loaded.ok)
+			return config_failure(daemon, loaded);
+		transaction.loaded = loaded;
+	}
 	let snapshot = loaded.snapshot;
 	steps.config_render = elapsed_ms(step_started);
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
@@ -548,6 +554,18 @@ function run(daemon, started_ms) {
 		steps
 	});
 	return applied_result(daemon, loaded, actions);
+};
+
+// One cleanup boundary covers every early return, including rendering, validation and
+// rollback failures. A reused current generation is never treated as a disposable candidate.
+function run(daemon, started_ms) {
+	let previous = daemon.applied_context, transaction = {};
+	let result = run_candidate(daemon, started_ms, transaction);
+	if (!result.ok || result.stop)
+		pipeline.discard_frozen(transaction.loaded, previous);
+	else
+		pipeline.prune_frozen(daemon.ctx, result.applied_context);
+	return result;
 };
 
 // Both user and monitor reloads compare installed outputs. The caller owns busy and,

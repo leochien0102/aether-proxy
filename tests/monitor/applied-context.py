@@ -89,6 +89,24 @@ config probe 'probe'
 	return root, binaries, env
 
 
+def normalize_frozen_paths(actual, expected, run):
+	# The focused frozen-path suite checks exact bytes. Retain the original full
+	# snapshot/runtime comparison here, while requiring valid immutable child inputs.
+	lines = actual.splitlines()
+	for i, line in enumerate(expected.splitlines()):
+		if not line.startswith(('gfwlist-file ', 'chnlist-file ', 'group-dnl ')):
+			continue
+		key = line.split(' ', 1)[0]
+		if not lines[i].startswith(key + ' '):
+			raise AssertionError('frozen config changed a path directive')
+		for value in lines[i].split(' ', 1)[1].split(','):
+			path = Path(value)
+			if not path.is_file() or path.parent.parent != run / 'applied':
+				raise AssertionError('child input is not a frozen file')
+		lines[i] = line
+	return '\n'.join(lines) + '\n'
+
+
 def startup_test(base, ucode=None):
 	root, binaries, env = prepare(base)
 	options = dict(sys_root=str(root), bin_dir=str(binaries), confdir=str(root / 'etc/config'),
@@ -154,7 +172,10 @@ exec "$(dirname "$0")/resolveip-original" "$@"
 			def artifacts(expected, label):
 				for name, file in (('nft', 'aether-proxy.nft'), ('chinadns', 'chinadns.conf'),
 						('xray', 'xray.json'), ('dnsmasq', 'dnsmasq.conf')):
-					check((run / 'current' / file).read_text() == expected[name], label + ' keeps ' + name)
+					actual = (run / 'current' / file).read_text()
+					if name == 'chinadns':
+						actual = normalize_frozen_paths(actual, expected[name], run)
+					check(actual == expected[name], label + ' keeps ' + name)
 
 			try:
 				wait(lambda: state().get('state') == 'running')

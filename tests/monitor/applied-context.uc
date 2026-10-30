@@ -168,6 +168,7 @@ if (changed.ok) {
 	d.state = changed.state;
 	d.snapshot = changed.snapshot;
 	d.applied_context = changed.applied_context;
+	b = changed.applied_context;
 	check(d.applied_context?.snapshot == d.snapshot && d.applied_context?.data.chnroute4[0] == '20.0.0.0/8',
 		'full success returns B context with same snapshot');
 	recover(b, 'successful B reload');

@@ -98,4 +98,5 @@ for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked;
 done
 python3 "$ROOT/tests/monitor/degrade.py" || status=1
 python3 "$ROOT/tests/monitor/applied-context.py" || status=1
+python3 "$ROOT/tests/monitor/frozen-paths.py" || status=1
 exit "$status"

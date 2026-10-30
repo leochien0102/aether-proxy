@@ -526,6 +526,21 @@ function start_sequence(ctx, opts, signal_pending) {
 	// Refresh after boot waiting, as before, then pin all published artifacts to this
 	// read. Later node resolution and set restoration must not mix another generation.
 	let applied_context = pipeline.read(opts);
+	if (applied_context.ok) {
+		// Boot domains must exist in the same frozen generation before chinadns starts.
+		let domains = [];
+		for (let id, node in applied_context.snapshot.nodes)
+			if (node.address && net.ipv4(node.address) == null)
+				push(domains, node.address);
+		let boot_started = monotonic_ms();
+		let boot_list = apply.write_boot_list(ctx, domains);
+		record_step(ctx, 'write_boot_list', boot_started);
+		if (!boot_list.ok) {
+			locked.close();
+			return { ok: false, code: 1, step: 'write_boot_list', detail: boot_list.detail };
+		}
+		applied_context = pipeline.freeze(applied_context, ctx, null);
+	}
 	let initial = pipeline.render(applied_context, initial_runtime);
 	if (!initial.ok) {
 		record_step(ctx, 'render_validate', step_started);
@@ -599,17 +614,6 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
 	}
 
-	let domains = [];
-	for (let id, node in snapshot.nodes)
-		if (node.address && net.ipv4(node.address) == null)
-			push(domains, node.address);
-	step_started = monotonic_ms();
-	let boot_list = apply.write_boot_list(ctx, domains);
-	record_step(ctx, 'write_boot_list', step_started);
-	if (!boot_list.ok) {
-		locked.close();
-		return { ok: false, code: 1, step: 'write_boot_list', detail: boot_list.detail, children };
-	}
 	let node_id = snapshot.main.node;
 	let address = snapshot.nodes?.[node_id]?.address;
 	step_started = monotonic_ms();
@@ -1180,8 +1184,8 @@ function run(args) {
 				// Reload pumps uloop while stopping/starting children. Timer callbacks must
 				// not sample the intentional listener gap or mutate current/ mid-transaction.
 				monitor_daemon.busy = true;
-				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children },
-					started_ms);
+				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot,
+					applied_context: monitor_daemon.applied_context, state: base, children }, started_ms);
 				monitor_daemon.busy = false;
 				if (changed.stop) {
 					stopping = true;
@@ -1236,6 +1240,8 @@ function run(args) {
 			if (length(rollback))
 				result.detail += `; rollback: ${join('; ', rollback)}`;
 		}
+		// Only after stopping any partially started children can their candidate be removed.
+		pipeline.prune_frozen(ctx, null);
 		let configuration_error = result.step == 'config';
 		let saved = write_state(ctx, {
 			state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
@@ -1280,6 +1286,7 @@ function run(args) {
 		let result = start_sequence(ctx, opts, on_signal);
 		let children = result.children ?? { xray: null, dns: null };
 		if (result.ok) {
+			pipeline.prune_frozen(ctx, result.applied_context);
 			retry_index = 0;
 			retry_attempt = 0;
 			run_monitor(result, children);
@@ -1292,6 +1299,7 @@ function run(args) {
 		}
 		if (result.interrupted && signal == 'stop') {
 			let errors = shutdown(ctx, children, true);
+			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
 			exit_code = 0;
 			finished = true;
@@ -1299,6 +1307,7 @@ function run(args) {
 		}
 		if (signal == 'stop') {
 			let errors = shutdown(ctx, children, true);
+			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
 			exit_code = 0;
 			finished = true;
