@@ -254,13 +254,27 @@ function parse_userpass(value) {
 	return decoded == null ? null : split_userpass(decoded);
 }
 
+// json() throws on malformed input (ucode 2025.07.18); a subscription body must
+// yield one result per line (docs/06 "订阅解析" step 3), so a payload that is
+// valid Base64 but not a JSON object is a skip reason, never an exception.
+function json_object(text) {
+	let value = null;
+	try {
+		value = json(text);
+	}
+	catch (e) {
+		return null;
+	}
+	return type(value) == 'object' ? value : null;
+}
+
 function parse_vmess(payload, label) {
 	let decoded = decode_base64(payload);
 	if (decoded == null)
 		return skipped('malformed');
 
-	let data = json(decoded);
-	if (type(data) != 'object')
+	let data = json_object(decoded);
+	if (data == null)
 		return skipped('malformed');
 
 	if (data.aid != null && `${data.aid}` != '0')

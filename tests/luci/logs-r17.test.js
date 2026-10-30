@@ -9,7 +9,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren } = require('./loader');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -133,7 +133,7 @@ test('T10.60 scenario 3: rendered conflict diagnostics are text nodes and hover 
 	const page = loadModule(path.join(RES, 'view/aether-proxy/logs.js'), {
 		view: { extend: value => value }, uci: { sections: () => [] },
 		'aether-proxy.model.logs': logs, 'aether-proxy.common': {},
-		dom: { content: (node, children) => node.replaceChildren(...children) }
+		dom: { content: (node, children) => contentChildren(node, children) }
 	}, { window: { setTimeout() {} }, document: {} });
 	const root = page.render();
 	const args = Object.freeze({ step: 'precheck', detail: 'conflict:<img src=x onerror=alert(1)>' });

@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, createRpc, element } = require('./loader');
+const { loadModule, parsePo, createRpc, element, contentChildren } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -28,7 +28,7 @@ function text(node) {
 function find(node, predicate) {
 	if (node == null || typeof node !== 'object')
 		return [];
-	return (predicate(node) ? [node] : []).concat(node.children.flatMap(n => find(n, predicate)));
+	return (predicate(node) ? [node] : []).concat((node.children ?? []).flatMap(n => find(n, predicate)));
 }
 const buttons = root => find(root, node => node.tag === 'button');
 const button = (root, label) => {
@@ -135,9 +135,7 @@ async function harness(t, name) {
 				(typeof fn === 'string' ? self[fn] : fn).apply(self, [...bound, ...rest]),
 			addNotification: (target, node) => notifications.push(text(node))
 		},
-		dom: { content: (target, content) => {
-			target.replaceChildren(...(Array.isArray(content) ? content : [content]));
-		} },
+		dom: { content: (target, content) => contentChildren(target, content) },
 		'aether-proxy.common': ap, ['aether-proxy.model.' + name]: vm
 	};
 	const env = { window: { setTimeout: fn => initialReads.push(fn) } };

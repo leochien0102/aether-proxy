@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo, element } = require('./loader.js');
+const { loadModule, parsePo, element, contentChildren } = require('./loader.js');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -28,6 +28,12 @@ const po = parsePo(fs.readFileSync(PO, 'utf8'));
 /* The model goes through the browser-global _(); resolve it from the real po
    so the tests also fail when a translation goes missing. */
 globalThis._ = (s) => po[s] ?? s;
+/* luci-base extends String.prototype with format() (luci.js); rendering code
+ * calls it on translated strings, so the double must provide it too. */
+String.prototype.format = function(...args) {
+	let i = 0;
+	return this.replace(/%s/g, () => String(args[i++]));
+};
 globalThis.E = element;
 
 function tr(msgid, ...args) {
@@ -286,7 +292,7 @@ function loadNodesView(calls, overrides = {}) {
 				return { remove() {} };
 			}
 		},
-		dom: { content: () => {} },
+		dom: { content: (node, children) => contentChildren(node, children) },
 		'aether-proxy.common': {
 			call: async (method, params) => {
 				calls.push([ 'call', method, params ]);

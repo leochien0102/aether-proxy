@@ -94,7 +94,8 @@ function direct_test_controls() {
 				timer = ap.job_progress(progress, _('Testing direct DNS…', 'aether-proxy'));
 				const job = await ap.run_job('dns_test', []);
 				timer.stop();
-				summary.replaceChildren(...model.dns_test_result(job).map(line => E('div', {}, line)));
+				/* Results quote the tested addresses and the backend detail text. */
+				summary.replaceChildren(...model.dns_test_result(job).map(line => E('div', {}, [ line ])));
 			}
 			catch (e) {
 				summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
@@ -148,7 +149,7 @@ return view.extend({
 		};
 	},
 	show_message: function(target, vm) {
-		target.replaceChildren(E('p', {}, vm.text), ...vm.errors.map(text => E('p', {}, text)));
+		target.replaceChildren(E('p', {}, [ vm.text ]), ...vm.errors.map(text => E('p', {}, [ text ])));
 	},
 	show_save: function(target, result) {
 		this.show_message(target, model.save_result(result));
@@ -160,8 +161,8 @@ return view.extend({
 				E('tr', { class: 'tr table-titles' },
 					[ _('Name', 'aether-proxy'), _('Source', 'aether-proxy'), _('Version', 'aether-proxy'), _('Lines', 'aether-proxy'), _('Updated', 'aether-proxy'), _('Status', 'aether-proxy') ]
 						.map(text => E('th', { class: 'th' }, text))),
-				...vm.rows.map(row => E('tr', { class: 'tr' }, row.map(text => E('td', { class: 'td' }, text))))
-			]), E('p', {}, vm.error ?? ''));
+				...vm.rows.map(row => E('tr', { class: 'tr' }, row.map(text => E('td', { class: 'td' }, [ text ]))))
+			]), E('p', {}, [ vm.error ?? '' ]));
 	},
 	render: function() {
 		const map = new form.Map('aetherproxy', _('Rules and DNS', 'aether-proxy'));
@@ -242,7 +243,7 @@ return view.extend({
 					timer = ap.job_progress(progress, _('Updating rule data…', 'aether-proxy'));
 					const job = await ap.run_job('update_data', []);
 					timer.stop();
-					summary.replaceChildren(...model.job_result(job).map(text => E('p', {}, text)));
+					summary.replaceChildren(...model.job_result(job).map(text => E('p', {}, [ text ])));
 					this.show_data(inventory, await ap.call('data_status'));
 				}
 				catch (e) {
@@ -274,7 +275,8 @@ return view.extend({
 				 * failed read intentionally leaves this hint absent (docs/10). */
 				ap.call('status').then(r => {
 					const message = model.wan_dns_text(r);
-					wan_hint.replaceChildren(...(message == null ? [] : [ E('div', {}, message) ]));
+					/* Local dnsmasq server lines are diagnostics, not markup (D-疑问4). */
+					wan_hint.replaceChildren(...(message == null ? [] : [ E('div', {}, [ message ]) ]));
 				}, () => wan_hint.replaceChildren());
 			}, 0);
 			return root;

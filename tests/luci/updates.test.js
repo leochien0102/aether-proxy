@@ -201,7 +201,15 @@ async () => {
 /* Deferred RPC and zero-delay timer doubles let the page render while status
  * never settles. Shared elements expose identity and unsaved form values. */
 function text(node) {
-	return node != null && typeof node == 'object' ? node.children.map(text).join('') : String(node ?? '');
+	if (node == null)
+		return '';
+	if (typeof node != 'object')
+		return String(node);
+	if (node.tag === '#text')
+		return node.text;
+	if (typeof node.textContent == 'string' && node.tag != null)
+		return node.textContent;
+	return (node.children ?? []).map(text).join('');
 }
 function buttons(node) {
 	if (!node || typeof node != 'object')

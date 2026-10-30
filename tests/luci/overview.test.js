@@ -15,7 +15,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo, element } = require('./loader.js');
+const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
 const { actionRow } = require('./button-layout');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
@@ -99,10 +99,11 @@ function loadView(overrides = {}) {
 		view: { extend: (o) => o },
 		uci: uciDouble,
 		ui: uiDouble,
-		/* dom.content replaces children rather than appending to them. */
+		/* dom.content() replaces the children following the SDK rules: array
+		 * items become element/text nodes, a scalar is an innerHTML write. */
 		dom: { content: (el, node) => {
-			el.children = Array.isArray(node) ? node : [];
-			el.content = Array.isArray(node) ? undefined : node;
+			contentChildren(el, node);
+			delete el.content;
 			overrides.onContent?.(el);
 		} },
 		'aether-proxy.common': ap,
@@ -903,6 +904,10 @@ function visibleText(node) {
 		return node;
 	if (!node || typeof node !== 'object')
 		return '';
+	/* E() doubles render their own children (text nodes included); plain
+	 * doubles in this file keep raw children/content values. */
+	if (typeof node.textContent === 'string' && typeof node.tag === 'string')
+		return node.textContent;
 	return visibleText(node.content) + (Array.isArray(node.children)
 		? node.children.map(visibleText).join('') : visibleText(node.children));
 }
@@ -964,7 +969,7 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	const pending = failure.children[1];
 	assert.doesNotMatch(visibleText(pending), /待处理提示/);
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message error'
-		&& n.children[0] === '读取状态失败（TIMEOUT），稍后自动重试'
+		&& visibleText(n.children[0]) === '读取状态失败（TIMEOUT），稍后自动重试'
 		&& findTag(n, 'pre').textContent === 'offline'));
 	assert.ok(findAll(pending, 'div').some((n) => n.attrs.class === 'alert-message warning'
 		&& visibleText(n).includes('服务未启用')));
@@ -1449,7 +1454,7 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 	const [left, right] = row.children;
 	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div' ]);
 	assert.equal(findAll(left, 'button')[0].textContent, '应用');
-	assert.equal(left.children[1].children[0].children[0], '默认模式');
+	assert.equal(left.children[1].children[0].children[0].text, '默认模式');
 	/* The mode label, select and Apply now wrap together (T10.48). */
 	assert.match(left.children[1].attrs.style, /flex-wrap:\s*nowrap/);
 	assert.match(findAll(left, 'select')[0].attrs.style ?? '', /width:\s*auto/);
@@ -2186,7 +2191,7 @@ test('T10.17 scenario 4: status failure clears loading, keeps controls disabled 
 		await Promise.resolve();
 		await h.reply('status', failure);
 		assert.equal(findAll(root, 'strong')[0].textContent, '–');
-		assert.equal(page.noticeContent.children[0].children[0],
+		assert.equal(visibleText(page.noticeContent.children[0].children[0]),
 			`读取状态失败（${failure?.code ?? 'RPC_FAILED'}），稍后自动重试`);
 		assert.ok(serviceButtons(root).every(disabled));
 		assert.equal(page.probeButton.disabled, true);
@@ -2366,7 +2371,7 @@ for (const failure of STATUS_ERRORS) {
 		assert.equal(page.noticeContent.children.length, 1);
 		const banner = page.noticeContent.children[0];
 		assert.equal(banner.attrs.class, 'alert-message error');
-		assert.equal(banner.children[0], `读取状态失败（${failure.code}），稍后自动重试`);
+		assert.equal(visibleText(banner.children[0]), `读取状态失败（${failure.code}），稍后自动重试`);
 		assert.equal(banner.children.length, failure.detail ? 2 : 1);
 		const details = findAll(banner, 'details');
 		assert.equal(details.length, failure.detail ? 1 : 0);
@@ -4176,4 +4181,27 @@ test('T10.68 scenario 2: entering and leaving degradation preserve both selector
 		assert.equal(mode.value, 'global');
 		assert.equal(apply.disabled, false);
 	}
+});
+
+/* T9.42 (D-疑问4): DNSMASQ_EXTRA_SERVERS carries raw lines scanned from
+ * dnsmasq's generated configuration and confdir. They are diagnostics, not
+ * markup, so they must reach the page as text nodes. */
+test('T9.42: DNSMASQ_EXTRA_SERVERS lines render as text and never build elements', async () => {
+	const h = deferredPage();
+	const { page } = h;
+	const writeMark = htmlWriteMark();
+	page.render(await page.load());
+	await Promise.resolve();
+	const servers = [ 'server=8.8.8.8', 'server=<img src=x onerror=alert(1)>', 'server=a&b"c' ];
+	await h.reply('status', { ok: true, state: 'running', node_id: 'n_a',
+		notices: [ { code: 'DNSMASQ_EXTRA_SERVERS', args: { servers } } ] });
+	const items = findAll(page.noticeContent, 'li');
+	assert.equal(items.length, 1, 'one warning line per notice');
+	assert.equal(items[0].textContent, page.vm.notices[0], 'the scanned lines are the rendered text');
+	assert.equal(items[0].attr, undefined);
+	for (const line of servers)
+		assert.ok(items[0].textContent.includes(line), 'kept verbatim: ' + line);
+	assert.deepEqual(findAll(page.noticeContent, 'img'), [], 'no element is created from a server line');
+	assert.deepEqual(htmlWritesSince(writeMark).filter((text) => text.includes('server=')), [],
+		'server lines never take the innerHTML path');
 });

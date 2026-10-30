@@ -15,11 +15,6 @@ function fs_err() {
 	return fs.error() ?? 'unknown error';
 }
 
-// POSIX single-quote escaping: ' becomes '\'' so the result is one shell word.
-function q(arg) {
-	return "'" + replace(`${arg}`, "'", "'\\''") + "'";
-}
-
 // Runs inside `sh -c`. Needs a wrapper because ucode has no way to capture stdout and
 // stderr separately: stderr goes to a mktemp file, and the exit code, timeout flag, and
 // that file's path are appended to stdout after a marker line. argv arrives as "$@", so
@@ -247,4 +242,4 @@ function error() {
 	return last_error;
 }
 
-export { q, run, write_atomic, mkdir_p, lock, error };
+export { run, write_atomic, mkdir_p, lock, error };

@@ -4,8 +4,11 @@
  * attribute semantics; add only tree queries, styles and bubbling events. */
 const { element } = require('./loader');
 function matches(node, selector) {
+	/* querySelectorAll returns elements only: skip text nodes and plain values. */
+	if (typeof node?.tag !== 'string' || node.tag === '#text')
+		return false;
 	if (selector.startsWith('.'))
-		return node.classList.contains(selector.slice(1));
+		return node.classList?.contains(selector.slice(1)) === true;
 	return node.tag === selector;
 }
 function modalElement(...args) {
@@ -40,7 +43,8 @@ function modalElement(...args) {
 			node.parentNode = null;
 		}
 	};
-	const descendants = root => root.children.filter(child => child && typeof child === 'object')
+	const descendants = root => (root.children ?? []).filter(child =>
+		child && typeof child === 'object' && child.tag !== '#text')
 		.flatMap(child => [child, ...descendants(child)]);
 	node.querySelectorAll = selector => descendants(node).filter(child =>
 		selector.split(/,\s*/).some(part => matches(child, part)));

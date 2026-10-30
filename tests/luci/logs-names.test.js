@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
 const po = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -142,9 +142,9 @@ function descendants(node) {
 	return [node].concat((node.childNodes || []).flatMap(descendants));
 }
 function content(node, children) {
-	node.replaceChildren(...(Array.isArray(children) ? children : [children]));
+	contentChildren(node, children);
 	if (node.tag === 'select')
-		node.value = node.children[0]?.value ?? '';
+		node.value = node.childNodes[0]?.value ?? '';
 }
 
 test('T10.39 scenarios 1/3: log view builds UCI maps with section fallbacks and renders safe names plus raw titles',
@@ -177,6 +177,7 @@ async () => {
 			poll: () => ({ stop() {} })
 		}
 	}, { window: { setTimeout: fn => timers.push(fn) }, document: {} });
+	const writeMark = htmlWriteMark();
 	const root = page.render(await page.load());
 	assert.deepEqual(calls, [['load', 'aetherproxy']], 'name lookup adds no RPC and keeps deferred first paint');
 	assert.deepEqual(sections, [['aetherproxy', 'node'], ['aetherproxy', 'subscription']]);
@@ -193,6 +194,8 @@ async () => {
 	}
 	assert.ok(descendants(root).some(node => node.tag === '#text' && node.text.includes(unsafe)));
 	assert.ok(!descendants(root).some(node => node.tag === 'img'));
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
+		'event parameters never take the innerHTML path');
 	page.code.value = 'NODE_RESOLVE_FAILED';
 	page.code.attrs.change();
 	assert.ok(page.eventContent.textContent.includes(unsafe), 'refilter keeps name maps');

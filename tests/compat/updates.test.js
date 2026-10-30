@@ -104,7 +104,10 @@ async function fixture() {
 		const manifest = { schema: 2, generated: '2026-10-25T00:00:00Z', packages: {}, data: {} };
 		for (const name of NAMES) {
 			const releases = [CURRENT[name], INSTALLED[name]].map(version => {
-				const filename = `${name}_${version}_all.ipk`;
+				/* build.py publishes only [A-Za-z0-9._-] (docs/08); the LuCI
+				 * translation version carries '~', so the channel spelling used
+				 * by the frozen client must be sanitized the same way. */
+				const filename = `${name}_${version}_all.ipk`.replace(/[^A-Za-z0-9._-]/g, '.');
 				const body = Buffer.from(`compat package ${name} ${version}\n`);
 				files.set('/' + filename, body);
 				return { version, assets: { all: { ipk: { url: filename, size: body.length,

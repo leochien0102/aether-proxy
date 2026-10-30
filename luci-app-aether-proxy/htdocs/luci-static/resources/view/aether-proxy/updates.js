@@ -63,7 +63,7 @@ return view.extend({
 				}))
 					return;
 				return this.run('update_package', row.name, previous);
-			}) }, label);
+			}) }, [ label ]);
 	},
 	show_inventory: function() {
 		const vm = model.table(this.status, this.busy, Date.now() / 1000);
@@ -72,7 +72,7 @@ return view.extend({
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
 		}, _('Check for updates', 'aether-proxy'));
 		const jobButtons = [check];
-		this.inventory.replaceChildren(E('p', {}, vm.error ?? ''), E('table', { class: 'table' }, [
+		this.inventory.replaceChildren(E('p', {}, [ vm.error ?? '' ]), E('table', { class: 'table' }, [
 			E('tr', { class: 'tr table-titles' },
 				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Latest', 'aether-proxy'),
 					_('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
@@ -87,8 +87,9 @@ return view.extend({
 					actions.push(this.package_button(row, row.rollback_label, true));
 				jobButtons.push(...actions);
 				return E('tr', { class: 'tr' }, [
+					/* Version strings come from the signed manifest, not from this page. */
 					...[ row.name, row.installed, row.available, row.previous, row.status ]
-						.map(text => E('td', { class: 'td' }, text)), E('td', { class: 'td' }, actions)
+						.map(text => E('td', { class: 'td' }, [ text ])), E('td', { class: 'td' }, actions)
 				]);
 			})
 		]), E('p', {}, model.manual_install_note()),

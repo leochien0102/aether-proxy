@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
 const { selectWidget } = require('./subscription-select');
@@ -31,7 +31,7 @@ globalThis.E = element;
 function find(root, predicate) {
 	if (!root || typeof root !== 'object')
 		return [];
-	return (predicate(root) ? [root] : []).concat(root.children.flatMap(n => find(n, predicate)));
+	return (predicate(root) ? [root] : []).concat((root.children ?? []).flatMap(n => find(n, predicate)));
 }
 const buttons = root => find(root, node => node.tag === 'button');
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -323,9 +323,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 				return banner;
 			}
 		},
-		dom: { content: (target, content) => {
-			target.replaceChildren(...(Array.isArray(content) ? content : [content]));
-		} },
+		dom: { content: (target, content) => contentChildren(target, content) },
 		'aether-proxy.common': ap, ['aether-proxy.model.' + name]: model
 	}, { window: {
 		setTimeout: (fn, delay) => {
@@ -454,8 +452,13 @@ test('T10.34 scenario 1: missing general section is added once empty and display
 	assert.equal(h.page.generalOptions.interval_hours.getUIElement('sub').value, '24');
 	assert.equal(h.page.generalOptions.fetch_via.getUIElement('sub').value, 'auto');
 	assert.equal(h.page.generalOptions.user_agent.getUIElement('sub').value, '');
-	assert.equal(subOption(h, '_interval').textvalue('s_a'), '1 天（通用）');
-	assert.equal(subOption(h, '_via').textvalue('s_a'), '自动（先直连，失败经当前节点）（通用）');
+	/* textvalue returns a node: a string would be written as innerHTML (T9.42). */
+	const intervalValue = subOption(h, '_interval').textvalue('s_a');
+	assert.equal(typeof intervalValue, 'object', 'textvalue returns a node, not a string');
+	assert.equal(intervalValue.tag, 'span');
+	assert.equal(intervalValue.children[0].tag, '#text', 'the value is a text child, not markup');
+	assert.equal(text(intervalValue), '1 天（通用）');
+	assert.equal(text(subOption(h, '_via').textvalue('s_a')), '自动（先直连，失败经当前节点）（通用）');
 });
 
 test('T10.34 scenario 1: job reload recreates the empty common section for legacy configuration', async () => {
@@ -559,10 +562,10 @@ test('T10.34 scenario 4: effective table values mark inheritance and both dropdo
 	Object.assign(h.subs[1], { interval_hours: '12', fetch_via: 'direct' });
 	await render(h);
 	const interval = subOption(h, '_interval'), via = subOption(h, '_via');
-	assert.equal(interval.textvalue('s_a'), '3 天（通用）');
-	assert.equal(via.textvalue('s_a'), '经当前节点（通用）');
-	assert.equal(interval.textvalue('s_b'), '12 小时');
-	assert.equal(via.textvalue('s_b'), '直连');
+	assert.equal(text(interval.textvalue('s_a')), '3 天（通用）');
+	assert.equal(text(via.textvalue('s_a')), '经当前节点（通用）');
+	assert.equal(text(interval.textvalue('s_b')), '12 小时');
+	assert.equal(text(via.textvalue('s_b')), '直连');
 	assert.equal(via.title, '获取方式');
 	const labels = ['自动（先直连，失败经当前节点）', '直连', '经当前节点'];
 	const common = h.page.generalOptions.fetch_via;
@@ -575,8 +578,10 @@ test('T10.34 scenario 4: effective table values mark inheritance and both dropdo
 	// Table cells read saved session values rather than a captured initial row.
 	h.uci.set('aetherproxy', 'sub', 'interval_hours', '0');
 	h.uci.set('aetherproxy', 'sub', 'fetch_via', 'direct');
-	assert.equal(interval.textvalue('s_a'), '不自动更新（通用）');
-	assert.equal(via.textvalue('s_a'), '直连（通用）');
+	assert.equal(typeof interval.textvalue('s_a'), 'object', 'textvalue keeps returning a node');
+	assert.equal(interval.textvalue('s_a').tag, 'span');
+	assert.equal(text(interval.textvalue('s_a')), '不自动更新（通用）');
+	assert.equal(text(via.textvalue('s_a')), '直连（通用）');
 });
 
 test('T10.34 scenario 5: first-column flag immediately locks only its row before any UCI save', async () => {
@@ -931,7 +936,7 @@ async () => {
 	assert.equal(box.children.at(-1), importRow);
 	assert.equal(text(h.page.importResult), '');
 	const toolbar = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
-	const content = find(h.root, node => node.children.includes(h.maps[0].node))[0];
+	const content = find(h.root, node => (node.children ?? []).includes(h.maps[0].node))[0];
 	assert.deepEqual(content.children.slice(-3), [toolbar, h.maps[0].node, box],
 		'toolbar immediately precedes the table, bulk import immediately follows it');
 	assert.doesNotMatch(text(h.root), /导入 URI|Import URIs/);
@@ -1025,11 +1030,11 @@ test('T10.27 scenarios 1/2: node actions share progress before the table; Import
 	await render(h);
 	const row = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
 	beforeTable(h.root, row, h.maps[0].node);
-	const parent = find(h.root, node => node.children.includes(row))[0];
+	const parent = find(h.root, node => (node.children ?? []).includes(row))[0];
 	assert.equal(parent.children[parent.children.indexOf(row) + 1], h.maps[0].node,
 		'no import block separates the table toolbar from its table');
 	const importRow = actionRow(h.root, ['导入']);
-	const importBox = find(h.root, node => node.children.includes(h.page.importText))[0];
+	const importBox = find(h.root, node => (node.children ?? []).includes(h.page.importText))[0];
 	assert.equal(importBox.children.at(-1), importRow);
 	assert.equal(importBox.children.at(-2), h.page.importText);
 });
@@ -1136,12 +1141,12 @@ test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed se
 	// A modal Save resets the parent map, reusing the existing option instances.
 	await h.maps.at(-1).render();
 	const options = h.page.grid.options.filter(o => o.textvalue);
-	assert.deepEqual(options.slice(0, -1).map(o => o.textvalue(id)),
+	assert.deepEqual(options.slice(0, -1).map(o => text(o.textvalue(id))),
 		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点']);
 	assert.match(text(options.at(-1).textvalue(id)), /成功，13 个节点/);
 	h.uci.remove('aetherproxy', id);
 	for (const option of options)
-		assert.equal(option.textvalue(id), '–', option.field + ' tolerates a deleted section');
+		assert.equal(text(option.textvalue(id)), '–', option.field + ' tolerates a deleted section');
 	await h.page.redraw();
 	assert.equal(find(h.root, node => node.sid === id).length, 0);
 });
@@ -1574,14 +1579,16 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 		await edit.click({ currentTarget: edit });
 		assert.equal(section.modal.id, id);
 		const modal = section.modal.node;
-		assert.equal(text(modal.children[0]), id === 'n_a' ? '带 * 的为必填项。'
+		/* The section description is page-authored markup: luci-base renders it
+		 * through innerHTML, so a text-only comparison cannot see the <br>. */
+		assert.equal(modal.children[0].innerHTML, id === 'n_a' ? '带 * 的为必填项。'
 			: '此节点来自订阅，下次更新订阅时修改会被覆盖<br>带 * 的为必填项。');
 		for (const field of ['address', 'port'])
 			assert.ok(section.options.some(option => option.field === field && option.modalonly));
 		assert.match(text(modal), /地址端口/);
 	}
 	await buttons(actions(h, 'n_a')).find(node => text(node) === '编辑').click({});
-	assert.equal(text(section.modal.node.children[0]), '带 * 的为必填项。',
+	assert.equal(section.modal.node.children[0].innerHTML, '带 * 的为必填项。',
 		'manual modal must not inherit the previous subscription hint');
 });
 
@@ -1817,7 +1824,7 @@ test('T10.37 scenario 2: expanded subscriptions precede node tools/table and col
 	assert.match(subMap.node.children[1].textContent, /Alpha.*Beta/);
 	assert.deepEqual(buttons(h.subscriptions.root.children[1]).map(text), ['全部更新', '添加']);
 	const tools = actionRow(page.root, ['检测全部', '删除所选', '添加节点']);
-	const region = find(page.root, node => node.children.includes(page.nodeMap.node))[0];
+	const region = find(page.root, node => (node.children ?? []).includes(page.nodeMap.node))[0];
 	assert.deepEqual(region.children.slice(-3), [tools, page.nodeMap.node, page.importDetails]);
 	assert.equal(page.importDetails.open, false);
 	assert.deepEqual(find(h.fullRoot, node => node.tag === 'h2').map(text), ['节点与订阅'],
@@ -1979,4 +1986,42 @@ test('T10.25 scenario 6: matching, stopped and unread status do not start a swit
 		assertSwitchLocked(h, false);
 		assert.equal(h.timers.size, 0);
 	}
+});
+
+/* T9.42: the node table's name and source columns take their text from UCI,
+ * which a share link or subscription fills. They must reach the DOM as text
+ * nodes; a single string child would be innerHTML in luci-base and a hostile
+ * label would build elements. */
+test('T9.42: a hostile node name stays literal text on the nodes page', async () => {
+	const unsafe = '<img src=x onerror=alert(1)>';
+	const h = await harness('nodes');
+	h.nodes[0].label = unsafe;
+	h.subs[0].name = unsafe;
+	const writeMark = htmlWriteMark();
+	await render(h);
+	const cell = (id, field) => find(gridRow(h, id), node => node.field === field)[0];
+	assert.equal(text(cell('n_a', '_label')), unsafe, 'node name is a text node');
+	assert.equal(text(cell('n_b', '_source')), unsafe, 'source column shows the subscription name as text');
+	/* The DummyValue returns a node whose child is a text node, so luci-base's
+	 * form.js renderTextValue (E('td', ..., value)) cannot see HTML. */
+	assert.equal(cell('n_a', '_label').children[0].tag, 'span', 'textvalue returns an element');
+	assert.equal(cell('n_a', '_label').children[0].children[0].tag, '#text');
+	assert.equal(find(h.root, node => node.tag === 'img').length, 0,
+		'a hostile name never builds an element, including its onerror handler');
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
+		'the hostile name never takes the innerHTML path');
+});
+
+test('T9.42: a hostile subscription name stays literal text in the subscription grid', async () => {
+	const unsafe = '<img src=x onerror=alert(1)>';
+	const h = await harness('subscriptions');
+	h.subs[0].name = unsafe;
+	const writeMark = htmlWriteMark();
+	await render(h);
+	const cell = find(gridRow(h, 's_a'), node => node.field === '_name')[0];
+	assert.equal(text(cell), unsafe, 'subscription name is a text node');
+	assert.equal(cell.children[0].tag, 'span', 'textvalue returns an element, never a string');
+	assert.equal(find(h.root, node => node.tag === 'img').length, 0, 'a hostile name never builds an element');
+	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
+		'the hostile name never takes the innerHTML path');
 });

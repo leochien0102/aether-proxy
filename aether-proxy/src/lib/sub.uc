@@ -251,7 +251,17 @@ function subscription_nodes(snapshot, name) {
 
 function proxy_running(ctx) {
 	let state = fs.readfile(ctx.opts.run_dir + '/' + C.STATE_FILE);
-	let obj = state == null ? null : json(state);
+	// A corrupt state.json only means "not running" here; json() throws on bad
+	// input and would otherwise abort the whole subscription update (docs/06).
+	let obj = null;
+	if (state != null) {
+		try {
+			obj = json(state);
+		}
+		catch (e) {
+			obj = null;
+		}
+	}
 	if (type(obj) != 'object' || index([ 'starting', 'running', 'degraded' ], obj.state) < 0)
 		return false;
 

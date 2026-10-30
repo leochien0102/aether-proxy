@@ -451,5 +451,18 @@ python3 "$ROOT/tests/node/mode.py" "$ROOT" "$T/mode" \
 python3 "$ROOT/tests/node/parse.py" "$ROOT" "$T/parse" \
 	&& ok 'node parse read-only sharing scenarios' || bad 'node parse read-only sharing scenarios'
 
+# T9.42 (security F1): `vmess://<valid Base64, not a JSON object>` is a parse
+# error. It used to escape as an exception (exit 254, stack on stderr), which
+# rpcd then reported as CMD_FAILED instead of the documented CONFIG_INVALID.
+out="$(ap node parse 'vmess://bm90IGpzb24=' --json 2>"$T/badvmess.stderr")"; rc=$?
+expect "T9.42 non-JSON vmess: exit code 2" 2 "$rc"
+expect "T9.42 non-JSON vmess: code CONFIG_INVALID" CONFIG_INVALID "$(echo "$out" | jget code)"
+expect "T9.42 non-JSON vmess: detail malformed" malformed "$(echo "$out" | jget detail)"
+[ ! -s "$T/badvmess.stderr" ] && ok "T9.42 non-JSON vmess: no exception on stderr" \
+	|| bad "T9.42 non-JSON vmess: no exception on stderr" "$(cat "$T/badvmess.stderr")"
+out="$(ap node parse 'vmess://'$(printf '%s' '{"a":1' | base64 -w0) --json 2>"$T/badjson.stderr")"; rc=$?
+expect "T9.42 truncated vmess JSON: exit code 2" 2 "$rc"
+expect "T9.42 truncated vmess JSON: code CONFIG_INVALID" CONFIG_INVALID "$(echo "$out" | jget code)"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

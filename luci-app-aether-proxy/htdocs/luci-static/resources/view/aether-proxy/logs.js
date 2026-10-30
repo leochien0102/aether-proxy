@@ -44,7 +44,7 @@ return view.extend({
 		this.level.disabled = this.code.disabled = vm.filters_disabled;
 		const selected = this.code.value;
 		dom.content(this.code, [ E('option', { value: '' }, _('All', 'aether-proxy')) ].concat(
-			vm.codes.map(code => E('option', { value: code }, code))));
+			vm.codes.map(code => E('option', { value: code }, [ code ]))));
 		this.code.value = vm.codes.indexOf(selected) >= 0 ? selected : '';
 		if (vm.loading) {
 			dom.content(this.eventContent, vm.loading);
@@ -52,14 +52,17 @@ return view.extend({
 		}
 		const parts = [];
 		if (vm.error)
-			parts.push(E('p', { 'class': 'alert-message error' }, vm.error));
+			parts.push(E('p', { 'class': 'alert-message error' }, [ vm.error ]));
 		if (vm.skipped)
-			parts.push(E('p', { 'class': 'alert-message warning' }, vm.skipped));
+			parts.push(E('p', { 'class': 'alert-message warning' }, [ vm.skipped ]));
 		parts.push(E('table', { 'class': 'table' }, [
 			E('tr', {}, [ _('Time', 'aether-proxy'), _('Level', 'aether-proxy'), _('Event code', 'aether-proxy'), _('Description', 'aether-proxy') ].map(t => E('th', {}, t)))
 		].concat(vm.rows.map(row => E('tr', { title: row.title }, [
-			E('td', {}, row.time), E('td', {}, E('span', { 'class': row.class_name }, row.level)),
-			E('td', {}, row.code), E('td', {}, row.text)
+			E('td', {}, [ row.time ]),
+			E('td', {}, E('span', { 'class': row.class_name }, [ row.level ])),
+			E('td', {}, [ row.code ]),
+			/* Event parameters (node and subscription names) are user input. */
+			E('td', {}, [ row.text ])
 		])))));
 		dom.content(this.eventContent, parts);
 	},
@@ -69,10 +72,11 @@ return view.extend({
 			const vm = model.raw(res, uci.get('aetherproxy', 'main', 'log_level'));
 			const parts = [];
 			if (vm.hint)
-				parts.push(E('p', { 'class': 'alert-message warning' }, vm.hint));
+				parts.push(E('p', { 'class': 'alert-message warning' }, [ vm.hint ]));
 			if (vm.error)
-				parts.push(E('p', { 'class': 'alert-message error' }, vm.error));
-			parts.push(E('pre', {}, vm.text));
+				parts.push(E('p', { 'class': 'alert-message error' }, [ vm.error ]));
+			/* Raw log lines are arbitrary device output: text node only. */
+			parts.push(E('pre', {}, [ vm.text ]));
 			dom.content(this.rawContent, parts);
 		});
 	},

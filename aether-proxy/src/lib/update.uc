@@ -67,6 +67,26 @@ function unlink_file(path) {
 	return fs.unlink(path) ? true : null;
 }
 
+// A signed manifest may still carry a bad or hostile asset name, so an asset
+// name must be a published file name and never a path (security review F2,
+// decision 6.1). 08 "发布仓库的实现" only publishes [A-Za-z0-9._-]; the device
+// enforces the same set, so a name with a separator, a space, a '~' or any
+// other character is rejected.
+function asset_filename(value) {
+	if (type(value) != 'string' || match(value, /^[A-Za-z0-9._-]+$/) == null)
+		return null;
+	return value == '.' || value == '..' ? null : value;
+}
+
+// A manifest entry is only usable when its verification fields have the
+// documented types (复核 6.4): size is a non-negative int and sha256 is 64 hex
+// digits. Anything else is rejected before a download starts, so a wrong type
+// cannot reach the size arithmetic, curl or the comparison.
+function asset_verifiable(asset) {
+	return type(asset.size) == 'int' && asset.size >= 0
+		&& type(asset.sha256) == 'string' && match(asset.sha256, /^[0-9a-fA-F]{64}$/) != null;
+}
+
 function fetch_file(ctx, url, path, max_size, proxied_first) {
 	if (!sys.mkdir_p(ctx.download_dir))
 		return false;
@@ -261,8 +281,10 @@ function package_asset(manifest, name, arch, pm, previous) {
 		return null;
 	let asset_set = release.assets[arch] ?? release.assets.all;
 	let asset = asset_set?.[asset_format(pm)] ?? null;
-	return type(asset) == 'object' && type(asset.url) == 'string' && type(version) == 'string'
-		? { ...asset, version } : null;
+	if (type(asset) != 'object' || type(version) != 'string')
+		return null;
+	let url = asset_filename(asset.url);
+	return url == null || !asset_verifiable(asset) ? null : { ...asset, url, version };
 }
 
 function build_result(ctx, manifest, base, arch, pm) {
@@ -273,8 +295,8 @@ function build_result(ctx, manifest, base, arch, pm) {
 		if (type(entry) != 'object' || type(entry.current) != 'object')
 			continue;
 		let current = entry.current;
-		let asset_set = current.assets?.[arch] ?? current.assets?.all;
-		let asset = asset_set?.[asset_format(pm)] ?? null;
+		// Same validation as package_update: an unusable name is not offered as an asset.
+		let asset = package_asset(manifest, name, arch, pm, false);
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
@@ -330,7 +352,19 @@ export function download_asset(opts, base, asset, name) {
 		tmp_dir: system_path(root, C.TMP_DIR),
 		download_dir: system_path(root, C.DOWNLOAD_DIR)
 	};
-	let path = `${ctx.download_dir}/${name}`;
+	// Both names are validated: the URL comes from the manifest, the target name
+	// from the caller. Neither may become a path (security review F2).
+	let remote = asset_filename(asset?.url), target = asset_filename(name);
+	if (remote == null || target == null)
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset name is not a plain file name' };
+	// Defence in depth for direct callers: package_asset() already drops such
+	// entries, but download_asset() must not trust its argument's types either.
+	if (!asset_verifiable(asset))
+		return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset size or sha256 in the manifest is invalid' };
+	let path = `${ctx.download_dir}/${target}`;
+	// Download beside the target and only rename after size and sha256 match, so a
+	// failed attempt never deletes or overwrites what is already at `path`.
+	let temp = `${path}.part`;
 	let free = free_bytes(ctx);
 	if (free == null || free < asset.size + C.UPDATE_SPACE_RESERVE) {
 		log.event('error', 'NO_SPACE', { need: asset.size + C.UPDATE_SPACE_RESERVE, free: free ?? 0 });
@@ -341,13 +375,19 @@ export function download_asset(opts, base, asset, name) {
 	for (let channel in bases) {
 		let routes = proxied ? [ true, false ] : [ false ];
 		for (let via_proxy in routes) {
-			if (!fetch_file(ctx, channel_url(channel, asset.url), path, asset.size, via_proxy))
+			if (!fetch_file(ctx, channel_url(channel, remote), temp, asset.size, via_proxy))
 				continue;
-			let stat = fs.stat(path), hash = file_sha256(path);
-			if (stat != null && stat.size == asset.size && hash == lc(asset.sha256))
+			let stat = fs.stat(temp), hash = file_sha256(temp);
+			if (stat != null && stat.size == asset.size && hash == lc(asset.sha256)) {
+				if (!fs.rename(temp, path)) {
+					let detail = `rename ${temp} -> ${path}: ${fs_error()}`;
+					unlink_file(temp);
+					return { ok: false, code: 'FS_FAILED', detail };
+				}
 				return { ok: true, path };
-			if (unlink_file(path) == null)
-				return { ok: false, code: 'FS_FAILED', detail: `cannot remove invalid asset ${path}: ${fs_error()}` };
+			}
+			if (unlink_file(temp) == null)
+				return { ok: false, code: 'FS_FAILED', detail: `cannot remove invalid asset ${temp}: ${fs_error()}` };
 		}
 	}
 	return { ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'asset size or sha256 mismatch, or download failed' };

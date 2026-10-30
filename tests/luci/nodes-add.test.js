@@ -8,7 +8,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { loadModule, parsePo } = require('./loader');
+const { loadModule, parsePo, contentChildren } = require('./loader');
 const { modalElement: element } = require('./modal-dom');
 const { Value: SdkValue } = require('./form-sdk');
 const { widgetTypes, inputOf } = require('./node-input-widgets');
@@ -39,7 +39,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function find(root, predicate) {
 	if (!root || typeof root !== 'object')
 		return [];
-	return (predicate(root) ? [root] : []).concat(root.children.flatMap(child => find(child, predicate)));
+	return (predicate(root) ? [root] : []).concat((root.children ?? []).flatMap(child => find(child, predicate)));
 }
 function button(root, label) {
 	return find(root, node => node.tag === 'button' && node.textContent === label)[0];
@@ -187,7 +187,7 @@ async function harness() {
 			changes: { apply: () => assert.fail('must not apply session changes') },
 			addNotification: (...args) => h.calls.push(['notify', ...args])
 		},
-		dom: { content: (target, content) => target.replaceChildren(...[content].flat()) },
+		dom: { content: (target, content) => contentChildren(target, content) },
 		'aether-proxy.common': ap, 'aether-proxy.model.nodes': model,
 		// Isolate node modal staging; progressive-lists exercises the real subscription map.
 		'aether-proxy.subscriptions-block': { load: () => h.uci.load('aetherproxy'), render: async () => E('div') }

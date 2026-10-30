@@ -654,7 +654,7 @@ test('T10.12 scenario 3: mismatch warns once with both versions and the Chinese 
 	assert.equal(target, null);
 	assert.equal(level, 'warning');
 	assert.equal(node.tag, 'p');
-	assert.equal(node.children.join(''), '页面脚本已过期：已安装 0.2.0-r10，浏览器仍在使用 0.2.0-r9。'
+	assert.equal(node.textContent, '页面脚本已过期：已安装 0.2.0-r10，浏览器仍在使用 0.2.0-r9。'
 		+ '请清除浏览器缓存后刷新页面（部分第三方主题升级后不会自动更新页面脚本）。');
 	assert.deepEqual(env.warnings, []);
 });
