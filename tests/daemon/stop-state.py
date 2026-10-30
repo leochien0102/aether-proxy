@@ -6,13 +6,14 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRY = ROOT / 'aether-proxy/src/aether-proxy'
-LIB = ROOT / 'aether-proxy/src/lib'
+LIB = Path(os.environ.get('T946_SOURCE_DIR', ROOT / 'aether-proxy/src/lib'))
 
 
 def check(name, condition):
@@ -53,11 +54,46 @@ with tempfile.TemporaryDirectory(prefix='.stop-state-', dir=ROOT / 'tests/daemon
 	(binaries / 'ip').rename(binaries / 'ip-original')
 	(binaries / 'ip').write_text('''#!/bin/sh
 if [ -e "$SYSROOT/capture" ] && [ "$1 $2" = "rule show" ]; then
-	cat "$SYSROOT/var/run/aether-proxy/state.json" >> "$SYSROOT/state-during-stop.jsonl" 2>/dev/null
+	cat "$SYSROOT/var/run/aether-proxy/state.json" >> "$SYSROOT/state-during-stop.jsonl" || exit 1
+	sleep 0.5
 fi
 exec "$(dirname "$0")/ip-original" "$@"
 ''')
 	(binaries / 'ip').chmod(0o755)
+	# Local-only controls hold real supervisor callbacks and synchronous probes open.
+	xray = binaries / 'xray'
+	source = xray.read_text().replace('cleanup() {', '''cleanup() {
+		if [ -e "$SYSROOT/hold-callback" ]; then
+			touch "$SYSROOT/callback-held"
+			while [ -e "$SYSROOT/hold-callback" ]; do sleep 0.02; done
+		fi''', 1)
+	xray.write_text(source)
+	xray.rename(binaries / 'xray-original')
+	xray.write_text('''#!/bin/sh
+if [ "$1 $2" = "run -c" ]; then
+	SYSROOT=${3%/var/run/aether-proxy/current/*}
+	if [ -e "$SYSROOT/hold-listener" ]; then
+		touch "$SYSROOT/listener-held"
+		while [ -e "$SYSROOT/hold-listener" ]; do sleep 0.02; done
+	fi
+fi
+exec "$(dirname "$0")/xray-original" "$@"
+''')
+	xray.chmod(0o755)
+	(binaries / 'curl').rename(binaries / 'curl-original')
+	(binaries / 'curl').write_text('''#!/bin/sh
+if [ -e "$SYSROOT/hold-probe" ]; then
+	touch "$SYSROOT/probe-held"
+	while [ -e "$SYSROOT/hold-probe" ]; do sleep 0.02; done
+fi
+exec "$(dirname "$0")/curl-original" "$@"
+''')
+	(binaries / 'curl').chmod(0o755)
+	(binaries / 'aether-proxy').write_text('''#!/bin/sh
+printf 'scheduled %s\\n' "$*" >> "$STUB_LOG"
+exit 0
+''')
+	(binaries / 'aether-proxy').chmod(0o755)
 	for directory in ('data', 'base', 'custom'):
 		(base / directory).mkdir()
 	for name in ('gfwlist', 'chnlist', 'apple'):
@@ -81,6 +117,31 @@ exec "$(dirname "$0")/ip-original" "$@"
 '''
 	assert source.count('export function load(cursor) {') == 1
 	(modules / 'config.uc').write_text(source.replace('export function load(cursor) {', hook, 1))
+
+	# Force the production node-refresh action without waiting ten minutes. No control-flow
+	# replacement: supervision, callbacks, readiness waiting and persistence are real.
+	monitor_path = modules / 'monitor.uc'
+	source = monitor_path.read_text()
+	needle = '\tlet obs = observe(daemon);'
+	assert source.count(needle) == 1
+	monitor_path.write_text(source.replace(needle, '''	let refresh = system_path(daemon.ctx, '/refresh-now');
+	if (fs.stat(refresh) != null) {
+		if (!fs.unlink(refresh)) die('cannot consume refresh control');
+		daemon.machine.last_node_refresh = 0;
+		daemon.machine.node_ip = '203.0.113.99';
+	}
+''' + needle))
+	state_path = modules / 'state.uc'
+	source = state_path.read_text()
+	needle = "\tlet result = sys.write_atomic(path, sprintf('%.J', obj) + '\\n');"
+	assert source.count(needle) == 1
+	replacement = "\tlet result = obj.state == 'stopping' && getenv('STOP_WRITE_FAIL') == '1'\n" + \
+		"\t\t? false : sys.write_atomic(path, sprintf('%.J', obj) + '\\n');"
+	state_path.write_text(source.replace(needle, replacement + '''
+	let trace = fs.open(run_dir + '/writes.jsonl', 'a');
+	if (trace == null) die('cannot open state trace');
+	trace.write(sprintf('%.J', obj) + '\\n');
+	trace.close();'''))
 
 	class Fixture:
 		def __init__(self, name, dns_section=None):
@@ -126,13 +187,21 @@ exec "$(dirname "$0")/ip-original" "$@"
 			with (self.root / 'stdout').open('w') as stdout, (self.root / 'stderr').open('w') as stderr:
 				command = [str(ROOT / 'tests/host/prefix/bin/ucode'), '-L', str(base / 'modules/*.uc'),
 					'-S', str(ENTRY), '--', 'daemon', *self.args]
-				with subprocess.Popen(command, env=self.env, stdout=stdout, stderr=stderr) as child:
+				with subprocess.Popen(command, env=self.env, stdout=stdout, stderr=stderr,
+						start_new_session=True) as child:
 					try:
 						yield child
 					finally:
 						if child.poll() is None:
 							child.terminate()
-						child.wait(timeout=12)
+						try:
+							child.wait(timeout=12)
+						except subprocess.TimeoutExpired:
+							# A regression inside nested uloop must fail boundedly, not hang
+							# Popen.__exit__ or leave supervised substitutes alive.
+							os.killpg(child.pid, signal.SIGKILL)
+							child.wait()
+							raise
 
 		def captured(self):
 			path = self.root / 'state-during-stop.jsonl'
@@ -167,6 +236,85 @@ exec "$(dirname "$0")/ip-original" "$@"
 		check('final state is stopped after a clean exit',
 			child.returncode == 0 and fixture.state()['state'] == 'stopped')
 
+	# T9.46: TERM must be visible before an asynchronous busy action completes.
+	for scenario, phase in (('callback', 'callback'), ('listener', 'listener'),
+			('probe', 'probe'), ('listener-timeout', 'listener')):
+		if os.environ.get('T946_SCENARIO', scenario) != scenario:
+			continue
+		fixture = Fixture('busy-' + scenario, """
+config subscription 's_00000001'
+	option url 'https://example.com/sub'
+	option interval_hours '1'
+""")
+		sub_status = fixture.root / 'etc/aether-proxy/state/sub.json'
+		sub_status.write_text(json.dumps({'s_00000001': {'last_attempt': int(time.time()) + 3600}}))
+		fixture.env['AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS'] = '10'
+		with fixture.daemon() as child:
+			wait_for(lambda: fixture.state().get('state') == 'running', child)
+			before = fixture.state()
+			hold = fixture.root / ('hold-' + phase)
+			hold.touch()
+			if phase != 'probe':
+				(fixture.root / 'refresh-now').touch()
+			child.send_signal(signal.SIGUSR1)
+			wait_for(lambda: (fixture.root / (phase + '-held')).exists(), child)
+			trace = fixture.run / 'writes.jsonl'
+			trace.write_text('')
+			(fixture.root / 'capture').touch()
+			term_at = int(time.time())
+			child.terminate()
+			try:
+				if phase == 'probe':
+					time.sleep(0.1)
+					hold.unlink()
+				wait_for(lambda: fixture.state().get('state') == 'stopping', child, timeout=1)
+				stopping = fixture.state()
+				check(f'{scenario}: stopping published before busy completion',
+					phase == 'probe' or hold.exists())
+				check(f'{scenario}: stopping preserves every other field and TERM timestamp',
+					{key: value for key, value in stopping.items() if key not in ('state', 'since')}
+					== {key: value for key, value in before.items() if key not in ('state', 'since')}
+					and term_at <= stopping['since'] <= term_at + 1)
+				# Make the real scheduler due only after stop intent. During listener waiting
+				# it still has an active timer and the readiness loop keeps dispatching it.
+				if phase != 'probe':
+					sub_status.write_text('{"s_00000001":{"last_attempt":1}}')
+					calls_before = fixture.calls.read_text()
+					for sig in (signal.SIGHUP, signal.SIGUSR1, signal.SIGUSR2):
+						child.send_signal(sig)
+						time.sleep(0.05)
+					check(f'{scenario}: stopping blocks due subscription, reload and new probes',
+						fixture.calls.read_text() == calls_before)
+				if scenario == 'listener-timeout':
+					# Let the actual 5-second readiness wait fail while stopping stays frozen.
+					time.sleep(5.2)
+			finally:
+				if hold.exists():
+					hold.unlink()
+			child.wait(timeout=12)
+			writes = objects(trace.read_text())
+			check(f'{scenario}: completion never overwrites stopping or its fields',
+				writes[0]['state'] == 'stopping' and all(
+					value == stopping for value in writes if value['state'] != 'stopped'))
+			check(f'{scenario}: stopped with no runtime residue',
+				child.returncode == 0 and fixture.state()['state'] == 'stopped'
+				and not any((fixture.run / name).exists() for name in ('daemon.pid', 'xray.pid', 'chinadns-ng.pid'))
+				and not (fixture.root / 'nft-table').exists()
+				and (fixture.root / 'ip-rules').read_text() == '')
+
+	# A one-shot fault leaves the old file in place, then permits final stopped to succeed.
+	fixture = Fixture('stop-write-transient')
+	fixture.env['STOP_WRITE_FAIL'] = '1'
+	with fixture.daemon() as child:
+		wait_for(lambda: fixture.state().get('state') == 'running', child)
+		(fixture.run / 'events.jsonl').write_text('')
+		child.terminate()
+		child.wait(timeout=12)
+		codes = [event['code'] for event in fixture.events()]
+		check('transient stopping write failure: only FS_FAILED and final stopped',
+			codes.count('FS_FAILED') == 1 and 'START_FAILED' not in codes
+			and fixture.state()['state'] == 'stopped' and child.returncode == 0)
+
 	# Scenario 1 (cont.): a failing stopping write only logs FS_FAILED; the other steps go on.
 	fixture = Fixture('stop-write-fails')
 	with fixture.daemon() as child:
@@ -180,6 +328,10 @@ exec "$(dirname "$0")/ip-original" "$@"
 		codes = [(e['code'], e['args'].get('op')) for e in fixture.events()]
 		calls = fixture.calls.read_text()
 		check('failed stopping write is logged as FS_FAILED', ('FS_FAILED', 'write') in codes)
+		check('failed stopping write never emits START_FAILED',
+			all(code != 'START_FAILED' for code, _ in codes))
+		check('persistent stop write failure reports only FS_FAILED errors',
+			all(event['code'] == 'FS_FAILED' for event in fixture.events() if event['level'] == 'error'))
 		check('failed stopping write does not abort the stop sequence',
 			not (fixture.root / 'nft-table').exists() and (fixture.root / 'ip-rules').read_text() == ''
 			and 'dnsmasq restart' in calls and not (fixture.run / 'daemon.pid').exists()

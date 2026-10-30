@@ -1,0 +1,10 @@
+== branch m9/stopping-timing vs main: 1 commit(s), 11 file(s)
+PASS  tests/run.uc: 1023 passed, 0 failed, 0 skipped
+PASS  tests/cli/run.sh: 214 passed, 0 failed
+PASS  tests/ci/xray.sh: xray 26.10.21: 17 checked, 0 failed
+PASS  changed .uc files compile/load
+PASS  no swallowed errors in added code
+PASS  no system()/popen() outside sys.uc
+PASS  no attribution trailers in commits
+PASS  report present: reports/T9.46.md
+== 0 FAIL, 0 WARN

@@ -14,6 +14,7 @@ python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
 python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
 python3 "$ROOT/tests/daemon/stop-state.py" || exit 1
+python3 "$ROOT/tests/daemon/stopping-unit.py" || exit 1
 python3 "$ROOT/tests/daemon/version-gate.py" || exit 1
 T="$(mktemp -d)"
 QUIET="$T/cleanup.stderr"

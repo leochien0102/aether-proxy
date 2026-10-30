@@ -344,7 +344,7 @@ function run_action(daemon, machine, name, done) {
 };
 
 function run_actions(daemon, machine, actions, index, done) {
-	if (index >= length(actions)) {
+	if (daemon.ctx.stopping_requested || index >= length(actions)) {
 		done(null);
 		return;
 	}
@@ -358,6 +358,8 @@ function run_actions(daemon, machine, actions, index, done) {
 };
 
 function persist_state(daemon, machine) {
+	if (daemon.ctx.stopping_requested)
+		return true;
 	let updated = {
 		...daemon.state,
 		state: machine.state,
@@ -379,7 +381,12 @@ function persist_state(daemon, machine) {
 };
 
 function finish_tick(daemon, machine, transition, lock, started, error) {
-	if (error == null) {
+	if (daemon.ctx.stopping_requested) {
+		// The in-flight action has settled; leave both published and in-memory stop fields alone.
+		if (error != null)
+			log.event('error', 'CMD_FAILED', { cmd: 'monitor:actions', rc: 1, stderr: error });
+	}
+	else if (error == null) {
 		daemon.machine = machine;
 		for (let item in transition.events)
 			log.event(item.level, item.code, item.args);
@@ -396,7 +403,11 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 		lock.close();
 	}
 	daemon.busy = false;
-	if (daemon.interval != null) {
+	// A readiness check may have nested uloop.run() inside this completion callback.
+	// Wake the lifecycle owner too, not only the inner loop which dispatched TERM.
+	if (daemon.ctx.stopping_requested)
+		uloop.end();
+	if (daemon.interval != null && !daemon.ctx.stopping_requested) {
 		daemon.interval.set(interval_ms(daemon.machine));
 		// Re-observe only after the T2 restart and unlock; the previous sample used the
 		// old DNS upstream. A transition edge, not residence in T2, prevents a busy loop.
@@ -410,7 +421,7 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 };
 
 tick = function(daemon) {
-	if (daemon.busy)
+	if (daemon.busy || daemon.ctx.stopping_requested)
 		return;
 	if (daemon.skip_next) {
 		daemon.skip_next = false;
@@ -430,6 +441,13 @@ tick = function(daemon) {
 	}
 	daemon.busy = true;
 	let obs = observe(daemon);
+	// Synchronous probes cannot dispatch TERM. Yield before deriving or starting actions,
+	// so a pending stop publishes its snapshot at the first dispatch point after the probe.
+	uloop.run(1);
+	if (daemon.ctx.stopping_requested) {
+		finish_tick(daemon, daemon.machine, { actions: [], events: [] }, lock, started, null);
+		return;
+	}
 	let transition = next(daemon.machine, obs, daemon.snapshot);
 	run_actions(daemon, transition.state, transition.actions, 0,
 		error => finish_tick(daemon, transition.state, transition, lock, started, error));

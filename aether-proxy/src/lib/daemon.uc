@@ -103,18 +103,27 @@ function setup_log(ctx) {
 
 function event_failure(ctx, step, detail) {
 	setup_log(ctx);
-	log.event('error', 'START_FAILED', { step, detail });
+	if (ctx.stopping_requested)
+		log.event('error', 'CMD_FAILED', { cmd: `stop:${step}`, rc: 1, stderr: detail });
+	else
+		log.event('error', 'START_FAILED', { step, detail });
 };
 
 function write_state(ctx, obj) {
 	if (!sys.mkdir_p(run_dir(ctx))) {
 		let detail = `cannot create ${run_dir(ctx)}: ${sys.error()}`;
-		event_failure(ctx, 'state', detail);
+		if (ctx.stopping_requested)
+			log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`, detail });
+		else
+			event_failure(ctx, 'state', detail);
 		return { ok: false, detail };
 	}
 	if (!state.write(run_dir(ctx), obj)) {
 		let detail = `cannot write state: ${state.error()}`;
-		event_failure(ctx, 'state', detail);
+		if (ctx.stopping_requested)
+			log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`, detail });
+		else
+			event_failure(ctx, 'state', detail);
 		return { ok: false, detail };
 	}
 	return { ok: true };
@@ -786,12 +795,20 @@ function stop_children(ctx, children) {
 // docs/04 stop step 0: publish `stopping` (other fields kept) before any cleanup so a page
 // polling state.json no longer sees the old process as running. A failed write is only logged.
 function write_stopping(ctx) {
+	if (ctx.stopping_requested)
+		return ctx.stopping_state;
+	// Set intent before publishing or pumping uloop; timers must not start more work.
+	ctx.stopping_requested = true;
+	let received_at = time();
 	let current = state.read(run_dir(ctx));
 	let obj = type(current) == 'object' ? { ...current } : {};
 	obj.state = 'stopping';
-	obj.since = time();
+	obj.since = received_at;
+	ctx.stopping_state = obj;
 	// Not write_state(): that records START_FAILED, which a stop must never emit (docs/04).
-	if (!sys.mkdir_p(run_dir(ctx)) || !state.write(run_dir(ctx), obj)) {
+	let directory_ready = sys.mkdir_p(run_dir(ctx));
+	let saved = state.hold_stopping(run_dir(ctx), obj);
+	if (!directory_ready || !saved) {
 		setup_log(ctx);
 		log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
 			detail: state.error() ?? sys.error() ?? 'unknown error' });
@@ -837,7 +854,8 @@ function shutdown(ctx, children, normal_stop) {
 	}
 	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time(),
 		degraded_mode: null, degraded_since: null });
-	if (!saved.ok)
+	// Stop writes already report FS_FAILED; do not relabel the same I/O error as a command failure.
+	if (!saved.ok && !normal_stop)
 		push(failures, saved.detail);
 	if (normal_stop) {
 		setup_log(ctx);
@@ -1122,7 +1140,12 @@ function run(args) {
 	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ], [ 'SIGUSR2', 'xray_restart' ] ]) {
 		let name = item[0], kind = item[1];
 		signals[kind + name] = uloop.signal(name, () => {
-			if (signal == null) {
+			if (kind == 'stop') {
+				// TERM wins over a queued HUP/USR signal, including inside readiness waits.
+				write_stopping(ctx);
+				signal = 'stop';
+			}
+			else if (!ctx.stopping_requested && signal == null) {
 				signal = kind;
 				if (kind == 'reload')
 					reload_started_ms = monotonic_ms();
@@ -1153,6 +1176,8 @@ function run(args) {
 		};
 
 		function schedule_tick() {
+			if (ctx.stopping_requested)
+				return;
 			if (index([ 'running', 'degraded' ], monitor_daemon.machine.state) < 0)
 				return;
 			let status = read_subscription_status(ctx);
@@ -1188,8 +1213,8 @@ function run(args) {
 				continue;
 			}
 			if (signal == 'tick') {
-				tick();
 				signal = null;
+				tick();
 				continue;
 			}
 			if (signal == 'reload') {
@@ -1197,6 +1222,8 @@ function run(args) {
 				signal = null;
 				while (monitor_daemon?.busy)
 					uloop.run(C.DAEMON_POLL_MS);
+				if (ctx.stopping_requested)
+					break;
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
 				let old_node = monitor_daemon.snapshot.main.node;
