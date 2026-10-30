@@ -257,7 +257,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 ## B23 支持 Xray 上游的新协议（Hysteria / WireGuard / SOCKS / HTTP …）（2026-10-30 改，待设计）
 
 - 状态：**待设计**。等当前 G 组与 `aether-xray` 拆分完成后再开卡（仓库所有者定，2026-10-30）。
-- **2026-10-30 决定（取代初版）**：aether-proxy 跟 **XTLS/Xray 上游**，`aether-xray` 不带补丁，节点模型也只做上游协议。
+- **当前阶段决定（2026-10-30）**：aether-proxy 跟 **XTLS/Xray 上游**，`aether-xray` 不带补丁，节点模型也只做上游协议。这是当前以主要功能和稳定运行为主的边界；今后项目铺开、确有需求时，可另立设计再评估补丁协议，不自动回退本决策。
   AnyTLS、Naive、ShadowsocksR、TUIC、Snell、ShadowTLS、KCPTun 这些只在 `feeds/packages` 的补丁里，继续由 **feeds + ssr-plus 的 `/usr/bin/xray`** 提供，不进 aether-proxy 的节点模型。
 - 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型目前只有 vless/vmess/trojan/shadowsocks；上游 Xray 还有 Hysteria、WireGuard、SOCKS/HTTP 出站等，按稳定迭代期逐步补。
 - 现状（2026-10-30 核实）：
