@@ -54,6 +54,7 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 3. docs/12-ucode.md 全文（硬性规范，尤其「ucode 2025.07.18 的语法限制」）
 4. 任务卡本身（docs/tasks/ 下）及其「必读」列出的章节
 
+尽量由主会话完成，非必要不开子代理（智能体）：子代理不共享上下文，容易漏读「执行约定」、重复开工或重复跑测试。
 只做任务卡范围内的事。设计文档没覆盖的情况不要自行决定：按最保守的方式实现，在代码中标注 TODO(design)，并写进报告。
 完成后在工作目录中运行 CI_TOOLS_DIR=/workspace/openwrt/ci-spike/tools bash tests/review.sh，FAIL 必须为 0；
 然后按约定写 reports/<卡号>.md 并提交到本卡分支。不要 git push，提交信息不要带任何 AI 署名尾注。
