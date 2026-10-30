@@ -82,6 +82,7 @@
 顺序与启动相反，**每一步都要执行，前一步失败也不能跳过后续步骤**（失败记 ERR）：
 
 0. 先把 `state.json` 的 `state` 写为 `stopping`、`since` 为此刻，其余字段保留（2026-10-23 r14：原来停止期间一直显示旧的 `running`，页面点「重启」后会读到旧进程的「运行中」）。写失败只记 `FS_FAILED`，不影响后续步骤
+   - 2026-10-30（T9.46）：停止意图在 SIGTERM 回调里**立即**发布，不等 `monitor.busy` 或正在执行的异步动作；置位后 monitor tick、订阅调度、重载不再启动新动作，正在执行的动作完成后不得把 `stopping` 写回 `running`（进程内 state 写屏障），最终写 `stopped`。同步探测无法抢占，返回后的第一个可派发点发布 `stopping`。
 1. 退出 monitor 循环
 2. 导出动态集合（`gfw4`、`udirect4`、`uproxy4`）到 `/var/run/aether-proxy/sets.save`
 3. `nft delete table inet aetherproxy`；删除 ip rule / route。重复的 ip rule（异常退出后再次启动可能留下）逐条删除，**最多 16 次**：正常只有 0～1 条；上限只是防止 `ip rule del` 报成功而规则仍在时陷入死循环，超过仍有残留就报失败（2026-10-17 补理由，backlog B9）。
