@@ -175,7 +175,7 @@ function lex(source) {
  * expression or app source. Strict JS supplies escape/continuation semantics.
  */
 function js_string(raw) {
-	return vm.runInNewContext('"use strict"; (' + raw + ')', Object.create(null), { timeout: 100 });
+	return vm.runInNewContext('"use strict"; (' + raw + ')', Object.create(null), { timeout: 1000 });
 }
 
 /* Split only at call-level commas; commas inside dynamic expressions must not
