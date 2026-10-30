@@ -181,6 +181,11 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    - `uuid`（vless / vmess）：按字节计 1–30 字节的任意字符串（Xray 用 UUIDv5 换算），或 32–36 字节且去掉 `-` 后恰好 32 位十六进制（不查版本、不查横线位置），其余（31 字节、超过 36 字节、32–36 字节里有非十六进制字符）报 `invalid_uuid`；订阅中这样的节点按 `invalid_value` 跳过（2026-10-25 r18 窗口，在 H28K 上用 Xray 26.9.30 `run -test` 逐项实测，对照 `common/uuid` 的 `ParseString`）
    - vmess 的 `method`（即 `security`）：Xray 对不认识的值一律按 `auto` 处理、不报错（同日实测 `legacy`、`aes-256-gcm` 都能启动），后端不查；页面给下拉框 `auto`、`aes-128-gcm`、`chacha20-poly1305`、`none`、`zero`
    - `flow`：只能为空、`xtls-rprx-vision` 或 `xtls-rprx-vision-udp443`（2026-10-22，核对 v26.9.30 与 v26.10.21 的 `infra/conf/vless.go`），否则按 enum 报错；订阅中带其他值的节点按 `invalid_value` 跳过
+   - `fingerprint`（`security` 为 tls 或 reality 时）：按 v26.9.30 的 uTLS 名称表校验，大小写不敏感；tls 额外接受 `unsafe`，reality 不接受 `unsafe` 与 `hellogolang`；其他值 `invalid_value`。空串/缺省不报错（Xray 自己按默认指纹处理）。
+   - vless 的 `encryption`：`none`，或 `mlkem768x25519plus.<native|xorpub|random>.<0rtt|1rtt>.<组件…>`；长度 ≥20 的组件按无填充 base64url 解码后必须是 32 或 1184 字节，<20 的组件按 padding 放行；至少要有一个公钥，否则 `invalid_value`。只有 padding 的形态 Xray 启动时会失败，本地按最保守行为拒绝（TODO(design)）。
+   - `xhttp_mode`（`transport=xhttp` 时）：`auto`、`packet-up`、`stream-up`、`stream-one`，否则 `invalid_value`。
+   - shadowsocks 的 `2022-blake3-*` 密码：按 Xray `ParsePSKList` 的语义，冒号分隔的每段先按 base64（忽略 CR/LF）解码，失败时回退原文；每段必须是 16 字节（aes-128）或 32 字节（aes-256 / chacha20）；chacha20-poly1305 只允许一段，AES 允许多段；否则 `invalid_value`。
+   - 以上取值集合固定按 v26.9.30（2026-10-30 T9.41 补齐）。最低支持版 26.3.27 会接受 17/33 字节的 SS2022 密钥，且不认识 26.9.30 新增的部分指纹、不支持 raw 回退：切换节点时以实际二进制预检兜底，冷启动的版本差异由最低版闸门（G4）处理。
    - **明文禁令**：`trojan`，以及 `encryption` 为空或 `none` 的 `vless`，当 `security=none` 时，`address` 必须是私有 IPv4
      （`10/8`、`100.64/10`、`127/8`、`169.254/16`、`172.16/12`、`192.168/16`），否则 `insecure_transport`。
      Xray 对私有**域名**也放行，但它的私有域名表在 geodata 中，这里一律按公网处理（保守）。
