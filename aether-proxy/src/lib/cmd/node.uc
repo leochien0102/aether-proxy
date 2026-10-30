@@ -9,6 +9,7 @@ import * as C from 'aetherproxy.const';
 import * as schema from 'aetherproxy.schema';
 import * as state from 'aetherproxy.state';
 import * as sys from 'aetherproxy.sys';
+import * as sub from 'aetherproxy.sub';
 
 import * as node from 'aetherproxy.node';
 import * as pipeline from 'aetherproxy.pipeline';
@@ -66,10 +67,11 @@ function human(result) {
 }
 
 function use_failure(opts, code, detail, op) {
-	let value = { ok: false, code, detail };
+	let value = { ok: false, code, detail, committed: false, previous: null, previous_mode: null,
+		...(opts.selection_status ?? {}) };
 	if (op != null)
 		value.op = op;
-	return pipeline.finish(opts, value, code == 'USAGE' ? 2 : 1, `${code}: ${detail}`);
+	return pipeline.finish(opts, value, code == 'USAGE' ? 2 : (code == 'BUSY' ? 3 : 1), `${code}: ${detail}`);
 }
 
 // Preflight the committed package plus the requested selection, never rpcd's
@@ -123,60 +125,80 @@ function preflight_selection(cursor, opts, root, id, mode) {
 
 // Both entry points use this transaction and reload path. Validate all requested
 // values before touching UCI, so an invalid mode can never partially select a node.
-function use_selection(opts, id, mode) {
-	if (id != null && match(id, schema.NODE_NAME_RE) == null)
-		return use_failure(opts, 'USAGE', 'invalid node ID');
-	if (mode != null && index(MODES, mode) < 0)
-		return use_failure(opts, 'USAGE', `mode must be one of ${join('|', MODES)}`);
-
+function selection_locked(opts, id, mode) {
 	let root = replace(opts.sys_root ?? '', /\/$/, '');
 	let confdir = fs.realpath(opts.confdir ?? (root + C.CONFIG_DIR));
 	if (confdir == null)
 		return use_failure(opts, 'FS_FAILED', fs.error() ?? 'cannot locate configuration', 'uci-commit');
 
+	let path = confdir + '/' + C.UCI_PACKAGE;
+	let original = fs.readfile(path);
+	if (original == null)
+		return use_failure(opts, 'FS_FAILED', fs.error() ?? 'cannot read configuration');
 	let cursor = uci.cursor(confdir);
-	// libuci absolute-path loads disable delta replay (has_delta=false). Merely
-	// passing a private savedir would STILL replay /tmp/.uci from delta_path.
-	// Commit the loaded package by name: libuci retains its original file path.
+	// Absolute loading disables /tmp/.uci and session delta replay. This cursor
+	// is read-only; all mutations and commit happen in the isolated stage package.
 	if (!cursor.load(confdir + '/' + C.UCI_PACKAGE))
 		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot load configuration', 'uci-commit');
+	if (fs.readfile(path) != original)
+		return use_failure(opts, 'CONFIG_INVALID', 'concurrent modification while reading configuration');
 	if (id != null && cursor.get(C.UCI_PACKAGE, id) != 'node')
 		return use_failure(opts, 'USAGE', `unknown node ID '${id}'`);
 
 	let previous_node = cursor.get(C.UCI_PACKAGE, 'main', 'node');
 	let previous_mode = cursor.get(C.UCI_PACKAGE, 'main', 'mode');
+	opts.selection_status = { committed: false,
+		previous: id != null ? previous_node : previous_mode, previous_mode };
+	let ctx = { root, opts: sub.absolute_options(opts) };
 	let node_changed = id != null && previous_node != id;
 	let mode_changed = mode != null && previous_mode != mode;
-	// Keep the legacy node-only wire shape and human output exactly unchanged.
+	// Keep every legacy field and human message; integrity fields are additive.
 	let value = id != null
 		? { ok: true, node: id, previous: previous_node, reload: false }
 		: { ok: true, mode, previous: previous_mode, reload: false };
-	if (id != null && mode != null) {
+	value.previous_mode = previous_mode;
+	value.committed = true;
+	if (id != null && mode != null)
 		value.mode = mode;
-		value.previous_mode = previous_mode;
-	}
 	let selection = id ?? mode;
-	if (!node_changed && !mode_changed)
+	if (!node_changed && !mode_changed) {
+		let validated = sub.load_committed_config(ctx, original);
+		if (!validated.ok)
+			return use_failure(opts, 'CONFIG_INVALID', sprintf('%.J', validated.errors));
+		if (fs.readfile(confdir + '/' + C.UCI_PACKAGE) != original)
+			return use_failure(opts, 'CONFIG_INVALID', 'concurrent modification; retry');
 		return pipeline.finish(opts, value, 0, `already using ${selection}`);
+	}
 
 	let current = state.read(opts.run_dir ?? (root + C.RUN_DIR));
 	// Refuse before committing: guessing "stopped" could silently skip a required reload (docs/10).
 	if (current == null)
 		return use_failure(opts, 'FS_FAILED', state.error(), 'read');
+	let changes = [];
+	if (node_changed)
+		push(changes, { op: 'set', section: 'main', option: 'node', value: id });
+	if (mode_changed)
+		push(changes, { op: 'set', section: 'main', option: 'mode', value: mode });
+	let staged = sub.stage_package(ctx, original, C.SUB_TEMP_PACKAGE, { changes });
+	if (!staged.ok)
+		return use_failure(opts, 'FS_FAILED', staged.detail, 'uci-commit');
+	let validated = sub.load_committed_config(ctx, staged.content);
+	if (!validated.ok)
+		return use_failure(opts, 'CONFIG_INVALID', sprintf('%.J', validated.errors));
 	if (node_changed) {
 		let failure = preflight_selection(cursor, opts, root, id, mode);
 		if (failure != null)
 			return use_failure(opts, failure.code, failure.detail);
 	}
-	if (node_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'node', id))
-		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot commit main.node', 'uci-commit');
-	if (mode_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'mode', mode))
-		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot set main.mode', 'uci-commit');
-	// One commit publishes both values; neither set() writes the configuration file.
-	if (!cursor.commit(C.UCI_PACKAGE)) {
-		let fallback = mode == null ? 'cannot commit main.node' : 'cannot commit selection';
-		return use_failure(opts, 'FS_FAILED', cursor.error() ?? fallback, 'uci-commit');
+	let published = sub.publish_config(ctx, original, staged.content);
+	if (!published.ok) {
+		opts.selection_status.committed = published.committed;
+		return use_failure(opts, published.code, published.detail);
 	}
+	opts.selection_status.committed = true;
+	// Never hold config while asking init/daemon to reload (global -> config order).
+	opts.config_lock.close();
+	opts.config_lock = null;
 
 	let reload = index([ 'starting', 'running', 'degraded', 'failsafe' ], current.state) >= 0;
 	if (reload) {
@@ -187,6 +209,24 @@ function use_selection(opts, id, mode) {
 	}
 	value.reload = reload;
 	return pipeline.finish(opts, value, 0, `selected ${selection}`);
+}
+
+// Shared by node, mode and caller-driven rollback. No global/sub lock is acquired
+// here; all paths release config before triggering a daemon action.
+function use_selection(opts, id, mode) {
+	if (id != null && match(id, schema.NODE_NAME_RE) == null)
+		return use_failure(opts, 'USAGE', 'invalid node ID');
+	if (mode != null && index(MODES, mode) < 0)
+		return use_failure(opts, 'USAGE', `mode must be one of ${join('|', MODES)}`);
+	let root = replace(opts.sys_root ?? '', /\/$/, '');
+	let lock = sys.lock(root + C.CONFIG_LOCK_FILE);
+	if (lock == null)
+		return use_failure(opts, 'BUSY', sys.error());
+	opts.config_lock = lock;
+	let result = selection_locked(opts, id, mode);
+	if (opts.config_lock != null)
+		opts.config_lock.close();
+	return result;
 }
 
 function parse_node(opts, line) {

@@ -60,9 +60,10 @@ exec "$(dirname "$0")/nft-original" "$@"
 	# Only a temporary module copy is instrumented; production behavior and validation stay intact.
 	modules = base / 'modules/aetherproxy'
 	shutil.copytree(LIB, modules)
-	config_source = (modules / 'config.uc').read_text()
+	# T10.70 moves the first validation into the locked recovery boundary.
+	config_source = (modules / 'sub.uc').read_text()
 	config_source = config_source.replace("'use strict';", "'use strict';\nimport * as trace_fs from 'fs';", 1)
-	hook = '''export function load(cursor) {
+	hook = '''export function prepare_config(ctx) {
 	let trace = getenv('LIFECYCLE_TRACE');
 	if (trace != null) {
 		let root = getenv('SYSROOT');
@@ -75,8 +76,8 @@ exec "$(dirname "$0")/nft-original" "$@"
 		fp.close();
 	}
 '''
-	assert config_source.count('export function load(cursor) {') == 1
-	(modules / 'config.uc').write_text(config_source.replace('export function load(cursor) {', hook, 1))
+	assert config_source.count('export function prepare_config(ctx) {') == 1
+	(modules / 'sub.uc').write_text(config_source.replace('export function prepare_config(ctx) {', hook, 1))
 
 	class Fixture:
 		def __init__(self, name):

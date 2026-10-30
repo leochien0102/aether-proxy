@@ -101,6 +101,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `RELOAD_APPLIED` | notice | `from_node`、`to_node`、`actions`、`elapsed_ms`、`steps`（[04](04-lifecycle.md)「重载」，有动作执行成功时才记；`steps.detail` 为更细的分段计时，T9.12） |
 | `BUSY` | warn | `holder` |
 | `CONFIG_INVALID` | error | `field`、`reason` |
+| `CONFIG_RECOVERED` | warn | `path`（启动时从已校验备份原子恢复配置） |
 | `PRECHECK_FAILED` | error | `missing` |
 | `RENDER_INVALID` | error | `artifact`、`detail` |
 | `START_FAILED` | error | `step`、`detail` |

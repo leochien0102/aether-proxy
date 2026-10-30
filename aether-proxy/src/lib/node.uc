@@ -126,6 +126,16 @@ export function import_node(ctx, line) {
 		return { ...result(false, 'BUSY', null, false, sys.error()), exit: 3 };
 	}
 
+	// Fixed order: sub -> config; selection takes only config, daemon global -> config.
+	let config_lock = sys.lock(sub.system_path(ctx.root, C.CONFIG_LOCK_FILE));
+	if (config_lock == null) {
+		let detail = sys.error();
+		lock.close();
+		log.event('warn', 'BUSY', { holder: 'config' });
+		return { ...result(false, 'BUSY', null, false, detail), exit: 3 };
+	}
+	let sub_lock = lock;
+	lock = { close: () => { config_lock.close(); sub_lock.close(); } };
 	let config_path = `${ctx.opts.confdir}/${C.UCI_PACKAGE}`;
 	let original_text = fs.readfile(config_path);
 	if (original_text == null) {
@@ -191,8 +201,9 @@ export function import_node(ctx, line) {
 		return { ...result(false, 'CONFIG_INVALID', null, false, detail), exit: 2 };
 	}
 
-	if (staged.content != original_text && !sys.write_atomic(config_path, staged.content)) {
-		let detail = `replace ${config_path}: ${sys.error()}`;
+	let published = sub.publish_config(ctx, original_text, staged.content);
+	if (!published.ok) {
+		let detail = `replace ${config_path}: ${published.detail}`;
 		lock.close();
 		log.event('error', 'FS_FAILED', { op: 'write', path: config_path, detail });
 		return { ...result(false, 'FS_FAILED', null, false, detail), exit: 1 };

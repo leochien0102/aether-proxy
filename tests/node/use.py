@@ -24,6 +24,7 @@ BASE = "\nconfig main 'main'\n\toption enabled '1'\n\toption mode 'gfw'\n\toptio
 BASE += "\tlist lan_ifaces 'br-lan'\n\tlist lan_ifaces 'guest'\n"
 for node in IDS[:2]:
     BASE += f"\nconfig node '{node}'\n\toption label 'keep me'\n"
+    BASE += "\toption protocol 'vmess'\n\toption address 'edge.example'\n\toption port '443'\n\toption uuid 'id'\n"
 CONFIG.write_text(BASE + '\n')
 BASE = CONFIG.read_bytes()
 EVENTS = RUN / 'events.jsonl'
@@ -52,11 +53,11 @@ state_before = (RUN / 'state.json').read_bytes()
 stamp = CONFIG.stat().st_mtime_ns
 reply = ap(IDS[0])
 check('node use same: exact reply, no write and no init',
-      reply == dict(ok=True, node=IDS[0], previous=IDS[0], reload=False)
+      reply == dict(ok=True, node=IDS[0], previous=IDS[0], reload=False, committed=True, previous_mode='gfw')
       and CONFIG.read_bytes() == BASE and CONFIG.stat().st_mtime_ns == stamp and CALLS.read_text() == '')
 reply = ap(IDS[1])
 check('node use running: committed only main.node and reloaded exactly once',
-      reply == dict(ok=True, node=IDS[1], previous=IDS[0], reload=True)
+      reply == dict(ok=True, node=IDS[1], previous=IDS[0], reload=True, committed=True, previous_mode='gfw')
       and CONFIG.read_bytes() == BASE.replace(IDS[0].encode(), IDS[1].encode(), 1)
       and CALLS.read_text() == 'reload\n')
 check('node use returns before daemon completion: state untouched', (RUN / 'state.json').read_bytes() == state_before)
@@ -116,6 +117,7 @@ CONFIG.write_bytes(BASE)
 reply = ap(IDS[1], rc=1, env={'USE_INIT_RC': '7'})
 check('node use reload failure: CMD_FAILED exit 1, configuration remains committed',
       reply['code'] == 'CMD_FAILED' and 'exit 7' in reply['detail']
+      and reply['committed'] is True and reply['previous'] == IDS[0] and reply['previous_mode'] == 'gfw'
       and CONFIG.read_bytes() == BASE.replace(IDS[0].encode(), IDS[1].encode(), 1))
 CONFIG.write_bytes(BASE)
 CALLS.write_text('')

@@ -1,7 +1,9 @@
 'use strict';
 
-// Subscription planning is pure; update() owns all I/O and side effects (docs/06
-// "原子应用"). Protocol fields include docs/05 extensions so absent values are deleted.
+// Subscription planning is pure; update() owns subscription side effects (docs/06
+// "原子应用"). Shared stage/publication and startup recovery enforce configuration
+// integrity for all application writers (docs/10 atomic selection, docs/04 backup).
+// Protocol fields include docs/05 extensions so absent values are deleted.
 
 import * as fs from 'fs';
 import * as uci from 'uci';
@@ -223,7 +225,7 @@ export function load_committed_config(ctx, text) {  // T8.2: reused by node impo
 	if (!sys.write_atomic(path, text))
 		return { ok: false, errors: [ { code: 'io', detail: sys.error() } ] };
 	let cursor = uci.cursor(dir, delta);
-	if (!cursor.load(C.SUB_SNAPSHOT_PACKAGE))
+	if (!cursor.load(path))
 		return { ok: false, errors: [ { code: 'uci', detail: uci_error(cursor) } ] };
 
 	let loaded = config.normalize(config.read_raw(cursor, C.SUB_SNAPSHOT_PACKAGE));
@@ -443,7 +445,7 @@ export function stage_package(ctx, original_text, package_name, plan_result) {  
 		return copied;
 
 	let cursor = uci.cursor(dirs.base, dirs.delta);
-	if (!cursor.load(package_name))
+	if (!cursor.load(synthetic_path))
 		return { ok: false, detail: `load ${package_name}: ${uci_error(cursor)}` };
 	let applied = apply_changes(cursor, package_name, plan_result.changes);
 	if (!applied.ok)
@@ -455,6 +457,108 @@ export function stage_package(ctx, original_text, package_name, plan_result) {  
 	if (content == null)
 		return { ok: false, detail: `read ${synthetic_path}: ${fs_error()}` };
 	return { ok: true, content, dirs };
+};
+
+// Shared publication boundary (docs/10 atomic selection, docs/04 backup). Callers
+// hold config lock from the baseline read through this function. Compare bytes,
+// not a lossy UCI snapshot/hash: comments and unknown options also belong to users.
+export function publish_config(ctx, original, content) {
+	let valid = load_committed_config(ctx, content);
+	if (!valid.ok)
+		return { ok: false, code: 'CONFIG_INVALID', committed: false,
+			detail: sprintf('%.J', valid.errors) };
+	let previous = load_committed_config(ctx, original);
+	if (!previous.ok)
+		return { ok: false, code: 'CONFIG_INVALID', committed: false,
+			detail: sprintf('%.J', previous.errors) };
+	let path = `${ctx.opts.confdir}/${C.UCI_PACKAGE}`;
+	if (fs.readfile(path) != original)
+		return { ok: false, code: 'CONFIG_INVALID', committed: false,
+			detail: `concurrent modification of ${path}; retry` };
+	let metadata = fs.stat(path);
+	if (metadata == null)
+		return { ok: false, code: 'FS_FAILED', committed: false, detail: fs_error() };
+	let backup = system_path(ctx.root, C.CONFIG_BACKUP_FILE);
+	let parent = substr(backup, 0, rindex(backup, '/'));
+	let private_mode = { mode: 0600 };
+	if (!sys.mkdir_p(parent) || !sys.write_atomic(backup, original, private_mode))
+		return { ok: false, code: 'FS_FAILED', committed: false,
+			detail: `backup ${backup}: ${sys.error()}` };
+	// Recheck after backing up, too: an external UCI writer does not take our lock.
+	if (fs.readfile(path) != original)
+		return { ok: false, code: 'CONFIG_INVALID', committed: false,
+			detail: `concurrent modification of ${path}; retry` };
+	if (!sys.write_atomic(path, content, metadata))
+		return { ok: false, code: 'FS_FAILED', committed: false, detail: sys.error() };
+	let detail = null;
+	if (fs.readfile(path) != content)
+		detail = `read-back mismatch at ${path}`;
+	else if (!sys.write_atomic(backup, content, private_mode))
+		detail = `update backup ${backup}: ${sys.error()}`;
+	if (detail == null)
+		return { ok: true, committed: true };
+	let restored = sys.write_atomic(path, original, metadata);
+	if (restored && fs.readfile(path) == original)
+		return { ok: false, code: 'FS_FAILED', committed: false, detail };
+	// TODO(design): the wire has no indeterminate state. null is deliberately not
+	// false (unsafe to claim no commit) or true (requires successful read-back).
+	return { ok: false, code: 'FS_FAILED', committed: null,
+		detail: `${detail}; restore failed: ${sys.error() ?? 'read-back mismatch'}` };
+};
+
+// Startup only: global -> config, never config -> global. Polling/status does
+// not recover, so one successful restoration emits exactly one event.
+export function prepare_config(ctx) {
+	let lock = sys.lock(system_path(ctx.root, C.CONFIG_LOCK_FILE));
+	if (lock == null)
+		return { ok: false, code: 'BUSY', detail: sys.error() };
+	let path = `${ctx.opts.confdir}/${C.UCI_PACKAGE}`;
+	let backup = system_path(ctx.root, C.CONFIG_BACKUP_FILE);
+	let parent = substr(backup, 0, rindex(backup, '/'));
+	let cleaned = sys.clean_tmp_files(ctx.opts.confdir, false, C.UCI_PACKAGE + '.tmp.*');
+	cleaned = cleaned && sys.clean_tmp_files(parent, false, replace(backup, /^.*\//, '') + '.tmp.*');
+	cleaned = cleaned && sys.clean_tmp_files(temp_dirs(ctx).base, true);
+	if (!cleaned) {
+		let detail = sys.error();
+		lock.close();
+		return { ok: false, code: 'FS_FAILED', detail };
+	}
+	let original = fs.readfile(path);
+	let loaded = original == null
+		? { ok: false, errors: [ { field: C.UCI_PACKAGE, code: 'read', detail: fs_error() } ] }
+		: load_committed_config(ctx, original);
+	if (!loaded.ok) {
+		let saved = fs.readfile(backup);
+		let validated = saved == null ? { ok: false } : load_committed_config(ctx, saved);
+		if (!validated.ok) {
+			lock.close();
+			return { ok: false, code: 'CONFIG_INVALID', errors: loaded.errors,
+				detail: sprintf('%.J', loaded.errors) };
+		}
+		if (fs.readfile(path) != original) {
+			lock.close();
+			return { ok: false, code: 'CONFIG_INVALID', detail: 'concurrent modification during recovery' };
+		}
+		let metadata = fs.stat(path) ?? { mode: 0600 };
+		let written = sys.write_atomic(path, saved, metadata);
+		if (!written || fs.readfile(path) != saved) {
+			let detail = `restore ${path}: ${sys.error() ?? 'read-back mismatch'}`;
+			if (written && original != null) {
+				if (!sys.write_atomic(path, original, metadata) || fs.readfile(path) != original)
+					detail += `; restore original failed: ${sys.error() ?? 'read-back mismatch'}`;
+			}
+			lock.close();
+			return { ok: false, code: 'FS_FAILED', detail };
+		}
+		log.event('warn', 'CONFIG_RECOVERED', { path });
+	}
+	else if (!sys.mkdir_p(parent) || !sys.write_atomic(backup, original, { mode: 0600 })) {
+		let detail = `backup ${backup}: ${sys.error()}`;
+		lock.close();
+		return { ok: false, code: 'FS_FAILED', detail };
+	}
+	lock.close();
+	return { ok: true };
 };
 
 function render_current_node(ctx, content) {
@@ -573,9 +677,10 @@ function update_one(ctx, name, sub, snapshot, original_text, all_ids) {
 		};
 	}
 
-	if (staged.content != original_text && !sys.write_atomic(original_path, staged.content)) {
+	let published = publish_config(ctx, original_text, staged.content);
+	if (!published.ok) {
 		return {
-			result: fail_subscription(name, 'SUB_APPLY_INVALID', `replace ${original_path}: ${sys.error()}`, planned.counts),
+			result: fail_subscription(name, 'SUB_APPLY_INVALID', `replace ${original_path}: ${published.detail}`, planned.counts),
 			attempted: true, nodes: count_subscription_nodes(snapshot, name), skipped: planned.counts.skipped
 		};
 	}
@@ -669,6 +774,16 @@ export function update(ctx, sub_name) {
 		return { ok: false, code: 'BUSY', exit: 3, detail: sys.error(), subs: {} };
 	}
 
+	// Lock ordering is sub -> config; neither is held while requesting reload.
+	let config_lock = sys.lock(system_path(ctx.root, C.CONFIG_LOCK_FILE));
+	if (config_lock == null) {
+		let detail = sys.error();
+		lock.close();
+		log.event('warn', 'BUSY', { holder: 'config' });
+		return { ok: false, code: 'BUSY', exit: 3, detail, subs: {} };
+	}
+	let sub_lock = lock;
+	lock = { close: () => { config_lock.close(); sub_lock.close(); } };
 	let config_path = `${ctx.opts.confdir}/${C.UCI_PACKAGE}`;
 	let original_text = fs.readfile(config_path);
 	if (original_text == null) {

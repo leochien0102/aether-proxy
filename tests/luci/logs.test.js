@@ -55,6 +55,16 @@ test('T8.10 scenario 1: every catalog event has a template using only documented
 	assert.equal(model.templates.CMD_RUN, undefined);
 });
 
+test('T10.70: recovery catalog, WARN, template and translation agree', () => {
+	const doc = fs.readFileSync(path.join(ROOT, 'docs/09-logging.md'), 'utf8');
+	assert.match(doc, /\| `CONFIG_RECOVERED` \| warn \| `path`/);
+	const backend = fs.readFileSync(path.join(ROOT, 'aether-proxy/src/lib/log.uc'), 'utf8');
+	assert.match(backend, /CONFIG_RECOVERED: 'warn'/);
+	assert.equal(model.templates.CONFIG_RECOVERED, '已从备份恢复配置：{path}');
+	assert.equal(model.message(event('CONFIG_RECOVERED', 'warn', 1, { path: '/etc/config/aetherproxy' })),
+		'已从备份恢复配置：/etc/config/aetherproxy');
+});
+
 test('T9.8 scenario 7: RELOAD_APPLIED uses only docs/04 fields and shows Chinese nodes and duration', () => {
 	globalThis._ = s => s;
 	const english = loadLogsModel();

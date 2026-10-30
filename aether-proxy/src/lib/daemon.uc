@@ -14,6 +14,7 @@ import * as check from 'aetherproxy.cmd.check';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as config from 'aetherproxy.config';
+import * as sub from 'aetherproxy.sub';
 import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
 import * as reload from 'aetherproxy.reload';
@@ -461,6 +462,18 @@ function start_sequence(ctx, opts, signal_pending) {
 	}
 
 	step_started = monotonic_ms();
+	let integrity = sub.prepare_config({ root: ctx.root,
+		opts: { ...opts, run_dir: run_dir(ctx) } });
+	if (!integrity.ok) {
+		locked.close();
+		if (integrity.code != 'CONFIG_INVALID')
+			log.event(integrity.code == 'BUSY' ? 'warn' : 'error', integrity.code,
+				integrity.code == 'BUSY' ? { holder: 'config' }
+					: { op: 'restore', path: `${opts.confdir}/${C.UCI_PACKAGE}`, detail: integrity.detail });
+		return { ok: false, code: integrity.code == 'BUSY' ? 3 : 2,
+			step: 'config', detail: integrity.detail, errors: integrity.errors,
+			untouched: true, lock_busy: integrity.code == 'BUSY' };
+	}
 	let cfg = pipeline.build(opts);
 	record_step(ctx, 'config', step_started);
 	if (!cfg.ok) {

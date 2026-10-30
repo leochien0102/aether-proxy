@@ -180,7 +180,7 @@ config subscription 's_00000001'
 EOF
 }
 
-import_opts() { echo --confdir "$R/etc/config" --run-dir "$R/var/run/aether-proxy"; }
+import_opts() { echo --confdir "$R/etc/config" --run-dir "$R/var/run/aether-proxy" --sys-root "$R"; }
 
 node_sections() { grep -c "^config node 'n_" "$R/etc/config/aetherproxy"; }
 
@@ -440,6 +440,9 @@ expect "custom set without --content: code USAGE" USAGE "$(echo "$out" | jget co
 
 echo
 # T9.10 uses real libuci plus an isolated init script/session savedir.
+python3 "$ROOT/tests/node/atomic.py" "$ROOT" "$T/atomic" \
+	&& ok 'T10.70 atomic configuration scenarios' || bad 'T10.70 atomic configuration scenarios'
+
 python3 "$ROOT/tests/node/use.py" "$ROOT" "$T/use" \
 	&& ok 'node use committed selection scenarios' || bad 'node use committed selection scenarios'
 

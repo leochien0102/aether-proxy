@@ -313,3 +313,7 @@ export const IFNAMSIZ = 16;
 
 // T9.48 (docs/04 Q1): one diagnostic copy, never a recovery input.
 export const SETS_BAD_FILE = 'sets.save.bad';
+
+// T10.70: application configuration integrity; backup is not a UCI package.
+export const CONFIG_LOCK_FILE = '/var/lock/aether-proxy-config.lock';
+export const CONFIG_BACKUP_FILE = '/etc/aether-proxy/config.backup';

@@ -158,7 +158,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 切换节点不会让局域网连不上设备，LuCI 的回滚保护在这里没有作用；而 LuCI 的应用还会把会话里**所有**暂存的改动一起提交。所以改为由后端直接切换：
 
 - `node use <id>`：`<id>` 必须是已存在的 `node` 段，否则 `USAGE`（退出码 2）。读当前 `main.node`；相同 → `{ "ok": true, "node": <id>, "previous": <id>, "reload": false }`，什么都不做。
-  不同 → **先预检**（2026-10-27 定，交叉审查 B-F1、复核 Q5）：用目标节点生成 Xray 配置并 `xray run -test`，失败 → 不写配置，返回 `{ "ok": false, "code": "CONFIG_INVALID", "detail": <Xray 的错误摘要> }`（退出码 1）；Xray 不存在或版本未知时跳过预检、照旧写入（服务启动时的检查兜底）。预检通过才用 `uci` 写 `main.node` 并 `commit aetherproxy`（只改这一个选项；LuCI 会话中暂存的改动在 rpcd 的会话目录里，不会被带上），
+  不同 → **先预检**（2026-10-27 定，交叉审查 B-F1、复核 Q5）：用目标节点生成 Xray 配置并 `xray run -test`，失败 → 不写配置，返回 `{ "ok": false, "code": "CONFIG_INVALID", "detail": <Xray 的错误摘要> }`（退出码 1）；Xray 不存在或版本未知时跳过预检、照旧写入（服务启动时的检查兜底）。预检通过才在隔离临时包中修改 `main.node`，校验完整配置后原子替换真实文件（见下方原子语义；LuCI 会话和 `/tmp/.uci` 暂存改动不会被带上），
   服务在运行（`state.json` 的 `state` 为 `starting`/`running`/`degraded`/`failsafe`）时执行 `/etc/init.d/aether-proxy reload`（init 只发 SIGHUP，04「重载」），**不等重载完成**就返回
   `{ "ok": true, "node": <id>, "previous": <原值>, "reload": true }`；服务没在运行时只写配置，`reload: false`（下次启动用新节点）。不记事件（重载本身记 `RELOAD_APPLIED`，失败照 04 记）。
 - 写配置失败 → `FS_FAILED`（`op: uci-commit`），退出码 1；发重载失败 → `CMD_FAILED`，退出码 1（配置已改，下次重载或启动会生效）。
@@ -172,8 +172,12 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 
 - `mode use <模式>`：`<模式>` 必须是 `gfw`、`bypass_cn`、`global` 之一，否则 `USAGE`。与 `main.mode` 相同 → `{ "ok": true, "mode": <模式>, "previous": <模式>, "reload": false }`，什么都不做；
   不同 → 只写 `main.mode` 并提交，服务在运行时发重载、不等完成，返回 `{ "ok": true, "mode": <模式>, "previous": <原值>, "reload": true }`。是否在运行、只读 `/etc/config/aetherproxy`、失败的错误码与退出码，**全部与 `node use` 相同**（同一个函数实现）。
-- `node use <id> --mode <模式>`：节点与模式在**同一次** `commit` 里写入，最多发一次重载（两项都没变 → `reload: false`）。输出在原有字段之外加 `mode`、`previous_mode`；不带 `--mode` 时输出与原来完全相同。
+- `node use <id> --mode <模式>`：节点与模式在**同一次**原子替换里写入，最多发一次重载（两项都没变 → `reload: false`）。带 `--mode` 时另加目标 `mode`；所有选择结果都增加下方的完整性字段。
   `<模式>` 不合法 → `USAGE`，节点也不改；`--mode` 给了不止一次 → `USAGE`，什么都不写（意图不明确，不取第一个或最后一个；2026-10-22 T9.20 复核定）。
+**原子语义（T10.70）**：`node use`、`mode use`（包括调用它们的回滚）、`sub update`、`node import` 共用非阻塞 config 锁 `/var/lock/aether-proxy-config.lock`，占用返回 `BUSY`、退出码 3，不等待。锁顺序为 sub → config 或 daemon 全局 → config；请求 reload 前释放应用锁，不从 config 获取全局锁。持锁后读取完整原文（以逐字节比较作为无碰撞 CAS），在隔离 confdir stage，再 `config.normalize`（节点切换另做既有 Xray 预检），CAS 确认真实文件未变，备份当前已校验配置，用同目录临时文件原子 rename、逐字节回读，最后更新备份。禁止 commit 真实配置；保留权限/属主。备份路径与启动恢复见 04。
+
+`node use` / `mode use` 保留原字段（`mode use.previous` 仍为旧模式，`node use.previous` 为旧节点或 null），**所有正常选择结果**增加 `committed` 与 `previous_mode`（原文件未设置时为 null）。校验/预检/CAS/写入失败为 `committed:false`；只有逐字节回读成功才为 true（同值请求校验并确认原文不变后也为 true，不触发写入/reload）。发 reload 失败仍为 `committed:true`。回读或更新备份失败会原子恢复旧配置并返回 `FS_FAILED`；恢复也失败时 `committed:null`，detail 明确写出 restore failed，调用方不得当作未提交。参数无效或未能读到旧配置时旧值字段为 null。订阅/导入保留既有 wire shape 和错误语义。
+
 - 只换模式的重载不重启 Xray（Xray 配置与模式无关），r11/r12 实测约 8 秒（`nft_replace` + `restart_chinadns`）。
 - 页面（前端）：概览页节点下拉旁加「默认模式」下拉，「应用」按两者是否变化调 `node_use`（带或不带 `mode`）或 `mode_use`；切换中的横幅与按钮变灰沿用切换节点的做法。
 

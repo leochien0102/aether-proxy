@@ -32,6 +32,24 @@ const uci = { cursor: (dir) => {
 	};
 } };
 `);
+// Trace/fail the private stage commit, not the forbidden live cursor commit.
+src = replace(src, "import * as sub from 'aetherproxy.sub';", `
+import * as real_sub from 'aetherproxy.sub';
+const sub = { ...real_sub, stage_package: (...args) => {
+	let staged = real_sub.stage_package(...args);
+	if (!staged.ok) return staged;
+	let c = real_uci.cursor(staged.dirs.base);
+	c.load(staged.dirs.base + '/' + args[2]);
+	let trace = getenv('USE_TRACE');
+	if (trace != null) {
+		let f = fs.open(trace, 'a');
+		if (!f || !f.write(sprintf('%J', {
+			node: c.get(args[2], 'main', 'node'), mode: c.get(args[2], 'main', 'mode')
+		}) + '\\n') || !f.close()) die('cannot write stage trace');
+	}
+	return getenv('USE_COMMIT_FAIL') ? { ok: false, detail: 'injected stage commit failure' } : staged;
+} };
+`);
 src = replace(src, 'export function run_mode(args)', 'function run_mode(args)');
 src = replace(src, 'export function run(args)', 'function run(args)');
 let command = loadstring(src + '\nreturn { run, run_mode };')();
