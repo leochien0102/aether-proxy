@@ -922,6 +922,10 @@ function scenario_node_parse() {
 
 // T9.20: both mode entry points remain validated, ten-second thin forwards.
 function scenario_mode_use() {
+	let failure = { ok: false, code: 'CONFIG_INVALID', detail: 'xray run -test: invalid mldsa65Verify: <GARBAGE>' };
+	stub_ctrl({ exit: 1, stdout: show(failure) });
+	expect_eq('T9.41 node_use preserves CONFIG_INVALID and Xray summary despite CLI exit 1', show(failure),
+		show(methods.node_use.call({ args: { id: node_id(1), ubus_rpc_session: 'session' } })));
 	let data = { ok: true, mode: 'gfw', previous: 'bypass_cn', reload: true };
 	stub_ctrl({ exit: 0, stdout: show(data) });
 	for (let mode in [ 'gfw', 'bypass_cn', 'global' ]) {

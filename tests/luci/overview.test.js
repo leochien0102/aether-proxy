@@ -2495,7 +2495,11 @@ test('T10.22 defensive: failed changes read notifies, writes nothing and restore
 	assert.equal(notes[0].body.textContent, '读取未应用的更改失败，没有关闭『启用』：uci changes failed');
 });
 
-test('T10.23 scenario 4: overview node_use failure restores button, reports code/detail and never touches UCI',
+for (const failure of [
+	{ code: 'FS_FAILED', detail: 'uci-commit' },
+	{ code: 'CONFIG_INVALID', detail: 'xray run -test: invalid mldsa65Verify: <GARBAGE>' }
+]) {
+ test('T10.23 / T9.41: overview node_use ' + failure.code + ' shows reason and never touches UCI',
 	async () => {
 	const calls = [], notes = [];
 	const failedPage = loadView({
@@ -2522,13 +2526,14 @@ test('T10.23 scenario 4: overview node_use failure restores button, reports code
 	assert.equal(button.disabled, true);
 	assert.equal(await button.attrs.click(), undefined, 'duplicate switch is ignored');
 	assert.equal(calls.length, 1);
-	calls[0].resolve({ ok: false, code: 'FS_FAILED', detail: 'uci-commit' });
+	calls[0].resolve({ ok: false, ...failure });
 	await pending;
 	assert.equal(button.disabled, false);
-	assert.equal(notes[0].body.textContent, '切换节点失败（FS_FAILED）: uci-commit');
+	assert.equal(notes[0].body.textContent, `切换节点失败（${failure.code}）: ${failure.detail}`);
 	assert.equal(notes[0].kind, 'error');
 	assert.equal(failedPage.switching, false);
-});
+ });
+}
 
 test('T10.23 defensive: overview UCI refresh rejection notifies and restores switch button without retry',
 	async () => {

@@ -12,6 +12,10 @@ import * as sys from 'aetherproxy.sys';
 
 import * as node from 'aetherproxy.node';
 import * as pipeline from 'aetherproxy.pipeline';
+import * as config from 'aetherproxy.config';
+import * as xray from 'aetherproxy.render.xray';
+import * as check from 'aetherproxy.cmd.check';
+import * as components from 'aetherproxy.cmd.components';
 
 const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--mode <mode>]';
 const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global>';
@@ -68,6 +72,55 @@ function use_failure(opts, code, detail, op) {
 	return pipeline.finish(opts, value, code == 'USAGE' ? 2 : 1, `${code}: ${detail}`);
 }
 
+// Preflight the committed package plus the requested selection, never rpcd's
+// staged deltas or daemon-owned artifacts (docs/10 "切换节点", review Q5).
+function preflight_selection(cursor, opts, root, id, mode) {
+	let binary = check.find_component(C.XRAY_COMPONENT, cursor.get(C.UCI_PACKAGE, 'main', 'xray_bin'), opts);
+	if (binary == null || components.read_component_version(binary.path, 'version', C.COMPONENTS_TIMEOUT_SECS) == null)
+		return null;
+	let raw = config.read_raw(cursor, C.UCI_PACKAGE);
+	raw.main ??= {};
+	raw.main.node = id;
+	if (mode != null)
+		raw.main.mode = mode;
+	let validated = config.normalize(raw);
+	if (!validated.ok)
+		return { code: 'CONFIG_INVALID', detail: sprintf('%.J', validated.errors) };
+	let dir = opts.run_dir ?? (root + C.RUN_DIR);
+	if (!sys.mkdir_p(dir) && fs.stat(dir)?.type != 'directory')
+		return { code: 'FS_FAILED', detail: sys.error() };
+	let pid = fs.readlink(C.PROC_DIR + '/self');
+	if (pid == null)
+		return { code: 'FS_FAILED', detail: fs.error() ?? 'cannot read process id' };
+	let scratch = `${dir}/${C.NODE_USE_DIR_PREFIX}${pid}`;
+	// Exclusive mkdir prevents following a stale symlink or reusing another request's files.
+	if (!fs.mkdir(scratch, 0700))
+		return { code: 'FS_FAILED', detail: fs.error() ?? 'cannot create preflight directory' };
+	let path = scratch + '/' + C.ARTIFACT_FILES.xray;
+	let failure = null;
+	try {
+		if (!sys.write_atomic(path, xray.render(validated.snapshot, {})))
+			failure = { code: 'FS_FAILED', detail: sys.error() };
+		else {
+			let result = sys.run([ binary.path, 'run', '-test', '-c', path ],
+				{ timeout: C.NODE_USE_TEST_TIMEOUT_SECS, quiet: true });
+			if (result.code != 0) {
+				let detail = trim(result.stderr) || trim(result.stdout) || 'Xray configuration test failed';
+				failure = { code: 'CONFIG_INVALID', detail: `xray run -test: exit ${result.code}: `
+					+ substr(detail, -C.NODE_USE_ERROR_BYTES) };
+			}
+		}
+	}
+	catch (e) {
+		failure = { code: 'CONFIG_INVALID', detail: `cannot preflight Xray configuration: ${e.message ?? e}` };
+	}
+	if (fs.lstat(path) != null && !fs.unlink(path))
+		failure = { code: 'FS_FAILED', detail: fs.error() ?? 'cannot remove preflight configuration' };
+	if (!fs.rmdir(scratch))
+		failure = { code: 'FS_FAILED', detail: fs.error() ?? 'cannot remove preflight directory' };
+	return failure;
+}
+
 // Both entry points use this transaction and reload path. Validate all requested
 // values before touching UCI, so an invalid mode can never partially select a node.
 function use_selection(opts, id, mode) {
@@ -110,6 +163,11 @@ function use_selection(opts, id, mode) {
 	// Refuse before committing: guessing "stopped" could silently skip a required reload (docs/10).
 	if (current == null)
 		return use_failure(opts, 'FS_FAILED', state.error(), 'read');
+	if (node_changed) {
+		let failure = preflight_selection(cursor, opts, root, id, mode);
+		if (failure != null)
+			return use_failure(opts, failure.code, failure.detail);
+	}
 	if (node_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'node', id))
 		return use_failure(opts, 'FS_FAILED', cursor.error() ?? 'cannot commit main.node', 'uci-commit');
 	if (mode_changed && !cursor.set(C.UCI_PACKAGE, 'main', 'mode', mode))

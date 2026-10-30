@@ -8,7 +8,8 @@
 
 import * as C from 'aetherproxy.const';
 import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
-import { SCHEMA, SS_METHODS, SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
+import { SCHEMA, SS_METHODS, FINGERPRINTS, XHTTP_MODES,
+	SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
 // ------------------------------------------------------------------ syntax validators
 // Each takes a string and returns the normalized value, or null when the syntax is invalid.
@@ -329,8 +330,84 @@ function check_hosts(hosts, raw_hosts, errors) {
 	}
 }
 
+// Standard padded base64, including Go's ignored CR/LF. ucode's decoder alone
+// is permissive, so validate the alphabet and padding before trusting its length.
+function ss2022_key_size(value) {
+	let clean = replace(value, /[\r\n]/g, '');
+	let valid = match(clean, /^([A-Za-z0-9+\/]{4})*([A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?$/);
+	// Xray 26.9.30 ParseKey falls back to raw bytes ONLY on a decode error.
+	return valid ? length(b64dec(clean)) : length(value);
+}
+
+function ss2022_password_ok(n) {
+	let parts = split(n.password, ':');
+	let chacha = n.method == '2022-blake3-chacha20-poly1305';
+	if (chacha && length(parts) != 1)
+		return false;
+	let size = n.method == '2022-blake3-aes-128-gcm' ? 16 : 32;
+	for (let part in parts)
+		if (ss2022_key_size(part) != size)
+			return false;
+	return true;
+}
+
+function vless_encryption_ok(value) {
+	if (value == 'none')
+		return true;
+	let parts = split(value, '.');
+	if (length(parts) < 4 || parts[0] != 'mlkem768x25519plus')
+		return false;
+	if (index([ 'native', 'xorpub', 'random' ], parts[1]) < 0)
+		return false;
+	if (index([ '0rtt', '1rtt' ], parts[2]) < 0)
+		return false;
+	let keys = 0;
+	for (let part in slice(parts, 3)) {
+		// Short components are Xray's padding settings, not public keys.
+		if (length(part) < 20)
+			continue;
+		let clean = replace(part, /[\r\n]/g, '');
+		if (!match(clean, /^[A-Za-z0-9_-]+$/) || length(clean) % 4 == 1)
+			return false;
+		let padded = clean;
+		while (length(padded) % 4)
+			padded += '=';
+		let decoded = b64dec(replace(replace(padded, /-/g, '+'), /_/g, '/'));
+		if (index([ 32, 1184 ], length(decoded)) < 0)
+			return false;
+		keys++;
+	}
+	// TODO(design): Xray can panic for padding-only encryption; fail closed rather
+	// than persisting a value with no public key. No local PQV/ECH format policy.
+	return keys > 0;
+}
+
+function check_xray_values(n, at, errors) {
+	function invalid(field, detail) {
+		push(errors, { field: at + '.' + field, code: 'invalid_value', detail });
+	}
+	if (n.fingerprint != null && index([ 'tls', 'reality' ], n.security) >= 0) {
+		let fp = lc(n.fingerprint);
+		let allowed = index(FINGERPRINTS, fp) >= 0;
+		if (n.security == 'tls')
+			allowed = allowed || fp == 'unsafe';
+		else if (fp == 'hellogolang')
+			allowed = false;
+		if (!allowed)
+			invalid('fingerprint', `unsupported ${n.security} fingerprint`);
+	}
+	if (n.protocol == 'vless' && !vless_encryption_ok(n.encryption))
+		invalid('encryption', 'unsupported VLESS encryption');
+	if (n.transport == 'xhttp' && n.xhttp_mode != null && index(XHTTP_MODES, n.xhttp_mode) < 0)
+		invalid('xhttp_mode', 'unsupported XHTTP mode');
+	if (n.protocol == 'shadowsocks' && substr(n.method ?? '', 0, 12) == '2022-blake3-' && n.password != null)
+		if (!ss2022_password_ok(n))
+			invalid('password', 'invalid SS2022 key length or multi-key combination');
+}
+
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
+	check_xray_values(n, at, errors);
 	if (index([ 'vless', 'vmess' ], n.protocol) >= 0 && n.uuid != null) {
 		// Xray hashes short IDs; longer IDs must be UUID hex, without fixed hyphen positions (docs/05 rule 7).
 		let size = length(n.uuid);

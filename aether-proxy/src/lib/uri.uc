@@ -216,7 +216,8 @@ function validation_skip(node) {
 		// Flow is an Xray value error, not a malformed URI (docs/05 rule 7).
 		if (error.field == 'node.flow' && error.code == 'invalid_enum')
 			return 'invalid_value';
-		if (index([ 'invalid_reality_key', 'invalid_short_id', 'invalid_cert_hash', 'invalid_uuid' ], error.code) >= 0)
+		if (index([ 'invalid_value', 'invalid_reality_key', 'invalid_short_id',
+			'invalid_cert_hash', 'invalid_uuid' ], error.code) >= 0)
 			return 'invalid_value';
 	}
 

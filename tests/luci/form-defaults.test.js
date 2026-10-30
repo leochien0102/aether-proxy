@@ -44,7 +44,7 @@ for (const page of pages) {
 	}
 	test('T10.54 gate detects one unwrapped option on ' + page, async () => {
 		let omitted = false;
-		const broken = { equal: adapter.equal, section(section, fallbacks, behaviors) {
+		const broken = { ...adapter, section(section, fallbacks, behaviors) {
 			const candidate = section.children.find(o => o.default != null && !o.option.startsWith('_'));
 			const remaining = section.children.filter(o => omitted || o !== candidate);
 			adapter.section({ children: remaining }, fallbacks, behaviors);
@@ -71,7 +71,7 @@ test('T10.54 DNS absent and explicit Flags stay untouched with SDK parse', async
 });
 
 test('T10.54 mutation: directly calling original Flag parse breaks the no-write gate', async () => {
-	const broken = { equal: adapter.equal, section(section, fallbacks, behaviors) {
+	const broken = { ...adapter, section(section, fallbacks, behaviors) {
 		const original = new Map(section.children.map(o => [o, o.parse]));
 		adapter.section(section, fallbacks, behaviors);
 		for (const o of section.children)

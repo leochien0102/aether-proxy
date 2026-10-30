@@ -447,6 +447,16 @@ python3 "$ROOT/tests/node/use.py" "$ROOT" "$T/use" \
 python3 "$ROOT/tests/node/mode.py" "$ROOT" "$T/mode" \
 	&& ok 'node and mode shared selection scenarios' || bad 'node and mode shared selection scenarios'
 
+# T9.41 rejects bad input through CLI parse/import and a cold config read.
+python3 "$ROOT/tests/node/invalid-input.py" "$ROOT" "$T/invalid-input" \
+	&& ok 'T9.41 invalid input boundary scenarios' || bad 'T9.41 invalid input boundary scenarios'
+
+# T9.41 verifies the target configuration before any selection commit.
+python3 "$ROOT/tests/node/preflight.py" "$ROOT" "$T/preflight" \
+	&& ok 'T9.41 transactional Xray preflight scenarios' || bad 'T9.41 transactional Xray preflight scenarios'
+python3 "$ROOT/tests/node/xray-values.py" "$ROOT" "$T/xray-values" \
+	&& ok 'T9.41 real Xray value oracle' || bad 'T9.41 real Xray value oracle'
+
 # T9.13 reuses protocol fixtures and real libuci for parse/import parity.
 python3 "$ROOT/tests/node/parse.py" "$ROOT" "$T/parse" \
 	&& ok 'node parse read-only sharing scenarios' || bad 'node parse read-only sharing scenarios'

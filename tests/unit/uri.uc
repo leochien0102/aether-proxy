@@ -132,10 +132,11 @@ export const cases = [
 	},
 	{
 		name: 'shadowsocks 2022 URL-encoded userinfo', fn: 'line',
-		input: 'ss://2022-blake3-aes-128-gcm%3Asecret%3Atail@ss2022.example:443#ss2022',
+		input: 'ss://2022-blake3-aes-128-gcm%3AYWFhYWFhYWFhYWFhYWFhYQ==%3AYWFhYWFhYWFhYWFhYWFhYQ==@ss2022.example:443#ss2022',
 		expect: { node: {
 			protocol: 'shadowsocks', address: 'ss2022.example', port: 443,
-			method: '2022-blake3-aes-128-gcm', password: 'secret:tail', label: 'ss2022',
+			method: '2022-blake3-aes-128-gcm', password: 'YWFhYWFhYWFhYWFhYWFhYQ==:YWFhYWFhYWFhYWFhYWFhYQ==',
+			label: 'ss2022',
 			transport: 'raw', security: 'none'
 		} }
 	},

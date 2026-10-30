@@ -123,10 +123,10 @@ return view.extend({
 		option = section.option(form.Flag, 'data_auto', _('Automatically update rule data', 'aether-proxy'));
 		option.default = '1';
 		option = section.option(form.Value, 'data_hour', _('Update hour', 'aether-proxy'));
-		option.datatype = 'range(0,23)';
+		option.validate = form_defaults.integer(0, 23);
 		option.placeholder = '4';
 		option = section.option(form.Value, 'data_minute', _('Update minute', 'aether-proxy'));
-		option.datatype = 'range(0,59)';
+		option.validate = form_defaults.integer(0, 59);
 		option.placeholder = '30';
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
 			_('Leave empty to use the default release channel.', 'aether-proxy'));

@@ -72,6 +72,19 @@ function wrap(option, fallback, behavior) {
 
 return baseclass.extend({
 	equal: equal,
+	/* Match config.uc's int branch, not SDK port (includes 0) or range
+	 * (includes decimals). Nine digits include legitimate leading zeroes.
+	 * Leave required emptiness to the form/modal required-field check. */
+	integer: function(min, max) {
+		return function(section_id, value) {
+			if (value == null || value === '')
+				return true;
+			if (typeof value !== 'string' || value.match(/^-?[0-9]{1,9}$/)?.[0] !== value)
+				return _('Enter an integer.', 'aether-proxy');
+			return +value >= min && +value <= max ? true :
+				_('Enter a value between %s and %s.', 'aether-proxy').replace('%s', min).replace('%s', max);
+		};
+	},
 	/* Apply after declaring options so custom write/remove methods are retained.
 	 * DummyValues are presentation only; subclasses such as TextValue,
 	 * RichListValue and DeviceSelect use the same save contract as Value. */

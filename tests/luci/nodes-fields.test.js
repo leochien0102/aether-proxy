@@ -170,11 +170,14 @@ test('T10.30 scenario 3: XHTTP extra accepts only JSON objects or empty input wi
 		assert.equal(extra.validate('n_edit', value), '须为 JSON 对象', value);
 });
 
-test('T10.30 scenario 4: heartbeat and concurrency use exact LuCI ranges and non-writing placeholders', () => {
+test('T10.30 scenario 4 / T9.41: heartbeat and concurrency use backend integer ranges and non-writing placeholders', () => {
 	const { options } = harness();
-	assert.equal(options.get('ws_heartbeat').datatype, 'range(1,3600)');
+	const heartbeat = options.get('ws_heartbeat');
+	for (const [value, good] of [['0', false], ['1', true], ['3600', true], ['3601', false], ['1.5', false]])
+		assert.equal(heartbeat.validate('row', value) === true, good);
 	for (const [field, placeholder] of [['mux_concurrency', '8'], ['mux_xudp_concurrency', '16']]) {
-		assert.equal(options.get(field).datatype, 'range(-1,1024)');
+		for (const [value, good] of [['-2', false], ['-1', true], ['1024', true], ['1025', false], ['1.5', false]])
+			assert.equal(options.get(field).validate('row', value) === true, good);
 		assert.equal(options.get(field).placeholder, placeholder);
 		assert.equal(options.get(field).default, undefined, 'empty uses Xray defaults, not stored values');
 	}
