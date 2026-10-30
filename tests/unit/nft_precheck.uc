@@ -9,13 +9,13 @@ import * as nft from 'aetherproxy.render.nft';
 import { precheck } from 'aetherproxy.cmd.check';
 
 const ROOT = fs.realpath(sourcepath(0, true) + '/../..');
-const IFACE = 'br-\\"lan';
-const GUARD = '\t\tiifname != { "br-\\\\\\"lan" } return';
+const IFACE = 'br-\\lan';
+const GUARD = '\t\tiifname != { "br-\\lan" } return';
 
 export const cases = [
-	{ name: 'T9.45 existing quoted interface still needs complete token encoding', present: true,
+	{ name: 'T9.45 existing backslash interface preserves literal token', present: true,
 		expect: { items: [ { item: 'lan_iface:' + IFACE, ok: true } ], guards: [ GUARD, GUARD ] } },
-	{ name: 'T9.45 missing quoted interface fails existence despite correct encoding', present: false,
+	{ name: 'T9.45 missing backslash interface still fails existence', present: false,
 		expect: { items: [ { item: 'lan_iface:' + IFACE, ok: false,
 			detail: 'interface ' + IFACE + ' does not exist' } ], guards: [ GUARD, GUARD ] } }
 ];

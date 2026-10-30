@@ -105,19 +105,26 @@ function nonempty(s) {
 	return length(s) ? s : null;
 }
 
-function ifname(s) {
+// Shared with the nft boundary so even an unvalidated snapshot cannot emit broken tokens.
+export function ifname_error(s) {
 	// ucode length() counts bytes, matching IFNAMSIZ rather than Unicode characters.
 	if (type(s) != 'string' || length(s) < 1 || length(s) >= C.IFNAMSIZ)
-		return null;
+		return 'interface name must be 1-15 bytes';
 
-	// TODO(design): verify nft's \\xNN decoding on a supported target before accepting
-	// control bytes. Fail closed for now; printable names have no character whitelist.
+	// nft 1.1.6 scanner.l copies quoted contents literally: neither quotes nor control
+	// bytes can be encoded with C-style escapes. Backslashes must remain unchanged.
+	if (index(s, '"') >= 0)
+		return 'nft quoted strings cannot represent double quotes';
 	for (let i = 0; i < length(s); i++) {
 		let byte = ord(s, i);
 		if (byte < 32 || byte == 127)
-			return null;
+			return 'nft interface strings cannot contain control bytes';
 	}
-	return s;
+	return null;
+};
+
+function ifname(s) {
+	return ifname_error(s) == null ? s : null;
 }
 
 const ITEM_CHECK = {
@@ -194,7 +201,8 @@ function normalize_field(f, raw, field, proto, errors) {
 			let n = ITEM_CHECK[f.item](item);
 
 			if (n == null) {
-				push(errors, { field, code: INVALID_CODE[f.item], detail: `item ${i}: "${item}" is not valid` });
+				let reason = f.item == 'ifname' ? ifname_error(item) : `"${item}" is not valid`;
+				push(errors, { field, code: INVALID_CODE[f.item], detail: `item ${i}: ${reason}` });
 				continue;
 			}
 

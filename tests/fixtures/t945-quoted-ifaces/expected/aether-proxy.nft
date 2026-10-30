@@ -33,7 +33,7 @@ table inet aetherproxy {
 	}
 	chain prerouting {
 		type filter hook prerouting priority mangle; policy accept;
-		iifname != { "br-\"lan", "br-\\\"lan", "br-\\lan" } return
+		iifname != { "br-\\lan", "br-\lan", "br-lan", "eth0.2" } return
 		meta nfproto != ipv4 return
 		meta l4proto != { tcp, udp } return
 		meta l4proto tcp socket transparent 1 meta mark set meta mark | 0x00080000 accept
@@ -83,7 +83,7 @@ table inet aetherproxy {
 
 	chain dns_hijack {
 		type nat hook prerouting priority dstnat - 5; policy accept;
-		iifname != { "br-\"lan", "br-\\\"lan", "br-\\lan" } return
+		iifname != { "br-\\lan", "br-\lan", "br-lan", "eth0.2" } return
 		ip saddr @host_direct4 return
 		ether saddr @host_direct_mac return
 		fib daddr type local return

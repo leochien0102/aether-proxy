@@ -6,6 +6,7 @@
 
 import * as C from 'aetherproxy.const';
 import { ip_key, cidr_parts, range_parts } from 'aetherproxy.net';
+import { ifname_error } from 'aetherproxy.config';
 
 const T = '\t';
 
@@ -97,11 +98,14 @@ function set_block(name, type, flags, list, comment) {
 	return comment ? line + '  # ' + comment : line;
 };
 
-// Encode at the nft syntax boundary, independently of live interface existence.
-// Backslashes must be escaped first so the quote escape is not escaped a second time.
-// Config validation rejects control bytes until nft's hex-escape contract is verified.
+// nft quoted strings are literal, not C strings: doubling backslashes changes the name.
+// Config rejects quotes/control bytes; defend callers bypassing config as well. Pipeline
+// catches this failure rather than publishing a malformed artifact. No live lookup belongs here.
 function quote_string(value) {
-	return '"' + replace(replace(value, /\\/g, '\\\\'), /"/g, '\\"') + '"';
+	let reason = ifname_error(value);
+	if (reason != null)
+		die('invalid nft interface string: ' + reason);
+	return '"' + value + '"';
 };
 
 function quote_list(list) {

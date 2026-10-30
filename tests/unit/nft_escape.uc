@@ -1,9 +1,10 @@
 'use strict';
 
-// T9.45 / docs/02 nft template: compare complete interface guard tokens, not substrings.
-// Config validation stays separate from live existence checks (docs/05 rule 5).
+// T9.45 revision / docs/02: nft quoted strings have no C-style escape processing.
+// Compare complete guard tokens; test config errors separately from render defenses.
 import * as config from 'aetherproxy.config';
 import * as nft from 'aetherproxy.render.nft';
+import * as pipeline from 'aetherproxy.pipeline';
 
 function guards(text) {
 	return filter(split(text, '\n'), line => index(line, '\t\tiifname != ') == 0);
@@ -24,10 +25,11 @@ function config_case(name, main, errors, ifaces) {
 export const cases = [
 	token_case('br-lan', 'br-lan', '"br-lan"'),
 	token_case('eth0.2', 'eth0.2', '"eth0.2"'),
-	token_case('quote', 'br-"lan', '"br-\\"lan"'),
-	token_case('backslash', 'br-\\lan', '"br-\\\\lan"'),
-	token_case('quote and backslash', 'br-\\"lan', '"br-\\\\\\"lan"'),
-	token_case('trailing backslash', 'lan\\', '"lan\\\\"'),
+	config_case('quote rejected', { lan_ifaces: [ 'br-"lan' ] }, [ 'main.lan_ifaces:invalid_value' ]),
+	token_case('literal backslash', 'br-\\lan', '"br-\\lan"'),
+	config_case('quote and backslash rejected', { lan_ifaces: [ 'br-\\"lan' ] },
+		[ 'main.lan_ifaces:invalid_value' ]),
+	token_case('literal trailing backslash', 'lan\\', '"lan\\"'),
 	config_case('length 1', { lan_ifaces: [ 'a' ] }, [], [ 'a' ]),
 	config_case('length 15', { lan_ifaces: [ 'abcdefghijklmno' ] }, [], [ 'abcdefghijklmno' ]),
 	config_case('length 0 list item', { lan_ifaces: [ '' ] }, [ 'main.lan_ifaces:invalid_value' ]),
@@ -50,7 +52,7 @@ export const cases = [
 		'\t\tip saddr @node_ip4 counter name proxy_rx\n\t}\n' }
 ];
 
-// Without a verified nft hex-escape contract, no control byte may reach nft syntax.
+// Hex spellings are literal text in nft, not an encoding for control bytes.
 for (let byte = 0; byte <= 127; byte++) {
 	if (byte > 31 && byte != 127)
 		continue;
@@ -58,7 +60,43 @@ for (let byte = 0; byte <= 127; byte++) {
 		{ lan_ifaces: [ 'br-' + chr(byte) + 'lan' ] }, [ 'main.lan_ifaces:invalid_value' ]));
 }
 
+push(cases, token_case('two literal backslashes', 'br-\\\\lan', '"br-\\\\lan"'));
+for (let iface in [ 'br-"lan', 'br-\\"lan' ])
+	push(cases, { name: 'T9.45 quote error explains nft limitation ' + sprintf('%.J', iface),
+		kind: 'detail', iface, expect: [ { field: 'main.lan_ifaces', code: 'invalid_value',
+			detail: 'item 0: nft quoted strings cannot represent double quotes' } ] });
+
+function defensive_case(name, iface) {
+	return { name: 'T9.45 render rejects ' + name, kind: 'defensive', iface,
+		expect: { rejected: true, ok: false, code: 'RENDER_INVALID', exit: 1, no_artifacts: true } };
+}
+
+push(cases, defensive_case('quote', 'br-"lan'));
+push(cases, defensive_case('quote and backslash', 'br-\\"lan'));
+for (let byte = 0; byte <= 127; byte++) {
+	if (byte > 31 && byte != 127)
+		continue;
+	push(cases, defensive_case(sprintf('control 0x%02x', byte), 'br-' + chr(byte) + 'lan'));
+}
+
+function defensive(iface) {
+	let snapshot = { main: { lan_ifaces: [ iface ] } };
+	let rejected = false;
+	try {
+		nft.render(snapshot, {});
+	}
+	catch (e) {
+		rejected = index(e.message ?? '', 'invalid nft interface string:') >= 0;
+	}
+	let r = pipeline.render({ ok: true, snapshot }, {}, 'nft');
+	return { rejected, ok: r.ok, code: r.code, exit: r.exit, no_artifacts: r.artifacts == null };
+}
+
 export function run(c) {
+	if (c.kind == 'defensive')
+		return defensive(c.iface);
+	if (c.kind == 'detail')
+		return config.normalize({ main: { lan_ifaces: [ c.iface ] } }).errors ?? [];
 	if (c.kind == 'config') {
 		let r = config.normalize({ main: c.main });
 		return { errors: map(r.errors ?? [], e => e.field + ':' + e.code),
