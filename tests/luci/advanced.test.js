@@ -49,10 +49,15 @@ const int_fixtures = [
 	fixture('probe', 'expect_code', '100', true),
 	fixture('probe', 'expect_code', '599', true),
 	fixture('probe', 'expect_code', '600', false),
-	/* The five ">= 1" fields have no upper bound, so a very large value stays valid. */
+	/* T9.50 bounds timeout to 30; the other four >= 1 fields remain unbounded. */
 	fixture('probe', 'timeout', '0', false),
 	fixture('probe', 'timeout', '1', true),
-	fixture('probe', 'timeout', '999999999', true),
+	fixture('probe', 'timeout', '5', true),
+	fixture('probe', 'timeout', '30', true),
+	fixture('probe', 'timeout', '31', false),
+	fixture('probe', 'timeout', '-1', false),
+	fixture('probe', 'timeout', 'abc', false),
+	fixture('probe', 'timeout', '999999999', false),
 	fixture('probe', 'fail_threshold', '0', false),
 	fixture('probe', 'fail_threshold', '1', true),
 	fixture('probe', 'fail_threshold', '999999999', true),
@@ -205,6 +210,11 @@ test('T8.11b scenario 3: every fixture agrees with the real CLI, field by field'
 		const errors = check_dir(dir, config_text(f.section, f.field, f.value));
 		const cli_bad = field_has_error(errors, f.section, f.field);
 		const model_ok = model.validate(f.field, f.value) === true;
+
+		if (f.field === 'timeout' && !f.ok) {
+			const error = errors.find(e => e.field === 'probe.timeout');
+			assert.equal(error?.code, f.value === 'abc' ? 'invalid_int' : 'invalid_range');
+		}
 
 		assert.equal(model_ok, f.ok, `model: ${f.field}=${JSON.stringify(f.value)}`);
 		assert.equal(cli_bad, !f.ok, `cli: ${f.field}=${JSON.stringify(f.value)}`);
@@ -487,6 +497,48 @@ test('T10.68 scenario 3: absent degrade_gfw saves nothing, off writes 0, on remo
 		flag.inputs.main = '1';
 		await h.parse();
 		assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'main', 'degrade_gfw']]);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+/* T9.50 uses the real view and X15 save adapter with the SDK parse double. */
+for (const value of ['0', '1', '30', '31']) {
+	test(`T9.50 timeout ${value}: field message and save path without clamping`, async () => {
+		const { renderPage } = require('./form-defaults-harness');
+		try {
+			const h = await renderPage('advanced');
+			const option = h.options.find(o => o.option === 'timeout');
+			assert.equal(option.placeholder, '5');
+			option.inputs.main = value;
+			if (value === '0' || value === '31') {
+				assert.equal(option.validate('main', value), 'Enter a value between 1 and 30.');
+				await assert.rejects(h.parse(), /invalid input value/);
+				assert.deepEqual(h.calls, []);
+			}
+			else {
+				assert.equal(option.validate('main', value), true);
+				await h.parse();
+				assert.deepEqual(h.calls, [['set', 'aetherproxy', 'probe', 'timeout', value]]);
+			}
+			assert.equal(option.inputs.main, value, 'never silently clamp the input');
+		}
+		finally {
+			globalThis._ = s => PO[s] ?? s;
+		}
+	});
+}
+
+test('T9.50 timeout 31 already saved: field error and no UCI rewrite', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		h.setSaved('probe', 'timeout', '31');
+		h.options.find(o => o.option === 'timeout').inputs.main = '31';
+		await assert.rejects(h.parse(), /invalid input value/);
+		assert.deepEqual(h.calls, []);
+		assert.equal(h.data.probe.timeout, '31');
 	}
 	finally {
 		globalThis._ = s => PO[s] ?? s;

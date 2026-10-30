@@ -180,7 +180,7 @@ const update = [
 const probe = [
 	{ name: 'url', type: 'url', default: 'https://www.gstatic.com/generate_204' },
 	{ name: 'expect_code', type: 'int', min: 100, max: 599, default: 204 },
-	{ name: 'timeout', type: 'int', min: 1, default: 5 },
+	{ name: 'timeout', type: 'int', min: 1, max: 30, default: 5 },
 	{ name: 'fail_threshold', type: 'int', min: 1, default: 3 },
 	{ name: 'recover_threshold', type: 'int', min: 1, default: 2 },
 	{ name: 'node_timeout', type: 'int', min: 1, default: 3 },
