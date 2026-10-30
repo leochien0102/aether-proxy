@@ -175,10 +175,11 @@ function run(argv, opts) {
 // a partial file. Returns true, or null on failure (reason in error()).
 // TODO(design): 09 has no event code for filesystem errors, so this does not log;
 // callers must record the failure with a code that fits their context.
-function write_atomic(path, content) {
+function write_atomic(path, content, metadata) {
 	let pid = fs.readlink('/proc/self');
 	let tmp = `${path}.tmp.${pid ?? 'x'}`;
-	let fp = fs.open(tmp, 'w');
+	// Exclusive creation never follows a residue symlink left by a killed writer.
+	let fp = fs.open(tmp, 'wxe', 0600);
 
 	if (!fp) {
 		last_error = `open ${tmp}: ${fs_err()}`;
@@ -191,15 +192,31 @@ function write_atomic(path, content) {
 	// close() flushes; a failure here (e.g. ENOSPC) must also abort the rename.
 	let cok = fp.close();
 
-	if (ok == null || !cok) {
+	if (ok != length(content) || !cok) {
 		last_error = `write ${tmp}: ${werr ?? fs_err()}`;
-		fs.unlink(tmp);
+		if (!fs.unlink(tmp))
+			last_error += `; unlink ${tmp}: ${fs_err()}`;
 		return null;
+	}
+
+	// Apply ownership before permissions (chown may clear set-id bits), before publication.
+	if (metadata != null) {
+		let st = fs.stat(tmp);
+		let owner_ok = st != null;
+		if (owner_ok && (st.uid != metadata.uid || st.gid != metadata.gid))
+			owner_ok = fs.chown(tmp, metadata.uid, metadata.gid);
+		if (!owner_ok || !fs.chmod(tmp, metadata.mode)) {
+			last_error = `metadata ${tmp}: ${fs_err()}`;
+			if (!fs.unlink(tmp))
+				last_error += `; unlink ${tmp}: ${fs_err()}`;
+			return null;
+		}
 	}
 
 	if (!fs.rename(tmp, path)) {
 		last_error = `rename ${tmp} -> ${path}: ${fs_err()}`;
-		fs.unlink(tmp);
+		if (!fs.unlink(tmp))
+			last_error += `; unlink ${tmp}: ${fs_err()}`;
 		return null;
 	}
 
@@ -261,8 +278,37 @@ function lock(path) {
 	return fp;
 }
 
+// Only call for application-owned scratch directories, under config lock.
+function clean_tmp_files(dir, recursive, pattern) {
+	let directory = fs.stat(dir);
+	if (directory == null) {
+		let detail = fs_err();
+		if (detail == 'No such file or directory')
+			return true;
+		last_error = `stat ${dir}: ${detail}`;
+		return null;
+	}
+	let paths = fs.glob(dir + '/' + (pattern ?? '*'));
+	if (paths == null) {
+		last_error = `list ${dir}: ${fs_err()}`;
+		return null;
+	}
+	for (let path in paths) {
+		let st = fs.lstat(path);
+		if (st?.type == 'directory' && recursive) {
+			if (!clean_tmp_files(path, true))
+				return null;
+		}
+		else if (match(path, /\.tmp\.[^/]+$/) && !fs.unlink(path)) {
+			last_error = `unlink ${path}: ${fs_err()}`;
+			return null;
+		}
+	}
+	return true;
+}
+
 function error() {
 	return last_error;
 }
 
-export { run, write_atomic, mkdir_p, lock, error };
+export { run, write_atomic, mkdir_p, lock, clean_tmp_files, error };

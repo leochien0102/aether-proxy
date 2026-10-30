@@ -12,6 +12,7 @@ const EVENTS = {
 	SERVICE_STARTED: 'notice', SERVICE_STOPPED: 'notice', RELOAD_APPLIED: 'notice',
 	BUSY: 'warn',
 	CONFIG_INVALID: 'error',
+	CONFIG_RECOVERED: 'warn',
 	PRECHECK_FAILED: 'error',
 	RENDER_INVALID: 'error',
 	START_FAILED: 'error', START_RETRY: 'warn',

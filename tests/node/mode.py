@@ -25,6 +25,7 @@ BASE = ("\nconfig main 'main'\n\toption enabled '1'\n\toption mode 'bypass_cn'\n
         f"\toption node '{IDS[0]}'\n\tlist lan_ifaces 'br-lan'\n\tlist lan_ifaces 'guest'\n")
 for node in IDS[:2]:
     BASE += f"\nconfig node '{node}'\n\toption label 'keep me'\n"
+    BASE += "\toption protocol 'vmess'\n\toption address 'edge.example'\n\toption port '443'\n\toption uuid 'id'\n"
 BASE = (BASE + '\n').encode()
 
 
@@ -74,20 +75,20 @@ if (!c.set('aetherproxy', 'main', 'node', ARGV[2]) ||
 delta = (SESSION / 'aetherproxy').read_bytes()
 reply = ap('mode', 'use', 'gfw')
 check('mode use running: only mode committed once, one reload, session unchanged',
-      reply == dict(ok=True, mode='gfw', previous='bypass_cn', reload=True)
+      reply == dict(ok=True, mode='gfw', previous='bypass_cn', reload=True, committed=True, previous_mode='bypass_cn')
       and CONFIG.read_bytes() == expected(mode='gfw')
       and commits() == [dict(node=IDS[0], mode='gfw')]
       and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
 check('mode use returns without daemon completion', json.loads(STATE.read_text())['node_id'] == 'still-old')
 
-for args, fields in [(('mode', 'use', 'bypass_cn'), dict(mode='bypass_cn', previous='bypass_cn')),
+for args, fields in [(('mode', 'use', 'bypass_cn'), dict(mode='bypass_cn', previous='bypass_cn', previous_mode='bypass_cn')),
                      (('node', 'use', IDS[0], '--mode', 'bypass_cn'),
                       dict(node=IDS[0], previous=IDS[0], mode='bypass_cn', previous_mode='bypass_cn'))]:
     reset()
     stamp = (CONFIG.stat().st_ino, CONFIG.stat().st_mtime_ns)
     reply = ap(*args)
     check(args[0] + ' use same: exact reply, no commit, no rewrite, no reload',
-          reply == dict(ok=True, reload=False, **fields) and CONFIG.read_bytes() == BASE
+          reply == dict(ok=True, reload=False, committed=True, **fields) and CONFIG.read_bytes() == BASE
           and stamp == (CONFIG.stat().st_ino, CONFIG.stat().st_mtime_ns)
           and commits() == [] and CALLS.read_text() == '')
 
@@ -97,7 +98,7 @@ for node in IDS[:2]:
     check(('combined both changed' if node == IDS[1] else 'combined mode-only changed')
           + ': exact reply, one atomic commit, one reload, session unchanged',
           reply == dict(ok=True, node=node, previous=IDS[0], mode='global',
-                        previous_mode='bypass_cn', reload=True)
+                        previous_mode='bypass_cn', reload=True, committed=True)
           and CONFIG.read_bytes() == expected(node=node, mode='global')
           and commits() == [dict(node=node, mode='global')] and CALLS.read_text() == 'reload\n'
           and (SESSION / 'aetherproxy').read_bytes() == delta)

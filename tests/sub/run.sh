@@ -118,6 +118,12 @@ BODY="$FIX/one-node.txt"
 out=$(ap --json s_00000001 2>"$T/stderr1"); rc=$?
 expect "initial import exits successfully" 0 "$rc"
 expect "initial import reports one added node" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+if cmp -s "$R/etc/config/aetherproxy" "$R/etc/aether-proxy/config.backup" &&
+	[ "$(stat -c %a "$R/etc/aether-proxy/config.backup")" = 600 ]; then
+	ok 'T10.70 subscription success updates private validated backup'
+else
+	bad 'T10.70 subscription success updates private validated backup'
+fi
 node_id=$(sed -n "s/^config node '\(n_[0-9a-f]*\)'$/\1/p" "$R/etc/config/aetherproxy" | head -n 1)
 [[ "$node_id" =~ ^n_[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$ ]] \
 	&& ok "new section name is UUID v4 format" || bad "new section name is UUID v4 format" "$node_id"

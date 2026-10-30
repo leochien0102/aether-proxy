@@ -19,6 +19,7 @@ const TEMPLATES = {
 	SERVICE_STOPPED: _('Service stopped (mode {mode}, node {node})', 'aether-proxy'),
 	BUSY: _('Operation locked by {holder}', 'aether-proxy'),
 	CONFIG_INVALID: _('Invalid configuration: {field}, {reason}', 'aether-proxy'),
+	CONFIG_RECOVERED: _('Configuration restored from backup: {path}', 'aether-proxy'),
 	PRECHECK_FAILED: _('Precheck failed: {missing}', 'aether-proxy'),
 	RENDER_INVALID: _('Invalid artifact {artifact}: {detail}', 'aether-proxy'),
 	START_FAILED: _('Start failed ({step}): {detail}', 'aether-proxy'),

@@ -77,6 +77,10 @@ msgid "Invalid configuration: {field}, {reason}"
 msgstr "配置无效：{field}，{reason}"
 
 msgctxt "aether-proxy"
+msgid "Configuration restored from backup: {path}"
+msgstr "已从备份恢复配置：{path}"
+
+msgctxt "aether-proxy"
 msgid "Precheck failed: {missing}"
 msgstr "预检失败：{missing}"
 

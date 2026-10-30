@@ -68,6 +68,9 @@ before = CONFIG.read_bytes()
 p = call('--mode', 'global', XR_RC='23')
 check('preflight failure returns CONFIG_INVALID and Xray summary', p.returncode == 1
       and json.loads(p.stdout).get('code') == 'CONFIG_INVALID'
+      and json.loads(p.stdout).get('committed') is False
+      and json.loads(p.stdout).get('previous') == IDS[0]
+      and json.loads(p.stdout).get('previous_mode') == 'gfw'
       and 'invalid mldsa65Verify' in json.loads(p.stdout).get('detail', ''))
 check('preflight failure leaves node/mode, state, active and staging artifacts unchanged',
       CONFIG.read_bytes() == before and CALLS.read_text() == ''
