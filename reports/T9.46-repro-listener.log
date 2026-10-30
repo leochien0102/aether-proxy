@@ -1,0 +1,32 @@
+PASS  T9.32 stop-state: early state before validation is starting with dns_tier T1: tier-unset
+PASS  T9.32 stop-state: early state before validation is starting with dns_tier T2: tier-direct
+PASS  T9.32 stop-state: state.json is stopping while cleanup runs, with node_id and mode kept
+PASS  T9.32 stop-state: final state is stopped after a clean exit
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 193, in daemon
+    yield child
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 270, in <module>
+    wait_for(lambda: fixture.state().get('state') == 'stopping', child, timeout=1)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 33, in wait_for
+    raise AssertionError('timed out waiting for lifecycle transition')
+AssertionError: timed out waiting for lifecycle transition
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 252, in <module>
+    with fixture.daemon() as child:
+         ~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 198, in daemon
+    child.wait(timeout=12)
+    ~~~~~~~~~~^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 2076, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/workspace/openwrt/aether-proxy-wt/T9.46/tests/host/prefix/bin/ucode', '-L', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/modules/*.uc', '-S', '/workspace/openwrt/aether-proxy-wt/T9.46/aether-proxy/src/aether-proxy', '--', 'daemon', '--sys-root', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/busy-listener', '--bin-dir', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/bin', '--confdir', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/busy-listener/etc/config', '--data-dir', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/data', '--baseline-dir', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/base', '--custom-dir', '/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/.stop-state-f4yvpb88/custom']' timed out after 12 seconds

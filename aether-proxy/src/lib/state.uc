@@ -7,6 +7,9 @@ import * as C from 'aetherproxy.const';
 import * as sys from 'aetherproxy.sys';
 
 let last_error = null;
+// A process-local stop barrier also covers reloads which finish while pumping uloop.
+// No completion may change any published stopping field before the final stopped write (04).
+let stopping = {};
 
 function fs_err() {
 	return fs.error() ?? 'unknown error';
@@ -52,7 +55,7 @@ function read(run_dir) {
 	return obj;
 }
 
-function write(run_dir, obj) {
+function write_value(run_dir, obj) {
 	if (type(obj) != 'object') {
 		last_error = 'state.write: obj must be an object';
 		return null;
@@ -65,8 +68,20 @@ function write(run_dir, obj) {
 	return result;
 }
 
+function write(run_dir, obj) {
+	if (stopping[run_dir] && obj?.state != 'stopped')
+		return true;
+	return write_value(run_dir, obj);
+}
+
+function hold_stopping(run_dir, obj) {
+	// Latch even on I/O failure: a later completion must not resurrect running.
+	stopping[run_dir] = true;
+	return write_value(run_dir, obj);
+}
+
 function error() {
 	return last_error;
 }
 
-export { read, write, error };
+export { read, write, hold_stopping, error };

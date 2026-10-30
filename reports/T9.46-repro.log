@@ -1,0 +1,11 @@
+PASS  T9.32 stop-state: early state before validation is starting with dns_tier T1: tier-unset
+PASS  T9.32 stop-state: early state before validation is starting with dns_tier T2: tier-direct
+PASS  T9.32 stop-state: state.json is stopping while cleanup runs, with node_id and mode kept
+PASS  T9.32 stop-state: final state is stopped after a clean exit
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 240, in <module>
+    wait_for(lambda: fixture.state().get('state') == 'stopping', child, timeout=1)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T9.46/tests/daemon/stop-state.py", line 33, in wait_for
+    raise AssertionError('timed out waiting for lifecycle transition')
+AssertionError: timed out waiting for lifecycle transition
