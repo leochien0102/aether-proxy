@@ -69,6 +69,21 @@ function first_line(s, max) {
 	return length(line) > max ? substr(line, 0, max) : line;
 }
 
+// Redact URL credentials before formatting either command diagnostics or stderr.
+// Match embedded URLs too (e.g. --url=https://...), and remove fragments as they may
+// carry the same secrets as queries. Execution arguments and captured output stay intact.
+function redact_urls(text) {
+	return replace(text, /[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^[:space:]"'<>]+/g, url => {
+		let clean = split(url, /[?#]/)[0];
+		return replace(clean, /(:\/\/)[^/]*@/, '$1');
+	});
+}
+
+function monotonic_ms() {
+	let now = clock(true);
+	return now == null ? null : now[0] * 1000 + now[1] / 1000000;
+}
+
 // run(argv, opts) -> { code, stdout, stderr }
 // opts.timeout: seconds. opts.quiet: do not log CMD_FAILED. timed_out distinguishes a
 // timeout from a command that independently exits with code 124.
@@ -80,6 +95,7 @@ function run(argv, opts) {
 	opts ??= {};
 
 	let args = map(argv, a => `${a}`);
+	let started = monotonic_ms();
 
 	let timeout = opts.timeout == null ? '-' : `${opts.timeout}`;
 	let res = { code: -1, stdout: '', stderr: '', timed_out: false };
@@ -132,11 +148,18 @@ function run(argv, opts) {
 		}
 	}
 
+	let ended = monotonic_ms();
+	// TODO(design): no clock-failure policy is specified; keep command semantics and
+	// report zero rather than fall back to wall time (which can jump backwards).
+	let ms = started == null || ended == null ? 0 : max(0, ended - started);
+	let cmd = join(' ', map(args, redact_urls));
+	log.event('debug', 'CMD_RUN', { cmd, rc: res.code, ms });
+
 	if (res.code != 0 && !opts.quiet) {
 		let args = {
-			cmd: join(' ', argv),
+			cmd,
 			rc: res.code,
-			stderr: first_line(res.stderr, 200)
+			stderr: first_line(redact_urls(res.stderr), 200)
 		};
 
 		if (res.timed_out)
