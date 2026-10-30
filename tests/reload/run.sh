@@ -408,7 +408,7 @@ wait_field components.xray.version 26.10.10 \
 	&& ok 'T9.5 changed executable path refreshes Xray version on applied reload' \
 	|| bad 'T9.5 changed executable path refreshes Xray version on applied reload'
 expect 'T9.5 new executable version queried exactly once' 1 "$(count_calls "$LOG" 'xray-alt version')"
-expect 'T9.5 changed Xray path preserves ChinaDNS version' 2025.06.20 \
+expect 'T9.5 changed Xray path preserves ChinaDNS version' 2025.08.09 \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.version \
 	< "$SYSROOT/var/run/aether-proxy/state.json")"
 
