@@ -11,7 +11,7 @@
 //   enum      allowed values (type enum)
 //   min, max  inclusive bounds (type int)
 //   item      list element type: ipv4 | ip_or_cidr | ip_or_range | mac | upstream | china_dns | trust_dns
-//             | hostport | url | string
+//             | hostport | url | ifname | string
 //   min_items, max_items   list length bounds
 //   required  unset is an error: true, or (node only) a list of the protocols for which it is
 //             required; with `protocols` set, true means "for those protocols"
@@ -60,7 +60,7 @@ const main = [
 	{ name: 'enabled', type: 'bool', default: false },
 	{ name: 'mode', type: 'enum', enum: [ 'gfw', 'bypass_cn', 'global' ], default: 'bypass_cn' },
 	{ name: 'node', type: 'string', default: null },
-	{ name: 'lan_ifaces', type: 'list', item: 'string', min_items: 1, default: [ 'br-lan' ] },
+	{ name: 'lan_ifaces', type: 'list', item: 'ifname', min_items: 1, default: [ 'br-lan' ] },
 	{ name: 'unlisted_policy', type: 'enum', enum: [ 'follow', 'direct' ], default: 'follow' },
 	{ name: 'quic_block', type: 'bool', default: true },
 	{ name: 'dns_hijack', type: 'bool', default: true },

@@ -105,8 +105,30 @@ function nonempty(s) {
 	return length(s) ? s : null;
 }
 
+// Shared with the nft boundary so even an unvalidated snapshot cannot emit broken tokens.
+export function ifname_error(s) {
+	// ucode length() counts bytes, matching IFNAMSIZ rather than Unicode characters.
+	if (type(s) != 'string' || length(s) < 1 || length(s) >= C.IFNAMSIZ)
+		return 'interface name must be 1-15 bytes';
+
+	// nft 1.1.6 scanner.l copies quoted contents literally: neither quotes nor control
+	// bytes can be encoded with C-style escapes. Backslashes must remain unchanged.
+	if (index(s, '"') >= 0)
+		return 'nft quoted strings cannot represent double quotes';
+	for (let i = 0; i < length(s); i++) {
+		let byte = ord(s, i);
+		if (byte < 32 || byte == 127)
+			return 'nft interface strings cannot contain control bytes';
+	}
+	return null;
+};
+
+function ifname(s) {
+	return ifname_error(s) == null ? s : null;
+}
+
 const ITEM_CHECK = {
-	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, string: nonempty
+	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, ifname, string: nonempty
 };
 
 const SCALAR_CHECK = {
@@ -117,7 +139,7 @@ const INVALID_CODE = {
 	// Preserve the existing trust_dns error subcode; the enclosing event remains CONFIG_INVALID.
 	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream',
 	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', ip_or_range: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
-	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value',
+	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value', ifname: 'invalid_value',
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'
 };
 
@@ -164,7 +186,9 @@ function normalize_field(f, raw, field, proto, errors) {
 	if (f.type == 'list') {
 		let items = (v == null) ? [] : (type(v) == 'array' ? v : [ v ]);
 
-		if (!length(items)) {
+		// lan_ifaces distinguishes unset/null (default) from [] (min_items).
+		// Preserve the existing empty-list default behavior of unrelated item types.
+		if (v == null || (!length(items) && f.item != 'ifname')) {
 			if (is_required(f, proto))
 				push(errors, { field, code: 'required', detail: `${f.name} is required` });
 
@@ -177,7 +201,8 @@ function normalize_field(f, raw, field, proto, errors) {
 			let n = ITEM_CHECK[f.item](item);
 
 			if (n == null) {
-				push(errors, { field, code: INVALID_CODE[f.item], detail: `item ${i}: "${item}" is not valid` });
+				let reason = f.item == 'ifname' ? ifname_error(item) : `"${item}" is not valid`;
+				push(errors, { field, code: INVALID_CODE[f.item], detail: `item ${i}: ${reason}` });
 				continue;
 			}
 

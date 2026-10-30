@@ -6,6 +6,7 @@
 
 import * as C from 'aetherproxy.const';
 import { ip_key, cidr_parts, range_parts } from 'aetherproxy.net';
+import { ifname_error } from 'aetherproxy.config';
 
 const T = '\t';
 
@@ -97,8 +98,18 @@ function set_block(name, type, flags, list, comment) {
 	return comment ? line + '  # ' + comment : line;
 };
 
+// nft quoted strings are literal, not C strings: doubling backslashes changes the name.
+// Config rejects quotes/control bytes; defend callers bypassing config as well. Pipeline
+// catches this failure rather than publishing a malformed artifact. No live lookup belongs here.
+function quote_string(value) {
+	let reason = ifname_error(value);
+	if (reason != null)
+		die('invalid nft interface string: ' + reason);
+	return '"' + value + '"';
+};
+
 function quote_list(list) {
-	return join(', ', map(list, x => '"' + x + '"'));
+	return join(', ', map(list, quote_string));
 };
 
 // Default and device modes share every destination rule, including user proxy exceptions.
