@@ -254,17 +254,31 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 权限：LuCI 管理本应用等同 root（组件路径以 root 执行）。若将来有非 root 的 LuCI 用户，再考虑拆分普通配置与组件路径/特权操作，或把可选二进制限制在已安装组件目录。
 - 防重放：清单可被回放（装不回旧包，但规则数据可回到旧版）。可选：单调发布序号或已见最低数据版本；有效期需配合时钟与离线恢复。要区分普通更新、`--previous` 与自动回退，不能阻断受支持的恢复路径。
 
-## B23 支持 Xray 的新协议（AnyTLS / Naive / SSR / TUIC / Snell …）（2026-10-30，待设计）
+## B23 支持 Xray 上游的新协议（Hysteria / WireGuard / SOCKS / HTTP …）（2026-10-30 改，待设计）
 
-- 状态：**待设计**。等当前在执行的任务（G 组，含 T9.43/G6a）完成后再开卡（仓库所有者定，2026-10-30）。`CONFIG_XRAY_CORE_NAIVE` 这次不改，留到本条设计/开工时再定（2026-10-30 仓库所有者定）；当前不写这行时 Kconfig 默认是 `y`，固件会带 naive 出站。
-- 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型只认 vless/vmess/trojan/shadowsocks，但固件的 Xray 早已不止这些；新版本 Xray 有的协议，该支持的还得支持。
+- 状态：**待设计**。等当前 G 组与 `aether-xray` 拆分完成后再开卡（仓库所有者定，2026-10-30）。
+- **2026-10-30 决定（取代初版）**：aether-proxy 跟 **XTLS/Xray 上游**，`aether-xray` 不带补丁，节点模型也只做上游协议。
+  AnyTLS、Naive、ShadowsocksR、TUIC、Snell、ShadowTLS、KCPTun 这些只在 `feeds/packages` 的补丁里，继续由 **feeds + ssr-plus 的 `/usr/bin/xray`** 提供，不进 aether-proxy 的节点模型。
+- 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型目前只有 vless/vmess/trojan/shadowsocks；上游 Xray 还有 Hysteria、WireGuard、SOCKS/HTTP 出站等，按稳定迭代期逐步补。
 - 现状（2026-10-30 核实）：
-  - 固件的 Xray 来自 feeds 的 packages 那份（openwrt-actions 的 `install_feeds` 由 `install -a` 装）。它的 `net/xray-core/patches/` 在 26.10.21 上依次打 100–190，编出来的二进制含 **AnyTLS、Naive、ShadowsocksR、TUIC、Snell** 五个出站，以及 **ShadowTLS、KCPTun** 两个传输。
-  - 其中只有 Naive 出站要 `CONFIG_XRAY_CORE_NAIVE=y`（`with_naive_outbound`；`with_musl` 选静态库），其余没有构建开关、默认就在固件里。AnyTLS 与 Naive 的 JSON 都是扁平写法（`address`/`port`/`password`…），沿用 `streamSettings`，与现有四种协议同一套模型。
-  - aether-proxy 侧的缺口：[05](05-config.md) 的 `protocol` 枚举与字段表、`schema.uc`、`config.uc` 的协议校验、`render/outbound.uc` 的 settings 分支、`uri.uc` 的 scheme 分派（目前 vmess/ss/vless/trojan，其余 `unsupported_scheme`）、LuCI 的 `PROTOCOL_NAMES`、golden fixtures。
+  - 固件的 xray 来自 feeds/packages，带 10 个补丁（协议与传输）；通道的 xray 是上游原样。
+  - 上游 26.9.30 与 26.10.21 的 `proxy/` 都没有 anytls/naive/tuic/ssr/snell，`transport/internet` 也没有 shadowtls/kcptun；补丁只存在于 packages。
+  - aether-proxy 侧的缺口：`docs/05` 的 `protocol` 枚举与字段表、`schema.uc`、`config.uc` 的协议校验、`render/outbound.uc` 的 settings 分支、`uri.uc` 的 scheme 分派、LuCI 的 `PROTOCOL_NAMES`、golden fixtures。
 - 关键约束（设计时不能忽略）：
-  1. **固件与通道的 Xray 不是同一份**：设备上的 xray-core 由 aether-proxy 的发布通道更新（[08](08-updates.md)），那份 Makefile 编的是**未打补丁**的上游源码，没有 anytls/naive 等协议。aether-proxy 一旦渲染新协议，设备上若装的是通道版 xray，`xray run -test` 会拒绝、reload 不生效。要么发布通道的 xray 带上同一套补丁，要么渲染前按已装二进制的协议支持（版本/能力）拦住并给出明确提示；两者多半都要。
-  2. 协议知识现在散在七处，加一个协议要全改，漏一处就是「能选但编不过」或「订阅里被丢掉」。建议先收敛成一张协议表（每协议一个模块：settings 构造、适用字段、URI scheme、最低 Xray 版本），schema/render/uri/LuCI 都从表里取。
-  3. CI 的 `XRAY_MIN_VERSION` / `XRAY_LATEST_TESTED` 是全局的；新协议要按协议标最低版本，golden fixture 用真实二进制 `run -test` 验证。
-- 首批候选：**AnyTLS**（机场里最常见，扁平配置，不需要构建开关）；**Naive** 随后（要开 `CONFIG_XRAY_CORE_NAIVE`，并先解决通道的 xray）。SSR/TUIC/Snell 看需求再排。
-- 不在本条：分流（[B1](#b1-自定义分流固定节点按服务分流)/[B20](#b20-分流判定交给-xraygeosite--geoip--多出口合并-b1b18-与补漏2026-10-27待调研)）。
+  1. **两份 xray 二进制分开**：`aether-xray` 装 `/usr/bin/aether-xray`，`/usr/bin/xray` 留给 feeds/ssr-plus；aether-proxy 的通道包名改为 `aether-xray`，不再发布 `xray-core`，避免包名/文件冲突。
+  2. aether-proxy 的查找顺序：显式 `main.xray_bin` → `/usr/bin/aether-xray` → `/usr/bin/xray`（回退）；`components`/`status` 显示实际路径；版本闸门按实际二进制。
+  3. 上游协议按最低版本/CI 逐协议标；golden 用真实 `run -test`。当前 `XRAY_LATEST_TESTED` 为 26.10.21。
+  4. 通道的 `aether-xray` 跟踪上游 tag，不带补丁；ssr-plus 继续按自己的节奏更新 `/usr/bin/xray`。
+- 首批候选：**Hysteria**、**WireGuard**、**SOCKS/HTTP**（按需求与上游稳定性排）；补丁协议不在本条。
+- 不在本条：分流（B1/B20）；`aether-xray` 的包名/路径/更新页迁移见 B24。
+
+## B24 `aether-xray` 独立二进制与包名（2026-10-30，待设计）
+
+- 状态：**待设计**。与 B23 配套，先于新协议模型落地。
+- 目标：aether-proxy 通道发布 **`aether-xray`**（纯上游、无补丁），二进制装 `/usr/bin/aether-xray`；feeds/packages 与 ssr-plus 继续用 `/usr/bin/xray`，互不覆盖。
+- 涉及：
+  1. `aether-proxy-channel`：`xray-core/Makefile` → `aether-xray` 包名/`/usr/bin/aether-xray` 安装路径；`AETHER_PROXY_REF`/`build.py`/清单的包键与资产名；移除 `xray-core` 发布，保留旧资产清理策略。
+  2. `aether-proxy`：`find_component` 查找顺序、`main.xray_bin`、`components`/`status`、`update` 的 `UPDATE_PACKAGES`/`--previous`/安装校验/回滚、更新页文案与行、docs/08 通道说明。
+  3. 迁移：老设备上可能仍有通道版 `xray-core`；新包不自动删 feeds 的 `xray-core`，需一次性提示/文档；`aether-proxy` 优先 `aether-xray`，没有则回退 `/usr/bin/xray`。
+  4. 测试：两包共存、只有 `aether-xray`、只有 `xray`、显式 `xray_bin`、更新/回滚、`components` 路径、版本闸门、页面文案；`tests/compat` 的冻结旧客户端需跟着更新更新接口。
+- 验收：设备上 `/usr/bin/xray` 仍是 feeds/ssr-plus 的版本；`/usr/bin/aether-xray` 由 aether-proxy 通道管理；升级 aether-xray 不改变 `/usr/bin/xray`。
