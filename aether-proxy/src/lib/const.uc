@@ -298,3 +298,12 @@ export const UPDATE_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-aether-pr
 export const NODE_USE_DIR_PREFIX = 'node-use.';
 export const NODE_USE_TEST_TIMEOUT_SECS = 5;
 export const NODE_USE_ERROR_BYTES = 2048;
+
+// T9.43 revision: volatile, content-addressed copies used only by daemon applies.
+export const APPLIED_SUBDIR = 'applied';
+export const APPLIED_CANDIDATE = '.candidate';
+export const APPLIED_MANIFEST = 'sources.json';
+export const APPLIED_FILES = {
+	gfwlist: 'gfwlist.txt', chnlist: 'chnlist.txt', apple: 'apple.txt',
+	proxy_domain: 'proxy_domain.txt', direct_domain: 'direct_domain.txt', boot_list: BOOT_LIST_FILE
+};

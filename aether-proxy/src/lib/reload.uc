@@ -1,5 +1,6 @@
 'use strict';
-// Stage and validate fresh artifacts, plan incremental changes and roll back failed actions.
+// Stage and validate artifacts, plan incremental changes and roll back failed actions.
+// User reloads read fresh inputs; monitor runtime changes reuse the complete applied context.
 // Design: docs/04「重载（`aether-proxy reload`，UCI 变更触发）」.
 
 import * as fs from 'fs';
@@ -341,17 +342,37 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	return { ok: true, state: updated };
 };
 
-function run(daemon, started_ms) {
+// The no-op plans are successful applies too: warnings, paths and WAN observations
+// may have changed without changing bytes. Never publish a candidate on a failure path.
+function applied_result(daemon, loaded, actions) {
+	daemon.snapshot = loaded.snapshot;
+	daemon.applied_context = loaded;
+	daemon.ctx.lan_ifaces = loaded.snapshot.main.lan_ifaces ?? [];
+	daemon.ctx.dnsmasq_instance = loaded.snapshot.dns?.dnsmasq_instance ?? null;
+	return { ok: true, actions, snapshot: daemon.snapshot, applied_context: loaded, state: daemon.state };
+};
+
+function run_candidate(daemon, started_ms, transaction) {
 	started_ms ??= monotonic_ms();
 	let step_started = monotonic_ms();
 	let detail = {};
 	let steps = { config_render: 0, resolve_node: 0, validate: 0, sets_export_render: 0, actions: 0, detail };
 	setup_log(daemon);
 	let detail_started = monotonic_ms();
-	let loaded = pipeline.read(daemon.opts);
+	// Monitor degradation/restoration uses the full transaction machinery, but only
+	// changes runtime. A user reload is the sole entry allowed to read new inputs.
+	let loaded = daemon.degradation_request != null ? daemon.applied_context : pipeline.read(daemon.opts);
+	if (loaded == null)
+		return failure(daemon, 'context', 'missing applied render context');
 	record_detail(detail, 'read', detail_started);
 	if (!loaded.ok)
 		return config_failure(daemon, loaded);
+	if (daemon.degradation_request == null) {
+		loaded = pipeline.freeze(loaded, daemon.ctx, daemon.applied_context);
+		if (!loaded.ok)
+			return config_failure(daemon, loaded);
+		transaction.loaded = loaded;
+	}
 	let snapshot = loaded.snapshot;
 	steps.config_render = elapsed_ms(step_started);
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
@@ -430,7 +451,7 @@ function run(daemon, started_ms) {
 		let retained = retain_metadata(daemon, validated.components, loaded.wan_dns, metadata);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
-		return { ok: true, actions: [], snapshot, state: daemon.state };
+		return applied_result(daemon, loaded, []);
 	}
 	let hashes = rough_hashes.hashes;
 	let actions = rough_plan;
@@ -510,9 +531,7 @@ function run(daemon, started_ms) {
 		let retained = retain_metadata(daemon, components, loaded.wan_dns, metadata);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
-		daemon.ctx.lan_ifaces = snapshot.main.lan_ifaces ?? [];
-		daemon.snapshot = snapshot;
-		return { ok: true, actions: [], snapshot, state: daemon.state };
+		return applied_result(daemon, loaded, []);
 	}
 	let old_state = daemon.state;
 	let old_instance = daemon.ctx.dnsmasq_instance;
@@ -527,7 +546,6 @@ function run(daemon, started_ms) {
 		return failure(daemon, 'actions', applied.detail);
 	}
 	steps.actions = elapsed_ms(step_started);
-	daemon.snapshot = snapshot;
 	log.event(null, 'RELOAD_APPLIED', {
 		from_node: old_state.node_id,
 		to_node: snapshot.main.node,
@@ -535,7 +553,19 @@ function run(daemon, started_ms) {
 		elapsed_ms: elapsed_ms(started_ms),
 		steps
 	});
-	return { ok: true, actions, snapshot, state: applied.state };
+	return applied_result(daemon, loaded, actions);
+};
+
+// One cleanup boundary covers every early return, including rendering, validation and
+// rollback failures. A reused current generation is never treated as a disposable candidate.
+function run(daemon, started_ms) {
+	let previous = daemon.applied_context, transaction = {};
+	let result = run_candidate(daemon, started_ms, transaction);
+	if (!result.ok || result.stop)
+		pipeline.discard_frozen(transaction.loaded, previous);
+	else
+		pipeline.prune_frozen(daemon.ctx, result.applied_context);
+	return result;
 };
 
 // Both user and monitor reloads compare installed outputs. The caller owns busy and,

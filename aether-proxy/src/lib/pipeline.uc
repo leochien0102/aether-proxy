@@ -2,8 +2,10 @@
 
 // Shared configuration/data reading and deterministic rendering (docs/04 "启动" and "重载").
 // Reload reuses one read result with different runtimes; check/render and daemon startup
-// retain the combined build() API.
+// retain the combined build() API. Daemon applies freeze child-process list inputs by
+// generation (docs/tasks/m9 T9.43 revision); rendering itself remains pure.
 
+import * as fs from 'fs';
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
@@ -148,6 +150,149 @@ export function read(opts) {
 	let wan_dns = index(cfg.snapshot.dns.china_dns, 'wan') >= 0 ? read_wan_dns(opts) : null;
 	cfg.snapshot.dns.china_dns = config.expand_china_dns(cfg.snapshot.dns.china_dns, wan_dns);
 	return { ok: true, snapshot: cfg.snapshot, wan_dns, data: d.data, paths, warnings };
+};
+
+// Only application paths call these helpers. CLI read/build/render keep source paths.
+function frozen_error(detail) {
+	return { ok: false, exit: 1, code: 'RENDER_INVALID', detail, errors: [] };
+};
+
+function remove_generation(path) {
+	let removed = sys.run([ 'rm', '-rf', path ], { timeout: 10 });
+	return removed.code == 0;
+};
+
+function applied_dir(ctx) {
+	return replace(ctx.root ?? '', /\/$/, '') + (ctx.run_dir ?? C.RUN_DIR) + '/' + C.APPLIED_SUBDIR;
+};
+
+// Tests may pass real data paths together with a simulated system root, like apply's hashing.
+function source_file(ctx, path) {
+	if (path == null)
+		return { ok: true, source: null, content: '' };
+	let rooted = (ctx.root ?? '') + path;
+	let actual = ctx.root && fs.stat(rooted) != null ? rooted : path;
+	let content = fs.readfile(actual), read_error = fs.error() ?? 'unknown error';
+	if (content != null)
+		return { ok: true, source: path, content };
+	let st = fs.stat(actual), stat_error = fs.error() ?? 'unknown error';
+	if (st == null && stat_error == 'No such file or directory')
+		return { ok: true, source: path, content: '' };
+	return frozen_error(`cannot freeze ${actual}: ${read_error}`);
+};
+
+function file_hashes(paths) {
+	let result = sys.run([ 'sha256sum', ...paths ], { timeout: 10 });
+	if (result.code != 0)
+		return frozen_error(`sha256sum failed (${result.code}): ${result.stderr}`);
+	let hashes = [];
+	for (let line in split(trim(result.stdout), '\n')) {
+		let m = match(line, /^([0-9a-fA-F]{64})[[:space:]]/);
+		if (m == null)
+			return frozen_error('cannot parse frozen file hash');
+		push(hashes, lc(m[1]));
+	}
+	return length(hashes) == length(paths) ? { ok: true, hashes } : frozen_error('missing frozen file hash');
+};
+
+function publish_generation(loaded, ctx, files, current) {
+	let parent = applied_dir(ctx), stage = `${parent}/${C.APPLIED_CANDIDATE}`;
+	if (!sys.mkdir_p(parent) || !remove_generation(stage))
+		return frozen_error(`cannot prepare ${stage}: ${sys.error() ?? 'cleanup failed'}`);
+	if (!fs.mkdir(stage, 0700))
+		return frozen_error(`cannot create ${stage}: ${fs.error() ?? 'unknown error'}`);
+	let paths = [], sources = {};
+	for (let key, file in C.APPLIED_FILES) {
+		push(paths, `${stage}/${file}`);
+		sources[key] = files[key].source;
+		if (!sys.write_atomic(`${stage}/${file}`, files[key].content)) {
+			remove_generation(stage);
+			return frozen_error(`cannot write frozen ${key}: ${sys.error()}`);
+		}
+	}
+	let hashed = file_hashes(paths), manifest = [];
+	if (hashed.ok) {
+		let i = 0;
+		for (let key in C.APPLIED_FILES)
+			push(manifest, { key, source: sources[key], hash: hashed.hashes[i++] });
+		if (!sys.write_atomic(`${stage}/${C.APPLIED_MANIFEST}`, sprintf('%.J\n', manifest)))
+			hashed = frozen_error(`cannot write frozen manifest: ${sys.error()}`);
+		else
+			hashed = file_hashes([ `${stage}/${C.APPLIED_MANIFEST}` ]);
+	}
+	if (!hashed.ok) {
+		remove_generation(stage);
+		return hashed;
+	}
+	let generation_dir = `${parent}/${hashed.hashes[0]}`;
+	// Never overwrite the active generation, even if its files were externally damaged.
+	if (generation_dir == current?.generation_dir) {
+		remove_generation(stage);
+		return frozen_error('active frozen generation does not match its content identity');
+	}
+	if (!remove_generation(generation_dir) || !fs.rename(stage, generation_dir)) {
+		let error = fs.error() ?? 'generation cleanup failed';
+		remove_generation(stage);
+		return frozen_error(`cannot publish ${generation_dir}: ${error}`);
+	}
+	let frozen_paths = {};
+	for (let key, file in C.APPLIED_FILES)
+		frozen_paths[key] = `${generation_dir}/${file}`;
+	return { ...loaded, paths: frozen_paths, source_paths: sources, generation_dir };
+};
+
+// Capture bytes before hashing/copying: source replacement cannot change an already captured
+// candidate. Reuse reads the current immutable files but never rewrites them or creates a copy.
+export function freeze(loaded, ctx, current) {
+	if (!loaded.ok)
+		return loaded;
+	let files = {}, reuse = current?.generation_dir != null;
+	for (let key in C.APPLIED_FILES) {
+		let file = source_file(ctx, loaded.paths?.[key]);
+		if (!file.ok)
+			return file;
+		files[key] = file;
+		if (!reuse)
+			continue;
+		if (current.source_paths[key] != file.source || fs.readfile(current.paths[key]) != file.content)
+			reuse = false;
+	}
+	if (reuse)
+		return { ...loaded, paths: current.paths, source_paths: current.source_paths,
+			generation_dir: current.generation_dir };
+	return publish_generation(loaded, ctx, files, current);
+};
+
+export function discard_frozen(loaded, current) {
+	if (loaded?.generation_dir == null || loaded.generation_dir == current?.generation_dir)
+		return true;
+	return remove_generation(loaded.generation_dir);
+};
+
+// Cleanup is after the successful switch (or after startup rollback), never before actions.
+// TODO(design): if post-commit cleanup fails, keep the working generation and log the error;
+// retry cleanup on the next successful apply rather than undo an already committed service.
+export function prune_frozen(ctx, current) {
+	let parent = applied_dir(ctx);
+	if (fs.stat(parent) == null) {
+		let error = fs.error() ?? 'unknown error';
+		if (error == 'No such file or directory')
+			return true;
+		log.event('error', 'FS_FAILED', { op: 'stat', path: parent, detail: error });
+		return false;
+	}
+	let entries = fs.lsdir(parent);
+	if (entries == null) {
+		log.event('error', 'FS_FAILED', { op: 'lsdir', path: parent, detail: fs.error() ?? 'unknown error' });
+		return false;
+	}
+	let ok = true;
+	for (let entry in entries) {
+		let path = `${parent}/${entry}`;
+		if (path != current?.generation_dir && !remove_generation(path))
+			ok = false;
+	}
+	return ok;
 };
 
 // No file reads or warning events here. A fresh context leaves the read result reusable

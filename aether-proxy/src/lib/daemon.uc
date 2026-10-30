@@ -523,15 +523,31 @@ function start_sequence(ctx, opts, signal_pending) {
 	// docs/03: do not send direct foreign queries unless the user opted into T2.
 	let initial_tier = snapshot.dns.direct_dns_enabled ? 'T2' : 'T1';
 	let initial_runtime = { node_ip: null, dns_tier: initial_tier, restored: {} };
-	let initial = pipeline.build({ ...opts, runtime: initial_runtime });
+	// Refresh after boot waiting, as before, then pin all published artifacts to this
+	// read. Later node resolution and set restoration must not mix another generation.
+	let applied_context = pipeline.read(opts);
+	if (applied_context.ok) {
+		// Boot domains must exist in the same frozen generation before chinadns starts.
+		let domains = [];
+		for (let id, node in applied_context.snapshot.nodes)
+			if (node.address && net.ipv4(node.address) == null)
+				push(domains, node.address);
+		let boot_started = monotonic_ms();
+		let boot_list = apply.write_boot_list(ctx, domains);
+		record_step(ctx, 'write_boot_list', boot_started);
+		if (!boot_list.ok) {
+			locked.close();
+			return { ok: false, code: 1, step: 'write_boot_list', detail: boot_list.detail };
+		}
+		applied_context = pipeline.freeze(applied_context, ctx, null);
+	}
+	let initial = pipeline.render(applied_context, initial_runtime);
 	if (!initial.ok) {
 		record_step(ctx, 'render_validate', step_started);
 		locked.close();
 		return { ok: false, code: initial.exit ?? 1, step: 'render', detail: initial.detail };
 	}
-	// This is the snapshot whose chinadns output is actually published. Later builds
-	// only replace Xray/nft, so monitor and state must keep this WAN DNS observation.
-	snapshot = initial.snapshot;
+	snapshot = applied_context.snapshot;
 	let prepared = ensure_clean_dir(ctx, staging);
 	if (!prepared.ok) {
 		record_step(ctx, 'render_validate', step_started);
@@ -598,17 +614,6 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
 	}
 
-	let domains = [];
-	for (let id, node in snapshot.nodes)
-		if (node.address && net.ipv4(node.address) == null)
-			push(domains, node.address);
-	step_started = monotonic_ms();
-	let boot_list = apply.write_boot_list(ctx, domains);
-	record_step(ctx, 'write_boot_list', step_started);
-	if (!boot_list.ok) {
-		locked.close();
-		return { ok: false, code: 1, step: 'write_boot_list', detail: boot_list.detail, children };
-	}
 	let node_id = snapshot.main.node;
 	let address = snapshot.nodes?.[node_id]?.address;
 	step_started = monotonic_ms();
@@ -620,7 +625,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	if (!degraded) {
 		step_started = monotonic_ms();
 		let runtime = { node_ip, dns_tier: initial_tier, restored: {} };
-		let resolved = pipeline.build({ ...opts, runtime });
+		let resolved = pipeline.render(applied_context, runtime, 'xray');
 		if (!resolved.ok) {
 			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
@@ -669,8 +674,8 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'sets_load', detail: saved_sets.detail, children };
 		}
-		let dataplane = pipeline.build({ ...opts,
-			runtime: { node_ip, dns_tier: initial_tier, restored: saved_sets.sets } });
+		let dataplane = pipeline.render(applied_context,
+			{ node_ip, dns_tier: initial_tier, restored: saved_sets.sets }, 'nft');
 		if (!dataplane.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
@@ -736,7 +741,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'lock_release', detail, children };
 	}
 	locked.close();
-	return { ok: true, children, state: initial_state, snapshot };
+	return { ok: true, children, state: initial_state, snapshot, applied_context };
 };
 
 function stop_children(ctx, children) {
@@ -1112,7 +1117,7 @@ function run(args) {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
 		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children,
-			state: result.state, reload: reload.run_live });
+			applied_context: result.applied_context, state: result.state, reload: reload.run_live });
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
@@ -1179,8 +1184,8 @@ function run(args) {
 				// Reload pumps uloop while stopping/starting children. Timer callbacks must
 				// not sample the intentional listener gap or mutate current/ mid-transaction.
 				monitor_daemon.busy = true;
-				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot, state: base, children },
-					started_ms);
+				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot,
+					applied_context: monitor_daemon.applied_context, state: base, children }, started_ms);
 				monitor_daemon.busy = false;
 				if (changed.stop) {
 					stopping = true;
@@ -1194,10 +1199,12 @@ function run(args) {
 				}
 				if (changed.ok) {
 					result.snapshot = changed.snapshot;
+					result.applied_context = changed.applied_context;
 					result.state = changed.state;
 					ctx.service_mode = result.snapshot.main.mode;
 					ctx.service_node = result.snapshot.main.node;
 					monitor_daemon.snapshot = changed.snapshot;
+					monitor_daemon.applied_context = changed.applied_context;
 					monitor_daemon.state = changed.state;
 					monitor_daemon.machine.node_ip = changed.state.node_ip;
 					monitor_daemon.machine.degraded_mode = changed.state.degraded_mode;
@@ -1233,6 +1240,8 @@ function run(args) {
 			if (length(rollback))
 				result.detail += `; rollback: ${join('; ', rollback)}`;
 		}
+		// Only after stopping any partially started children can their candidate be removed.
+		pipeline.prune_frozen(ctx, null);
 		let configuration_error = result.step == 'config';
 		let saved = write_state(ctx, {
 			state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
@@ -1277,6 +1286,7 @@ function run(args) {
 		let result = start_sequence(ctx, opts, on_signal);
 		let children = result.children ?? { xray: null, dns: null };
 		if (result.ok) {
+			pipeline.prune_frozen(ctx, result.applied_context);
 			retry_index = 0;
 			retry_attempt = 0;
 			run_monitor(result, children);
@@ -1289,6 +1299,7 @@ function run(args) {
 		}
 		if (result.interrupted && signal == 'stop') {
 			let errors = shutdown(ctx, children, true);
+			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
 			exit_code = 0;
 			finished = true;
@@ -1296,6 +1307,7 @@ function run(args) {
 		}
 		if (signal == 'stop') {
 			let errors = shutdown(ctx, children, true);
+			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
 			exit_code = 0;
 			finished = true;

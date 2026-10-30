@@ -162,7 +162,11 @@ function runtime_for(daemon, tier, node_ip, restored) {
 };
 
 function render(daemon, runtime) {
-	return pipeline.build({ ...daemon.opts, runtime });
+	// Recovery is not a config apply: disk may already contain an unvalidated next generation.
+	// Keep data, paths and the WAN observation paired with the running snapshot.
+	if (daemon.applied_context == null)
+		return { ok: false, detail: 'missing applied render context' };
+	return pipeline.render(daemon.applied_context, runtime);
 };
 
 function load_restored_sets(daemon) {
@@ -296,6 +300,7 @@ function run_action(daemon, machine, name, done) {
 		}
 		daemon.state = changed.state;
 		daemon.snapshot = changed.snapshot;
+		daemon.applied_context = changed.applied_context;
 		machine.node_ip = changed.state.node_ip;
 		machine.degraded_mode = changed.state.degraded_mode;
 		machine.degraded_since = changed.state.degraded_since;
