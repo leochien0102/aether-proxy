@@ -97,4 +97,5 @@ for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked;
 	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1
 done
 python3 "$ROOT/tests/monitor/degrade.py" || status=1
+python3 "$ROOT/tests/monitor/applied-context.py" || status=1
 exit "$status"

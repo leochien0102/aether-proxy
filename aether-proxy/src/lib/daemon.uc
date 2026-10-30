@@ -523,15 +523,16 @@ function start_sequence(ctx, opts, signal_pending) {
 	// docs/03: do not send direct foreign queries unless the user opted into T2.
 	let initial_tier = snapshot.dns.direct_dns_enabled ? 'T2' : 'T1';
 	let initial_runtime = { node_ip: null, dns_tier: initial_tier, restored: {} };
-	let initial = pipeline.build({ ...opts, runtime: initial_runtime });
+	// Refresh after boot waiting, as before, then pin all published artifacts to this
+	// read. Later node resolution and set restoration must not mix another generation.
+	let applied_context = pipeline.read(opts);
+	let initial = pipeline.render(applied_context, initial_runtime);
 	if (!initial.ok) {
 		record_step(ctx, 'render_validate', step_started);
 		locked.close();
 		return { ok: false, code: initial.exit ?? 1, step: 'render', detail: initial.detail };
 	}
-	// This is the snapshot whose chinadns output is actually published. Later builds
-	// only replace Xray/nft, so monitor and state must keep this WAN DNS observation.
-	snapshot = initial.snapshot;
+	snapshot = applied_context.snapshot;
 	let prepared = ensure_clean_dir(ctx, staging);
 	if (!prepared.ok) {
 		record_step(ctx, 'render_validate', step_started);
@@ -620,7 +621,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	if (!degraded) {
 		step_started = monotonic_ms();
 		let runtime = { node_ip, dns_tier: initial_tier, restored: {} };
-		let resolved = pipeline.build({ ...opts, runtime });
+		let resolved = pipeline.render(applied_context, runtime, 'xray');
 		if (!resolved.ok) {
 			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
@@ -669,8 +670,8 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'sets_load', detail: saved_sets.detail, children };
 		}
-		let dataplane = pipeline.build({ ...opts,
-			runtime: { node_ip, dns_tier: initial_tier, restored: saved_sets.sets } });
+		let dataplane = pipeline.render(applied_context,
+			{ node_ip, dns_tier: initial_tier, restored: saved_sets.sets }, 'nft');
 		if (!dataplane.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);
 			locked.close();
@@ -736,7 +737,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'lock_release', detail, children };
 	}
 	locked.close();
-	return { ok: true, children, state: initial_state, snapshot };
+	return { ok: true, children, state: initial_state, snapshot, applied_context };
 };
 
 function stop_children(ctx, children) {
@@ -1112,7 +1113,7 @@ function run(args) {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
 		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children,
-			state: result.state, reload: reload.run_live });
+			applied_context: result.applied_context, state: result.state, reload: reload.run_live });
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
@@ -1194,10 +1195,12 @@ function run(args) {
 				}
 				if (changed.ok) {
 					result.snapshot = changed.snapshot;
+					result.applied_context = changed.applied_context;
 					result.state = changed.state;
 					ctx.service_mode = result.snapshot.main.mode;
 					ctx.service_node = result.snapshot.main.node;
 					monitor_daemon.snapshot = changed.snapshot;
+					monitor_daemon.applied_context = changed.applied_context;
 					monitor_daemon.state = changed.state;
 					monitor_daemon.machine.node_ip = changed.state.node_ip;
 					monitor_daemon.machine.degraded_mode = changed.state.degraded_mode;

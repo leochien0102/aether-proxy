@@ -28,12 +28,13 @@ function state_write(ctx, value) {
 function settings(root, confdir, data_dir, baseline_dir, custom_dir, bin_dir) {
 	let opts = { sys_root: root, confdir, data_dir, baseline_dir, custom_dir, bin_dir, run_dir: C.RUN_DIR };
 	let ctx = { root, bin_dir, run_dir: C.RUN_DIR, state_dir: C.STATE_DIR, lan_ifaces: [ 'br-lan' ] };
-	let cfg = config.load(uci.cursor(confdir, root + '/uci-savedir'));
-	if (!cfg.ok)
-		return { error: `config invalid: ${sprintf('%.J', cfg.errors)}` };
+	let applied_context = pipeline.read(opts);
+	if (!applied_context.ok)
+		return { error: `pipeline failed: ${applied_context.detail}` };
 	// Legacy scenarios isolate DNS/failsafe actions; T9.40's real-daemon suite covers degradation.
-	cfg.snapshot.main.degrade_gfw = false;
-	let built = pipeline.build({ ...opts, runtime: { node_ip: '203.0.113.20', dns_tier: 'T2', restored: {} } });
+	applied_context.snapshot.main.degrade_gfw = false;
+	let cfg = applied_context;
+	let built = pipeline.render(applied_context, { node_ip: '203.0.113.20', dns_tier: 'T2', restored: {} });
 	if (!built.ok)
 		return { error: `pipeline failed: ${built.detail}` };
 	let current = `${replace(root, /\/$/, '')}${C.RUN_DIR}/${C.DAEMON_CURRENT_DIR}`;
@@ -53,7 +54,7 @@ function settings(root, confdir, data_dir, baseline_dir, custom_dir, bin_dir) {
 		}
 	};
 	state_write(ctx, service);
-	return { opts, ctx, snapshot: cfg.snapshot, state: service, current };
+	return { opts, ctx, snapshot: cfg.snapshot, applied_context, state: service, current };
 };
 
 function count(text, needle) {
@@ -81,7 +82,7 @@ function base_daemon(args, initial) {
 	if (s.error)
 		return s;
 	let d = monitor.create_daemon({
-		ctx: s.ctx, opts: s.opts, snapshot: s.snapshot,
+		ctx: s.ctx, opts: s.opts, snapshot: s.snapshot, applied_context: s.applied_context,
 		children: { dns: null, xray: null }, state: s.state
 	});
 	d.machine = { ...d.machine, ...initial };
