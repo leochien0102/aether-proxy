@@ -276,6 +276,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 - 状态：**待设计**。与 B23 配套，先于新协议模型落地。
 - 目标：aether-proxy 通道发布 **`aether-xray`**（纯上游、无补丁），二进制装 `/usr/bin/aether-xray`；feeds/packages 与 ssr-plus 继续用 `/usr/bin/xray`，互不覆盖。
+- **版本对齐（2026-10-30 定）**：`aether-xray` 的 `PKG_VERSION` 与 `feeds/packages/net/xray-core` 的 `PKG_VERSION` 保持同一上游版本（当前 **26.10.21**），但不打补丁；release 后缀各自独立。packages 升版时通道跟同一上游 tag；发布前校验两者 `PKG_VERSION` 一致，避免设备上出现 26.9.30 与 26.10.21 双版本。
 - 涉及：
   1. `aether-proxy-channel`：`xray-core/Makefile` → `aether-xray` 包名/`/usr/bin/aether-xray` 安装路径；`AETHER_PROXY_REF`/`build.py`/清单的包键与资产名；移除 `xray-core` 发布，保留旧资产清理策略。
   2. `aether-proxy`：`find_component` 查找顺序、`main.xray_bin`、`components`/`status`、`update` 的 `UPDATE_PACKAGES`/`--previous`/安装校验/回滚、更新页文案与行、docs/08 通道说明。
