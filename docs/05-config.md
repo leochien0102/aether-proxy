@@ -12,7 +12,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `enabled` | bool | `0` | |
 | `mode` | enum(`gfw`\|`bypass_cn`\|`global`) | `bypass_cn` | **默认模式**（页面用语，2026-10-22 定）：绕过大陆 / 仅代理被墙网站（GFW）/ 全局（所有流量走代理）。全局只有这一个，换节点不改变它；访问控制的设备覆盖可以另选模式（02「主机策略模型」） |
 | `node` | 节点段名 | — | 当前节点。为空则无法启用 |
-| `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名） |
+| `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名）。名称 1–15 字节，不含双引号和 C0/DEL 控制字节；反斜线按字面保留（2026-10-30，T9.45） |
 | `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略：跟随默认模式 / 直连（[02](02-dataplane.md)） |
 | `quic_block` | bool | `1` | 代理目标的 UDP 443 拒绝（非游戏模式主机） |
 | `dns_hijack` | bool | `1` | 劫持 LAN 的 53 端口到路由器（direct 主机除外） |
@@ -171,7 +171,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 2. host：`ip` 和 `mac` 至少一个；`direct` + `udp=1` 报错；不同 host 之间 IP、CIDR、地址范围、MAC 完全相同报错（范围先规范化：起 = 止写成单个地址；只比完全相同，部分重叠不报错，与 CIDR 现在的做法一致）。生成 nft 集合时，覆盖同一段地址的不同写法（如 `10.0.0.0/24` 与 `10.0.0.0-10.0.0.255`）只写一次，保留先出现的写法（T9.33 复核定）。
 3. `trust_dns` 1–2 项，每项为合法 IPv4，可带 `tcp://` 或 `udp://` 前缀（不接受端口与其他协议）；`china_dns` 每项为上游写法或字面值 `wan`。
 4. 所有 list 中的 IPv4/CIDR/MAC/域名语法合法。
-5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）。
+5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）；名称 1–15 字节且不含双引号、C0/DEL 控制字节（nft 引号字符串不支持转义，双引号无法表示），否则 `invalid_value`。
 6. 节点字段按协议检查必填项：vless/vmess 需要 `uuid`；trojan/ss 需要 `password`；ss 需要 `method` 在 Xray 支持列表内；
    `reality` 需要 `reality_pbk` 和 `sni`。
 7. 节点取值必须是 Xray v26.9.30 启动时能接受的（2026-10-14 用真实 Xray 校验夹具时发现，规则对照 `infra/conf/xray.go`、`transport_security.go`）：
