@@ -97,8 +97,15 @@ function set_block(name, type, flags, list, comment) {
 	return comment ? line + '  # ' + comment : line;
 };
 
+// Encode at the nft syntax boundary, independently of live interface existence.
+// Backslashes must be escaped first so the quote escape is not escaped a second time.
+// Config validation rejects control bytes until nft's hex-escape contract is verified.
+function quote_string(value) {
+	return '"' + replace(replace(value, /\\/g, '\\\\'), /"/g, '\\"') + '"';
+};
+
 function quote_list(list) {
-	return join(', ', map(list, x => '"' + x + '"'));
+	return join(', ', map(list, quote_string));
 };
 
 // Default and device modes share every destination rule, including user proxy exceptions.

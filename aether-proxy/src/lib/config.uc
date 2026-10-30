@@ -105,8 +105,23 @@ function nonempty(s) {
 	return length(s) ? s : null;
 }
 
+function ifname(s) {
+	// ucode length() counts bytes, matching IFNAMSIZ rather than Unicode characters.
+	if (type(s) != 'string' || length(s) < 1 || length(s) >= C.IFNAMSIZ)
+		return null;
+
+	// TODO(design): verify nft's \\xNN decoding on a supported target before accepting
+	// control bytes. Fail closed for now; printable names have no character whitelist.
+	for (let i = 0; i < length(s); i++) {
+		let byte = ord(s, i);
+		if (byte < 32 || byte == 127)
+			return null;
+	}
+	return s;
+}
+
 const ITEM_CHECK = {
-	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, string: nonempty
+	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, ifname, string: nonempty
 };
 
 const SCALAR_CHECK = {
@@ -117,7 +132,7 @@ const INVALID_CODE = {
 	// Preserve the existing trust_dns error subcode; the enclosing event remains CONFIG_INVALID.
 	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream',
 	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', ip_or_range: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
-	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value',
+	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value', ifname: 'invalid_value',
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'
 };
 
@@ -164,7 +179,9 @@ function normalize_field(f, raw, field, proto, errors) {
 	if (f.type == 'list') {
 		let items = (v == null) ? [] : (type(v) == 'array' ? v : [ v ]);
 
-		if (!length(items)) {
+		// lan_ifaces distinguishes unset/null (default) from [] (min_items).
+		// Preserve the existing empty-list default behavior of unrelated item types.
+		if (v == null || (!length(items) && f.item != 'ifname')) {
 			if (is_required(f, proto))
 				push(errors, { field, code: 'required', detail: `${f.name} is required` });
 

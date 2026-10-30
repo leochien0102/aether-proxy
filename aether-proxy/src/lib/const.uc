@@ -307,3 +307,6 @@ export const APPLIED_FILES = {
 	gfwlist: 'gfwlist.txt', chnlist: 'chnlist.txt', apple: 'apple.txt',
 	proxy_domain: 'proxy_domain.txt', direct_domain: 'direct_domain.txt', boot_list: BOOT_LIST_FILE
 };
+
+// T9.45: Linux IFNAMSIZ includes the terminating NUL byte.
+export const IFNAMSIZ = 16;
