@@ -292,11 +292,13 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
   - 总流量：`stats` 从 `/proc/net/dev` 读 WAN；直连 = WAN − 代理（含其他代理，口径见 docs/10）。
   - 健康度：`state.json` 有当前 `state`、`last_probe`、`monitor`；`events.jsonl` 有 notice+ 事件，但会轮转/限长，不能当长期历史。
   - **缺**：按天的流量/健康聚合、跨重启持久化、历史 API、热力图 UI。
+- **开关（2026-10-30 追加）**：新增 `config stats 'stats'` 的 `heatmap_enabled` bool，**默认 0**；高级设置页提供「启用使用热力图（记录每日流量与健康度）」开关。关闭时后端不采样、不写 `usage.json`、不提供历史（`stats history` 返回 `enabled:false`），概览页不渲染热力图卡片；开启后从开启时刻开始记录，重新关闭保留已有文件但停止更新，是否清除历史另做按钮/动作。开关属于配置，走现有 apply/reload，不改 rpcd 写接口。
 - 建议方案：
   1. monitor 每轮（约 30 秒）采样 nft 计数与状态；按本地日期累加 `proxy_tx/proxy_rx` 的**增量**（计数变小视为清零，加当前值），并累计 observed/healthy 秒数；当前天只放内存，**跨天或干净停止时**才原子写 `/etc/aether-proxy/usage.json`（0600，保留 90 天）；不做每 15 分钟/每 30 秒写 flash。若确需掉电保留当天，最多 6 小时 checkpoint 一次（4 次/天），并计入 flash 寿命预算。
   2. 新只读 `stats history`/rpcd `stats_history` 返回 `{days:[{date,proxy_tx,proxy_rx,observed_sec,healthy_sec}],updated_at}`；不把 90 天塞进 5 秒轮询的 `stats`。
   3. UI 用 CSS grid（7 列 × 13 周）画日格，颜色按流量对数归一化，健康度用边框/角标或透明度表达；tooltip 显示日期、代理流量、健康占比；无数据/服务未启用用中性色，不能把“未运行”误画成故障。
   4. 热度建议 `heat = log1p(proxy_tx+proxy_rx) * health_ratio`，但 UI 同时保留两个原始值；健康度只在“服务应运行”的观测窗口内计算，避免用户主动停用被画成红色。
 - **flash 寿命估算（2026-10-30）**：90 天文件约 10–20 KB；按每天一次、128 KB 擦除块计，约 45 MB/年逻辑写入，加 overlay/UBI 放大也远低于常见 128 MB NAND（3K P/E ≈ 384 GB 总写入）的 1%。若改成 15 分钟一次，约 4 GB/年，接近 1%/年；5 分钟一次约 13 GB/年，不建议。当前天只存内存、跨天/干净停止落盘是默认；6 小时 checkpoint 是可选折中。
+- 测试还须覆盖：开关默认 0、关闭时无 nft 采样/无文件写入/无历史 API、开启后开始记录、关闭后停止且保留历史、重开继续、配置缺省不视为开启。
 - 分阶段：先后端采样/持久化/API + 测试（假时钟、清零、跨天、90 天裁剪、损坏文件），再做 UI；不依赖图表库。
 - 依赖/边界：不改变现有 `stats` 口径；不做历史回填；不做域名/隐私数据；不与 B23/B24 绑定，放在 0.6/0.7 之后。
