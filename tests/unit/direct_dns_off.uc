@@ -15,6 +15,8 @@ export const cases = [
 	{ name: 'disabled boot uses WAN fallback without live lookup', kind: 'fallback', expect: true },
 	{ name: 'disabled renderer defaults T1 and rejects stale T2 upstreams', kind: 'tier', expect: true },
 	{ name: 'enabled renderer starts T2 and boot uses direct DNS unchanged', kind: 'enabled', expect: true },
+	/* The historical case compares byte-for-byte with the frozen 7 files under
+	   tests/unit/data/direct_dns_enabled/, not just a few strings. */
 	{ name: 'enabled historical chinadns configurations remain byte identical', kind: 'historical', expect: true }
 ];
 

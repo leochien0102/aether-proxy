@@ -193,7 +193,7 @@ aether-proxy 未运行时不做自动更新。
 | vmess | `settings = {address, port, id: uuid, security: method}` |
 | trojan | `settings = {address, port, password}` |
 | shadowsocks | `settings = {address, port, method, password}` |
-| transport | `streamSettings.method` |
+| transport | `streamSettings.network` |
 | ws | `wsSettings = {path, host}` |
 | httpupgrade | `httpupgradeSettings = {path, host}` |
 | xhttp | `xhttpSettings = {path, host, mode}` |

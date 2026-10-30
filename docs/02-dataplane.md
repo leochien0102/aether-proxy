@@ -4,7 +4,7 @@
 
 - TCP 和 UDP **都用 TPROXY**，在 `prerouting` 的 mangle 优先级拦截。只有一套机制、一个 Xray 入站
   （`tunnel` + `followRedirect`），不需要 nat 表里的 REDIRECT。
-- 只拦截从 LAN 接口进入的流量（`iifname`）。**OUTPUT 不挂规则**（[01](01-architecture.md) 原则 1）。
+- 只拦截从 LAN 接口进入的流量（`iifname`）。**OUTPUT 不做代理拦截、重定向或打代理路由标记**；允许独立的纯计数链（[10](10-cli-luci.md)「流量计数」，[01](01-architecture.md) 原则 1）。
 - 策略路由：`ip rule add fwmark 0x80000/0x80000 lookup 233 pref 900`，
   `ip route add local default dev lo table 233`。
 

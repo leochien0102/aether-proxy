@@ -1,3 +1,3 @@
-# No DNS section: T2 and node bootstrap must use the schema defaults (docs/05, T8.22).
+# No DNS section: direct_dns_enabled defaults off, so even a requested T2 renders T1 and boot uses domestic DNS (docs/03, docs/05, T8.22).
 config global 'main'
 	option enabled '0'
