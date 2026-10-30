@@ -26,8 +26,9 @@ done < <(find "$ROOT/luci-app-aether-proxy" -name '*.js' -type f | sort)
 # --- 2. scenario tests: node --test over tests/luci/*.test.js -----------------
 cd "$ROOT"
 # The per-test timeout keeps a broken implementation (a promise that never
-# settles) from hanging the whole suite.
-tap=$(node --test --test-reporter=tap --test-timeout=10000 tests/luci/*.test.js 2>&1)
+# settles) from hanging the whole suite. 30 s leaves room for i18n.test.js,
+# which scans every view and can exceed 10 s on a loaded host (T9.42/T9.41).
+tap=$(node --test --test-reporter=tap --test-timeout=30000 tests/luci/*.test.js 2>&1)
 rc=$?
 
 printf '%s\n' "$tap"
