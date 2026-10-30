@@ -41,10 +41,11 @@ class Value {
 	getValidationError(id) {
 		const value = this.formvalue(id);
 		if (value != null && value !== '') {
-			if (this.datatype === 'port' && !(/^[0-9]+$/.test(value) && +value >= 1 && +value <= 65535))
+			// SDK validation.js port uses parseInteger and includes zero; range uses parseDecimal.
+			if (this.datatype === 'port' && !(/^-?[0-9]+$/.test(value) && +value >= 0 && +value <= 65535))
 				return 'Must be a valid port';
 			const range = this.datatype?.match(/^range\((-?\d+),(-?\d+)\)$/);
-			if (range && !(/^-?[0-9]+$/.test(value) && +value >= +range[1] && +value <= +range[2]))
+			if (range && !(/^-?[0-9]+(?:\.[0-9]+)?$/.test(value) && +value >= +range[1] && +value <= +range[2]))
 				return 'Must be within range';
 		}
 		const result = this.validate?.(id, value);

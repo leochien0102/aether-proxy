@@ -359,6 +359,18 @@ test('T10.23 scenario 4: node row failure notifies with code/detail, restores bu
 	assert.ok(!calls.some(call => ['unload', 'load', 'build'].includes(call[0])));
 });
 
+test('T9.41 node row displays CONFIG_INVALID Xray summary as text without reloading', async () => {
+	const calls = [];
+	const detail = 'xray run -test: invalid mldsa65Verify: <GARBAGE>';
+	const view = loadNodesView(calls, { call: async () => ({ ok: false, code: 'CONFIG_INVALID', detail }) });
+	const button = {};
+	await luciCreateHandlerFn(view, 'handleSetCurrent', 'n_b')({ currentTarget: button });
+	assert.equal(button.disabled, false);
+	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（CONFIG_INVALID）: ' + detail);
+	assert.equal(calls.at(-1)[3], 'error');
+	assert.ok(!calls.some(call => ['unload', 'load', 'build'].includes(call[0])));
+});
+
 test('T10.23 defensive: node row rebuild rejection notifies and restores button without retry', async () => {
 	const calls = [];
 	const view = loadNodesView(calls);

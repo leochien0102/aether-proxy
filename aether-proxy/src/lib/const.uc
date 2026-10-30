@@ -293,3 +293,8 @@ export const DNS_TEST_MAX_NAME_POINTERS = 128;
 
 // T9.38 (docs/08 "更新一起更新"): page assets follow the backend in this order.
 export const UPDATE_COMPANIONS = [ 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+
+// T9.41: private node-selection preflight, within the existing node_use RPC budget.
+export const NODE_USE_DIR_PREFIX = 'node-use.';
+export const NODE_USE_TEST_TIMEOUT_SECS = 5;
+export const NODE_USE_ERROR_BYTES = 2048;

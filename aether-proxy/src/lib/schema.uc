@@ -33,6 +33,25 @@ export const SS_METHODS = [
 	'2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305'
 ];
 
+// Xray 26.9.30 fingerprint names (review B-F1). TLS additionally allows unsafe;
+// REALITY excludes unsafe and hellogolang. Names are case-insensitive in Xray.
+export const FINGERPRINTS = [
+	'chrome', 'firefox', 'safari', 'ios', 'android', 'edge', '360', 'qq',
+	'random', 'randomized', 'randomizednoalpn', 'hellogolang',
+	'hellofirefox_120', 'hellofirefox_148', 'hellochrome_120', 'hellochrome_131', 'hellochrome_133',
+	'helloios_13', 'helloios_14', 'helloedge_106', 'hellosafari_26_3', 'hello360_11_0', 'helloqq_11_1',
+	'hellorandomized', 'hellorandomizedalpn', 'hellorandomizednoalpn',
+	'hellofirefox_auto', 'hellofirefox_55', 'hellofirefox_56', 'hellofirefox_63', 'hellofirefox_65',
+	'hellofirefox_99', 'hellofirefox_102', 'hellofirefox_105',
+	'hellochrome_auto', 'hellochrome_58', 'hellochrome_62', 'hellochrome_70', 'hellochrome_72',
+	'hellochrome_83', 'hellochrome_87', 'hellochrome_96', 'hellochrome_100', 'hellochrome_102',
+	'hellochrome_106_shuffle', 'helloios_auto', 'helloios_11_1', 'helloios_12_1',
+	'helloandroid_11_okhttp', 'helloedge_85', 'helloedge_auto', 'hellosafari_16_0', 'hellosafari_auto',
+	'hello360_auto', 'hello360_7_5', 'helloqq_auto', 'hellochrome_100_psk', 'hellochrome_112_psk_shuf',
+	'hellochrome_114_padding_psk_shuf', 'hellochrome_115_pq', 'hellochrome_115_pq_psk', 'hellochrome_120_pq'
+];
+export const XHTTP_MODES = [ 'auto', 'packet-up', 'stream-up', 'stream-one' ];
+
 // Section-name patterns (docs/05).
 export const SUBSCRIPTION_NAME_RE = /^s_[0-9a-f]{8}$/;
 export const NODE_NAME_RE = /^n_[0-9a-f]{32}$/;

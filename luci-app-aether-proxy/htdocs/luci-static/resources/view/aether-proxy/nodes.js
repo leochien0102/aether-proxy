@@ -460,7 +460,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'port', _('Port', 'aether-proxy'));
 		o.modalonly = true;
-		o.datatype = 'port';
+		o.validate = form_defaults.integer(1, 65535);
 
 		o = s.option(form.ListValue, 'transport', _('Transport', 'aether-proxy'));
 		o.modalonly = true;
@@ -554,7 +554,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'ws_heartbeat', _('WebSocket heartbeat interval (seconds)', 'aether-proxy'));
 		o.modalonly = true;
-		o.datatype = 'range(1,3600)';
+		o.validate = form_defaults.integer(1, 3600);
 		o.depends('transport', 'ws');
 
 		o = s.option(form.TextValue, 'xhttp_extra', _('XHTTP extra settings (JSON)', 'aether-proxy'));
@@ -657,13 +657,13 @@ return view.extend({
 		o = s.option(form.Value, 'mux_concurrency', _('Mux concurrency', 'aether-proxy'));
 		o.modalonly = true;
 		o.placeholder = '8';
-		o.datatype = 'range(-1,1024)';
+		o.validate = form_defaults.integer(-1, 1024);
 		o.depends('mux', '1');
 
 		o = s.option(form.Value, 'mux_xudp_concurrency', _('XUDP concurrency', 'aether-proxy'));
 		o.modalonly = true;
 		o.placeholder = '16';
-		o.datatype = 'range(-1,1024)';
+		o.validate = form_defaults.integer(-1, 1024);
 		o.depends('mux', '1');
 
 		o = s.option(form.ListValue, 'mux_xudp_udp443', _('XUDP handling of UDP/443', 'aether-proxy'));
