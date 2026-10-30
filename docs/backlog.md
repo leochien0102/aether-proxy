@@ -253,3 +253,18 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 来源：交叉审查 security 疑问 1、2，Sol 复核 6.2、6.3。现状均已接受并写进文档（10「权限边界」、08「旧清单重放」）。
 - 权限：LuCI 管理本应用等同 root（组件路径以 root 执行）。若将来有非 root 的 LuCI 用户，再考虑拆分普通配置与组件路径/特权操作，或把可选二进制限制在已安装组件目录。
 - 防重放：清单可被回放（装不回旧包，但规则数据可回到旧版）。可选：单调发布序号或已见最低数据版本；有效期需配合时钟与离线恢复。要区分普通更新、`--previous` 与自动回退，不能阻断受支持的恢复路径。
+
+## B23 支持 Xray 的新协议（AnyTLS / Naive / SSR / TUIC / Snell …）（2026-10-30，待设计）
+
+- 状态：**待设计**。等当前在执行的任务（G 组，含 T9.43/G6a）完成后再开卡（仓库所有者定，2026-10-30）。`CONFIG_XRAY_CORE_NAIVE` 这次不改，留到本条设计/开工时再定（2026-10-30 仓库所有者定）；当前不写这行时 Kconfig 默认是 `y`，固件会带 naive 出站。
+- 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型只认 vless/vmess/trojan/shadowsocks，但固件的 Xray 早已不止这些；新版本 Xray 有的协议，该支持的还得支持。
+- 现状（2026-10-30 核实）：
+  - 固件的 Xray 来自 feeds 的 packages 那份（openwrt-actions 的 `install_feeds` 由 `install -a` 装）。它的 `net/xray-core/patches/` 在 26.10.21 上依次打 100–190，编出来的二进制含 **AnyTLS、Naive、ShadowsocksR、TUIC、Snell** 五个出站，以及 **ShadowTLS、KCPTun** 两个传输。
+  - 其中只有 Naive 出站要 `CONFIG_XRAY_CORE_NAIVE=y`（`with_naive_outbound`；`with_musl` 选静态库），其余没有构建开关、默认就在固件里。AnyTLS 与 Naive 的 JSON 都是扁平写法（`address`/`port`/`password`…），沿用 `streamSettings`，与现有四种协议同一套模型。
+  - aether-proxy 侧的缺口：[05](05-config.md) 的 `protocol` 枚举与字段表、`schema.uc`、`config.uc` 的协议校验、`render/outbound.uc` 的 settings 分支、`uri.uc` 的 scheme 分派（目前 vmess/ss/vless/trojan，其余 `unsupported_scheme`）、LuCI 的 `PROTOCOL_NAMES`、golden fixtures。
+- 关键约束（设计时不能忽略）：
+  1. **固件与通道的 Xray 不是同一份**：设备上的 xray-core 由 aether-proxy 的发布通道更新（[08](08-updates.md)），那份 Makefile 编的是**未打补丁**的上游源码，没有 anytls/naive 等协议。aether-proxy 一旦渲染新协议，设备上若装的是通道版 xray，`xray run -test` 会拒绝、reload 不生效。要么发布通道的 xray 带上同一套补丁，要么渲染前按已装二进制的协议支持（版本/能力）拦住并给出明确提示；两者多半都要。
+  2. 协议知识现在散在七处，加一个协议要全改，漏一处就是「能选但编不过」或「订阅里被丢掉」。建议先收敛成一张协议表（每协议一个模块：settings 构造、适用字段、URI scheme、最低 Xray 版本），schema/render/uri/LuCI 都从表里取。
+  3. CI 的 `XRAY_MIN_VERSION` / `XRAY_LATEST_TESTED` 是全局的；新协议要按协议标最低版本，golden fixture 用真实二进制 `run -test` 验证。
+- 首批候选：**AnyTLS**（机场里最常见，扁平配置，不需要构建开关）；**Naive** 随后（要开 `CONFIG_XRAY_CORE_NAIVE`，并先解决通道的 xray）。SSR/TUIC/Snell 看需求再排。
+- 不在本条：分流（[B1](#b1-自定义分流固定节点按服务分流)/[B20](#b20-分流判定交给-xraygeosite--geoip--多出口合并-b1b18-与补漏2026-10-27待调研)）。
