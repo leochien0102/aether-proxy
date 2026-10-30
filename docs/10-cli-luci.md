@@ -16,6 +16,7 @@ init.d / hotplug / daemon ──────────────────
 - 退出码：`0` 成功；`1` 运行时错误；`2` 配置错误；`3` 忙（拿不到锁或已有同类作业）；`4` 校验或验签失败。
   具体对应（T1.7 实现，2026-10-14 确认）：配置校验错误与规则数据缺失/非法 → `CONFIG_INVALID`，退出码 2；前置检查失败 → `PRECHECK_FAILED`，退出码 1；产物未通过 `nft -c` / `xray run -test` → `RENDER_INVALID`，退出码 4；参数用法错误 → JSON 中 `code` 为 `USAGE`（不是事件码，不写日志），退出码 2。
 - `check` 找不到 Xray 时不算失败：在结果中注明跳过 `xray run -test`，并返回 `COMPONENT_MISSING` 警告；真正启动时（04 第 3 步）缺组件才是错误。
+- `check` 发现组件版本可识别且低于最低版时，在 `warnings` 里加 `COMPONENT_TOO_OLD`（`component`/`version`/`min`），仍成功；版本未知不加。真正启动时低于最低版是错误（04「启动」）。
 - 失败时的 JSON：`{"ok": false, "code": "<事件码>", "detail": "..."}`。
 - 未知的子命令，以及本表列出但尚未实现的子命令，一律按用法错误处理（`USAGE`，退出码 2），不另设「未实现」码（2026-10-17 定，backlog B9）。
 

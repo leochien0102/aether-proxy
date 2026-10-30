@@ -50,6 +50,8 @@
 
 代理是否真正可用由 monitor 异步判定，LuCI 能看到状态变化。
 
+**组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 `XRAY_MIN_VERSION` / `CHINADNS_MIN_VERSION`，记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
+
 **与其他代理插件的冲突**（第 3 步的一部分；2026-10-24 定，r15 窗口：ssr-plus 被 `reload_config` 重新拉起，aether-proxy 每次启动都 `PRECHECK_FAILED conflict:ss_spec`，页面只写「启动失败，详见日志页」）。
 这些插件都接管 dnsmasq 与透明代理规则，同一时间只能有一个在运行。下表的名字已按各插件源码核实（2026-10-24：fw876/helloworld、Openwrt-Passwall/openwrt-passwall 与 openwrt-passwall2、immortalwrt/homeproxy、vernesong/OpenClash、nikkinikki-org/OpenWrt-nikki 的 master/main 分支）：
 
