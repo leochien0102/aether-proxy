@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 ROOT = Path(sys.argv[1])
 T = Path(sys.argv[2])
@@ -45,6 +46,7 @@ def check(name, condition):
 
 def ap(*args, rc=0, env=None):
     CALLS.write_text('')
+    config_before = (CONFIG.read_bytes(), CONFIG.stat().st_mtime_ns)
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in RUN.iterdir()}
     result = subprocess.run([
         str(ROOT / 'tests/host/ucode'), '-S', str(ROOT / 'aether-proxy/src/aether-proxy'), '--',
@@ -52,6 +54,7 @@ def ap(*args, rc=0, env=None):
     ], text=True, capture_output=True, env={**os.environ, 'URL_CURL_LOG': str(CALLS), **(env or {})})
     assert result.returncode == rc, (args, result.returncode, result.stdout, result.stderr)
     assert result.stderr == '', result.stderr
+    assert config_before == (CONFIG.read_bytes(), CONFIG.stat().st_mtime_ns), 'configuration mutated'
     assert before == {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in RUN.iterdir()}, 'runtime files mutated'
     return json.loads(result.stdout)
 
@@ -92,6 +95,20 @@ for output, curl_rc, error, expected in (
         check(f'probe url failure {output}: http_code and detail preserved',
               reply['http_code'] == (int(output[:3]) if output[:3].isdigit() else 0)
               and (error in reply['detail'] if error else bool(reply['detail'])))
+
+# T9.50: a request may use the entire 30s curl allowance, within the 35s watchdog.
+CONFIG.write_text(CONFIG.read_text().replace("timeout '2'", "timeout '30'"))
+started = time.monotonic()
+reply = ap('url', 'google', env={'URL_CURL_SLEEP': '30'})
+elapsed = time.monotonic() - started
+check('T9.50 probe url timeout 30: full 30 seconds succeed within 35 second budget',
+      reply['ok'] and 30 <= elapsed < 35
+      and CALLS.read_text().splitlines()[6:8] == ['--max-time', '30'])
+CONFIG.write_text(CONFIG.read_text().replace("timeout '30'", "timeout '31'"))
+reply = ap('url', 'google', rc=2)
+check('T9.50 probe url timeout 31: CONFIG_INVALID without curl or UCI rewrite',
+      reply['code'] == 'CONFIG_INVALID' and CALLS.read_text() == '')
+CONFIG.write_text(CONFIG.read_text().replace("timeout '31'", "timeout '2'"))
 
 # Exercise sys.run watchdog as well as curl's native exit 28.
 CONFIG.write_text(CONFIG.read_text().replace("timeout '2'", "timeout '1'"))

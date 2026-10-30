@@ -246,9 +246,12 @@ function normalize_field(f, raw, field, proto, errors) {
 			return default_of(f, proto);
 		}
 
-		if ((f.min != null && +v < f.min) || (f.max != null && +v > f.max))
-			push(errors, { field, code: 'out_of_range',
+		if ((f.min != null && +v < f.min) || (f.max != null && +v > f.max)) {
+			// T9.50 requires invalid_range for probe.timeout; preserve other fields' legacy subcode.
+			let code = field == 'probe.timeout' ? 'invalid_range' : 'out_of_range';
+			push(errors, { field, code,
 				detail: `${v} is outside ${f.min ?? '-inf'}..${f.max ?? 'inf'}` });
+		}
 
 		return +v;
 

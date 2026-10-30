@@ -23,7 +23,7 @@
 const INT_BOUNDS = {
 	boot_wait_timeout: { min: 0, max: 600 },
 	expect_code: { min: 100, max: 599 },
-	timeout: { min: 1 },
+	timeout: { min: 1, max: 30 },
 	fail_threshold: { min: 1 },
 	recover_threshold: { min: 1 },
 	node_timeout: { min: 1 },

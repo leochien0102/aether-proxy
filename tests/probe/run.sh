@@ -291,5 +291,8 @@ echo
 python3 "$ROOT/tests/probe/url.py" "$ROOT" "$T/url" \
 	&& ok 'probe url and sites scenarios' || bad 'probe url and sites scenarios'
 
+"$UCODE" "$ROOT/tests/probe/timeout.uc" -- "$ROOT" \
+	&& ok 'T9.50 RPC timeout budgets' || bad 'T9.50 RPC timeout budgets'
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
