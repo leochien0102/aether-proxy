@@ -113,6 +113,12 @@ function job_error(failure) {
 }
 return baseclass.extend({
 	required_fields: { url: { required: true } },
+	validate_url: function(value) {
+		// Mirror config.uc url()'s POSIX space class, not JS \s (which also rejects Unicode).
+		// Empty input belongs to required preflight; opaque accepted URLs must remain unchanged.
+		return value === '' || /^https?:\/\/[^\/?#\t-\r ]+[^\t-\r ]*$/.test(value) ||
+			_('Enter an HTTP or HTTPS URL without whitespace', 'aether-proxy');
+	},
 	general_values,
 	interval_text,
 	fetch_text,
