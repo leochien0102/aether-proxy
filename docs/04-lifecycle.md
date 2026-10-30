@@ -162,6 +162,8 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 
 **比对的是输出而不是输入**：生成器自身升级后输出变了，也会被检测到（避免 ssr-plus U8 那类问题）。
 
+**已应用上下文与冻结名单（2026-10-30，T9.43）**：启动或重载完整成功时，把 chinadns-ng / dnsmasq 会按路径打开的六份名单（gfwlist、chnlist、apple、proxy_domain、direct_domain、boot）复制到 `run_dir/applied/<generation>/`（0700）；本次渲染与之后 monitor 的恢复/重建都只用这些副本，不再读原始路径。代标识是「来源路径 + 内容哈希」manifest 的 SHA-256，来源与内容都没变时复用。失败的重载/校验/动作回滚删除候选代、不动当前代；成功后切换并清理旧代。CLI `check`/`render` 仍用原始路径，不做冻结。
+
 **完成后记 `RELOAD_APPLIED`**（notice，2026-10-21 加，B14 第 3 条）：有动作执行成功时记一条，`from_node`、`to_node`（节点 ID；没换节点时两者相同）、`actions`（执行了的动作）、
 `elapsed_ms`（从收到 SIGHUP 起）、`steps`（步骤名 → 毫秒，形同 `SERVICE_STARTED`）。没有任何变化的重载不记（规则数据更新、保存未改动的页面都会触发重载）。
 原来重载成功不记任何事件，日志里看不出切换发生过、用了多久。
