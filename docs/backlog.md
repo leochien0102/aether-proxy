@@ -283,3 +283,19 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
   3. 迁移：老设备上可能仍有通道版 `xray-core`；新包不自动删 feeds 的 `xray-core`，需一次性提示/文档；`aether-proxy` 优先 `aether-xray`，没有则回退 `/usr/bin/xray`。
   4. 测试：两包共存、只有 `aether-xray`、只有 `xray`、显式 `xray_bin`、更新/回滚、`components` 路径、版本闸门、页面文案；`tests/compat` 的冻结旧客户端需跟着更新更新接口。
 - 验收：设备上 `/usr/bin/xray` 仍是 feeds/ssr-plus 的版本；`/usr/bin/aether-xray` 由 aether-proxy 通道管理；升级 aether-xray 不改变 `/usr/bin/xray`。
+
+## B25 概览页热力图（每日流量 × 服务健康度）（2026-10-30，待设计）
+
+- 需求（2026-10-30 仓库所有者）：在概览页放一个类似 Claude Code 首页的热力图；按每日代理流量与服务健康度计算热度；后面实现，先评估。
+- 现状（2026-10-30 核实）：
+  - 代理流量：`render/nft.uc` 的 `proxy_tx`/`proxy_rx` 具名计数器 + `stats` 命令能读当前累计值；整表替换/重启会清零，前端已按“计数变小”处理。
+  - 总流量：`stats` 从 `/proc/net/dev` 读 WAN；直连 = WAN − 代理（含其他代理，口径见 docs/10）。
+  - 健康度：`state.json` 有当前 `state`、`last_probe`、`monitor`；`events.jsonl` 有 notice+ 事件，但会轮转/限长，不能当长期历史。
+  - **缺**：按天的流量/健康聚合、跨重启持久化、历史 API、热力图 UI。
+- 建议方案：
+  1. monitor 每轮（约 30 秒）采样 nft 计数与状态；按本地日期累加 `proxy_tx/proxy_rx` 的**增量**（计数变小视为清零，加当前值），并累计 observed/healthy 秒数；每 5 分钟或跨天原子写 `/etc/aether-proxy/usage.json`（0600，保留 90 天，启动/停止时补写）。
+  2. 新只读 `stats history`/rpcd `stats_history` 返回 `{days:[{date,proxy_tx,proxy_rx,observed_sec,healthy_sec}],updated_at}`；不把 90 天塞进 5 秒轮询的 `stats`。
+  3. UI 用 CSS grid（7 列 × 13 周）画日格，颜色按流量对数归一化，健康度用边框/角标或透明度表达；tooltip 显示日期、代理流量、健康占比；无数据/服务未启用用中性色，不能把“未运行”误画成故障。
+  4. 热度建议 `heat = log1p(proxy_tx+proxy_rx) * health_ratio`，但 UI 同时保留两个原始值；健康度只在“服务应运行”的观测窗口内计算，避免用户主动停用被画成红色。
+- 分阶段：先后端采样/持久化/API + 测试（假时钟、清零、跨天、90 天裁剪、损坏文件），再做 UI；不依赖图表库。
+- 依赖/边界：不改变现有 `stats` 口径；不做历史回填；不做域名/隐私数据；不与 B23/B24 绑定，放在 0.6/0.7 之后。
