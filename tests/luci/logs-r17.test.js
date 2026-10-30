@@ -81,7 +81,7 @@ for (const name of ['ss_spec', 'ss_spec_mangle']) {
 }
 
 const STEPS = {
-	lock: '获取锁', config: '读取配置', precheck: '预检', signal: '处理停止信号',
+	lock: '获取锁', config: '读取配置', precheck: '预检', component_version: '组件版本', signal: '处理停止信号',
 	wait_network: '等待网络', render: '生成配置', cleanup: '清理旧状态', publish: '发布配置',
 	hash: '计算配置哈希', chinadns_start: '启动 chinadns-ng', dnsmasq_install: '安装 dnsmasq 片段',
 	write_boot_list: '写入引导域名列表', xray_render: '生成 Xray 配置', xray_test: '校验 Xray 配置',

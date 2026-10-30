@@ -9,6 +9,7 @@ import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 import * as sys from 'aetherproxy.sys';
 import * as pipeline from 'aetherproxy.pipeline';
+import * as component_version from 'aetherproxy.component_version';
 
 // Locates a component binary in the order of docs/01 "组件二进制的查找顺序".
 // Shared with the `status` notices (docs/10 「概览页」). Returns { path, source } or null.
@@ -144,14 +145,21 @@ function check_staged(opts, res, staging) {
 			map(bad, i => ({ item: i.item, code: 'failed', detail: i.detail })), 1);
 	}
 
-	// Missing components are not a failure here (the user may not have downloaded them yet);
-	// they are surfaced as warnings and the matching validator is skipped.
-	// TODO(design): docs/04 step 3 treats a missing binary as COMPONENT_MISSING at start;
-	// whether `check` should fail on it is not specified. Version checks (COMPONENT_TOO_OLD)
-	// and the chinadns-ng trial run (docs/03 "核实项") are not done here either.
+	// Missing/old components are diagnostics, not check failures (docs/10, T9.44).
+	// Leave inventory fields unchanged; only startup treats a known-old version as fatal.
 	for (let name, c in pc.components) {
-		if (!c.found)
+		if (!c.found) {
 			push(result.warnings, { code: 'COMPONENT_MISSING', args: { component: name } });
+			continue;
+		}
+		// cmd/components imports this module for discovery, so do not import it back here.
+		let query = sys.run([ c.path, name == C.XRAY_COMPONENT ? 'version' : '-V' ],
+			{ timeout: C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true });
+		let version = query.code == 0 ? component_version.parse_version(query.stdout) : null;
+		let min = name == C.XRAY_COMPONENT ? C.XRAY_MIN_VERSION : C.CHINADNS_MIN_VERSION;
+		let order = component_version.version_cmp(version, min);
+		if (order != null && order < 0)
+			push(result.warnings, { code: 'COMPONENT_TOO_OLD', args: { component: name, version, min } });
 	}
 
 	let validation = {};

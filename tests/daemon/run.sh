@@ -14,6 +14,7 @@ python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
 python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
 python3 "$ROOT/tests/daemon/stop-state.py" || exit 1
+python3 "$ROOT/tests/daemon/version-gate.py" || exit 1
 T="$(mktemp -d)"
 QUIET="$T/cleanup.stderr"
 DAEMON_PID=''
@@ -295,7 +296,7 @@ expect 'component xray path' "$T/bin/xray" "$(jget components.xray.path < "$R1/v
 expect 'component xray version' '26.9.30' "$(jget components.xray.version < "$R1/var/run/aether-proxy/state.json")"
 expect 'component chinadns path' "$T/bin/chinadns-ng" \
 	"$(jget components.chinadns-ng.path < "$R1/var/run/aether-proxy/state.json")"
-expect 'component chinadns version' '2025.06.20' \
+expect 'component chinadns version' '2025.08.09' \
 	"$(jget components.chinadns-ng.version < "$R1/var/run/aether-proxy/state.json")"
 
 # SIGUSR1 ticks immediately; SIGHUP with an unchanged config is an incremental no-op (T2.6).
@@ -369,7 +370,7 @@ if wait_for "$R2U/var/run/aether-proxy/state.json" '"state": "running"'; then
 	expect 'SIGUSR2 keeps chinadns pid' "$old_dns" "$new_dns"
 	wait_for "$R2U/var/run/aether-proxy/state.json" '26.10.10' 200 \
 		&& ok 'SIGUSR2 refreshes xray version' || bad 'SIGUSR2 refreshes xray version'
-	expect 'SIGUSR2 preserves chinadns version' '2025.06.20' \
+	expect 'SIGUSR2 preserves chinadns version' '2025.08.09' \
 		"$(jget components.chinadns-ng.version < "$R2U/var/run/aether-proxy/state.json")"
 	expect 'SIGUSR2 does not query chinadns again' 1 "$(count_calls "$L2U" 'chinadns-ng -V')"
 	wait_count "$L2U" 'curl ' "$((old_curl + 1))" && ok 'SIGUSR2 immediately runs monitor' || bad 'SIGUSR2 immediately runs monitor'
@@ -789,7 +790,7 @@ for mode in fail malformed delay; do
 	else
 		bad "version $mode persists null"
 	fi
-	expect "version $mode keeps DNS version" '2025.06.20' \
+	expect "version $mode keeps DNS version" '2025.08.09' \
 		"$(jget components.chinadns-ng.version < "$RV/var/run/aether-proxy/state.json")"
 	# A missing quiet:true would add CMD_FAILED containing the failing banner invocation.
 	if grep -Eq 'CMD_FAILED|version query|xray.*version' "$RV/var/run/aether-proxy/events.jsonl"; then

@@ -21,6 +21,7 @@ import * as schedule from 'aetherproxy.schedule';
 import * as updates_cache from 'aetherproxy.updates_cache';
 import * as uci from 'uci';
 import * as components_cmd from 'aetherproxy.cmd.components';
+import * as component_version from 'aetherproxy.component_version';
 
 const BOOT_OPTS = {
 	'--confdir': 'confdir', '--data-dir': 'data_dir', '--baseline-dir': 'baseline_dir',
@@ -505,6 +506,25 @@ function start_sequence(ctx, opts, signal_pending) {
 		components[name] = {
 			path, version: components_cmd.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V')
 		};
+	}
+
+	// Reject known-old binaries before boot waiting, validation, cleanup or any takeover.
+	// Unknown versions deliberately remain informational (docs/04 components).
+	let too_old = [];
+	let minimums = { [C.XRAY_COMPONENT]: C.XRAY_MIN_VERSION, [C.CHINADNS_COMPONENT]: C.CHINADNS_MIN_VERSION };
+	for (let name, min in minimums) {
+		let version = components[name].version;
+		let order = component_version.version_cmp(version, min);
+		if (order != null && order < 0)
+			push(too_old, { component: name, version, min });
+	}
+	if (length(too_old)) {
+		locked.close();
+		setup_log(ctx);
+		for (let args in too_old)
+			log.event('error', 'COMPONENT_TOO_OLD', args);
+		return { ok: false, code: 1, step: 'component_version',
+			detail: join('; ', map(too_old, c => `${c.component} ${c.version} < ${c.min}`)), untouched: true };
 	}
 
 	if (opts.boot) {

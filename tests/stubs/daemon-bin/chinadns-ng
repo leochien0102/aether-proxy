@@ -5,7 +5,7 @@ if [ "$1" = -V ]; then
 	if [ -f "$SYSROOT/chinadns-version" ]; then
 		cat "$SYSROOT/chinadns-version"
 	else
-		printf 'ChinaDNS-NG 2025.06.20 be347b5 | fixture\nAdditional banner line\n'
+		printf 'ChinaDNS-NG 2025.08.09 be347b5 | fixture\nAdditional banner line\n'
 	fi
 	exit 0
 fi

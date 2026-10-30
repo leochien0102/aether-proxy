@@ -621,6 +621,13 @@ else
 	bad 'T9.28 DNS socket and CLI scenarios'
 fi
 
+# T9.44: the same numeric comparator diagnoses old binaries without failing check.
+if python3 "$ROOT/tests/daemon/version-gate.py" --check-only; then
+	ok 'T9.44 check minimum-version CLI scenarios'
+else
+	bad 'T9.44 check minimum-version CLI scenarios'
+fi
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

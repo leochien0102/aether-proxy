@@ -89,6 +89,7 @@ const START_STEPS = {
 	lock: _('Acquire lock', 'aether-proxy'),
 	config: _('Read configuration', 'aether-proxy'),
 	precheck: _('Precheck', 'aether-proxy'),
+	component_version: _('Component versions', 'aether-proxy'),
 	signal: _('Handle shutdown signal', 'aether-proxy'),
 	wait_network: _('Wait for network', 'aether-proxy'),
 	render: _('Generate configuration', 'aether-proxy'),
