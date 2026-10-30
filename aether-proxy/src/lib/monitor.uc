@@ -305,6 +305,9 @@ function run_action(daemon, machine, name, done) {
 		}
 		let live = { ...daemon, state: { ...daemon.state, dns_tier: machine.dns_tier, node_ip: machine.node_ip } };
 		let changed = daemon.reload(live, null, { mode: machine.degraded_mode });
+		// A failed runtime-only reload still has a completion record (T10.71).
+		if (changed.last_reload != null)
+			daemon.state.last_reload = changed.last_reload;
 		if (!changed.ok || changed.stop) {
 			done(changed.detail ?? 'service stop requested during degradation reload');
 			return;

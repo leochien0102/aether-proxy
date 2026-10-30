@@ -7,15 +7,15 @@
  * build() turns the raw UCI sections and the probe results into everything the
  * view renders: row texts, marks, the TCP reachability column wording, the
  * progress line and which per-row operations are allowed (the current node can
- * neither be deleted nor be made current). split_import()/summarize_import()
+ * not be deleted). split_import()/summarize_import()
  * handle the URI import box: line splitting keeps the original line numbers and
  * the three reply kinds (new, duplicate, failed) are tallied here. Nothing in
  * this module issues requests or touches the DOM; every msgid used here must
  * have an entry in po/zh_Hans/aether-proxy.po. Undefined results mark the first
  * deferred read (docs/10 「其余页面先出页面」), not an unprobed node. Local
  * pending IDs cover the gap before the first job refresh (docs/10 「节点页修正」).
- * Direct switch feedback follows docs/10 「检测真实延迟与切换节点」 (T10.23).
- * Selection marks, stale names and switch locking follow 「节点页第二轮修正」 (T10.25).
+ * Selection marks and stale names follow 「节点页第二轮修正」 (T10.25).
+ * T10.71 removes node-page switching; Overview is the only UI entry.
  * Protocol columns and manual node IDs follow 「节点表的协议列」「添加节点」 (T10.26).
  * Parse cleanup includes the advanced options from 「节点编辑框新字段」 (T10.30).
  * Required-field metadata mirrors schema.uc (docs/10 r17, T10.58).
@@ -201,31 +201,6 @@ return baseclass.extend({
 		return id;
 	},
 
-	/* A stopped service uses the configured node on its next start. */
-	switch_pending: function(status, current) {
-		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
-		if (status?.ok === false || !active)
-			return false;
-		if (!current || !status.node_id)
-			return false;
-		return current !== status.node_id;
-	},
-
-	node_use_message: function(reply, status, current, sections) {
-		if (reply?.ok !== true)
-			return fmt(_('Switching nodes failed (%s)', 'aether-proxy'), reply?.code ?? 'RPC_FAILED')
-				+ (reply?.detail ? ': ' + reply.detail : '');
-		if (status?.ok === false)
-			return null;
-		const active = ['starting', 'running', 'degraded', 'failsafe'].includes(status?.state);
-		if (reply.reload === false && ['stopped', 'error'].includes(status?.state))
-			return _('Set as the current node; it will be used on the next start.', 'aether-proxy');
-		if (active && current && status.node_id && current !== status.node_id) {
-			const node = sections.find(section => section['.name'] === current);
-			return fmt(_('Switching to “%s”…', 'aether-proxy'), node?.label || current);
-		}
-		return null;
-	},
 	/* sections: uci.sections('aetherproxy', 'node'), current: the value of
 	   aetherproxy.main.node, subs: uci.sections('aetherproxy', 'subscription'),
 	   results: the object resolved by ap.call('probe_results'), local_pending:
@@ -255,9 +230,7 @@ return baseclass.extend({
 				transport_security: [ s.transport || 'raw', s.security || 'none' ].join(' / '),
 				source: source_text(s, submap),
 				probe: probe_column(id, results, local_pending),
-				/* docs/10: the current node can neither be deleted nor be
-				   made current, so both operations are unavailable. */
-				can_set_current: (current == null || id != current),
+				/* T10.71: switching belongs to Overview; keep deletion protection here. */
 				can_delete: (current == null || id != current),
 				modal_hint: from_subscription
 					? _('This node comes from a subscription; edits will be overwritten at the next subscription update.', 'aether-proxy')

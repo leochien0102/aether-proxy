@@ -90,13 +90,13 @@ test('scenario 6: rows — stale name, protocol and transport defaults, source, 
 	assert.equal(rows.n_ok.source, tr('Manual'));
 	assert.equal(rows.n_ok.current, true);
 	assert.equal(rows.n_ok.stale, false);
-	assert.equal(rows.n_ok.can_set_current, false);
+	assert.equal('can_set_current' in rows.n_ok, false);
 	assert.equal(rows.n_ok.can_delete, false);
 
 	/* missing transport/security fall back to raw/none (docs/05 defaults) */
 	assert.equal(rows.n_defaults.protocol, 'Trojan');
 	assert.equal(rows.n_defaults.transport_security, 'raw / none');
-	assert.equal(rows.n_defaults.can_set_current, true);
+	assert.equal('can_set_current' in rows.n_defaults, false);
 	assert.equal(rows.n_defaults.can_delete, true);
 
 	/* a known subscription shows its name; a vanished one shows the raw section name */
@@ -237,10 +237,8 @@ test('scenario 9: static view checks — GridSection, confirmed remove, node_use
 	assert.match(src, /await ap\.confirm\(/);
 	assert.match(src, /cbi-button-remove/);
 
-	/* Direct switching leaves unrelated session changes untouched (T10.23). */
-	assert.match(src, /ap\.call\('node_use', \{ id: section_id \}\)/);
-	const switchSource = src.slice(src.indexOf('handleSetCurrent: async'), src.indexOf('handleImport: function'));
-	assert.doesNotMatch(switchSource, /uci\.(set|save)\(|ui\.changes\.apply\(/);
+	/* T10.71: Overview is the sole UI switch entry. */
+	assert.doesNotMatch(src, /handleSetCurrent|node_use|switchButtons/);
 
 	/* probing is a background job; results refresh through probe_results */
 	assert.match(src, /ap\.run_job\(/);
@@ -251,12 +249,8 @@ test('scenario 9: static view checks — GridSection, confirmed remove, node_use
 	assert.doesNotMatch(src, /cbi-button-reset/);
 });
 
-/* Regression (M10 full regression, 2026-10-20): the row buttons were bound with
- * ui.createHandlerFn(self, 'handleProbeOne' / 'handleSetCurrent', section_id), but the
- * handlers took (ev, section_id). LuCI passes the bound arguments first and the event
- * last, so 「检测」 sent the event object as the node list (rpcd: USAGE) and 「设为当前」
- * would have written it into main.node. The double below follows luci-base ui.js:
- * fn.apply(ctx, [...bound, ev]) with ev.currentTarget taken after the bound arguments. */
+/* Regression: LuCI passes bound node IDs before the click event. Keep the
+ * Probe handler test even though T10.71 removes the former Set Current action. */
 function luciCreateHandlerFn(ctx, fn, ...bound) {
 	if (typeof fn == 'string')
 		fn = ctx[fn];
@@ -322,79 +316,4 @@ test('row 「检测」 click sends only that node id to probe_nodes', async () =
 
 	assert.deepEqual(calls.find((c) => c[0] == 'run_job'),
 		[ 'run_job', 'probe_nodes', [ 'n_0123456789abcdef0123456789abcdef' ] ]);
-});
-
-test('T10.23 scenario 4: row click sends correct node_use id, unload/load then status, without session apply',
-	async () => {
-	const calls = [];
-	let release;
-	const id = 'n_' + 'b'.repeat(32);
-	const view = loadNodesView(calls, { call: method => method === 'node_use'
-		? new Promise(resolve => { release = resolve; })
-		: { ok: true, state: 'running', node_id: 'n_old' } });
-	const click = luciCreateHandlerFn(view, 'handleSetCurrent', id);
-	const button = {};
-	const pending = click({ currentTarget: button });
-	assert.equal(button.disabled, true);
-	assert.deepEqual(calls, [['call', 'node_use', { id }]]);
-	release({ ok: true, reload: true });
-	await pending;
-	assert.deepEqual(calls.slice(0, 5), [
-		['call', 'node_use', { id }], ['unload', 'aetherproxy'], ['load', 'aetherproxy'],
-		['call', 'status', undefined], ['build']
-	]);
-	assert.equal(calls.at(-1)[1], null);
-	assert.equal(calls.at(-1)[2].textContent, `正在切换到「${id}」…`);
-	assert.equal(button.disabled, false);
-});
-
-test('T10.23 scenario 4: node row failure notifies with code/detail, restores button and does not reload', async () => {
-	const calls = [];
-	const view = loadNodesView(calls, { call: async () => ({ ok: false, code: 'CMD_FAILED', detail: 'reload' }) });
-	const button = {};
-	await luciCreateHandlerFn(view, 'handleSetCurrent', 'n_b')({ currentTarget: button });
-	assert.equal(button.disabled, false);
-	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（CMD_FAILED）: reload');
-	assert.equal(calls.at(-1)[3], 'error');
-	assert.ok(!calls.some(call => ['unload', 'load', 'build'].includes(call[0])));
-});
-
-test('T9.41 node row displays CONFIG_INVALID Xray summary as text without reloading', async () => {
-	const calls = [];
-	const detail = 'xray run -test: invalid mldsa65Verify: <GARBAGE>';
-	const view = loadNodesView(calls, { call: async () => ({ ok: false, code: 'CONFIG_INVALID', detail }) });
-	const button = {};
-	await luciCreateHandlerFn(view, 'handleSetCurrent', 'n_b')({ currentTarget: button });
-	assert.equal(button.disabled, false);
-	assert.equal(calls.at(-1)[2].textContent, '切换节点失败（CONFIG_INVALID）: ' + detail);
-	assert.equal(calls.at(-1)[3], 'error');
-	assert.ok(!calls.some(call => ['unload', 'load', 'build'].includes(call[0])));
-});
-
-test('T10.23 defensive: node row rebuild rejection notifies and restores button without retry', async () => {
-	const calls = [];
-	const view = loadNodesView(calls);
-	view.buildPage = async () => { throw new Error('form unavailable'); };
-	const button = {};
-	await view.handleSetCurrent('n_b', { currentTarget: button });
-	assert.equal(button.disabled, false);
-	assert.equal(view.switching, false);
-	/* node_use succeeded; only the rebuild failed, so it must not read as a failed switch */
-	assert.equal(calls.at(-1)[2].textContent, '已切换节点，但刷新页面数据失败：form unavailable。请刷新页面。');
-	assert.equal(calls.at(-1)[3], 'warning');
-	assert.equal(calls.filter(call => call[0] === 'call' && call[1] === 'node_use').length, 1);
-});
-
-test('T10.23 scenario 4: stopped row switch reports next-start; active reload:false does not', async () => {
-	for (const state of ['stopped', 'error', 'running', 'degraded', 'starting', 'failsafe']) {
-		const calls = [];
-		const id = 'n_' + 'b'.repeat(32);
-		const view = loadNodesView(calls, { call: async method => method === 'node_use'
-			? { ok: true, reload: false } : { ok: true, state, node_id: id } });
-		await view.handleSetCurrent(id, { currentTarget: {} });
-		const notes = calls.filter(call => call[0] === 'notify');
-		assert.equal(notes.length, ['stopped', 'error'].includes(state) ? 1 : 0);
-		if (notes.length)
-			assert.equal(notes[0][2].textContent, '已设为当前节点，下次启动时使用');
-	}
 });
