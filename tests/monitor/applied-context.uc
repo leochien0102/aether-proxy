@@ -270,6 +270,7 @@ d.machine.table_missing_count = 1;
 let saved_path = `${root}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`;
 let saved = sprintf('%.J\n', { gfw4: [ '198.51.100.99' ], udirect4: [], uproxy4: [] });
 write(saved_path, saved);
+write(`${saved_path}.bad`, 'previous quarantine');
 flag('nft-load-fail', true);
 tick(d);
 check(fs.readfile(saved_path) == saved, 'failed nft load preserves sets.save byte for byte');
@@ -277,6 +278,30 @@ flag('nft-load-fail', false);
 tick(d);
 check(fs.stat(saved_path) == null && index(fs.readfile(`${current}/${C.ARTIFACT_FILES.nft}`),
 	'elements = { 198.51.100.99 }') >= 0, 'successful nft load restores elements then consumes sets.save');
+check(fs.readfile(`${saved_path}.bad`) == 'previous quarantine',
+	'T9.48 successful valid restore leaves previous quarantine untouched');
+// T9.48: the same loader must quarantine corruption during missing-table recovery.
+for (let text in [ '{broken', '[]', '{"gfw4":[]}',
+	'{"gfw4":["bad"],"udirect4":[],"uproxy4":[]}' ]) {
+	remove(`${root}/nft-table`);
+	d.machine.table_missing_count = 1;
+	write(saved_path, text);
+	let event_path = `${root}${C.RUN_DIR}/${C.EVENTS_FILE}`;
+	let warnings = () => length(filter(split(fs.readfile(event_path) ?? '', '\n'),
+		line => index(line, 'SETS_RESTORE_FAILED') >= 0));
+	let before = warnings();
+	tick(d);
+	let empty = pipeline.render(a, { node_ip: d.machine.node_ip, dns_tier: d.machine.dns_tier,
+		degraded_mode: d.machine.degraded_mode, restored: {} });
+	check(d.machine.state == 'running' && fs.stat(`${root}/nft-table`) != null &&
+		fs.readfile(`${current}/${C.ARTIFACT_FILES.nft}`) == empty.artifacts.nft,
+		`T9.48 monitor ${text} rebuilds with empty sets and keeps running`);
+	check(fs.stat(saved_path) == null && fs.readfile(`${saved_path}.bad`) == text && warnings() == before + 1,
+		`T9.48 monitor ${text} preserves quarantine and warns once`);
+	tick(d);
+	check(warnings() == before + 1 && fs.readfile(`${saved_path}.bad`) == text,
+		`T9.48 monitor ${text} polling does not repeat warning`);
+}
 // A missing internal context is an error, never permission to fall back to disk.
 d.applied_context = null;
 remove(`${root}/nft-table`);

@@ -212,23 +212,43 @@ function sets_save(ctx, sets) {
 	return result('dynamic sets saved');
 };
 
+function empty_saved_sets() {
+	return result('no saved dynamic sets', { sets: { gfw4: [], udirect4: [], uproxy4: [] } });
+};
+
+function sets_quarantine(ctx, path, detail) {
+	let bad_path = `${run_dir(ctx)}/${C.SETS_BAD_FILE}`;
+	// Rename replaces the one quarantine atomically; never unlink it first or retry it as input.
+	if (!fs.rename(path, bad_path)) {
+		let error = fs.error() ?? 'unknown error';
+		log.event('error', 'FS_FAILED', { op: 'rename', path, detail: error });
+		return { ok: false, detail: error };
+	}
+	log.event('warn', 'SETS_RESTORE_FAILED', { detail });
+	return empty_saved_sets();
+};
+
 function sets_load(ctx) {
 	setup_log(ctx);
 	let path = `${run_dir(ctx)}/${C.SETS_SAVE_FILE}`;
 	let text = fs.readfile(path);
-	if (text == null && fs.stat(path) == null)
-		return result('no saved dynamic sets', { sets: { gfw4: [], udirect4: [], uproxy4: [] } });
-	if (text == null)
-		return failed(ctx, 'sets_load', `cannot read ${path}: ${fs.error() ?? 'unknown error'}`);
+	if (text == null) {
+		let error = fs.error() ?? 'unknown error';
+		// This ucode fs API exposes strerror, not errno. Only ENOENT means no save;
+		// lstat also prevents an unreadable dangling symlink being mistaken for absence.
+		if (fs.lstat(path) == null && fs.error() == 'No such file or directory')
+			return empty_saved_sets();
+		return failed(ctx, 'sets_load', `cannot read ${path}: ${error}`);
+	}
 	let sets;
 	try {
 		sets = json(text);
 	}
 	catch (e) {
-		return failed(ctx, 'sets_load', `invalid ${path}: ${e}`);
+		return sets_quarantine(ctx, path, `invalid ${path}: ${e}`);
 	}
 	if (!valid_sets(sets))
-		return failed(ctx, 'sets_load', `invalid dynamic sets in ${path}`);
+		return sets_quarantine(ctx, path, `invalid dynamic sets in ${path}`);
 	return result('dynamic sets loaded', { sets });
 };
 

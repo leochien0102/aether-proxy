@@ -353,6 +353,10 @@ msgid "Missing nftables table restored"
 msgstr "已恢复丢失的 nftables 表"
 
 msgctxt "aether-proxy"
+msgid "Saved dynamic sets quarantined; continuing with empty sets: {detail}"
+msgstr "已隔离损坏的动态集合存档，使用空集合继续：{detail}"
+
+msgctxt "aether-proxy"
 msgid "dnsmasq configuration directory not found"
 msgstr "未找到 dnsmasq 配置目录"
 

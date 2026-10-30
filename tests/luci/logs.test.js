@@ -75,6 +75,35 @@ test('T9.8 scenario 7: RELOAD_APPLIED uses only docs/04 fields and shows Chinese
 	})), '已从节点 n_old 重载到 n_new，耗时 123 毫秒');
 });
 
+test('T9.48: quarantine event catalog, WARN default, template and Chinese detail agree', () => {
+	globalThis.E = element;
+	const code = 'SETS_RESTORE_FAILED';
+	const detail = 'invalid dynamic sets in sets.save <diagnostic>';
+	const expected = '已隔离损坏的动态集合存档，使用空集合继续：' + detail;
+	const doc = fs.readFileSync(path.join(ROOT, 'docs/09-logging.md'), 'utf8');
+	assert.match(doc, /\| `SETS_RESTORE_FAILED` \| warn \| `detail`/);
+	const backend = fs.readFileSync(path.join(ROOT, 'aether-proxy/src/lib/log.uc'), 'utf8');
+	assert.match(backend, /SETS_RESTORE_FAILED: 'warn'/);
+	assert.equal(model.templates[code], '已隔离损坏的动态集合存档，使用空集合继续：{detail}');
+	const warning = event(code, 'warn', 1, { detail });
+	assert.equal(model.message(warning), expected);
+	const row = model.events(payload([ warning ])).rows[0];
+	assert.equal(row.text, expected);
+	assert.equal(row.title, JSON.stringify({ detail }));
+	const page = loadModule(viewFile, {
+		view: { extend: value => value }, uci: { sections: () => [] },
+		'aether-proxy.model.logs': model, 'aether-proxy.common': {},
+		dom: { content: (node, children) => contentChildren(node, children) }
+	}, { window: { setTimeout() {} }, document: {} });
+	const root = page.render();
+	page.showEvents(payload([ warning ]));
+	function descendants(node) {
+		return [ node ].concat((node.childNodes ?? []).flatMap(descendants));
+	}
+	const rendered = descendants(root).find(node => node.tag === 'tr' && node.attrs.title);
+	assert.equal(rendered.children[3].textContent, expected);
+});
+
 test('T8.10 scenario 2: parameter values, unknown codes and compact SERVICE_STARTED', () => {
 	assert.equal(model.value_text(undefined), '?');
 	assert.equal(model.value_text([ 'a', 'b' ]), 'a、b');
