@@ -274,7 +274,7 @@ function loadNodesView(calls, overrides = {}) {
 		view: { extend: (o) => o },
 		form: {},
 		uci: {
-			sections: () => [],
+			sections: (config, type) => type === 'node' ? (overrides.sections ?? []) : [],
 			get: () => 'n_' + 'b'.repeat(32),
 			unload: config => { calls.push(['unload', config]); },
 			load: async config => { calls.push(['load', config]); },
@@ -320,4 +320,43 @@ test('row 「检测」 click sends only that node id to probe_nodes', async () =
 
 	assert.deepEqual(calls.find((c) => c[0] == 'run_job'),
 		[ 'run_job', 'probe_nodes', [ 'n_0123456789abcdef0123456789abcdef' ] ]);
+});
+
+/* T10.79: column text and severity share parsing; refresh clears stale colors. */
+test('T10.79: node latency boundaries, invalid values, pending and failures', () => {
+	const model = loadModule(MODEL, { baseclass: { extend: o => o } }, {});
+	const view = loadNodesView([], { sections: [section('n_test')] });
+	const span = element('span', {});
+	view.probeCells = { n_test: span };
+	const colors = { ok: 'color:var(--success-color-high, #2f855a)',
+		warn: 'color:var(--warning-color, #b7791f)', error: 'color:var(--error-color-high, #c53030)', neutral: '' };
+	const cases = [];
+	for (const [ms, level] of [[0, 'ok'], [100, 'ok'], [200, 'ok'], [201, 'warn'],
+		[800, 'warn'], [801, 'error'], [2000, 'error'], [undefined, 'neutral'],
+		[null, 'neutral'], [-1, 'neutral'], ['100', 'neutral'], [NaN, 'neutral'], [Infinity, 'neutral']])
+		cases.push([{ ok: true, nodes: { n_test: { ok: 3, median_ms: ms } } }, [], level, tr('%s ms (%s/3)', ms ?? '?', 3)]);
+	for (const error of ['resolve_failed', 'timeout', 'refused', 'unreachable', 'other'])
+		cases.push([{ ok: true, nodes: { n_test: { ok: 0, median_ms: 100, error } } }, [], 'error', tr({
+			resolve_failed: 'Resolve failed', timeout: 'Timed out', refused: 'Connection refused', unreachable: 'Unreachable', other: 'Other error'
+		}[error])]);
+	cases.push([{ ok: false }, [], 'error', tr('Reading failed')],
+		[undefined, [], 'neutral', tr('Reading…')], [null, [], 'neutral', tr('Not probed')],
+		[{ ok: true, nodes: {} }, [], 'neutral', tr('Not probed')],
+		[{ ...RESULTS, pending: ['n_test'] }, [], 'neutral', tr('Probing…')]);
+	for (const results of [undefined, { ok: false }, { ok: true, nodes: { n_test: { ok: 3, median_ms: 2000 } } }])
+		cases.push([results, ['n_test'], 'neutral', tr('Probing…')]);
+	for (const [results, pending, level, text] of cases) {
+		assert.equal(model.probe_column('n_test', results, pending), text);
+		assert.equal(model.probe_level('n_test', results, pending), level);
+		const row = model.build([section('n_test')], null, [], results, pending).rows[0];
+		assert.equal(row.probe_level, level);
+		view.results = results;
+		view.pendingProbes = pending;
+		/* Exercise updateProbeColumns with a row provided by the real model. */
+		view.probeCells = { n_test: span };
+		assert.equal(view.colorStyle(level), colors[level]);
+		view.updateProbeColumns();
+		assert.equal(span.attrs.style, colors[level]);
+		assert.equal(span.children.map(child => child.textContent ?? child).join(''), text);
+	}
 });

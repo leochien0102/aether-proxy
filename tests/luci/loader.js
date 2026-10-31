@@ -158,6 +158,11 @@ function loadModule(file, modules, env) {
 				'aether-proxy.model.subscriptions': {} }, env);
 			modules[r.name].required_options = block.required_options;
 		}
+		/* All page-model tests exercise the real shared latency thresholds. */
+		if (r.name == 'aether-proxy.model.latency' && !(r.name in modules))
+			return loadModule(require('node:path').resolve(__dirname,
+				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/model/latency.js'),
+			{ baseclass: { extend: object => object } }, env);
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');
 

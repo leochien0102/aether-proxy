@@ -821,7 +821,7 @@ test('T10.3 scenario 4: node labels, UCI declaration-order options, switch guard
 	assert.equal(model.can_switch('n_a', 'n_a'), false);
 	assert.equal(model.can_switch('n_b', 'n_a'), true);
 	assert.equal(model.can_switch('', 'n_a'), false);
-	for (const [probe, level] of [ [ { ok: true }, 'ok' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ])
+	for (const [probe, level] of [ [ { ok: true }, 'neutral' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ])
 		assert.equal(build({ ok: true, state: 'running', last_probe: probe }).probe_level, level);
 });
 
@@ -939,7 +939,7 @@ test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has
 	for (const [state, level] of [ [ 'running', 'ok' ], [ 'degraded', 'warn' ], [ 'failsafe', 'warn' ],
 		[ 'error', 'error' ], [ 'stopped', 'neutral' ], [ 'starting', 'busy' ], [ 'stopping', 'busy' ],
 		[ 'future', 'neutral' ] ]) {
-		for (const [probe, probeLevel] of [ [ { ok: true }, 'ok' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ]) {
+		for (const [probe, probeLevel] of [ [ { ok: true }, 'neutral' ], [ { ok: false }, 'error' ], [ null, 'neutral' ] ]) {
 			const { root } = renderStatus({ ok: true, state, last_probe: probe });
 			const word = findAll(root, 'strong')[0];
 			assert.match(word.attrs.style, /font-size: 1\.6em/);
@@ -1821,7 +1821,7 @@ for (const [reply, text] of LATENCY_RESULTS) {
 		assert.equal(visibleText(page.probeButton), '检测真实延迟');
 		assert.equal(page.probeButton.disabled, false);
 		assert.equal(page.vm.probe_text, text ?? health);
-		assert.equal(page.vm.probe_level, text ? (reply.ok ? 'ok' : 'error') : 'ok');
+		assert.equal(page.vm.probe_level, text ? (reply.ok ? 'warn' : 'error') : 'ok');
 		const displayed = findAll(nodeRow(root), 'span').filter(el => visibleText(el) === (text ?? health));
 		assert.equal(displayed.length, 1, 'exactly one health result');
 		assert.equal(displayed[0].attrs.style, page.colorStyle(page.vm.probe_level));
@@ -4014,5 +4014,35 @@ test('T10.69 scenario 4: inactive and failed statuses omit even a retained addre
 		assert.equal(page.vm.node_address_text, null);
 		assert.ok(!visibleText(root).includes('节点地址'));
 		assert.ok(domStrings(root).every(value => !value.includes(address) && !value.includes('***')));
+	}
+});
+
+/* T10.79: the same latency grades must reach automatic and manual DOM output. */
+for (const [ms, level] of [[0, 'ok'], [100, 'ok'], [200, 'ok'], [201, 'warn'],
+	[800, 'warn'], [801, 'error'], [2000, 'error'], [undefined, 'neutral'],
+	[null, 'neutral'], [-1, 'neutral'], ['100', 'neutral'], [NaN, 'neutral'], [Infinity, 'neutral']]) {
+	test(`T10.79: automatic/manual latency ${String(ms)} is ${level}`, () => {
+		const model = dashboardModel();
+		const status = { ok: true, state: 'running', last_probe: { ok: true, latency_ms: ms, at: NOW } };
+		const { root, page } = renderStatus(status);
+		assert.equal(page.vm.probe_level, level);
+		const span = findAll(nodeRow(root), 'span').find(n => visibleText(n) === page.vm.probe_text);
+		assert.equal(span.attrs.style, page.colorStyle(level));
+		const manual = model.manual_probe({ ok: true, latency_ms: ms }, 'GitHub', status, NOW);
+		assert.equal(manual.probe_level, level);
+		assert.equal(model.build(status, {}, {}, NOW, true, null, null, null, manual).probe_level, level);
+		page.manualProbe = manual;
+		page.refresh(status);
+		const manualSpan = findAll(nodeRow(root), 'span').find(n => visibleText(n) === manual.text);
+		assert.equal(manualSpan.attrs.style, page.colorStyle(level));
+	});
+}
+
+test('T10.79: failed automatic/manual probes stay error regardless of latency', () => {
+	const model = dashboardModel();
+	for (const ms of [100, 2000, undefined, -1]) {
+		assert.equal(build({ ok: true, state: 'running', last_probe: { ok: false, latency_ms: ms } }).probe_level, 'error');
+		for (const code of ['PROBE_TIMEOUT', 'PROBE_FAILED'])
+			assert.equal(model.manual_probe({ ok: false, code, latency_ms: ms }, 'GitHub', {}, NOW).probe_level, 'error');
 	}
 });

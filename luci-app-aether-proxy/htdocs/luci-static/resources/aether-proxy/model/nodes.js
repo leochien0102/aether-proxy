@@ -1,5 +1,6 @@
 'use strict';
 'require baseclass';
+'require aether-proxy.model.latency as latency';
 
 /*
  * Pure view model for the nodes page (docs/10 「节点页」, docs/tasks/m8.md T8.5).
@@ -85,36 +86,45 @@ function pending_of(results) {
    ok == 0 → the error text, no result → 未检测. Being pending wins over a stale
    result from a previous run (docs/07: unfinished nodes keep the old result,
    marked as probing). */
-function probe_column(id, results, local_pending) {
+function probe_fields(id, results, local_pending) {
 	if (local_pending?.includes(id))
-		return _('Probing…', 'aether-proxy');
+		return { text: _('Probing…', 'aether-proxy'), level: 'neutral' };
 	if (results === undefined)
-		return _('Reading…', 'aether-proxy');
+		return { text: _('Reading…', 'aether-proxy'), level: 'neutral' };
 	/* A failed read says so in each cell and gives the reason once, in the
 	   progress line (design lead's decision on the T10.16 TODO, 2026-10-21):
 	   repeating the RPC code in every row is noise. */
 	if (results?.ok === false)
-		return _('Reading failed', 'aether-proxy');
+		return { text: _('Reading failed', 'aether-proxy'), level: 'error' };
 	if (results == null || typeof results != 'object')
-		return _('Not probed', 'aether-proxy');
+		return { text: _('Not probed', 'aether-proxy'), level: 'neutral' };
 
 	const pending = pending_of(results);
 
 	if (pending && pending.indexOf(id) != -1)
-		return _('Probing…', 'aether-proxy');
+		return { text: _('Probing…', 'aether-proxy'), level: 'neutral' };
 
 	const nodes = nodes_of(results);
 	const res = nodes ? nodes[id] : null;
 
 	if (res == null || typeof res != 'object')
-		return _('Not probed', 'aether-proxy');
+		return { text: _('Not probed', 'aether-proxy'), level: 'neutral' };
 
 	if ((res.ok ?? 0) > 0)
-		return fmt(_('%s ms (%s/3)', 'aether-proxy'), res.median_ms ?? '?', res.ok);
+		return { text: fmt(_('%s ms (%s/3)', 'aether-proxy'), res.median_ms ?? '?', res.ok),
+			level: latency.level(res.median_ms) };
 
 	const text = PROBE_ERROR_TEXT[res.error];
 
-	return text ?? String(res.error ?? '?');
+	return { text: text ?? String(res.error ?? '?'), level: 'error' };
+}
+
+function probe_column(id, results, local_pending) {
+	return probe_fields(id, results, local_pending).text;
+}
+
+function probe_level(id, results, local_pending) {
+	return probe_fields(id, results, local_pending).level;
 }
 
 /* Only these fields come from node_parse (docs/05 「config node」). Clearing
@@ -164,6 +174,7 @@ function optional_format(check, message) {
 
 return baseclass.extend({
 	probe_column,
+	probe_level,
 	ss_methods: SS_METHODS,
 	validate_address: optional_format(valid_address,
 		_('Must be a valid IPv4 address or domain name', 'aether-proxy')),
@@ -220,6 +231,7 @@ return baseclass.extend({
 
 		for (const s of sections_of(sections)) {
 			const id = s['.name'];
+			const probe = probe_fields(id, results, local_pending);
 			const from_subscription = (s.source != null && s.source !== '' && s.source != 'manual');
 
 			rows.push({
@@ -231,7 +243,8 @@ return baseclass.extend({
 				protocol: protocol_text(s.protocol),
 				transport_security: [ s.transport || 'raw', s.security || 'none' ].join(' / '),
 				source: source_text(s, submap),
-				probe: probe_column(id, results, local_pending),
+				probe: probe.text,
+				probe_level: probe.level,
 				/* T10.71: switching belongs to Overview; keep deletion protection here. */
 				can_delete: (current == null || id != current),
 				modal_hint: from_subscription
