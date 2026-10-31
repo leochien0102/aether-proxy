@@ -2,9 +2,22 @@
 
 ## 范围
 
+### B24 包名迁移（2026-10-31）
+
+- 本应用只管理 `aether-xray`，纯上游基版本当前为 **26.10.21**，不带补丁；安装到 `/usr/bin/aether-xray`。最低运行版本仍为 26.3.27。
+- 已有的通道版或 feeds 版 `xray-core` **不自动卸载，也不再由本应用更新**，它可能属于 feeds 或 ssr-plus。
+  运行时按显式 `main.xray_bin` → `/usr/bin/aether-xray` → `/usr/bin/xray` 选择，组件信息显示实际路径与版本。
+- 新客户端忽略清单中的旧 `xray-core`，不查询它的安装版本、不下载安装或删除它；旧清单只有该条目时不提供 Xray 更新。
+  通道可继续保留旧条目供旧客户端使用；新旧条目同时存在且版本不同时也只比较 `aether-xray` 的包管理器版本。
+- `--previous` 只接受 `aether-xray`。停止服务时的安装验证只执行新包的二进制并对比上游基版本（去掉 `-rN` / `-N`），
+  不能以 `/usr/bin/xray` 的补丁版或显式运行路径代替新包验证。运行时组件版本仍如实显示，不冒充新包版本。
+- `tools/channel/build.py` 只收集新包；软件包发布时原样保留上一份清单的 `xray-core` 条目供旧客户端使用，
+  仅发布数据时保留整个旧清单（含 `xray-core`），不做旧条目重命名或版本继承。
+  本卡不发布通道、不更改 `AETHER_PROXY_REF`，合并须等待 T10.72。
+
 | 对象 | 方式 | 默认策略 |
 |---|---|---|
-| `xray-core` | **软件包**：发布仓库按 Makefile 从源码编译，**先过我们的测试再改 Makefile 的版本**，产物（ipk/apk）随签名清单发布；设备经包管理器安装 | `notify`：发现新版本只提示，用户点击后安装；可改为 `auto` |
+| `aether-xray` | **软件包**：发布仓库按 Makefile 从源码编译，**先过我们的测试再改 Makefile 的版本**，产物（ipk/apk）随签名清单发布；设备经包管理器安装 | `notify`：发现新版本只提示，用户点击后安装；可改为 `auto` |
 | `aether-proxy`、`luci-app-aether-proxy` | **软件包**：同上，由仓库所有者决定何时把新版本放进通道 | `notify`（不提供自动安装） |
 | `chinadns-ng` | **不进更新流程**：DNS 出问题影响全网解析，代价远大于 Xray（2026-10-15 定，与 helloworld 一致）。但发布仓库**为没有它的固件打包上游的静态二进制**（wolfssl 版，按 `PKG_HASH` 固定；aarch64 用 `wolfssl_noasm`，x86_64 用基线版），随 Release 发布、写进签名清单，供用户手工安装；设备端只处理 `UPDATE_PACKAGES` 中的四个包，清单里的 `chinadns-ng` 被忽略（2026-10-20 定） | 手工安装、手工升级 |
 | 规则数据 | `gfwlist`、`chnlist`、`apple`、`chnroute4`、`gfw_static4`，经签名清单每天更新 | 每天自动 |
@@ -18,7 +31,7 @@
 发布 CI 在**单独的发布仓库** `leochien0102/aether-proxy-channel`（见下方「发布仓库」）。生成发布目录与清单的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的 workflow 负责编译、运行它、签名、发布：
 
 1. **软件包**：用 OpenWrt 官方 SDK 编译，矩阵为「SDK 版本 × 目标」——24.10（ipk）与 25.12（apk）各编 `aarch64_generic`、`x86_64`（首版范围，以后按需增加）。
-   编译的包：`xray-core`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`chinadns-ng`（自己维护的 Makefile，打包上游发布的静态二进制，只供手工安装，见上方「范围」）、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（取 aether-proxy 仓库的指定提交）。
+   编译的包：`aether-xray`（发布仓库自己维护的 Makefile，从上游源码包编译，`PKG_HASH` 校验源码包）、`chinadns-ng`（自己维护的 Makefile，打包上游发布的静态二进制，只供手工安装，见上方「范围」）、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（取 aether-proxy 仓库的指定提交）。
 2. **Xray 版本闸门**：定时任务发现上游有新版本（含 prerelease）时，在发布仓库开一个改 Makefile 版本与 `PKG_HASH` 的 PR；PR 的检查用新版本对 aether-proxy 仓库全部 golden 配置跑 `xray run -test`（用官方 linux-64 二进制或本次编译出的 x86_64 包中的二进制）。
    **检查通过、仓库所有者合并后**才进入发布。PR 上的检查拿不到签名私钥，也不发布。
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
@@ -49,13 +62,13 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   "schema": 2,
   "generated": "2026-10-15T04:00:00Z",
   "packages": {
-    "xray-core": {
+    "aether-xray": {
       "current": {
-        "version": "26.9.30-r1",
+        "version": "26.10.21-r1",
         "assets": {
           "aarch64_generic": {
-            "ipk": { "url": "xray-core_26.9.30-r1_aarch64_generic.ipk", "sha256": "…", "size": 0 },
-            "apk": { "url": "xray-core-26.9.30-r1_aarch64_generic.apk", "sha256": "…", "size": 0 }
+            "ipk": { "url": "aether-xray_26.10.21-r1_aarch64_generic.ipk", "sha256": "…", "size": 0 },
+            "apk": { "url": "aether-xray-26.10.21-r1_aarch64_generic.apk", "sha256": "…", "size": 0 }
           }
         }
       },
@@ -70,7 +83,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 ```
 
 - 数据项的 `size`、`sha256` 描述**下载的 .gz 文件**（与其他资产一样在下载时校验）；`content_sha256` 是解压后列表的哈希，用来和本机的数据比较是否变化。
-- 软件包：`xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。
+- 软件包：`aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。
 - 资产文件名：ipk 原样（`<名>_<版本>_<架构>.ipk`）；25.12 SDK 输出的 apk 文件名**不带架构**（`<名>-<版本>.apk`），架构相关的 apk 发布时改名为 `<名>-<版本>_<架构>.apk`，否则各目标的同名文件在 Release 里互相覆盖。
   `tools/channel/build.py` 按 SDK 的输出布局 `<目标架构>/<feed>/<文件>` 取架构；架构无关的包每个 SDK 都会再编一份，只取第一份。
 - `assets` 的键直接是 OpenWrt 的包架构（设备 `/etc/openwrt_release` 的 `DISTRIB_ARCH`，与 `opkg print-architecture` 一致），`all` 用于架构无关的包。不再需要额外的架构映射表。
@@ -100,14 +113,14 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 默认 `channel_urls` 为 `https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/`（[05](05-config.md)），镜像地址追加在其后。
 - 数据生成器（`tools/data/`）与 `gfw_static4.txt` 仍在 aether-proxy 仓库：发布 CI 每次 checkout aether-proxy 的 `main` 来运行生成器，生成器改动不需要同步两个仓库。
 - 发布仓库是公开仓库，只有仓库所有者可以写入。发布（读私钥、签名、上传）只在定时、手动触发与 `main` 上的推送运行；PR 上只跑编译与 golden 检查（拿不到 Secret，也不发布）。
-- 发布仓库维护 `xray-core` 的 Makefile（自己编写，不复制 helloworld 或 openwrt/packages 的文件，README 规则 8），以及要打包的 aether-proxy 提交（一个版本文件）。
+- 发布仓库维护 `aether-xray` 的 Makefile（自己编写，不复制 helloworld 或 openwrt/packages 的文件，README 规则 8），以及要打包的 aether-proxy 提交（一个版本文件）。
 
 ### 发布仓库的实现（T7.2，2026-10-16）
 
-- **`xray-core` 不用 feeds 里的 golang**：OpenWrt 24.10 packages feed 的 Go 是 1.23，Xray 26.x 的 `go.mod` 要求 1.27。
+- **`aether-xray` 不用 feeds 里的 golang**：OpenWrt 24.10 packages feed 的 Go 是 1.23，Xray 26.x 的 `go.mod` 要求 1.27。
   Makefile 像源码包一样固定一个官方 Go 工具链（`GO_TOOLCHAIN_VERSION` + sha256，linux-amd64），用它交叉编译静态二进制（`CGO_ENABLED=0`、`-trimpath -ldflags "-s -w -buildid="`），
   两个 SDK、所有目标用同一个工具链。目前只支持 `aarch64`、`x86_64`（ARCH→GOARCH 映射写在 Makefile，其他架构直接失败）。本地 24.10.8 SDK 实测：ipk 约 12.8MB，`xray version` 输出正确。
-- 仓库内容：`xray-core/Makefile`、`AETHER_PROXY_REF`（要打包的 aether-proxy 完整提交哈希）、`keys/<指纹>`（与 aether-proxy 中相同的公钥，发布前验签用）、
+- 仓库内容：`aether-xray/Makefile`、`AETHER_PROXY_REF`（要打包的 aether-proxy 完整提交哈希）、`keys/<指纹>`（与 aether-proxy 中相同的公钥，发布前验签用）、
   `scripts/usign.sh`（从固定提交编译 usign）、`scripts/publish.sh`、三个 workflow：
   - `packages`：`gate`（Makefile 的 Go 版本 ≥ Xray `go.mod` 要求；用该 Xray 版本对 `AETHER_PROXY_REF` 的全部 golden 跑 `xray run -test`，即 `XRAY_CHECK_VERSIONS=<版本> tests/ci/xray.sh`）
     → `build`（`openwrt/gh-action-sdk` 固定提交，2 个 SDK × 2 个目标；检查 4 个包都产出；x86_64 的 xray 实际运行并核对版本）→ `publish`（只在 `main`）。
@@ -162,7 +175,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   "url": "<实际取到清单的 channel_urls 地址>",
   "arch": "aarch64_generic", "pm": "opkg",
   "packages": {
-    "xray-core": { "installed": "26.9.30-r1", "available": "26.10.10-r1", "newer": true },
+    "aether-xray": { "installed": "26.9.30-r1", "available": "26.10.21-r1", "newer": true },
     "aether-proxy": { "installed": "0.1.0-r1", "available": "0.2.0-r1", "newer": true }
   },
   "data": { "chnroute4": { "changed": true, "sha256": "<清单的 content_sha256>" }, "gfwlist": { "changed": false, "sha256": "…" } }
@@ -176,7 +189,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - `channel_urls` 为空 → `CONFIG_INVALID`（退出码 2）。至少一个地址返回了清单但都没通过验签 → `MANIFEST_BAD_SIGNATURE`（退出码 4）；所有地址都连不上 → `UPDATE_FETCH_FAILED`（退出码 1）。
   两种失败分开报，LuCI 才能分别提示「连不上发布通道」与「签名校验失败」。
 - `pm`：有 `apk` 命令为 `apk`，否则有 `opkg` 为 `opkg`。「有命令」指在 `PATH` 的各目录中找到可执行文件（`PATH` 为空时用 `/usr/sbin:/usr/bin:/sbin:/bin`）；指定 `--bin-dir` 时只看该目录。OpenWrt 的 opkg 在 `/bin/opkg`（2026-10-19 真机发现：之前只检查了相对路径，检查更新完全不可用，backlog B10）。`installed` 取自包管理器（`opkg status <包>` 的 `Version:`、`apk list -I <包>`）；没装为 `null`。
-- 版本比较：先按 `-r` 前的上游版本逐段比较数字，相同再比 `r` 后的数字（`26.10.10-r1` > `26.9.30-r5`）。release 后缀写成 `-rN` 或 `-N` 都认（不同固件与 SDK 两种都有：2026-10-19 H28K 上 ssr-plus 的 xray-core 为 `26.9.30-5`，之前被当成上游版本的一部分、release 记为 0，于是通道的 `26.9.30-r1` 被误判为更新，backlog B10）。
+- 版本比较：先按 `-r` 前的上游版本逐段比较数字，相同再比 `r` 后的数字（`26.10.10-r1` > `26.9.30-r5`）。release 后缀写成 `-rN` 或 `-N` 都认（不同固件与 SDK 两种都有：2026-10-19 H28K 上 ssr-plus 的 xray-core 为 `26.9.30-5`，之前被当成上游版本的一部分、release 记为 0，于是当时通道的 `26.9.30-r1` 被误判为更新，backlog B10）。
 - 包对本机架构不可用 → `available` 照常填、`newer: false`，记 `ARCH_UNSUPPORTED`。
 - 有包 `newer: true` 时记 `UPDATE_AVAILABLE`（每个包、每个新版本只记一次）。
 - **缓存过期**（2026-10-20 定，backlog B14 第 1 条）：`updates.json` 的 `installed` 是检查那一刻的。之后若有人用包管理器直接装、删包（opkg/apk 命令、LuCI 软件包页面），它就不再可信——
@@ -194,10 +207,10 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 3. 安装：opkg 用 `opkg install <文件>`；apk 用 `apk add --allow-untrusted <文件>`。**只在第 1 步的验签与哈希都通过之后**才这样调用——
    完整性由我们的签名清单保证，`--allow-untrusted` 只是跳过 apk 对 SDK 临时构建密钥的签名检查。
 4. 安装后检查（失败 → 安装清单中的 `previous` 资产回滚，记 ERR `UPDATE_ROLLED_BACK`）：
-   - `xray-core`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」；经 procd：`ubus call service signal '{"name":"aether-proxy","signal":12}'`，`signal` 必须是整数，不带 `instance`），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `xray version` 输出的版本等于清单版本的上游部分。
+   - `aether-xray`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」；经 procd：`ubus call service signal '{"name":"aether-proxy","signal":12}'`，`signal` 必须是整数，不带 `instance`），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `/usr/bin/aether-xray version` 输出的版本等于清单版本的上游部分。
    - `aether-proxy`：`/etc/init.d/aether-proxy restart`（超时 90 秒：stop 最多等 daemon 30 秒，即 `term_timeout`，再加 `cleanup` 与 start 中的 `check`）后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时 restart 之后只检查 `aether-proxy check` 通过。
    - luci 包：不做检查（页面文件在下次加载时生效）。
-   - **回滚之后要让旧版生效**（2026-10-20 T7.7 发现：只重装不重启，内存里跑的仍是检查失败的那一版）：`aether-proxy` 在更新前服务处于 `starting`、`running` 或 `degraded` 时执行一次 restart（同样 90 秒超时）；`xray-core` 在更新前服务处于 `running`、`degraded` 或 `starting` 时发一次 SIGUSR2。回滚后不再做检查，结果仍是 `UPDATE_VERIFY_FAILED`（`rolled_back: true`）；restart 或信号失败记 `CMD_FAILED`。`--previous` 的检查失败、改装回 `current` 时同样处理。
+   - **回滚之后要让旧版生效**（2026-10-20 T7.7 发现：只重装不重启，内存里跑的仍是检查失败的那一版）：`aether-proxy` 在更新前服务处于 `starting`、`running` 或 `degraded` 时执行一次 restart（同样 90 秒超时）；`aether-xray` 在更新前服务处于 `running`、`degraded` 或 `starting` 时发一次 SIGUSR2。回滚后不再做检查，结果仍是 `UPDATE_VERIFY_FAILED`（`rolled_back: true`）；restart 或信号失败记 `CMD_FAILED`。`--previous` 的检查失败、改装回 `current` 时同样处理。
 5. 成功记 `UPDATE_INSTALLED`。
 
 ~~**回滚一起回滚**~~（2026-10-22 定，r11 窗口；**2026-10-23 随「取消三包手动回滚」废止**，见下文，保留原文备查）：只回滚 `aether-proxy` 而页面（`luci-app-aether-proxy`）仍是新版时，新页面用到的新接口（`probe_sites`、`node_use`、`node_parse` 等）在旧后端上一律 `USAGE`，
@@ -207,17 +220,17 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 某个 luci 包本机没装、或清单中没有它对本机可用的 `previous` → 跳过它；某个 luci 包安装失败 → 记 `CMD_FAILED`，不再回滚已装好的 `aether-proxy`（旧后端配新页面会报 `USAGE`，但服务本身正常），在结果中如实报告。
 - 有 luci 包失败（安装、下载或校验）时：整体退出码 1，`code`/`detail` 取第一个失败的；其余 luci 包照常各自处理；已检查通过的 `aether-proxy` 不回退（2026-10-22 T9.16 复核定）。
   从 `luci-app-aether-proxy` 发起时，结果的 `package`、`from`、`to` 仍描述 `aether-proxy` 这一主事务，两个 luci 包写在 `companions` 里。
-- 结果在原有字段之外加 `companions: { "<包>": "rolled_back" | "skipped" | "failed", … }`；`update package luci-i18n-aether-proxy-zh-cn --previous` 与 `xray-core` 的回滚不变（只回滚自己）。
+- 结果在原有字段之外加 `companions: { "<包>": "rolled_back" | "skipped" | "failed", … }`；`update package luci-i18n-aether-proxy-zh-cn --previous` 与 `aether-xray` 的回滚不变（只回滚自己）。
 - 正向的安装（不带 `--previous`）不变：新后端配旧页面时，旧页面只调用旧接口，能正常工作。
 
 **取消三包手动回滚**（2026-10-23 仓库所有者定，r13 窗口）：r13 R7 实测，用过新配置项（`udp://` 可信 DNS、`wan`、设备覆盖模式、`config sub`）后回滚到 r5，旧版读不懂配置、检查失败、自动恢复，期间服务停止；手动回滚也只能回到通道里的上一版、不能选版本。所以：
-- `update package <包> --previous` **只接受 `xray-core`**；`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 带 `--previous` → `USAGE`（退出码 2）。三包一起回滚的逻辑与结果中的 `companions` 删除。
-- **保留**：安装后检查失败时的自动恢复（上面第 4 步）——恢复到的版本不低于原来装的版本，配置兼容；保留 `xray-core` 的手动回滚（新版 Xray 偶有运行时问题，回滚它不涉及我们的配置格式）。
-- `updates.json` 的 `packages.<包>.previous` 照旧写出（页面只对 `xray-core` 显示回滚按钮）。
+- `update package <包> --previous` **只接受 `aether-xray`**；`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 带 `--previous` → `USAGE`（退出码 2）。三包一起回滚的逻辑与结果中的 `companions` 删除。
+- **保留**：安装后检查失败时的自动恢复（上面第 4 步）——恢复到的版本不低于原来装的版本，配置兼容；保留 `aether-xray` 的手动回滚（新版 Xray 偶有运行时问题，回滚它不涉及我们的配置格式）。
+- `updates.json` 的 `packages.<包>.previous` 照旧写出（页面只对 `aether-xray` 显示回滚按钮）。
 - 需要别的版本时：从发布页下载对应版本的三个包，在 LuCI 的「软件包」页面上传安装或 `opkg install`；降级前注意新版本的设置旧版本可能不认识，必要时先恢复默认配置（用户文档第 6 节、更新页说明）。
 
 **更新一起更新**（2026-10-25 定，仓库所有者；backlog B17）：0.3.0-r1 发布后在更新页逐个点「立即更新」，仓库所有者担心先更新的一个与另一个不匹配，最坏时页面坏掉、无法再更新另一个。所以正向更新也按组处理（与上面已废止的「回滚一起回滚」同一结构，方向相反）：
-- 组：`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。`update package aether-proxy` 与 `update package luci-app-aether-proxy`（不带 `--previous`）都处理**整组**，主事务是 `aether-proxy`；`update package luci-i18n-aether-proxy-zh-cn` 与 `xray-core` 只装自己。
+- 组：`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。`update package aether-proxy` 与 `update package luci-app-aether-proxy`（不带 `--previous`）都处理**整组**，主事务是 `aether-proxy`；`update package luci-i18n-aether-proxy-zh-cn` 与 `aether-xray` 只装自己。
 - 顺序：先 `aether-proxy`——清单里它比已装的新时，照上面第 1–4 步安装并检查；不比已装的新（只有页面改了）就跳过它。**`aether-proxy` 装好且检查通过（或被跳过）之后**，才依次安装两个 luci 包的 `current` 资产（不做检查，同上）。`aether-proxy` 检查失败而自动恢复原版时，luci 包不动——页面与后端始终同一版。
   先后端、后页面的理由：新后端必须继续服务上一个正式版的页面（下面「更新接口」），反过来不保证。
 - luci 包本机没装、清单里没有它对本机可用的 `current`、或 `current` 不比已装的新（08「版本比较」）→ 跳过它；某个 luci 包下载、校验或安装失败 → 记 `CMD_FAILED`，不回退已装好的 `aether-proxy`，其余 luci 包照常处理；整体退出码 1，`code`/`detail` 取第一个失败的。
@@ -260,7 +273,7 @@ flash 写入量：数据只在内容变化时写，按每天最多一次计，�
 daemon 内部计时，不修改 crontab：
 
 - 数据：每天 `data_hour:data_minute`。
-- 软件包：每天检查一次新版本（`update check`），结果写 `updates.json`，由 LuCI 显示；`xray_auto=auto` 时对 `xray-core` 直接发起安装作业。`aether-proxy` 自身只提示。
+- 软件包：每天检查一次新版本（`update check`），结果写 `updates.json`，由 LuCI 显示；`xray_auto=auto` 时对 `aether-xray` 直接发起安装作业。`aether-proxy` 自身只提示。
 - 所有更新都以作业方式执行（[10](10-cli-luci.md)），同一时间只运行一个更新作业。
 
 细节（2026-10-16 定，T7.6）：
@@ -272,10 +285,10 @@ daemon 内部计时，不修改 crontab：
 - **顺序**：同一分钟只发起一个更新作业；`data` 先于 `check`（`data_auto=0` 时跳过 `data`）。两者共用更新锁，`data` 作业未结束时发起 `check` 得到退出码 3，下一分钟再试，自然先后执行。
 - **记录**：`/etc/aether-proxy/state/update-schedule.json`：`{ "data": { "last_attempt": <秒> }, "check": { "last_attempt": <秒> }, "auto_install": { "version": "<版本>", "at": <秒> } }`。
   `job start` 退出码 3 时不记录（下一分钟再试）；其他结果（含失败）都记录 `last_attempt`，避免每分钟重试。每天最多写几次 flash。文件损坏或字段格式不对按「没有记录」处理，损坏只记一次 `FS_FAILED`。
-- **`xray_auto=auto`**：每分钟检查 `updates.json`：`packages["xray-core"].newer == true` 且 `asset` 不为空，且 `auto_install.version` 不等于该 `available` 版本 →
-  发起 `job start update package xray-core`，成功发起后记录 `auto_install`。**同一个版本只自动安装一次**：安装后检查失败会回滚（T7.4），不会每分钟重装；下一个新版本再试。
+- **`xray_auto=auto`**：每分钟检查 `updates.json`：`packages["aether-xray"].newer == true` 且 `asset` 不为空，且 `auto_install.version` 不等于该 `available` 版本 →
+  发起 `job start update package aether-xray`，成功发起后记录 `auto_install`。**同一个版本只自动安装一次**：安装后检查失败会回滚（T7.4），不会每分钟重装；下一个新版本再试。
   只在状态为 `running` 时发起（`degraded` 时健康检测本身不可信，不做无人值守的升级）。
-- `xray_auto` 为 `off`/`notify` 时设备端行为相同：照常每天 `check`、写 `updates.json`；`off` 只影响 LuCI 是否提示 `xray-core` 的新版本。`aether-proxy` 自身永远只提示。
+- `xray_auto` 为 `off`/`notify` 时设备端行为相同：照常每天 `check`、写 `updates.json`；`off` 只影响 LuCI 是否提示 `aether-xray` 的新版本。`aether-proxy` 自身永远只提示。
 - daemon 不在 `running`/`degraded` 时不发起任何更新作业；reload 后按新的配置快照计算（改了 `data_hour` 等立即生效）。
 - 与订阅调度共用同一个 60 秒定时器（[06](06-nodes-subscription.md)「调度」）：订阅锁与更新锁互不影响，同一分钟可以各发起一个。
 
@@ -283,5 +296,5 @@ daemon 内部计时，不修改 crontab：
 
 官方 OpenWrt 上安装 aether-proxy 后可能没有 Xray 或 chinadns-ng（`COMPONENT_MISSING`）。LuCI 首页提示：
 
-1. Xray：「从发布通道安装 `xray-core`」（`update package xray-core`，会依次尝试 `channel_urls` 中的镜像地址）；也可以在软件包页面从软件源安装。
+1. Xray：「从发布通道安装 `aether-xray`」（`update package aether-xray`，会依次尝试 `channel_urls` 中的镜像地址）；也可以在软件包页面从软件源安装。
 2. chinadns-ng：从软件源安装，或从发布页手工下载通道打包的 `chinadns-ng`（只有 `aarch64_generic`、`x86_64`）；设备不会替用户安装或更新它。显示本机的 `DISTRIB_ARCH`，方便用户找到对应的包。

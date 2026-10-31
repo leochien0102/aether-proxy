@@ -39,7 +39,7 @@ init.d / hotplug / daemon ──────────────────
 | `probe url <站点>` | 经代理请求一个预设站点一次，返回耗时（「真实延迟」，[07](07-probe.md)「真实延迟」，2026-10-21） | 否 |
 | `probe sites` | 列出 `probe url` 可用的预设站点 | 否 |
 | `update check` | 检查新版本 | 是 |
-| `update package <包> [--previous]` | 从发布通道安装软件包（`xray-core`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本，**只对 `xray-core`**（2026-10-23，[08](08-updates.md)「取消三包手动回滚」） | 是 |
+| `update package <包> [--previous]` | 从发布通道安装软件包（`aether-xray`、`aether-proxy`、`luci-app-aether-proxy`），`--previous` 安装上一个版本，**只对 `aether-xray`**（2026-10-23，[08](08-updates.md)「取消三包手动回滚」） | 是 |
 | `dns test-direct` | 检测直连境外 DNS（[03](03-dns.md)「直连境外 DNS（可选）」，2026-10-23） | 是 |
 | `update data` | 更新规则数据 | 是 |
 | `data status` | 各规则数据的来源、版本、行数与可用更新（见「规则与 DNS 页」） | 否 |
@@ -230,7 +230,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   | `probe_nodes` | 0–256 个节点段名（`^n_[0-9a-f]{32}$`，不得重复） | `job start probe nodes [<id>…]` |
   | `sub_update` | 空，或 1 个订阅段名（`^s_[0-9a-f]{8}$`） | `job start sub update [<sub>]` |
   | `update_check`、`update_data` | 必须为空 | `job start update check` / `job start update data` |
-  | `update_package` | `[<包>]` 或 `["xray-core", "--previous"]`，包名属于 `xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（`--previous` 只允许 `xray-core`，2026-10-23） | `job start update package <包> [--previous]` |
+  | `update_package` | `[<包>]` 或 `["aether-xray", "--previous"]`，包名属于 `aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（`--previous` 只允许 `aether-xray`，2026-10-23） | `job start update package <包> [--previous]` |
   | `dns_test` | `[]` | `job start dns test-direct`（2026-10-23） |
 
 - **`events`**：`since` 为非负整数，`level` 为 `error|warn|notice|info|debug`，都可省略。
@@ -320,7 +320,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 | code | 条件 | args |
 |---|---|---|
 | `COMPONENT_MISSING` | `xray` 或 `chinadns-ng` 按 01「组件二进制的查找顺序」找不到（与 `check` 用同一个查找函数） | `component` |
-| `UPDATE_AVAILABLE` | `updates.json` 中某个包 `newer == true`；`xray-core` 在 `update.xray_auto == 'off'` 时不提示 | `package`、`available` |
+| `UPDATE_AVAILABLE` | `updates.json` 中某个包 `newer == true`；`aether-xray` 在 `update.xray_auto == 'off'` 时不提示 | `package`、`available` |
 | `IPV6_PRESENT` | `main.lan_ifaces` 中某个接口在 `/proc/net/if_inet6` 有全局地址（scope 字段为 `00`） | `iface` |
 | `DNSMASQ_EXTRA_SERVERS` | dnsmasq 生成的配置与 confdir 中（除自己的片段外）存在 `server=` 行——与启动时 `apply` 的检测相同，把检测部分抽成不记事件的共用函数 | `servers`（数组） |
 | `CONFLICT_ENABLED` | `main.enabled=1`，且 04「与其他代理插件的冲突」表中某插件没在运行、init 脚本存在且「配置里启用」（2026-10-24 加；r16 后不再看开机自启，04） | `plugin`（冲突名）、`boot`（开机自启是否开着，bool）、`configured`（配置里是否启用，bool） |
@@ -455,6 +455,11 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 
 ### 更新页（2026-10-16 定，T8.9b）
 
+**B24 迁移（2026-10-31）**：软件包行、安装作业、确认框与唯一可手动回滚的包改为 `aether-xray`。
+表下说明“旧 xray-core 不再由本应用更新，也不会自动卸载”；无新二进制时回退 `/usr/bin/xray`，显式 `main.xray_bin` 优先。
+运行组件的键仍为 `xray`，概览现场组件与本页运行组件的路径/版本均按实际二进制显示，不以新包名推断运行路径。
+旧页面仍可更新本应用与 LuCI 三包，但其 `xray-core` 行不再由新后端提供更新；无需修改冻结的兼容页面。
+
 **`update check` 新增 `packages.<包>.previous`**：清单中该包 `previous` 对本机架构与包管理器有资产时为它的版本字符串，否则（`previous` 为 `null`、没有本机资产）为 `null`。
 取法与 `update package --previous` 选资产相同（共用 `lib/update.uc` 已有的选资产函数），页面据此决定回滚按钮是否可用、显示回滚到哪个版本。
 
@@ -462,7 +467,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 每个作业结束后再取一次 `status`。不定时刷新。
 
 **页面**（`form.Map('aetherproxy')`，模型 `model/updates.js`）：
-- **软件包表**：`xray-core`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 四行，列：名称、已安装（`installed`，`null` 显示「未安装」）、最新（`available`）、上一版（`previous`，`null` 显示「–」）、状态、操作。
+- **软件包表**：`aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 四行，列：名称、已安装（`installed`，`null` 显示「未安装」）、最新（`available`）、上一版（`previous`，`null` 显示「–」）、状态、操作。
   - 状态：`updates_available` 为 `null` →「未检查」（其余列显示「–」）；该包不在 `packages` 中 →「通道中没有」；`asset` 为 `null` →「本机不可用」（附 `arch`）；
     `installed` 为 `null` →「未安装」；`newer` 为真 →「有更新」；否则「最新」（按这个顺序判断，第一个成立的生效）。
   - 操作：「安装」（`installed` 为 `null` 且 `asset` 不为空）或「更新」（`installed` 不为空且 `newer` 为真）→ `ap.run_job('update_package', [<包>])`；
@@ -862,7 +867,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 **2026-10-23 废止**：后端 T9.29 已取消三包手动回滚，页面部分由下文「r13：取消三包手动回滚」（T10.46）取代；下面保留原文备查。
 
 08「回滚一起回滚」：回滚 `aether-proxy` 或 `luci-app-aether-proxy` 时后端把三个包（`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`）一起回滚。页面：
-- 这两行的「回滚」调用不变（各自 `update package <包> --previous`，后端处理同组）；`luci-i18n-aether-proxy-zh-cn` 与 `xray-core` 的回滚只回滚自己，确认框与结果都不变。
+- 这两行的「回滚」调用不变（各自 `update package <包> --previous`，后端处理同组）；`luci-i18n-aether-proxy-zh-cn` 与 `aether-xray` 的回滚只回滚自己，确认框与结果都不变。
 - **确认框**（`ap.confirm`，标题「回滚 Aether Proxy」，确认按钮「回滚」、破坏性）：正文先说明「这三个软件包会一起回滚，页面与后端保持同一版本：」，然后逐行列出三个包「<包>：<当前版本> → <旧版本>」；
   某个包没装或没有可用的旧版本 → 「<包>：跳过（未安装或没有可用的旧版本）」。版本取页面已读到的各包 `installed`/`previous`（与各行「回滚到 …」同一来源）。
 - **结果**：作业成功时，`aether-proxy` 一行「已回滚到 <版本>」，`companions` 中每个包一行：`rolled_back`「已回滚」、`skipped`「已跳过」、`failed`「失败」；
@@ -1023,7 +1028,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 ### r13：取消三包手动回滚（2026-10-23 定，T10.46；r13 窗口第 15 条；依赖后端 T9.29）
 
 依据 08「取消三包手动回滚」。**取代**「更新页：回滚一起回滚」（T10.31）的页面部分：
-- 更新页只有 `xray-core` 一行保留「回滚」（确认框与结果照 T10.31 之前的单包写法）；`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 三行不再有「回滚」。三包一起回滚的确认框、`companions` 结果与「刷新页面」提示删除（模型与翻译里不再用到的条目一并删）。
+- 更新页只有 `aether-xray` 一行保留「回滚」（确认框与结果照 T10.31 之前的单包写法）；`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 三行不再有「回滚」。三包一起回滚的确认框、`companions` 结果与「刷新页面」提示删除（模型与翻译里不再用到的条目一并删）。
 - 软件包表下方加说明：「如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。」
 - 安装、立即更新照旧；安装后检查失败的自动恢复（「安装后检查失败，已回滚到 …」）照旧显示。
 
@@ -1232,7 +1237,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 
 后端（08「更新一起更新」）：点 `aether-proxy` 或 `luci-app-aether-proxy` 的「更新」，一次作业装整组——先 `aether-proxy`（有新版才装，装后检查），再两个页面包。结果的 `package`、`from`、`to`、`rolled_back` 仍描述 `aether-proxy` 主事务（跳过时 `from` = `to`），另有 `companions: { "luci-app-aether-proxy": "installed" | "skipped" | "failed", "luci-i18n-aether-proxy-zh-cn": … }`。某个页面包失败时整体 `ok` 为假，`code`/`detail` 取第一个失败的；`aether-proxy` 检查失败而回滚时页面包不动。
 
-1. **结果文字**（模型 `job_result`，只对带 `companions` 的结果；没有 `companions` 的照旧，例如 `xray-core`、翻译包单独更新）。按顺序拼成一段：同一句里的几个分句用可翻译的 `_('%s; %s')`（中文 `%s；%s`）连接，末尾加句号；第 2 条的刷新提示是另一句，用 UI 规则「多句拼接」的 `_('%s %s')` 接在后面：
+1. **结果文字**（模型 `job_result`，只对带 `companions` 的结果；没有 `companions` 的照旧，例如 `aether-xray`、翻译包单独更新）。按顺序拼成一段：同一句里的几个分句用可翻译的 `_('%s; %s')`（中文 `%s；%s`）连接，末尾加句号；第 2 条的刷新提示是另一句，用 UI 规则「多句拼接」的 `_('%s %s')` 接在后面：
    - `rolled_back` 为真 → 照旧「安装后检查失败，已回滚到 <from>」，页面包没动，不再说别的。
    - 主事务：`from` 不等于 `to` →「aether-proxy 已从 <from> 更新到 <to>」（沿用原句）；`from` = `to`（后端没有新版、被跳过）→ **不写这一句**。
    - 页面包：`installed` 的按「界面」（`luci-app-aether-proxy`）、「翻译」（`luci-i18n-aether-proxy-zh-cn`）列出，用「、」连接；主事务更新了写「界面、翻译已同时更新」，主事务被跳过写「界面、翻译已更新」。`failed` 的写「界面更新失败：<原因>」（原因用 `failure()` 对 `code`/`detail` 的写法；多个失败只有第一个有原因，其余只写「翻译更新失败」）。`skipped` 不写。
@@ -1240,7 +1245,7 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
    - 主事务本身失败（下载、校验等，`ok` 为假且没有 `failed` 的页面包）→ 照旧只显示 `failure()`。
    - 例：「aether-proxy 已从 0.3.0-r1 更新到 0.3.1-r1；界面、翻译已同时更新。请刷新页面。」「界面已更新；翻译更新失败：校验失败。请刷新页面。」
 2. **刷新提示**：有页面包 `installed` 时，末尾加「请刷新页面。」（复审改：原写「界面已更新，请刷新页面。」，界面包失败、只有翻译装上时前后矛盾）——正在运行的就是旧脚本，换掉的视图与翻译要刷新才生效。只更新了 `aether-proxy`（页面包都 `skipped`）时不加。没有 `companions` 的结果沿用原来的「页面文件可能已变化，请刷新浏览器。」规则。不在这里调用 T10.12 的过期检测：刚更新完时旧脚本是预期的，那条横幅的措辞（「请清除浏览器缓存」）不适合；刷新后仍是旧脚本时由 T10.12 照常提示。
-3. **进度文字**：点 `aether-proxy` 或 `luci-app-aether-proxy` 的「更新」时写「正在更新 aether-proxy 及其界面…」；表格里 `aether-proxy` 那一行 `newer` 为真（后端有新版）时再加一句「服务会短暂中断」。翻译包、`xray-core` 照旧「正在安装 <包>…」。
+3. **进度文字**：点 `aether-proxy` 或 `luci-app-aether-proxy` 的「更新」时写「正在更新 aether-proxy 及其界面…」；表格里 `aether-proxy` 那一行 `newer` 为真（后端有新版）时再加一句「服务会短暂中断」。翻译包、`aether-xray` 照旧「正在安装 <包>…」。
 4. **错误原因的冒号**：`failure()` 里的 `code` 与 `detail` 现在用写死的 `': '` 拼接，中文页面上是半角冒号；改用可翻译的 `_('%s: %s')`（已有条目，中文「%s：%s」）。同一类问题 T10.61 复审改过。
 5. **兼容**：`companions` 是 08「更新接口（固定）」允许新增的字段，旧页面不认识它、照旧只显示主事务。**不改 `tests/compat/fixtures/`**（冻结的 0.3.0-r1 页面文件，发正式版后由后端会话替换）；`tests/compat/` 的测试照常要通过。
 
