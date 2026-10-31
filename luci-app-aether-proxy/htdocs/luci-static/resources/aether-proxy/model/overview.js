@@ -1,5 +1,6 @@
 'use strict';
 'require baseclass';
+'require aether-proxy.model.latency as latency';
 'require aether-proxy.model.logs as logs';
 'require aether-proxy.model.conflicts as conflicts';
 
@@ -334,7 +335,7 @@ function probe_fields(probe, now) {
 		probe_text: probe.ok
 			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy'),
 		probe_since_text: typeof probe.at == 'number' ? rel_time(now, probe.at) : null,
-		probe_level: probe.ok ? 'ok' : 'error'
+		probe_level: probe.ok ? latency.level(probe.latency_ms) : 'error'
 	};
 }
 
@@ -610,7 +611,9 @@ return baseclass.extend({
 				: fmt(_('Probe failed (%s, manual)', 'aether-proxy'), label);
 		else
 			return null;
-		return { text, ok: reply.ok === true, at: now, monitor_at: status?.last_probe?.at };
+		return { text, ok: reply.ok === true,
+			probe_level: reply.ok === true ? latency.level(reply.latency_ms) : 'error',
+			at: now, monitor_at: status?.last_probe?.at };
 	},
 
 	probe_error: function(reply) {
@@ -797,7 +800,7 @@ return baseclass.extend({
 				: manual && manual.monitor_at === status.last_probe?.at ? {
 				probe_text: manual.text,
 				probe_since_text: rel_time(now, manual.at),
-				probe_level: manual.ok ? 'ok' : 'error'
+				probe_level: manual.probe_level
 			} : probe_fields(status.last_probe, now)),
 			components,
 			notices: (Array.isArray(status.notices) ? status.notices : []).map(notice_text),

@@ -444,7 +444,9 @@ return view.extend({
 		o.textvalue = function(section_id) {
 			/* The span is kept so the probe column can be refreshed in place
 			   while a probe job is running. */
-			const span = E('span', {});
+			const span = E('span', {
+				style: self.colorStyle(model.probe_level(section_id, self.results, self.pendingProbes))
+			});
 			self.probeCells[section_id] = span;
 			// GridSection may render again after an edit without rebuilding the map.
 			dom.content(span, [ model.probe_column(section_id, self.results, self.pendingProbes) ]);
@@ -914,6 +916,15 @@ return view.extend({
 		});
 	},
 
+	colorStyle: function(level) {
+		const colors = {
+			ok: 'var(--success-color-high, #2f855a)',
+			warn: 'var(--warning-color, #b7791f)',
+			error: 'var(--error-color-high, #c53030)'
+		};
+		return colors[level] ? 'color:' + colors[level] : '';
+	},
+
 	updateProbeColumns: function() {
 		const vm = model.build(
 			uci.sections('aetherproxy', 'node'),
@@ -930,6 +941,7 @@ return view.extend({
 		for (const [sid, span] of Object.entries(this.probeCells)) {
 			const row = rows[sid];
 			dom.content(span, [ row ? row.probe : '–' ]);
+			span.setAttribute('style', this.colorStyle(row?.probe_level));
 		}
 
 		// LuCI stringifies null children; an absent progress line must stay empty.
