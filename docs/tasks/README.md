@@ -149,4 +149,4 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 
 - T10.77（0.6.0 集成 main+release）已合并（2026-10-31，main）
 
-- T10.78（channel 0.6.0 aether-xray 包）已发（2026-10-31，基于 channel main）
+- T10.78（channel 0.6.0 aether-xray 包）已合并（2026-10-31，channel main 本地）
