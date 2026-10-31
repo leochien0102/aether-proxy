@@ -2617,3 +2617,15 @@ msgstr "切换节点请到概览页选择后点「应用」。"
 msgctxt "aether-proxy"
 msgid "The current node cannot be deleted. Switch to another node on the Overview page first."
 msgstr "当前节点不可删除，请先在概览页切换到其他节点。"
+
+msgctxt "aether-proxy"
+msgid "SOCKS"
+msgstr "SOCKS"
+
+msgctxt "aether-proxy"
+msgid "Username"
+msgstr "用户名"
+
+msgctxt "aether-proxy"
+msgid "Username and password must both be set or both be empty."
+msgstr "用户名和密码必须同时填写或同时留空。"

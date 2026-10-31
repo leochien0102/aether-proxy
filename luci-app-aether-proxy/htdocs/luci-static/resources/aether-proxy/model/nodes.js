@@ -50,7 +50,8 @@ const PROTOCOL_NAMES = {
 	vless: _('VLESS', 'aether-proxy'),
 	vmess: _('VMess', 'aether-proxy'),
 	trojan: _('Trojan', 'aether-proxy'),
-	shadowsocks: _('Shadowsocks', 'aether-proxy')
+	shadowsocks: _('Shadowsocks', 'aether-proxy'),
+	socks: _('SOCKS', 'aether-proxy')
 };
 
 function protocol_text(protocol) {
@@ -119,7 +120,7 @@ function probe_column(id, results, local_pending) {
    them prevents credentials/transport settings from a previous URI leaking
    into the next one; source, stale and match_* are not protocol fields. */
 const NODE_FIELDS = [
-	'label', 'protocol', 'address', 'port', 'uuid', 'password', 'method', 'flow', 'encryption',
+	'label', 'protocol', 'address', 'port', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
 	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
@@ -182,7 +183,7 @@ return baseclass.extend({
 		address: { required: true },
 		port: { required: true },
 		uuid: { protocols: ['vless', 'vmess'], required: true },
-		password: { protocols: ['trojan', 'shadowsocks'], required: true },
+		password: { protocols: ['trojan', 'shadowsocks', 'socks'], required: ['trojan', 'shadowsocks'] },
 		method: { protocols: ['shadowsocks', 'vmess'], required: ['shadowsocks'] },
 		sni: { requires_when: { field: 'security', value: 'reality' } },
 		reality_pbk: { requires_when: { field: 'security', value: 'reality' } }

@@ -33,6 +33,16 @@
  * Protocol-specific method aliases retain inactive and unknown values (docs/10 r18).
  */
 
+/* Read cloned modal inputs so unsaved credentials and protocol switches are validated together. */
+function validateSocksCredential(section_id, value) {
+	const current = field => this.map.lookupOption(field, section_id)?.[0]?.formvalue(section_id);
+	if (current('protocol') !== 'socks')
+		return true;
+	const other = current(this.option === 'username' ? 'password' : 'username');
+	return (value == null || value === '') && other != null && other !== ''
+		? _('Username and password must both be set or both be empty.', 'aether-proxy') : true;
+}
+
 function compactKey(value) {
 	return String(value ?? '').replace(/\s/g, '');
 }
@@ -452,6 +462,7 @@ return view.extend({
 		o.value('vmess', _('VMess', 'aether-proxy'));
 		o.value('trojan', _('Trojan', 'aether-proxy'));
 		o.value('shadowsocks', _('Shadowsocks', 'aether-proxy'));
+		o.value('socks', _('SOCKS', 'aether-proxy'));
 
 		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
@@ -477,10 +488,17 @@ return view.extend({
 		o.depends('protocol', 'vless');
 		o.depends('protocol', 'vmess');
 
+		o = s.option(form.Value, 'username', _('Username', 'aether-proxy'));
+		o.modalonly = true;
+		o.depends('protocol', 'socks');
+		o.validate = validateSocksCredential;
+
 		o = s.option(form.Value, 'password', _('Password', 'aether-proxy'));
 		o.modalonly = true;
 		o.depends('protocol', 'trojan');
 		o.depends('protocol', 'shadowsocks');
+		o.depends('protocol', 'socks');
+		o.validate = validateSocksCredential;
 
 		/* Distinct widgets share one UCI field. SDK remove() recognizes aliases;
 		 * form_defaults also preserves the inactive widget without writes/deletes. */

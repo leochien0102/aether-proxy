@@ -435,6 +435,12 @@ function check_xray_values(n, at, errors) {
 
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
+	// SOCKS credentials are optional as a pair; never include either value in diagnostics.
+	if (n.protocol == 'socks' && (unset(n.username) != unset(n.password))) {
+		let missing = unset(n.username) ? 'username' : 'password';
+		push(errors, { field: at + '.' + missing, code: 'required',
+			detail: `${missing} is required for SOCKS authentication` });
+	}
 	check_xray_values(n, at, errors);
 	if (index([ 'vless', 'vmess' ], n.protocol) >= 0 && n.uuid != null) {
 		// Xray hashes short IDs; longer IDs must be UUID hex, without fixed hyphen positions (docs/05 rule 7).
