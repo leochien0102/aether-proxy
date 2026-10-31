@@ -12,7 +12,7 @@ policy_reset() {
 	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
 		printf '0.2.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/$package"
 	done
-	printf '26.10.10-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/xray-core"
+	printf '26.10.10-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-xray"
 	printf '{"state":"running","last_probe":{"ok":true,"at":1}}\n' > "$UPDATE_STATE_FILE"
 	: > "$UPDATE_PACKAGE_CALLS"
 	: > "$UPDATE_PACKAGE_QUERY_CALLS"
@@ -74,7 +74,7 @@ for manager in opkg apk; do
 		out=$(ap update package --previous "$package" --confdir "$T/conf" \
 			--run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin" 2>"$T/stderr")
 		expect "T9.29 $manager $package text previous exit 2" 2 "$?"
-		grep -q 'only supported for xray-core' "$T/stderr" \
+		grep -q 'only supported for aether-xray' "$T/stderr" \
 			&& ok "T9.29 $manager $package text previous explains restriction" \
 			|| bad "T9.29 $manager $package text previous explains restriction"
 		grep -q '^Usage: aether-proxy update check' "$T/stderr" \
@@ -91,16 +91,16 @@ for manager in opkg apk; do
 	policy_assert 'backend automatic recovery leaves companions skipped' automatic
 
 	# T9.38 groups backend/app forward requests; keep standalone and manual rollback coverage.
-	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn xray-core; do
+	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray; do
 		policy_reset
 		out=$(policy_run "$package")
 		expect "T9.29 $manager $package forward exit" 0 "$?"
 		policy_assert "$package forward respects group policy" "forward:$package"
 	done
 	policy_reset
-	out=$(policy_run xray-core --previous)
-	expect "T9.29 $manager xray-core independent previous exit" 0 "$?"
-	policy_assert 'xray-core previous unchanged' previous:xray-core
+	out=$(policy_run aether-xray --previous)
+	expect "T9.29 $manager aether-xray independent previous exit" 0 "$?"
+	policy_assert 'aether-xray previous unchanged' previous:aether-xray
 	if [ "$manager" = apk ]; then
 		rm "$T/bin/apk"
 	fi

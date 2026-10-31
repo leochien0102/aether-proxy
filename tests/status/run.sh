@@ -139,7 +139,7 @@ mkdir -p "$R"
 cat > "$R/updates.json" <<'EOF'
 {"checked":1760400000,"url":"https://channel.example/","arch":"x86_64","pm":"apk",
  "packages":{
-   "xray-core":{"installed":"26.9.30-r1","available":"26.10.1","newer":true,"asset":"https://channel.example/xray.apk"},
+   "aether-xray":{"installed":"26.9.30-r1","available":"26.10.1","newer":true,"asset":"https://channel.example/xray.apk"},
    "aether-proxy":{"installed":"0.1.0-r2","available":"0.2.0","newer":true,"asset":"https://channel.example/ap.apk"},
    "luci-app-aether-proxy":{"installed":"0.1.0-r2","available":"0.1.0-r2","newer":false}
  },
@@ -148,13 +148,13 @@ EOF
 out="$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" --sys-root "$SR" --bin-dir "$T/bin" 2>"$T/s3.stderr")"; rc=$?
 expect "s3: exit code 0" 0 "$rc"
 expect "s3: exactly two update notices" "<missing>" "$(echo "$out" | jget notices.2.code)"
-expect "s3: first package (UPDATE_PACKAGES order)" "xray-core" "$(echo "$out" | jget notices.0.args.package)"
+expect "s3: first package (UPDATE_PACKAGES order)" "aether-xray" "$(echo "$out" | jget notices.0.args.package)"
 expect "s3: first available" "26.10.1" "$(echo "$out" | jget notices.0.args.available)"
 expect "s3: second package" "aether-proxy" "$(echo "$out" | jget notices.1.args.package)"
 expect "s3: second available" "0.2.0" "$(echo "$out" | jget notices.1.args.available)"
 expect "s3: codes" "UPDATE_AVAILABLE" "$(echo "$out" | jget notices.0.code)"
 
-# update.xray_auto == 'off' mutes only the xray-core notice.
+# update.xray_auto == 'off' mutes only the aether-xray notice.
 mkdir -p "$T/conf-xrayoff"
 cat "$FIX/sample/aetherproxy" > "$T/conf-xrayoff/aetherproxy"
 cat >> "$T/conf-xrayoff/aetherproxy" <<'EOF'
@@ -165,12 +165,12 @@ EOF
 out="$(ap "$PATH_BOTH" status --json --confdir "$T/conf-xrayoff" --run-dir "$R" --sys-root "$SR" --bin-dir "$T/bin" 2>"$T/s3b.stderr")"; rc=$?
 expect "s3b (xray_auto off): exit code 0" 0 "$rc"
 expect "s3b: only aether-proxy remains" "aether-proxy" "$(echo "$out" | jget notices.0.args.package)"
-expect "s3b: xray-core suppressed" "<missing>" "$(echo "$out" | jget notices.1.code)"
+expect "s3b: aether-xray suppressed" "<missing>" "$(echo "$out" | jget notices.1.code)"
 
 # newer=false and a missing updates.json never produce a notice.
 cat > "$R/updates.json" <<'EOF'
 {"checked":1760400000,"packages":{
-   "xray-core":{"installed":"26.10.1","available":"26.10.1","newer":false},
+   "aether-xray":{"installed":"26.10.1","available":"26.10.1","newer":false},
    "aether-proxy":{"installed":"0.2.0","available":"0.2.0","newer":false}}}
 EOF
 out="$(ap "$PATH_BOTH" status --json --confdir "$FIX/sample" --run-dir "$R" --sys-root "$SR" --bin-dir "$T/bin" 2>/dev/null)"
@@ -254,7 +254,7 @@ cache_status() {
 		--sys-root "$SR/" --bin-dir "$T/bin" 2>"$T/cache.stderr"
 }
 cache='{"checked":1760400000,"pm":"opkg",
- "packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}},"data":{}}'
+ "packages":{"aether-xray":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}},"data":{}}'
 printf '%s\n' "$cache" > "$R/updates.json"
 reference=$(cache_status)
 expect 'T9.6 reference has UPDATE_AVAILABLE' UPDATE_AVAILABLE "$(echo "$reference" | jget notices.0.code)"

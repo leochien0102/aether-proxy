@@ -217,12 +217,12 @@ for (const answer of [ true, false ]) {
 				page.summary = E('p');
 				page.progress = E('p');
 				page.status = {};
-				const row = { name: 'xray-core', confirmation: model('updates').confirmation('xray-core', '2', '1') };
+				const row = { name: 'aether-xray', confirmation: model('updates').confirmation('aether-xray', '2', '1') };
 				pending = page.package_button(row, 'rollback', true).attrs.click();
-				title = '回滚 xray-core';
+				title = '回滚 aether-xray';
 				text = row.confirmation;
 				ok = '回滚';
-				expected = [ [ 'job', 'update_package', [ 'xray-core', '--previous' ] ], [ 'call', 'status' ] ];
+				expected = [ [ 'job', 'update_package', [ 'aether-xray', '--previous' ] ], [ 'call', 'status' ] ];
 			}
 			/* Disabling first reads the session's staged changes (T10.22). */
 			await Promise.resolve();

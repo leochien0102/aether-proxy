@@ -317,7 +317,7 @@ R="$T/root-auto-install"
 sed -i "s/option xray_auto 'notify'/option xray_auto 'auto'/" "$R/etc/config/aetherproxy"
 now=$(date +%s)
 printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
-printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+printf '{"packages":{"aether-xray":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
 SCHEDULE_RESOLVE_FAIL=0 start_daemon "$R"
 wait_for_text "$R/var/run/aether-proxy/state.json" '"state"' 400
 for _ in {1..40}; do
@@ -325,18 +325,18 @@ for _ in {1..40}; do
 	kill -USR1 "$DAEMON_PID" 2>>"$QUIET" || break
 	sleep 0.05
 done
-if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 400; then
+if wait_for_text "$R/schedule-calls.log" 'job start update package aether-xray' 400; then
 	ok "auto policy starts xray package job while running"
 	# The stub logs before the daemon persists the record (same race as the T9.6 case below).
 	wait_for_text "$R/etc/aether-proxy/state/update-schedule.json" '26.10-r1' 200
 	version=$(jget auto_install.version < "$R/etc/aether-proxy/state/update-schedule.json")
 	[ "$version" = '26.10-r1' ] && ok "auto install version is recorded" || bad "auto install version is recorded" "$version"
 	sleep 0.4
-	count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
+	count=$(grep -c 'job start update package aether-xray' "$R/schedule-calls.log")
 	[ "$count" -eq 1 ] && ok "same version is not auto-installed again" || bad "same version is not auto-installed again" "calls=$count"
-	printf '{"packages":{"xray-core":{"newer":true,"available":"26.11-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+	printf '{"packages":{"aether-xray":{"newer":true,"available":"26.11-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
 	for _ in {1..200}; do
-		count=$(grep -c 'job start update package xray-core' "$R/schedule-calls.log")
+		count=$(grep -c 'job start update package aether-xray' "$R/schedule-calls.log")
 		[ "$count" -ge 2 ] && break
 		sleep 0.02
 	done
@@ -359,7 +359,7 @@ for manager in opkg apk; do
 	cp "$R/etc/aether-proxy/state/update-schedule.json" "$T/stale-record"
 	cat > "$R/var/run/aether-proxy/updates.json" <<EOF
 {"pm":"$manager","checked":1760400000,
- "packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}
+ "packages":{"aether-xray":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}
 EOF
 	cp "$R/var/run/aether-proxy/updates.json" "$T/stale-cache"
 	if [ "$manager" = opkg ]; then
@@ -374,7 +374,7 @@ EOF
 		ok "T9.6 $manager stale auto setup reaches running"
 		cp "$R/var/run/aether-proxy/events.jsonl" "$T/stale-events"
 		sleep 0.4
-		if grep -Fq 'job start update package xray-core' "$R/schedule-calls.log"; then
+		if grep -Fq 'job start update package aether-xray' "$R/schedule-calls.log"; then
 			bad "T9.6 $manager stale cache does not auto-install"
 		else
 			ok "T9.6 $manager stale cache does not auto-install"
@@ -386,7 +386,7 @@ EOF
 			&& ok "T9.6 $manager stale detection emits no events" \
 			|| bad "T9.6 $manager stale detection emits no events"
 		touch -d @1760400000 "$database"
-		if wait_for_text "$R/schedule-calls.log" 'job start update package xray-core' 400; then
+		if wait_for_text "$R/schedule-calls.log" 'job start update package aether-xray' 400; then
 			ok "T9.6 $manager same cache fresh at equality auto-installs"
 			# The stub logs before the daemon persists the record; wait for that write.
 			if wait_for_text "$R/etc/aether-proxy/state/update-schedule.json" '26.10-r1' 200; then
@@ -411,7 +411,7 @@ make_root "$T/root-notify-running"
 R="$T/root-notify-running"
 now=$(date +%s)
 printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
-printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+printf '{"packages":{"aether-xray":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
 SCHEDULE_RESOLVE_FAIL=0 start_daemon "$R"
 wait_for_text "$R/var/run/aether-proxy/state.json" '"state"' 400
 for _ in {1..40}; do
@@ -435,11 +435,11 @@ for policy in auto notify; do
 	sed -i "s/option xray_auto 'notify'/option xray_auto '$policy'/" "$R/etc/config/aetherproxy"
 	now=$(date +%s)
 	printf '{"data":{"last_attempt":%s},"check":{"last_attempt":%s}}\n' "$now" "$now" > "$R/etc/aether-proxy/state/update-schedule.json"
-	printf '{"packages":{"xray-core":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
+	printf '{"packages":{"aether-xray":{"newer":true,"available":"26.10-r1","asset":"xray.ipk"}}}\n' > "$R/var/run/aether-proxy/updates.json"
 	start_daemon "$R"
 	if wait_monitor_state degraded; then
 		sleep 0.4
-		if grep -Fq 'job start update package xray-core' "$R/schedule-calls.log"; then
+		if grep -Fq 'job start update package aether-xray' "$R/schedule-calls.log"; then
 			bad "$policy policy suppresses package installation while degraded"
 		else
 			ok "$policy policy does not auto-install while degraded"

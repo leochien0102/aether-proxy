@@ -1081,11 +1081,11 @@ function schedule_update_jobs(ctx, opts, started_at, daemon) {
 	let version = schedule.auto_install_due(cfg, updates.value, record);
 	if (version == null)
 		return;
-	let result = update_job(ctx, opts, [ 'update', 'package', 'xray-core' ]);
+	let result = update_job(ctx, opts, [ 'update', 'package', C.XRAY_CORE_PACKAGE ]);
 	if (result.code == 3)
 		return;
 	if (result.code != 0) {
-		let args = { cmd: 'job start update package xray-core', rc: result.code, stderr: trim(result.stderr) };
+		let args = { cmd: `job start update package ${C.XRAY_CORE_PACKAGE}`, rc: result.code, stderr: trim(result.stderr) };
 		if (result.timed_out) args.timed_out = true;
 		log.event('error', 'CMD_FAILED', args);
 	}
@@ -1095,7 +1095,7 @@ function schedule_update_jobs(ctx, opts, started_at, daemon) {
 		write_update_schedule(ctx, record);
 	}
 	else
-		log.event('error', 'CMD_FAILED', { cmd: 'job start update package xray-core', rc: result.code, stderr: 'time() returned zero; attempt not recorded' });
+		log.event('error', 'CMD_FAILED', { cmd: `job start update package ${C.XRAY_CORE_PACKAGE}`, rc: result.code, stderr: 'time() returned zero; attempt not recorded' });
 };
 
 function schedule_subscription_job(ctx, opts, name) {

@@ -27,15 +27,43 @@ String.prototype.format = function(...args) {
 };
 const model = loadModule(path.join(RES, 'aether-proxy/model/updates.js'),
 	{ baseclass: { extend: o => o } }, { window: {}, document: {} });
-const names = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+const names = [ 'aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 const entry = { installed: '2', available: '3', previous: '1', asset: 'x.ipk', newer: true };
 function status(p = entry) {
 	return { updates_available: { arch: 'test_arch', checked: 100, url: 'https://channel/',
-		packages: { 'xray-core': p } } };
+		packages: { 'aether-xray': p } } };
 }
 function row(s, busy = false) {
 	return model.table(s, busy, 160).rows[0];
 }
+test('T10.73 legacy manifest rows never become update or rollback actions', () => {
+	for (const owned of [false, true]) {
+		const s = status();
+		if (!owned)
+			delete s.updates_available.packages['aether-xray'];
+		s.updates_available.packages['xray-core'] = { ...entry, available: '99.1-r9' };
+		const table = model.table(s, false, 160);
+		assert.deepEqual(table.rows.map(r => r.name), names);
+		assert.equal(table.rows[0].name, 'aether-xray');
+		assert.equal(table.rows[0].update, owned);
+		assert.equal(table.rows[0].rollback, owned);
+		assert.equal(table.rows[0].available, owned ? entry.available : '–');
+	}
+});
+test('T10.73 translated migration guidance is rendered and running paths remain actual', async () => {
+	const h = await ready_view();
+	const note = model.migration_note();
+	assert.match(note, /只更新 aether-xray/);
+	assert.match(note, /xray-core 不会被卸载，也不再由本应用更新/);
+	assert.match(note, /回退使用 \/usr\/bin\/xray/);
+	assert.ok(text(h.page.inventory).includes(note));
+	for (const binary of ['/usr/bin/aether-xray', '/usr/bin/xray', '/opt/custom-xray']) {
+		const rows = model.components({ components: { xray: { path: binary, version: '26.10.21' } } });
+		assert.equal(rows[0].path, binary);
+		assert.equal(rows[0].version, '26.10.21');
+	}
+});
+
 test('T8.9b scenario 2: package state precedence and every action', () => {
 	const cases = [
 		[ { updates_available: null }, '未检查', false, false, false ],
@@ -46,7 +74,7 @@ test('T8.9b scenario 2: package state precedence and every action', () => {
 		[ status({ ...entry, newer: false }), '最新', false, false, true ]
 	];
 	const absent = status();
-	delete absent.updates_available.packages['xray-core'];
+	delete absent.updates_available.packages['aether-xray'];
 	cases.push([ absent, '通道中没有', false, false, false ]);
 	for (const [s, text, install, update, rollback] of cases) {
 		const r = row(s);
@@ -64,7 +92,7 @@ test('T8.9b scenario 2: package state precedence and every action', () => {
 	assert.match(model.table(status(), false, 160).checked, /1/);
 });
 test('T8.9b scenario 3 / T10.46: Xray rollback confirmation includes both versions without restart warning', () => {
-	assert.equal(model.confirmation('xray-core', 'CURRENT', 'PREVIOUS'),
+	assert.equal(model.confirmation('aether-xray', 'CURRENT', 'PREVIOUS'),
 		'将安装 PREVIOUS，替换当前的 CURRENT？');
 });
 test('T8.9b scenario 4: check and install result messages cover success, rollback and failures', () => {
@@ -78,7 +106,7 @@ test('T8.9b scenario 4: check and install result messages cover success, rollbac
 	};
 	for (const [code, text] of Object.entries(errors)) {
 		assert.equal(model.job_result('update_check', null, { ok: false, code, detail: 'WHY' }), text + '：WHY');
-		assert.equal(model.job_result('update_package', 'xray-core',
+		assert.equal(model.job_result('update_package', 'aether-xray',
 			{ state: 'failed', result: { ok: false, code } }), text);
 	}
 	assert.equal(model.job_result('update_check', null, { state: 'failed', error: 'JOB_LOST' }),
@@ -90,15 +118,15 @@ test('T8.9b scenario 4: check and install result messages cover success, rollbac
 			assert.ok(text.includes(name));
 			assert.ok(text.includes('NEW'));
 			assert.equal(text.includes('OLD'), from != null);
-			assert.equal(text.includes('请刷新浏览器'), name != 'xray-core');
+			assert.equal(text.includes('请刷新浏览器'), name != 'aether-xray');
 		}
 	}
-	assert.equal(model.job_result('update_package', 'xray-core',
+	assert.equal(model.job_result('update_package', 'aether-xray',
 		{ result: { ok: false, rolled_back: true, from: 'OLD' } }), '安装后检查失败，已回滚到 OLD');
 	for (const [code, expected] of [ [ 'UPDATE_VERIFY_FAILED', '校验失败' ],
 		[ 'NO_SPACE', '空间不足' ], [ 'ARCH_UNSUPPORTED', '本机不可用' ], [ 'NEW_CODE', 'NEW_CODE' ] ]) {
 		for (const detail of [ undefined, 'WHY' ])
-			assert.equal(model.job_result('update_package', 'xray-core', { result: { ok: false, code, detail } }),
+			assert.equal(model.job_result('update_package', 'aether-xray', { result: { ok: false, code, detail } }),
 				expected + (detail ? '：WHY' : ''));
 	}
 });
@@ -182,7 +210,7 @@ async () => {
 	const pending = button.attrs.click();
 	await Promise.resolve();
 	assert.equal(page.busy, true);
-	assert.deepEqual(calls, [ [ 'update_package', [ 'xray-core', '--previous' ] ] ]);
+	assert.deepEqual(calls, [ [ 'update_package', [ 'aether-xray', '--previous' ] ] ]);
 	const buttons = node => {
 		if (!node || typeof node != 'object')
 			return [];
@@ -474,8 +502,9 @@ async () => {
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
 		const index = h.page.inventory.children.indexOf(row);
-		assert.equal(text(h.page.inventory.children[index - 1]), model.manual_install_note(),
-			'manual installation guidance precedes actions');
+		assert.equal(text(h.page.inventory.children[index - 2]), model.manual_install_note(),
+			'manual installation guidance precedes migration guidance and actions');
+		assert.equal(text(h.page.inventory.children[index - 1]), model.migration_note());
 		assert.equal(h.page.inventory.children[index + 1].tag, 'h3', 'next block follows the action row');
 	}
 });
@@ -564,17 +593,17 @@ test('T10.46 scenario 1: only Xray offers rollback even when all four previous v
 	assert.ok(rows.slice(1).every(r => r.confirmation === ''));
 	const h = await ready_view(s);
 	for (const name of names)
-		assert.equal(!!rollback_button(h, name), name == 'xray-core');
+		assert.equal(!!rollback_button(h, name), name == 'aether-xray');
 	assert.equal(buttons(h.page.inventory).filter(b => text(b).startsWith('回滚')).length, 1);
 	assert.deepEqual(buttons(h.page.inventory).map(text),
 		['立即更新', '回滚到 OLD-0', '立即更新', '立即更新', '立即更新', '检查更新']);
 });
 test('T10.46 scenario 1: Xray keeps single-package confirmation, cancellation, dispatch and result', async () => {
 	const h = await ready_view();
-	assert.equal(rollback_button(h, 'xray-core').attrs.class, 'cbi-button cbi-button-remove');
-	await rollback_button(h, 'xray-core').click();
+	assert.equal(rollback_button(h, 'aether-xray').attrs.class, 'cbi-button cbi-button-remove');
+	await rollback_button(h, 'aether-xray').click();
 	assert.deepEqual(h.confirmations[0], {
-		title: '回滚 xray-core', text: '将安装 OLD-0，替换当前的 CURRENT-0？',
+		title: '回滚 aether-xray', text: '将安装 OLD-0，替换当前的 CURRENT-0？',
 		ok: '回滚', destructive: true
 	});
 	assert.deepEqual(h.jobs, []);
@@ -586,9 +615,9 @@ test('T10.46 scenario 1: Xray keeps single-package confirmation, cancellation, d
 		h.jobs.push({ kind, args });
 		return { state: 'ok', result: { ok: true, from: 'CURRENT', to: 'OLD' } };
 	};
-	await rollback_button(h, 'xray-core').click();
-	assert.deepEqual(h.jobs, [{ kind: 'update_package', args: ['xray-core', '--previous'] }]);
-	assert.equal(text(h.page.summary), 'xray-core 已从 CURRENT 更新到 OLD');
+	await rollback_button(h, 'aether-xray').click();
+	assert.deepEqual(h.jobs, [{ kind: 'update_package', args: ['aether-xray', '--previous'] }]);
+	assert.equal(text(h.page.summary), 'aether-xray 已从 CURRENT 更新到 OLD');
 	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
 	assert.equal(h.root.children[0], h.maps[0].node, 'no rollback refresh banner before the form');
 });
@@ -617,7 +646,7 @@ test('T10.46 scenario 3: translated manual install guidance sits immediately bel
 	}
 });
 test('T10.46 scenario 4: automatic recovery text remains unchanged for Xray and backend installs', async () => {
-	for (const name of ['xray-core', 'aether-proxy']) {
+	for (const name of ['aether-xray', 'aether-proxy']) {
 		const h = await ready_view();
 		for (const rolled_back of [true, false]) {
 			h.ap.run_job = async () => ({ state: 'failed', result: {
@@ -651,7 +680,7 @@ test('T10.46 scenario 5: every package still installs and updates without previo
 			assert.deepEqual(h.jobs.at(-1), { kind: 'update_package', args: [name] });
 			const result = installed ? `${name} 已从 CURRENT 更新到 NEW` : `${name} 已安装 NEW`;
 			assert.equal(text(h.page.summary), result +
-				(name == 'xray-core' ? '' : ' 页面文件可能已变化，请刷新浏览器。'));
+				(name == 'aether-xray' ? '' : ' 页面文件可能已变化，请刷新浏览器。'));
 		}
 		assert.deepEqual(h.confirmations, []);
 	}
@@ -731,7 +760,7 @@ test('T10.67 scenario 5: all skipped, automatic rollback and primary failures pr
 });
 test('T10.67 scenario 6: ungrouped Xray and translation updates keep their exact previous messages', () => {
 	for (const [name, expected] of [
-		['xray-core', 'xray-core 已从 OLD 更新到 NEW'],
+		['aether-xray', 'aether-xray 已从 OLD 更新到 NEW'],
 		['luci-i18n-aether-proxy-zh-cn',
 			'luci-i18n-aether-proxy-zh-cn 已从 OLD 更新到 NEW 页面文件可能已变化，请刷新浏览器。']
 	]) {
@@ -768,12 +797,12 @@ test('T10.67 scenario 7: clicked package progress warns only when the backend ro
 		}
 	}
 	assert.equal(model.job_progress('update_check'), '正在检查更新…');
-	assert.equal(model.job_progress('update_package', 'xray-core', true), '正在回滚 xray-core…');
+	assert.equal(model.job_progress('update_package', 'aether-xray', true), '正在回滚 aether-xray…');
 });
 test('T10.67 scenario 8: failure code/detail and grouped punctuation use translated format strings', () => {
 	assert.equal(model.job_result('update_check', null, { ok: false, code: 'BUSY', detail: 'locked' }),
 		'另一个更新作业正在运行：locked');
-	assert.equal(model.job_result('update_package', 'xray-core', {
+	assert.equal(model.job_result('update_package', 'aether-xray', {
 		result: { ok: false, code: 'FUTURE', detail: '<detail>' }
 	}), 'FUTURE：<detail>');
 	// English must retain ASCII separators and spaces between complete sentences.

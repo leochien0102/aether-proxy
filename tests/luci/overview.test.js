@@ -213,7 +213,7 @@ test('scenario 7e: node option label fallback, DNS explanation and own component
 test('scenario 8a: every notice kind becomes one line carrying its args', () => {
 	const notices = [
 		{ code: 'COMPONENT_MISSING', args: { component: 'chinadns-ng' } },
-		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '26.10.1' } },
+		{ code: 'UPDATE_AVAILABLE', args: { package: 'aether-xray', available: '26.10.1' } },
 		{ code: 'IPV6_PRESENT', args: { iface: 'br-lan' } },
 		{ code: 'DNSMASQ_EXTRA_SERVERS', args: { servers: [ 'server=8.8.8.8', 'server=9.9.9.9' ] } }
 	];
@@ -222,7 +222,7 @@ test('scenario 8a: every notice kind becomes one line carrying its args', () => 
 
 	assert.equal(vm.notices.length, 4);
 	assert.ok(vm.notices[0].includes('chinadns-ng'), vm.notices[0]);
-	assert.ok(vm.notices[1].includes('xray-core') && vm.notices[1].includes('26.10.1'), vm.notices[1]);
+	assert.ok(vm.notices[1].includes('aether-xray') && vm.notices[1].includes('26.10.1'), vm.notices[1]);
 	/* docs/03 wording must survive translation */
 	assert.ok(vm.notices[2].includes('br-lan'), vm.notices[2]);
 	assert.equal(vm.notices[2], tr('A global IPv6 address is present on %s: clients may still connect directly over IPv6, consider disabling the LAN IPv6 assignment.', 'br-lan'));
@@ -821,6 +821,17 @@ test('T10.3 scenario 4: node labels, sorted current options, switch guard and pr
 		assert.equal(build({ ok: true, state: 'running', last_probe: probe }).probe_level, level);
 });
 
+test('T10.73 overview preserves owned, fallback and explicit component paths', () => {
+	for (const binary of ['/usr/bin/aether-xray', '/usr/bin/xray', '/opt/custom-xray']) {
+		const inventory = { ok: true, components: { xray: {
+			found: true, version: '26.10.21', path: binary
+		} } };
+		const vm = build({ ok: true }, null, null, null, null, null, inventory);
+		assert.equal(vm.components[1].path, binary);
+		assert.equal(vm.components[1].version, '26.10.21');
+	}
+});
+
 test('T10.3 scenario 5 / T10.4: own component first, version failure null, installed components in fixed order', () => {
 	const inventory = { ok: true, components: {
 		xray: { found: true, version: '26.9.30', path: '/usr/bin/xray' },
@@ -887,7 +898,7 @@ function pageParts(page) {
 test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notices and removed subscriptions', () => {
 	const status = { ok: true, state: 'running', notices: [
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
-		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
+		{ code: 'UPDATE_AVAILABLE', args: { package: 'aether-xray', available: '27' } }
 	] };
 	const { root, page } = renderStatus(status);
 	assert.deepEqual(sections(root).map((s) => s.children[0].textContent),
@@ -1512,7 +1523,7 @@ test('T10.9 scenario 4: banners follow title before first section with original 
 	assert.ok(visibleText(parts[1]).includes('服务未启用'));
 	page.refresh({ ok: true, state: 'running', notices: [
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
-		{ code: 'UPDATE_AVAILABLE', args: { package: 'xray-core', available: '27' } }
+		{ code: 'UPDATE_AVAILABLE', args: { package: 'aether-xray', available: '27' } }
 	] });
 	parts = pageParts(page);
 	assert.equal(parts[0].attrs.class, 'alert-message warning', 'disabled banner remains first');

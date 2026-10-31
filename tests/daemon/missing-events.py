@@ -37,7 +37,8 @@ def main():
 				conf.write_text(conf.read_text() + f"\nconfig main 'main'\n\toption xray_bin '{value}'\n"
 					+ f"\toption chinadns_bin '{value}'\n")
 			if policy == 'path':
-				# Keep command substitutes in --bin-dir, but resolve components through PATH.
+				# B24 no longer accepts an arbitrary PATH Xray; DNS still uses PATH.
+				missing.append('xray')
 				path = f.root / 'path-bin'
 				path.mkdir()
 				for name in fixture.MINIMUM:

@@ -17,7 +17,7 @@ from typing import Any
 
 # chinadns-ng is published for manual installation only: devices update just their own
 # fixed package list (lib/const.uc UPDATE_PACKAGES) and ignore the other manifest entries.
-PACKAGE_NAMES = ("xray-core", "chinadns-ng", "aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
+PACKAGE_NAMES = ("aether-xray", "chinadns-ng", "aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 # Architecture-independent packages: their apk file names carry no architecture at all.
 ARCH_ALL = ("aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 DATA_NAMES = ("gfwlist", "chnlist", "apple", "chnroute4", "gfw_static4")
@@ -118,7 +118,7 @@ def collect_packages(directory: Path) -> tuple[dict[str, Any], dict[str, bytes],
             for kind in ("ipk", "apk"):
                 path, content = formats[kind]
                 # Release assets are flat: give arch-specific apks the architecture in the name,
-                # otherwise every target's xray-core-<version>.apk would collide.
+                # otherwise every target's aether-xray-<version>.apk would collide.
                 filename = asset_name(path.name if kind == "ipk" or arch == "all" else f"{name}-{version}_{arch}.apk")
                 if filename in copied and copied[filename] != content:
                     raise ValueError(f"conflicting package asset filename: {filename}")
@@ -168,6 +168,10 @@ def package_manifest(
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     old_packages = previous.get("packages", {}) if previous else {}
+    # B24: old clients still read this entry. Carry its signed metadata unchanged;
+    # never rebuild it or use its version/history for the newly named package.
+    if "xray-core" in old_packages:
+        result["xray-core"] = old_packages["xray-core"]
     for name, current in sorted(built.items()):
         old = old_packages.get(name, {})
         old_current = old.get("current") if isinstance(old, dict) else None

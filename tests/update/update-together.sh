@@ -8,7 +8,7 @@ group_prepare() {
 	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
 		printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/$package"
 	done
-	printf '26.7.28-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/xray-core"
+	printf '26.7.28-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-xray"
 	case "$scenario" in
 		pages-only|all-current|app-current|i18n-current)
 			printf '0.2.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy" ;;
@@ -72,7 +72,7 @@ backend-install-fails|luci-app-aether-proxy|1
 backend-hash-fails|aether-proxy|1
 backend-no-asset|luci-app-aether-proxy|1
 single-i18n|luci-i18n-aether-proxy-zh-cn|0
-single-xray|xray-core|0
+single-xray|aether-xray|0
 GROUP_CASES
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
 done

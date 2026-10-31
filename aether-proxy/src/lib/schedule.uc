@@ -40,7 +40,7 @@ export function update_due(cfg, record, slot, started_at) {
 export function auto_install_due(cfg, updates, record) {
 	if (type(cfg) != 'object' || cfg.xray_auto != 'auto' || type(updates) != 'object')
 		return null;
-	let item = updates.packages?.['xray-core'];
+	let item = updates.packages?.[C.XRAY_CORE_PACKAGE];
 	if (type(item) != 'object' || item.newer != true || type(item.available) != 'string' ||
 	    item.available == '' || type(item.asset) != 'string' || item.asset == '')
 		return null;

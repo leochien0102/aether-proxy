@@ -39,6 +39,9 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
     text, count = re.subn(r"export const RUN_DIR = '[^']+';",
                           f"export const RUN_DIR = '{run}';", text)
     assert count == 1
+    # Keep the production absolute-path ordering without touching the host /usr/bin.
+    text = text.replace("'/usr/bin/aether-xray'", repr(str(binaries / 'aether-xray')))
+    text = text.replace("'/usr/bin/xray'", repr(str(binaries / 'xray')))
     constants.write_text(text)
     env = dict(os.environ, LD_LIBRARY_PATH=str(PREFIX / 'lib'), PATH=str(binaries))
     command = [str(PREFIX / 'bin/ucode'), '-L', str(base / 'modules/*.uc'),
@@ -78,9 +81,11 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
             'chinadns-ng': {'found': True, 'path': dns, 'version': '2025.06.20'}
         }
     })
-    check('missing configuration falls back to PATH', invoke() == both)
+    check('T10.73 xray alone remains a read-only fallback',
+          invoke()['components']['xray'] == both['components']['xray'])
+    check('missing configuration uses default component paths', invoke() == both)
     (config / 'aetherproxy').write_text('not a valid UCI file\n')
-    check('unreadable configuration falls back to PATH', invoke() == both)
+    check('unreadable configuration uses default component paths', invoke() == both)
     (config / 'aetherproxy').unlink()
     (binaries / 'chinadns-ng').unlink()
     missing = invoke('--bin-dir', str(binaries))['components']['chinadns-ng']
@@ -100,6 +105,35 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
         'found': False, 'path': None, 'version': None
     })
     (config / 'aetherproxy').unlink()
+
+    preferred = binary('aether-xray', 'printf "Xray 26.10.21 extra\\n"')
+    check('T10.73 both binaries prefer aether-xray path and base version',
+          invoke('--bin-dir', str(binaries))['components']['xray'] == {
+              'found': True, 'path': preferred, 'version': '26.10.21'
+          })
+    check('T10.73 absolute owned path precedes a PATH fallback',
+          invoke()['components']['xray'] == {
+              'found': True, 'path': preferred, 'version': '26.10.21'
+          })
+    (config / 'aetherproxy').write_text(f"config main 'main'\n\toption xray_bin '{configured}'\n")
+    configured.chmod(0o755)
+    check('T10.73 explicit path overrides both binaries even with bin-dir',
+          invoke('--bin-dir', str(binaries))['components']['xray']['path'] == str(configured))
+    (config / 'aetherproxy').unlink()
+    (binaries / 'xray').unlink()
+    check('T10.73 aether-xray alone is found',
+          invoke('--bin-dir', str(binaries))['components']['xray']['path'] == preferred)
+    binary('aether-xray', 'exec sleep 30')
+    started = time.monotonic()
+    timed = invoke('--bin-dir', str(binaries))['components']['xray']
+    check('T10.73 owned binary timeout preserves actual path and null version', timed == {
+        'found': True, 'path': preferred, 'version': None
+    } and 2.5 <= time.monotonic() - started < 5.5)
+    (binaries / 'aether-xray').unlink()
+    check('T10.73 neither binary has null path/version',
+          invoke('--bin-dir', str(binaries))['components']['xray'] == {
+              'found': False, 'path': None, 'version': None
+          })
 
     binary('xray', 'printf "Xray invalid\\n"\nprintf "failure\\n" >&2\nexit 7')
     failed = invoke('--bin-dir', str(binaries))['components']['xray']

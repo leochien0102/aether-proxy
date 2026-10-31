@@ -41,8 +41,8 @@ if mode.startswith('reject:'):
     for number in (1, 2):
         assert (root / f'http{number}').read_bytes() == (root / f'policy-http{number}').read_bytes()
     assert (root / 'run/updates.json').read_bytes() == (root / 'policy-cache').read_bytes()
-    for package in (backend, app, i18n, 'xray-core'):
-        expected = '26.10.10-r1' if package == 'xray-core' else current
+    for package in (backend, app, i18n, 'aether-xray'):
+        expected = '26.10.10-r1' if package == 'aether-xray' else current
         assert (inventory / package).read_text().strip() == expected
 elif mode == 'automatic':
     assert result == {'ok': False, 'package': backend, 'from': old, 'to': current,
@@ -65,18 +65,18 @@ elif grouped:
                       'companions': {app: 'skipped', i18n: 'skipped'}}, result
     assert not calls and not restarts and not signals
     assert not any(event['code'] == 'UPDATE_INSTALLED' for event in events)
-    for package in (backend, app, i18n, 'xray-core'):
-        assert queries.count(package) == (1 if package == 'xray-core' else 2), queries
+    for package in (backend, app, i18n, 'aether-xray'):
+        assert queries.count(package) == (1 if package == 'aether-xray' else 2), queries
 else:
     direction, package = mode.split(':')
     previous = direction == 'previous'
-    version = ('26.7.28-r1' if previous else '26.10.10-r1') if package == 'xray-core' else current
-    before = '26.10.10-r1' if package == 'xray-core' else current
+    version = ('26.7.28-r1' if previous else '26.10.10-r1') if package == 'aether-xray' else current
+    before = '26.10.10-r1' if package == 'aether-xray' else current
     assert result == {'ok': True, 'package': package, 'from': before, 'to': version,
                       'rolled_back': False, 'code': None}, result
     assert calls == [asset_call(package, version, previous)], calls
     assert restarts == (['restart'] if package == backend else []), restarts
-    assert len(signals) == (1 if package == 'xray-core' else 0), signals
+    assert len(signals) == (1 if package == 'aether-xray' else 0), signals
     for signal in signals:
         prefix = 'call service signal '
         assert signal.startswith(prefix), signal
@@ -85,14 +85,14 @@ else:
     installed = [event['args'] for event in events if event['code'] == 'UPDATE_INSTALLED']
     assert installed == [{'package': package, 'version': version}], installed
     # Exactly one final refresh: each other manifest package is queried once.
-    for name in (backend, app, i18n, 'xray-core'):
+    for name in (backend, app, i18n, 'aether-xray'):
         assert queries.count(name) == (3 if name == package else 1), queries
 
 # Cached versions must describe the actual inventory, including after automatic recovery.
 # The previous metadata remains available even for packages that cannot be manually rolled back.
 for package, entry in cache['packages'].items():
     assert entry['installed'] == (inventory / package).read_text().strip(), (package, entry)
-    assert entry['previous'] == ('26.7.28-r1' if package == 'xray-core' else old), (package, entry)
+    assert entry['previous'] == ('26.7.28-r1' if package == 'aether-xray' else old), (package, entry)
 assert cache['pm'] == manager
 assert not list((root / 'root/tmp/aether-proxy-dl').glob('*.ipk'))
 assert not list((root / 'root/tmp/aether-proxy-dl').glob('*.apk'))

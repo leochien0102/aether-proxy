@@ -586,6 +586,13 @@ else
 	bad 'T10.4 components CLI scenarios'
 fi
 
+# B24: both check and daemon must gate the binary selected by the shared lookup.
+if python3 "$ROOT/tests/cli/aether-xray.py"; then
+	ok 'T10.73 component selection and minimum-version gates'
+else
+	bad 'T10.73 component selection and minimum-version gates'
+fi
+
 # T10.7: one native grep scan with the former line-count algorithm as an oracle.
 if python3 "$ROOT/tests/cli/data-status.py"; then
 	ok 'T10.7 data status CLI scenarios'
