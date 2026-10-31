@@ -224,6 +224,8 @@ return view.extend({
 		s = m.section(form.GridSection, 'node');
 		this.nodeGrid = s;
 		s.addremove = true;
+		// Built-in desktop/touch sorting stages map.data.move until Save & Apply.
+		s.sortable = true;
 		// Keep the named UCI IDs, but do not expose a redundant section-name column.
 		s.anonymous = true;
 
@@ -233,7 +235,7 @@ return view.extend({
 			return E([]);
 		};
 
-		/* Probe first, then the built-in Edit and Delete buttons (T10.71). */
+		/* Probe first, then the built-in sort handle, Edit and Delete buttons. */
 		s.renderRowActions = function(section_id) {
 			const tdEl = this.super('renderRowActions', [ section_id, _('Edit', 'aether-proxy') ]);
 			const row = rowMap[section_id];
@@ -248,8 +250,8 @@ return view.extend({
 			self.probeButtons.push(probeBtn);
 			extra.push(probeBtn);
 
-			/* LuCI may supply only Delete, or Edit and Delete. Select by class,
-			   not position; keep the original nodes and their event handlers. */
+			/* Select Delete by class, not position; retain the built-in sort
+			   handle and all original desktop/touch event handlers. */
 			const keep = Array.from(tdEl.lastChild.childNodes).filter(node =>
 				!(row && !row.can_delete && node.classList?.contains('cbi-button-remove')));
 

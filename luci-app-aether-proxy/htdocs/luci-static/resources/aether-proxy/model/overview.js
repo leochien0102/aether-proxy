@@ -348,7 +348,7 @@ function mask_node_address(address) {
 }
 
 function node_options(labels, current) {
-	const options = Object.keys(labels ?? {}).sort().map((id) => ({
+	const options = Object.keys(labels ?? {}).map((id) => ({
 		value: id,
 		text: id === current
 			? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)

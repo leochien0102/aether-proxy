@@ -171,13 +171,17 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					const kinds = builtinKinds.filter(kind => kind !== 'edit' || args[1]);
 					if (args[1] && !kinds.includes('edit'))
 						kinds.unshift('edit');
+					// LuCI supplies the sort handle alongside Edit/Delete when sortable.
+					if (section.sortable)
+						kinds.unshift('drag');
 					const original = kinds.map(kind => {
 						const button = E('button', {
-							'class': 'btn cbi-button cbi-button-' + kind,
-							'click': event => kind === 'remove'
+							'class': kind === 'drag' ? 'cbi-button drag-handle center'
+								: 'btn cbi-button cbi-button-' + kind,
+							'click': kind === 'drag' ? null : event => kind === 'remove'
 								? section.handleRemove(args[0], event)
 								: section.renderMoreOptionsModal(args[0])
-						}, kind === 'remove' ? '删除' : '编辑');
+						}, kind === 'drag' ? '☰' : kind === 'remove' ? '删除' : '编辑');
 						button.classList = { contains: name => button.class.split(/\s+/).includes(name) };
 						button.style = { cssText: 'min-width:0;' };
 						return button;
@@ -1220,7 +1224,8 @@ for (const kinds of [['remove'], ['edit', 'remove'], ['remove', 'edit']]) {
 		await render(h);
 		for (const id of ['n_a', 'n_b']) {
 			const container = actions(h, id);
-			const expected = id === 'n_a' ? ['检测', '编辑'] : ['检测', '编辑', '删除'];
+			assert.equal(h.page.nodeGrid.sortable, true, 'use LuCI built-in sorting');
+			const expected = id === 'n_a' ? ['检测', '☰', '编辑'] : ['检测', '☰', '编辑', '删除'];
 			assert.deepEqual(buttons(container).map(text), expected);
 			assert.equal(container.childNodes.length, expected.length);
 			assert.ok(container.childNodes.every(node => node && node.tag === 'button'),

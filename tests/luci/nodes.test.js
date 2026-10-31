@@ -232,6 +232,7 @@ test('scenario 9: static view checks — GridSection, confirmed remove, node_use
 
 	/* the grid section with its per-row actions */
 	assert.match(src, /form\.GridSection/);
+	assert.match(src, /s\.sortable\s*=\s*true\s*;/);
 	assert.match(src, /renderRowActions/);
 	assert.match(src, /cbi-button-remove/);
 	assert.match(src, /await ap\.confirm\(/);
