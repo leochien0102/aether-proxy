@@ -97,7 +97,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `username` | 字符串 | socks / http；可选，与 password 同时设置或同时不设置 |
 | `password` | 字符串 | trojan / shadowsocks 必填；socks / http 可选，与 username 成对 |
 | `method` | 字符串 | shadowsocks 加密方式；vmess 的 `security`（默认 `auto`） |
-| `flow` | enum(`xtls-rprx-vision`\|`xtls-rprx-vision-udp443`)，可空 | vless。Xray v26.9.30 / v26.10.21 只接受空与这两个值（`infra/conf/vless.go`），其他值 Xray 拒绝启动（规则 7）；`-udp443` 另放行 UDP/443，其余与 Vision 相同（2026-10-22 改为枚举，r12 窗口） |
+| `flow` | enum(`xtls-rprx-vision`\|`xtls-rprx-vision-udp443`)，可空 | vless。Xray v26.9.30 / v26.10.29 只接受空与这两个值（`infra/conf/vless.go`），其他值 Xray 拒绝启动（规则 7）；`-udp443` 另放行 UDP/443，其余与 Vision 相同（2026-10-22 改为枚举，r12 窗口） |
 | `encryption` | 字符串 | vless，默认 `none` |
 | `transport` | enum(`raw`\|`ws`\|`grpc`\|`httpupgrade`\|`xhttp`) | 默认 `raw`；URI 中的 `tcp` 映射为 `raw` |
 | `host` / `path` | 字符串 | ws、httpupgrade、xhttp |
@@ -119,7 +119,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `mux_xudp_udp443` | enum(`reject`\|`allow`\|`skip`) | `mux.xudpProxyUDP443`；不设则不渲染（Xray 默认 `reject`）；只在 `mux` 开时渲染 |
 | `tcp_fast_open` / `tcp_mptcp` | bool | 渲染为出站 `streamSettings.sockopt.tcpFastOpen` / `tcpMptcp`；默认关，关时不渲染（2026-10-22 加） |
 
-> 2026-10-22 新增的节点字段按 Xray **v26.9.30 与 v26.10.21** 的源码（`infra/conf/`）核实了 JSON 字段名；分享链接参数名与 helloworld（ssr-plus）的解析一致。
+> 2026-10-22 新增的节点字段按 Xray **v26.9.30 与 v26.10.29** 的源码（`infra/conf/`）核实了 JSON 字段名；分享链接参数名与 helloworld（ssr-plus）的解析一致。
 > 两处与 helloworld 不同：WebSocket 的 `maxEarlyData`/`earlyDataHeaderName` 在 Xray 26 已不存在（改为 `path` 中的 `?ed=`）；Shadowsocks 出站没有 `uot`、`ivCheck`（Xray 会静默忽略），所以不提供「UDP over TCP」。
 > T9.14 复核定（2026-10-22）：① 字段属于没在用的传输或安全层时（例如 `ws_heartbeat` 而 `transport` 是 `grpc`）**保留、不报错、不渲染**，与已有字段一致；
 > ② `ech_config_list`、`reality_pqv` 当作不透明字符串原样渲染，不校验编码（由 Xray 自己校验）；③ 分享链接 grpc 的 `mode` 只认 `multi` 与 `gun`，其他值 → 该链接跳过（`invalid_value`）。
@@ -139,7 +139,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `data_auto` | bool | `1` | 自动更新规则数据 |
 | `data_hour` | 0–23 | `4` | 每天几点检查 |
 | `data_minute` | 0–59 | 空 | 安装时由 uci-defaults 随机生成并写入，用于把各设备的请求错开；为空时按 `30` 处理 |
-| `xray_auto` | enum(`off`\|`notify`\|`auto`) | `notify` | `xray-core` 软件包的更新策略（[08](08-updates.md)「调度」）；`aether-proxy` 自身只提示。chinadns-ng 不进发布通道，没有对应选项 |
+| `xray_auto` | enum(`off`\|`notify`\|`auto`) | `notify` | `aether-xray` 独立软件包的更新策略（[08](08-updates.md)「调度」）；`aether-proxy` 自身只提示。chinadns-ng 不进发布通道，没有对应选项 |
 
 ## `config probe 'probe'`
 
@@ -186,7 +186,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    密钥为标准 Base64 编码的 32 字节（含规范填充，不接受 hex/base64url/空白），可选 PSK 同规则。
    `address`/`port` 是 Peer endpoint；优先使用 `node_ip`。出站设置为
    `secretKey`、`address: local_address`、`peers: [{publicKey, endpoint, allowedIPs: ['0.0.0.0/0']}]`；
-   PSK 使用真实 Xray 字段 **`preSharedKey`**（26.3.27/26.10.21 源码一致，不是 `presharedKey`），keepalive 为 `keepAlive`。
+   PSK 使用真实 Xray 字段 **`preSharedKey`**（26.3.27/26.10.29 源码一致，不是 `presharedKey`），keepalive 为 `keepAlive`。
    WireGuard 不渲染通用 streamSettings/Mux，编辑框隐藏其设置；切换协议时保留旧值。
    WireGuard 字段在其他协议下保留、不校验、不渲染；任何凭据不得进入错误 detail、日志或事件。
    SOCKS / HTTP 出站使用 `settings.servers[0] = { address, port }`，认证时加 `users: [{ user, pass }]`；
@@ -197,7 +197,7 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    - `pinned_cert_sha256`：逗号分隔的每一项去掉冒号后是 64 位十六进制，否则 `invalid_cert_hash`
    - `uuid`（vless / vmess）：按字节计 1–30 字节的任意字符串（Xray 用 UUIDv5 换算），或 32–36 字节且去掉 `-` 后恰好 32 位十六进制（不查版本、不查横线位置），其余（31 字节、超过 36 字节、32–36 字节里有非十六进制字符）报 `invalid_uuid`；订阅中这样的节点按 `invalid_value` 跳过（2026-10-25 r18 窗口，在 H28K 上用 Xray 26.9.30 `run -test` 逐项实测，对照 `common/uuid` 的 `ParseString`）
    - vmess 的 `method`（即 `security`）：Xray 对不认识的值一律按 `auto` 处理、不报错（同日实测 `legacy`、`aes-256-gcm` 都能启动），后端不查；页面给下拉框 `auto`、`aes-128-gcm`、`chacha20-poly1305`、`none`、`zero`
-   - `flow`：只能为空、`xtls-rprx-vision` 或 `xtls-rprx-vision-udp443`（2026-10-22，核对 v26.9.30 与 v26.10.21 的 `infra/conf/vless.go`），否则按 enum 报错；订阅中带其他值的节点按 `invalid_value` 跳过
+   - `flow`：只能为空、`xtls-rprx-vision` 或 `xtls-rprx-vision-udp443`（2026-10-22，核对 v26.9.30 与 v26.10.29 的 `infra/conf/vless.go`），否则按 enum 报错；订阅中带其他值的节点按 `invalid_value` 跳过
    - `fingerprint`（`security` 为 tls 或 reality 时）：按 v26.9.30 的 uTLS 名称表校验，大小写不敏感；tls 额外接受 `unsafe`，reality 不接受 `unsafe` 与 `hellogolang`；其他值 `invalid_value`。空串/缺省不报错（Xray 自己按默认指纹处理）。
    - vless 的 `encryption`：`none`，或 `mlkem768x25519plus.<native|xorpub|random>.<0rtt|1rtt>.<组件…>`；长度 ≥20 的组件按无填充 base64url 解码后必须是 32 或 1184 字节，<20 的组件按 padding 放行；至少要有一个公钥，否则 `invalid_value`。只有 padding 的形态 Xray 启动时会失败，本地按最保守行为拒绝（TODO(design)）。
    - `xhttp_mode`（`transport=xhttp` 时）：`auto`、`packet-up`、`stream-up`、`stream-one`，否则 `invalid_value`。
