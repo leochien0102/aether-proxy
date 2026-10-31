@@ -804,16 +804,20 @@ test('T10.3 scenario 3: DNS explanations, visibility and no raw tier codes in mo
 	assert.equal(build({ ok: true, state: 'running', dns_tier: null }).dns_text, null);
 });
 
-test('T10.3 scenario 4: node labels, sorted current options, switch guard and probe levels', () => {
+test('T10.3 scenario 4: node labels, UCI declaration-order options, switch guard and probe levels', () => {
 	const model = dashboardModel();
 	assert.deepEqual(build({ ok: true, state: 'running', node_id: 'n_a' }, null,
 		{ n_a: 'Alpha' }).node_options, [ { value: 'n_a', text: 'Alpha（当前）' } ]);
 	assert.equal(build({ ok: true, state: 'running', node_id: 'n_a' }).current_node, 'n_a');
 	assert.equal(build({ ok: true }).node_text, '还没有节点，请到节点页添加或导入');
 	assert.deepEqual(model.node_options({ n_z: 'Zulu', n_a: 'Alpha', n_b: '' }, 'n_a'), [
-		{ value: 'n_a', text: 'Alpha（当前）' }, { value: 'n_b', text: 'n_b' }, { value: 'n_z', text: 'Zulu' }
+		{ value: 'n_z', text: 'Zulu' }, { value: 'n_a', text: 'Alpha（当前）' }, { value: 'n_b', text: 'n_b' }
 	]);
 	assert.deepEqual(model.node_options(null, null), []);
+	assert.deepEqual(model.node_options({ n_z: 'Zulu', n_a: 'Alpha', n_b: '' }, null), [
+		{ value: '', text: '未选择' }, { value: 'n_z', text: 'Zulu' },
+		{ value: 'n_a', text: 'Alpha' }, { value: 'n_b', text: 'n_b' }
+	]);
 	assert.equal(model.can_switch('n_a', 'n_a'), false);
 	assert.equal(model.can_switch('n_b', 'n_a'), true);
 	assert.equal(model.can_switch('', 'n_a'), false);
@@ -1139,7 +1143,7 @@ test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; n
 	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
 
-test('T10.5 scenario 1a: effective node drives sorted options, current suffix and switch guard', () => {
+test('T10.5 scenario 1a: effective node drives declaration-order options, current suffix and switch guard', () => {
 	const model = dashboardModel();
 	const labels = { n_b: 'Beta', n_a: 'Alpha' };
 	const cases = [
@@ -1154,7 +1158,7 @@ test('T10.5 scenario 1a: effective node drives sorted options, current suffix an
 		const vm = build(status, null, labels, NOW, true, 'n_a');
 		assert.equal(vm.current_node, current);
 		assert.equal(vm.node_text, null, 'nonempty options replace the old large node name');
-		assert.deepEqual(vm.node_options.map((o) => o.value), [ 'n_a', 'n_b' ]);
+		assert.deepEqual(vm.node_options.map((o) => o.value), [ 'n_b', 'n_a' ]);
 		assert.equal(vm.node_options.find((o) => o.value === current).text,
 			(current === 'n_a' ? 'Alpha' : 'Beta') + '（当前）');
 		assert.equal(vm.node_options.filter((o) => o.text.endsWith('（当前）')).length, 1);
