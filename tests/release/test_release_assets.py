@@ -44,6 +44,23 @@ if command == 'curl':
         target.write_bytes(b'corrupt' if os.environ.get('BAD_HASH') else b'offline fixture package\n')
     sys.exit(0)
 if command == 'gh':
+    if args[0] == 'api':
+        assert args[1:4] == ['--method', 'GET', 'repos/offline/repo/actions/workflows/build.yml/runs'], args
+        assert 'head_sha=' + os.environ['BUILD_SHA'] in args, args
+        assert 'per_page=100' in args and '--jq' in args, args
+        counter = root / 'build-counter'
+        index = int(counter.read_text()) if counter.exists() else 0
+        counter.write_text(str(index + 1))
+        sequence = json.loads((root / 'build-sequence.json').read_text())
+        response = sequence[min(index, len(sequence) - 1)]
+        if response is None:
+            sys.exit(1)
+        # Emulate the workflow's gh --jq output from a fake run API response.
+        runs = [r for r in response['workflow_runs'] if r['event'] in ('push', 'workflow_dispatch')]
+        if runs:
+            run = max(runs, key=lambda r: r['id'])
+            print('\t'.join(str(run[k] or '') for k in ('id', 'head_sha', 'status', 'conclusion')))
+        sys.exit(0)
     state = root / 'release'
     if args[:2] == ['release', 'view']:
         sys.exit(0 if state.exists() else 1)
@@ -89,7 +106,9 @@ class ReleaseAssets(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workflow = yaml.safe_load(WORKFLOW.read_text())
-        cls.steps = [s['run'] for s in cls.workflow['jobs']['release-assets']['steps'] if 'run' in s]
+        steps = cls.workflow['jobs']['release-assets']['steps']
+        cls.gate = next(s['run'] for s in steps if s.get('name') == 'Wait for successful build')
+        cls.steps = [s['run'] for s in steps if 'run' in s and s['run'] != cls.gate]
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -105,15 +124,27 @@ class ReleaseAssets(unittest.TestCase):
                         FAKE_ROOT=str(self.root), GITHUB_ENV=str(self.root / 'env'),
                         TAG='v' + VERSION, REF_TYPE='tag', VERSION=VERSION,
                         CHANNEL_URL='https://offline.invalid/channel-stable',
-                        WAIT_SECONDS='5', POLL_SECONDS='1')
+                        WAIT_SECONDS='5', POLL_SECONDS='1', BUILD_WAIT_SECONDS='5',
+                        BUILD_SHA='a' * 40, GH_REPO='offline/repo', GH_TOKEN='fake-github-token')
         self.manifest = fixture()
         self.sequence([self.manifest])
+        self.build_sequence([self.build_run()])
+
+    def build_run(self, status='completed', conclusion='success', **overrides):
+        return dict(id=123, head_sha=self.env['BUILD_SHA'], event='push',
+                    status=status, conclusion=conclusion, **overrides)
+
+    def build_sequence(self, runs):
+        (self.root / 'build-sequence.json').write_text(json.dumps([
+            None if run is None else {'workflow_runs': run if isinstance(run, list) else [run]}
+            for run in runs]))
 
     def sequence(self, values):
         (self.root / 'sequence.json').write_text(json.dumps(values))
 
     def run_step(self, index, ok=True):
-        result = subprocess.run(['bash', '-c', self.steps[index]], cwd=self.root,
+        script = self.gate if index == 'gate' else self.steps[index]
+        result = subprocess.run(['bash', '-c', script], cwd=self.root,
                                 env=self.env, capture_output=True, text=True, timeout=15)
         output = result.stdout + result.stderr
         if ok:
@@ -125,6 +156,8 @@ class ReleaseAssets(unittest.TestCase):
     def run_all(self):
         for index in range(len(self.steps)):
             self.run_step(index)
+            if index == 0:
+                self.run_step('gate')
 
     def calls(self, command):
         return [entry for line in (self.root / 'calls.jsonl').read_text().splitlines()
@@ -136,11 +169,18 @@ class ReleaseAssets(unittest.TestCase):
         self.assertEqual(set(workflow['on']), {'push', 'workflow_dispatch'})
         self.assertEqual(workflow['on']['push']['tags'], ['v*'])
         self.assertFalse(workflow['on']['workflow_dispatch'])
-        self.assertEqual(workflow['permissions'], {'contents': 'write'})
+        self.assertEqual(workflow['permissions'], {'actions': 'read', 'contents': 'write'})
+        env = self.workflow['jobs']['release-assets']['env']
+        self.assertEqual(env['GH_TOKEN'], '${{ github.token }}')
+        self.assertEqual(env['BUILD_SHA'], '${{ github.sha }}')
+        self.assertEqual(env['BUILD_WAIT_SECONDS'], '5400')
+        names = [s.get('name') for s in self.workflow['jobs']['release-assets']['steps']]
+        self.assertLess(names.index('Wait for successful build'), names.index('Wait for channel manifest'))
+        self.assertLess(names.index('Wait for successful build'), names.index('Create or reuse Release and upload'))
         self.assertEqual(self.workflow['jobs']['release-assets']['env']['WAIT_SECONDS'], '5400')
         self.assertEqual(self.workflow['jobs']['release-assets']['env']['POLL_SECONDS'], '60')
         self.assertNotIn('secrets.', WORKFLOW.read_text())
-        for script in self.steps:
+        for script in [self.gate] + self.steps:
             self.assertTrue(script.startswith('set -euo pipefail\n'))
             subprocess.run(['bash', '-n'], input=script, text=True, check=True)
 
@@ -168,6 +208,43 @@ class ReleaseAssets(unittest.TestCase):
         self.assertEqual({p.name for p in uploaded.iterdir()}, names)
         self.assertEqual(sum(c[1:3] == ['release', 'create'] for c in self.calls('gh')), 1)
         self.assertEqual(sum(c[1:3] == ['release', 'upload'] for c in self.calls('gh')), 2)
+
+    def test_build_pending_then_success(self):
+        self.build_sequence([[], self.build_run('queued', None),
+                             self.build_run('in_progress', None), self.build_run()])
+        self.run_all()
+        self.assertEqual(len(self.calls('sleep')), 3)
+        calls = self.calls('gh')
+        self.assertTrue(all(c[1] == 'api' for c in calls[:4]))
+        self.assertTrue((self.root / 'uploaded').exists())
+
+    def test_build_gate_blocks_all_release_side_effects(self):
+        for conclusion in ('failure', 'cancelled', 'timed_out', 'skipped', 'neutral', 'action_required', ''):
+            with self.subTest(conclusion=conclusion):
+                self.build_sequence([self.build_run(conclusion=conclusion)])
+                self.assertIn('failed:', self.run_step('gate', ok=False))
+        for run, message in (([], 'no build.yml run found'),
+                             (None, 'API query failed'),
+                             (self.build_run('in_progress', None), 'in_progress')):
+            with self.subTest(message=message):
+                self.env['BUILD_WAIT_SECONDS'] = '0'
+                self.build_sequence([run])
+                self.assertIn(message, self.run_step('gate', ok=False))
+        self.build_sequence([dict(self.build_run(), head_sha='b' * 40)])
+        self.assertIn('SHA mismatch', self.run_step('gate', ok=False))
+        self.assertFalse(any(c[1] == 'release' for c in self.calls('gh')))
+        self.assertFalse((self.root / 'release').exists())
+        self.assertFalse((self.root / 'uploaded').exists())
+        self.assertFalse(self.calls('curl'))
+
+    def test_build_gate_ignores_pr_and_uses_latest_run(self):
+        self.env['BUILD_WAIT_SECONDS'] = '0'
+        self.build_sequence([[dict(self.build_run(), event='pull_request')]])
+        self.assertIn('no build.yml run found', self.run_step('gate', ok=False))
+        self.build_sequence([[self.build_run(), dict(self.build_run(conclusion='failure'), id=124)]])
+        self.assertIn('Build 124 failed', self.run_step('gate', ok=False))
+        self.build_sequence([[dict(self.build_run(), event='workflow_dispatch')]])
+        self.run_step('gate')
 
     def test_channel_noarch_shape(self):
         # Real channel uses assets.all and architecture-free APK names for app/LuCI/i18n.

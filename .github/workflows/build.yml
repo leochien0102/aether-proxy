@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - 'aether-xray/**'
+      - 'chinadns-ng/**'
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
@@ -12,6 +14,8 @@ on:
       - 'tests/fixtures/sample/**'
   pull_request:
     paths:
+      - 'aether-xray/**'
+      - 'chinadns-ng/**'
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
@@ -31,9 +35,19 @@ jobs:
         include:
           - sdk: 24.10.8
             arch: x86_64-24.10.8
+            package_arch: x86_64
             package_ext: ipk
           - sdk: 25.12.5
             arch: x86_64-25.12.5
+            package_arch: x86_64
+            package_ext: apk
+          - sdk: 24.10.8
+            arch: armsr-armv8-24.10.8
+            package_arch: aarch64_generic
+            package_ext: ipk
+          - sdk: 25.12.5
+            arch: armsr-armv8-25.12.5
+            package_arch: aarch64_generic
             package_ext: apk
     steps:
       - uses: actions/checkout@v4
@@ -45,15 +59,16 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: aetherproxy
-          PACKAGES: aether-proxy luci-app-aether-proxy
+          PACKAGES: aether-proxy luci-app-aether-proxy aether-xray chinadns-ng
 
       - name: Verify package artifacts
         env:
           PACKAGE_EXT: ${{ matrix.package_ext }}
+          PACKAGE_ARCH: ${{ matrix.package_arch }}
         run: |
           set -eu
-          package_dir="bin/packages/x86_64/aetherproxy"
-          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
+          package_dir="bin/packages/$PACKAGE_ARCH/aetherproxy"
+          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray chinadns-ng; do
             if [ "$PACKAGE_EXT" = ipk ]; then
               pattern="$package"_*.ipk
             else
@@ -75,8 +90,8 @@ jobs:
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: packages-${{ matrix.sdk }}
-          path: bin/packages/x86_64/aetherproxy/*
+          name: packages-${{ matrix.sdk }}-${{ matrix.package_arch }}
+          path: bin/packages/${{ matrix.package_arch }}/aetherproxy/*
           if-no-files-found: error
 
   # T9.3 / docs/11: package installation and pure CLI rendering only, not a dataplane test.
@@ -121,7 +136,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: packages-${{ matrix.sdk }}
+          name: packages-${{ matrix.sdk }}-${{ matrix.arch == 'aarch64' && 'aarch64_generic' || 'x86_64' }}
           path: smoke-packages
 
       - name: Prepare pinned host ucode
