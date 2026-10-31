@@ -328,12 +328,22 @@ function component_rows(version, inventory) {
 	return components;
 }
 
+/* Text uses the shared grade too; thresholds and color selection stay in latency.level(). */
+function latency_text(ms) {
+	const texts = {
+		ok: _('Normal', 'aether-proxy'),
+		warn: _('Elevated', 'aether-proxy'),
+		error: _('Too high', 'aether-proxy')
+	};
+	return texts[latency.level(ms)] ?? _('Unknown', 'aether-proxy');
+}
+
 function probe_fields(probe, now) {
 	if (typeof probe != 'object' || probe == null)
 		return { probe_text: _('Not probed yet', 'aether-proxy'), probe_since_text: null, probe_level: 'neutral' };
 	return {
 		probe_text: probe.ok
-			? fmt(_('Healthy, %s ms', 'aether-proxy'), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy'),
+			? fmt(_('%s, %s ms', 'aether-proxy'), latency_text(probe.latency_ms), probe.latency_ms ?? '?') : _('Probe failed', 'aether-proxy'),
 		probe_since_text: typeof probe.at == 'number' ? rel_time(now, probe.at) : null,
 		probe_level: probe.ok ? latency.level(probe.latency_ms) : 'error'
 	};
@@ -602,7 +612,7 @@ return baseclass.extend({
 	manual_probe: function(reply, label, status, now) {
 		let text;
 		if (reply?.ok === true)
-			text = fmt(_('Healthy, %s ms (%s, manual)', 'aether-proxy'), reply.latency_ms, label);
+			text = fmt(_('%s, %s ms (%s, manual)', 'aether-proxy'), latency_text(reply.latency_ms), reply.latency_ms ?? '?', label);
 		else if (reply?.code === 'PROBE_TIMEOUT')
 			text = fmt(_('Probe timed out (%s, manual)', 'aether-proxy'), label);
 		else if (reply?.code === 'PROBE_FAILED')
