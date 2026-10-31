@@ -1,0 +1,10 @@
+config global 'main'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'wireguard'
+	option address 'wg.example'
+	option port '51820'
+	option peer_public_key 'AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE='
+	list local_address '10.7.0.2/32'
+	list local_address '10.8.0.2'

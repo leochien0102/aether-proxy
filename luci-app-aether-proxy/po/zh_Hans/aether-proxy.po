@@ -2633,3 +2633,43 @@ msgstr "用户名"
 msgctxt "aether-proxy"
 msgid "Username and password must both be set or both be empty."
 msgstr "用户名和密码必须同时填写或同时留空。"
+
+msgctxt "aether-proxy"
+msgid "WireGuard"
+msgstr "WireGuard"
+
+msgctxt "aether-proxy"
+msgid "Secret key"
+msgstr "私钥"
+
+msgctxt "aether-proxy"
+msgid "Peer public key"
+msgstr "Peer 公钥"
+
+msgctxt "aether-proxy"
+msgid "Pre-shared key (optional)"
+msgstr "预共享密钥（可选）"
+
+msgctxt "aether-proxy"
+msgid "Local tunnel addresses"
+msgstr "本机隧道地址"
+
+msgctxt "aether-proxy"
+msgid "Keepalive (seconds)"
+msgstr "保活间隔（秒）"
+
+msgctxt "aether-proxy"
+msgid "Must be a Base64-encoded 32-byte key"
+msgstr "须为 Base64 编码的 32 字节密钥"
+
+msgctxt "aether-proxy"
+msgid "Must be an IPv4 tunnel address or CIDR"
+msgstr "须为 IPv4 隧道地址或 CIDR"
+
+msgctxt "aether-proxy"
+msgid "For WireGuard, this is the Peer endpoint address."
+msgstr "WireGuard 使用此地址作为 Peer 端点地址。"
+
+msgctxt "aether-proxy"
+msgid "IPv4 or CIDR; use a bare IPv4 address or /32 for Xray 26.3.27."
+msgstr "IPv4 或 CIDR；Xray 26.3.27 请使用裸 IPv4 地址或 /32。"

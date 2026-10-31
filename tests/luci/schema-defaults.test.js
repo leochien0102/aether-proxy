@@ -228,6 +228,7 @@ async () => {
 	assert.deepEqual(checked.sort(), [
 		'access: host.ip', 'access: host.mac',
 		'advanced: main.boot_check_targets', 'advanced: main.lan_ifaces',
+		'nodes: node.local_address',
 		'rules: dns.china_dns', 'rules: dns.direct_dns', 'updates: update.channel_urls'
 	]);
 });

@@ -466,14 +466,38 @@ return view.extend({
 		o.value('shadowsocks', _('Shadowsocks', 'aether-proxy'));
 		o.value('socks', _('SOCKS', 'aether-proxy'));
 		o.value('http', _('HTTP', 'aether-proxy'));
+		o.value('wireguard', _('WireGuard', 'aether-proxy'));
 
 		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
 		o.validate = model.validate_address;
+		o.description = _('For WireGuard, this is the Peer endpoint address.', 'aether-proxy');
 
 		o = s.option(form.Value, 'port', _('Port', 'aether-proxy'));
 		o.modalonly = true;
 		o.validate = form_defaults.integer(1, 65535);
+
+		for (const [field, title] of [
+			['secret_key', _('Secret key', 'aether-proxy')],
+			['peer_public_key', _('Peer public key', 'aether-proxy')],
+			['preshared_key', _('Pre-shared key (optional)', 'aether-proxy')]
+		]) {
+			o = s.option(form.Value, field, title);
+			o.modalonly = true;
+			o.password = field !== 'peer_public_key';
+			o.validate = model.validate_wireguard_key;
+			o.depends('protocol', 'wireguard');
+		}
+		o = s.option(form.DynamicList, 'local_address', _('Local tunnel addresses', 'aether-proxy'));
+		o.modalonly = true;
+		o.validate = model.validate_local_address;
+		o.depends('protocol', 'wireguard');
+		o.description = _('IPv4 or CIDR; use a bare IPv4 address or /32 for Xray 26.3.27.', 'aether-proxy');
+
+		o = s.option(form.Value, 'keepalive', _('Keepalive (seconds)', 'aether-proxy'));
+		o.modalonly = true;
+		o.validate = form_defaults.integer(0, 65535);
+		o.depends('protocol', 'wireguard');
 
 		o = s.option(form.ListValue, 'transport', _('Transport', 'aether-proxy'));
 		o.modalonly = true;
@@ -664,7 +688,10 @@ return view.extend({
 
 		o = s.option(form.Flag, 'mux', _('Multiplexing (Mux)', 'aether-proxy'));
 		o.modalonly = true;
-		o.depends({ flow: /^xtls-rprx-vision(-udp443)?$/, '!reverse': true });
+		// SDK regex dependencies do not match null (including hidden non-VLESS flow).
+		o.depends({ protocol: 'vless', flow: /^(?!xtls-rprx-vision(-udp443)?$)/ });
+		o.depends({ protocol: 'vless', flow: null });
+		o.depends({ protocol: /^(?!vless$|wireguard$)/ });
 		o.validate = function(section_id, value) {
 			// Read the modal's live input, not just UCI: flow may have unsaved edits.
 			const flow = this.map.lookupOption('flow', section_id);
@@ -702,11 +729,25 @@ return view.extend({
 		o = s.option(form.Flag, 'tcp_mptcp', _('MPTCP', 'aether-proxy'));
 		o.modalonly = true;
 
+		// Hide the unused generic stream controls without deleting their stored values.
+		for (const option of s.children) {
+			if (['transport', 'security', 'tcp_fast_open', 'tcp_mptcp'].includes(option.option))
+				option.depends({ protocol: /^(?!wireguard$)/ });
+		}
+
 		form_defaults.section(s, {
 			encryption: 'none'
 		/* Fields the backend checks for conflicts are deleted while hidden, like
 		   stock LuCI; other hidden fields are kept (docs/10 r16 复审结论). */
 		}, { mux: { clear_inactive: true }, flow: { clear_inactive: true } });
+		const muxOption = s.children.find(option => option.option === 'mux');
+		const parseMux = muxOption.parse;
+		muxOption.parse = function(section_id) {
+			const protocol = this.map?.lookupOption?.('protocol', section_id)?.[0]?.formvalue(section_id)
+				?? uci.get('aetherproxy', section_id, 'protocol');
+			// Unlike Vision's conflicting Mux, WireGuard's hidden Mux is merely inactive.
+			return protocol === 'wireguard' ? Promise.resolve() : parseMux.call(this, section_id);
+		};
 		subscriptions.required_options(s, model.required_fields);
 		return m;
 	},

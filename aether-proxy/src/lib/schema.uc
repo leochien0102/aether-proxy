@@ -7,11 +7,12 @@
 // Field descriptor keys:
 //   name      UCI option name
 //   type      bool | int | string | json_object (UCI string) | enum | path | domain | url | address | list
+//             | wireguard_key (canonical standard Base64 encoding of 32 bytes)
 //   default   value used when the option is unset or empty (null = no default)
 //   enum      allowed values (type enum)
 //   min, max  inclusive bounds (type int)
 //   item      list element type: ipv4 | ip_or_cidr | ip_or_range | mac | upstream | china_dns | trust_dns
-//             | hostport | url | ifname | string
+//             | hostport | url | ifname | string | tunnel_address (IPv4/CIDR with host bits)
 //   min_items, max_items   list length bounds
 //   required  unset is an error: true, or (node only) a list of the protocols for which it is
 //             required; with `protocols` set, true means "for those protocols"
@@ -19,6 +20,7 @@
 //             requirement applies only to a node using one of them
 //   transports, securities  node only: owning transport/security layer (renderer gates output)
 //   omit_unset  leave absent optional extensions out of the snapshot for byte compatibility
+//   inactive_unchecked  preserve raw inactive protocol values without validating them
 //   proto_default  node only: per-protocol default, wins over `default`
 //   requires_when  node only: { field, value } the field is required when the other one has this value
 
@@ -123,10 +125,21 @@ const node = [
 	{ name: 'stale', type: 'bool', default: false },
 	{ name: 'match_strong', type: 'string', default: null },
 	{ name: 'match_weak', type: 'string', default: null },
-	{ name: 'protocol', type: 'enum', enum: [ 'vless', 'vmess', 'trojan', 'shadowsocks', 'socks', 'http' ],
+	{ name: 'protocol', type: 'enum', enum: [ 'vless', 'vmess', 'trojan', 'shadowsocks', 'socks', 'http', 'wireguard' ],
 	  required: true, default: null },
 	{ name: 'address', type: 'address', required: true, default: null },
 	{ name: 'port', type: 'int', min: 1, max: 65535, required: true, default: null },
+	// Inactive WireGuard values survive protocol changes without validation or new snapshot defaults.
+	{ name: 'secret_key', type: 'wireguard_key', protocols: [ 'wireguard' ], required: true,
+	  default: null, omit_unset: true, inactive_unchecked: true },
+	{ name: 'peer_public_key', type: 'wireguard_key', protocols: [ 'wireguard' ], required: true,
+	  default: null, omit_unset: true, inactive_unchecked: true },
+	{ name: 'local_address', type: 'list', item: 'tunnel_address', protocols: [ 'wireguard' ], required: true,
+	  min_items: 1, default: [], omit_unset: true, inactive_unchecked: true },
+	{ name: 'preshared_key', type: 'wireguard_key', protocols: [ 'wireguard' ],
+	  default: null, omit_unset: true, inactive_unchecked: true },
+	{ name: 'keepalive', type: 'int', min: 0, max: 65535, protocols: [ 'wireguard' ],
+	  default: null, omit_unset: true, inactive_unchecked: true },
 	{ name: 'uuid', type: 'string', protocols: [ 'vless', 'vmess' ], required: true, default: null },
 	{ name: 'username', type: 'string', protocols: [ 'socks', 'http' ], default: null, omit_unset: true },
 	{ name: 'password', type: 'string', protocols: [ 'trojan', 'shadowsocks', 'socks', 'http' ],

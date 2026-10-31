@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.peer_public_key",
+      "code": "required",
+      "detail": "peer_public_key is required"
+    }
+  ]
+}
