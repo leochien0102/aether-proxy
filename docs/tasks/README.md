@@ -22,6 +22,9 @@ M2 及以后的任务卡在前一个里程碑完成、探针结论写回设计�
 - **`check --json` 的人读提示**：已拆为 [m1.md](m1.md) 的 T1.10。
 - **初始数据基线**：已拆为 [m2.md](m2.md) 的 T2.0。
 
+
+> 2026-10-31 工作区清理：`/workspace/openwrt/sdk-spike` 已删除；可复用的 SDK/LuCI 参考路径改为当前构建树 `/workspace/openwrt/openwrt-actions/build/rockchip`。仍保留的旧命令会标注“历史路径”。
+
 ## 执行约定
 
 任务卡由外部 agent 工具（目前是 WSL 中的 OpenCode）执行，设计负责人只做复审。**执行者只能依靠仓库里的内容开工**，所以下面的约定、[README](../README.md)「给实现者的规则」与 [12-ucode.md](../12-ucode.md) 共同构成完整的上下文。
