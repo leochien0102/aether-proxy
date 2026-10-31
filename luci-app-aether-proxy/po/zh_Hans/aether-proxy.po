@@ -2563,32 +2563,44 @@ msgid "The switch result is uncertain. Check the overview or logs."
 msgstr "切换结果不确定，请查看概览或日志。"
 
 msgctxt "aether-proxy"
-msgid "Switching has not finished. Check the overview or logs."
-msgstr "切换尚未完成，请查看概览或日志。"
+msgid "“%s”"
+msgstr "「%s」"
 
 msgctxt "aether-proxy"
-msgid "Switching settings…"
-msgstr "正在切换节点/模式…"
+msgid "mode “%s”"
+msgstr "模式「%s」"
 
 msgctxt "aether-proxy"
-msgid "Switch successful."
-msgstr "切换成功。"
+msgid "node “%s” (mode “%s”)"
+msgstr "节点「%s」（模式「%s」）"
 
 msgctxt "aether-proxy"
-msgid "The switch was not committed; configuration is unchanged."
-msgstr "切换未提交，配置未变。"
+msgid "Switching from %s to %s…"
+msgstr "正在从 %s 切换到 %s…"
 
 msgctxt "aether-proxy"
-msgid "Switch failed; restoring previous settings…"
-msgstr "切换失败，正在恢复原设置…"
+msgid "Switched to %s"
+msgstr "已切换至 %s"
 
 msgctxt "aether-proxy"
-msgid "Switch failed; previous settings restored."
-msgstr "切换失败，已恢复原设置。"
+msgid "Switch not committed; still using %s"
+msgstr "切换未提交，仍使用 %s"
 
 msgctxt "aether-proxy"
-msgid "Switch failed and previous settings could not be restored."
-msgstr "切换失败，恢复原设置也失败。"
+msgid "Switch failed; restoring %s…"
+msgstr "切换失败，正在恢复至 %s…"
+
+msgctxt "aether-proxy"
+msgid "Restored to %s"
+msgstr "已恢复至 %s"
+
+msgctxt "aether-proxy"
+msgid "Switch failed; could not restore %s"
+msgstr "切换失败，无法恢复至 %s"
+
+msgctxt "aether-proxy"
+msgid "Not finished; target is %s"
+msgstr "尚未完成，目标为 %s"
 
 msgctxt "aether-proxy"
 msgid "Settings changed in another page; they were not overwritten."

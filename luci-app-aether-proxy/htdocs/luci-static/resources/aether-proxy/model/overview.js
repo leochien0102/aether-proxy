@@ -348,7 +348,7 @@ function mask_node_address(address) {
 }
 
 function node_options(labels, current) {
-	const options = Object.keys(labels ?? {}).sort().map((id) => ({
+	const options = Object.keys(labels ?? {}).map((id) => ({
 		value: id,
 		text: id === current
 			? fmt(_('%s (current)', 'aether-proxy'), labels[id] || id) : (labels[id] || id)
@@ -636,6 +636,10 @@ return baseclass.extend({
 
 	mask_node_address: mask_node_address,
 	node_options: node_options,
+
+	mode_text: function(mode) {
+		return MODE_TEXT[mode] || mode || _('Not selected', 'aether-proxy');
+	},
 
 	mode_options: function() {
 		return Object.entries(MODE_TEXT).map(([value, text]) => ({ value, text }));
