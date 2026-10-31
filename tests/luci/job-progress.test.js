@@ -61,7 +61,7 @@ function common(t) {
 }
 const status = () => ({ ok: true, updates_available: {
 	arch: 'test_arch', checked: 100, packages: {
-		'xray-core': { installed: null, available: '3', previous: null, asset: 'x.ipk', newer: true },
+		'aether-xray': { installed: null, available: '3', previous: null, asset: 'x.ipk', newer: true },
 		'aether-proxy': { installed: '2', available: '3', previous: '1', asset: 'a.ipk', newer: true }
 	}
 } });
@@ -155,7 +155,7 @@ async function harness(t, name) {
 }
 function prepare_xray_rollback(h) {
 	h.page.status = status();
-	Object.assign(h.page.status.updates_available.packages['xray-core'], { installed: '2', previous: '1' });
+	Object.assign(h.page.status.updates_available.packages['aether-xray'], { installed: '2', previous: '1' });
 	h.page.show_inventory();
 }
 function activeButtons(h, name) {
@@ -204,15 +204,15 @@ const scenarios = [
 	{ name: 'updates', label: '检查更新', kind: 'update_check', args: [], prompt: '正在检查更新…',
 		job: { state: 'ok', result: { packages: { a: { newer: true } } } },
 		result: '检查完成，1 个包有更新', calls: ['status'] },
-	{ name: 'updates', label: '安装', kind: 'update_package', args: ['xray-core'], prompt: '正在安装 xray-core…',
-		job: { result: { ok: true, from: null, to: '3' } }, result: 'xray-core 已安装 3', calls: ['status'] },
+	{ name: 'updates', label: '安装', kind: 'update_package', args: ['aether-xray'], prompt: '正在安装 aether-xray…',
+		job: { result: { ok: true, from: null, to: '3' } }, result: 'aether-xray 已安装 3', calls: ['status'] },
 	{ name: 'updates', label: '立即更新', kind: 'update_package', args: ['aether-proxy'],
 		prompt: '正在更新 aether-proxy 及其界面…服务会短暂中断。',
 		job: { result: { ok: true, from: '2', to: '3' } },
 		result: 'aether-proxy 已从 2 更新到 3 页面文件可能已变化，请刷新浏览器。', calls: ['status'] },
-	{ name: 'updates', label: '回滚到 1', kind: 'update_package', args: ['xray-core', '--previous'],
-		prompt: '正在回滚 xray-core…', job: { result: { ok: true, from: '2', to: '1' } },
-		result: 'xray-core 已从 2 更新到 1', calls: ['status'] },
+	{ name: 'updates', label: '回滚到 1', kind: 'update_package', args: ['aether-xray', '--previous'],
+		prompt: '正在回滚 aether-xray…', job: { result: { ok: true, from: '2', to: '1' } },
+		result: 'aether-xray 已从 2 更新到 1', calls: ['status'] },
 	{ name: 'subscriptions', label: '立即更新', kind: 'sub_update', args: ['s_a'], prompt: '正在更新订阅…',
 		job: { result: { subs: { s_a: { ok: true, added: 1, updated: 2, stale: 3, revived: 4, removed: 5 } } } },
 		result: 'Alpha: 新增 1 / 更新 2 / 失效 3 / 恢复 4 / 移除 5', calls: ['sub_status'] },
@@ -502,7 +502,7 @@ test('T10.46 scenario 5: Xray rollback restores controls after a rejected status
 	prepare_xray_rollback(h);
 	const pending = click(button(h.root, '回滚到 1'));
 	await flush();
-	assert.equal(text(h.page.progress), '正在回滚 xray-core…（已用 0 秒）');
+	assert.equal(text(h.page.progress), '正在回滚 aether-xray…（已用 0 秒）');
 	assert.ok(activeButtons(h, 'updates').every(button => button.disabled));
 	h.ap.call = async () => { throw new Error('status unavailable'); };
 	h.jobs[0].resolve({ result: { ok: true, from: '2', to: '1' } });

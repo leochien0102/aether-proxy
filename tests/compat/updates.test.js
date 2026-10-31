@@ -22,10 +22,12 @@ const UCODE = path.join(ROOT, 'tests/host/ucode');
 const ENTRY = path.join(ROOT, 'aether-proxy/src/aether-proxy');
 const USIGN = path.join(ROOT, 'tests/host/prefix/bin/usign');
 const NAMES = ['xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'];
-const CURRENT = { 'xray-core': '26.10.10-r1', 'aether-proxy': '0.3.2-r1',
+const MANAGED = ['aether-xray', ...NAMES.slice(1)];
+const CURRENT = { 'xray-core': '99.1-r9', 'aether-xray': '26.10.21-r1', 'aether-proxy': '0.3.2-r1',
 	'luci-app-aether-proxy': '0.3.2-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
 // The backend is already new: the previous release's page must update itself.
-const INSTALLED = { 'xray-core': '26.9.30-r1', 'aether-proxy': CURRENT['aether-proxy'],
+const INSTALLED = { 'xray-core': '99.1-r8', 'aether-xray': '26.9.30-r1',
+	'aether-proxy': CURRENT['aether-proxy'],
 	'luci-app-aether-proxy': '0.3.1-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
 
 globalThis._ = text => text;
@@ -102,7 +104,7 @@ async function fixture() {
 		const fp = execFileSync(USIGN, ['-F', '-p', path.join(dir, 'pub')], { encoding: 'utf8' }).trim();
 		write(path.join(dir, 'root/etc/aether-proxy/keys', fp), fs.readFileSync(path.join(dir, 'pub')));
 		const manifest = { schema: 2, generated: '2026-10-25T00:00:00Z', packages: {}, data: {} };
-		for (const name of NAMES) {
+		for (const name of [...MANAGED, 'xray-core']) {
 			const releases = [CURRENT[name], INSTALLED[name]].map(version => {
 				/* build.py publishes only [A-Za-z0-9._-] (docs/08); the LuCI
 				 * translation version carries '~', so the channel spelling used
@@ -168,6 +170,14 @@ function assert_inventory(model, status, installed) {
 	assert.equal(table.checked, '10 seconds ago');
 	assert.deepEqual(table.rows.map(row => row.name), NAMES);
 	for (const row of table.rows) {
+		// B24 deliberately retires the legacy row, without rewriting the frozen client.
+		if (row.name === 'xray-core') {
+			assert.equal(row.status, 'Not in channel');
+			assert.equal(row.update, false);
+			assert.equal(row.install, false);
+			assert.equal(row.rollback, false);
+			continue;
+		}
 		assert.equal(row.installed, installed[row.name]);
 		assert.equal(row.available, CURRENT[row.name]);
 		assert.equal(row.previous, INSTALLED[row.name]);
@@ -233,7 +243,7 @@ test('T9.39 frozen 0.3.1-r1 clients can update themselves through current CLI', 
 		const job = polls.at(-1).reply;
 		assert.equal(job.state, 'ok');
 		assert.equal(job.error, null);
-		assert.deepEqual(Object.keys(job.result.packages).sort(), [...NAMES].sort());
+		assert.deepEqual(Object.keys(job.result.packages).sort(), [...MANAGED].sort());
 		assert.equal(model.job_result('update_check', null, job), 'Check complete: 3 packages have updates');
 		assert.equal(page.summary.textContent, 'Check complete: 3 packages have updates');
 		assert_inventory(model, page.status, INSTALLED);
@@ -262,6 +272,9 @@ test('T9.39 frozen 0.3.1-r1 clients can update themselves through current CLI', 
 			CURRENT['luci-app-aether-proxy']);
 		const calls = fs.readFileSync(f.env.UPDATE_PACKAGE_CALLS, 'utf8').trim().split('\n');
 		assert.equal(calls.filter(line => line.includes('luci-app-aether-proxy_')).length, 1);
+		assert.ok(calls.every(line => !line.includes('xray-core')));
+		assert.equal(fs.readFileSync(path.join(f.dir, 'installed/xray-core'), 'utf8').trim(),
+			INSTALLED['xray-core']);
 		assert.ok(f.requests.includes('/manifest.json.sig'));
 		assert.ok(f.requests.includes(`/luci-app-aether-proxy_${CURRENT['luci-app-aether-proxy']}_all.ipk`));
 		const cli_calls = fs.readFileSync(path.join(f.dir, 'cli-calls'), 'utf8');

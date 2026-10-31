@@ -9,7 +9,7 @@ function local_epoch(mday, mon, year, hour, minute) {
 let day = local_epoch(16, 9, 2025, 0, 0);
 let tm = localtime(day + 12 * 3600);
 let due_cfg = { data_auto: true };
-let updates = { packages: { 'xray-core': { newer: true, available: '2', asset: 'xray.ipk' } } };
+let updates = { packages: { 'aether-xray': { newer: true, available: '2', asset: 'xray.ipk' } } };
 let cases = [
 	{ name: 'last slot today passed', actual: schedule.last_slot(day + 13 * 3600, 12, 0, tm), expected: day + 12 * 3600 },
 	{ name: 'last slot not yet reached', actual: schedule.last_slot(day + 11 * 3600, 12, 0, tm), expected: day - 12 * 3600 },
@@ -24,10 +24,10 @@ let cases = [
 	{ name: 'auto installs newer xray', actual: schedule.auto_install_due({ xray_auto: 'auto' }, updates, {}), expected: '2' },
 	{ name: 'off does not install', actual: schedule.auto_install_due({ xray_auto: 'off' }, updates, {}), expected: null },
 	{ name: 'notify does not install', actual: schedule.auto_install_due({ xray_auto: 'notify' }, updates, {}), expected: null },
-	{ name: 'not newer does not install', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'xray-core': { newer: false, available: '2', asset: 'xray.ipk' } } }, {}), expected: null },
-	{ name: 'null asset does not install', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'xray-core': { newer: true, available: '2', asset: null } } }, {}), expected: null },
+	{ name: 'not newer does not install', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'aether-xray': { newer: false, available: '2', asset: 'xray.ipk' } } }, {}), expected: null },
+	{ name: 'null asset does not install', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'aether-xray': { newer: true, available: '2', asset: null } } }, {}), expected: null },
 	{ name: 'same version installs once', actual: schedule.auto_install_due({ xray_auto: 'auto' }, updates, { auto_install: { version: '2' } }), expected: null },
-	{ name: 'new version is eligible', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'xray-core': { newer: true, available: '3', asset: 'xray.ipk' } } }, { auto_install: { version: '2' } }), expected: '3' }
+	{ name: 'new version is eligible', actual: schedule.auto_install_due({ xray_auto: 'auto' }, { packages: { 'aether-xray': { newer: true, available: '3', asset: 'xray.ipk' } } }, { auto_install: { version: '2' } }), expected: '3' }
 ];
 let failed = 0;
 for (let c in cases) {

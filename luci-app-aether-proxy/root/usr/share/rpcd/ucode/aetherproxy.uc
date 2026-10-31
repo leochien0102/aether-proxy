@@ -145,12 +145,12 @@ function job_argv(kind, args) {
 		return length(args) == 0 ? [ 'job', 'start', 'update', 'data' ] : null;
 
 	if (kind == 'update_package') {
-		// [<package>] or ["xray-core", "--previous"] (docs/08: older UI/backend configs are unsafe).
+		// [<package>] or ["aether-xray", "--previous"] (docs/08: older UI/backend configs are unsafe).
 		if (length(args) < 1 || length(args) > 2)
 			return null;
 		if (index(C.UPDATE_PACKAGES, args[0]) < 0)
 			return null;
-		if (length(args) == 2 && (args[0] != 'xray-core' || args[1] != '--previous'))
+		if (length(args) == 2 && (args[0] != 'aether-xray' || args[1] != '--previous'))
 			return null;
 
 		return [ 'job', 'start', 'update', 'package', ...args ];

@@ -14,6 +14,19 @@ import * as component_version from 'aetherproxy.component_version';
 // Locates a component binary in the order of docs/01 "组件二进制的查找顺序".
 // Shared with the `status` notices (docs/10 「概览页」). Returns { path, source } or null.
 export function find_component(name, configured, options) {
+	if (name == C.XRAY_COMPONENT) {
+		// B24: never let a feeds/PATH binary shadow the application's own binary.
+		// An explicit but broken override must fail closed rather than select another core.
+		if (configured != null && configured != '')
+			return fs.access(configured, 'x') ? { path: configured, source: 'uci' } : null;
+		let paths = options?.bin_dir
+			? [ `${options.bin_dir}/${C.XRAY_CORE_PACKAGE}`, `${options.bin_dir}/${C.XRAY_COMPONENT}` ]
+			: [ C.XRAY_BINARY, C.XRAY_FALLBACK_BINARY ];
+		for (let path in paths)
+			if (fs.access(path, 'x'))
+				return { path, source: options?.bin_dir ? 'bin-dir' : 'path' };
+		return null;
+	}
 	if (options?.bin_dir) {
 		let from_bin_dir = `${options.bin_dir}/${name}`;
 		if (fs.access(from_bin_dir, 'x'))

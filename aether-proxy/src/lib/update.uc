@@ -673,9 +673,8 @@ function install_package(ctx, pm, path, previous) {
 }
 
 function xray_binary(ctx) {
-	if (ctx.bin_dir && fs.access(`${ctx.bin_dir}/${C.XRAY_COMPONENT}`, 'x'))
-		return `${ctx.bin_dir}/${C.XRAY_COMPONENT}`;
-	return C.XRAY_COMPONENT;
+	// Verify the package we just installed, never a feeds fallback or explicit runtime override.
+	return ctx.bin_dir ? `${ctx.bin_dir}/${C.XRAY_CORE_PACKAGE}` : C.XRAY_BINARY;
 }
 
 function port_listening(ctx) {
@@ -753,14 +752,14 @@ function activate_rollback(ctx, name, before_state) {
 	// Best effort only: do not verify again or turn a completed rollback into a new result.
 	if (name == 'aether-proxy')
 		restart_service(ctx);
-	else if (name == 'xray-core')
+	else if (name == C.XRAY_CORE_PACKAGE)
 		signal_xray(ctx);
 }
 
 function verify_package(ctx, opts, pm, name, version, before_state, before_probe) {
 	if (name == 'luci-app-aether-proxy' || name == 'luci-i18n-aether-proxy-zh-cn')
 		return true;
-	if (name == 'xray-core') {
+	if (name == C.XRAY_CORE_PACKAGE) {
 		if (before_state?.state == 'running') {
 			if (!signal_xray(ctx))
 				return false;
@@ -777,7 +776,7 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 			if (result.code != 0)
 				return false;
 			let found = split(trim(result.stdout), /[[:space:]]+/)[1] ?? null;
-			let expected = split(version, '-r')[0];
+			let expected = replace(version, /-r?[0-9]+$/, '');
 			return found == expected;
 		}
 		// TODO(design): 08 defines xray checks for running, unhealthy, and stopped states, but not failsafe.
@@ -914,8 +913,9 @@ export function package_update(opts, name, previous) {
 	}
 	// Reject before fetching anything, including for callers that bypass the CLI parser.
 	// Older backend/UI packages may not understand the current configuration (docs/08).
-	if (previous == true && name != 'xray-core')
-		return { ok: false, code: 'USAGE', exit: 2, detail: '--previous is only supported for xray-core' };
+	if (previous == true && name != C.XRAY_CORE_PACKAGE)
+		return { ok: false, code: 'USAGE', exit: 2,
+			detail: `--previous is only supported for ${C.XRAY_CORE_PACKAGE}` };
 	let selected = fetch_manifest(opts);
 	if (!selected.ok)
 		return selected;

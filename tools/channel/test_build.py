@@ -64,18 +64,18 @@ class ChannelBuilderTests(unittest.TestCase):
         self.assertEqual(manifest["schema"], 2)
         self.assertTrue(manifest["generated"].endswith("Z"))
         self.assertEqual(set(manifest["packages"]), set(build.PACKAGE_NAMES))
-        # noarch packages collapse to "all"; xray-core keeps one entry per target
+        # noarch packages collapse to "all"; aether-xray keeps one entry per target
         self.assertEqual(set(manifest["packages"]["aether-proxy"]["current"]["assets"]), {"all"})
-        self.assertEqual(set(manifest["packages"]["xray-core"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
+        self.assertEqual(set(manifest["packages"]["aether-xray"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
         self.assertEqual(set(manifest["packages"]["chinadns-ng"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
         asset = manifest["packages"]["aether-proxy"]["current"]["assets"]["all"]["ipk"]
         content = (self.out / asset["url"]).read_bytes()
         self.assertEqual(asset["size"], len(content))
         self.assertEqual(asset["sha256"], build.sha256(content))
         # arch-specific apks get the architecture in the asset name, so targets do not collide
-        apks = {arch: a["apk"]["url"] for arch, a in manifest["packages"]["xray-core"]["current"]["assets"].items()}
-        self.assertEqual(apks, {"aarch64_generic": "xray-core-1.0-r1_aarch64_generic.apk", "x86_64": "xray-core-1.0-r1_x86_64.apk"})
-        self.assertEqual((self.out / apks["x86_64"]).read_bytes(), b"apk:xray-core:1.0-r1:x86_64:x86_64")
+        apks = {arch: a["apk"]["url"] for arch, a in manifest["packages"]["aether-xray"]["current"]["assets"].items()}
+        self.assertEqual(apks, {"aarch64_generic": "aether-xray-1.0-r1_aarch64_generic.apk", "x86_64": "aether-xray-1.0-r1_x86_64.apk"})
+        self.assertEqual((self.out / apks["x86_64"]).read_bytes(), b"apk:aether-xray:1.0-r1:x86_64:x86_64")
         self.assertEqual(manifest["packages"]["aether-proxy"]["current"]["assets"]["all"]["apk"]["url"], "aether-proxy-1.0-r1.apk")
         # data: size/sha256 describe the downloaded .gz, content_sha256 the plain list
         datum = manifest["data"]["gfwlist"]
@@ -86,15 +86,28 @@ class ChannelBuilderTests(unittest.TestCase):
         self.assertEqual(datum["content_sha256"], build.sha256(gzip.decompress(compressed)))
         self.assertEqual(datum["lines"], 2)
 
+    def test_aether_xray_multiarch_contract(self):
+        self.add_packages("26.10.21-r1", packages=("aether-xray",))
+        self.run_build()
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertIn("aether-xray", manifest["packages"])
+        assets = manifest["packages"]["aether-xray"]["current"]["assets"]
+        for arch in ("aarch64_generic", "x86_64"):
+            for kind in ("ipk", "apk"):
+                separator = "_" if kind == "ipk" else "-"
+                filename = f"aether-xray{separator}26.10.21-r1_{arch}.{kind}"
+                self.assertEqual(assets[arch][kind]["url"], filename)
+                self.assertTrue((self.out / filename).is_file())
+
     def test_missing_apk_for_an_architecture_fails(self):
-        self.add_packages(packages=("xray-core",))
-        (self.packages / "x86_64" / "aetherproxy" / "xray-core-1.0-r1.apk").unlink()
+        self.add_packages(packages=("aether-xray",))
+        (self.packages / "x86_64" / "aetherproxy" / "aether-xray-1.0-r1.apk").unlink()
         with self.assertRaisesRegex(ValueError, "missing apk"):
             self.run_build()
 
     def test_arch_specific_apk_outside_a_target_directory_is_rejected(self):
-        (self.packages / "xray-core-1.0-r1.apk").write_bytes(b"x")
-        (self.packages / "xray-core_1.0-r1_x86_64.ipk").write_bytes(b"x")
+        (self.packages / "aether-xray-1.0-r1.apk").write_bytes(b"x")
+        (self.packages / "aether-xray_1.0-r1_x86_64.ipk").write_bytes(b"x")
         with self.assertRaisesRegex(ValueError, "unplaceable"):
             self.run_build()
 
@@ -133,6 +146,21 @@ class ChannelBuilderTests(unittest.TestCase):
         manifest = json.loads((self.out / "manifest.json").read_text())
         self.assertEqual(manifest["packages"], old_packages)
         self.assertEqual(sorted(p.name for p in self.out.iterdir() if p.suffix in (".ipk", ".apk")), [])
+
+    def test_legacy_manifest_keeps_legacy_entry_without_inheriting_its_history(self):
+        legacy = {"current": {"version": "99.1-r8", "assets": {}},
+                  "previous": {"version": "99.1-r7", "assets": {}}}
+        self.previous({"xray-core": legacy})
+        self.add_packages("26.10.21-r1", packages=("aether-xray",))
+        self.add_packages("100-r1", packages=("xray-core",))
+        ignored = self.run_build(previous=self.previous_path)
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertEqual(manifest["packages"]["xray-core"], legacy)
+        self.assertEqual(manifest["packages"]["aether-xray"]["current"]["version"], "26.10.21-r1")
+        self.assertIsNone(manifest["packages"]["aether-xray"]["previous"])
+        self.assertEqual(len(ignored), 3)
+        self.assertTrue(all(name.startswith("xray-core") for name in ignored))
+        self.assertFalse(any(file.name.startswith("xray-core") for file in self.out.iterdir()))
 
     def test_data_only_release_without_previous_fails(self):
         self.add_data()

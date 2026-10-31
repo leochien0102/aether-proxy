@@ -335,11 +335,11 @@ function scenario_6() {
 		  want: [ 'job', 'start', 'update', 'check', '--json' ] },
 		{ name: 'update_data with empty args', args: { kind: 'update_data', args: [] },
 		  want: [ 'job', 'start', 'update', 'data', '--json' ] },
-		{ name: 'update_package with a package', args: { kind: 'update_package', args: [ 'xray-core' ] },
-		  want: [ 'job', 'start', 'update', 'package', 'xray-core', '--json' ] },
-		{ name: 'update_package xray-core with --previous',
-		  args: { kind: 'update_package', args: [ 'xray-core', '--previous' ] },
-		  want: [ 'job', 'start', 'update', 'package', 'xray-core', '--previous', '--json' ] },
+		{ name: 'update_package with a package', args: { kind: 'update_package', args: [ 'aether-xray' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'aether-xray', '--json' ] },
+		{ name: 'update_package aether-xray with --previous',
+		  args: { kind: 'update_package', args: [ 'aether-xray', '--previous' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'aether-xray', '--previous', '--json' ] },
 		{ name: 'update_package aether-proxy forward',
 		  args: { kind: 'update_package', args: [ 'aether-proxy' ] },
 		  want: [ 'job', 'start', 'update', 'package', 'aether-proxy', '--json' ] },
@@ -391,9 +391,11 @@ function scenario_7() {
 		{ name: 'update_package wrong spelling', args: { kind: 'update_package', args: [ 'aether_proxy' ] } },
 		{ name: 'update_package missing package', args: { kind: 'update_package', args: [] } },
 		{ name: 'update_package --previous without package', args: { kind: 'update_package', args: [ '--previous' ] } },
-		{ name: 'update_package --previous before package', args: { kind: 'update_package', args: [ '--previous', 'xray-core' ] } },
-		{ name: 'update_package extra argument', args: { kind: 'update_package', args: [ 'xray-core', '--previous', 'x' ] } },
-		{ name: 'update_package wrong second argument', args: { kind: 'update_package', args: [ 'xray-core', '--first' ] } }
+		{ name: 'T10.73 legacy xray-core --previous is rejected',
+		  args: { kind: 'update_package', args: [ 'xray-core', '--previous' ] } },
+		{ name: 'update_package --previous before package', args: { kind: 'update_package', args: [ '--previous', 'aether-xray' ] } },
+		{ name: 'update_package extra argument', args: { kind: 'update_package', args: [ 'aether-xray', '--previous', 'x' ] } },
+		{ name: 'update_package wrong second argument', args: { kind: 'update_package', args: [ 'aether-xray', '--first' ] } }
 	];
 
 	for (let c in cases) {

@@ -7,7 +7,7 @@
  * Manual rollback is Xray-only, per docs/10 "r13：取消三包手动回滚".
  * Grouped forward updates follow docs/10 "B17：更新页显示「一起更新」的结果".
  */
-const PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+const PACKAGES = [ 'aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 /* Keep whitespace out of msgids: po2lmo stores it but _() trims it, so a
    leading space never matches on the device (m10 X3). English needs a space
    before an ASCII parenthesis; the Chinese full-width one needs none. */
@@ -16,11 +16,11 @@ function arch_note(arch) {
 	return (note.startsWith('(') ? ' ' : '') + note;
 }
 function restarts(name) {
-	return name != 'xray-core';
+	return name != 'aether-xray';
 }
 function can_rollback(name, entry) {
 	// Older service packages may not understand the current configuration.
-	if (name != 'xray-core' || !entry)
+	if (name != 'aether-xray' || !entry)
 		return false;
 	return entry.previous != null && entry.installed != null && entry.previous != entry.installed;
 }
@@ -108,6 +108,11 @@ return baseclass.extend({
 			_('%s %s', 'aether-proxy').format(text,
 				_('The service will be briefly interrupted.', 'aether-proxy')) : text;
 	},
+	migration_note: function() {
+		return _('This application updates only aether-xray. Existing xray-core packages are not removed '
+			+ 'and are no longer updated by this application. Without aether-xray, /usr/bin/xray is used '
+			+ 'as a fallback; an explicit Xray binary path takes precedence.', 'aether-proxy');
+	},
 	manual_install_note: function() {
 		return _('To install another version: download the three packages for that version from the release page, '
 			+ 'then upload and install them on the system Software page, or use opkg install. '
@@ -152,7 +157,7 @@ return baseclass.extend({
 					disabled: pending || !!busy,
 					rollback_label: _('Roll back to %s', 'aether-proxy').format(p?.previous ?? '–'),
 					confirmation_title: _('Roll back %s', 'aether-proxy').format(name),
-					confirmation: name == 'xray-core' && p ? this.confirmation(name, p.installed, p.previous) : ''
+					confirmation: name == 'aether-xray' && p ? this.confirmation(name, p.installed, p.previous) : ''
 				};
 			})
 		};

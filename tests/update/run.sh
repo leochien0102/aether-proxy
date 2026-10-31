@@ -54,7 +54,7 @@ make_manifest() {
  python3 - "$T" <<'PY'
 import hashlib,json,os,sys
 t=sys.argv[1]; content=b'local package fixture\n'; m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':{'chnroute4':{'version':'v1','url':'data.gz','sha256':'a'*64,'size':1,'content_sha256':'b'*64,'lines':1}}}
-for name,version,old in [('xray-core','26.10.10-r1','26.7.28-r1'),('aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-app-aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-i18n-aether-proxy-zh-cn','0.2.0-r1','0.1.0-r1')]:
+for name,version,old in [('aether-xray','26.10.10-r1','26.7.28-r1'),('aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-app-aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-i18n-aether-proxy-zh-cn','0.2.0-r1','0.1.0-r1')]:
   releases=[]
   for ver in (version,old):
    a={}
@@ -83,11 +83,11 @@ export UPDATE_INSTALLED_MODE=normal UPDATE_INSTALLED_VERSION=26.9.30-r5
 rm "$T/bin/apk"
 out=$(run_check); expect 'signed opkg check succeeds' 0 "$?"; expect 'opkg stderr empty' '' "$(cat "$T/stderr")"
 expect 'architecture is stored' aarch64_generic "$(get "$out" arch)"; expect 'opkg selected' opkg "$(get "$out" pm)"
-expect 'installed package version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'available package version' 26.10.10-r1 "$(get "$out" packages.xray-core.available)"
-expect 'newer version detected' true "$(get "$out" packages.xray-core.newer)"; expect 'opkg asset key' xray-core_26.10.10-r1_aarch64_generic.ipk "$(get "$out" packages.xray-core.asset)"
+expect 'installed package version' 26.9.30-r5 "$(get "$out" packages.aether-xray.installed)"; expect 'available package version' 26.10.10-r1 "$(get "$out" packages.aether-xray.available)"
+expect 'newer version detected' true "$(get "$out" packages.aether-xray.newer)"; expect 'opkg asset key' aether-xray_26.10.10-r1_aarch64_generic.ipk "$(get "$out" packages.aether-xray.asset)"
 status=$(ap status --json --run-dir "$T/run"); expect 'status reads updates.json' true "$(python3 -c 'import json,sys;print(str(json.load(sys.stdin)["updates_available"]==json.load(open(sys.argv[1]))).lower())' "$T/run/updates.json" <<<"$status")"
 # T8.9b: sign each variant so asset selection, not signature rejection, is tested.
-expect 'T8.9b previous opkg asset yields version' 26.7.28-r1 "$(get "$out" packages.xray-core.previous)"
+expect 'T8.9b previous opkg asset yields version' 26.7.28-r1 "$(get "$out" packages.aether-xray.previous)"
 for variant in null arch ipk-only; do
 	make_manifest
 	python3 - "$T" "$variant" <<'PY'
@@ -95,9 +95,9 @@ import json, os, sys
 for channel in ('ch1', 'ch2'):
     path = os.path.join(sys.argv[1], channel, 'manifest.json')
     manifest = json.load(open(path))
-    previous = manifest['packages']['xray-core']['previous']
+    previous = manifest['packages']['aether-xray']['previous']
     if sys.argv[2] == 'null':
-        manifest['packages']['xray-core']['previous'] = None
+        manifest['packages']['aether-xray']['previous'] = None
     elif sys.argv[2] == 'arch':
         previous['assets'] = {'other_arch': previous['assets']['aarch64_generic']}
     else:
@@ -113,7 +113,7 @@ PY
 		chmod +x "$T/bin/apk"
 	fi
 	out=$(run_check)
-	expect "T8.9b previous $variant returns null" '<null>' "$(get "$out" packages.xray-core.previous)"
+	expect "T8.9b previous $variant returns null" '<null>' "$(get "$out" packages.aether-xray.previous)"
 	if [ "$variant" = ipk-only ]; then
 		rm "$T/bin/apk"
 	fi
@@ -146,8 +146,8 @@ make_manifest
 # 2 apk precedence and apk version/asset parsing
 cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"; chmod +x "$T/bin/apk"
 export UPDATE_APK_VERSION=26.9.30-r5; out=$(run_check); expect 'apk check succeeds' 0 "$?"; expect 'apk preferred' apk "$(get "$out" pm)"
-expect 'apk installed version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"; expect 'apk asset key' xray-core-26.10.10-r1_aarch64_generic.apk "$(get "$out" packages.xray-core.asset)"; rm "$T/bin/apk"
-expect 'T8.9b previous apk asset yields version' 26.7.28-r1 "$(get "$out" packages.xray-core.previous)"
+expect 'apk installed version' 26.9.30-r5 "$(get "$out" packages.aether-xray.installed)"; expect 'apk asset key' aether-xray-26.10.10-r1_aarch64_generic.apk "$(get "$out" packages.aether-xray.asset)"; rm "$T/bin/apk"
+expect 'T8.9b previous apk asset yields version' 26.7.28-r1 "$(get "$out" packages.aether-xray.previous)"
 # 3 tampered first address falls through
 printf ' ' >> "$T/ch1/manifest.json"; out=$(run_check); expect 'tampered first address falls through' 0 "$?"
 expect 'second channel selected' "http://127.0.0.1:$PORT2/" "$(get "$out" url)"; grep -q '"code": "MANIFEST_BAD_SIGNATURE"' "$T/run/events.jsonl" && ok 'bad signature event logged' || bad 'bad signature event logged'; make_manifest
@@ -169,15 +169,15 @@ for v in m['packages'].values():v['current']['assets'].pop('aarch64_generic');v[
 json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
-out=$(run_check); expect 'unsupported architecture check succeeds' 0 "$?"; expect 'unsupported arch package not newer' false "$(get "$out" packages.xray-core.newer)"
+out=$(run_check); expect 'unsupported architecture check succeeds' 0 "$?"; expect 'unsupported arch package not newer' false "$(get "$out" packages.aether-xray.newer)"
 grep -q '"code": "ARCH_UNSUPPORTED"' "$T/run/events.jsonl" && ok 'ARCH_UNSUPPORTED logged' || bad 'ARCH_UNSUPPORTED logged'; make_manifest
 # 8 uninstalled package and both numeric/revision comparisons
-export UPDATE_INSTALLED_MODE=missing; out=$(run_check); expect 'missing package check succeeds' 0 "$?"; expect 'missing version is null' '<null>' "$(get "$out" packages.xray-core.installed)"; expect 'missing package is not newer' false "$(get "$out" packages.xray-core.newer)"
-export UPDATE_INSTALLED_MODE=versions UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check); expect '26.10.10-r1 > 26.9.30-r5' true "$(get "$out" packages.xray-core.newer)"
-export UPDATE_INSTALLED_VERSION=26.10.10-r0; out=$(run_check); expect 'r1 > r0' true "$(get "$out" packages.xray-core.newer)"
+export UPDATE_INSTALLED_MODE=missing; out=$(run_check); expect 'missing package check succeeds' 0 "$?"; expect 'missing version is null' '<null>' "$(get "$out" packages.aether-xray.installed)"; expect 'missing package is not newer' false "$(get "$out" packages.aether-xray.newer)"
+export UPDATE_INSTALLED_MODE=versions UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check); expect '26.10.10-r1 > 26.9.30-r5' true "$(get "$out" packages.aether-xray.newer)"
+export UPDATE_INSTALLED_VERSION=26.10.10-r0; out=$(run_check); expect 'r1 > r0' true "$(get "$out" packages.aether-xray.newer)"
 python3 - "$T" <<'PY'
 import json,os,sys
-t=sys.argv[1]; p=os.path.join(t,'ch1','manifest.json'); m=json.load(open(p)); pkg=m['packages']['xray-core']['current']; pkg['version']='26.9.30-r6'
+t=sys.argv[1]; p=os.path.join(t,'ch1','manifest.json'); m=json.load(open(p)); pkg=m['packages']['aether-xray']['current']; pkg['version']='26.9.30-r6'
 for arch,types in pkg['assets'].items():
  for pm,asset in types.items():
   old=asset['url']; new=old.replace('26.10.10-r1','26.9.30-r6'); asset['url']=new
@@ -186,7 +186,7 @@ json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1
 export UPDATE_INSTALLED_VERSION=26.9.30-r5; out=$(run_check)
-expect '26.9.30-r6 > 26.9.30-r5' true "$(get "$out" packages.xray-core.newer)"; make_manifest
+expect '26.9.30-r6 > 26.9.30-r5' true "$(get "$out" packages.aether-xray.newer)"; make_manifest
 # T8.21: use signed, usable assets and fresh run directories so cached results cannot
 # suppress a spurious UPDATE_AVAILABLE event. Keep private comparison helpers private.
 version_case=0
@@ -239,16 +239,16 @@ PY
 	fi
 	expect "T8.21 $label UPDATE_AVAILABLE count" "$expected_events" "$events"
 done <<'CASES'
-xray-core|26.9.30-5|26.9.30-r1|false|plain release 5 beats r1
-xray-core|26.9.30-5|26.10.10-r1|true|upstream beats plain release 5
-xray-core|26.9.30-r5|26.9.30-6|true|plain release 6 beats r5
-xray-core|26.9.30-r5|26.10.10-r1|true|legacy upstream ordering
-xray-core|26.9.30|26.9.30-r1|true|missing release is zero before r1
-xray-core|26.9.30-r1|26.9.30|false|missing release is zero after r1
-xray-core|26.9.30|26.9.30-1|true|missing release is zero before plain 1
-xray-core|26.9.30-1|26.9.30|false|missing release is zero after plain 1
-xray-core|26.9.30-5|26.9.30-r5|false|equal plain and r releases
-xray-core|26.9.30-r5|26.9.30-5|false|equal r and plain releases
+aether-xray|26.9.30-5|26.9.30-r1|false|plain release 5 beats r1
+aether-xray|26.9.30-5|26.10.10-r1|true|upstream beats plain release 5
+aether-xray|26.9.30-r5|26.9.30-6|true|plain release 6 beats r5
+aether-xray|26.9.30-r5|26.10.10-r1|true|legacy upstream ordering
+aether-xray|26.9.30|26.9.30-r1|true|missing release is zero before r1
+aether-xray|26.9.30-r1|26.9.30|false|missing release is zero after r1
+aether-xray|26.9.30|26.9.30-1|true|missing release is zero before plain 1
+aether-xray|26.9.30-1|26.9.30|false|missing release is zero after plain 1
+aether-xray|26.9.30-5|26.9.30-r5|false|equal plain and r releases
+aether-xray|26.9.30-r5|26.9.30-5|false|equal r and plain releases
 luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.290.04520~fffffff|false|i18n hash ignored
 luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.291.00001~0000000|true|i18n higher numeric segment
 luci-i18n-aether-proxy-zh-cn|26.290.04520~640694b|26.289.99999~fffffff|false|i18n lower numeric segment
@@ -261,7 +261,7 @@ cat > "$T/asset.uc" <<'UCODE'
 import * as update from 'aetherproxy.update';
 print(sprintf('%.J', update.download_asset({sys_root:ARGV[0],bin_dir:ARGV[1]},ARGV[2],{url:ARGV[3],size:+ARGV[4],sha256:ARGV[5]},'asset-test')),'\n');
 UCODE
-asset=xray-core_26.10.10-r1_aarch64_generic.ipk; size=$(wc -c < "$T/ch1/$asset" | tr -d ' '); hash=$(sha256sum "$T/ch1/$asset"|cut -d' ' -f1)
+asset=aether-xray_26.10.10-r1_aarch64_generic.ipk; size=$(wc -c < "$T/ch1/$asset" | tr -d ' '); hash=$(sha256sum "$T/ch1/$asset"|cut -d' ' -f1)
 export AETHER_PROXY_TEST_TMP_FREE=99999999; result=$("$UCODE" "$T/asset.uc" -- "$T/root" "$T/bin" "http://127.0.0.1:$PORT1" "$asset" "$size" 0000000000000000000000000000000000000000000000000000000000000000)
 expect 'asset checksum mismatch rejected' UPDATE_VERIFY_FAILED "$(get "$result" code)"; [ ! -e "$T/root/tmp/aether-proxy-dl/asset-test" ] && ok 'bad asset removed' || bad 'bad asset removed'
 export AETHER_PROXY_TEST_TMP_FREE=1; result=$("$UCODE" "$T/asset.uc" -- "$T/root" "$T/bin" "http://127.0.0.1:$PORT1" "$asset" "$size" "$hash"); expect 'low space returns NO_SPACE' NO_SPACE "$(get "$result" code)"; unset AETHER_PROXY_TEST_TMP_FREE
@@ -331,10 +331,10 @@ export UPDATE_PACKAGE_STATE_FILE="$T/installed-version" UPDATE_STATE_FILE="$T/ru
 export AETHER_PROXY_TEST_TMP_FREE=999999999
 printf '%s\n' 26.7.28-r1 > "$UPDATE_PACKAGE_STATE_FILE"
 printf '{"state":"running","last_probe":{"ok":true,"at":1},"components":{"xray":{"path":"xray"}}}\n' > "$UPDATE_STATE_FILE"
-out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin")
+out=$(ap update package aether-xray --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin")
 expect 'opkg xray package install succeeds' 0 "$?"
 expect 'installed xray package version is reported' 26.10.10-r1 "$(get "$out" to)"
-expect 'opkg selected package asset' xray-core_26.10.10-r1_aarch64_generic.ipk "$(awk '{print $NF}' "$UPDATE_PACKAGE_CALLS" | tail -1 | sed 's@.*/@@')"
+expect 'opkg selected package asset' aether-xray_26.10.10-r1_aarch64_generic.ipk "$(awk '{print $NF}' "$UPDATE_PACKAGE_CALLS" | tail -1 | sed 's@.*/@@')"
 # procd's `service signal` policy (service/service.c): name string, signal int32 (SIGUSR2 = 12);
 # an `instance` that does not exist makes procd answer NOT_FOUND, so none is sent.
 python3 - "$UPDATE_SIGNAL_CALLS" <<'PY' && ok 'xray install sends SIGUSR2 via procd' || bad 'xray install sends SIGUSR2 via procd'
@@ -424,48 +424,49 @@ done
 # T9.29 reuses the signed manifests, package-manager stubs and restart fixture above.
 source "$ROOT/tests/update/package-policy.sh"
 source "$ROOT/tests/update/update-together.sh"
+source "$ROOT/tests/update/aether-xray.sh"
 
 # Invalid hashes and unsupported architectures never reach the package manager.
 : > "$UPDATE_PACKAGE_CALLS"
 python3 - "$T/ch1/manifest.json" <<'PY'
 import json,sys
-p=sys.argv[1];m=json.load(open(p));m['packages']['xray-core']['current']['assets']['aarch64_generic']['ipk']['sha256']='0'*64;json.dump(m,open(p,'w'))
+p=sys.argv[1];m=json.load(open(p));m['packages']['aether-xray']['current']['assets']['aarch64_generic']['ipk']['sha256']='0'*64;json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
-out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'bad package hash fails' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+out=$(ap update package aether-xray --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'bad package hash fails' UPDATE_VERIFY_FAILED "$(get "$out" code)"
 [ ! -s "$UPDATE_PACKAGE_CALLS" ] && ok 'bad hash never invokes package manager' || bad 'bad hash never invokes package manager'
 make_manifest
 # Snapshot requests before removing both architecture keys.
-asset_requests_before=$(grep -h 'GET /xray-core_26.10.10-r1_aarch64_generic.ipk' "$T/http1" "$T/http2" | wc -l | tr -d ' ')
+asset_requests_before=$(grep -h 'GET /aether-xray_26.10.10-r1_aarch64_generic.ipk' "$T/http1" "$T/http2" | wc -l | tr -d ' ')
 python3 - "$T/ch1/manifest.json" <<'PY'
 import json,sys
-p=sys.argv[1];m=json.load(open(p));m['packages']['xray-core']['current']['assets'].pop('aarch64_generic');m['packages']['xray-core']['current']['assets'].pop('all');json.dump(m,open(p,'w'))
+p=sys.argv[1];m=json.load(open(p));m['packages']['aether-xray']['current']['assets'].pop('aarch64_generic');m['packages']['aether-xray']['current']['assets'].pop('all');json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
-: > "$UPDATE_PACKAGE_CALLS"; out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'unsupported package architecture reports ARCH_UNSUPPORTED' ARCH_UNSUPPORTED "$(get "$out" code)"
+: > "$UPDATE_PACKAGE_CALLS"; out=$(ap update package aether-xray --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'unsupported package architecture reports ARCH_UNSUPPORTED' ARCH_UNSUPPORTED "$(get "$out" code)"
 [ ! -s "$UPDATE_PACKAGE_CALLS" ] && ok 'unsupported architecture skips package manager' || bad 'unsupported architecture skips package manager'
-asset_requests_after=$(grep -h 'GET /xray-core_26.10.10-r1_aarch64_generic.ipk' "$T/http1" "$T/http2" | wc -l | tr -d ' ')
+asset_requests_after=$(grep -h 'GET /aether-xray_26.10.10-r1_aarch64_generic.ipk' "$T/http1" "$T/http2" | wc -l | tr -d ' ')
 expect 'unsupported architecture does not download an asset' "$asset_requests_before" "$asset_requests_after"
 make_manifest
 # Verification failure rolls back to previous; null previous never triggers a speculative install.
 : > "$UPDATE_PACKAGE_CALLS"; export UPDATE_SIGNAL_NO_PROBE=1 AETHER_PROXY_TEST_UPDATE_WAIT_SECS=0
 printf '%s\n' 26.7.28-r1 > "$UPDATE_PACKAGE_STATE_FILE"
-out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'failed health check returns verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
+out=$(ap update package aether-xray --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'failed health check returns verification failure' UPDATE_VERIFY_FAILED "$(get "$out" code)"
 expect 'failed health check reports rollback' true "$(get "$out" rolled_back)"
 grep -q -- '--force-downgrade .*26.7.28-r1' "$UPDATE_PACKAGE_CALLS" && ok 'opkg rollback forces downgrade to previous' || bad 'opkg rollback forces downgrade to previous'
 grep -q 'UPDATE_ROLLED_BACK' "$T/run/events.jsonl" && ok 'rollback logs UPDATE_ROLLED_BACK' || bad 'rollback logs UPDATE_ROLLED_BACK'
 python3 - "$T/ch1/manifest.json" <<'PY'
 import json,sys
-p=sys.argv[1];m=json.load(open(p));m['packages']['xray-core']['previous']=None;json.dump(m,open(p,'w'))
+p=sys.argv[1];m=json.load(open(p));m['packages']['aether-xray']['previous']=None;json.dump(m,open(p,'w'))
 PY
 "$USIGN" -S -m "$T/ch1/manifest.json" -s "$T/sec" >/dev/null 2>&1; cp "$T/ch1/manifest.json" "$T/ch2/manifest.json"; cp "$T/ch1/manifest.json.sig" "$T/ch2/manifest.json.sig"
-: > "$UPDATE_PACKAGE_CALLS"; out=$(ap update package xray-core --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'null previous does not roll back' false "$(get "$out" rolled_back)"
+: > "$UPDATE_PACKAGE_CALLS"; out=$(ap update package aether-xray --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect 'null previous does not roll back' false "$(get "$out" rolled_back)"
 expect 'null previous reports no rollback version' '无可回滚的版本' "$(get "$out" detail)"
 expect 'null previous performs only one install' 1 "$(wc -l < "$UPDATE_PACKAGE_CALLS" | tr -d ' ')"
 make_manifest; unset UPDATE_SIGNAL_NO_PROBE AETHER_PROXY_TEST_UPDATE_WAIT_SECS
 # Explicit previous and aether-proxy service restart.
 : > "$UPDATE_PACKAGE_CALLS"; printf '%s\n' 26.10.10-r1 > "$UPDATE_PACKAGE_STATE_FILE"
-out=$(ap update package xray-core --previous --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect '--previous install succeeds' 0 "$?"
+out=$(ap update package aether-xray --previous --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"); expect '--previous install succeeds' 0 "$?"
 grep -q -- '--force-downgrade .*26.7.28-r1' "$UPDATE_PACKAGE_CALLS" && ok '--previous installs previous with force-downgrade' || bad '--previous installs previous with force-downgrade'
 printf '{"state":"running"}\n' > "$UPDATE_STATE_FILE"; : > "$UPDATE_INIT_CALLS"
 printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_FILE"
@@ -475,11 +476,11 @@ out=$(ap update package unknown --json); expect 'unknown package is USAGE' USAGE
 
 # T8.23: verification must really fail after installation; then count activation calls
 # against the pre-update state, even if restart changes state.json during verification.
-cat > "$T/bin/xray" <<'XRAY'
+cat > "$T/bin/aether-xray" <<'XRAY'
 #!/bin/sh
 printf 'Xray wrong-version\n'
 XRAY
-chmod +x "$T/bin/xray"
+chmod +x "$T/bin/aether-xray"
 rollback_case() {
 	local label=$1 package=$2 state=$3 previous=$4 init_failure=$5 restarts=$6 signals=$7
 	local args=() rc
@@ -517,7 +518,7 @@ for line in pathlib.Path(signals_file).read_text().splitlines():
     request = json.loads(line[len('call service signal '):])
     assert request == {'name': 'aether-proxy', 'signal': 12}, request
     assert type(request['signal']) is int
-current, old = ('26.10.10-r1', '26.7.28-r1') if package == 'xray-core' else ('0.2.0-r1', '0.1.0-r1')
+current, old = ('26.10.10-r1', '26.7.28-r1') if package == 'aether-xray' else ('0.2.0-r1', '0.1.0-r1')
 expected = current if previous == 'yes' else old
 assert pathlib.Path(installed_file).read_text().strip() == expected
 calls = pathlib.Path(packages_file).read_text().splitlines()
@@ -546,15 +547,15 @@ degraded rollback|aether-proxy|degraded|no|first|2|0
 error rollback|aether-proxy|error|no|first|1|0
 missing state rollback|aether-proxy|missing|no|first|1|0
 failsafe rollback|aether-proxy|failsafe|no|first|1|0
-xray running rollback|xray-core|running|no|none|0|2
-xray stopped rollback|xray-core|stopped|no|none|0|0
-xray previous restores current|xray-core|running|yes|none|0|2
-xray starting rollback|xray-core|starting|no|none|0|1
-xray degraded rollback|xray-core|degraded|no|none|0|1
+xray running rollback|aether-xray|running|no|none|0|2
+xray stopped rollback|aether-xray|stopped|no|none|0|0
+xray previous restores current|aether-xray|running|yes|none|0|2
+xray starting rollback|aether-xray|starting|no|none|0|1
+xray degraded rollback|aether-xray|degraded|no|none|0|1
 ROLLBACK_CASES
 # A failed rollback signal is also best effort; there is no second verification pass.
 export UPDATE_SIGNAL_EXIT=9
-rollback_case 'xray rollback signal fails' xray-core running no none 0 2
+rollback_case 'xray rollback signal fails' aether-xray running no none 0 2
 python3 - "$T/run/events.jsonl" <<'PY'
 import json, sys
 events = [json.loads(line) for line in open(sys.argv[1])]
@@ -573,7 +574,7 @@ export UPDATE_STATUS_VERSION=0.0.0-r0
 rollback_case 'luci app group backend mismatch activates recovery' luci-app-aether-proxy running no none 2 0
 rollback_case 'luci i18n rollback has no activation' luci-i18n-aether-proxy-zh-cn running no none 0 0
 unset UPDATE_STATUS_VERSION
-rm "$T/bin/xray"
+rm "$T/bin/aether-xray"
 # Inspect the shared helper's actual sys.run options without sleeping for 90 seconds.
 cat > "$T/restart-timeout.uc" <<'UCODE'
 'use strict';
@@ -607,7 +608,7 @@ UPDATE_INSTALLED_SLEEP=2 out=$(ap job start update check --json --confdir "$T/co
 # BUSY needs the worker to have exec'd (job.uc matches its cmdline); wait for that, not a fixed sleep.
 check_pid=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$T/run/jobs/$check_job.json")
 for _ in {1..100}; do tr '\0' ' ' < "/proc/$check_pid/cmdline" 2>/dev/null | grep -q "job run $check_job" && break; sleep .05; done
-out=$(ap job start update package xray-core --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_package is excluded by shared update lock' 3 "$?"
+out=$(ap job start update package aether-xray --json --confdir "$T/conf" --sys-root "$T/root" --run-dir "$T/run" --bin-dir "$T/bin"); expect 'update_package is excluded by shared update lock' 3 "$?"
 unset UPDATE_INSTALLED_SLEEP
 # Let the slow check finish: later scenarios run `update check` directly and need the lock.
 for _ in {1..200}; do js=$(ap job status "$check_job" --json --sys-root "$T/root" --run-dir "$T/run"); state=$(get "$js" state); [ "$state" = ok ] || [ "$state" = failed ] && break; sleep .05; done
@@ -836,8 +837,8 @@ unset UPDATE_PACKAGE_STATE_FILE
 out=$(path_check "$search")
 expect 'T8.16 PATH opkg check succeeds without bin-dir' 0 "$?"
 expect 'T8.16 PATH later directory selects opkg' opkg "$(get "$out" pm)"
-expect 'T8.16 PATH opkg supplies installed version' 26.9.30-r5 "$(get "$out" packages.xray-core.installed)"
-expect 'T8.16 opkg called by absolute path' "$T/path-later/opkg status xray-core" \
+expect 'T8.16 PATH opkg supplies installed version' 26.9.30-r5 "$(get "$out" packages.aether-xray.installed)"
+expect 'T8.16 opkg called by absolute path' "$T/path-later/opkg status aether-xray" \
 	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
 # apk wins even when opkg appears earlier in PATH.
 make_path_pm apk "$T/path-apk"
@@ -845,7 +846,7 @@ export UPDATE_APK_VERSION=26.8.8-r2
 out=$(path_check "$search:$T/path-apk")
 expect 'T8.16 PATH apk check succeeds' 0 "$?"
 expect 'T8.16 PATH apk outranks earlier opkg' apk "$(get "$out" pm)"
-expect 'T8.16 PATH apk supplies installed version' 26.8.8-r2 "$(get "$out" packages.xray-core.installed)"
+expect 'T8.16 PATH apk supplies installed version' 26.8.8-r2 "$(get "$out" packages.aether-xray.installed)"
 # An executable directory is not an executable file; non-executable files must not mask later tools.
 printf '#!/bin/sh\nexit 99\n' > "$T/path-first/opkg"
 chmod 644 "$T/path-first/opkg"
@@ -853,7 +854,7 @@ mkdir "$T/path-first/apk"
 out=$(path_check "$search")
 expect 'T8.16 non-executable and directory candidates are skipped' 0 "$?"
 expect 'T8.16 later executable still supplies installed version' 26.9.30-r5 \
-	"$(get "$out" packages.xray-core.installed)"
+	"$(get "$out" packages.aether-xray.installed)"
 out=$(path_check "$T/path-tools:$T/path-first")
 expect 'T8.16 no executable manager exits 1' 1 "$?"
 expect 'T8.16 no executable manager code' CMD_FAILED "$(get "$out" code)"
@@ -868,12 +869,12 @@ expect 'T8.16 bin-dir never calls PATH managers' '' "$(< "$UPDATE_PM_PATH_CALLS"
 relative_dir=${T#"$ROOT/"}/path-later
 out=$(cd "$ROOT" && path_check "$T/path-tools:$relative_dir")
 expect 'T8.16 relative PATH entry works' 0 "$?"
-expect 'T8.16 relative PATH command is called absolutely' "$T/path-later/opkg status xray-core" \
+expect 'T8.16 relative PATH command is called absolutely' "$T/path-later/opkg status aether-xray" \
 	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
 : > "$UPDATE_PM_PATH_CALLS"
 out=$(cd "$T/path-later" && path_check "$T/path-tools:")
 expect 'T8.16 empty PATH entry searches current directory' 0 "$?"
-expect 'T8.16 empty PATH entry command is called absolutely' "$T/path-later/opkg status xray-core" \
+expect 'T8.16 empty PATH entry command is called absolutely' "$T/path-later/opkg status aether-xray" \
 	"$(awk 'NR == 1 {print; exit}' "$UPDATE_PM_PATH_CALLS")"
 # Exercise the private lookup with a fake fs: no host /bin/opkg or permissions are required.
 # Keep the production helper intact instead of exporting an implementation detail for tests.
@@ -1097,7 +1098,7 @@ for channel in ('ch1', 'ch2'):
     manifest = json.load(open(path))
     def ipk(name):
         return manifest['packages'][name]['current']['assets']['aarch64_generic']['ipk']
-    ipk('xray-core')['url'] = '../evil.ipk'
+    ipk('aether-xray')['url'] = '../evil.ipk'
     ipk('aether-proxy')['size'] = '19'
     ipk('luci-i18n-aether-proxy-zh-cn')['sha256'] = 'deadbeef'
     json.dump(manifest, open(path, 'w'))
@@ -1106,15 +1107,15 @@ for channel in ch1 ch2; do
 	"$USIGN" -S -m "$T/$channel/manifest.json" -s "$T/sec" >/dev/null 2>&1
 done
 out=$(run_check)
-expect 'T9.42 check rejects a traversal asset name' '<null>' "$(get "$out" packages.xray-core.asset)"
-expect 'T9.42 check does not call a bad name newer' false "$(get "$out" packages.xray-core.newer)"
+expect 'T9.42 check rejects a traversal asset name' '<null>' "$(get "$out" packages.aether-xray.asset)"
+expect 'T9.42 check does not call a bad name newer' false "$(get "$out" packages.aether-xray.newer)"
 expect 'T9.42 check rejects a string size' '<null>' "$(get "$out" packages.aether-proxy.asset)"
 expect 'T9.42 check rejects a short sha256' '<null>' "$(get "$out" packages.luci-i18n-aether-proxy-zh-cn.asset)"
 expect 'T9.42 check still offers the untouched asset' luci-app-aether-proxy_0.2.0-r1_aarch64_generic.ipk \
 	"$(get "$out" packages.luci-app-aether-proxy.asset)"
 # The install path must refuse the same entries, without invoking a package manager.
 : > "$UPDATE_PACKAGE_CALLS"
-out=$(pkg_update xray-core); rc=$?
+out=$(pkg_update aether-xray); rc=$?
 expect 'T9.42 install refuses a traversal asset name' 1 "$rc"
 expect 'T9.42 install reports ARCH_UNSUPPORTED for a bad name' ARCH_UNSUPPORTED "$(get "$out" code)"
 out=$(pkg_update luci-i18n-aether-proxy-zh-cn); rc=$?

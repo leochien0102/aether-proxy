@@ -92,7 +92,7 @@ return view.extend({
 						.map(text => E('td', { class: 'td' }, [ text ])), E('td', { class: 'td' }, actions)
 				]);
 			})
-		]), E('p', {}, model.manual_install_note()),
+		]), E('p', {}, model.manual_install_note()), E('p', {}, model.migration_note()),
 		E('div', {
 			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 				+ 'flex-wrap:wrap; margin:0.5em 0 1em'

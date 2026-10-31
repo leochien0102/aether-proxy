@@ -174,7 +174,7 @@ export const UPDATE_SCHEDULE_FILE = 'update-schedule.json';
 
 // T7.3 (signed update checks)
 export const UPDATE_FILE = 'updates.json';
-export const UPDATE_PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+export const UPDATE_PACKAGES = [ 'aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 export const UPDATE_MANIFEST_MAX = 1048576;
 export const UPDATE_DOWNLOAD_MAX_SECS = 30;
 export const UPDATE_COMMAND_TIMEOUT_SECS = 35;
@@ -216,8 +216,8 @@ export const CUSTOM_RELOAD_TIMEOUT_SECS = 30;
 export const CUSTOM_LIST_NAMES = [ 'direct_domain', 'proxy_domain', 'direct_ip', 'proxy_ip' ];
 
 // T8.4 (`status` notices and the overview page; docs/10 「概览页」, 2026-10-16).
-// The xray-core entry of UPDATE_PACKAGES is the one muted by update.xray_auto == 'off'.
-export const XRAY_CORE_PACKAGE = 'xray-core';
+// The aether-xray entry of UPDATE_PACKAGES is the one muted by update.xray_auto == 'off'.
+export const XRAY_CORE_PACKAGE = 'aether-xray';
 // Global-scope IPv6 detection for the IPV6_PRESENT notice (docs/03 「IPv4-only 的泄漏处理」).
 export const IF_INET6_PATH = '/proc/net/if_inet6';
 export const IPV6_SCOPE_GLOBAL = '00';
@@ -317,3 +317,7 @@ export const SETS_BAD_FILE = 'sets.save.bad';
 // T10.70: application configuration integrity; backup is not a UCI package.
 export const CONFIG_LOCK_FILE = '/var/lock/aether-proxy-config.lock';
 export const CONFIG_BACKUP_FILE = '/etc/aether-proxy/config.backup';
+
+// T10.73 (B24): own binary first; the feeds binary remains a read-only fallback.
+export const XRAY_BINARY = '/usr/bin/aether-xray';
+export const XRAY_FALLBACK_BINARY = '/usr/bin/xray';

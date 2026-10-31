@@ -22,11 +22,12 @@ function reset() {
 }
 log.set_run_dir(base);
 for (let configured in [ null, '' ]) {
-	let found = check_cmd.find_component('xray', configured);
-	check(`lookup explicit ${configured == null ? 'null' : 'empty'} uses PATH`,
-		found?.path == `${base}/bin/xray` && found?.source == 'path');
+	let found = check_cmd.find_component('xray', configured, { bin_dir: `${base}/bin` });
+	check(`lookup explicit ${configured == null ? 'null' : 'empty'} uses isolated fallback`,
+		found?.path == `${base}/bin/xray` && found?.source == 'bin-dir');
 }
-check('lookup omitted config uses PATH', check_cmd.find_component('xray')?.path == `${base}/bin/xray`);
+check('lookup omitted config uses isolated fallback',
+	check_cmd.find_component('xray', {}.configured, { bin_dir: `${base}/bin` })?.path == `${base}/bin/xray`);
 check('lookup explicit nonexistent path does not fall back',
 	check_cmd.find_component('xray', `${base}/absent`) == null);
 check('lookup explicit existing path is retained',

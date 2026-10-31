@@ -25,7 +25,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `xray_log_level` | enum(`error`\|`warning`\|`info`\|`debug`) | `warning` | |
 | `boot_wait_timeout` | int 秒，0–600 | `120` | 0 = 开机不等待 |
 | `boot_check_targets` | list `ip:port` | `223.5.5.5:53` `114.114.114.114:53` | |
-| `xray_bin` / `chinadns_bin` | 路径 | 空 | 高级选项：显式指定二进制 |
+| `xray_bin` / `chinadns_bin` | 路径 | 空 | 高级选项：显式指定二进制；`xray_bin` 留空时先找 `/usr/bin/aether-xray`，再回退 `/usr/bin/xray`（B24，2026-10-31）。显式路径不可执行时不回退，报告组件缺失；chinadns-ng 查找规则不变 |
 
 ## `config dns 'dns'`
 
