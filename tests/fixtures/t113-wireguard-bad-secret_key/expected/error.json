@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.secret_key",
+      "code": "invalid_value",
+      "detail": "must be a Base64-encoded 32-byte key"
+    }
+  ]
+}

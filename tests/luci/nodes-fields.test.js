@@ -32,12 +32,13 @@ const NEW_FIELDS = {
 	xhttp_extra: ['TextValue', [{ transport: 'xhttp' }]],
 	ech_config_list: ['TextValue', [{ security: 'tls' }]],
 	reality_pqv: ['TextValue', [{ security: 'reality' }]],
-	mux: ['Flag', [{ flow: /^xtls-rprx-vision(-udp443)?$/, '!reverse': true }]],
+	mux: ['Flag', [{ protocol: 'vless', flow: /^(?!xtls-rprx-vision(-udp443)?$)/ },
+		{ protocol: 'vless', flow: null }, { protocol: /^(?!vless$|wireguard$)/ }]],
 	mux_concurrency: ['Value', [{ mux: '1' }]],
 	mux_xudp_concurrency: ['Value', [{ mux: '1' }]],
 	mux_xudp_udp443: ['ListValue', [{ mux: '1' }]],
-	tcp_fast_open: ['Flag', []],
-	tcp_mptcp: ['Flag', []]
+	tcp_fast_open: ['Flag', [{ protocol: /^(?!wireguard$)/ }]],
+	tcp_mptcp: ['Flag', [{ protocol: /^(?!wireguard$)/ }]]
 };
 function harness() {
 	const live = {}, stored = {}, options = new Map();
@@ -103,6 +104,7 @@ function harness() {
 }
 // SDK dependencies are OR across objects, AND within one, with !reverse negating the result.
 function visible(option, values) {
+	values = { protocol: 'vless', ...values, flow: values.flow ?? null };
 	return !option.deps.length || option.deps.some(dep => {
 		const equal = Object.entries(dep).filter(([key]) => key !== '!reverse')
 			.every(([key, value]) => value instanceof RegExp

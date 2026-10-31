@@ -52,7 +52,8 @@ const PROTOCOL_NAMES = {
 	trojan: _('Trojan', 'aether-proxy'),
 	shadowsocks: _('Shadowsocks', 'aether-proxy'),
 	socks: _('SOCKS', 'aether-proxy'),
-	http: _('HTTP', 'aether-proxy')
+	http: _('HTTP', 'aether-proxy'),
+	wireguard: _('WireGuard', 'aether-proxy')
 };
 
 function protocol_text(protocol) {
@@ -121,7 +122,8 @@ function probe_column(id, results, local_pending) {
    them prevents credentials/transport settings from a previous URI leaking
    into the next one; source, stale and match_* are not protocol fields. */
 const NODE_FIELDS = [
-	'label', 'protocol', 'address', 'port', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
+	'label', 'protocol', 'address', 'port', 'secret_key', 'peer_public_key', 'local_address', 'preshared_key',
+	'keepalive', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
 	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
@@ -167,6 +169,14 @@ return baseclass.extend({
 	ss_methods: SS_METHODS,
 	validate_address: optional_format(valid_address,
 		_('Must be a valid IPv4 address or domain name', 'aether-proxy')),
+	validate_wireguard_key: optional_format(value => typeof value === 'string'
+		&& full_match(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/, value),
+		_('Must be a Base64-encoded 32-byte key', 'aether-proxy')),
+	validate_local_address: optional_format(value => {
+		const parts = value.split('/');
+		return parts.length <= 2 && /^[0-9.]+$/.test(parts[0]) && valid_address(parts[0])
+			&& (parts.length === 1 || (full_match(/^(0|[1-9][0-9]?)$/, parts[1]) && +parts[1] <= 32));
+	}, _('Must be an IPv4 tunnel address or CIDR', 'aether-proxy')),
 	validate_uuid: optional_format(valid_uuid,
 		_('UUID must be 32 hexadecimal digits (hyphens allowed), or a string of at most 30 bytes', 'aether-proxy')),
 	validate_method: optional_format(value => SS_METHODS.includes(value),
@@ -183,6 +193,9 @@ return baseclass.extend({
 		protocol: { required: true },
 		address: { required: true },
 		port: { required: true },
+		secret_key: { protocols: ['wireguard'], required: true },
+		peer_public_key: { protocols: ['wireguard'], required: true },
+		local_address: { protocols: ['wireguard'], required: true },
 		uuid: { protocols: ['vless', 'vmess'], required: true },
 		password: { protocols: ['trojan', 'shadowsocks', 'socks', 'http'], required: ['trojan', 'shadowsocks'] },
 		method: { protocols: ['shadowsocks', 'vmess'], required: ['shadowsocks'] },

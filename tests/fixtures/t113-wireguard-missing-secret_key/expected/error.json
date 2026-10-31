@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.secret_key",
+      "code": "required",
+      "detail": "secret_key is required"
+    }
+  ]
+}

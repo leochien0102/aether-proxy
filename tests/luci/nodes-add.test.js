@@ -28,7 +28,8 @@ const model = loadModule(path.join(RES, 'aether-proxy/model/nodes.js'),
 	{ baseclass: { extend: o => o } }, {});
 // Independent docs/05 field inventory: an omission in the model must fail cleanup tests.
 const NODE_FIELDS = [
-	'label', 'protocol', 'address', 'port', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
+	'label', 'protocol', 'address', 'port', 'secret_key', 'peer_public_key', 'local_address', 'preshared_key',
+	'keepalive', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
 	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',

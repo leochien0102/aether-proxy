@@ -127,8 +127,29 @@ function ifname(s) {
 	return ifname_error(s) == null ? s : null;
 }
 
+// Tunnel CIDRs identify a host, unlike routing CIDRs: host bits must survive unchanged.
+function tunnel_address(value) {
+	if (type(value) != 'string')
+		return null;
+	let parts = split(value, '/');
+	if (length(parts) > 2 || ipv4(parts[0]) == null)
+		return null;
+	if (length(parts) == 2 && (!match(parts[1], /^(0|[1-9][0-9]?)$/) || +parts[1] > 32))
+		return null;
+	return value;
+}
+
+function wireguard_key(value) {
+	if (type(value) != 'string' || !match(value, /^[A-Za-z0-9+\/]{43}=$/))
+		return false;
+	// The decoder alone is permissive; round-trip also rejects noncanonical padding bits.
+	let decoded = b64dec(value);
+	return length(decoded) == 32 && b64enc(decoded) == value;
+}
+
 const ITEM_CHECK = {
-	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, ifname, string: nonempty
+	ipv4, ip_or_cidr, ip_or_range, mac, upstream, china_dns, trust_dns, hostport, url, ifname,
+	tunnel_address, string: nonempty
 };
 
 const SCALAR_CHECK = {
@@ -137,7 +158,7 @@ const SCALAR_CHECK = {
 
 const INVALID_CODE = {
 	// Preserve the existing trust_dns error subcode; the enclosing event remains CONFIG_INVALID.
-	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream',
+	trust_dns: 'invalid_ipv4', china_dns: 'invalid_upstream', tunnel_address: 'invalid_cidr',
 	ipv4: 'invalid_ipv4', ip_or_cidr: 'invalid_cidr', ip_or_range: 'invalid_cidr', mac: 'invalid_mac', upstream: 'invalid_upstream',
 	hostport: 'invalid_hostport', url: 'invalid_url', string: 'invalid_value', ifname: 'invalid_value',
 	domain: 'invalid_domain', address: 'invalid_address', path: 'invalid_path'
@@ -183,6 +204,9 @@ function default_of(f, proto) {
 function normalize_field(f, raw, field, proto, errors) {
 	let v = raw[f.name];
 
+	if (f.inactive_unchecked && !applies(f, proto))
+		return v ?? null;
+
 	if (f.type == 'list') {
 		let items = (v == null) ? [] : (type(v) == 'array' ? v : [ v ]);
 
@@ -201,7 +225,8 @@ function normalize_field(f, raw, field, proto, errors) {
 			let n = ITEM_CHECK[f.item](item);
 
 			if (n == null) {
-				let reason = f.item == 'ifname' ? ifname_error(item) : `"${item}" is not valid`;
+				let reason = f.item == 'ifname' ? ifname_error(item)
+					: f.item == 'tunnel_address' ? 'must be an IPv4 tunnel address or CIDR' : `"${item}" is not valid`;
 				push(errors, { field, code: INVALID_CODE[f.item], detail: `item ${i}: ${reason}` });
 				continue;
 			}
@@ -233,6 +258,12 @@ function normalize_field(f, raw, field, proto, errors) {
 	}
 
 	switch (f.type) {
+	case 'wireguard_key':
+		if (wireguard_key(v))
+			return v;
+		push(errors, { field, code: 'invalid_value', detail: 'must be a Base64-encoded 32-byte key' });
+		return null;
+
 	case 'bool':
 		if (v == '1' || v == '0')
 			return v == '1';
@@ -305,7 +336,7 @@ function normalize_section(fields, raw, prefix, errors) {
 	for (let f in fields) {
 		let rw = f.requires_when;
 
-		if (rw != null && out[rw.field] == rw.value && out[f.name] == null)
+		if (out.protocol != 'wireguard' && rw != null && out[rw.field] == rw.value && out[f.name] == null)
 			push(errors, { field: `${prefix}.${f.name}`, code: 'required',
 				detail: `${f.name} is required when ${rw.field}=${rw.value}` });
 	}
@@ -435,6 +466,9 @@ function check_xray_values(n, at, errors) {
 
 // 05 校验规则 6 beyond the schema's own required/requires_when checks.
 function check_node(n, at, errors) {
+	// WireGuard uses its own encrypted UDP peer, not the retained stream/security fields.
+	if (n.protocol == 'wireguard')
+		return;
 	// SOCKS/HTTP credentials are optional as a pair; never include either value in diagnostics.
 	if (index([ 'socks', 'http' ], n.protocol) >= 0 && (unset(n.username) != unset(n.password))) {
 		let missing = unset(n.username) ? 'username' : 'password';

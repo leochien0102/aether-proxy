@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.local_address",
+      "code": "invalid_cidr",
+      "detail": "item 0: must be an IPv4 tunnel address or CIDR"
+    }
+  ]
+}

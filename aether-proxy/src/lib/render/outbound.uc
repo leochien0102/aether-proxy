@@ -101,6 +101,18 @@ export function build_outbound(node, node_ip) {
 	let addr = node_ip ?? node.address;
 	let settings = {};
 
+	// WireGuard's encrypted UDP peer is independent of generic streamSettings/Mux.
+	// Use upstream's preSharedKey spelling; presharedKey would be silently ignored.
+	if (node.protocol == 'wireguard') {
+		let peer = { publicKey: node.peer_public_key, endpoint: addr + ':' + node.port,
+			allowedIPs: [ '0.0.0.0/0' ] };
+		put(peer, 'preSharedKey', node.preshared_key);
+		if (node.keepalive != null)
+			peer.keepAlive = node.keepalive;
+		return { tag: PROXY_TAG, protocol: 'wireguard', settings: {
+			secretKey: node.secret_key, address: node.local_address, peers: [ peer ] } };
+	}
+
 	switch (node.protocol) {
 	case 'vless': {
 		settings.address = addr;
