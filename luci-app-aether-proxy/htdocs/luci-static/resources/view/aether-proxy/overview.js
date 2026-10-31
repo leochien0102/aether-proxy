@@ -38,6 +38,11 @@
  * switch is turned off (docs/04 「重载」).
  */
 
+/* Replace placeholders in the template only; labels can themselves contain %s. */
+function switchFormat(text, ...args) {
+	return text.replace(/%s/g, () => String(args.shift()));
+}
+
 return view.extend({
 	load: function() {
 		return uci.load('aetherproxy').then(function() {
@@ -490,6 +495,8 @@ return view.extend({
 	   the ordinary banner. Session identity fences every late RPC and timer. */
 	beginSwitch: function(node, mode, kind) {
 		const session = { node, mode, kind, phase: 'switching', started: Date.now() / 1000,
+			from: this.switchLabels(this.vm?.current_node, this.vm?.current_mode),
+			to: this.switchLabels(node, mode),
 			baseline: JSON.stringify(this.status?.last_reload) };
 		this.switchSession = session;
 		this.switching = true;
@@ -507,6 +514,7 @@ return view.extend({
 				this.switchPhase(session, 'timeout');
 		}, 60000);
 		this.drawSwitch();
+		this.updateNotices?.();
 		this.updateNodeButton?.();
 		return session;
 	},
@@ -526,34 +534,58 @@ return view.extend({
 				window.clearTimeout(session.deadline);
 		}
 		if (['rollback-failed', 'timeout'].includes(phase))
-			this.switchBanner = detail || (phase === 'rollback-failed'
-				? _('Switch failed and previous settings could not be restored.', 'aether-proxy')
-				: _('Switching has not finished. Check the overview or logs.', 'aether-proxy'));
+			this.switchBanner = this.switchMessage(session).text;
 		this.drawSwitch();
 		this.updateNotices?.();
+	},
+
+	/* T10.74: capture labels before refreshes can replace the node/name table. */
+	switchLabels: function(node, mode) {
+		return {
+			node: this.labels?.[node] || node || _('Not selected', 'aether-proxy'),
+			mode: model.mode_text(mode)
+		};
+	},
+
+	switchTarget: function(labels, kind) {
+		if (kind === 'mode')
+			return switchFormat(_('mode “%s”', 'aether-proxy'), labels.mode);
+		if (kind === 'both')
+			return switchFormat(_('node “%s” (mode “%s”)', 'aether-proxy'), labels.node, labels.mode);
+		return switchFormat(_('“%s”', 'aether-proxy'), labels.node);
+	},
+
+	/* Both overlay and persistent banner use this title + detail, never competing summaries. */
+	switchMessage: function(session) {
+		const from = this.switchTarget(session.from, session.kind);
+		const to = this.switchTarget(session.to, session.kind);
+		const titles = {
+			'switching': switchFormat(_('Switching from %s to %s…', 'aether-proxy'), from, to),
+			'success': switchFormat(_('Switched to %s', 'aether-proxy'), to),
+			'preflight-failed': switchFormat(_('Switch not committed; still using %s', 'aether-proxy'), from),
+			'rolling-back': switchFormat(_('Switch failed; restoring %s…', 'aether-proxy'), to),
+			'rolled-back': switchFormat(_('Restored to %s', 'aether-proxy'), to),
+			'rollback-failed': switchFormat(_('Switch failed; could not restore %s', 'aether-proxy'), to),
+			'timeout': switchFormat(_('Not finished; target is %s', 'aether-proxy'), to)
+		};
+		const title = titles[session.phase];
+		const detail = session.detail;
+		return { title, detail, text: [title, detail].filter(Boolean).join(' ') };
 	},
 
 	drawSwitch: function() {
 		const session = this.switchSession;
 		if (!this.switchOverlay || !session)
 			return;
-		const texts = {
-			'switching': _('Switching settings…', 'aether-proxy'),
-			'success': _('Switch successful.', 'aether-proxy'),
-			'preflight-failed': _('The switch was not committed; configuration is unchanged.', 'aether-proxy'),
-			'rolling-back': _('Switch failed; restoring previous settings…', 'aether-proxy'),
-			'rolled-back': _('Switch failed; previous settings restored.', 'aether-proxy'),
-			'rollback-failed': _('Switch failed and previous settings could not be restored.', 'aether-proxy'),
-			'timeout': _('Switching has not finished. Check the overview or logs.', 'aether-proxy')
-		};
+		const message = this.switchMessage(session);
 		const closable = ['preflight-failed', 'rollback-failed', 'timeout'].includes(session.phase);
 		dom.content(this.switchOverlay, E('div', {
 			role: 'dialog', 'aria-modal': 'true', 'aria-live': 'polite',
 			style: 'position:fixed; inset:0; z-index:10000; background:rgba(0,0,0,.65); '
 				+ 'display:flex; align-items:center; justify-content:center'
 		}, [E('div', { 'class': 'cbi-section', style: 'max-width:36em; padding:2em' }, [
-			E('h3', {}, [texts[session.phase]]),
-			...(session.detail ? [E('p', {}, [session.detail])] : []),
+			E('h3', {}, [message.title]),
+			...(message.detail ? [E('p', {}, [message.detail])] : []),
 			...(closable ? [E('button', { 'class': 'cbi-button', click: () => this.closeSwitch() },
 				[_('Close', 'aether-proxy')])] : [])
 		])]));
@@ -622,6 +654,9 @@ return view.extend({
 	rollbackSwitch: async function(session) {
 		if (!this.switchActive(session) || session.phase === 'rolling-back')
 			return;
+		/* The rollback target comes from the committed reply, not a possibly stale runtime.
+		   Keep session.node/mode unchanged until the existing UCI ownership check passes. */
+		session.to = this.switchLabels(session.reply?.previous, session.reply?.previous_mode);
 		this.switchPhase(session, 'rolling-back');
 		try {
 			await this.readSwitchConfig(session);
@@ -1170,7 +1205,7 @@ return view.extend({
 				E('li', { 'class': 'alert-message warning' }, [ text ]))));
 		if (this.switchBanner)
 			parts.push(E('div', { 'class': 'alert-message warning' }, [this.switchBanner]));
-		if (vm.switch_notice)
+		if (vm.switch_notice && !this.switchSession && !this.switchBanner)
 			parts.push(E('div', { 'class': 'alert-message warning' }, [ vm.switch_notice ]));
 		dom.content(this.noticeContent, parts);
 	},
