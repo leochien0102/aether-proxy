@@ -20,7 +20,7 @@ define Package/aether-proxy
 	+kmod-nft-tproxy +kmod-nft-socket +ip-full +curl +ca-bundle \
 	+firewall4 +resolveip +usign +dnsmasq \
 	+ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
-	+ucode-mod-log +aether-xray
+	+ucode-mod-log +aether-xray +chinadns-ng
 endef
 
 define Package/aether-proxy/description
