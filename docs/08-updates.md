@@ -4,7 +4,7 @@
 
 ### B24 包名迁移（2026-10-31）
 
-- 本应用只管理 `aether-xray`，纯上游基版本当前为 **26.10.29**，不带补丁；安装到 `/usr/bin/aether-xray`。最低运行版本仍为 26.3.27。
+- 本应用只管理 `aether-xray`，纯上游基版本当前为 **26.10.31**，不带补丁；安装到 `/usr/bin/aether-xray`。最低运行版本仍为 26.3.27。
 - 已有的通道版或 feeds 版 `xray-core` **不自动卸载，也不再由本应用更新**，它可能属于 feeds 或 ssr-plus。
   运行时按显式 `main.xray_bin` → `/usr/bin/aether-xray` → `/usr/bin/xray` 选择，组件信息显示实际路径与版本。
 - 新客户端忽略清单中的旧 `xray-core`，不查询它的安装版本、不下载安装或删除它；旧清单只有该条目时不提供 Xray 更新。
@@ -26,7 +26,7 @@
 
 ## 应用仓库内的核心包与本地构建（T11.5）
 
-- 应用仓库现提供 `aether-xray/Makefile`：纯上游 Xray **26.10.29**，无补丁；源码归档由 `PKG_HASH` 固定，使用固定哈希的官方 Go **1.27.2** 工具链（linux-amd64 构建主机），交叉编译静态二进制。目前支持 `aarch64_generic` 与 `x86_64`。
+- 应用仓库现提供 `aether-xray/Makefile`：纯上游 Xray **26.10.31**，无补丁；源码归档由 `PKG_HASH` 固定，使用固定哈希的官方 Go **1.27.2** 工具链（linux-amd64 构建主机），交叉编译静态二进制。目前支持 `aarch64_generic` 与 `x86_64`。
 - 新包使用独立的 `build_dir/.../aether-xray-<版本>/Xray-core-<版本>` 源码/产物目录，避免与 feeds 的同版本 patched `xray-core` 共用目录或构建标记。
 - `aether-proxy` 的 runtime `DEPENDS` 包含 `+aether-xray`；全量固件选中应用时带入核心。核心仍为**独立 ipk**，唯一数据文件是 `/usr/bin/aether-xray`，不嵌入 `aether-proxy` ipk。helloworld 的 patched `xray-core` 继续安装 `/usr/bin/xray`，包名和路径均不冲突。
 - 将本仓库的 `aether-proxy/`、`aether-xray/` 注册到构建树（例如分别链接为 `package/aether-proxy`、`package/aether-xray`），刷新包元数据并用 `make defconfig` 确认目标架构与包选择。不要同时注册 channel 的同名包。
@@ -35,7 +35,7 @@
   make package/aether-xray/compile package/aether-proxy/compile
   ```
   设备用包管理器安装应用时也必须有可解析的 `aether-xray` 软件源或先安装本地产出的核心 ipk；依赖元数据不会把核心二进制塞进应用包。
-- **channel 暂不切换**：现有发布仓库仍使用自己的 Makefile 与 `AETHER_PROXY_REF`；上文 26.10.29 是应用仓库的包/测试基线，不表示已发布。T11.6 再做 channel 单源复制，本任务不改通道引用、release 或 tag。
+- **channel 暂不切换**：现有发布仓库仍使用自己的 Makefile 与 `AETHER_PROXY_REF`；上文 26.10.31 是应用仓库的包/测试基线，不表示已发布。T11.6 再做 channel 单源复制，本任务不改通道引用、release 或 tag。
 
 ## 发布通道（服务端）
 
@@ -77,11 +77,11 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   "packages": {
     "aether-xray": {
       "current": {
-        "version": "26.10.29-r1",
+        "version": "26.10.31-r1",
         "assets": {
           "aarch64_generic": {
-            "ipk": { "url": "aether-xray_26.10.29-r1_aarch64_generic.ipk", "sha256": "…", "size": 0 },
-            "apk": { "url": "aether-xray-26.10.29-r1_aarch64_generic.apk", "sha256": "…", "size": 0 }
+            "ipk": { "url": "aether-xray_26.10.31-r1_aarch64_generic.ipk", "sha256": "…", "size": 0 },
+            "apk": { "url": "aether-xray-26.10.31-r1_aarch64_generic.apk", "sha256": "…", "size": 0 }
           }
         }
       },
@@ -188,7 +188,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   "url": "<实际取到清单的 channel_urls 地址>",
   "arch": "aarch64_generic", "pm": "opkg",
   "packages": {
-    "aether-xray": { "installed": "26.9.30-r1", "available": "26.10.29-r1", "newer": true },
+    "aether-xray": { "installed": "26.9.30-r1", "available": "26.10.31-r1", "newer": true },
     "aether-proxy": { "installed": "0.1.0-r1", "available": "0.2.0-r1", "newer": true }
   },
   "data": { "chnroute4": { "changed": true, "sha256": "<清单的 content_sha256>" }, "gfwlist": { "changed": false, "sha256": "…" } }

@@ -10,12 +10,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aether-xray
-PKG_VERSION:=26.10.29
+PKG_VERSION:=26.10.31
 PKG_RELEASE:=1
 
 PKG_SOURCE:=Xray-core-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=ee22c6f21855f70a52e19bff02fa71f4b28ce071d83ff9154fafcaa0f315a642
+PKG_HASH:=be44f95d497ad4ba6e9d1dcfbbd71e8e51f812aff077d4c15c9947eff5e3046a
 # Keep upstream sources/stamps apart from feeds' patched xray-core, even when
 # both packages use the same upstream version. The archive's root is unchanged.
 PKG_BUILD_DIR:=$(BUILD_DIR)/aether-xray-$(PKG_VERSION)/Xray-core-$(PKG_VERSION)
