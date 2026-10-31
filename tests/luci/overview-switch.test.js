@@ -82,6 +82,116 @@ test('T10.71 first reproduce: Apply opens an unclosable switching overlay', asyn
 	await pending;
 });
 
+function overlayMessage(h) {
+	return [...all(h.page.switchOverlay, 'h3'), ...all(h.page.switchOverlay, 'p')]
+		.map(node => node.textContent).join(' ');
+}
+
+for (const [kind, node, mode, from, to] of [
+	['node', 'n_b', 'bypass_cn', '“Alpha”', '“Beta”'],
+	['mode', 'n_a', 'gfw', 'mode “Bypass China”', 'mode “GFW only”'],
+	['both', 'n_b', 'gfw', 'node “Alpha” (mode “Bypass China”)', 'node “Beta” (mode “GFW only”)']
+]) {
+	test(`T10.74 ${kind}: switching from/to and success target use captured labels`, async () => {
+		const h = await harness();
+		h.page.labels = { n_a: 'Alpha', n_b: 'Beta' };
+		await h.page.handleNode(node, mode);
+		assert.equal(overlayMessage(h), `Switching from ${from} to ${to}…`);
+		h.page.labels = { n_a: 'changed A', n_b: 'changed B' };
+		completion(h, true, node, mode);
+		await h.page.pollSwitch(h.page.switchSession);
+		assert.equal(overlayMessage(h), `Switched to ${to}`);
+	});
+}
+
+test('T10.74 preflight: unchanged source and backend detail are plain text', async () => {
+	const h = await harness();
+	h.page.labels = { n_a: '<Alpha>', n_b: 'Beta' };
+	h.use = async () => ({ committed: false, code: 'CONFIG_INVALID', detail: '<bad config>' });
+	await h.page.handleNode('n_b', 'bypass_cn');
+	assert.equal(all(h.page.switchOverlay, 'h3')[0].textContent,
+		'Switch not committed; still using “<Alpha>”');
+	assert.ok(overlayMessage(h).includes('<bad config>'));
+	assert.equal(all(h.page.switchOverlay, 'Alpha').length, 0);
+});
+
+test('T10.74 timeout: overlay and persistent banner share title plus detail and suppress old notice', async () => {
+	const h = await harness();
+	h.page.labels = { n_a: 'Alpha', n_b: 'Beta' };
+	h.use = async () => ({ committed: null });
+	await h.page.handleNode('n_b', 'bypass_cn');
+	assert.ok(overlayMessage(h).startsWith('Not finished; target is “Beta” '));
+	assert.equal(h.page.switchBanner, overlayMessage(h));
+	h.page.vm.switch_notice = 'OLD SWITCH NOTICE';
+	h.page.updateNotices();
+	assert.ok(!h.page.noticeContent.textContent.includes('OLD SWITCH NOTICE'));
+	const banner = h.page.switchBanner;
+	h.page.closeSwitch();
+	h.page.updateNotices();
+	assert.ok(h.page.noticeContent.textContent.includes(banner));
+	assert.ok(!h.page.noticeContent.textContent.includes('OLD SWITCH NOTICE'));
+});
+
+for (const phase of ['timeout', 'rollback-failed', 'rolled-back']) {
+	test(`T10.74 rollback ${phase}: messages target returned previous node/mode`, async () => {
+		const h = await harness();
+		await h.page.handleNode('n_b', 'gfw');
+		completion(h, false, 'n_b', 'gfw');
+		await h.page.pollSwitch(h.page.switchSession);
+		const target = 'node “n_a” (mode “Bypass China”)';
+		assert.equal(overlayMessage(h), `Switch failed; restoring ${target}…`);
+		if (phase === 'rolled-back') {
+			completion(h, true, 'n_a');
+			await h.page.pollSwitch(h.page.switchSession);
+			assert.equal(overlayMessage(h), `Restored to ${target}`);
+		}
+		else {
+			if (phase === 'timeout') h.timers.find(t => t.ms === 60000).fn();
+			else {
+				completion(h, false, 'n_a');
+				await h.page.pollSwitch(h.page.switchSession);
+			}
+			assert.ok(overlayMessage(h).includes(target));
+			assert.ok(!overlayMessage(h).includes('n_b'));
+			assert.equal(h.page.switchBanner, overlayMessage(h));
+		}
+	});
+}
+
+test('T10.74 rollback uses reply previous labels, even when they differ from captured source', async () => {
+	const h = await harness();
+	h.page.labels = { n_a: 'Alpha', n_b: 'Beta' };
+	await h.page.handleNode('n_b', 'gfw');
+	const session = h.page.switchSession;
+	session.reply.previous = 'n_other';
+	session.reply.previous_mode = 'global';
+	completion(h, false, 'n_b', 'gfw');
+	await h.page.pollSwitch(session);
+	assert.equal(overlayMessage(h),
+		'Switch failed; restoring node “n_other” (mode “Global (all traffic through proxy)”)…');
+	h.timers.find(t => t.ms === 60000).fn();
+	assert.equal(h.page.switchBanner, overlayMessage(h));
+	assert.ok(h.page.switchBanner.includes('n_other'));
+	assert.ok(!h.page.switchBanner.includes('Alpha'));
+});
+
+test('T10.74 labels containing placeholders are not reinterpreted as format strings', async () => {
+	const h = await harness();
+	h.page.labels = { n_a: 'Alpha %s', n_b: '<Beta %s>' };
+	await h.page.handleNode('n_b', 'gfw');
+	assert.equal(overlayMessage(h), 'Switching from node “Alpha %s” (mode “Bypass China”) '
+		+ 'to node “<Beta %s>” (mode “GFW only”)…');
+});
+
+test('T10.74 session alone suppresses legacy notice; external switch keeps it', async () => {
+	const h = await harness();
+	h.page.vm.switch_notice = 'EXTERNAL SWITCH';
+	h.page.updateNotices();
+	assert.ok(h.page.noticeContent.textContent.includes('EXTERNAL SWITCH'));
+	h.page.beginSwitch('n_b', 'bypass_cn', 'node');
+	assert.ok(!h.page.noticeContent.textContent.includes('EXTERNAL SWITCH'));
+});
+
 function completion(h, ok, node = 'n_b', mode = 'bypass_cn') {
 	h.status.last_reload = { at: Math.floor(Date.now() / 1000) + 1,
 		target_node: node, target_mode: mode, ok, error: ok ? null : 'reload broken' };
