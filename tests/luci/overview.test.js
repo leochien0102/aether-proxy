@@ -165,7 +165,7 @@ test('scenario 7b: button availability per state', () => {
 
 test('scenario 7c: health probe texts and their relative time', () => {
 	let vm = build({ ok: true, state: 'running', last_probe: { ok: true, latency_ms: 123, at: NOW - 30 } });
-	assert.equal(vm.probe_text, tr('Healthy, %s ms', 123));
+	assert.equal(vm.probe_text, tr('%s, %s ms', '正常', 123));
 	assert.equal(vm.probe_since_text, tr('%s seconds ago', 30));
 
 	vm = build({ ok: true, state: 'running', last_probe: { ok: false, at: NOW - 90 } });
@@ -947,7 +947,7 @@ test('T10.3 scenario 6b: state and probe colors use theme variables, neutral has
 			if (level !== 'neutral')
 				assert.ok(word.attrs.style.includes(colors[level]));
 			const visible = ['running', 'degraded', 'failsafe'].includes(state);
-			const text = !visible ? '延迟：–' : probe ? (probe.ok ? tr('Healthy, %s ms', '?') : tr('Probe failed'))
+			const text = !visible ? '延迟：–' : probe ? (probe.ok ? tr('%s, %s ms', '未知', '?') : tr('Probe failed'))
 				: tr('Not probed yet');
 			const result = findAll(nodeRow(root), 'span').find((n) => visibleText(n) === text);
 			assert.ok(result, 'health result is in the runtime node row');
@@ -1783,7 +1783,7 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 
 /* T10.24 merges display only; no status request or backend health mutation. */
 const LATENCY_RESULTS = [
-	[{ ok: true, code: 204, latency_ms: 208 }, '正常，208 ms（GitHub，手动）'],
+	[{ ok: true, code: 204, latency_ms: 208 }, '偏高，208 ms（GitHub，手动）'],
 	[{ ok: false, code: 'PROBE_TIMEOUT' }, '检测超时（GitHub，手动）'],
 	[{ ok: false, code: 'PROBE_FAILED' }, '检测失败（GitHub，手动）'],
 	[{ ok: false, code: 'PROBE_FAILED', http_code: 500 }, '返回 HTTP 500（GitHub，手动）'],
@@ -3728,7 +3728,7 @@ test('T10.65 scenario 2: empty latency is labeled in both languages; runtime pro
 		}
 		for (const state of RUNTIME_STATES) {
 			for (const [last_probe, english, translated] of [
-				[{ ok: true, latency_ms: 23 }, 'Healthy, 23 ms', '正常，23 ms'],
+				[{ ok: true, latency_ms: 23 }, 'Normal, 23 ms', '正常，23 ms'],
 				[{ ok: false }, 'Probe failed', '检测失败'],
 				[undefined, 'Not probed yet', '尚未检测']
 			]) {
@@ -4037,6 +4037,47 @@ for (const [ms, level] of [[0, 'ok'], [100, 'ok'], [200, 'ok'], [201, 'warn'],
 		assert.equal(manualSpan.attrs.style, page.colorStyle(level));
 	});
 }
+
+/* T10.80: labels follow shared grades, while DOM colors and failures stay unchanged. */
+for (const [ms, label, level] of [[100, '正常', 'ok'], [200, '正常', 'ok'],
+	[201, '偏高', 'warn'], [800, '偏高', 'warn'], [801, '过高', 'error'],
+	[2000, '过高', 'error'], [undefined, '未知', 'neutral'], [null, '未知', 'neutral'],
+	[-1, '未知', 'neutral'], ['100', '未知', 'neutral'], [NaN, '未知', 'neutral'],
+	[Infinity, '未知', 'neutral']]) {
+	test(`T10.80: automatic/manual label for ${String(ms)}`, () => {
+		const status = { ok: true, state: 'running', last_probe: { ok: true, latency_ms: ms, at: NOW } };
+		const { root, page } = renderStatus(status);
+		const text = `${label}，${ms ?? '?'} ms`;
+		assert.equal(page.vm.probe_text, text);
+		assert.equal(page.vm.probe_level, level);
+		assert.equal(findAll(nodeRow(root), 'span').find(n => visibleText(n) === text).attrs.style,
+			page.colorStyle(level));
+		page.manualProbe = dashboardModel().manual_probe({ ok: true, latency_ms: ms }, 'GitHub', status, NOW);
+		page.refresh(status);
+		const manualText = `${text}（GitHub，手动）`;
+		assert.equal(page.vm.probe_text, manualText);
+		assert.equal(page.vm.probe_level, level);
+		assert.equal(findAll(nodeRow(root), 'span').find(n => visibleText(n) === manualText).attrs.style,
+			page.colorStyle(level));
+	});
+}
+
+test('T10.80: failure wording is independent of latency grades', () => {
+	const model = dashboardModel();
+	for (const ms of [100, 2000, undefined]) {
+		assert.equal(build({ ok: true, state: 'running', last_probe: { ok: false, latency_ms: ms } }).probe_text,
+			'检测失败');
+		for (const [reply, text] of [
+			[{ code: 'PROBE_TIMEOUT' }, '检测超时（GitHub，手动）'],
+			[{ code: 'PROBE_FAILED' }, '检测失败（GitHub，手动）'],
+			[{ code: 'PROBE_FAILED', http_code: 503 }, '返回 HTTP 503（GitHub，手动）']
+		]) {
+			const result = model.manual_probe({ ok: false, latency_ms: ms, ...reply }, 'GitHub', {}, NOW);
+			assert.equal(result.text, text);
+			assert.equal(result.probe_level, 'error');
+		}
+	}
+});
 
 test('T10.79: failed automatic/manual probes stay error regardless of latency', () => {
 	const model = dashboardModel();

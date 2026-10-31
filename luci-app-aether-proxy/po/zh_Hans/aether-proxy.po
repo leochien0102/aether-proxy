@@ -921,8 +921,20 @@ msgid "%s days ago"
 msgstr "%s 天前"
 
 msgctxt "aether-proxy"
-msgid "Healthy, %s ms"
-msgstr "正常，%s ms"
+msgid "%s, %s ms"
+msgstr "%s，%s ms"
+
+msgctxt "aether-proxy"
+msgid "Normal"
+msgstr "正常"
+
+msgctxt "aether-proxy"
+msgid "Elevated"
+msgstr "偏高"
+
+msgctxt "aether-proxy"
+msgid "Too high"
+msgstr "过高"
 
 msgctxt "aether-proxy"
 msgid "Probe failed"
@@ -2203,8 +2215,8 @@ msgid "Reading the site list failed (%s)"
 msgstr "读取站点列表失败（%s）"
 
 msgctxt "aether-proxy"
-msgid "Healthy, %s ms (%s, manual)"
-msgstr "正常，%s ms（%s，手动）"
+msgid "%s, %s ms (%s, manual)"
+msgstr "%s，%s ms（%s，手动）"
 
 msgctxt "aether-proxy"
 msgid "Probe timed out (%s, manual)"
