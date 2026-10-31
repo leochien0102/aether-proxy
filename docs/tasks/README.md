@@ -148,3 +148,5 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 虚拟机需要能访问一个测试用的 Xray 节点（自建一个即可，不要用生产节点的凭据）。
 
 - T10.77（0.6.0 集成 main+release）已合并（2026-10-31，main）
+
+- T10.78（channel 0.6.0 aether-xray 包）已发（2026-10-31，基于 channel main）
