@@ -86,10 +86,10 @@ jobs:
           names += sorted(n for n in packages if n.startswith('luci-i18n-aether-proxy-'))
           if len(names) == 2:
               raise SystemExit('::error::Asset selection failed: missing i18n package')
-          names += ['aether-xray']
+          names += ['aether-xray', 'chinadns-ng']
           for name in names:
               assets = packages[name]['current']['assets']
-              arches = ['aarch64_generic', 'x86_64'] if name == 'aether-xray' else sorted(assets)
+              arches = ['aarch64_generic', 'x86_64'] if name in ('aether-xray', 'chinadns-ng') else sorted(assets)
               if not arches:
                   raise SystemExit(f'::error::Asset selection failed: no architectures for {name}')
               for arch in arches:
@@ -134,10 +134,11 @@ jobs:
             cat >> "$notes" <<'NOTES'
           Packages are copied from the matching channel-stable manifest and SHA-256 verified; no rebuild.
 
-          Install aether-xray first, then aether-proxy, luci-app-aether-proxy and luci-i18n-aether-proxy-*.
+          Install aether-xray and chinadns-ng first, then aether-proxy, luci-app-aether-proxy and luci-i18n-aether-proxy-*.
           Choose .ipk for opkg (OpenWrt 24.10), or .apk for apk (OpenWrt 25.12); do not mix formats.
           Match the package architecture to your system: aarch64_generic = ARM64, x86_64 = Intel/AMD 64-bit.
-          Architecture-independent application/LuCI/i18n packages may use all/noarch; install the matching core.
+          Architecture-independent application/LuCI/i18n packages may use all/noarch; install the matching aether-xray and chinadns-ng binaries.
+          chinadns-ng is a manual-install component and is not automatically updated.
           This Release contains aether-xray, not patched xray-core. Manifest/signature files stay on channel-stable.
           NOTES
           fi

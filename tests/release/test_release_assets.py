@@ -72,7 +72,7 @@ raise AssertionError(command)
 def fixture():
     packages = {}
     for name in ('aether-proxy', 'luci-app-aether-proxy',
-                 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'xray-core'):
+                 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng', 'xray-core'):
         assets = {}
         for arch in ('all', 'aarch64_generic', 'x86_64', 'mips_24kc'):
             assets[arch] = {}
@@ -152,14 +152,17 @@ class ReleaseAssets(unittest.TestCase):
         self.assertEqual(len(self.calls('sleep')), 2)
         uploaded = self.root / 'uploaded'
         names = {path.name for path in uploaded.iterdir()}
-        self.assertEqual(len(names), 28)  # three app packages * four arches * two + core * two * two
+        self.assertEqual(len(names), 32)  # three app packages * four arches * two + two binaries * two * two
         self.assertTrue(all(name.endswith(('.ipk', '.apk')) for name in names))
         self.assertFalse(any('xray-core' in name or 'old' in name for name in names))
         core = [name for name in names if name.startswith('aether-xray')]
         self.assertEqual(len(core), 4)
         self.assertTrue(all('aarch64_generic' in name or 'x86_64' in name for name in core))
         notes = (self.root / 'notes').read_text()
-        self.assertIn('Install aether-xray first', notes)
+        self.assertIn('Install aether-xray and chinadns-ng first', notes)
+        dns = [name for name in names if name.startswith('chinadns-ng')]
+        self.assertEqual(len(dns), 4)
+        self.assertTrue(all('aarch64_generic' in name or 'x86_64' in name for name in dns))
         self.assertIn('aarch64_generic = ARM64', notes)
         self.run_all()
         self.assertEqual({p.name for p in uploaded.iterdir()}, names)
@@ -169,7 +172,7 @@ class ReleaseAssets(unittest.TestCase):
     def test_channel_noarch_shape(self):
         # Real channel uses assets.all and architecture-free APK names for app/LuCI/i18n.
         for name, package in self.manifest['packages'].items():
-            if name in ('aether-xray', 'xray-core'):
+            if name in ('aether-xray', 'chinadns-ng', 'xray-core'):
                 continue
             assets = package['current']['assets']
             package['current']['assets'] = {'all': assets['all']}
@@ -177,7 +180,31 @@ class ReleaseAssets(unittest.TestCase):
             assets['all']['apk']['sha256'] = hashlib.sha256(CONTENT).hexdigest().upper()
         self.sequence([self.manifest])
         self.run_all()
-        self.assertEqual(len(list((self.root / 'uploaded').iterdir())), 10)
+        self.assertEqual(len(list((self.root / 'uploaded').iterdir())), 14)
+
+    def test_chinadns_dependency_and_manual_updates(self):
+        makefile = (ROOT / 'aether-proxy/Makefile').read_text()
+        self.assertIn('+chinadns-ng', makefile)
+        dns = (ROOT / 'chinadns-ng/Makefile').read_text()
+        self.assertIn('PKG_NAME:=chinadns-ng\n', dns)
+        self.assertIn('PKG_VERSION:=2025.08.09\n', dns)
+        self.assertIn('$(1)/usr/bin/chinadns-ng', dns)
+        const = (ROOT / 'aether-proxy/src/lib/const.uc').read_text()
+        update_packages = const.split('export const UPDATE_PACKAGES =', 1)[1].split(';', 1)[0]
+        self.assertNotIn('chinadns-ng', update_packages)
+
+    def test_missing_chinadns_arch_or_format(self):
+        for arch, ext in (('x86_64', None), ('aarch64_generic', 'apk')):
+            with self.subTest(arch=arch, ext=ext):
+                manifest = fixture()
+                assets = manifest['packages']['chinadns-ng']['current']['assets']
+                if ext is None:
+                    del assets[arch]
+                else:
+                    del assets[arch][ext]
+                (self.root / 'manifest.json').write_text(json.dumps(manifest))
+                self.run_step(2, ok=False)
+        self.assertFalse((self.root / 'calls.jsonl').exists())
 
     def test_creation_failure(self):
         self.run_step(1)
