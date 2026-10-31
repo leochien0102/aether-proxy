@@ -172,6 +172,7 @@ for kind in nft chinadns dnsmasq xray; do
 			ok "render $kind matches host golden"
 		else
 			bad "render $kind matches host golden"
+			diff -u "$packages/smoke-golden/$file" "$work/$file" | head -30 || true
 		fi
 	else
 		rc=$?
