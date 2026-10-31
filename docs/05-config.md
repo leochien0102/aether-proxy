@@ -85,9 +85,14 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `source` | `manual` 或订阅段名 | |
 | `stale` | bool | 订阅中已消失、但仍被引用而保留 |
 | `match_strong` / `match_weak` | 字符串 | 身份匹配键（[06](06-nodes-subscription.md)），用户不可见 |
-| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`\|`socks`\|`http`) | |
+| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`\|`socks`\|`http`\|`wireguard`) | |
 | `address` | 域名或 IPv4 | |
 | `port` | 1–65535 | |
+| `secret_key` | Base64 32 字节 | wireguard 私钥，必填；标准 Base64（44 字符，末尾 `=`），不含空白 |
+| `peer_public_key` | Base64 32 字节 | wireguard Peer 公钥，必填，格式同 secret_key |
+| `local_address` | list IPv4/CIDR | wireguard 本机隧道地址，至少 1 项；允许主机位，不当作路由网段；Xray 26.3.27 只接受裸 IPv4 或 `/32`，其他前缀由实际 Xray 预检兜底 |
+| `preshared_key` | Base64 32 字节 | wireguard 可选 PSK，格式同 secret_key |
+| `keepalive` | int 秒，0–65535 | wireguard 可选；不设置不渲染，显式 0 保留 |
 | `uuid` | 字符串 | vless / vmess |
 | `username` | 字符串 | socks / http；可选，与 password 同时设置或同时不设置 |
 | `password` | 字符串 | trojan / shadowsocks 必填；socks / http 可选，与 username 成对 |
@@ -177,6 +182,13 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    `reality` 需要 `reality_pbk` 和 `sni`。
    SOCKS5（`protocol=socks`）和 HTTP（`protocol=http`）允许无认证，或用户名/密码认证（HTTP Basic）；`username`、`password` 必须同时有或同时没有。
    空字符串按未设置处理；只填一项时返回 `CONFIG_INVALID`，`required` 错误指向缺失字段，不在错误或事件中包含凭据值。
+   WireGuard（手工节点，不扩展 URI/订阅）要求 `secret_key`、`peer_public_key`、至少一个 `local_address`；
+   密钥为标准 Base64 编码的 32 字节（含规范填充，不接受 hex/base64url/空白），可选 PSK 同规则。
+   `address`/`port` 是 Peer endpoint；优先使用 `node_ip`。出站设置为
+   `secretKey`、`address: local_address`、`peers: [{publicKey, endpoint, allowedIPs: ['0.0.0.0/0']}]`；
+   PSK 使用真实 Xray 字段 **`preSharedKey`**（26.3.27/26.10.21 源码一致，不是 `presharedKey`），keepalive 为 `keepAlive`。
+   WireGuard 不渲染通用 streamSettings/Mux，编辑框隐藏其设置；切换协议时保留旧值。
+   WireGuard 字段在其他协议下保留、不校验、不渲染；任何凭据不得进入错误 detail、日志或事件。
    SOCKS / HTTP 出站使用 `settings.servers[0] = { address, port }`，认证时加 `users: [{ user, pass }]`；
    `address` 仍优先使用引导解析的 `node_ip`，未解析时使用原始地址。分享链接/订阅 URI 不新增 SOCKS / HTTP 解析。
 7. 节点取值必须是 Xray v26.9.30 启动时能接受的（2026-10-14 用真实 Xray 校验夹具时发现，规则对照 `infra/conf/xray.go`、`transport_security.go`）：
