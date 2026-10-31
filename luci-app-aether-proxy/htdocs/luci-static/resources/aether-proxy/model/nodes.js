@@ -51,7 +51,8 @@ const PROTOCOL_NAMES = {
 	vmess: _('VMess', 'aether-proxy'),
 	trojan: _('Trojan', 'aether-proxy'),
 	shadowsocks: _('Shadowsocks', 'aether-proxy'),
-	socks: _('SOCKS', 'aether-proxy')
+	socks: _('SOCKS', 'aether-proxy'),
+	http: _('HTTP', 'aether-proxy')
 };
 
 function protocol_text(protocol) {
@@ -183,7 +184,7 @@ return baseclass.extend({
 		address: { required: true },
 		port: { required: true },
 		uuid: { protocols: ['vless', 'vmess'], required: true },
-		password: { protocols: ['trojan', 'shadowsocks', 'socks'], required: ['trojan', 'shadowsocks'] },
+		password: { protocols: ['trojan', 'shadowsocks', 'socks', 'http'], required: ['trojan', 'shadowsocks'] },
 		method: { protocols: ['shadowsocks', 'vmess'], required: ['shadowsocks'] },
 		sni: { requires_when: { field: 'security', value: 'reality' } },
 		reality_pbk: { requires_when: { field: 'security', value: 'reality' } }

@@ -121,7 +121,8 @@ export function build_outbound(node, node_ip) {
 		settings.port = node.port;
 		settings.password = node.password;
 		break;
-	case 'socks': {
+	case 'socks':
+	case 'http': {
 		let server = { address: addr, port: node.port };
 		if (node.username != null && node.username != '' && node.password != null && node.password != '')
 			server.users = [ { user: node.username, pass: node.password } ];

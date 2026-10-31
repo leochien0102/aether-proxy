@@ -1,0 +1,17 @@
+config global 'main'
+	option enabled '1'
+	option mode 'gfw'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	list lan_ifaces 'br-lan'
+	option sniffing '1'
+	option xray_log_level 'warning'
+
+config dns 'dns'
+	list china_dns '223.5.5.5'
+	list trust_dns '8.8.8.8'
+	list trust_dns '1.1.1.1'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option protocol 'http'
+	option address 'http.example.com'
+	option port '8080'

@@ -2623,6 +2623,10 @@ msgid "SOCKS"
 msgstr "SOCKS"
 
 msgctxt "aether-proxy"
+msgid "HTTP"
+msgstr "HTTP"
+
+msgctxt "aether-proxy"
 msgid "Username"
 msgstr "用户名"
 
