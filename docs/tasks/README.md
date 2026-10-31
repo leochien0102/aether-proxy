@@ -155,4 +155,4 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 
 - T10.78（channel 0.6.0 aether-xray 包）已合并（2026-10-31，channel main 本地）
 
-- T11.5（`aether-xray` 迁入 aether-proxy 仓库）已合并（2026-10-31，main）；T11.6（channel 单源复制）已发（2026-10-31，channel main）；T11.7（双发布 workflow，不升版）已合并（2026-10-31，main）；T11.8（Hysteria2 出站）已合并（2026-10-31，main）；T11.9（chinadns-ng 单源迁移）已合并（2026-10-31，三仓库）；T11.10（CI 发布门禁/smoke 依赖修复）已发（2026-10-31，基于 main）
+- T11.5（`aether-xray` 迁入 aether-proxy 仓库）已合并（2026-10-31，main）；T11.6（channel 单源复制）已发（2026-10-31，channel main）；T11.7（双发布 workflow，不升版）已合并（2026-10-31，main）；T11.8（Hysteria2 出站）已合并（2026-10-31，main）；T11.9（chinadns-ng 单源迁移）已合并（2026-10-31，三仓库）；T11.10（CI 发布门禁/smoke 依赖修复）已合并（2026-10-31，main）
