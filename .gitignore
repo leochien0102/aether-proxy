@@ -1,2 +1,5 @@
 tests/host/prefix/
 tests/host/src/
+
+# Local offline cache for tools/data/build.py --cache
+.cache/
