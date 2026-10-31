@@ -257,6 +257,12 @@ function normalize_field(f, raw, field, proto, errors) {
 		return default_of(f, proto);
 	}
 
+	// Authentication is an opaque string; never echo malformed values into diagnostics.
+	if (f.name == 'hysteria_auth' && type(v) != 'string') {
+		push(errors, { field, code: 'invalid_value', detail: 'must be a string' });
+		return null;
+	}
+
 	switch (f.type) {
 	case 'wireguard_key':
 		if (wireguard_key(v))
@@ -469,6 +475,12 @@ function check_node(n, at, errors) {
 	// WireGuard uses its own encrypted UDP peer, not the retained stream/security fields.
 	if (n.protocol == 'wireguard')
 		return;
+	if (n.protocol == 'hysteria') {
+		if (n.transport != 'hysteria')
+			push(errors, { field: at + '.transport', code: 'conflict', detail: 'Hysteria requires hysteria transport' });
+		if (n.security != 'tls')
+			push(errors, { field: at + '.security', code: 'conflict', detail: 'Hysteria requires TLS' });
+	}
 	// SOCKS/HTTP credentials are optional as a pair; never include either value in diagnostics.
 	if (index([ 'socks', 'http' ], n.protocol) >= 0 && (unset(n.username) != unset(n.password))) {
 		let missing = unset(n.username) ? 'username' : 'password';

@@ -27,18 +27,18 @@ String.prototype.format = function(...args) {
 
 // Independent docs/05 inventory: grouped concurrency/socket rows expand to eleven UCI options.
 const NEW_FIELDS = {
-	grpc_multi_mode: ['Flag', [{ transport: 'grpc' }]],
-	ws_heartbeat: ['Value', [{ transport: 'ws' }]],
-	xhttp_extra: ['TextValue', [{ transport: 'xhttp' }]],
-	ech_config_list: ['TextValue', [{ security: 'tls' }]],
-	reality_pqv: ['TextValue', [{ security: 'reality' }]],
+	grpc_multi_mode: ['Flag', [{ transport: 'grpc', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	ws_heartbeat: ['Value', [{ transport: 'ws', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	xhttp_extra: ['TextValue', [{ transport: 'xhttp', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	ech_config_list: ['TextValue', [{ security: 'tls' }, { protocol: 'hysteria' }]],
+	reality_pqv: ['TextValue', [{ security: 'reality', protocol: /^(?!wireguard$|hysteria$)/ }]],
 	mux: ['Flag', [{ protocol: 'vless', flow: /^(?!xtls-rprx-vision(-udp443)?$)/ },
-		{ protocol: 'vless', flow: null }, { protocol: /^(?!vless$|wireguard$)/ }]],
-	mux_concurrency: ['Value', [{ mux: '1' }]],
-	mux_xudp_concurrency: ['Value', [{ mux: '1' }]],
-	mux_xudp_udp443: ['ListValue', [{ mux: '1' }]],
-	tcp_fast_open: ['Flag', [{ protocol: /^(?!wireguard$)/ }]],
-	tcp_mptcp: ['Flag', [{ protocol: /^(?!wireguard$)/ }]]
+		{ protocol: 'vless', flow: null }, { protocol: /^(?!vless$|wireguard$|hysteria$)/ }]],
+	mux_concurrency: ['Value', [{ mux: '1', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	mux_xudp_concurrency: ['Value', [{ mux: '1', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	mux_xudp_udp443: ['ListValue', [{ mux: '1', protocol: /^(?!wireguard$|hysteria$)/ }]],
+	tcp_fast_open: ['Flag', [{ protocol: /^(?!wireguard$|hysteria$)/ }]],
+	tcp_mptcp: ['Flag', [{ protocol: /^(?!wireguard$|hysteria$)/ }]]
 };
 function harness() {
 	const live = {}, stored = {}, options = new Map();
@@ -81,6 +81,7 @@ function harness() {
 							});
 						}
 					});
+					o.deplist = o.deps;
 					Object.defineProperty(o, 'choices', {
 						get: () => o.keylist?.map((key, i) => [key, o.vallist[i]]) ?? []
 					});
@@ -251,7 +252,7 @@ test('T10.33 scenario 2: Flow has three choices and fingerprint has nine choices
 			.map(value => [value, value])
 	]);
 	assert.deepEqual(flow.deps, [{ protocol: 'vless' }]);
-	assert.deepEqual(fingerprint.deps, [{ security: 'tls' }, { security: 'reality' }]);
+	assert.deepEqual(fingerprint.deps, [{ security: 'tls' }, { security: 'reality' }, { protocol: 'hysteria' }]);
 	for (const option of [flow, fingerprint]) {
 		assert.equal(option.modalonly, true);
 		assert.equal(option.renderWidget('n_edit', 0, '').value, '');

@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.hysteria_auth",
+      "code": "required",
+      "detail": "hysteria_auth is required"
+    }
+  ]
+}

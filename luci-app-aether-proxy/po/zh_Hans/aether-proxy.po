@@ -2673,3 +2673,15 @@ msgstr "WireGuard 使用此地址作为 Peer 端点地址。"
 msgctxt "aether-proxy"
 msgid "IPv4 or CIDR; use a bare IPv4 address or /32 for Xray 26.3.27."
 msgstr "IPv4 或 CIDR；Xray 26.3.27 请使用裸 IPv4 地址或 /32。"
+
+msgctxt "aether-proxy"
+msgid "Hysteria"
+msgstr "Hysteria"
+
+msgctxt "aether-proxy"
+msgid "Hysteria authentication"
+msgstr "Hysteria 认证"
+
+msgctxt "aether-proxy"
+msgid "Hysteria UDP idle timeout (seconds)"
+msgstr "Hysteria UDP 空闲超时（秒）"

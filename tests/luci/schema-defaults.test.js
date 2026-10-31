@@ -173,6 +173,11 @@ function check_options(h, page) {
 				label + ': method protocol default');
 			continue;
 		}
+		// Fixed Hysteria layers are hidden and supplied by backend protocol defaults.
+		if (['transport', 'security'].includes(field.name)) {
+			assert.deepEqual(field.proto_default, { hysteria: field.name === 'transport' ? 'hysteria' : 'tls' });
+			continue;
+		}
 		for (const [protocol, value] of Object.entries(field.proto_default ?? {})) {
 			const hint = field.protocols.length > 1 ? widget_default(value) + ' (' +
 				({ vmess: 'VMess', vless: 'VLESS' }[protocol] ?? protocol) + ')' : widget_default(value);
