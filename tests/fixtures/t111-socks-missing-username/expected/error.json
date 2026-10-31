@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.username",
+      "code": "required",
+      "detail": "username is required for SOCKS authentication"
+    }
+  ]
+}

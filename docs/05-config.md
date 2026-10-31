@@ -85,11 +85,12 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `source` | `manual` 或订阅段名 | |
 | `stale` | bool | 订阅中已消失、但仍被引用而保留 |
 | `match_strong` / `match_weak` | 字符串 | 身份匹配键（[06](06-nodes-subscription.md)），用户不可见 |
-| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`) | |
+| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`\|`socks`) | |
 | `address` | 域名或 IPv4 | |
 | `port` | 1–65535 | |
 | `uuid` | 字符串 | vless / vmess |
-| `password` | 字符串 | trojan / shadowsocks |
+| `username` | 字符串 | socks；可选，与 password 同时设置或同时不设置 |
+| `password` | 字符串 | trojan / shadowsocks 必填；socks 可选，与 username 成对 |
 | `method` | 字符串 | shadowsocks 加密方式；vmess 的 `security`（默认 `auto`） |
 | `flow` | enum(`xtls-rprx-vision`\|`xtls-rprx-vision-udp443`)，可空 | vless。Xray v26.9.30 / v26.10.21 只接受空与这两个值（`infra/conf/vless.go`），其他值 Xray 拒绝启动（规则 7）；`-udp443` 另放行 UDP/443，其余与 Vision 相同（2026-10-22 改为枚举，r12 窗口） |
 | `encryption` | 字符串 | vless，默认 `none` |
@@ -174,6 +175,10 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
 5. `lan_ifaces` 中的接口存在（这一项属于前置检查，在 `check` 中同样执行）；名称 1–15 字节且不含双引号、C0/DEL 控制字节（nft 引号字符串不支持转义，双引号无法表示），否则 `invalid_value`。
 6. 节点字段按协议检查必填项：vless/vmess 需要 `uuid`；trojan/ss 需要 `password`；ss 需要 `method` 在 Xray 支持列表内；
    `reality` 需要 `reality_pbk` 和 `sni`。
+   SOCKS5（`protocol=socks`）允许无认证，或用户名/密码认证；`username`、`password` 必须同时有或同时没有。
+   空字符串按未设置处理；只填一项时返回 `CONFIG_INVALID`，`required` 错误指向缺失字段，不在错误或事件中包含凭据值。
+   SOCKS 出站使用 `settings.servers[0] = { address, port }`，认证时加 `users: [{ user, pass }]`；
+   `address` 仍优先使用引导解析的 `node_ip`，未解析时使用原始地址。分享链接/订阅 URI 不新增 SOCKS 解析。
 7. 节点取值必须是 Xray v26.9.30 启动时能接受的（2026-10-14 用真实 Xray 校验夹具时发现，规则对照 `infra/conf/xray.go`、`transport_security.go`）：
    - `reality_pbk`：无填充 base64url 编码的 32 字节（恰好 43 个字符 `[A-Za-z0-9_-]`），否则 `invalid_reality_key`
    - `reality_sid`：十六进制、长度为偶数且不超过 16，否则 `invalid_short_id`

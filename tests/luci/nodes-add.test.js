@@ -28,7 +28,7 @@ const model = loadModule(path.join(RES, 'aether-proxy/model/nodes.js'),
 	{ baseclass: { extend: o => o } }, {});
 // Independent docs/05 field inventory: an omission in the model must fail cleanup tests.
 const NODE_FIELDS = [
-	'label', 'protocol', 'address', 'port', 'uuid', 'password', 'method', 'flow', 'encryption',
+	'label', 'protocol', 'address', 'port', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
 	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
@@ -285,7 +285,7 @@ async () => {
 	assert.equal(h.modal.widgets.label.value, 'Parsed');
 	assert.deepEqual(h.modal.widgets.alpn.value, ['h2', 'http/1.1']);
 	assert.equal(h.modal.widgets.password.value, '', 'old password is gone from redrawn form');
-	for (const field of NODE_FIELDS.slice(24))
+	for (const field of NODE_FIELDS.slice(NODE_FIELDS.indexOf('reality_pqv')))
 		assert.equal(h.modal.widgets[field].value, parsed[field], field + ' is filled by parsing');
 	const parsedAgain = {
 		label: 'Second', protocol: 'trojan', address: 'other.example', port: '8443', password: 'new'
