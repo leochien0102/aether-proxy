@@ -16,7 +16,8 @@ REPO = Path(__file__).resolve().parents[2]
 UCODE = REPO / 'tests/host/ucode'
 ARTIFACTS = {'nft': 'aether-proxy.nft', 'chinadns': 'chinadns.conf',
 	'dnsmasq': 'dnsmasq.conf', 'xray': 'xray.json'}
-PACKAGES = ('aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn')
+PACKAGES = ('aether-xray', 'chinadns-ng', 'aether-proxy', 'luci-app-aether-proxy',
+	'luci-i18n-aether-proxy-zh-cn')
 
 
 def expect(condition, name, detail=''):
@@ -88,7 +89,10 @@ command = a[2]
 if command == 'update':
     sys.exit(0)
 if command in ('install', 'add'):
-    assert len([s for s in a if s.endswith(('.apk', '.ipk'))]) == 3, a
+    artifacts = [s for s in a if s.endswith(('.apk', '.ipk'))]
+    assert len(artifacts) == 5, a
+    assert Path(artifacts[0]).name.startswith('aether-xray'), a
+    assert Path(artifacts[1]).name.startswith('chinadns-ng'), a
     if manager == 'apk':
         assert '--allow-untrusted' in a, a
     if os.environ['STUB_FAULT'] == 'install':
@@ -97,7 +101,7 @@ if command in ('install', 'add'):
     (root / 'installed').write_text('yes')
     sys.exit(0)
 assert command in ('remove', 'del'), a
-assert a[-3:] == ['luci-i18n-aether-proxy-zh-cn', 'luci-app-aether-proxy', 'aether-proxy'], a
+assert a[-5:] == ['luci-i18n-aether-proxy-zh-cn', 'luci-app-aether-proxy', 'aether-proxy', 'aether-xray', 'chinadns-ng'], a
 for file in ('usr/bin/aether-proxy', 'etc/init.d/aether-proxy'):
     (root / file).unlink()
 if os.environ['STUB_FAULT'] != 'uninstall':
@@ -201,6 +205,8 @@ def run_scenario(work, golden, manager, fault):
 		(root / 'usr/share/rpcd/ucode/aetherproxy.uc').write_text('invalid syntax !!!')
 	elif fault == 'artifact':
 		next(packages.glob('aether-proxy*')).unlink()
+	elif fault in ('aether-xray', 'chinadns-ng'):
+		next(packages.glob(fault + '*')).unlink()
 	env = dict(os.environ, PATH=str(bin_dir) + ':' + os.environ['PATH'],
 		STUB_ROOT=str(root), STUB_GOLDEN=str(golden), STUB_FAULT=fault,
 		STUB_REPO=str(REPO), STUB_VERSION=version_from_makefile(), TMPDIR=str(case))
@@ -220,6 +226,8 @@ def verify_scenarios(work, golden):
 		'version-content': 'FAIL  version contains package version',
 		'install': 'solver: missing dependency example-dependency',
 		'artifact': 'FAIL  exactly one aether-proxy artifact (found 0)',
+		'aether-xray': 'FAIL  exactly one aether-xray artifact (found 0)',
+		'chinadns-ng': 'FAIL  exactly one chinadns-ng artifact (found 0)',
 		'data': 'FAIL  data status counts chnlist lines',
 		'components': 'FAIL  components exits 0 (got 1)',
 		'filter-missing': 'FAIL  file /usr/share/aether-proxy/logfilter.awk',

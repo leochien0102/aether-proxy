@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:
@@ -16,13 +17,16 @@ concurrency:
 jobs:
   release-assets:
     runs-on: ubuntu-latest
-    timeout-minutes: 105
+    # Up to 90 minutes each for the build gate and channel manifest, plus downloads.
+    timeout-minutes: 195
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ github.ref_name }}
       REF_TYPE: ${{ github.ref_type }}
       CHANNEL_URL: https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable
+      BUILD_SHA: ${{ github.sha }}
+      BUILD_WAIT_SECONDS: '5400'
       WAIT_SECONDS: '5400'
       POLL_SECONDS: '60'
     steps:
@@ -36,6 +40,51 @@ jobs:
             exit 1
           fi
           printf 'VERSION=%s\n' "${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Wait for successful build
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + BUILD_WAIT_SECONDS))
+          reason="no build.yml run found for $BUILD_SHA"
+          while :; do
+            remaining=$((deadline - SECONDS))
+            request_timeout=$((remaining > 60 ? 60 : remaining))
+            ((request_timeout > 0)) || request_timeout=1
+            # Ignore PR merge/test runs; select the newest push/manual build for this exact SHA.
+            if run=$(timeout "${request_timeout}s" gh api --method GET \
+                "repos/$GH_REPO/actions/workflows/build.yml/runs" \
+                -f "head_sha=$BUILD_SHA" -f per_page=100 \
+                --jq '.workflow_runs | map(select(.event == "push" or .event == "workflow_dispatch")) | sort_by(.id) | last | select(. != null) | [.id, .head_sha, .status, .conclusion] | @tsv'); then
+              if [[ -n "$run" ]]; then
+                IFS=$'\t' read -r run_id head_sha status conclusion <<< "$run"
+                if [[ "$head_sha" != "$BUILD_SHA" ]]; then
+                  echo '::error::Build run SHA mismatch' >&2
+                  exit 1
+                fi
+                if [[ "$status" == completed ]]; then
+                  if [[ "$conclusion" == success ]]; then
+                    echo "Build $run_id succeeded for $BUILD_SHA"
+                    break
+                  fi
+                  echo "::error::Build $run_id failed: $conclusion" >&2
+                  exit 1
+                fi
+                reason="build $run_id is $status"
+              else
+                reason="no build.yml run found for $BUILD_SHA"
+              fi
+            else
+              reason='build.yml run API query failed'
+            fi
+            echo "Waiting: $reason"
+            remaining=$((deadline - SECONDS))
+            if ((remaining <= 0)); then
+              echo "::error::Timed out: $reason" >&2
+              exit 1
+            fi
+            sleep "$((remaining < POLL_SECONDS ? remaining : POLL_SECONDS))"
+          done
 
       - name: Wait for channel manifest
         shell: bash

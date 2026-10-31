@@ -1,6 +1,6 @@
 #!/bin/sh
 # T9.3: installation-only matrix from docs/11; package/CLI contracts from docs/01 and docs/10.
-# Run only on a disposable OpenWrt rootfs: this installs and removes all three packages.
+# Run only on a disposable OpenWrt rootfs: this installs and removes all five packages.
 # Usage: sh smoke.sh <package-dir> <repo-dir> [--test-root <fake-root>]
 # Host tests prepare <package-dir>/smoke-golden using smoke-host.py. No CI env is needed.
 set -u
@@ -63,7 +63,7 @@ pm() {
 
 # Select exactly one artifact for each package: silently choosing an old build hides failures.
 set --
-for name in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
+for name in aether-xray chinadns-ng aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
 	count=0
 	for file in "$packages"/"$name"_*.$ext "$packages"/"$name"-*.$ext; do
 		[ -f "$file" ] || continue
@@ -87,7 +87,7 @@ if [ "$manager" = opkg ]; then
 else
 	pm add --allow-untrusted "$@" || exit 1
 fi
-ok 'three packages installed with dependencies'
+ok 'five packages installed with dependencies'
 
 work=$(mktemp -d) || exit 1
 trap 'rm -rf "$work"' EXIT
@@ -211,9 +211,9 @@ else
 fi
 
 if [ "$manager" = opkg ]; then
-	pm remove luci-i18n-aether-proxy-zh-cn luci-app-aether-proxy aether-proxy || exit 1
+	pm remove luci-i18n-aether-proxy-zh-cn luci-app-aether-proxy aether-proxy aether-xray chinadns-ng || exit 1
 else
-	pm del luci-i18n-aether-proxy-zh-cn luci-app-aether-proxy aether-proxy || exit 1
+	pm del luci-i18n-aether-proxy-zh-cn luci-app-aether-proxy aether-proxy aether-xray chinadns-ng || exit 1
 fi
 for file in /usr/bin/aether-proxy /etc/init.d/aether-proxy; do
 	if [ ! -e "$root$file" ] && [ ! -L "$root$file" ]; then
