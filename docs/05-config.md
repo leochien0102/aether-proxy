@@ -85,9 +85,11 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `source` | `manual` 或订阅段名 | |
 | `stale` | bool | 订阅中已消失、但仍被引用而保留 |
 | `match_strong` / `match_weak` | 字符串 | 身份匹配键（[06](06-nodes-subscription.md)），用户不可见 |
-| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`\|`socks`\|`http`\|`wireguard`) | |
+| `protocol` | enum(`vless`\|`vmess`\|`trojan`\|`shadowsocks`\|`socks`\|`http`\|`wireguard`\|`hysteria`) | |
 | `address` | 域名或 IPv4 | |
 | `port` | 1–65535 | |
+| `hysteria_auth` | 字符串 | hysteria 必填认证；不得进入日志、事件、错误 detail |
+| `hysteria_udp_idle_timeout` | int 秒，2–600 | hysteria 可选；不设不渲染 |
 | `secret_key` | Base64 32 字节 | wireguard 私钥，必填；标准 Base64（44 字符，末尾 `=`），不含空白 |
 | `peer_public_key` | Base64 32 字节 | wireguard Peer 公钥，必填，格式同 secret_key |
 | `local_address` | list IPv4/CIDR | wireguard 本机隧道地址，至少 1 项；允许主机位，不当作路由网段；Xray 26.3.27 只接受裸 IPv4 或 `/32`，其他前缀由实际 Xray 预检兜底 |
@@ -99,7 +101,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `method` | 字符串 | shadowsocks 加密方式；vmess 的 `security`（默认 `auto`） |
 | `flow` | enum(`xtls-rprx-vision`\|`xtls-rprx-vision-udp443`)，可空 | vless。Xray v26.9.30 / v26.10.29 只接受空与这两个值（`infra/conf/vless.go`），其他值 Xray 拒绝启动（规则 7）；`-udp443` 另放行 UDP/443，其余与 Vision 相同（2026-10-22 改为枚举，r12 窗口） |
 | `encryption` | 字符串 | vless，默认 `none` |
-| `transport` | enum(`raw`\|`ws`\|`grpc`\|`httpupgrade`\|`xhttp`) | 默认 `raw`；URI 中的 `tcp` 映射为 `raw` |
+| `transport` | enum(`raw`\|`ws`\|`grpc`\|`httpupgrade`\|`xhttp`\|`hysteria`) | hysteria 节点默认/固定 `hysteria`，其他默认 `raw`；URI 中的 `tcp` 映射为 `raw` |
 | `host` / `path` | 字符串 | ws、httpupgrade、xhttp |
 | `service_name` | 字符串 | grpc |
 | `xhttp_mode` | 字符串 | xhttp |
@@ -127,7 +129,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 > Xray 26.9.30 已**移除** `allowInsecure`（配置中出现即报错，2026-10-14 核实 `infra/conf/transport_security.go`），所以节点没有「跳过证书校验」字段。
 
-必填与默认值：`protocol`、`address`、`port` 必填；`security` 默认 `none`；`stale` 默认 `0`；`source` 未设置时视为 `manual`。
+必填与默认值：`protocol`、`address`、`port` 必填；`security` 默认 `none`（hysteria 默认/固定 `tls`）；`stale` 默认 `0`；`source` 未设置时视为 `manual`。
 
 运行时状态（检测结果、最后错误）**不写 UCI**，放在 `/var/run/aether-proxy/`，避免反复写 flash。
 
@@ -187,6 +189,10 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    `address`/`port` 是 Peer endpoint；优先使用 `node_ip`。出站设置为
    `secretKey`、`address: local_address`、`peers: [{publicKey, endpoint, allowedIPs: ['0.0.0.0/0']}]`；
    PSK 使用真实 Xray 字段 **`preSharedKey`**（26.3.27/26.10.29 源码一致，不是 `presharedKey`），keepalive 为 `keepAlive`。
+   Hysteria2 仅支持手工节点：`hysteria_auth` 必填，必须 `transport=hysteria`、`security=tls`，否则 CONFIG_INVALID；认证不得进入诊断。
+   出站 `protocol=hysteria`，`settings={version:2,address,port}`（node_ip 优先）；
+   `streamSettings={network:'hysteria',security:'tls',tlsSettings:<现有 TLS 映射>,hysteriaSettings:{version:2,auth,...udpIdleTimeout}}`。
+   可选超时 2–600，不设不渲染；不新增 up/down/obfs。Mux 不适用、不渲染；LuCI 隐藏不适用的传输/Mux 控件并保留旧值，显示认证、endpoint、SNI/证书。其他协议保留但不校验/渲染 Hysteria 字段；URI/订阅不扩展。
    WireGuard 不渲染通用 streamSettings/Mux，编辑框隐藏其设置；切换协议时保留旧值。
    WireGuard 字段在其他协议下保留、不校验、不渲染；任何凭据不得进入错误 detail、日志或事件。
    SOCKS / HTTP 出站使用 `settings.servers[0] = { address, port }`，认证时加 `users: [{ user, pass }]`；
