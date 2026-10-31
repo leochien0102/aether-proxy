@@ -113,12 +113,15 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 		return E('div', {}, [
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
 				section.options.filter(o => o.textvalue || o.editable).map(o => E('th', {}, o.title))),
-			...uci.sections('aetherproxy', section.type).map(s => E('div', { sid: s['.name'] }, [
-				...section.options.filter(o => o.textvalue || o.editable).map(o => o.editable
-					? o.renderFrame(s['.name'], true, 0, o.renderWidget(s['.name'], 0, s[o.field]))
-					: E('td', { field: o.field }, o.textvalue(s['.name']))),
-				section.renderRowActions(s['.name'])
-			]))
+			...uci.sections('aetherproxy', section.type).map(s => {
+				const trEl = E('div', { sid: s['.name'] },
+					section.options.filter(o => o.textvalue || o.editable).map(o => o.editable
+						? o.renderFrame(s['.name'], true, 0, o.renderWidget(s['.name'], 0, s[o.field]))
+						: E('td', { field: o.field }, o.textvalue(s['.name']))));
+				trEl.getBoundingClientRect = () => ({ left: 30, top: 80 });
+				trEl.children.push(section.renderRowActions(s['.name'], null, trEl));
+				return trEl;
+			})
 		]);
 	}
 	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag',
@@ -182,11 +185,20 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 								? section.handleRemove(args[0], event)
 								: section.renderMoreOptionsModal(args[0])
 						}, kind === 'drag' ? '☰' : kind === 'remove' ? '删除' : '编辑');
+						if (kind === 'drag') {
+							// Keep native listeners separate from addEventListener, as in the browser.
+							button.dragstart = ev => uciCalls.push(['handleDragStart', ev, args[2]]);
+							button.touchend = ev => uciCalls.push(['handleTouchEnd', ev]);
+							button.listeners = {};
+							button.addEventListener = (type, fn) => {
+								(button.listeners[type] ??= []).push(fn);
+							};
+						}
 						button.classList = { contains: name => button.class.split(/\s+/).includes(name) };
 						button.style = { cssText: 'min-width:0;' };
 						return button;
 					});
-					builtins.push({ id: args[0], buttons: original });
+					builtins.push({ id: args[0], buttons: original, trEl: args[2] });
 					// LuCI puts its buttons inside the last child of the action td.
 					return E('td', { class: 'td cbi-section-table-cell nowrap cbi-section-actions' },
 						[E('div', {}, original)]);
@@ -1225,7 +1237,7 @@ for (const kinds of [['remove'], ['edit', 'remove'], ['remove', 'edit']]) {
 		for (const id of ['n_a', 'n_b']) {
 			const container = actions(h, id);
 			assert.equal(h.page.nodeGrid.sortable, true, 'use LuCI built-in sorting');
-			const expected = id === 'n_a' ? ['检测', '☰', '编辑'] : ['检测', '☰', '编辑', '删除'];
+			const expected = id === 'n_a' ? ['☰', '检测', '编辑'] : ['☰', '检测', '编辑', '删除'];
 			assert.deepEqual(buttons(container).map(text), expected);
 			assert.equal(container.childNodes.length, expected.length);
 			assert.ok(container.childNodes.every(node => node && node.tag === 'button'),
@@ -1244,6 +1256,49 @@ for (const kinds of [['remove'], ['edit', 'remove'], ['remove', 'edit']]) {
 		}
 	});
 }
+test('T10.76: desktop drag image uses the whole row and preserves native drag/touch handlers', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	for (const id of ['n_a', 'n_b']) {
+		const trEl = gridRow(h, id);
+		const builtin = h.builtins.find(row => row.id === id);
+		assert.equal(builtin.trEl, trEl, 'forward the row to the parent renderer');
+		const handle = builtin.buttons.find(button => button.classList.contains('drag-handle'));
+		const images = [];
+		const ev = { clientX: 245, clientY: 96, dataTransfer: {
+			setDragImage: (...args) => images.push(args)
+		} };
+		handle.dragstart(ev);
+		assert.deepEqual(h.uciCalls.at(-1), ['handleDragStart', ev, trEl]);
+		assert.equal(handle.listeners.dragstart?.length, 1, 'add a listener, do not replace native dragstart');
+		for (const listener of handle.listeners.dragstart)
+			listener(ev);
+		assert.deepEqual(images, [[trEl, 215, 16]], 'pointer offset is relative to row left/top');
+		handle.touchend(ev);
+		assert.deepEqual(h.uciCalls.at(-1), ['handleTouchEnd', ev]);
+		assert.equal(handle.listeners.touchend, undefined, 'no custom touch drag image');
+		assert.equal(images.length, 1);
+	}
+});
+
+test('T10.76: older SDK callers without trEl resolve the attached row at dragstart', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const trEl = gridRow(h, 'n_b');
+	const tdEl = h.page.nodeGrid.renderRowActions('n_b', null);
+	tdEl.closest = selector => {
+		assert.equal(selector, '.tr');
+		return trEl;
+	};
+	const handle = buttons(tdEl).find(button => button.classList.contains('drag-handle'));
+	const images = [];
+	for (const listener of handle.listeners.dragstart)
+		listener({ clientX: 270, clientY: 105, dataTransfer: {
+			setDragImage: (...args) => images.push(args)
+		} });
+	assert.deepEqual(images, [[trEl, 240, 25]]);
+});
+
 for (const all of [false, true]) {
 	test(`T10.19 scenario 3: ${all ? 'all' : 'one'} probe shows pending before any job reply`, async () => {
 		const h = await harness('nodes');

@@ -233,7 +233,10 @@ test('scenario 9: static view checks — GridSection, confirmed remove, node_use
 	/* the grid section with its per-row actions */
 	assert.match(src, /form\.GridSection/);
 	assert.match(src, /s\.sortable\s*=\s*true\s*;/);
-	assert.match(src, /renderRowActions/);
+	assert.match(src, /s\.renderRowActions\s*=\s*function\(section_id, more_label, trEl\)/);
+	assert.match(src, /this\.super\('renderRowActions',\s*\[\s*section_id,\s*_\('Edit', 'aether-proxy'\),\s*trEl\s*\]\)/);
+	assert.match(src, /addEventListener\('dragstart'/);
+	assert.match(src, /ev\.dataTransfer\.setDragImage\(trEl,/);
 	assert.match(src, /cbi-button-remove/);
 	assert.match(src, /await ap\.confirm\(/);
 	assert.match(src, /cbi-button-remove/);
