@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.transport",
+      "code": "conflict",
+      "detail": "Hysteria requires hysteria transport"
+    }
+  ]
+}

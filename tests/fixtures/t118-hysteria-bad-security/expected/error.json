@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.security",
+      "code": "conflict",
+      "detail": "Hysteria requires TLS"
+    }
+  ]
+}

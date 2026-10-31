@@ -54,7 +54,8 @@ const PROTOCOL_NAMES = {
 	shadowsocks: _('Shadowsocks', 'aether-proxy'),
 	socks: _('SOCKS', 'aether-proxy'),
 	http: _('HTTP', 'aether-proxy'),
-	wireguard: _('WireGuard', 'aether-proxy')
+	wireguard: _('WireGuard', 'aether-proxy'),
+	hysteria: _('Hysteria', 'aether-proxy')
 };
 
 function protocol_text(protocol) {
@@ -132,7 +133,7 @@ function probe_level(id, results, local_pending) {
    them prevents credentials/transport settings from a previous URI leaking
    into the next one; source, stale and match_* are not protocol fields. */
 const NODE_FIELDS = [
-	'label', 'protocol', 'address', 'port', 'secret_key', 'peer_public_key', 'local_address', 'preshared_key',
+	'label', 'protocol', 'address', 'port', 'hysteria_auth', 'hysteria_udp_idle_timeout', 'secret_key', 'peer_public_key', 'local_address', 'preshared_key',
 	'keepalive', 'uuid', 'username', 'password', 'method', 'flow', 'encryption',
 	'transport', 'host', 'path', 'service_name', 'xhttp_mode', 'header_type', 'security',
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
@@ -204,6 +205,7 @@ return baseclass.extend({
 		protocol: { required: true },
 		address: { required: true },
 		port: { required: true },
+		hysteria_auth: { protocols: ['hysteria'], required: true },
 		secret_key: { protocols: ['wireguard'], required: true },
 		peer_public_key: { protocols: ['wireguard'], required: true },
 		local_address: { protocols: ['wireguard'], required: true },
@@ -254,7 +256,8 @@ return baseclass.extend({
 				stale: s.stale == '1',
 				current: id === current,
 				protocol: protocol_text(s.protocol),
-				transport_security: [ s.transport || 'raw', s.security || 'none' ].join(' / '),
+				transport_security: [ s.transport || (s.protocol === 'hysteria' ? 'hysteria' : 'raw'),
+					s.security || (s.protocol === 'hysteria' ? 'tls' : 'none') ].join(' / '),
 				source: source_text(s, submap),
 				probe: probe.text,
 				probe_level: probe.level,

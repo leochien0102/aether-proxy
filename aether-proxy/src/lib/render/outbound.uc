@@ -54,6 +54,13 @@ function stream_settings(node) {
 	}
 
 	switch (net) {
+	case 'hysteria':
+		if (node.protocol == 'hysteria') {
+			ss.hysteriaSettings = { version: 2, auth: node.hysteria_auth };
+			if (node.hysteria_udp_idle_timeout != null)
+				ss.hysteriaSettings.udpIdleTimeout = node.hysteria_udp_idle_timeout;
+		}
+		break;
 	case 'ws':
 	case 'httpupgrade':
 	case 'xhttp': {
@@ -114,6 +121,11 @@ export function build_outbound(node, node_ip) {
 	}
 
 	switch (node.protocol) {
+	case 'hysteria':
+		settings.version = 2;
+		settings.address = addr;
+		settings.port = node.port;
+		break;
 	case 'vless': {
 		settings.address = addr;
 		settings.port = node.port;
@@ -155,7 +167,7 @@ export function build_outbound(node, node_ip) {
 		settings: settings,
 		streamSettings: stream_settings(node)
 	};
-	if (node.mux) {
+	if (node.mux && node.protocol != 'hysteria') {
 		outbound.mux = { enabled: true };
 		// Zero and -1 are valid; omit only unset tuning values.
 		if (node.mux_concurrency != null)

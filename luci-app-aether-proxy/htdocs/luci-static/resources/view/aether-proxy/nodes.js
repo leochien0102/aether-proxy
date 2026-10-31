@@ -467,6 +467,7 @@ return view.extend({
 		o.value('socks', _('SOCKS', 'aether-proxy'));
 		o.value('http', _('HTTP', 'aether-proxy'));
 		o.value('wireguard', _('WireGuard', 'aether-proxy'));
+		o.value('hysteria', _('Hysteria', 'aether-proxy'));
 
 		o = s.option(form.Value, 'address', _('Address', 'aether-proxy'));
 		o.modalonly = true;
@@ -499,6 +500,16 @@ return view.extend({
 		o.validate = form_defaults.integer(0, 65535);
 		o.depends('protocol', 'wireguard');
 
+		o = s.option(form.Value, 'hysteria_auth', _('Hysteria authentication', 'aether-proxy'));
+		o.modalonly = true;
+		o.password = true;
+		o.depends('protocol', 'hysteria');
+
+		o = s.option(form.Value, 'hysteria_udp_idle_timeout', _('Hysteria UDP idle timeout (seconds)', 'aether-proxy'));
+		o.modalonly = true;
+		o.validate = form_defaults.integer(2, 600);
+		o.depends('protocol', 'hysteria');
+
 		o = s.option(form.ListValue, 'transport', _('Transport', 'aether-proxy'));
 		o.modalonly = true;
 		o.value('raw', 'raw');
@@ -506,6 +517,7 @@ return view.extend({
 		o.value('grpc', 'gRPC');
 		o.value('httpupgrade', 'HTTPUpgrade');
 		o.value('xhttp', 'XHTTP');
+		o.value('hysteria', 'Hysteria');
 		o.optional = true;
 		o.default = 'raw';
 
@@ -691,7 +703,7 @@ return view.extend({
 		// SDK regex dependencies do not match null (including hidden non-VLESS flow).
 		o.depends({ protocol: 'vless', flow: /^(?!xtls-rprx-vision(-udp443)?$)/ });
 		o.depends({ protocol: 'vless', flow: null });
-		o.depends({ protocol: /^(?!vless$|wireguard$)/ });
+		o.depends({ protocol: /^(?!vless$|wireguard$|hysteria$)/ });
 		o.validate = function(section_id, value) {
 			// Read the modal's live input, not just UCI: flow may have unsaved edits.
 			const flow = this.map.lookupOption('flow', section_id);
@@ -729,10 +741,17 @@ return view.extend({
 		o = s.option(form.Flag, 'tcp_mptcp', _('MPTCP', 'aether-proxy'));
 		o.modalonly = true;
 
-		// Hide the unused generic stream controls without deleting their stored values.
+		// Gate each alternative dependency: retained transport/security values must not
+		// expose inactive controls after a live protocol switch.
 		for (const option of s.children) {
 			if (['transport', 'security', 'tcp_fast_open', 'tcp_mptcp'].includes(option.option))
-				option.depends({ protocol: /^(?!wireguard$)/ });
+				option.depends({ protocol: /^(?!wireguard$|hysteria$)/ });
+			if ((option.deplist ?? []).some(dep => dep.transport != null) || option.option.startsWith('mux_')
+				|| option.option.startsWith('reality_'))
+				for (const dep of option.deplist ?? [])
+					dep.protocol = /^(?!wireguard$|hysteria$)/;
+			if (['sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name', 'ech_config_list'].includes(option.option))
+				option.depends('protocol', 'hysteria');
 		}
 
 		form_defaults.section(s, {
@@ -740,14 +759,41 @@ return view.extend({
 		/* Fields the backend checks for conflicts are deleted while hidden, like
 		   stock LuCI; other hidden fields are kept (docs/10 r16 复审结论). */
 		}, { mux: { clear_inactive: true }, flow: { clear_inactive: true } });
+		const flowOption = s.children.find(option => option.option === 'flow');
+		const parseFlow = flowOption.parse;
+		flowOption.parse = function(section_id) {
+			const protocol = this.map?.lookupOption?.('protocol', section_id)?.[0]?.formvalue(section_id)
+				?? uci.get('aetherproxy', section_id, 'protocol');
+			return protocol === 'hysteria' ? Promise.resolve() : parseFlow.call(this, section_id);
+		};
 		const muxOption = s.children.find(option => option.option === 'mux');
 		const parseMux = muxOption.parse;
 		muxOption.parse = function(section_id) {
 			const protocol = this.map?.lookupOption?.('protocol', section_id)?.[0]?.formvalue(section_id)
 				?? uci.get('aetherproxy', section_id, 'protocol');
 			// Unlike Vision's conflicting Mux, WireGuard's hidden Mux is merely inactive.
-			return protocol === 'wireguard' ? Promise.resolve() : parseMux.call(this, section_id);
+			return ['wireguard', 'hysteria'].includes(protocol) ? Promise.resolve() : parseMux.call(this, section_id);
 		};
+		// Fixed Hysteria layers override old generic selections only on a successful save.
+		// Absent values remain absent: the backend supplies protocol-specific defaults.
+		for (const [field, fixed] of [['transport', 'hysteria'], ['security', 'tls']]) {
+			const option = s.children.find(child => child.option === field);
+			const parse = option.parse;
+			const formvalue = option.formvalue;
+			option.formvalue = function(section_id) {
+				const protocol = this.map?.lookupOption?.('protocol', section_id)?.[0]?.formvalue(section_id)
+					?? uci.get('aetherproxy', section_id, 'protocol');
+				return protocol === 'hysteria' ? fixed : formvalue.call(this, section_id);
+			};
+			option.parse = function(section_id) {
+				const protocol = this.map?.lookupOption?.('protocol', section_id)?.[0]?.formvalue(section_id)
+					?? uci.get('aetherproxy', section_id, 'protocol');
+				if (protocol !== 'hysteria')
+					return parse.call(this, section_id);
+				const saved = this.cfgvalue(section_id);
+				return saved == null || saved === fixed ? Promise.resolve() : this.write(section_id, fixed);
+			};
+		}
 		subscriptions.required_options(s, model.required_fields);
 		return m;
 	},
