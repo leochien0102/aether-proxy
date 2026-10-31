@@ -1,0 +1,9 @@
+{
+  "errors": [
+    {
+      "field": "node.n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.password",
+      "code": "required",
+      "detail": "password is required for HTTP authentication"
+    }
+  ]
+}
