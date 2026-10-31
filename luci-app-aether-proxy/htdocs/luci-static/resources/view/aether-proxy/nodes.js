@@ -235,11 +235,10 @@ return view.extend({
 			return E([]);
 		};
 
-		/* Probe first, then the built-in sort handle, Edit and Delete buttons. */
-		s.renderRowActions = function(section_id) {
-			const tdEl = this.super('renderRowActions', [ section_id, _('Edit', 'aether-proxy') ]);
+		/* Built-in sort handle first, then Probe, Edit and Delete buttons. */
+		s.renderRowActions = function(section_id, more_label, trEl) {
+			const tdEl = this.super('renderRowActions', [ section_id, _('Edit', 'aether-proxy'), trEl ]);
 			const row = rowMap[section_id];
-			const extra = [];
 
 			const probeBtn = E('button', {
 				'class': 'btn cbi-button cbi-button-neutral',
@@ -248,17 +247,28 @@ return view.extend({
 				'disabled': self.probing || null
 			}, [ _('Probe', 'aether-proxy') ]);
 			self.probeButtons.push(probeBtn);
-			extra.push(probeBtn);
 
 			/* Select Delete by class, not position; retain the built-in sort
 			   handle and all original desktop/touch event handlers. */
 			const keep = Array.from(tdEl.lastChild.childNodes).filter(node =>
 				!(row && !row.can_delete && node.classList?.contains('cbi-button-remove')));
 
+			const dragHandle = keep.find(node => node.classList?.contains('drag-handle'));
+			if (dragHandle) {
+				// Add only the desktop image; retain LuCI's dragstart and touchend.
+				dragHandle.addEventListener('dragstart', function(ev) {
+					// Older SDKs omit trEl when calling renderRowActions.
+					trEl ??= tdEl.closest('.tr');
+					const rect = trEl.getBoundingClientRect();
+					ev.dataTransfer.setDragImage(trEl, ev.clientX - rect.left, ev.clientY - rect.top);
+				});
+			}
+
 			// Keep Edit ahead of Delete even if the parent adds actions in another order.
 			keep.sort((a, b) => Number(a.classList?.contains('cbi-button-remove'))
 				- Number(b.classList?.contains('cbi-button-remove')));
-			const actions = [ ...extra, ...keep ];
+			const actions = [ ...(dragHandle ? [dragHandle] : []), probeBtn,
+				...keep.filter(node => node !== dragHandle) ];
 			// Set nowrap on each button too, so theme rules cannot override inheritance.
 			for (const button of actions)
 				button.style = (button.style?.cssText ?? '') + ';white-space:nowrap';
