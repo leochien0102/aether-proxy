@@ -1,0 +1,157 @@
+name: Release assets
+
+on:
+  push:
+    tags: ['v*']
+  # Use GitHub's built-in ref selector to choose an existing tag (not a branch).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-assets-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 105
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      REF_TYPE: ${{ github.ref_type }}
+      CHANNEL_URL: https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable
+      WAIT_SECONDS: '5400'
+      POLL_SECONDS: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$REF_TYPE" != tag || ! "$TAG" =~ ^v[0-9][0-9A-Za-z._+-]*$ ]]; then
+            echo '::error::Select an existing v* version tag, not a branch.' >&2
+            exit 1
+          fi
+          printf 'VERSION=%s\n' "${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Wait for channel manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + WAIT_SECONDS))
+          reason='manifest not available (manifest 未出现)'
+          while :; do
+            remaining=$((deadline - SECONDS))
+            request_timeout=$((remaining > 20 ? 20 : remaining))
+            ((request_timeout > 0)) || request_timeout=1
+            if curl --fail --silent --show-error --location --connect-timeout 10 \
+                --max-time "$request_timeout" "$CHANNEL_URL/manifest.json" -o manifest.pending.json; then
+              if actual=$(python3 -c 'import json; m=json.load(open("manifest.pending.json")); print(m["packages"]["aether-proxy"]["current"]["version"])'); then
+                if [[ "$actual" == "$VERSION" ]]; then
+                  mv manifest.pending.json manifest.json
+                  echo "Matched channel manifest: $VERSION"
+                  break
+                fi
+                reason="manifest version mismatch (版本不匹配): wanted $VERSION, got $actual"
+              else
+                reason='manifest not available (manifest 未出现): invalid manifest'
+              fi
+            else
+              reason='manifest not available (manifest 未出现): fetch failed'
+            fi
+            echo "Waiting: $reason"
+            remaining=$((deadline - SECONDS))
+            if ((remaining <= 0)); then
+              echo "::error::Timed out: $reason" >&2
+              exit 1
+            fi
+            sleep "$((remaining < POLL_SECONDS ? remaining : POLL_SECONDS))"
+          done
+
+      - name: Select and verify packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re
+          from pathlib import Path
+
+          manifest = json.loads(Path('manifest.json').read_text())
+          selected = {}
+          packages = manifest['packages']
+          names = ['aether-proxy', 'luci-app-aether-proxy']
+          names += sorted(n for n in packages if n.startswith('luci-i18n-aether-proxy-'))
+          if len(names) == 2:
+              raise SystemExit('::error::Asset selection failed: missing i18n package')
+          names += ['aether-xray']
+          for name in names:
+              assets = packages[name]['current']['assets']
+              arches = ['aarch64_generic', 'x86_64'] if name == 'aether-xray' else sorted(assets)
+              if not arches:
+                  raise SystemExit(f'::error::Asset selection failed: no architectures for {name}')
+              for arch in arches:
+                  for ext in ('ipk', 'apk'):
+                      asset = assets[arch][ext]
+                      filename, digest = asset['url'], asset['sha256']
+                      # Only a bare relative filename: no paths, URL, query, escapes or shell syntax.
+                      if (not isinstance(filename, str)
+                              or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+~-]*\.' + ext, filename)
+                              or '..' in filename
+                              or not filename.startswith(name + ('_' if ext == 'ipk' else '-'))):
+                          raise SystemExit(f'::error::Unsafe manifest filename: {filename!r}')
+                      if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', digest):
+                          raise SystemExit(f'::error::Invalid manifest sha256: {filename}')
+                      if filename in selected and selected[filename] != digest.lower():
+                          raise SystemExit(f'::error::Conflicting manifest hashes: {filename}')
+                      selected[filename] = digest.lower()
+          Path('selected.tsv').write_text(''.join(f'{f}\t{h}\n' for f, h in sorted(selected.items())))
+          PY
+          mkdir -p release-assets
+          while IFS=$'\t' read -r filename expected; do
+            if ! curl --fail --silent --show-error --location --connect-timeout 15 \
+                --max-time 120 --retry 2 "$CHANNEL_URL/$filename" -o "release-assets/$filename"; then
+              echo "::error::Package download failed (下载失败): $filename" >&2
+              exit 1
+            fi
+            actual=$(sha256sum "release-assets/$filename")
+            if [[ "${actual%% *}" != "$expected" ]]; then
+              echo "::error::Package hash mismatch (hash 不符): $filename" >&2
+              exit 1
+            fi
+          done < selected.tsv
+
+      - name: Create or reuse Release and upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="docs/releases/$VERSION.md"
+          if [[ ! -f "$notes" ]]; then
+            notes=release-notes.md
+            printf '# aether-proxy %s\n\n' "$VERSION" > "$notes"
+            cat >> "$notes" <<'NOTES'
+          Packages are copied from the matching channel-stable manifest and SHA-256 verified; no rebuild.
+
+          Install aether-xray first, then aether-proxy, luci-app-aether-proxy and luci-i18n-aether-proxy-*.
+          Choose .ipk for opkg (OpenWrt 24.10), or .apk for apk (OpenWrt 25.12); do not mix formats.
+          Match the package architecture to your system: aarch64_generic = ARM64, x86_64 = Intel/AMD 64-bit.
+          Architecture-independent application/LuCI/i18n packages may use all/noarch; install the matching core.
+          This Release contains aether-xray, not patched xray-core. Manifest/signature files stay on channel-stable.
+          NOTES
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            if ! gh release create "$TAG" --verify-tag --title "aether-proxy $VERSION" --notes-file "$notes"; then
+              echo '::error::Release creation failed' >&2
+              exit 1
+            fi
+          fi
+          assets=()
+          while IFS=$'\t' read -r filename expected; do
+            assets+=("release-assets/$filename")
+          done < selected.tsv
+          if ! gh release upload "$TAG" "${assets[@]}" --clobber; then
+            echo '::error::Release upload failed (上传失败)' >&2
+            exit 1
+          fi
