@@ -35,7 +35,7 @@
   make package/aether-xray/compile package/aether-proxy/compile
   ```
   设备用包管理器安装应用时也必须有可解析的 `aether-xray` 软件源或先安装本地产出的核心 ipk；依赖元数据不会把核心二进制塞进应用包。
-- **channel 暂不切换**：现有发布仓库仍使用自己的 Makefile 与 `AETHER_PROXY_REF`；上文 26.10.31 是应用仓库的包/测试基线，不表示已发布。T11.6 再做 channel 单源复制，本任务不改通道引用、release 或 tag。
+- **channel 已完成单源切换（2026-11-01）**：channel 从 `AETHER_PROXY_REF` 复制 `aether-xray/` 和 `chinadns-ng/`，不再维护同名 Makefile；0.6.3 已随通道发布 26.10.31。发布仓库只负责构建、签名与发布。
 
 ## 发布通道（服务端）
 

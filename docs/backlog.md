@@ -254,9 +254,9 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 权限：LuCI 管理本应用等同 root（组件路径以 root 执行）。若将来有非 root 的 LuCI 用户，再考虑拆分普通配置与组件路径/特权操作，或把可选二进制限制在已安装组件目录。
 - 防重放：清单可被回放（装不回旧包，但规则数据可回到旧版）。可选：单调发布序号或已见最低数据版本；有效期需配合时钟与离线恢复。要区分普通更新、`--previous` 与自动回退，不能阻断受支持的恢复路径。
 
-## B23 支持 Xray 上游的新协议（Hysteria / WireGuard / SOCKS / HTTP …）（2026-10-30 改，待设计）
+## B23 支持 Xray 上游的新协议（Hysteria / WireGuard / SOCKS / HTTP …）（2026-10-30 改，2026-11-01 首批完成）
 
-- 状态：**待设计**。等当前 G 组与 `aether-xray` 拆分完成后再开卡（仓库所有者定，2026-10-30）。
+- 状态：**首批完成**。SOCKS5、HTTP、WireGuard、Hysteria2 已在 0.6.1/0.6.2 落地；`aether-xray` 拆分也已完成。补丁协议仍按下方边界排除；**分享链接/URI 导入**尚未实现，需要时另立任务。
 - **当前阶段决定（2026-10-30）**：aether-proxy 跟 **XTLS/Xray 上游**，`aether-xray` 不带补丁，节点模型也只做上游协议。这是当前以主要功能和稳定运行为主的边界；今后项目铺开、确有需求时，可另立设计再评估补丁协议，不自动回退本决策。
   AnyTLS、Naive、ShadowsocksR、TUIC、Snell、ShadowTLS、KCPTun 这些只在 `feeds/packages` 的补丁里，继续由 **feeds + ssr-plus 的 `/usr/bin/xray`** 提供，不进 aether-proxy 的节点模型。
 - 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型目前只有 vless/vmess/trojan/shadowsocks；上游 Xray 还有 Hysteria、WireGuard、SOCKS/HTTP 出站等，按稳定迭代期逐步补。
@@ -267,16 +267,16 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 关键约束（设计时不能忽略）：
   1. **两份 xray 二进制分开**：`aether-xray` 装 `/usr/bin/aether-xray`，`/usr/bin/xray` 留给 feeds/ssr-plus；aether-proxy 的通道包名改为 `aether-xray`，不再发布 `xray-core`，避免包名/文件冲突。
   2. aether-proxy 的查找顺序：显式 `main.xray_bin` → `/usr/bin/aether-xray` → `/usr/bin/xray`（回退）；`components`/`status` 显示实际路径；版本闸门按实际二进制。
-  3. 上游协议按最低版本/CI 逐协议标；golden 用真实 `run -test`。当前 `XRAY_LATEST_TESTED` 为 26.10.21。
+  3. 上游协议按最低版本/CI 逐协议标；golden 用真实 `run -test`。当前 `XRAY_LATEST_TESTED` 为 26.10.31。
   4. 通道的 `aether-xray` 跟踪上游 tag，不带补丁；ssr-plus 继续按自己的节奏更新 `/usr/bin/xray`。
-- 首批候选：**Hysteria**、**WireGuard**、**SOCKS/HTTP**（按需求与上游稳定性排）；补丁协议不在本条。
+- 首批已完成：**Hysteria2**、**WireGuard**、**SOCKS5/HTTP**；补丁协议不在本条。分享链接/URI 导入仍是缺口。
 - 不在本条：分流（B1/B20）；`aether-xray` 的包名/路径/更新页迁移见 B24。
 
-## B24 `aether-xray` 独立二进制与包名（2026-10-30，待设计）
+## B24 `aether-xray` 独立二进制与包名（2026-10-30，2026-11-01 已完成）
 
-- 状态：**待设计**。与 B23 配套，先于新协议模型落地。
+- 状态：**已完成**。`aether-xray` 包源在 aether-proxy 仓库，channel 从 `AETHER_PROXY_REF` 复制；0.6.3 发布 26.10.31，安装 `/usr/bin/aether-xray`。下方“涉及”保留为设计记录。
 - 目标：aether-proxy 通道发布 **`aether-xray`**（纯上游、无补丁），二进制装 `/usr/bin/aether-xray`；feeds/packages 与 ssr-plus 继续用 `/usr/bin/xray`，互不覆盖。
-- **版本对齐（2026-10-30 定）**：`aether-xray` 的 `PKG_VERSION` 与 `feeds/packages/net/xray-core` 的 `PKG_VERSION` 保持同一上游版本（当前 **26.10.21**），但不打补丁；release 后缀各自独立。packages 升版时通道跟同一上游 tag；发布前校验两者 `PKG_VERSION` 一致，避免设备上出现 26.9.30 与 26.10.21 双版本。
+- **版本对齐（2026-10-30 定，2026-11-01 调整）**：`aether-xray` 优先跟 XTLS/Xray 上游安全版本，并尽量与固件的 patched `/usr/bin/xray` 同版本；当前两者都是 **26.10.31**（patched 由 helloworld feed 提供）。packages feed 仍可能滞后，aether-xray 不等它；发布前仍校验两份二进制的实际版本，避免设备上出现双版本。
 - 涉及：
   1. `aether-proxy-channel`：`xray-core/Makefile` → `aether-xray` 包名/`/usr/bin/aether-xray` 安装路径；`AETHER_PROXY_REF`/`build.py`/清单的包键与资产名；移除 `xray-core` 发布，保留旧资产清理策略。
   2. `aether-proxy`：`find_component` 查找顺序、`main.xray_bin`、`components`/`status`、`update` 的 `UPDATE_PACKAGES`/`--previous`/安装校验/回滚、更新页文案与行、docs/08 通道说明。
