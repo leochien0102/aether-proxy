@@ -234,6 +234,11 @@ export const PROC_NET_DEV = '/proc/net/dev';
 export const CONNTRACK_COUNT = '/proc/sys/net/netfilter/nf_conntrack_count';
 export const STATS_NFT_TIMEOUT_SECS = 5;
 
+// T12.3 (B25 usage heatmap, docs/b25-heatmap.md): in-memory daily aggregation bounds.
+// Elapsed credited to one sample is capped at the monitor interval times this factor.
+export const USAGE_ELAPSED_FACTOR = 2;
+export const USAGE_DAYS_KEEP = 90;
+
 // T8.12b: procd service signal uses the numeric SIGUSR1 value.
 export const PROBE_SIGUSR1 = 10;
 

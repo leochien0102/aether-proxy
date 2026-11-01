@@ -32,10 +32,13 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p "$T/bin" "$T/data" "$T/base" "$T/custom" "$T/enabled-conf"
+mkdir -p "$T/bin" "$T/data" "$T/base" "$T/custom" "$T/enabled-conf" "$T/heatmap-conf"
 # Keep shared/golden inputs unchanged; legacy T2 scenarios explicitly opt in here.
 cp "$FIX/aetherproxy" "$T/enabled-conf/aetherproxy"
 printf "\nconfig dns 'dns'\n\toption direct_dns_enabled '1'\n" >> "$T/enabled-conf/aetherproxy"
+# T12.3 B25: the same sample fixture with the usage heatmap switched on (docs/05 stats).
+cp "$FIX/aetherproxy" "$T/heatmap-conf/aetherproxy"
+printf "\nconfig stats 'stats'\n\toption heatmap_enabled '1'\n" >> "$T/heatmap-conf/aetherproxy"
 cp "$STUB_SRC/"* "$T/bin/"
 cp "$ROOT/tests/stubs/daemon-bin/curl" "$T/bin/curl"
 cp "$STUB_SRC/xray" "$T/bin/xray-original"
@@ -77,7 +80,8 @@ EOF
 
 run_case() {
 	local name="$1" root="$T/$1" conf="$T/enabled-conf"
-	if [[ "$name" = disabled-* ]]; then conf="$FIX"; fi
+	if [[ "$name" = disabled-* || "$name" = heatmap-* ]]; then conf="$FIX"; fi
+	if [[ "$name" = heatmap-on ]]; then conf="$T/heatmap-conf"; fi
 	make_sysroot "$root"
 	CHILD_ROOTS+=("$root")
 	STUB_LOG="$root/var/run/aether-proxy/calls.log" \
@@ -92,6 +96,8 @@ done
 run_case disabled-recover
 run_case proxy-tier 2
 run_case node-refresh
+run_case heatmap-off
+run_case heatmap-on
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999
 for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked; do
 	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1

@@ -12,6 +12,8 @@ import * as pipeline from 'aetherproxy.pipeline';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as net from 'aetherproxy.net';
+import * as counters from 'aetherproxy.counters';
+import * as usage from 'aetherproxy.usage';
 
 // tick is declared up front: finish_tick schedules it before its definition (ucode does not hoist).
 let initial_state, interval_ms, next, tick;
@@ -434,6 +436,28 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 	}
 };
 
+// B25 usage sampling (docs/b25-heatmap.md §4, T12.3): only a `true` switch samples, and
+// a closed switch must not even run the nft counter query. Data stays in memory; the
+// process restart loses the live day by design (persistence is T12.4).
+function sample_usage(daemon, obs) {
+	if (daemon.snapshot?.stats?.heatmap_enabled !== true)
+		return;
+	let now_ms = monotonic_ms();
+	let elapsed = daemon.usage_mono_ms == null || now_ms == null
+		? 0 : max((now_ms - daemon.usage_mono_ms) / 1000, 0);
+	daemon.usage_mono_ms = now_ms;
+	let read = counters.proxy_counters(daemon.ctx);
+	usage.sample(daemon.usage, {
+		tx: read?.tx_bytes ?? null,
+		rx: read?.rx_bytes ?? null,
+		now: time(),
+		elapsed,
+		cap: interval_ms(daemon.machine) / 1000 * C.USAGE_ELAPSED_FACTOR,
+		state: daemon.machine.state,
+		proxy_ok: obs.proxy_ok
+	});
+};
+
 tick = function(daemon) {
 	if (daemon.busy || daemon.ctx.stopping_requested)
 		return;
@@ -462,6 +486,7 @@ tick = function(daemon) {
 		finish_tick(daemon, daemon.machine, { actions: [], events: [] }, lock, started, null);
 		return;
 	}
+	sample_usage(daemon, obs);
 	let transition = next(daemon.machine, obs, daemon.snapshot);
 	run_actions(daemon, transition.state, transition.actions, 0,
 		error => finish_tick(daemon, transition.state, transition, lock, started, error));
@@ -473,7 +498,9 @@ function create_daemon(daemon) {
 		machine: initial_state(daemon.state, time()),
 		busy: false,
 		skip_next: false,
-		interval: null
+		interval: null,
+		usage: usage.create(),
+		usage_mono_ms: null
 	};
 };
 

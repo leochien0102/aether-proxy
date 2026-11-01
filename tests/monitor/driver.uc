@@ -241,6 +241,57 @@ else if (scenario == 'node-refresh') {
 		'node refresh does not count its deliberate restart as an outage');
 	no_external_children(d);
 }
+else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
+	// T12.3 B25: the sampling entry point only. Day-level accounting is unit-tested with
+	// a fake clock; here the fixture counters prove who runs the nft counter query.
+	let d = opts.daemon;
+	let counters_path = `${opts.ctx.root}/nft-counters.json`;
+	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
+	let payload = (tx, rx) => sprintf('%.J', { nftables: [
+		{ counter: { family: 'inet', table: 'aetherproxy', name: 'proxy_tx', packets: 1, bytes: tx } },
+		{ counter: { family: 'inet', table: 'aetherproxy', name: 'proxy_rx', packets: 1, bytes: rx } }
+	] }) + '\n';
+	write(counters_path, payload(1000, 2000));
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	if (scenario == 'heatmap-off') {
+		check(count(fs.readfile(log_path), 'list counters') == 0,
+			'heatmap-off: a closed switch never queries the nft counters');
+		check(d.usage.day == null && d.usage.tx == 0 && d.usage.rx == 0 && d.usage.observed == 0,
+			'heatmap-off: nothing is aggregated', sprintf('%.J', d.usage));
+		write(counters_path, payload(5000, 6000));
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(count(fs.readfile(log_path), 'list counters') == 0,
+			'heatmap-off: still no counter query after counters changed');
+		check(d.usage.day == null, 'heatmap-off: still nothing aggregated');
+	}
+	else {
+		check(count(fs.readfile(log_path), 'list counters') == 1,
+			'heatmap-on: an open switch samples once per tick');
+		check(d.usage.day != null && d.usage.tx == 0 && d.usage.last_tx == 1000 && d.usage.last_rx == 2000,
+			'heatmap-on: the first sample only records the baseline', sprintf('%.J', d.usage));
+		write(counters_path, payload(3500, 4000));
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(count(fs.readfile(log_path), 'list counters') == 2,
+			'heatmap-on: each tick samples once');
+		check(d.usage.tx == 2500 && d.usage.rx == 2000, 'heatmap-on: deltas accumulate',
+			sprintf('%.J', d.usage));
+		check(d.usage.healthy == 0, 'heatmap-on: degraded rounds never count healthy');
+		write(counters_path, 'not json');
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(d.usage.tx == 2500 && d.usage.last_tx == 3500,
+			'heatmap-on: unreadable counters skip bytes and keep the baseline', sprintf('%.J', d.usage));
+		write(counters_path, payload(3600, 4100));
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(d.usage.tx == 2600 && d.usage.rx == 2100,
+			'heatmap-on: the next good read resumes the series', sprintf('%.J', d.usage));
+	}
+	no_external_children(d);
+}
 else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scenario) >= 0) {
 	let d = opts.daemon;
 	d.snapshot.probe.fail_threshold = 1;

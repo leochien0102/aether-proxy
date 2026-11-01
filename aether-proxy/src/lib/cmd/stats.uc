@@ -4,8 +4,8 @@
 // Missing runtime sources are independent nulls, never events: polling must not flood logd.
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
-import * as sys from 'aetherproxy.sys';
 import * as pipeline from 'aetherproxy.pipeline';
+import * as counters from 'aetherproxy.counters';
 
 function read_object(path) {
 	let text = fs.readfile(path);
@@ -21,36 +21,8 @@ function read_object(path) {
 	}
 }
 
-function byte_count(value) {
-	return type(value) in [ 'int', 'double' ] && value >= 0 ? value : null;
-}
-
 function proxy_bytes(opts) {
-	let nft = opts.bin_dir ? `${opts.bin_dir}/nft` : 'nft';
-	let result = sys.run([ nft, '-j', 'list', 'counters', 'table', ...split(C.NFT_TABLE, ' ') ],
-		{ timeout: C.STATS_NFT_TIMEOUT_SECS, quiet: true });
-	if (result.code != 0)
-		return null;
-	let data;
-	try {
-		data = json(result.stdout);
-	}
-	catch (e) {
-		return null; // An unsupported or malformed nft response is unavailable.
-	}
-	if (type(data?.nftables) != 'array')
-		return null;
-	let counts = {};
-	for (let entry in data.nftables) {
-		let c = entry?.counter;
-		if (type(c) != 'object' || `${c.family} ${c.table}` != C.NFT_TABLE)
-			continue;
-		if (c.name == 'proxy_tx' || c.name == 'proxy_rx')
-			counts[c.name] = byte_count(c.bytes);
-	}
-	if (counts.proxy_tx == null || counts.proxy_rx == null)
-		return null;
-	return { tx_bytes: counts.proxy_tx, rx_bytes: counts.proxy_rx };
+	return counters.proxy_counters({ bin_dir: opts.bin_dir ?? null });
 }
 
 function wan_bytes(root) {
