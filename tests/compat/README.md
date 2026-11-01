@@ -1,4 +1,51 @@
-# Previous-release update compatibility (T9.39)
+# Update compatibility (T9.39 / T11.13)
+
+## Dependency and migration contract (T11.13)
+
+`python3 tests/compat/update-contract.py` runs offline using only the standard
+library; `run.sh` runs it before the Node integration test. It reads the actual
+`aether-proxy/Makefile` hard dependencies and the channel builder's
+`PACKAGE_NAMES` (AST only, no import/execution). Thus future channel-managed
+packages enter the closure check automatically, but system packages such as
+kmod/ip-full do not. When adding a managed dependency, register it in the
+publisher inventory too; do not hide channel packages as system packages.
+
+`update-contract.json` freezes known client packages, the 0.6.3/0.6.2 support
+window, explicit manual package exceptions and an ordered bridge example.
+Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the current
+0.6.3 source; tests do not fetch tags. The migration rows in docs/08 are checked
+against this fixture. Current clients require manual chinadns-ng provisioning;
+0.3.1 is **manual-only**, not a direct updater to 0.6.3. Older clients are outside
+the supported window. Do not add new package names to frozen known lists just
+to make a newly introduced hard dependency pass: provide a real bridge or an
+explicit manual migration and document the packages.
+
+Reproduce the original missing-closure failure (intentionally exits 1):
+
+```sh
+python3 tests/compat/update-contract.py --reproduce
+# 0.3.1: managed hard dependencies outside client closure: aether-xray, chinadns-ng
+```
+
+The same closure validator is used with manual exceptions removed. Negative
+tests reject unregistered current/future managed dependencies, a claimed direct
+0.3.1 upgrade, missing/manual table entries, and malformed bridges. Synthetic
+0.6.3 → 0.6.4 → 0.6.6 → 0.6.8 assets are metadata only, not real releases. An
+independent required-step list catches missing steps even if min_from is edited
+to conceal the gap. Tests select only the next step, reject ordering, duplicate,
+min_from, target, asset/hash errors. This pins a contract; it does **not** implement
+the product bridge resolver or an update page (T11.14).
+
+Contract v1 must not be confused with the existing wire `manifest.schema = 2`;
+T11.13 does not change the wire schema to 1.
+
+## Frozen page/RPC integration (T9.39)
+
+T9.39 covers page/RPC shapes, **not dependency closure**. Its backend is already
+new and its stub package manager does not enforce real package dependencies.
+Passing it is not evidence that a complete 0.3.1 device can directly upgrade to
+0.6.3. The historical 0.3.1 snapshot remains a useful interface regression test,
+not a claim that 0.3.1 remains in the current support window.
 
 Run after `bash tests/host/bootstrap.sh`:
 
