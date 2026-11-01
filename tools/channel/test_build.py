@@ -384,6 +384,21 @@ release_assets | sort > "$work/existing"
         self.assertFalse((self.out / "unrelated_1_all.ipk").exists())
 
 
+class CanonicalVersionTests(unittest.TestCase):
+    def test_both_published_release_renderings_are_accepted_verbatim(self):
+        # Real artifacts (h28k-test/pkg061-063): standard packages render "-<release>",
+        # the luci.mk-built luci-app renders "-r<release>". The filename version comes
+        # back unchanged; it is never rebuilt from the Makefile.
+        self.assertEqual(build.canonical_version("0.6.3", "1", "0.6.3-1"), "0.6.3-1")
+        self.assertEqual(build.canonical_version("0.6.3", "1", "0.6.3-r1"), "0.6.3-r1")
+        self.assertEqual(build.canonical_version("26.10.31", "1", "26.10.31-1"), "26.10.31-1")
+
+    def test_versions_outside_the_makefile_are_rejected(self):
+        for value in ["0.6.3", "0.6.4-1", "0.6.3-r2", "0.6.3-1~abc", "0.6.3-r1-r1", "v0.6.3-1"]:
+            with self.assertRaisesRegex(ValueError, "expected 0.6.3-<1> or 0.6.3-r<1>"):
+                build.canonical_version("0.6.3", "1", value)
+
+
 class SigningTests(unittest.TestCase):
     def test_sign_verify_and_tamper_rejection(self):
         if not USIGN.is_file():

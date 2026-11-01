@@ -37,8 +37,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json, os, re, shutil, subprocess
+          import hashlib, json, os, re, shutil, subprocess, sys
           from pathlib import Path
+          sys.path.insert(0, 'tools')
+          # Shared canonical-version rule with channel promote (fetched from the same commit).
+          from channel.build import canonical_version
           tag, commit = os.environ['TAG'], os.environ['BUILD_SHA']
           def field(name, key):
               return re.search(r'^' + key + r':=(\S+)$', Path(name + '/Makefile').read_text(), re.M)[1]
@@ -71,9 +74,14 @@ jobs:
                       else:
                           pkg_version = raw
                       if name != names[2]:
-                          want = field(name, 'PKG_VERSION') + '-r' + field(name, 'PKG_RELEASE')
-                          if pkg_version != want:
-                              raise SystemExit(f'Package version mismatch: {path.name}')
+                          # Real releases render the release suffix as -<release> or
+                          # -r<release> depending on the build system; the filename version
+                          # is canonical and both formats must agree (checked below).
+                          try:
+                              pkg_version = canonical_version(
+                                  field(name, 'PKG_VERSION'), field(name, 'PKG_RELEASE'), pkg_version)
+                          except ValueError as exc:
+                              raise SystemExit(f'Package version mismatch: {path.name}: {exc}')
                       elif not re.fullmatch(r'[0-9][A-Za-z0-9.+~_-]*', pkg_version):
                           raise SystemExit('Invalid translation version')
                       # Keep both SDK noarch builds, even when their bytes differ. GitHub-safe names.
@@ -86,8 +94,24 @@ jobs:
                       raise SystemExit('Unexpected package artifacts')
           if any(len({e['version'] for e in entries if e['package'] == n}) != 1 for n in names):
               raise SystemExit('Inconsistent package versions across matrix')
+          # A bridge chain is opt-in and reviewed: present at bridges/compatibility.json in the
+          # tagged commit it rides the prerelease verbatim (promote verifies its assets); the
+          # terminal step must be the built aether-proxy, or the file is stale for this RC.
+          reviewed = Path('bridges/compatibility.json')
+          if reviewed.is_file():
+              try:
+                  chain = json.loads(reviewed.read_text())
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f'bridges/compatibility.json is not valid JSON: {exc}')
+              steps = chain.get('aether-proxy', {}).get('steps') if isinstance(chain, dict) else None
+              built = next(e['version'] for e in entries if e['package'] == names[0])
+              if not isinstance(steps, list) or not steps or (steps[-1] or {}).get('version') != built:
+                  raise SystemExit(f'bridges/compatibility.json terminal step must be the built aether-proxy {built}')
+              shutil.copyfile(reviewed, out / 'compatibility.json')
           manifest = dict(schema=1, rc_tag=tag, commit=commit, version=version,
                           target_tag='v' + target, assets=entries)
+          if reviewed.is_file():
+              manifest['compatibility'] = 'compatibility.json'
           (out / 'rc-manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
           (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in sorted(out.iterdir())))
           PY

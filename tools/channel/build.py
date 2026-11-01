@@ -30,6 +30,23 @@ def asset_name(filename: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", ".", filename)
 
 
+def canonical_version(makefile_version: str, release: str, filename_version: str) -> str:
+    """Check a package filename version against its Makefile and return it unchanged.
+
+    The canonical version is the filename version itself: the same string the package
+    manager reports as installed, and the one the manifest, compatibility steps and
+    device-side comparisons must use. Real releases render the release suffix both
+    ways — "-<release>" for the standard packages (aether-proxy, aether-xray,
+    chinadns-ng) and "-r<release>" for the luci.mk-built luci-app-aether-proxy — so
+    both renderings are accepted and the version is never rebuilt from the Makefile.
+    """
+    for rendering in (f"{makefile_version}-{release}", f"{makefile_version}-r{release}"):
+        if filename_version == rendering:
+            return filename_version
+    raise ValueError(
+        f"expected {makefile_version}-<{release}> or {makefile_version}-r<{release}>, got {filename_version!r}")
+
+
 def sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 

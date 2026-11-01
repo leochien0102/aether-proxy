@@ -138,11 +138,16 @@
 引用的资产保持原样。省略参数时保留上一份 compatibility，包含仅数据发布；
 目标版本变化时必须显式提供接到新 target 的链，不能静默丢掉旧链。
 
-stable 的发布脚本位于独立 channel 仓库。本仓库提供
-`tools/channel/publish-bridge-assets.patch`，必须先将其应用到 channel 的
-`scripts/publish.sh`，让上传、存在性检查及过期清理共同使用包含 compatibility 的引用集。
-在此补丁部署前不能发布 bridge 清单；只部署设备端/生成器不会自动修复旧发布脚本。
-本任务不修改外部 channel 工作区、不签名发布、不创建 tag。
+stable 的发布脚本位于独立 channel 仓库，`scripts/publish.sh` 已（T11.15）让上传、
+存在性检查及过期清理共同使用包含 compatibility 的引用集，并接受 `COMPATIBILITY_FILE`
+（缺文件、非法 JSON 在任何 release 操作之前失败）。链的受审来源是本仓库的
+`bridges/compatibility.json`：RC 把它原样带进 prerelease 并在 `rc-manifest.json` 里
+绑定资产名，终点步不是本 RC 构建版本的文件会让 RC 失败；文件不存在时 RC 照常，
+只是不声称支持 bridge。channel `promote.yml`（T11.16）从 prerelease 取该文件，
+按其中的 url 从 RC 产物或既有 stable 下载历史 bridge 包并校验 sha256/size；
+每步都必须有 ipk+apk（aether-proxy 是 noarch 双格式），缺任一资产立即失败，
+然后把 `COMPATIBILITY_FILE` 与字节一起交给 `scripts/publish.sh`（preflight 与最终
+发布用同一份输入）。promote 不 checkout 应用源码、不执行 SDK/编译。
 
 #### 检查、安装与页面
 
@@ -162,6 +167,30 @@ stable 的发布脚本位于独立 channel 仓库。本仓库提供
 
 更新页显示「先更新到 X（第 1/N 步）」；每次 bridge 作业后重新 check 并刷新状态。
 无效链显示原因且禁用按钮。没有 compatibility 时维持原有直升/分组更新行为。
+
+### 包版本写法（canonical version）
+
+包的 canonical version 就是**包文件名里的版本串**，也是包管理器报告的已安装版本；
+manifest 的 `packages.<name>.current.version`、compatibility 步骤的 `version` 与
+`min_from`、设备端的版本比较全部使用它，**不会从 Makefile 重新拼装**。真实发布里
+release 后缀有两种渲染：标准包（aether-proxy、aether-xray、chinadns-ng）是
+`<PKG_VERSION>-<PKG_RELEASE>`（如 `0.6.3-1`），经 `luci.mk` 构建的
+luci-app-aether-proxy 是 `-r<PKG_RELEASE>`（如 `0.6.3-r1`）；翻译包带自己的动态
+版本、没有 release。同一包的 ipk 与 apk 文件名版本必须一致（生成器按「一包一
+版本」拒绝分歧）。RC 与 promote 共用 `tools/channel/build.py` 的
+`canonical_version()`：按 Makefile 接受两种渲染、原样返回文件名版本，不匹配任一
+渲染即失败。正式 tag（`v<PKG_VERSION>-r<PKG_RELEASE>`，如 v0.6.3-r1）是 tag 规范，
+不等于包版本串；对应关系为：compatibility 终点步 == manifest 的 aether-proxy
+current version == RC 构建的包版本 == 设备已安装版本串，target tag 通过
+rc-manifest 的 `target_tag` 单独绑定。release 后缀必须精确匹配（`0.6.3-1` 不是
+`0.6.3-r1` 的别名，设备端 `exact-release-alias` 场景冻结了这一点）。
+
+本仓库**尚未登记任何链**：`bridges/compatibility.json` 不存在。首个真实 bridge 链
+必须在其全部步骤的 ipk+apk 字节都能核对 sha256/size 后由维护者提交，RC 才会携带；
+此前 manifest 不含 compatibility，设备按无链行为更新，冻结契约中的 `bridges: {}`
+保持有效。测试里的链一律是合成 fixture（tests/ 下，版本串遵循上述写法），
+不代表任何已发布的链。
+
 
 ## 发布通道（服务端）
 
