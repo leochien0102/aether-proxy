@@ -167,6 +167,11 @@ def host_oracle(work):
 		expect((golden / file).stat().st_size > 0, f'host golden {kind} is nonempty')
 	expect('/var/run/aether-proxy/boot.txt' in (golden / 'chinadns.conf').read_text(),
 		'golden uses installed paths without output normalization')
+	# The CI smoke containers mount this directory read-only and may run as a
+	# non-root user; write_atomic creates files 0600, so make the exported oracle
+	# readable instead of failing every cmp with "Permission denied".
+	for path in [golden, *golden.rglob('*')]:
+		path.chmod(0o755 if path.is_dir() else 0o644)
 	default = work / 'default'
 	default.mkdir()
 	shutil.copy2(REPO / 'aether-proxy/files/aether-proxy.config', default / 'aetherproxy')
