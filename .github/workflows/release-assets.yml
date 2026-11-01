@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   release-assets:
+    # RC tags are handled by release-candidate.yml; they must not run the formal
+    # release workflow or wait 90 minutes for a matching channel manifest.
+    if: ${{ !contains(github.ref_name, '-rc') }}
     runs-on: ubuntu-latest
     # Up to 90 minutes each for the build gate and channel manifest, plus downloads.
     timeout-minutes: 195
