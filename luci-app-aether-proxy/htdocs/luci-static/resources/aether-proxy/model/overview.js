@@ -26,7 +26,8 @@
  * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
  * T12.6 adds the B25 usage heatmap: switch interpretation, the stats_history
  * reply mapping and the pure 7×13 week grid with colour levels, health tiers
- * and text-only tooltips;
+ * and text-only tooltips; T12.7 pins the grid to the last 13 weeks (91 cells
+ * ending with today's week, full even without data);
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -753,11 +754,14 @@ return baseclass.extend({
 		return d.getFullYear() + '-' + part(d.getMonth() + 1) + '-' + part(d.getDate());
 	},
 
-	/* Week rows cover the weeks of the shown data, oldest first, capped at 13:
-	   short history gives a compact grid, sparse older entries beyond 13 weeks
-	   drop off. Days without an entry stay blank (no zero-fill, no backfill),
-	   future dates never render. Colour level: log1p(tx+rx) normalized over the
-	   shown days, 0 traffic lightest (level 0..4). */
+	/* T12.7: the grid is always 13 week rows (Monday..Sunday) × 7 columns = 91
+	   cells, ending with the week that contains today, so it covers the last
+	   ~90 days no matter how much history exists — an empty history renders the
+	   same full grid in the neutral blank colour instead of a notice. Days
+	   without an entry stay blank (no zero-fill, no backfill); dates after
+	   today are always blank; entries older than the window drop off. Colour
+	   level: log1p(tx+rx) normalized over the entries shown in the window, 0
+	   traffic lightest (level 0..4). */
 	heatmap_view: function(reply, today) {
 		if (!reply || reply.ok === false)
 			return { state: 'error',
@@ -777,22 +781,20 @@ return baseclass.extend({
 			return list;
 		}, []).sort((a, b) => a.day - b.day);
 
-		if (!entries.length)
-			return { state: 'empty', text: _('No data yet', 'aether-proxy') };
-
-		const last = entries[entries.length - 1].day;
-		const oldest = week_start(entries[0].day);
-		const newest = week_start(last);
-		const first = (newest.getTime() - oldest.getTime() > 7 * (HEATMAP_WEEKS - 1) * 86400000)
-			? add_days(newest, -7 * (HEATMAP_WEEKS - 1)) : oldest;
+		/* An unparseable today falls back to the newest entry, so the window
+		   still covers the data; with neither, every cell is blank anyway and
+		   the anchor only picks which blank 13 weeks are shown. */
+		const anchor = today_day ?? entries[entries.length - 1]?.day
+			?? parse_date('1970-01-01');
+		const first = add_days(week_start(anchor), -7 * (HEATMAP_WEEKS - 1));
 		const shown = entries.filter((entry) => entry.day >= first);
-		const max = Math.max(...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
+		const max = Math.max(0, ...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
 		const by_date = new Map(shown.map((entry) => [ entry.date, entry ]));
 		const weeks = [];
-		for (let start = first; start <= last; start = add_days(start, 7)) {
+		for (let r = 0; r < HEATMAP_WEEKS; r++) {
 			const row = [];
 			for (let i = 0; i < 7; i++) {
-				const date = date_key(add_days(start, i));
+				const date = date_key(add_days(first, r * 7 + i));
 				const entry = by_date.get(date);
 				if (!entry) {
 					row.push(null);

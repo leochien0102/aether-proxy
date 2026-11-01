@@ -1,16 +1,18 @@
 'use strict';
 
-/* B25 usage heatmap tests (docs/tasks/m12.md T12.6, docs/b25-heatmap.md §7,
+/* B25 usage heatmap tests (docs/tasks/m12.md T12.6/T12.7, docs/b25-heatmap.md §7,
  * docs/10 「B25：概览页使用热力图」).
  *
  * The model scenarios exercise aether-proxy/model/overview.js: the switch
  * interpretation, the stats_history reply mapping, the Monday-first week grid
- * (13-row cap, blank gaps, no future dates), the log1p colour levels, the
- * health tiers and the text-only tooltip. The view scenarios load
- * view/aether-proxy/overview.js with the shared doubles: the switch off never
- * calls stats_history and renders nothing, the switch on fetches through
- * fetchRefresh only (TTL-gated), a failed read keeps the last successful grid
- * and never spams the console, and every cell is a text node.
+ * (13 fixed rows = 91 cells ending with today's week, blank gaps, no future
+ * dates), the log1p colour levels, the health tiers and the text-only tooltip.
+ * The view scenarios load view/aether-proxy/overview.js with the shared
+ * doubles: the switch off never calls stats_history and renders nothing, the
+ * switch on fetches through fetchRefresh only (TTL-gated), the card sits
+ * between the notices and the runtime status card, narrower than the others
+ * and centered, a failed read keeps the last successful grid and never spams
+ * the console, and every cell is a text node.
  */
 
 const test = require('node:test');
@@ -149,7 +151,7 @@ test('heatmap: today is the local calendar date of the timestamp', () => {
 	assert.equal(model.heatmap_today(e.getTime()), '2026-01-01');
 });
 
-test('heatmap: reply mapping — error, off and empty', () => {
+test('heatmap: reply mapping — error and off', () => {
 	const model = dashboardModel();
 
 	assert.equal(model.heatmap_view(null, '2026-11-01').state, 'error');
@@ -163,31 +165,51 @@ test('heatmap: reply mapping — error, off and empty', () => {
 		{ date: '2026-11-01', tx: 1, rx: 1, observed: 60, healthy: 60 }
 	] }, '2026-11-01');
 	assert.deepEqual(vm, { state: 'off' }, 'the disabled reply hides the card');
-
-	vm = model.heatmap_view({ ok: true, enabled: true, days: [] }, '2026-11-01');
-	assert.equal(vm.state, 'empty');
-	assert.equal(vm.text, tr('No data yet'));
 });
 
-test('heatmap: grid aligns weeks Monday-first and blanks days without entries', () => {
+test('heatmap: the grid is 13 fixed week rows = 91 cells ending with the week of today', () => {
 	const model = dashboardModel();
 	const vm = model.heatmap_view(weekReply(), '2026-11-01');
 
 	assert.equal(vm.state, 'ok');
-	/* Data spans 2026-10-26..10-29: one week row, Monday-start. */
-	assert.equal(vm.weeks.length, 1);
-	const row = vm.weeks[0];
-	assert.equal(row.length, 7);
+	assert.equal(vm.weeks.length, 13);
+	assert.ok(vm.weeks.every((row) => row.length === 7), 'seven columns per week row');
+	assert.equal(vm.weeks.flat().length, 91);
+	/* 2026-11-01 is a Sunday: the last row is its week (2026-10-26..11-01) and
+	   rows 0..11 are the 12 weeks before it (blank here — the sample data only
+	   covers the last week; the 90-day test below pins the window's start). */
+	assert.ok(vm.weeks.slice(0, 12).every((row) => row.every((cell) => cell === null)),
+		'the 12 weeks before the data are blank rows, not fewer rows');
+	assert.equal(vm.weeks.at(-1)[0].date, '2026-10-26',
+		'the last row is the week containing today');
+});
+
+test('heatmap: no history still yields the full grid of blank cells', () => {
+	const model = dashboardModel();
+	const vm = model.heatmap_view({ ok: true, enabled: true, days: [] }, '2026-11-01');
+
+	assert.equal(vm.state, 'ok');
+	assert.equal(vm.weeks.length, 13);
+	assert.equal(vm.weeks.flat().length, 91);
+	assert.ok(vm.weeks.flat().every((cell) => cell === null), 'every cell is blank');
+});
+
+test('heatmap: weeks align Monday-first and days without entries stay blank', () => {
+	const model = dashboardModel();
+	const vm = model.heatmap_view(weekReply(), '2026-11-01');
+
+	/* Data spans 2026-10-26..10-29, inside the last week row. */
+	const row = vm.weeks[12];
 	assert.equal(row[0].date, '2026-10-26');
 	assert.equal(row[2].date, '2026-10-28');
 	assert.equal(row[3].date, '2026-10-29');
 	assert.equal(row[1], null, '2026-10-27 has no entry and stays blank');
 	assert.equal(row[4], null);
-	assert.equal(row[5], null);
-	assert.equal(row[6], null, 'the week ends at Sunday, no future dates');
+	assert.equal(row[5], null, 'past days without data are blank, not zero-filled');
+	assert.equal(row[6], null, '2026-11-01 itself has no entry and stays blank');
 });
 
-test('heatmap: history shorter than 90 days gives a compact grid, 13 weeks cap the rest', () => {
+test('heatmap: short and long histories both render the full 13-week window', () => {
 	const model = dashboardModel();
 	const day = (i) => {
 		const d = new Date(Date.UTC(2026, 7, 4) + i * 86400000);
@@ -197,22 +219,25 @@ test('heatmap: history shorter than 90 days gives a compact grid, 13 weeks cap t
 	const entries = (n) => Array.from({ length: n }, (_, i) =>
 		({ date: day(i), tx: 1, rx: 0, observed: 60, healthy: 60 }));
 
-	/* 3 days → 1 row; 90 consecutive days → 13 rows (2026-08-03..11-01 is
-	   exactly 13 Monday-start weeks). */
-	assert.equal(model.heatmap_view({ ok: true, enabled: true, days: entries(3) }, '2026-11-01').weeks.length, 1);
+	/* 3 days and 90 consecutive days give the same full grid: rows never
+	   shrink to the data span (docs/tasks/m12.md T12.7). */
+	for (const days of [ 3, 90 ]) {
+		const vm = model.heatmap_view({ ok: true, enabled: true, days: entries(days) }, '2026-11-01');
+		assert.equal(vm.weeks.length, 13);
+		assert.equal(vm.weeks.flat().length, 91);
+	}
 	const full = model.heatmap_view({ ok: true, enabled: true, days: entries(90) }, '2026-11-01');
-	assert.equal(full.weeks.length, 13);
 	assert.equal(full.weeks[0][0], null, 'the first week starts on Monday, data starts on Tuesday');
 	assert.equal(full.weeks[0][1].date, '2026-08-04');
 	assert.equal(full.weeks.at(-1).at(-1).date, '2026-11-01');
 
-	/* Sparse data spanning more than 13 weeks keeps only the newest 13. */
+	/* Entries older than the fixed window drop off. */
 	const sparse = [ day(0), day(1), ...Array.from({ length: 20 }, (_, i) => day(160 + i)) ];
 	const capped = model.heatmap_view({ ok: true, enabled: true,
 		days: sparse.map((date) => ({ date, tx: 1, rx: 0, observed: 60, healthy: 60 })) }, day(179));
 	assert.equal(capped.weeks.length, 13);
 	assert.ok(capped.weeks.flat().filter(Boolean).every((cell) => cell.date > day(0)),
-		'entries older than 13 weeks drop off');
+		'entries older than the shown 13 weeks drop off');
 });
 
 test('heatmap: future dates never render, invalid entries are skipped', () => {
@@ -241,14 +266,15 @@ test('heatmap: colour levels follow log1p(tx+rx) over the shown days', () => {
 		{ date: '2026-10-28', tx: 999999, rx: 0, observed: 60, healthy: 60 }
 	] }, '2026-11-01');
 
-	assert.deepEqual(vm.weeks[0].slice(0, 3).map((cell) => cell.level), [ 0, 2, 4 ],
+	/* The shown entries sit in the last week row (2026-10-26..11-01). */
+	assert.deepEqual(vm.weeks[12].slice(0, 3).map((cell) => cell.level), [ 0, 2, 4 ],
 		'0 traffic is level 0, log1p(500)/log1p(999999)≈0.45 is level 2, the max is level 4');
 
 	/* A single day with traffic is the maximum: level 4. */
 	const one = model.heatmap_view({ ok: true, enabled: true, days: [
 		{ date: '2026-10-26', tx: 42, rx: 0, observed: 60, healthy: 60 }
 	] }, '2026-11-01');
-	assert.equal(one.weeks[0][0].level, 4);
+	assert.equal(one.weeks[12][0].level, 4);
 
 	/* All-zero traffic keeps every cell on the lightest level. */
 	const zero = model.heatmap_view({ ok: true, enabled: true, days: [
@@ -267,7 +293,7 @@ test('heatmap: health tiers — ok, warn, bad and the neutral not-observed day',
 		{ date: '2026-10-29', tx: 0, rx: 0, observed: 0, healthy: 0 }
 	] }, '2026-11-01');
 
-	assert.deepEqual(vm.weeks[0].slice(0, 4).map((cell) => cell.health),
+	assert.deepEqual(vm.weeks[12].slice(0, 4).map((cell) => cell.health),
 		[ 'ok', 'warn', 'bad', 'none' ]);
 });
 
@@ -279,7 +305,7 @@ test('heatmap: tooltip lines are date, traffic with an automatic unit, share and
 		{ date: '2026-10-28', tx: 0, rx: 0, observed: 90000, healthy: 90000 }
 	] }, '2026-11-01');
 
-	const [ rich, unobserved, long ] = vm.weeks[0].filter(Boolean);
+	const [ rich, unobserved, long ] = vm.weeks[12].filter(Boolean);
 	assert.equal(rich.tip, [ '2026-10-26', tr('Proxy traffic %s', '1.0 MB'),
 		tr('Healthy share %s', '98%'), tr('Observed %s', tr('%s hours', 1)) ].join('\n'));
 	assert.equal(unobserved.tip, [ '2026-10-27', tr('Proxy traffic %s', '512 B'),
@@ -292,7 +318,7 @@ test('heatmap: tooltip lines are date, traffic with an automatic unit, share and
 	const clamped = model.heatmap_view({ ok: true, enabled: true, days: [
 		{ date: '2026-10-26', tx: 0, rx: 0, observed: 100, healthy: 500 }
 	] }, '2026-11-01');
-	assert.ok(clamped.weeks[0][0].tip.includes(tr('Healthy share %s', '100%')));
+	assert.ok(clamped.weeks[12][0].tip.includes(tr('Healthy share %s', '100%')));
 });
 
 test('heatmap view: switch off — no card, no stats_history, other cards still render', async () => {
@@ -304,6 +330,8 @@ test('heatmap view: switch off — no card, no stats_history, other cards still 
 	assert.equal(calls.filter((method) => method == 'stats_history').length, 0,
 		'the disabled switch never calls the history API');
 	assert.deepEqual(view.heatmapContainer.children, [], 'the card is completely absent');
+	assert.equal(view.content.children[1], view.heatmapContainer,
+		'the empty region keeps its place between the notices and the runtime status');
 	assert.ok(findAll(root, 'h3').some((h) => h.textContent == tr('Runtime status')),
 		'the other overview cards are untouched');
 	assert.ok(findAll(root, 'h3').some((h) => h.textContent == tr('Traffic and connections')));
@@ -359,11 +387,12 @@ test('heatmap view: renders the 7-column grid with levels, health classes and te
 
 	const grid = findAll(view.heatmapContainer, 'div').find((d) => d.attrs.class == 'ap-heat-grid');
 	assert.ok(grid, 'the card contains the heat grid');
-	assert.equal(grid.children.length, 14, '7 weekday headers + one 7-cell week row');
+	assert.equal(grid.children.length, 98, '7 weekday headers + 13 week rows of 7 cells');
 	assert.deepEqual(grid.children.slice(0, 7).map((head) => head.textContent),
 		[ tr('Mon'), tr('Tue'), tr('Wed'), tr('Thu'), tr('Fri'), tr('Sat'), tr('Sun') ]);
 
-	const [ mon, tue, wed, thu ] = grid.children.slice(7);
+	/* The data sits in the last week row (children 91..97). */
+	const [ mon, tue, wed, thu ] = grid.children.slice(91);
 	assert.equal(mon.attrs.class, 'ap-heat-cell ap-heat-l4 ap-heat-ok');
 	assert.equal(mon.attrs.title, [ '2026-10-26', tr('Proxy traffic %s', '976.6 KB'),
 		tr('Healthy share %s', '100%'), tr('Observed %s', tr('%s days', 1)) ].join('\n'));
@@ -381,11 +410,37 @@ test('heatmap view: renders the 7-column grid with levels, health classes and te
 		assert.ok(writes.every((write) => !write.includes(needle)),
 			`no HTML write carries "${needle}"`);
 
-	/* The styles ship with the view: narrow screens scroll horizontally and the
-	   grid keeps seven fixed columns. */
-	const style = findAll(view.heatmapStyle, '#text');
-	assert.match(style.map((node) => node.text).join(''), /overflow-x:\s*auto/);
-	assert.match(style.map((node) => node.text).join(''), /repeat\(7,\s*1\.6em\)/);
+	/* The styles ship with the view: narrow screens scroll horizontally, the
+	   grid keeps seven equal columns between 2.2em and 2.6em, and the card is
+	   narrower than the other overview cards and centered. */
+	const style = findAll(view.heatmapStyle, '#text').map((node) => node.text).join('');
+	assert.match(style, /overflow-x:\s*auto/);
+	assert.match(style, /repeat\(7,\s*minmax\(2\.2em,\s*2\.6em\)\)/);
+	assert.match(style, /\.ap-heat-card \{ max-width: 510px; margin-inline: auto \}/);
+});
+
+test('heatmap view: the card sits between the notices and the runtime status card, narrower than the others', async () => {
+	const { view } = loadView({
+		replies: { stats_history: weekReply() },
+		state: { heatmap: '1' }
+	});
+	view.render(await view.load());
+	await view.initialRequest;
+	await tick();
+
+	assert.deepEqual(view.content.children,
+		[ view.noticeContent, view.heatmapContainer, view.runtimeContent,
+			view.trafficContainer, view.componentSection ],
+		'T12.7 content order: notices, heatmap, runtime status, traffic, components');
+	assert.deepEqual(findAll(view.content, 'h3').map((h) => h.textContent),
+		[ tr('Usage heatmap'), tr('Runtime status'),
+			tr('Traffic and connections'), tr('Component versions') ]);
+
+	/* The heatmap card carries the width cap; the other cards have none. */
+	assert.equal(view.heatmapContainer.children[0].attrs.class, 'cbi-section ap-heat-card');
+	assert.equal(view.runtimeContent.children[0].attrs.class, 'cbi-section');
+	assert.equal(view.trafficContainer.children[0].attrs.class, 'cbi-section');
+	assert.equal(view.componentSection.attrs.class, 'cbi-section');
 });
 
 test('heatmap view: a failed history read shows a short error and keeps the last grid', async () => {
@@ -455,7 +510,7 @@ test('heatmap view: an enabled:false reply follows the applied configuration and
 	assert.deepEqual(view.heatmapContainer.children, [], 'the backend switch wins over the page copy');
 });
 
-test('heatmap view: an empty history shows the no-data state', async () => {
+test('heatmap view: an empty history renders the full neutral grid, not a notice', async () => {
 	const { view } = loadView({
 		replies: { stats_history: { ok: true, enabled: true, days: [] } },
 		state: { heatmap: '1' }
@@ -464,7 +519,14 @@ test('heatmap view: an empty history shows the no-data state', async () => {
 	await view.initialRequest;
 	await tick();
 
-	assert.deepEqual(findAll(view.heatmapContainer, 'p').map((p) => p.textContent), [ tr('No data yet') ]);
+	const grid = findAll(view.heatmapContainer, 'div').find((d) => d.attrs.class == 'ap-heat-grid');
+	assert.ok(grid, 'the card shows the 13×7 grid even without any data');
+	assert.equal(grid.children.length, 98, '7 weekday headers + 13 week rows of 7 cells');
+	const cells = grid.children.slice(7);
+	assert.ok(cells.every((cell) => cell.attrs.class == 'ap-heat-cell ap-heat-blank'),
+		'every cell is the neutral blank colour');
+	assert.ok(cells.every((cell) => cell.attrs.title === undefined), 'blank cells carry no tooltip');
+	assert.deepEqual(findAll(view.heatmapContainer, 'p'), [], 'no no-data notice replaces the grid');
 });
 
 test('heatmap view: flipping the switch re-evaluates the card without reloading the page', async () => {

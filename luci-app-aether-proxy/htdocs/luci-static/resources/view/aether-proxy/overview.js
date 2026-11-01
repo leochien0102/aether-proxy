@@ -21,10 +21,12 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
- * T12.6 adds the B25 usage heatmap card after the traffic card: the switch is
- * read from UCI at load, only fetchRefresh may call stats_history (at most one
- * read per 10 minutes or after the local date rolls over), a failed read keeps
- * the last successful grid and the card is completely absent while disabled.
+ * T12.6 adds the B25 usage heatmap card: the switch is read from UCI at load,
+ * only fetchRefresh may call stats_history (at most one read per 10 minutes or
+ * after the local date rolls over) and a failed read keeps the last successful
+ * grid; T12.7 moves the card up between the notices and the runtime status
+ * card, renders it as a centered card narrower than the others and pins the
+ * grid to 13 fixed week rows. The card is completely absent while disabled.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -62,14 +64,19 @@ const HEATMAP_DAYS = [
 /* Styles ship with this view instead of a separate resource URL: LuCI versions
    the view script, so a cached old script never pairs with newer CSS or the
    other way round (docs/10 T10.12). Green steps use rgba so both dark and
-   light themes keep the ramp; theme variables only carry the health colours. */
+   light themes keep the ramp; theme variables only carry the health colours.
+   T12.7: the card is narrower than the other overview cards (max 510px,
+   centered) and is not stretched to the content width; the seven equal
+   columns stay between 2.2em and 2.6em — narrow screens scroll instead of
+   squeezing. */
 const HEATMAP_CSS = [
+	'.ap-heat-card { max-width: 510px; margin-inline: auto }',
 	'.ap-heat-scroll { overflow-x: auto; max-width: 100% }',
-	'.ap-heat-grid { display: grid; grid-template-columns: repeat(7, 1.6em); '
-		+ 'gap: 3px; width: max-content; padding: 2px }',
+	'.ap-heat-grid { display: grid; grid-template-columns: repeat(7, minmax(2.2em, 2.6em)); '
+		+ 'gap: 4px; width: 100%; max-width: max-content; margin-inline: auto; padding: 2px }',
 	'.ap-heat-head { font-size: 0.8em; opacity: 0.7; text-align: center; '
 		+ 'align-self: end; white-space: nowrap }',
-	'.ap-heat-cell { width: 1.6em; height: 1.6em; border-radius: 3px }',
+	'.ap-heat-cell { width: 100%; height: 1.7em; border-radius: 4px }',
 	'.ap-heat-blank { background: rgba(127,127,127,0.12) }',
 	'.ap-heat-l0 { background: rgba(47,133,90,0.15) }',
 	'.ap-heat-l1 { background: rgba(47,133,90,0.35) }',
@@ -521,7 +528,9 @@ return view.extend({
 
 	/* Renders only the heatmap region; every other card stays untouched. Off
 	   switch or an `off` reply empties the card completely — and once empty,
-	   a disabled card is left alone, so a refresh writes no region at all. */
+	   a disabled card is left alone, so a refresh writes no region at all.
+	   T12.7: an empty history is a full neutral grid, not a notice (the model
+	   returns the same 'ok' shape with every cell blank). */
 	updateHeatmap: function() {
 		if (!this.heatmapContainer)
 			return;
@@ -533,23 +542,20 @@ return view.extend({
 		const children = [];
 		if (this.heatmapGood && this.heatmapError)
 			children.push(E('p', { style: this.colorStyle('warn') }, [ this.heatmapError ]));
-		if (this.heatmapGood) {
-			if (this.heatmapGood.state === 'empty')
-				children.push(E('p', {}, [ this.heatmapGood.text ]));
-			else
-				children.push(this.heatmapGrid(this.heatmapGood.weeks));
-		}
+		if (this.heatmapGood)
+			children.push(this.heatmapGrid(this.heatmapGood.weeks));
 		else if (this.heatmapError)
 			children.push(E('p', {}, [ this.heatmapError ]));
 		else
 			children.push(E('p', {}, [ _('Reading…', 'aether-proxy') ]));
-		dom.content(this.heatmapContainer, this.section(_('Usage heatmap', 'aether-proxy'), children));
+		dom.content(this.heatmapContainer,
+			this.section(_('Usage heatmap', 'aether-proxy'), children, 'ap-heat-card'));
 	},
 
-	/* 7 columns (Mon..Sun) × at most 13 week rows: a fixed-width CSS grid in a
-	   horizontally scrollable wrapper, so narrow screens scroll instead of
-	   squeezing the cells. Tooltips are plain title text; cells never take
-	   HTML (docs/b25-heatmap.md §7). */
+	/* 7 columns (Mon..Sun) × 13 fixed week rows: a CSS grid in a horizontally
+	   scrollable wrapper, so narrow screens scroll instead of squeezing the
+	   cells below their 2.2em floor. Tooltips are plain title text; cells
+	   never take HTML (docs/b25-heatmap.md §7). */
 	heatmapGrid: function(weeks) {
 		const cells = HEATMAP_DAYS.map((day) => E('div', { 'class': 'ap-heat-head' }, [ day ]));
 		for (const week of weeks)
@@ -1079,8 +1085,10 @@ return view.extend({
 		return colors[level] ? 'color:' + colors[level] : '';
 	},
 
-	section: function(title, children) {
-		return E('div', { 'class': 'cbi-section' }, [ E('h3', {}, title), ...children ]);
+	/* `cls` extends the card class (the heatmap card is width-capped, T12.7). */
+	section: function(title, children, cls) {
+		return E('div', { 'class': 'cbi-section' + (cls ? ' ' + cls : '') },
+			[ E('h3', {}, title), ...children ]);
 	},
 
 	trafficSection: function(traffic, note) {
@@ -1288,11 +1296,12 @@ return view.extend({
 			this.noticeContent = E('div', {});
 			this.runtimeContent = E('div', {});
 			this.trafficContainer = E('div', {});
-			/* The heatmap card sits between the traffic and component cards
-			   (docs/b25-heatmap.md §7); it fills itself via loadHeatmap. */
+			/* T12.7 puts the heatmap card between the notices and the runtime
+			   status card, under the title/enable line. It fills itself via
+			   loadHeatmap and stays an empty region while off. */
 			dom.content(this.content, [
-				this.noticeContent, this.runtimeContent, this.trafficContainer,
-				this.heatmapContainer, this.componentSection
+				this.noticeContent, this.heatmapContainer, this.runtimeContent,
+				this.trafficContainer, this.componentSection
 			]);
 		}
 

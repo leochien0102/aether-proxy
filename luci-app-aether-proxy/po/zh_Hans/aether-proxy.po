@@ -2751,10 +2751,6 @@ msgid "Sun"
 msgstr "周日"
 
 msgctxt "aether-proxy"
-msgid "No data yet"
-msgstr "暂无数据"
-
-msgctxt "aether-proxy"
 msgid "Reading the usage history failed (%s)"
 msgstr "读取使用历史失败（%s）"
 
