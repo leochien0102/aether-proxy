@@ -21,12 +21,13 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
- * T12.6 adds the B25 usage heatmap card: the switch is read from UCI at load,
+ * T12.6 adds the B25 usage heatmap region: the switch is read from UCI at load,
  * only fetchRefresh may call stats_history (at most one read per 10 minutes or
  * after the local date rolls over) and a failed read keeps the last successful
- * grid; T12.7 moves the card up between the notices and the runtime status
- * card, renders it as a centered card narrower than the others and pins the
- * grid to 13 fixed week rows. The card is completely absent while disabled.
+ * grid; T12.7 moves the region up between the notices and the runtime status
+ * card and reworks it into a bare centered 13×7 date grid — no section
+ * background, no title, no weekday header. The region is completely absent
+ * while disabled.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -54,29 +55,23 @@ function switchFormat(text, ...args) {
    is enough; stats_history never joins the 5-second stats poll. */
 const HEATMAP_TTL_MS = 10 * 60 * 1000;
 
-/* Weekday header of the grid, Monday first. */
-const HEATMAP_DAYS = [
-	_('Mon', 'aether-proxy'), _('Tue', 'aether-proxy'), _('Wed', 'aether-proxy'),
-	_('Thu', 'aether-proxy'), _('Fri', 'aether-proxy'), _('Sat', 'aether-proxy'),
-	_('Sun', 'aether-proxy')
-];
-
 /* Styles ship with this view instead of a separate resource URL: LuCI versions
    the view script, so a cached old script never pairs with newer CSS or the
    other way round (docs/10 T10.12). Green steps use rgba so both dark and
    light themes keep the ramp; theme variables only carry the health colours.
-   T12.7: the card is narrower than the other overview cards (max 510px,
-   centered) and is not stretched to the content width; the seven equal
-   columns stay between 2.2em and 2.6em — narrow screens scroll instead of
-   squeezing. */
+   T12.7 rework: no section box — the wrap only caps and centers the region
+   (max 540px, like the 13-column grid's 480–540px target); the thirteen equal
+   columns stay between 2.0em and 2.4em and every cell is a rounded square via
+   aspect-ratio, so seven rows stay near 250–300px tall. When the natural grid
+   is wider than the wrap, the columns shrink toward 2.0em first (the desktop
+   never scrolls horizontally); only below that does the wrapper scroll —
+   narrow screens scroll instead of squeezing further. */
 const HEATMAP_CSS = [
-	'.ap-heat-card { max-width: 510px; margin-inline: auto }',
-	'.ap-heat-scroll { overflow-x: auto; max-width: 100% }',
-	'.ap-heat-grid { display: grid; grid-template-columns: repeat(7, minmax(2.2em, 2.6em)); '
-		+ 'gap: 4px; width: 100%; max-width: max-content; margin-inline: auto; padding: 2px }',
-	'.ap-heat-head { font-size: 0.8em; opacity: 0.7; text-align: center; '
-		+ 'align-self: end; white-space: nowrap }',
-	'.ap-heat-cell { width: 100%; height: 1.7em; border-radius: 4px }',
+	'.ap-heat-wrap { max-width: 540px; margin-inline: auto }',
+	'.ap-heat-scroll { overflow-x: auto }',
+	'.ap-heat-grid { display: grid; grid-template-columns: repeat(13, minmax(2.0em, 2.4em)); '
+		+ 'gap: 4px; width: max-content; max-width: 100%; margin-inline: auto }',
+	'.ap-heat-cell { width: 100%; aspect-ratio: 1; border-radius: 20% }',
 	'.ap-heat-blank { background: rgba(127,127,127,0.12) }',
 	'.ap-heat-l0 { background: rgba(47,133,90,0.15) }',
 	'.ap-heat-l1 { background: rgba(47,133,90,0.35) }',
@@ -527,10 +522,12 @@ return view.extend({
 	},
 
 	/* Renders only the heatmap region; every other card stays untouched. Off
-	   switch or an `off` reply empties the card completely — and once empty,
-	   a disabled card is left alone, so a refresh writes no region at all.
-	   T12.7: an empty history is a full neutral grid, not a notice (the model
-	   returns the same 'ok' shape with every cell blank). */
+	   switch or an `off` reply empties the region completely — and once empty,
+	   a disabled region is left alone, so a refresh writes no region at all.
+	   T12.7 rework: no section box and no title — the grid renders straight
+	   into the container; an empty history is a full neutral grid (the model
+	   returns the same 'ok' shape with every cell blank), a failed read keeps
+	   the last grid and adds one short error line above it. */
 	updateHeatmap: function() {
 		if (!this.heatmapContainer)
 			return;
@@ -543,31 +540,26 @@ return view.extend({
 		if (this.heatmapGood && this.heatmapError)
 			children.push(E('p', { style: this.colorStyle('warn') }, [ this.heatmapError ]));
 		if (this.heatmapGood)
-			children.push(this.heatmapGrid(this.heatmapGood.weeks));
+			children.push(this.heatmapGrid(this.heatmapGood.cells));
 		else if (this.heatmapError)
 			children.push(E('p', {}, [ this.heatmapError ]));
 		else
 			children.push(E('p', {}, [ _('Reading…', 'aether-proxy') ]));
-		dom.content(this.heatmapContainer,
-			this.section(_('Usage heatmap', 'aether-proxy'), children, 'ap-heat-card'));
+		dom.content(this.heatmapContainer, children);
 	},
 
-	/* 7 columns (Mon..Sun) × 13 fixed week rows: a CSS grid in a horizontally
-	   scrollable wrapper, so narrow screens scroll instead of squeezing the
-	   cells below their 2.2em floor. Tooltips are plain title text; cells
-	   never take HTML (docs/b25-heatmap.md §7). */
-	heatmapGrid: function(weeks) {
-		const cells = HEATMAP_DAYS.map((day) => E('div', { 'class': 'ap-heat-head' }, [ day ]));
-		for (const week of weeks)
-			for (const cell of week)
-				cells.push(cell
-					? E('div', {
-						'class': 'ap-heat-cell ap-heat-l' + cell.level + ' ap-heat-' + cell.health,
-						'title': cell.tip
-					})
-					: E('div', { 'class': 'ap-heat-cell ap-heat-blank' }));
+	/* 13 columns × 7 rows of consecutive dates in row-major order (the model's
+	   flat cells: one leading blank plus the last 90 days, today bottom-right).
+	   Tooltips are plain title text; cells never take HTML
+	   (docs/b25-heatmap.md §7). */
+	heatmapGrid: function(cells) {
 		return E('div', { 'class': 'ap-heat-scroll' },
-			[ E('div', { 'class': 'ap-heat-grid' }, cells) ]);
+			[ E('div', { 'class': 'ap-heat-grid' }, cells.map((cell) => cell
+				? E('div', {
+					'class': 'ap-heat-cell ap-heat-l' + cell.level + ' ap-heat-' + cell.health,
+					'title': cell.tip
+				})
+				: E('div', { 'class': 'ap-heat-cell ap-heat-blank' }))) ]);
 	},
 
 	readInterval: function() {
@@ -1085,9 +1077,8 @@ return view.extend({
 		return colors[level] ? 'color:' + colors[level] : '';
 	},
 
-	/* `cls` extends the card class (the heatmap card is width-capped, T12.7). */
-	section: function(title, children, cls) {
-		return E('div', { 'class': 'cbi-section' + (cls ? ' ' + cls : '') },
+	section: function(title, children) {
+		return E('div', { 'class': 'cbi-section' },
 			[ E('h3', {}, title), ...children ]);
 	},
 
@@ -1208,8 +1199,9 @@ return view.extend({
 		this.enabled = data.enabled;
 		this.initialReading = true;
 
-		/* B25 heatmap state: cfg is the raw UCI value; the card is built only
-		   while the switch is on and starts with the shared reading placeholder. */
+		/* B25 heatmap state: cfg is the raw UCI value; the region is built only
+		   while the switch is on and starts with the shared reading placeholder.
+		   The wrap class caps and centers the bare grid (no section box). */
 		this.heatmapCfg = data.heatmap;
 		this.heatmapGood = null;
 		this.heatmapError = null;
@@ -1219,7 +1211,7 @@ return view.extend({
 		this.heatmapDay = null;
 		this.heatmapRequest = null;
 		this.heatmapTtl = HEATMAP_TTL_MS;
-		this.heatmapContainer = E('div', {});
+		this.heatmapContainer = E('div', { 'class': 'ap-heat-wrap' });
 		this.heatmapStyle = E('style', {}, [ HEATMAP_CSS ]);
 		this.updateHeatmap();
 
@@ -1296,7 +1288,7 @@ return view.extend({
 			this.noticeContent = E('div', {});
 			this.runtimeContent = E('div', {});
 			this.trafficContainer = E('div', {});
-			/* T12.7 puts the heatmap card between the notices and the runtime
+			/* T12.7 puts the heatmap region between the notices and the runtime
 			   status card, under the title/enable line. It fills itself via
 			   loadHeatmap and stays an empty region while off. */
 			dom.content(this.content, [

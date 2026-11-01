@@ -2719,38 +2719,6 @@ msgid "Record daily proxy traffic and service health for the overview heatmap; w
 msgstr "记录每日代理流量与服务健康度，供概览页热力图使用；关闭时不采样、不写文件，已记录的历史保留。"
 
 msgctxt "aether-proxy"
-msgid "Usage heatmap"
-msgstr "使用热力图"
-
-msgctxt "aether-proxy"
-msgid "Mon"
-msgstr "周一"
-
-msgctxt "aether-proxy"
-msgid "Tue"
-msgstr "周二"
-
-msgctxt "aether-proxy"
-msgid "Wed"
-msgstr "周三"
-
-msgctxt "aether-proxy"
-msgid "Thu"
-msgstr "周四"
-
-msgctxt "aether-proxy"
-msgid "Fri"
-msgstr "周五"
-
-msgctxt "aether-proxy"
-msgid "Sat"
-msgstr "周六"
-
-msgctxt "aether-proxy"
-msgid "Sun"
-msgstr "周日"
-
-msgctxt "aether-proxy"
 msgid "Reading the usage history failed (%s)"
 msgstr "读取使用历史失败（%s）"
 

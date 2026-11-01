@@ -25,9 +25,10 @@
  * or the configured-versus-applied mode comparison;
  * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
  * T12.6 adds the B25 usage heatmap: switch interpretation, the stats_history
- * reply mapping and the pure 7×13 week grid with colour levels, health tiers
- * and text-only tooltips; T12.7 pins the grid to the last 13 weeks (91 cells
- * ending with today's week, full even without data);
+ * reply mapping and the pure date grid with colour levels, health tiers and
+ * text-only tooltips; T12.7 reworks it into a continuous 13×7 grid (91 cells
+ * in row-major order: one leading blank plus the last 90 days ending today,
+ * so today sits in the bottom-right corner, full even without data);
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -376,7 +377,8 @@ function node_options(labels, current) {
 /* B25 usage heatmap (docs/b25-heatmap.md §7, docs/10 「B25：概览页使用热力图」).
    Dates are 'YYYY-MM-DD' strings in the router's local calendar — the backend
    aggregates by local date and the view passes today's local date in. */
-const HEATMAP_WEEKS = 13;
+const HEATMAP_COLUMNS = 13;
+const HEATMAP_DAYS = 90;
 const HEATMAP_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /* Calendar-date parse that rejects impossible dates such as 2026-02-31. */
@@ -392,15 +394,6 @@ function parse_date(value) {
 function date_key(day) {
 	const part = (n) => String(n).padStart(2, '0');
 	return day.getUTCFullYear() + '-' + part(day.getUTCMonth() + 1) + '-' + part(day.getUTCDate());
-}
-
-/* Column of a date: Monday = 0 … Sunday = 6 (docs/b25-heatmap.md §7). */
-function weekday_index(day) {
-	return (day.getUTCDay() + 6) % 7;
-}
-
-function week_start(day) {
-	return add_days(day, -weekday_index(day));
 }
 
 function add_days(day, n) {
@@ -754,14 +747,14 @@ return baseclass.extend({
 		return d.getFullYear() + '-' + part(d.getMonth() + 1) + '-' + part(d.getDate());
 	},
 
-	/* T12.7: the grid is always 13 week rows (Monday..Sunday) × 7 columns = 91
-	   cells, ending with the week that contains today, so it covers the last
-	   ~90 days no matter how much history exists — an empty history renders the
-	   same full grid in the neutral blank colour instead of a notice. Days
-	   without an entry stay blank (no zero-fill, no backfill); dates after
-	   today are always blank; entries older than the window drop off. Colour
-	   level: log1p(tx+rx) normalized over the entries shown in the window, 0
-	   traffic lightest (level 0..4). */
+	/* T12.7 rework: the grid is always 13 columns × 7 rows = 91 cells in
+	   row-major order — one leading blank followed by 90 consecutive calendar
+	   days ending with today, so today is always the bottom-right cell and
+	   the window covers the last 90 days without week alignment. Days without
+	   an entry stay blank (no zero-fill, no backfill); entries after today
+	   are dropped before the window is laid out; entries older than the
+	   window drop off. Colour level: log1p(tx+rx) normalized over the entries
+	   shown in the window, 0 traffic lightest (level 0..4). */
 	heatmap_view: function(reply, today) {
 		if (!reply || reply.ok === false)
 			return { state: 'error',
@@ -783,34 +776,30 @@ return baseclass.extend({
 
 		/* An unparseable today falls back to the newest entry, so the window
 		   still covers the data; with neither, every cell is blank anyway and
-		   the anchor only picks which blank 13 weeks are shown. */
+		   the anchor only picks which blank 90 days are shown. */
 		const anchor = today_day ?? entries[entries.length - 1]?.day
 			?? parse_date('1970-01-01');
-		const first = add_days(week_start(anchor), -7 * (HEATMAP_WEEKS - 1));
+		const first = add_days(anchor, -(HEATMAP_DAYS - 1));
 		const shown = entries.filter((entry) => entry.day >= first);
 		const max = Math.max(0, ...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
 		const by_date = new Map(shown.map((entry) => [ entry.date, entry ]));
-		const weeks = [];
-		for (let r = 0; r < HEATMAP_WEEKS; r++) {
-			const row = [];
-			for (let i = 0; i < 7; i++) {
-				const date = date_key(add_days(first, r * 7 + i));
-				const entry = by_date.get(date);
-				if (!entry) {
-					row.push(null);
-					continue;
-				}
-				const v = Math.log1p(entry.tx + entry.rx);
-				row.push({
-					date,
-					level: (max > 0 && v > 0) ? Math.min(4, 1 + Math.floor((v / max) * 4)) : 0,
-					health: health_tier(entry),
-					tip: heatmap_tip(entry)
-				});
+		const cells = [ null ];
+		for (let i = 0; i < HEATMAP_DAYS; i++) {
+			const date = date_key(add_days(first, i));
+			const entry = by_date.get(date);
+			if (!entry) {
+				cells.push(null);
+				continue;
 			}
-			weeks.push(row);
+			const v = Math.log1p(entry.tx + entry.rx);
+			cells.push({
+				date,
+				level: (max > 0 && v > 0) ? Math.min(4, 1 + Math.floor((v / max) * 4)) : 0,
+				health: health_tier(entry),
+				tip: heatmap_tip(entry)
+			});
 		}
-		return { state: 'ok', weeks };
+		return { state: 'ok', cells };
 	},
 
 	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */
