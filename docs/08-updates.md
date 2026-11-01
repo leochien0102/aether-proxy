@@ -59,7 +59,7 @@
 3. 两个架构的 noarch SDK 产物也分别保留：RC 资产加 `<arch>--` 前缀，并把 GitHub 不支持的字符转为 `.`；清单保留原名。人工必须验证将被 channel 选中的产物（noarch 按架构路径排序选择 `aarch64_generic`，与现有生成器一致）。
 4. 人工验收后，在 channel **main** 手动运行 `promote.yml`，输入 `rc_tag`。它只下载公开 prerelease、校验完整资产集合/版本/tag commit/hash、恢复包目录，并下载该 commit 的两个独立发布工具和四份 Makefile（仅作版本元数据），**不 checkout app、不运行 SDK、不编译**。
 5. 晋升前用 `tools/channel/build.py --packages` 生成预检清单；同版本清单不同或已有同名包不同字节一律失败。与 packages/data 共用 `channel-publish` 并发锁。随后现有 `scripts/publish.sh` 生成规则数据、签名、发布 stable；私钥仅在最后一步来自 channel Actions Secret。签名器通过系统包安装，不运行 `scripts/usign.sh` 编译。
-6. 正式 tag **必须指向 RC 的同一 commit**。promote 若发现正式 tag 已存在就校验其 commit；若正式 tag 尚未创建，维护者之后必须在清单记录的 commit 上创建并保护 tag，不得移动 RC/正式 tag。本卡按约束不改 `release-assets.yml`，故不能在现有正式发布工作流中新增“未来 tag”的 commit 检查。正式发布仍使用原有成功 build 门禁和版本匹配的 channel manifest，仅复制资产，不重编。
+6. 正式 tag **必须指向 RC 的同一 commit**。promote 若发现正式 tag 已存在就校验其 commit；若正式 tag 尚未创建，维护者之后必须在清单记录的 commit 上创建并保护 tag，不得移动 RC/正式 tag。`release-assets.yml` 只增加了 `-rc` tag 跳过条件，避免 RC 触发正式流程；它仍使用原有成功 build 门禁和版本匹配的 channel manifest，仅复制资产，不重编。未来正式 tag 的 commit 约束仍需维护者按 RC 清单执行。
 
 RC 不主动触发 channel 发布；已有 `release-assets.yml` 的 `v*` 触发规则未改，因此 RC tag 也会启动该旧流程，但其 RC 版本字符串不匹配正式 channel 包版本，不会走到上传。此处不自动取消或绕过原门禁。已有 RC Release 不覆盖、不重试上传；失败残留需维护者人工检查，不自动删改远端。
 
