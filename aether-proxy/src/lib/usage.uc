@@ -138,19 +138,22 @@ function valid_entry(entry) {
 		numeric(entry.observed) && numeric(entry.healthy);
 };
 
-// load(path) -> { days, error, op }. A missing file is an empty history without an
-// error. A corrupt or unreadable file is an empty history plus the failure detail —
-// the caller warns once and leaves the file in place for the next successful write to
-// overwrite it (docs §5). Entries without four non-negative numbers, or under a
+// load(path) -> { days, error, op, updated_at }. A missing file is an empty history
+// without an error. A corrupt or unreadable file is an empty history plus the failure
+// detail — the caller warns once and leaves the file in place for the next successful
+// write to overwrite it (docs §5). Entries without four non-negative numbers, or under a
 // non-date key, are ignored; unknown fields of a kept entry are preserved, and a
-// healthy share above observed is clamped back into range.
+// healthy share above observed is clamped back into range. `updated_at` (T12.5, read
+// only) is the document's wall-clock write time as a non-negative number, and null
+// whenever no valid document was read — a missing, corrupt or malformed file has no
+// history snapshot time to report.
 export function load(path) {
 	let text = fs.readfile(path);
 	if (text == null) {
 		let detail = fs.error() ?? 'unknown error';
 		return detail == 'No such file or directory'
-			? { days: {}, error: null, op: 'read' }
-			: { days: {}, error: `read ${path}: ${detail}`, op: 'read' };
+			? { days: {}, error: null, op: 'read', updated_at: null }
+			: { days: {}, error: `read ${path}: ${detail}`, op: 'read', updated_at: null };
 	}
 	let data = null;
 	try {
@@ -160,12 +163,13 @@ export function load(path) {
 		data = null;
 	}
 	if (type(data) != 'object' || type(data.days) != 'object')
-		return { days: {}, error: `parse ${path}: expected a JSON object with a days table`, op: 'parse' };
+		return { days: {}, error: `parse ${path}: expected a JSON object with a days table`,
+			op: 'parse', updated_at: null };
 	let days = {};
 	for (let date, entry in data.days)
 		if (match(date, DATE_PATTERN) && valid_entry(entry))
 			days[date] = { ...entry, healthy: min(entry.healthy, entry.observed) };
-	return { days, error: null, op: 'parse' };
+	return { days, error: null, op: 'parse', updated_at: numeric(data.updated_at) ? data.updated_at : null };
 };
 
 // collect(state, previous) -> the day map to persist, or null while the sampler never

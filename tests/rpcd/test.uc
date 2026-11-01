@@ -480,7 +480,7 @@ function scenario_10() {
 
 	expect_eq('10. ACL read methods match the read-only whitelist including stats',
 		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log', 'node_parse',
-			'probe_results', 'probe_sites', 'stats', 'status', 'sub_status', 'version' ]),
+			'probe_results', 'probe_sites', 'stats', 'stats_history', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
 		show([ 'check', 'job_start', 'mode_use', 'node_import', 'node_use', 'probe_now', 'probe_url', 'save_file', 'service' ]),
@@ -494,7 +494,7 @@ function scenario_10() {
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'mode_use',
 			'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
-			'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
+			'save_file', 'service', 'stats', 'stats_history', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('T10.4 components declares empty args', deep_eq(methods.components.args, {}), show(methods.components.args));
@@ -523,6 +523,9 @@ function scenario_10() {
 		deep_eq(rpcd_policy(methods.events.args), { since: 'int32', level: 'string' }), show(methods.events.args));
 	check('10. log policy: source string, lines int32',
 		deep_eq(rpcd_policy(methods.log.args), { source: 'string', lines: 'int32' }), show(methods.log.args));
+	// T12.5: days is declared as int32 (rpcd derives the ubus type from the example value).
+	check('10. stats_history policy: days int32',
+		deep_eq(rpcd_policy(methods.stats_history.args), { days: 'int32' }), show(methods.stats_history.args));
 	check('10. node_import policy: uri string',
 		deep_eq(rpcd_policy(methods.node_import.args), { uri: 'string' }), show(methods.node_import.args));
 	check('10. list_file policy: name string',
@@ -533,7 +536,7 @@ function scenario_10() {
 	let side_of = {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
-		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
+		data_status: 'read', stats: 'read', stats_history: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
 		service: 'write', check: 'write', job_start: 'write', mode_use: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
@@ -803,6 +806,7 @@ function scenario_sessions() {
 		job_status: { args: { id: 'j_1_2' }, argv: [ 'job', 'status', 'j_1_2' ] },
 		events: { args: { since: 0, level: 'warn' }, argv: [ 'events', '--since', '0', '--level', 'warn' ] },
 		stats: { argv: [ 'stats' ] },
+		stats_history: { args: { days: 3 }, argv: [ 'stats', 'history', '--days', '3' ] },
 		data_status: { argv: [ 'data', 'status' ] },
 		sub_status: { argv: [ 'sub', 'status' ] },
 		probe_now: { argv: [ 'probe', 'now' ] },
@@ -992,6 +996,57 @@ function scenario_dns_test() {
 		deep_eq(methods.job_start.call({ args: { kind: 'dns_test', args: [] } }), busy));
 }
 
+// T12.5 (docs/10 "stats history"): days maps to --days; out-of-range or mistyped
+// values are rejected without execution, in-range and absent ones forwarded.
+function scenario_stats_history() {
+	let data = { ok: true, enabled: true, days: [ { date: '2026-11-01', tx: 1, rx: 2, observed: 3, healthy: 3 } ],
+		updated_at: 1790000000 };
+	stub_ctrl({ exit: 0, stdout: show(data) });
+
+	let cases = [
+		{ name: 'no arguments (CLI default of 90)', args: {}, want: [ 'stats', 'history' ] },
+		{ name: 'days 1 (lower bound)', args: { days: 1 }, want: [ 'stats', 'history', '--days', '1' ] },
+		{ name: 'days 90 (upper bound)', args: { days: 90 }, want: [ 'stats', 'history', '--days', '90' ] },
+		{ name: 'days 7', args: { days: 7 }, want: [ 'stats', 'history', '--days', '7' ] }
+	];
+
+	for (let c in cases) {
+		let argv_of = watch_cli();
+		let r = methods.stats_history.call({ args: { ...c.args, ubus_rpc_session: 'token' } });
+		check(`T12.5 stats_history ${c.name}: exact argv and unchanged JSON`,
+			deep_eq(argv_of(), [ ...c.want, '--json' ]) && deep_eq(r, data), show(r));
+	}
+
+	// The disabled reply is the CLI JSON as-is, not reshaped by the plugin.
+	let off = { ok: true, enabled: false, days: [] };
+	stub_ctrl({ exit: 0, stdout: show(off) });
+	let argv_of = watch_cli();
+	let r = methods.stats_history.call({ args: {} });
+	check('T12.5 stats_history disabled: reply forwarded unchanged',
+		deep_eq(r, off) && deep_eq(argv_of(), [ 'stats', 'history', '--json' ]), show(r));
+
+	let rejects = [
+		{ name: 'days 0', args: { days: 0 } },
+		{ name: 'days 91', args: { days: 91 } },
+		{ name: 'negative days', args: { days: -1 } },
+		{ name: 'fractional days', args: { days: 1.5 } },
+		{ name: 'string days', args: { days: '7' } },
+		{ name: 'boolean days', args: { days: true } },
+		{ name: 'array days', args: { days: [] } }
+	];
+
+	for (let c in rejects) {
+		let unused = watch_cli();
+		let r2 = methods.stats_history.call({ args: { ...c.args, ubus_rpc_session: 'token' } });
+		check(`T12.5 stats_history rejects ${c.name}: USAGE without execution`,
+			r2?.ok === false && r2?.code == 'USAGE' && unused() == null, show(r2));
+	}
+
+	check('T12.5 stats_history uses default 10-second timeout',
+		match(plugin_src, /call_cli\(argv, DEFAULT_TIMEOUT_SECS\)/) != null &&
+		match(plugin_src, /const DEFAULT_TIMEOUT_SECS = 10;/) != null, 'timeout policy');
+}
+
 // ---------------------------------------------------------------- scenarios
 
 scenario_1();
@@ -1012,6 +1067,7 @@ scenario_15();
 scenario_16();
 scenario_17();
 scenario_18();
+scenario_stats_history();
 scenario_components();
 scenario_sessions();
 scenario_node_probe();

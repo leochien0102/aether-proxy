@@ -36,6 +36,7 @@ Commands:
   status [--json]    print the latest runtime state
   components [--json] find installed components and read their versions
   stats [--json]     read traffic and connection counters
+  stats history      print the recorded daily usage history (B25 heatmap)
   events [options]   list structured events
   probe now          request an immediate proxy health check
   probe nodes        test TCP reachability of subscription nodes

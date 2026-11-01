@@ -571,6 +571,19 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 - 某一项读不到只让该项为 `null`，整个调用仍 `ok: true`；`--sys-root` 下的 `/proc/...` 路径按 sys-root 拼接（测试用）。
 - rpcd 方法 `stats`（无参数，read，10 秒）。
 
+**`aether-proxy stats history`**（B25 使用热力图的历史查询，T12.5；只读、不记事件、**不进入 5 秒轮询**，仅热力图卡片按需调用；接受 `--days N`、`--json`、`--confdir`、`--run-dir`、`--sys-root` 测试选项）：
+
+```json
+{ "ok": true, "enabled": true, "updated_at": 1790000000,
+  "days": [ { "date": "2026-11-01", "tx": 123, "rx": 456, "observed": 3600, "healthy": 3500 } ] }
+```
+
+- 先读配置 `stats.heatmap_enabled`：关闭 → 恰好 `{ "ok": true, "enabled": false, "days": [] }`（无 `updated_at`），且**不打开** `usage.json`；配置缺 `stats` 段同关闭。配置本身无效 → `CONFIG_INVALID`（退出码 2，与 `status` 相同）。
+- `days`：只返回最近 N 个**有数据的日期**，按日期升序；条目只含 `date/tx/rx/observed/healthy` 五个字段。`--days` 取 1–90（缺省 90）；0、91、负数、非正整数、重复给出 → `USAGE`（退出码 2）。
+- `updated_at`：`usage.json` 的写入时间（墙钟秒，来自 `usage.load`）。文件缺失、损坏或不可读 → `days: []`、`updated_at: null`，仍 `ok: true`（docs/b25-heatmap.md §5/§8：损坏按空历史处理，不报错、不阻塞；rpcd 不会因此失败）。
+- 只读：不修改 `usage.json`、不触发 monitor/采样；`--run-dir` 仅接受不使用（与其他只读命令的参数面一致）。
+- rpcd 方法 `stats_history`（参数 `{ days?: number }`，read，10 秒；`days` 非 1–90 的整数 → `USAGE`，缺省同 CLI 的 90；响应原样转发 CLI JSON）。
+
 **2. 立即检测与换节点后自动检测（T8.12b）**：
 - **`aether-proxy probe now`**：读 `state.json`，`state` 不是 `starting`、`running`、`degraded`、`failsafe` → `{ "ok": false, "code": "NOT_RUNNING", "detail": "…" }`，退出码 1，不记事件；
   否则经 procd 向 daemon 发 SIGUSR1（`ubus call service signal '{"name":"aether-proxy","signal":10}'`，与 08 的 SIGUSR2 写法相同），失败 → `CMD_FAILED`（记事件），退出码 1；

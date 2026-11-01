@@ -1,4 +1,5 @@
 """Isolated proc/nft sources for docs/10 Dashboard snapshots; no privileges needed."""
+import datetime
 import hashlib
 import json
 import pathlib
@@ -8,6 +9,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CLI = [str(ROOT / 'tests/host/ucode'), str(ROOT / 'aether-proxy/src/aether-proxy'), '--', 'stats']
+HIST = [str(ROOT / 'tests/host/ucode'), str(ROOT / 'aether-proxy/src/aether-proxy'), '--', 'stats', 'history']
 BLOCK = '''\tcounter proxy_tx {}
 \tcounter proxy_rx {}
 \tchain traffic_out {
@@ -184,7 +186,98 @@ def snapshots(base):
 			and json.loads(result.stdout)['code'] == 'USAGE')
 
 
+def confdir(base, heatmap):
+	# A minimal valid configuration (main disabled) whose only variable is the B25 switch.
+	path = base / ('heatmap-on' if heatmap else 'heatmap-off')
+	path.mkdir(parents=True, exist_ok=True)
+	(path / 'aetherproxy').write_text(
+		"config main 'main'\n\toption enabled '0'\n"
+		+ ("config stats 'stats'\n\toption heatmap_enabled '1'\n" if heatmap else
+			"config stats 'stats'\n\toption heatmap_enabled '0'\n"))
+	return path
+
+
+def usage_document(count, updated_at=1790000000):
+	# `count` valid local dates starting 2026-01-01 (tx marks the index, so order and
+	# trimming are observable); junk keys ride along and must never surface.
+	days = {}
+	for i in range(count):
+		date = (datetime.date(2026, 1, 1) + datetime.timedelta(days=i)).isoformat()
+		days[date] = {'tx': i, 'rx': count - i, 'observed': 86400, 'healthy': 86000}
+	days['not-a-date'] = {'tx': 1, 'rx': 1, 'observed': 1, 'healthy': 1}
+	days['2026-99-99'] = 'junk'
+	return json.dumps({'schema': 1, 'updated_at': updated_at, 'days': days})
+
+
+def history(base):
+	# docs/10 "stats history" (T12.5): read-only daily usage with the B25 switch.
+	root = base / 'hist-root'
+	(root / 'etc/aether-proxy').mkdir(parents=True, exist_ok=True)
+	conf_on = confdir(base, True)
+	file = root / 'etc/aether-proxy/usage.json'
+	# 95 valid days: the persisted cap; --days must trim to the *last* N by date.
+	file.write_text(usage_document(95))
+
+	def run(*args):
+		return subprocess.run(HIST + ['--json', '--sys-root', str(root),
+			'--confdir', str(conf_on), *args], cwd=ROOT, text=True, capture_output=True, timeout=12)
+
+	value = json.loads(run().stdout)
+	check('6. history defaults to 90 days, oldest first, junk entries dropped',
+		value['ok'] is True and value['enabled'] is True and len(value['days']) == 90
+		and value['days'][0]['date'] == '2026-01-06' and value['days'][-1]['date'] == '2026-04-05'
+		and value['updated_at'] == 1790000000
+		and all(list(day.keys()) == ['date', 'tx', 'rx', 'observed', 'healthy'] for day in value['days']))
+	check('6. history trims to the newest --days entries',
+		json.loads(run('--days', '1').stdout)['days'] == [
+			{'date': '2026-04-05', 'tx': 94, 'rx': 1, 'observed': 86400, 'healthy': 86000}]
+		and len(json.loads(run('--days', '89').stdout)['days']) == 89)
+	original = file.read_bytes()
+	run('--days', '90')
+	check('6. history leaves the usage file byte for byte unchanged', file.read_bytes() == original)
+	for invalid in [['--days', '0'], ['--days', '91'], ['--days', 'abc'], ['--days'], ['--days', '-1'],
+			['--days', '1.5'], ['--days', '1', '--days', '2'], ['extra'], ['--bin-dir', str(base)]]:
+		result = run(*invalid)
+		check('6. history usage rejects ' + ' '.join(invalid), result.returncode == 2
+			and json.loads(result.stdout)['code'] == 'USAGE')
+
+	file.unlink()
+	value = json.loads(run().stdout)
+	check('6. history with a missing file is an enabled empty history with null updated_at',
+		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None})
+	file.write_text('{"days": { broken')
+	value = json.loads(run().stdout)
+	check('6. history with a corrupt file is the same empty history and keeps the bytes',
+		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None}
+		and file.read_text() == '{"days": { broken')
+
+	# With the switch off the file must not even be read: a full history is on disk.
+	file.write_text(usage_document(95))
+	conf_off = confdir(base, False)
+	value = json.loads(subprocess.run(HIST + ['--json', '--sys-root', str(root),
+		'--confdir', str(conf_off)], cwd=ROOT, text=True, capture_output=True, timeout=12).stdout)
+	check('6. history with the switch off is exactly the disabled reply',
+		value == {'ok': True, 'enabled': False, 'days': []})
+	no_stats = root / 'conf-empty'
+	no_stats.mkdir(exist_ok=True)
+	(no_stats / 'aetherproxy').write_text("config main 'main'\n\toption enabled '0'\n")
+	value = json.loads(subprocess.run(HIST + ['--json', '--sys-root', str(root),
+		'--confdir', str(no_stats)], cwd=ROOT, text=True, capture_output=True, timeout=12).stdout)
+	check('6. history without a stats section is off like the switch says',
+		value == {'ok': True, 'enabled': False, 'days': []})
+
+	# An unrelated invalid configuration fails the call like status does (docs/10).
+	broken = root / 'conf-broken'
+	broken.mkdir(exist_ok=True)
+	(broken / 'aetherproxy').write_text("config main 'main'\n\toption enabled '1'\n")
+	result = subprocess.run(HIST + ['--json', '--sys-root', str(root),
+		'--confdir', str(broken)], cwd=ROOT, text=True, capture_output=True, timeout=12)
+	check('6. history with an invalid configuration is CONFIG_INVALID', result.returncode == 2
+		and json.loads(result.stdout)['code'] == 'CONFIG_INVALID')
+
+
 golden_tests()
 with tempfile.TemporaryDirectory(prefix='aether-stats-') as directory:
 	snapshots(pathlib.Path(directory))
+	history(pathlib.Path(directory))
 print('stats: all scenarios passed')

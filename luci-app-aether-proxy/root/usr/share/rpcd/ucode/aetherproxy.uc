@@ -28,6 +28,10 @@ const STDERR_FORWARD_BYTES = 512;
 const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const URI_MAX_BYTES = 4096;
 const LOG_LINES_MIN = 1;
+// docs/10 "stats history" (T12.5): --days takes 1..USAGE_DAYS_KEEP, absent meaning the
+// CLI default. Validated here so out-of-range values never reach the CLI.
+const HISTORY_DAYS_MIN = 1;
+const HISTORY_DAYS_MAX = C.USAGE_DAYS_KEEP;
 
 
 const SERVICE_ACTIONS = [ 'start', 'stop', 'restart' ];
@@ -331,6 +335,25 @@ const methods = {
 			return call_cli([ 'stats' ], DEFAULT_TIMEOUT_SECS);
 		},
 		args: {}
+	},
+
+	// T12.5 (docs/10 "stats history"): read-only daily usage history for the overview
+	// heatmap; not part of the 5-second stats poll. The reply is the CLI JSON unchanged,
+	// including `enabled: false` with the switch off.
+	stats_history: {
+		call: function(req) {
+			let days = req?.args?.days;
+			let argv = [ 'stats', 'history' ];
+
+			if (days != null) {
+				if (type(days) != 'int' || days < HISTORY_DAYS_MIN || days > HISTORY_DAYS_MAX)
+					return usage(`days must be an integer between ${HISTORY_DAYS_MIN} and ${HISTORY_DAYS_MAX}`);
+				push(argv, '--days', `${days}`);
+			}
+
+			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
+		},
+		args: { days: 0 }
 	},
 
 	data_status: {

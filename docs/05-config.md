@@ -159,7 +159,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `heatmap_enabled` | bool | `0` | 是否记录每日代理流量与服务健康度，供概览页热力图使用（[b25-heatmap](b25-heatmap.md)）。开启后 monitor 在现有轮询内采样，跨天/停止时写 `/etc/aether-proxy/usage.json`（最近 90 天，0600）；关闭时不采样、不写文件、不提供历史，已有文件保留但停止更新，重新开启继续累计。与其他 bool 不同，本项取值**缺省、空、非 `1` 均视为关闭且不报错**（手改的坏值不允许让整个配置失效）；升级旧配置没有此段时按关闭处理，不自动开启。开关走普通配置的 apply/reload，不新增 rpcd 写接口 |
+| `heatmap_enabled` | bool | `0` | 是否记录每日代理流量与服务健康度，供概览页热力图使用（[b25-heatmap](b25-heatmap.md)）。开启后 monitor 在现有轮询内采样，跨天/停止时写 `/etc/aether-proxy/usage.json`（最近 90 天，0600）；历史经 `aether-proxy stats history` 与 rpcd `stats_history` 只读查询（[10](10-cli-luci.md)「Dashboard」）；关闭时不采样、不写文件、不提供历史（API 返回 `enabled:false` 且不打开 usage 文件），已有文件保留但停止更新，重新开启继续累计。与其他 bool 不同，本项取值**缺省、空、非 `1` 均视为关闭且不报错**（手改的坏值不允许让整个配置失效）；升级旧配置没有此段时按关闭处理，不自动开启。开关走普通配置的 apply/reload，不新增 rpcd 写接口 |
 
 ## 文件
 

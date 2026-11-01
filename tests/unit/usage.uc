@@ -74,36 +74,50 @@ const T124_CASES = [
 	{
 		name: 'T12.4 a missing file loads as an empty history without an error',
 		run: 'load', file: 'load-missing.json', content: null,
-		expect: { days: {}, error: false, op: 'read' }
+		expect: { days: {}, error: false, op: 'read', updated_at: null }
 	},
 	{
 		name: 'T12.4 a corrupt file loads as an empty history and is left untouched',
 		run: 'load-kept', file: 'load-corrupt.json', content: '{not json',
-		expect: { days: {}, error: true, op: 'parse', kept: true }
+		expect: { days: {}, error: true, op: 'parse', updated_at: null, kept: true }
 	},
 	{
 		name: 'T12.4 a JSON value that is not an object loads as an empty history',
 		run: 'load', file: 'load-array.json', content: '[1,2]',
-		expect: { days: {}, error: true, op: 'parse' }
+		expect: { days: {}, error: true, op: 'parse', updated_at: null }
 	},
 	{
 		name: 'T12.4 a days table that is not an object loads as an empty history',
 		run: 'load', file: 'load-days-array.json', content: '{"schema":1,"days":[]}',
-		expect: { days: {}, error: true, op: 'parse' }
+		expect: { days: {}, error: true, op: 'parse', updated_at: null }
 	},
 	{
 		name: 'T12.4 kept entries preserve their unknown fields across a load',
 		run: 'load', file: 'load-valid.json',
 		content: '{"schema":1,"updated_at":1790000000,"days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":9,"note":"x"}}}',
 		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 9, note: 'x' } },
-			error: false, op: 'parse' }
+			error: false, op: 'parse', updated_at: 1790000000 }
+	},
+	{
+		name: 'T12.5 a non-numeric updated_at loads as null, days still kept',
+		run: 'load', file: 'load-updated-str.json',
+		content: '{"schema":1,"updated_at":"1790000000","days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":9}}}',
+		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 9 } },
+			error: false, op: 'parse', updated_at: null }
+	},
+	{
+		name: 'T12.5 a negative updated_at loads as null',
+		run: 'load', file: 'load-updated-negative.json',
+		content: '{"updated_at":-1,"days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":9}}}',
+		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 9 } },
+			error: false, op: 'parse', updated_at: null }
 	},
 	{
 		name: 'T12.4 a healthy share above observed is clamped back on load',
 		run: 'load', file: 'load-clamp.json',
 		content: '{"days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":20}}}',
 		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 10 } },
-			error: false, op: 'parse' }
+			error: false, op: 'parse', updated_at: null }
 	},
 	{
 		name: 'T12.4 malformed and non-date entries are ignored, valid neighbours kept',
@@ -114,7 +128,7 @@ const T124_CASES = [
 			'"2026-10-24":"junk",' +
 			'"not-a-date":{"tx":1,"rx":2,"observed":3,"healthy":2}}}',
 		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 3, healthy: 2 } },
-			error: false, op: 'parse' }
+			error: false, op: 'parse', updated_at: null }
 	},
 	{
 		name: 'T12.4 a successful write leaves a 0600 document without temp residue',
@@ -347,7 +361,7 @@ export function run(c) {
 	if (c.run == 'load' || c.run == 'load-kept') {
 		let path = scratch(c.file, c.content);
 		let got = usage.load(path);
-		let out = { days: got.days, error: got.error != null, op: got.op };
+		let out = { days: got.days, error: got.error != null, op: got.op, updated_at: got.updated_at };
 		if (c.run == 'load-kept')
 			out.kept = fs.readfile(path) == c.content;
 		return out;
