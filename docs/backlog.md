@@ -257,7 +257,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 ## B23 支持 Xray 上游的新协议（Hysteria / WireGuard / SOCKS / HTTP …）（2026-10-30 改，2026-11-01 首批完成）
 
-- 状态：**首批完成**。SOCKS5、HTTP、WireGuard、Hysteria2 已在 0.6.1/0.6.2 落地；`aether-xray` 拆分也已完成。补丁协议仍按下方边界排除；原有 VLESS/VMess/Trojan/Shadowsocks 的 `node import`/`node parse` 与批量导入仍可用，**新协议（SOCKS5/HTTP/WireGuard/Hysteria2）的 URI/订阅导入尚未扩展**。
+- 状态：**首批完成**。SOCKS5、HTTP、WireGuard、Hysteria2 已在 0.6.1/0.6.2 落地；`aether-xray` 拆分也已完成。补丁协议仍按下方边界排除；原有 VLESS/VMess/Trojan/Shadowsocks 的 `node import`/`node parse` 与批量导入仍可用，**新协议（SOCKS5/HTTP/WireGuard/Hysteria2）的 URI/订阅导入已完成（T11.11，2026-11-01）**。
 - **当前阶段决定（2026-10-30）**：aether-proxy 跟 **XTLS/Xray 上游**，`aether-xray` 不带补丁，节点模型也只做上游协议。这是当前以主要功能和稳定运行为主的边界；今后项目铺开、确有需求时，可另立设计再评估补丁协议，不自动回退本决策。
   AnyTLS、Naive、ShadowsocksR、TUIC、Snell、ShadowTLS、KCPTun 这些只在 `feeds/packages` 的补丁里，继续由 **feeds + ssr-plus 的 `/usr/bin/xray`** 提供，不进 aether-proxy 的节点模型。
 - 来源（2026-10-30 仓库所有者）：aether-proxy 的节点模型目前只有 vless/vmess/trojan/shadowsocks；上游 Xray 还有 Hysteria、WireGuard、SOCKS/HTTP 出站等，按稳定迭代期逐步补。
@@ -270,7 +270,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
   2. aether-proxy 的查找顺序：显式 `main.xray_bin` → `/usr/bin/aether-xray` → `/usr/bin/xray`（回退）；`components`/`status` 显示实际路径；版本闸门按实际二进制。
   3. 上游协议按最低版本/CI 逐协议标；golden 用真实 `run -test`。当前 `XRAY_LATEST_TESTED` 为 26.10.31。
   4. 通道的 `aether-xray` 跟踪上游 tag，不带补丁；ssr-plus 继续按自己的节奏更新 `/usr/bin/xray`。
-- 首批已完成：**Hysteria2**、**WireGuard**、**SOCKS5/HTTP**；补丁协议不在本条。原有协议的 URI 导入保留；新协议的 URI/订阅导入仍是缺口。
+- 首批已完成：**Hysteria2**、**WireGuard**、**SOCKS5/HTTP**；补丁协议不在本条。原有协议的 URI 导入保留；新协议的 URI/订阅导入已完成。
 - 不在本条：分流（B1/B20）；`aether-xray` 的包名/路径/更新页迁移见 B24。
 
 ## B24 `aether-xray` 独立二进制与包名（2026-10-30，2026-11-01 已完成）
