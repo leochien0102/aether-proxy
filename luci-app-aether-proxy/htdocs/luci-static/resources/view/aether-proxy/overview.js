@@ -25,7 +25,8 @@
  * only fetchRefresh may call stats_history (at most one read per 10 minutes or
  * after the local date rolls over) and a failed read keeps the last successful
  * grid; T12.7 moves the region up between the notices and the runtime status
- * card and reworks it into a bare centered 13×7 date grid — no section
+ * card and reworks it into a bare 3×30 date grid (75% of the content width,
+ * centered) — no section
  * background, no title, no weekday header. The region is completely absent
  * while disabled.
  *
@@ -59,18 +60,19 @@ const HEATMAP_TTL_MS = 10 * 60 * 1000;
    the view script, so a cached old script never pairs with newer CSS or the
    other way round (docs/10 T10.12). Green steps use rgba so both dark and
    light themes keep the ramp; theme variables only carry the health colours.
-   T12.7 rework: no section box — the wrap only caps and centers the region
-   (max 540px, like the 13-column grid's 480–540px target); the thirteen equal
-   columns stay between 2.0em and 2.4em and every cell is a rounded square via
-   aspect-ratio, so seven rows stay near 250–300px tall. When the natural grid
-   is wider than the wrap, the columns shrink toward 2.0em first (the desktop
-   never scrolls horizontally); only below that does the wrapper scroll —
-   narrow screens scroll instead of squeezing further. */
+   T12.7 rework: no section box — the wrap is 75% of the content width,
+   centered, and keeps a margin below it in front of the runtime status card;
+   while off, the region is an empty div and `:empty` removes it from layout
+   entirely. The thirty equal columns fill the wrap (minmax(0,1fr) never
+   overflows), so every cell is a rounded square via aspect-ratio — about
+   25px on a desktop content column, about 80–100px tall across three rows;
+   the scroll wrapper stays as a safety net for very narrow screens. */
 const HEATMAP_CSS = [
-	'.ap-heat-wrap { max-width: 540px; margin-inline: auto }',
+	'.ap-heat-wrap { width: 75%; max-width: 75%; margin-inline: auto; margin-bottom: 1.25em }',
+	'.ap-heat-wrap:empty { display: none }',
 	'.ap-heat-scroll { overflow-x: auto }',
-	'.ap-heat-grid { display: grid; grid-template-columns: repeat(13, minmax(2.0em, 2.4em)); '
-		+ 'gap: 4px; width: max-content; max-width: 100%; margin-inline: auto }',
+	'.ap-heat-grid { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); '
+		+ 'gap: 3px; width: 100% }',
 	'.ap-heat-cell { width: 100%; aspect-ratio: 1; border-radius: 20% }',
 	'.ap-heat-blank { background: rgba(127,127,127,0.12) }',
 	'.ap-heat-l0 { background: rgba(47,133,90,0.15) }',
@@ -548,10 +550,9 @@ return view.extend({
 		dom.content(this.heatmapContainer, children);
 	},
 
-	/* 13 columns × 7 rows of consecutive dates in row-major order (the model's
-	   flat cells: one leading blank plus the last 90 days, today bottom-right).
-	   Tooltips are plain title text; cells never take HTML
-	   (docs/b25-heatmap.md §7). */
+	/* 3 rows × 30 columns of consecutive dates in row-major order (the model's
+	   flat cells: the last 90 days, today bottom-right). Tooltips are plain
+	   title text; cells never take HTML (docs/b25-heatmap.md §7). */
 	heatmapGrid: function(cells) {
 		return E('div', { 'class': 'ap-heat-scroll' },
 			[ E('div', { 'class': 'ap-heat-grid' }, cells.map((cell) => cell
