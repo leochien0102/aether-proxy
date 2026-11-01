@@ -287,9 +287,77 @@ function package_asset(manifest, name, arch, pm, previous) {
 	return url == null || !asset_verifiable(asset) ? null : { ...asset, url, version };
 }
 
+// The signed itinerary is independent of steps: deleting a step and rejoining
+// min_from must not silently authorize a shortcut. Never infer numeric releases.
+function bridge_plan(manifest, installed, arch, pm) {
+	if (index(keys(manifest), 'compatibility') < 0)
+		return { ok: true, active: false };
+	let invalid = { ok: false, active: true, code: 'BRIDGE_UNAVAILABLE',
+		detail: '兼容链无效、步骤缺失或本机所需资产不可用' };
+	let chain = manifest.compatibility?.[C.PROG];
+	if (type(manifest.compatibility) != 'object' || type(chain) != 'object')
+		return { ...invalid, detail: 'compatibility.aether-proxy must be an object' };
+	let steps = chain.steps, required = chain.required_steps;
+	if (type(steps) != 'array' || length(steps) == 0 || type(required) != 'array' || length(required) != length(steps))
+		return { ...invalid, detail: 'bridge steps missing or required_steps itinerary length mismatch' };
+	let predecessor = steps[0]?.min_from, next = null, remaining = 0;
+	if (chain.from != null && chain.from != predecessor)
+		return { ...invalid, detail: 'bridge source does not match first min_from' };
+	let rollback = null;
+	for (let i = 0; i < length(steps); i++) {
+		let step = steps[i];
+		if (type(step) != 'object' || type(step.version) != 'string'
+			|| match(step.version, /^\d+\.\d+\.\d+(-(r)?\d+)?$/) == null
+			|| type(step.min_from) != 'string' || match(step.min_from, /^\d+\.\d+\.\d+(-(r)?\d+)?$/) == null
+			|| step.min_from != predecessor || !version_newer(step.version, predecessor)
+			|| required[i] != step.version || type(step.reason) != 'string' || length(trim(step.reason)) == 0
+			|| type(step.assets) != 'object' || length(keys(step.assets)) == 0)
+			return { ...invalid, detail: `bridge step ${i + 1}: invalid version/order/min_from/itinerary/reason/assets` };
+		for (let a, formats in step.assets) {
+			if (match(a, /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/) == null || type(formats) != 'object' || length(keys(formats)) == 0)
+				return { ...invalid, detail: `bridge ${step.version}: invalid architecture or empty formats` };
+			for (let fmt, asset in formats)
+				if ((fmt != 'ipk' && fmt != 'apk') || type(asset) != 'object'
+					|| asset_filename(asset.url) == null || match(asset.url, /^[A-Za-z0-9_][A-Za-z0-9_.-]*\.(ipk|apk)$/) == null
+					|| substr(asset.url, -length(fmt) - 1) != '.' + fmt || !asset_verifiable(asset) || asset.size <= 0)
+					return { ...invalid, detail: `bridge ${step.version}: invalid ${a}/${fmt} url/hash/size` };
+		}
+		let asset = package_asset({ packages: { [C.PROG]: { current: step } } }, C.PROG, arch, pm, false);
+		if (asset == null)
+			return { ...invalid, detail: `bridge ${step.version}: no ${pm} asset for ${arch}` };
+		// Package release suffixes are significant; the installed predecessor must
+		// be exactly the signed version, not merely numerically near it.
+		if (installed == step.min_from) {
+			next = { ...step, asset };
+			remaining = length(steps) - i;
+		}
+		if (installed == step.version)
+			rollback = step;
+		predecessor = step.version;
+	}
+	if (predecessor != manifest.packages?.[C.PROG]?.current?.version)
+		return { ...invalid, detail: 'bridge terminal version does not match target current version' };
+	if (installed == predecessor)
+		return { ok: true, active: false };
+	if (next == null) {
+		// A newer installed version is not a request to downgrade through a chain.
+		if (type(installed) == 'string' && version_newer(installed, predecessor))
+			return { ok: true, active: false };
+		return { ...invalid, detail: `installed version ${installed} is not an exact bridge predecessor` };
+	}
+	return { ok: true, active: true, next, remaining, rollback };
+}
+
 function build_result(ctx, manifest, base, arch, pm) {
 	let packages = {};
 	let prior = read_object(`${ctx.run_dir}/${C.UPDATE_FILE}`);
+	let backend = { ok: true, version: null };
+	if (index(keys(manifest), 'compatibility') >= 0) {
+		backend = installed_version(ctx, pm, C.PROG);
+		if (!backend.ok)
+			return backend;
+	}
+	let plan = bridge_plan(manifest, backend.version, arch, pm);
 	for (let name in C.UPDATE_PACKAGES) {
 		let entry = manifest.packages?.[name];
 		if (type(entry) != 'object' || type(entry.current) != 'object')
@@ -300,7 +368,14 @@ function build_result(ctx, manifest, base, arch, pm) {
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
-		let newer = asset != null && version_newer(current.version, installed.version);
+		let bridge = plan.active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0);
+		if (bridge) {
+			current = plan.ok ? plan.next : current;
+			// All application entry points select this same backend-only step.
+			// Never expose a target page asset while the backend is on a bridge.
+			asset = plan.ok ? plan.next.asset : null;
+		}
+		let newer = asset != null && version_newer(current.version, bridge ? backend.version : installed.version);
 		if (asset == null)
 			log.event('error', 'ARCH_UNSUPPORTED', { arch });
 		let was_reported = prior?.packages?.[name]?.available == current.version && prior?.packages?.[name]?.newer == true;
@@ -311,7 +386,11 @@ function build_result(ctx, manifest, base, arch, pm) {
 			previous: package_asset(manifest, name, arch, pm, true)?.version ?? null,
 			available: current.version,
 			newer,
-			asset: asset == null ? null : asset.url	// file name for this arch and pm (08 "检查")
+			asset: asset == null ? null : asset.url,
+			...(bridge ? { bridge_required: true,
+				next_step: plan.ok ? { version: plan.next.version, reason: plan.next.reason } : null,
+				steps_remaining: plan.ok ? plan.remaining : 0,
+				code: plan.ok ? null : plan.code, detail: plan.ok ? plan.next.reason : plan.detail } : {})
 		};
 	}
 	return {
@@ -810,8 +889,10 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 	let before_state = service_state(ctx);
 	let before_probe = before_state?.last_probe?.at ?? 0;
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
-	if (!downloaded.ok)
-		return { ok: false, code: downloaded.code, exit: 1, detail: downloaded.detail ?? downloaded.code };
+	if (!downloaded.ok) {
+		let code = selected.bridge_step && downloaded.code == 'UPDATE_VERIFY_FAILED' ? 'BRIDGE_UNAVAILABLE' : downloaded.code;
+		return { ok: false, code, exit: 1, detail: downloaded.detail ?? downloaded.code };
+	}
 	let installed = install_package(ctx, pm, downloaded.path, previous == true);
 	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
 		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
@@ -926,6 +1007,31 @@ export function package_update(opts, name, previous) {
 	let arch = plat.arch, pm = plat.pm;
 	let together = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]);
 	let primary = together ? C.PROG : name;
+	if (previous != true && index(keys(selected.manifest), 'compatibility') >= 0
+		&& (primary == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0)) {
+		let installed = installed_version(ctx, pm, C.PROG);
+		if (!installed.ok)
+			return group_failure('CMD_FAILED', installed.detail);
+		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
+		if (!plan.ok)
+			return group_failure(plan.code, plan.detail);
+		if (plan.active) {
+			// Even direct CLI requests for a page/translation cannot pull target
+			// assets across a pending backend bridge. Intermediate steps contain
+			// only a backend; old pages remain compatible with the new backend.
+			let old = selected.manifest.packages[C.PROG];
+			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
+			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
+				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
+			let result = install_with_rollback(opts, ctx, staged, C.PROG, arch, pm, plan.next.asset, false);
+			if (result.ok) {
+				result.value.code = 'BRIDGE_INSTALLED';
+				result.value.steps_remaining = plan.remaining - 1;
+			}
+			write_updates(ctx, selected, plat);
+			return result;
+		}
+	}
 	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });

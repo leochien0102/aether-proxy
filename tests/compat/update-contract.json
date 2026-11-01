@@ -68,7 +68,8 @@
                   "size": 123
                 }
               }
-            }
+            },
+            "reason": "Synthetic compatibility transition; not a published release"
           },
           {
             "version": "0.6.6",
@@ -81,7 +82,8 @@
                   "size": 123
                 }
               }
-            }
+            },
+            "reason": "Synthetic compatibility transition; not a published release"
           },
           {
             "version": "0.6.8",
@@ -94,8 +96,14 @@
                   "size": 123
                 }
               }
-            }
+            },
+            "reason": "Synthetic compatibility transition; not a published release"
           }
+        ],
+        "required_steps": [
+          "0.6.4",
+          "0.6.6",
+          "0.6.8"
         ]
       }
     }

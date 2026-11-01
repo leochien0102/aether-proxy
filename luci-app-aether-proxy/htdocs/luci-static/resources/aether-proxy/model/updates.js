@@ -45,7 +45,8 @@ function failure(r) {
 		JOB_LOST: _('Job process exited unexpectedly', 'aether-proxy'),
 		UPDATE_VERIFY_FAILED: _('Verification failed', 'aether-proxy'),
 		NO_SPACE: _('Not enough space', 'aether-proxy'),
-		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy')
+		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy'),
+		BRIDGE_UNAVAILABLE: _('Compatibility update chain unavailable; cannot update to the target version', 'aether-proxy')
 	};
 	const reason = messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy');
 	return r.detail ? _('%s: %s', 'aether-proxy').format(reason, r.detail) : reason;
@@ -133,6 +134,12 @@ return baseclass.extend({
 			can_check: !pending && !busy,
 			rows: PACKAGES.map(name => {
 				const p = updates?.packages?.[name];
+				const bridge = p?.bridge_required === true;
+				const blocked = p?.code == 'BRIDGE_UNAVAILABLE' ||
+					(bridge && (!p.next_step?.version || p.asset == null));
+				const update_label = bridge && p.next_step?.version ?
+					_('Update to %s first (step 1/%s)', 'aether-proxy').format(p.next_step.version, p.steps_remaining) :
+					_('Update now', 'aether-proxy');
 				let text;
 				if (pending)
 					text = loading;
@@ -140,6 +147,10 @@ return baseclass.extend({
 					text = _('Not checked', 'aether-proxy');
 				else if (!p)
 					text = _('Not in channel', 'aether-proxy');
+				else if (blocked)
+					text = failure({ ...p, code: 'BRIDGE_UNAVAILABLE' });
+				else if (bridge)
+					text = update_label + (p.next_step.reason ? ' — ' + p.next_step.reason : '');
 				else if (p.asset == null)
 					text = _('Unavailable on this device', 'aether-proxy') + ' (' + updates.arch + ')';
 				else if (p.installed == null)
@@ -149,12 +160,13 @@ return baseclass.extend({
 				return {
 					name,
 					installed: pending ? loading : (p ? (p.installed ?? _('Not installed', 'aether-proxy')) : '–'),
-					available: pending ? loading : (p?.available ?? '–'),
+					available: pending ? loading : (p?.next_step?.version ?? p?.available ?? '–'),
 					previous: pending ? loading : (p?.previous ?? '–'), status: text,
-					install: !!p && p.asset != null && p.installed == null,
-					update: !!p && p.asset != null && p.installed != null && p.newer === true,
+					install: !!p && !blocked && p.asset != null && p.installed == null,
+					update: !!p && !blocked && p.asset != null && p.installed != null && p.newer === true,
+					bridge_required: bridge, blocked, update_label,
 					rollback: can_rollback(name, p),
-					disabled: pending || !!busy,
+					disabled: pending || !!busy || blocked,
 					rollback_label: _('Roll back to %s', 'aether-proxy').format(p?.previous ?? '–'),
 					confirmation_title: _('Roll back %s', 'aether-proxy').format(name),
 					confirmation: name == 'aether-xray' && p ? this.confirmation(name, p.installed, p.previous) : ''

@@ -1,0 +1,15 @@
+diff --git a/scripts/publish.sh b/scripts/publish.sh
+--- a/scripts/publish.sh
++++ b/scripts/publish.sh
+@@ -75,6 +75,11 @@
+         for formats in ((release or {}).get("assets") or {}).values():
+             urls.update(asset["url"] for asset in formats.values())
+ urls.update(item["url"] for item in m["data"].values())
++for chain in m.get("compatibility", {}).values():
++    for step in chain.get("steps", []):
++        for formats in step["assets"].values():
++            urls.update(asset["url"] for asset in formats.values())
++# This same URL set gates uploads and protects referenced assets from cleanup.
+ print("\n".join(sorted(urls)))
+ PY
+ release_assets | sort > "$work/existing"

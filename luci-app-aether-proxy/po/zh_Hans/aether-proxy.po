@@ -5,6 +5,18 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "Compatibility update chain unavailable; cannot update to the target version"
+msgstr "兼容更新链不可用，无法更新到目标版本"
+
+msgctxt "aether-proxy"
+msgid "Update to %s first (step 1/%s)"
+msgstr "先更新到 %s（第 1/%s 步）"
+
+msgctxt "aether-proxy"
+msgid "Please refresh the page before continuing to the next update step."
+msgstr "请刷新页面后继续下一步更新。"
+
+msgctxt "aether-proxy"
 msgid "-- Please choose --"
 msgstr "-- 请选择 --"
 
