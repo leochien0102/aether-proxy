@@ -1,0 +1,23 @@
+{
+  "aether-proxy": {
+    "required_steps": [
+      "0.6.3-1"
+    ],
+    "steps": [
+      {
+        "version": "0.6.3-1",
+        "min_from": "0.6.2-1",
+        "assets": {
+          "all": {
+            "ipk": {
+              "url": "aether-proxy_0.6.3-1_all.ipk",
+              "sha256": "f6f084b29f065eacce2fd0c24e4da0cf20edf9e4a53ffce0a1b8c7b1a1ce8d21",
+              "size": 661729
+            }
+          }
+        },
+        "reason": "0.6.3 引入 chinadns-ng 硬依赖，更新器不会自动安装它；先手工安装或核实 chinadns-ng，再更新到本步（docs/08 迁移表）。"
+      }
+    ]
+  }
+}

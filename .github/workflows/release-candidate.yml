@@ -86,8 +86,24 @@ jobs:
                       raise SystemExit('Unexpected package artifacts')
           if any(len({e['version'] for e in entries if e['package'] == n}) != 1 for n in names):
               raise SystemExit('Inconsistent package versions across matrix')
+          # A bridge chain is opt-in and reviewed: present at bridges/compatibility.json in the
+          # tagged commit it rides the prerelease verbatim (promote verifies its assets); the
+          # terminal step must be the built aether-proxy, or the file is stale for this RC.
+          reviewed = Path('bridges/compatibility.json')
+          if reviewed.is_file():
+              try:
+                  chain = json.loads(reviewed.read_text())
+              except json.JSONDecodeError as exc:
+                  raise SystemExit(f'bridges/compatibility.json is not valid JSON: {exc}')
+              steps = chain.get('aether-proxy', {}).get('steps') if isinstance(chain, dict) else None
+              built = next(e['version'] for e in entries if e['package'] == names[0])
+              if not isinstance(steps, list) or not steps or (steps[-1] or {}).get('version') != built:
+                  raise SystemExit(f'bridges/compatibility.json terminal step must be the built aether-proxy {built}')
+              shutil.copyfile(reviewed, out / 'compatibility.json')
           manifest = dict(schema=1, rc_tag=tag, commit=commit, version=version,
                           target_tag='v' + target, assets=entries)
+          if reviewed.is_file():
+              manifest['compatibility'] = 'compatibility.json'
           (out / 'rc-manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
           (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in sorted(out.iterdir())))
           PY
