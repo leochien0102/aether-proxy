@@ -205,9 +205,9 @@ rc-manifest 的 `target_tag` 单独绑定。release 后缀必须精确匹配（`
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
 4. 生成 `manifest.json`，用 **usign** 私钥签名得到 `manifest.json.sig`，与所有资产一起发布到固定 tag `channel-stable` 的 GitHub Release。
 
-### RC 构建与原样晋升（T11.12 / B21）
+### RC 构建与原样晋升（T11.12 / B21，可选通道）
 
-新增一条不重编的发布路径，**不替换**现有 `packages.yml` 的 main/PR 行为：
+这是一条**可选**的发布路径，不是每次发布的必经步骤；普通正式发布仍可走现有 `packages.yml`。它用于需要“先验证一份 RC、再原样晋升”的场合，且**不替换**现有 main/PR 行为：
 
 1. 应用提交的 `PKG_VERSION` / `PKG_RELEASE` 就是目标正式包版本；RC 后缀只出现在 Git tag，不写入 Makefile。`vVERSION-rcN`（或 `vVERSION-rRELEASE-rcN`）绑定目标 `vVERSION-rRELEASE` 与完整 app commit。
 2. app `release-candidate.yml` 调用 `build.yml` 的四格 packages 和六格 smoke；全部成功后检查五包 × 两架构 × 两格式，上传 **prerelease**。`rc-manifest.json` 记录 tag、commit、正式目标、原始文件名、矩阵槽位和 SHA-256；`SHA256SUMS` 覆盖全部包和清单。
