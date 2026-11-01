@@ -1,0 +1,106 @@
+name: Release candidate
+
+on:
+  push:
+    tags: ['v*-rc*']
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+  candidate:
+    needs: build # includes all four packages jobs and all six smoke jobs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+      BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: artifacts
+      - name: Validate candidate and stage immutable assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, re, shutil, subprocess
+          from pathlib import Path
+          tag, commit = os.environ['TAG'], os.environ['BUILD_SHA']
+          def field(name, key):
+              return re.search(r'^' + key + r':=(\S+)$', Path(name + '/Makefile').read_text(), re.M)[1]
+          version = field('aether-proxy', 'PKG_VERSION')
+          release = field('aether-proxy', 'PKG_RELEASE')
+          target = f'{version}-r{release}'
+          if not re.fullmatch(r'v' + re.escape(version) + r'(?:-r' + re.escape(release) + r')?-rc[1-9][0-9]*', tag):
+              raise SystemExit('RC tag/version mismatch')
+          if subprocess.check_output(['git', 'rev-parse', tag + '^{commit}'], text=True).strip() != commit:
+              raise SystemExit('RC tag/commit mismatch')
+          names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng']
+          out = Path('rc-assets'); out.mkdir()
+          entries = []
+          for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]:
+              for arch in ['aarch64_generic', 'x86_64']:
+                  directory = Path(f'artifacts/packages-{sdk}-{arch}')
+                  files = list(directory.rglob('*.' + ext))
+                  selected = set()
+                  for name in names:
+                      prefix = name + ('_' if ext == 'ipk' else '-')
+                      matches = [p for p in files if p.name.startswith(prefix)]
+                      if len(matches) != 1:
+                          raise SystemExit(f'Missing/duplicate {name} {arch} {ext}')
+                      path = matches[0]; selected.add(path)
+                      raw = path.name[len(prefix):-4]
+                      if ext == 'ipk':
+                          pkg_version, pkg_arch = raw.split('_', 1)
+                          if pkg_arch != ('all' if name in names[:3] else arch):
+                              raise SystemExit('Package architecture mismatch')
+                      else:
+                          pkg_version = raw
+                      if name != names[2]:
+                          want = field(name, 'PKG_VERSION') + '-r' + field(name, 'PKG_RELEASE')
+                          if pkg_version != want:
+                              raise SystemExit(f'Package version mismatch: {path.name}')
+                      elif not re.fullmatch(r'[0-9][A-Za-z0-9.+~_-]*', pkg_version):
+                          raise SystemExit('Invalid translation version')
+                      # Keep both SDK noarch builds, even when their bytes differ. GitHub-safe names.
+                      asset = arch + '--' + re.sub(r'[^A-Za-z0-9._-]', '.', path.name)
+                      shutil.copyfile(path, out / asset)
+                      entries.append(dict(package=name, arch=arch, format=ext, filename=path.name,
+                                          asset=asset, version=pkg_version,
+                                          sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+                  if selected != set(files):
+                      raise SystemExit('Unexpected package artifacts')
+          if any(len({e['version'] for e in entries if e['package'] == n}) != 1 for n in names):
+              raise SystemExit('Inconsistent package versions across matrix')
+          manifest = dict(schema=1, rc_tag=tag, commit=commit, version=version,
+                          target_tag='v' + target, assets=entries)
+          (out / 'rc-manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
+          (out / 'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n' for p in sorted(out.iterdir())))
+          PY
+      - name: Create prerelease only after all validation succeeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Never mutate an existing release, including a partial previous attempt.
+          gh api "repos/$GH_REPO/releases?per_page=100" > releases.json
+          python3 - <<'PY'
+          import json, os
+          if any(r['tag_name'] == os.environ['TAG'] for r in json.load(open('releases.json'))):
+              raise SystemExit('RC release already exists; refusing replacement')
+          PY
+          gh release create "$TAG" rc-assets/* --verify-tag --prerelease --latest=false \
+            --title "aether-proxy $TAG" --notes 'Immutable RC packages; see rc-manifest.json and SHA256SUMS. Promote without rebuilding.'

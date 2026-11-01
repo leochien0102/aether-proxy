@@ -238,9 +238,9 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 参考（2026-10-27 查）：ssr-plus 的 Xray **不用** geo 数据分流——`gen_config.lua` 不引用 geosite/geoip；它的「Geo 数据库更新」页（2026-05-02）与 v2ray-geosite/geoip 包（2026-04-30）随 Mihomo 内核加入，供 Clash 配置使用；分流仍是 nft/ipset 的 chnroute + gfwlist。要借鉴「代理内核里按 geosite 分流」得看 passwall / passwall2 / homeproxy（sing-box）/ OpenClash（Mihomo）。
 - 暂时的手动补漏：漏网网站加进「代理域名」名单（`proxy_domain.txt`，保存后自动重载生效）。
 
-## B21 发布复用 RC 的包：编一次、验证、提升（2026-10-27，待设计）
+## B21 发布复用 RC 的包：编一次、验证、提升（T11.12）
 
-- 状态：**待设计**，额度宽松时出设计与卡（仓库所有者定）。
+- 状态：**RC / promote 路径已实现并完成离线回归**，未触发真实构建、tag 或发布。操作流程和边界见 [08](08-updates.md)「RC 构建与原样晋升」、[T11.12 报告](../reports/T11.12.md)。原有 channel packages 流程保留；正式 tag 必须由维护者固定在 RC commit。
 - 来源：发 0.4.0-r1 时仓库所有者指出发布又完整跑一遍 CI 是重复——RC 已经编过、验过，正式版应直接复用 RC 的包。
 - 现状的两个问题：
   1. 重复编译：aether-proxy 的 `build` 编出的包（架构无关 `all`），发布仓库 `packages` 又从源码重编一遍；两段串行，发一次版约 50 分钟。

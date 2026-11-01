@@ -50,6 +50,21 @@
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
 4. 生成 `manifest.json`，用 **usign** 私钥签名得到 `manifest.json.sig`，与所有资产一起发布到固定 tag `channel-stable` 的 GitHub Release。
 
+### RC 构建与原样晋升（T11.12 / B21）
+
+新增一条不重编的发布路径，**不替换**现有 `packages.yml` 的 main/PR 行为：
+
+1. 应用提交的 `PKG_VERSION` / `PKG_RELEASE` 就是目标正式包版本；RC 后缀只出现在 Git tag，不写入 Makefile。`vVERSION-rcN`（或 `vVERSION-rRELEASE-rcN`）绑定目标 `vVERSION-rRELEASE` 与完整 app commit。
+2. app `release-candidate.yml` 调用 `build.yml` 的四格 packages 和六格 smoke；全部成功后检查五包 × 两架构 × 两格式，上传 **prerelease**。`rc-manifest.json` 记录 tag、commit、正式目标、原始文件名、矩阵槽位和 SHA-256；`SHA256SUMS` 覆盖全部包和清单。
+3. 两个架构的 noarch SDK 产物也分别保留：RC 资产加 `<arch>--` 前缀，并把 GitHub 不支持的字符转为 `.`；清单保留原名。人工必须验证将被 channel 选中的产物（noarch 按架构路径排序选择 `aarch64_generic`，与现有生成器一致）。
+4. 人工验收后，在 channel **main** 手动运行 `promote.yml`，输入 `rc_tag`。它只下载公开 prerelease、校验完整资产集合/版本/tag commit/hash、恢复包目录，并下载该 commit 的两个独立发布工具和四份 Makefile（仅作版本元数据），**不 checkout app、不运行 SDK、不编译**。
+5. 晋升前用 `tools/channel/build.py --packages` 生成预检清单；同版本清单不同或已有同名包不同字节一律失败。与 packages/data 共用 `channel-publish` 并发锁。随后现有 `scripts/publish.sh` 生成规则数据、签名、发布 stable；私钥仅在最后一步来自 channel Actions Secret。签名器通过系统包安装，不运行 `scripts/usign.sh` 编译。
+6. 正式 tag **必须指向 RC 的同一 commit**。promote 若发现正式 tag 已存在就校验其 commit；若正式 tag 尚未创建，维护者之后必须在清单记录的 commit 上创建并保护 tag，不得移动 RC/正式 tag。本卡按约束不改 `release-assets.yml`，故不能在现有正式发布工作流中新增“未来 tag”的 commit 检查。正式发布仍使用原有成功 build 门禁和版本匹配的 channel manifest，仅复制资产，不重编。
+
+RC 不主动触发 channel 发布；已有 `release-assets.yml` 的 `v*` 触发规则未改，因此 RC tag 也会启动该旧流程，但其 RC 版本字符串不匹配正式 channel 包版本，不会走到上传。此处不自动取消或绕过原门禁。已有 RC Release 不覆盖、不重试上传；失败残留需维护者人工检查，不自动删改远端。
+
+三份架构无关包在 channel 中各只选一份，两个二进制包各保留两架构，因此正式资产通常为 **14 个包文件**；它们的字节都来自已校验的 20 个 RC 包，不是重新打包产物。已有相同版本但不同字节时不允许通过重新编译、改 hash 或覆盖绕过；应停止并由维护者按版本策略处理。本卡本身不升版、不创建 tag、不发布。
+
 ### 数据格式与来源（初始选择，CI 中可替换）
 
 | 文件 | 格式 | 上游 | 合理性检查 |
