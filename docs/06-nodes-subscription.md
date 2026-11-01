@@ -27,6 +27,19 @@
 
 所有查询参数值和 `#` 后的名称都要做 URL 解码。主机为 `[...]`（IPv6 字面量）→ `ipv6_address`。
 
+| scheme | 协议 | 格式 |
+|---|---|---|
+| `vless` | vless | UUID userinfo + endpoint/query |
+| `vmess` | vmess | Base64(v2rayN JSON) |
+| `trojan` | trojan | password userinfo + endpoint/query |
+| `ss` | shadowsocks | SIP002 或旧式整体 Base64 |
+| `socks` / `socks5` | socks | 可选 userinfo + endpoint |
+| `http` | http | 可选 userinfo + endpoint |
+| `wireguard` | wireguard | 私钥 userinfo + endpoint/query（v2rayN） |
+| `hysteria2` / `hy2` | hysteria | auth userinfo + endpoint/query |
+
+这些解析由 `node parse`、`node import`、批量导入和订阅共用。认证只写节点配置，不得进入日志、事件或错误 detail。
+
 **vless** `vless://<uuid>@<host>:<port>?<query>#<name>`
 
 | 参数 | 节点字段 | 说明 |
@@ -60,7 +73,31 @@
 - 有 `plugin` 参数 → `ss_plugin`（Xray 不支持 SIP003 插件）。
 - `method` 不在 Xray 支持列表内 → `unsupported_security`。支持列表以目标 Xray 版本的文档为准，写成常量。
 
-其他 scheme（`hysteria2`、`hy2`、`tuic`、`ssr`、`socks` 等）→ `unsupported_scheme`。
+**SOCKS5 / HTTP**
+
+- `socks://[userinfo@]<host>:<port>#<name>`；`socks5://` 同义。
+- `http://[userinfo@]<host>:<port>#<name>`。
+- `userinfo` 为 URL 编码的 `user:pass` 或 Base64(`user:pass`)（标准/URL-safe、可省填充；Base64 本身也可 URL 编码）。用户名大小写保留，密码可含冒号；有 userinfo 时用户名和密码都必须非空，否则 `missing_field`。Base64/转义错误或没有分隔冒号 → `malformed`。
+- 无 userinfo 时不设置 `username` / `password`。协议分别为 `socks` / `http`，固定 `transport=raw`、`security=none`。
+
+**Hysteria2**
+
+`hysteria2://<auth>@<host>:<port>[/]?sni=<sni>#<name>`；`hy2://` 同义。
+
+- `auth` 必填并 URL 解码，映射 `hysteria_auth`；缺失/空值 → `missing_field`。
+- 固定 `protocol=hysteria`、`transport=hysteria`、`security=tls`；`sni` 映射同名字段。
+- `insecure` / `allowInsecure` 任一为 `1` / `true` 时只记 WARN `NODE_INSECURE_IGNORED`，不设置跳过证书校验；其他未知 query 忽略。
+
+**WireGuard（v2rayN 约定）**
+
+`wireguard://<private-key>@<host>:<port>/?publickey=<peer>&address=<local>&presharedkey=<psk>&keepalive=<sec>#<name>`
+
+- 私钥在 userinfo，映射 `secret_key`；`publickey` → `peer_public_key`；`address` → `local_address`（逗号分隔列表）；三项必填，缺失 → `missing_field`。
+- 可选 `presharedkey` → `preshared_key`、`keepalive` → `keepalive`（0–65535，显式 0 保留）；`reserved` 等未知 query 忽略。
+- 所有值 URL 解码（`+` 保留为加号，不当作空格）。密钥仍须符合 [05](05-config.md) 的标准 Base64 32 字节规范；错误密钥 → `invalid_value`。本机地址/keepalive 格式或范围错误 → `malformed`。
+- 固定 `protocol=wireguard`、`transport=raw`、`security=none`。
+
+新协议同样要求合法的 host:port；IPv6 字面量 → `ipv6_address`，非法端口 → `malformed`。不支持的 scheme（例如 `tuic`、`ssr`）仍按 `unsupported_scheme` 跳过。
 
 ## 节点身份
 

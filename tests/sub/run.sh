@@ -542,5 +542,45 @@ expect 'T9.42 corrupt state.json still imports the node' 1 "$(printf '%s\n' "$ou
 [ ! -s "$T/corrupt-state.stderr" ] && ok 'T9.42 corrupt state.json leaves no exception' \
 	|| bad 'T9.42 corrupt state.json leaves no exception' "$(cat "$T/corrupt-state.stderr")"
 
+# T11.11: new protocols must survive the full atomic subscription write path.
+make_root "$T/root-new-uri"
+write_config
+BODY="$FIX/new-protocols.txt"
+out=$(ap --json s_00000001 2>"$T/new-uri.stderr"); rc=$?
+expect 'T11.11 mixed new protocol subscription succeeds' 0 "$rc"
+expect 'T11.11 imports all seven new protocol nodes' 7 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+for reason in missing_field invalid_value malformed; do
+	want=1; [ "$reason" = malformed ] && want=2
+	expect "T11.11 counts $reason" "$want" "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.$reason)"
+done
+"$UCODE" -e 'import * as uci from "uci";
+let c = uci.cursor(ARGV[0]); let nodes = [];
+c.foreach("aetherproxy", "node", n => { push(nodes, n); });
+let wg = filter(nodes, n => n.protocol == "wireguard")[0];
+let hy = filter(nodes, n => n.label == "HY")[0];
+let socks = filter(nodes, n => n.label == "SOCKS")[0];
+let noauth = filter(nodes, n => n.label == "HTTP-noauth")[0];
+exit(length(nodes) == 7 && wg?.keepalive == "0" && length(wg?.local_address) == 2
+	&& wg?.preshared_key == "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+	&& hy?.hysteria_auth == "HY_SECRET+token" && hy?.sni == "sni.example"
+	&& socks?.username == "User" && socks?.password == "SOCKS_SECRET"
+	&& noauth?.username == null && noauth?.password == null ? 0 : 1);' -- "$R/etc/config" \
+	&& ok 'T11.11 persists all protocol fields and no-auth omission' \
+	|| bad 'T11.11 persists all protocol fields and no-auth omission'
+expect 'T11.11 sub status records seven nodes' 7 "$(jget s_00000001.nodes < "$R/etc/aether-proxy/state/sub.json")"
+has_line "$R/var/run/aether-proxy/events.jsonl" NODE_INSECURE_IGNORED \
+	&& ok 'T11.11 insecure flag emits warning event' || bad 'T11.11 insecure flag emits warning event'
+if printf '%s\n' "$out" | grep -Eq 'SECRET|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA|AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE' \
+	|| grep -ERq 'SECRET|AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA|AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE' \
+		"$R/var/run/aether-proxy/events.jsonl" "$T/new-uri.stderr" "$R/calls.log"; then
+	bad 'T11.11 credentials absent from output logs events and errors'
+else
+	ok 'T11.11 credentials absent from output logs events and errors'
+fi
+out=$(ap --json s_00000001 2>"$T/new-uri-repeat.stderr"); rc=$?
+expect 'T11.11 identical second update succeeds' 0 "$rc"
+expect 'T11.11 identical second update adds nothing' 0 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+expect 'T11.11 identical second update changes nothing' 0 "$(printf '%s\n' "$out" | jget subs.s_00000001.updated)"
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
