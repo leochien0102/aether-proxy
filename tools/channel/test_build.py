@@ -1,3 +1,4 @@
+import copy
 import gzip
 import json
 import os
@@ -55,6 +56,178 @@ class ChannelBuilderTests(unittest.TestCase):
 
     def run_build(self, data=None, previous=None):
         return build.build_to_dir(self.out, self.packages, data, previous)
+
+    def compatibility_fixture(self):
+        chain = {"required_steps": ["0.6.4-r1", "0.6.6-r1", "0.6.8-r1"], "steps": []}
+        predecessor = "0.6.3-r1"
+        for version in chain["required_steps"]:
+            assets = {"all": {}}
+            for kind in ("ipk", "apk"):
+                url = f"bridge-{version}.{kind}"
+                content = url.encode()
+                (self.root / url).write_bytes(content)
+                assets["all"][kind] = {"url": url, "size": len(content), "sha256": build.sha256(content)}
+            chain["steps"].append({"version": version, "min_from": predecessor,
+                                   "reason": "Updater dependency bridge", "assets": assets})
+            predecessor = version
+        return {"aether-proxy": chain}
+
+    def test_compatibility_input_copies_and_retains_all_bridge_assets(self):
+        self.add_packages("0.6.8-r1", packages=("aether-proxy",))
+        compatibility = self.compatibility_fixture()
+        path = self.root / "compatibility.json"
+        path.write_text(json.dumps(compatibility))
+        self.assertEqual(build.main(["--out", str(self.out), "--packages", str(self.packages),
+                                     "--compatibility", str(path)]), 0)
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertEqual(manifest["compatibility"], compatibility)
+        for asset in build.compatibility_assets(compatibility):
+            self.assertEqual(build.sha256((self.out / asset["url"]).read_bytes()), asset["sha256"])
+        self.previous_path.write_text(json.dumps(manifest))
+        self.add_data()
+        next_out = self.root / "next"
+        build.build_to_dir(next_out, None, self.data, self.previous_path)
+        self.assertEqual(json.loads((next_out / "manifest.json").read_text())["compatibility"], compatibility)
+        # Published bridge bytes stay in the release; metadata keeps them reachable
+        # to the publisher's retention scan, even when outside current/previous.
+        self.assertFalse(any(next_out.glob("*.ipk")))
+        build.build_to_dir(self.root / "same", self.packages, None, self.previous_path)
+        self.assertTrue((self.root / "same" / "unchanged").exists())
+
+    def test_compatibility_chain_rejects_invalid_contracts(self):
+        valid = self.compatibility_fixture()
+        packages = {"aether-proxy": {"current": {"version": "0.6.8-r1"}}}
+        build.validate_compatibility(valid, packages)
+        mutations = {
+            "empty": lambda c: c.update(steps=[]),
+            "missing itinerary": lambda c: c.pop("required_steps"),
+            "empty itinerary": lambda c: c.update(required_steps=[]),
+            "removed and rejoined": lambda c: (c["steps"].pop(1), c["steps"][1].update(min_from="0.6.4-r1")),
+            "order": lambda c: c["steps"].reverse(),
+            "duplicate": lambda c: c["steps"].insert(1, c["steps"][0]),
+            "gap": lambda c: c["steps"][1].update(min_from="0.6.3-r1"),
+            "source": lambda c: c.update({"from": "0.6.2-r1"}),
+            "reason": lambda c: c["steps"][0].update(reason=" "),
+            "assets": lambda c: c["steps"][0].update(assets={}),
+            "invalid version": lambda c: c["steps"][0].update(min_from="0.6-rc1"),
+            "descending source": lambda c: c["steps"][0].update(min_from="0.6.5-r1"),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label):
+                candidate = copy.deepcopy(valid)
+                mutate(candidate["aether-proxy"])
+                with self.assertRaises(ValueError):
+                    build.validate_compatibility(candidate, packages)
+        for version in ("0.6.8", "0.6.8-1", "0.6.9-r1"):
+            with self.subTest(target=version), self.assertRaisesRegex(ValueError, "terminal"):
+                build.validate_compatibility(valid, {"aether-proxy": {"current": {"version": version}}})
+        for value in (None, [], {}, {"aether-proxy": []}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                build.validate_compatibility(value, packages)
+
+    def test_compatibility_asset_metadata_rejected(self):
+        valid = self.compatibility_fixture()
+        packages = {"aether-proxy": {"current": {"version": "0.6.8-r1"}}}
+        for key, value in (("url", "../escape.ipk"), ("url", "https://host/file.ipk"),
+                           ("url", "bad.apk"), ("sha256", "bad"), ("size", True),
+                           ("size", 0), ("size", "20")):
+            with self.subTest(key=key, value=value):
+                candidate = copy.deepcopy(valid)
+                candidate["aether-proxy"]["steps"][0]["assets"]["all"]["ipk"][key] = value
+                with self.assertRaises(ValueError):
+                    build.validate_compatibility(candidate, packages)
+
+    def test_compatibility_missing_or_corrupt_bytes_fail_before_writing(self):
+        self.add_packages("0.6.8-r1", packages=("aether-proxy",))
+        compatibility = self.compatibility_fixture()
+        path = self.root / "compatibility.json"
+        path.write_text(json.dumps(compatibility))
+        asset = next(build.compatibility_assets(compatibility))
+        (self.root / asset["url"]).write_bytes(b"tampered")
+        with self.assertRaisesRegex(ValueError, "hash/size mismatch"):
+            build.build_to_dir(self.out, self.packages, None, None, path)
+        self.assertFalse(self.out.exists())
+        (self.root / asset["url"]).unlink()
+        with self.assertRaisesRegex(ValueError, "missing compatibility asset"):
+            build.build_to_dir(self.out, self.packages, None, None, path)
+        self.assertFalse(self.out.exists())
+
+    def test_compatibility_preservation_refuses_new_target_without_extended_chain(self):
+        self.add_packages("0.6.8-r1", packages=("aether-proxy",))
+        compatibility = self.compatibility_fixture()
+        previous = {"packages": {"aether-proxy": {"current": {"version": "0.6.8-r1"}}},
+                    "compatibility": compatibility}
+        manifest, _, _ = build.build_manifest(self.packages, None, previous)
+        self.assertEqual(manifest["compatibility"], compatibility)
+        previous["packages"]["aether-proxy"]["current"]["version"] = "0.6.9-r1"
+        with self.assertRaisesRegex(ValueError, "terminal"):
+            build.build_manifest(None, None, previous)
+
+    def test_publish_bridge_assets_patch_keeps_historical_steps(self):
+        # CHANNEL_ROOT optionally tests the actual external publisher, without modifying it.
+        # Otherwise use its frozen URL-enumeration block so this test is portable.
+        channel_root = os.environ.get("CHANNEL_ROOT")
+        script = self.root / "publisher" / "scripts" / "publish.sh"
+        script.parent.mkdir(parents=True)
+        if channel_root:
+            source = (Path(channel_root) / "scripts" / "publish.sh").read_text()
+        else:
+            source = '''#!/usr/bin/env bash
+python3 - "$work/out/manifest.json" > "$work/urls" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+urls = set()
+for entry in m["packages"].values():
+    for release in (entry.get("current"), entry.get("previous")):
+        for formats in ((release or {}).get("assets") or {}).values():
+            urls.update(asset["url"] for asset in formats.values())
+urls.update(item["url"] for item in m["data"].values())
+print("\\n".join(sorted(urls)))
+PY
+release_assets | sort > "$work/existing"
+'''
+        script.write_text(source)
+        result = subprocess.run(["git", "apply", str(ROOT / "tools/channel/publish-bridge-assets.patch")],
+                                cwd=script.parent.parent, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        patched = script.read_text()
+        subprocess.run(["bash", "-n", str(script)], check=True)
+        enumeration = patched.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        compatibility = self.compatibility_fixture()
+        manifest = {"packages": {"aether-proxy": {
+            "current": {"assets": {"all": {"ipk": {"url": "current.ipk"}}}},
+            "previous": {"assets": {"all": {"ipk": {"url": "previous.ipk"}}}}}},
+            "data": {"gfwlist": {"url": "data.gz"}}}
+        path = self.root / "manifest.json"
+        for with_chain in (False, True):
+            if with_chain:
+                manifest["compatibility"] = compatibility
+            path.write_text(json.dumps(manifest))
+            result = subprocess.run(["python3", "-c", enumeration, str(path)],
+                                    check=True, capture_output=True, text=True)
+            urls = set(result.stdout.splitlines())
+            expected = {"current.ipk", "previous.ipk", "data.gz"}
+            if with_chain:
+                expected.update(asset["url"] for asset in build.compatibility_assets(compatibility))
+            self.assertEqual(urls, expected)
+            # publish.sh uses this list both for uploads and comm-based deletion.
+            existing = expected | {"unreferenced.ipk"}
+            self.assertEqual(existing - urls, {"unreferenced.ipk"})
+
+    def test_explicit_null_previous_chain_cannot_silently_enable_direct_update(self):
+        for value in (None, {}, [], {"aether-proxy": None}):
+            with self.subTest(value=value):
+                previous = {"packages": {}, "data": {}, "compatibility": value}
+                with self.assertRaises(ValueError):
+                    build.build_manifest(None, None, previous)
+
+    def test_compatibility_numeric_versions(self):
+        self.assertLess(build.compatibility_version("0.6.9-r2"), build.compatibility_version("0.6.10-1"))
+        self.assertLess(build.compatibility_version("0.6.8-r2"), build.compatibility_version("0.6.8-r10"))
+        self.assertEqual(build.compatibility_version("0.6.8-1"), build.compatibility_version("0.6.8-r1"))
+        for value in ("0.6", "0.6.8-rc1", "0.6.8-r", "v0.6.8", "0.6.8\n", 123):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                build.compatibility_version(value)
 
     def test_complete_manifest_copies_assets_and_computes_data_fields(self):
         self.add_packages()

@@ -311,6 +311,103 @@ function load_view(config = {}) {
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
+function bridge_status(version = '0.6.4', remaining = 3) {
+	const s = all_packages_status();
+	for (const name of names.slice(1))
+		s.updates_available.packages[name] = { ...entry, available: version,
+			bridge_required: true, next_step: { version, reason: '必须先安装兼容更新器' },
+			steps_remaining: remaining };
+	return s;
+}
+test('T11.14 updates model: available is the next step, including all companion actions', () => {
+	for (const [version, remaining] of [['0.6.4', 3], ['0.6.6', 2]]) {
+		const rows = model.table(bridge_status(version, remaining), false, 160).rows.slice(1);
+		for (const r of rows) {
+			assert.equal(r.available, version);
+			assert.equal(r.update_label, `先更新到 ${version}（第 1/${remaining} 步）`);
+			assert.match(r.status, /必须先安装兼容更新器/);
+			assert.equal(r.update, true);
+			assert.equal(r.disabled, false);
+		}
+	}
+});
+test('T11.14 updates view: companions dispatch only the bridge, then recheck without installing target', async () => {
+	for (const name of names.slice(1)) {
+		const h = await ready_view(bridge_status());
+		const form = h.root.children[0];
+		form.children[0].value = 'off';
+		const calls = [];
+		h.ap.run_job = async (kind, args) => {
+			calls.push([kind, args]);
+			return kind == 'update_package' ? { state: 'ok', result: {
+				ok: true, code: 'BRIDGE_INSTALLED', from: '0.6.3', to: '0.6.4'
+			} } : { state: 'ok', result: { packages: bridge_status('0.6.6', 2).updates_available.packages } };
+		};
+		h.ap.call = async method => { calls.push([method]); return bridge_status('0.6.6', 2); };
+		const table = h.page.inventory.children.find(n => n.tag == 'table');
+		const r = table.children.find(n => text(n.children[0]) == name);
+		assert.equal(text(buttons(r)[0]), '先更新到 0.6.4（第 1/3 步）');
+		await buttons(r)[0].click();
+		assert.deepEqual(calls, [['update_package', ['aether-proxy']], ['update_check', []], ['status']]);
+		assert.match(text(h.page.summary), /请刷新页面后继续下一步更新/);
+		assert.equal(buttons(h.page.inventory).filter(b => text(b) == '先更新到 0.6.6（第 1/2 步）').length, 3);
+		assert.equal(h.root.children[0], form);
+		assert.equal(form.children[0].value, 'off');
+	}
+});
+test('T11.14 invalid or unavailable chains show explicit causes and disabled target buttons', async () => {
+	for (const detail of ['missing middle step', 'bad hash', '<asset missing>']) {
+		const s = bridge_status();
+		for (const name of names.slice(1))
+			Object.assign(s.updates_available.packages[name], {
+				code: 'BRIDGE_UNAVAILABLE', detail, newer: false, asset: null, next_step: null,
+				available: '0.6.8', installed: null
+			});
+		const h = await ready_view(s);
+		const rows = model.table(s, false, 160).rows.slice(1);
+		for (const r of rows) {
+			assert.equal(r.install, false);
+			assert.equal(r.update, false);
+			assert.equal(r.disabled, true);
+			assert.equal(r.blocked, true);
+			assert.ok(r.status.includes(detail));
+			assert.match(r.status, /兼容更新链不可用/);
+		}
+		const actions = buttons(h.page.inventory).filter(b => text(b) == '立即更新' && b.disabled);
+		assert.equal(actions.length, 3);
+		for (const action of actions)
+			await action.click();
+		assert.deepEqual(h.jobs, []);
+	}
+});
+test('T11.14 failed bridge recheck clears stale actions and permits manual recovery', async () => {
+	for (const throws of [false, true]) {
+		const h = await ready_view(bridge_status());
+		h.ap.run_job = async kind => {
+			if (kind == 'update_package')
+				return {state: 'ok', result: {ok: true, from: '0.6.3', to: '0.6.4'}};
+			if (throws)
+				throw new Error('offline');
+			return {state: 'failed', result: {ok: false, code: 'UPDATE_FETCH_FAILED'}};
+		};
+		await h.page.run('update_package', 'aether-proxy', false);
+		assert.equal(h.page.busy, false);
+		assert.deepEqual(buttons(h.page.inventory).map(text), ['检查更新']);
+		assert.equal(buttons(h.page.inventory)[0].disabled, false);
+	}
+});
+test('T11.14 failed bridge installation never starts another check or step', async () => {
+	const h = await ready_view(bridge_status());
+	h.ap.run_job = async (kind, args) => {
+		h.jobs.push({kind, args});
+		return { state: 'failed', result: {ok: false, code: 'BRIDGE_UNAVAILABLE', detail: 'bad hash'} };
+	};
+	await h.page.run('update_package', 'aether-proxy', false);
+	assert.deepEqual(h.jobs, [{kind: 'update_package', args: ['aether-proxy']}]);
+	assert.match(text(h.page.summary), /兼容更新链不可用.*bad hash/);
+	assert.equal(h.page.busy, false);
+});
+
 test('T10.47 scenario 2: empty channel URLs save unchanged without errors or writes', async () => {
 	for (const config of [{}, { channel_urls: [] }]) {
 		const h = load_view(config);

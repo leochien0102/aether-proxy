@@ -1127,4 +1127,7 @@ expect 'T9.42 grouped install reports ARCH_UNSUPPORTED for a bad size' ARCH_UNSU
 [ ! -s "$UPDATE_PACKAGE_CALLS" ] && ok 'T9.42 rejected assets never reach the package manager' \
 	|| bad 'T9.42 rejected assets never reach the package manager' "$(cat "$UPDATE_PACKAGE_CALLS")"
 
+# T11.14: signed backend compatibility chains (kept after shared fixture tests).
+source "$ROOT/tests/update/bridge-chain.sh"
+
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

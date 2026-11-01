@@ -20,6 +20,8 @@ return view.extend({
 		return uci.load('aetherproxy');
 	},
 	run: async function(kind, name, previous) {
+		const bridge = kind == 'update_package' && !previous &&
+			this.status?.updates_available?.packages?.[name]?.bridge_required === true;
 		this.busy = true;
 		let timer;
 		try {
@@ -31,6 +33,18 @@ return view.extend({
 				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);
 			timer.stop();
 			this.summary.textContent = model.job_result(kind, name, job);
+			if (bridge && job.state == 'ok' && job.result?.ok !== false) {
+				// Re-check only: each following step still requires a separate click.
+				// Clear stale actions if the check or subsequent status read fails.
+				this.status = { updates_available: null };
+				timer = ap.job_progress(this.progress, model.job_progress('update_check'));
+				const check = await ap.run_job('update_check', []);
+				timer.stop();
+				this.summary.textContent += ' ' + model.job_result('update_check', null, check) + ' ' +
+					_('Please refresh the page before continuing to the next update step.', 'aether-proxy');
+				if (check.state == 'failed' || check.result?.ok === false)
+					return;
+			}
 			this.status = await ap.call('status');
 		}
 		catch (e) {
@@ -62,7 +76,10 @@ return view.extend({
 					destructive: true
 				}))
 					return;
-				return this.run('update_package', row.name, previous);
+				if (row.disabled)
+					return;
+				// Companion rows must not install the target's page/translation independently.
+				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous);
 			}) }, [ label ]);
 	},
 	show_inventory: function() {
@@ -74,15 +91,15 @@ return view.extend({
 		const jobButtons = [check];
 		this.inventory.replaceChildren(E('p', {}, [ vm.error ?? '' ]), E('table', { class: 'table' }, [
 			E('tr', { class: 'tr table-titles' },
-				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Latest', 'aether-proxy'),
+				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Version', 'aether-proxy'),
 					_('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
 					.map(text => E('th', { class: 'th' }, text))),
 			...vm.rows.map(row => {
 				const actions = [];
 				if (row.install)
-					actions.push(this.package_button(row, _('Install', 'aether-proxy'), false));
-				if (row.update)
-					actions.push(this.package_button(row, _('Update now', 'aether-proxy'), false));
+					actions.push(this.package_button(row, row.bridge_required ? row.update_label : _('Install', 'aether-proxy'), false));
+				if (row.update || row.blocked)
+					actions.push(this.package_button(row, row.update_label, false));
 				if (row.rollback)
 					actions.push(this.package_button(row, row.rollback_label, true));
 				jobButtons.push(...actions);

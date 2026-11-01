@@ -186,8 +186,76 @@ def package_manifest(
     return result
 
 
+def compatibility_version(value: Any) -> tuple[int, int, int, int]:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-(?:r)?[0-9]+)?", value):
+        raise ValueError("compatibility version must be numeric semver with optional -rN/-N")
+    base, _, revision = value.partition("-")
+    return (*map(int, base.split(".")), int(revision.removeprefix("r") or "0"))
+
+
+def validate_compatibility(compatibility: Any, packages: dict[str, Any]) -> None:
+    if not isinstance(compatibility, dict) or set(compatibility) != {"aether-proxy"}:
+        raise ValueError("compatibility must contain aether-proxy")
+    chain = compatibility["aether-proxy"]
+    if not isinstance(chain, dict):
+        raise ValueError("compatibility.aether-proxy must be an object")
+    steps = chain.get("steps")
+    required = chain.get("required_steps")
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("compatibility steps must be nonempty")
+    if not isinstance(required, list) or not required:
+        raise ValueError("compatibility required_steps must be a nonempty frozen itinerary")
+    if any(not isinstance(step, dict) for step in steps):
+        raise ValueError("compatibility step must be an object")
+    if required != [step.get("version") for step in steps]:
+        raise ValueError("compatibility steps do not match required_steps itinerary")
+    source = steps[0].get("min_from")
+    compatibility_version(source)
+    if "from" in chain and chain["from"] != source:
+        raise ValueError("compatibility from must match first min_from")
+    predecessor = source
+    for step in steps:
+        version = step.get("version")
+        if step.get("min_from") != predecessor:
+            raise ValueError("compatibility min_from must exactly match predecessor")
+        if compatibility_version(version) <= compatibility_version(predecessor):
+            raise ValueError("compatibility steps must be strictly increasing")
+        if not isinstance(step.get("reason"), str) or not step["reason"].strip():
+            raise ValueError("compatibility step reason must be nonempty")
+        assets = step.get("assets")
+        if not isinstance(assets, dict) or not assets:
+            raise ValueError("compatibility step assets must be nonempty")
+        for arch, formats in assets.items():
+            if not isinstance(arch, str) or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", arch):
+                raise ValueError("compatibility asset architecture is invalid")
+            if not isinstance(formats, dict) or not formats or not set(formats) <= {"ipk", "apk"}:
+                raise ValueError("compatibility asset formats must be ipk/apk")
+            for kind, asset in formats.items():
+                if not isinstance(asset, dict):
+                    raise ValueError("compatibility asset must be an object")
+                url = asset.get("url")
+                if (not isinstance(url, str) or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", url)
+                        or not url.endswith("." + kind)):
+                    raise ValueError("compatibility asset url must be a safe relative package filename")
+                if not isinstance(asset.get("sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", asset["sha256"]):
+                    raise ValueError("compatibility asset sha256 is invalid")
+                if type(asset.get("size")) is not int or asset["size"] <= 0:
+                    raise ValueError("compatibility asset size must be a positive integer")
+        predecessor = version
+    target = packages.get("aether-proxy", {}).get("current", {}).get("version")
+    if predecessor != target:
+        raise ValueError("compatibility terminal step must exactly match aether-proxy current version")
+
+
+def compatibility_assets(compatibility: dict[str, Any]):
+    for step in compatibility["aether-proxy"]["steps"]:
+        for formats in step["assets"].values():
+            yield from formats.values()
+
+
 def build_manifest(
     package_dir: Path | None, data_dir: Path | None, previous: dict[str, Any] | None,
+    compatibility: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, bytes], list[str]]:
     if package_dir is not None:
         built_packages, copied, ignored = collect_packages(package_dir)
@@ -209,6 +277,17 @@ def build_manifest(
         "packages": packages,
         "data": data,
     }
+    has_compatibility = compatibility is not None or (previous is not None and "compatibility" in previous)
+    if compatibility is None and previous is not None:
+        compatibility = previous.get("compatibility")
+    if has_compatibility:
+        validate_compatibility(compatibility, packages)
+        manifest["compatibility"] = compatibility
+        for asset in compatibility_assets(compatibility):
+            if asset["url"] in copied:
+                content = copied[asset["url"]]
+                if len(content) != asset["size"] or sha256(content) != asset["sha256"]:
+                    raise ValueError(f"compatibility asset hash/size mismatch: {asset['url']}")
     return manifest, copied, ignored
 
 
@@ -216,9 +295,46 @@ def canonical_manifest(manifest: dict[str, Any]) -> bytes:
     return (json.dumps(manifest, sort_keys=True, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def build_to_dir(out: Path, packages: Path | None, data: Path | None, previous_path: Path | None) -> list[str]:
+def build_to_dir(
+    out: Path, packages: Path | None, data: Path | None, previous_path: Path | None,
+    compatibility_path: Path | None = None,
+) -> list[str]:
     previous = read_previous(previous_path)
-    manifest, copied, ignored = build_manifest(packages, data, previous)
+    compatibility = None
+    if compatibility_path is not None:
+        compatibility = json.loads(compatibility_path.read_text(encoding="utf-8"))
+        if compatibility is None:
+            raise ValueError("compatibility input must be an object")
+    manifest, copied, ignored = build_manifest(packages, data, previous, compatibility)
+    if "compatibility" in manifest:
+        # Published references need not be downloaded again. New historical assets live
+        # beside --compatibility; verify their bytes before publishing any output.
+        published: dict[str, Any] = {}
+        if previous:
+            for entry in previous["packages"].values():
+                for release in (entry.get("current"), entry.get("previous")):
+                    for formats in (release or {}).get("assets", {}).values():
+                        for asset in formats.values():
+                            published[asset["url"]] = asset
+            if "compatibility" in previous:
+                validate_compatibility(previous["compatibility"], previous["packages"])
+                for asset in compatibility_assets(previous["compatibility"]):
+                    published[asset["url"]] = asset
+        for asset in compatibility_assets(manifest["compatibility"]):
+            url = asset["url"]
+            if url in published and published[url] != asset:
+                raise ValueError(f"compatibility asset conflicts with published metadata: {url}")
+            if url in copied:
+                content = copied[url]
+            elif compatibility_path is not None and (compatibility_path.parent / url).is_file():
+                content = (compatibility_path.parent / url).read_bytes()
+            elif published.get(url) == asset:
+                continue
+            else:
+                raise ValueError(f"missing compatibility asset: {url}")
+            if len(content) != asset["size"] or sha256(content) != asset["sha256"]:
+                raise ValueError(f"compatibility asset hash/size mismatch: {url}")
+            copied[url] = content
     manifest_path = out / "manifest.json"
     unchanged = False
     if previous is not None:
@@ -245,11 +361,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--packages", type=Path)
     parser.add_argument("--data", type=Path)
     parser.add_argument("--previous", type=Path)
+    parser.add_argument("--compatibility", type=Path,
+                        help="compatibility object JSON; new bridge assets reside beside it; omitted: preserve previous")
     args = parser.parse_args(argv)
     if args.packages is None and args.data is None:
         parser.error("nothing to build: give --packages and/or --data")
     try:
-        ignored = build_to_dir(args.out, args.packages, args.data, args.previous)
+        ignored = build_to_dir(args.out, args.packages, args.data, args.previous, args.compatibility)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         print(f"channel build failed: {exc}", file=sys.stderr)
         return 1

@@ -107,16 +107,19 @@
    可用 LuCI 软件包上传或相应 opkg/apk 本地包安装；不要用旧更新器直接安装目标应用。
 4. 检查配置与服务健康并刷新页面。没有发布过可用 bridge，不能杜撰中间版替代手工迁移。
 
-### 有序 bridge 链（契约，产品实现另见 T11.14）
+### 有序 bridge 链（T11.14）
 
 新增硬依赖前，先发布一个**不要求该新硬依赖、但更新器已认识新包**的 bridge，
 旧客户端先装 bridge，再由新更新器安装依赖与目标版本；无法做到时只能给出显式手工迁移。
 每个 bridge 都必须满足从上一步客户端到本步的依赖闭包，不能只看最终版本。
 
-未来清单的 `compatibility.aether-proxy.steps` 为**有序列表**；每步有
-`version`、`min_from`、`assets`（沿用架构/格式/url/sha256/size 结构）。
-本节是新增字段的契约，不代表 0.6.3 已解析它或已具备“下一步”更新页功能。
+清单的 `compatibility.aether-proxy.steps` 为**有序列表**；每步有
+`version`、`min_from`、`assets`（沿用架构/格式/url/sha256/size 结构）及非空 `reason`。
+同级 `required_steps` 是独立审核的必经版本数组，必须与 steps 的版本序列完全一致；
+不能通过删除步骤并重接 `min_from` 来绕过它。版本含包 release 后缀时必须精确匹配，
+例如设备安装 `0.6.3-r1` 时首步 `min_from` 也必须是 `0.6.3-r1`。
 所有步骤资产必须保留并随清单签名；无架构/格式匹配资产就停止，不能跳级。
+本实现不追溯赋予已发布的 0.6.3 更新器解析新字段的能力，也不代表合成链已发布。
 
 测试用链是 **0.6.3 → 0.6.4 → 0.6.6 → 0.6.8**（仅合成 fixture，
 不是已发布版本或实际可用升级路径）。steps 依次为 0.6.4/min_from=0.6.3、
@@ -126,6 +129,39 @@
 版本严格递增，无重复；首步接来源、末步接目标、每步接前一步。
 独立冻结必经版本列表，以防删除中间步后修改 `min_from` 掩盖断档；
 缺步、乱序、重复、不衔接、缺资产或无有效 hash 都拒绝。
+
+#### 清单生成与部署边界
+
+`tools/channel/build.py --compatibility <JSON文件>` 接受完整 compatibility 对象
+（含 `aether-proxy.required_steps` / `steps`）；新引入的历史包放在该 JSON 同目录。
+生成器校验版本、reason、资产元数据及本地资产字节，复制新资产；已在上一份签名清单
+引用的资产保持原样。省略参数时保留上一份 compatibility，包含仅数据发布；
+目标版本变化时必须显式提供接到新 target 的链，不能静默丢掉旧链。
+
+stable 的发布脚本位于独立 channel 仓库。本仓库提供
+`tools/channel/publish-bridge-assets.patch`，必须先将其应用到 channel 的
+`scripts/publish.sh`，让上传、存在性检查及过期清理共同使用包含 compatibility 的引用集。
+在此补丁部署前不能发布 bridge 清单；只部署设备端/生成器不会自动修复旧发布脚本。
+本任务不修改外部 channel 工作区、不签名发布、不创建 tag。
+
+#### 检查、安装与页面
+
+`update check` 的应用条目在链上只提供下一步：`available` / `asset` 指向它，
+新增 `bridge_required: true`、`next_step: {version,reason}`、`steps_remaining`（含本次）。
+链无效时 `newer: false`、`asset: null`、`next_step: null`，并返回条目级
+`code: BRIDGE_UNAVAILABLE` / `detail`；不影响独立 Xray 与数据检查。
+页面/翻译条目同样受 bridge 门禁约束，不单独提供跨步安装按钮。
+
+每次 `update package aether-proxy` 或应用/页面/翻译安装入口重新验签并计算下一步，
+仅安装该步后端包，成功返回 `BRIDGE_INSTALLED`，不会在同一作业继续安装下一步或 target
+的页面包。到达 target 后，正常分组更新可补齐页面/翻译包。失败停止；资产下载/hash/size
+失败返回 `BRIDGE_UNAVAILABLE`，安装或健康验证失败保留既有失败码。
+验证失败仅尝试恢复精确匹配更新前版本的前驱 bridge 或 `previous`；不能把 target 当恢复包。
+没有可验证的恢复资产时明确报失败，不擅自安装其他版本。
+`--previous` 仍只允许 `aether-xray`，不影响 bridge 路径。
+
+更新页显示「先更新到 X（第 1/N 步）」；每次 bridge 作业后重新 check 并刷新状态。
+无效链显示原因且禁用按钮。没有 compatibility 时维持原有直升/分组更新行为。
 
 ## 发布通道（服务端）
 

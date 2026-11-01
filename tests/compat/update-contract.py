@@ -3,6 +3,7 @@
 import argparse
 import ast
 import copy
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -189,6 +190,19 @@ class ContractTests(unittest.TestCase):
         data['clients']['0.3.1']['manual_packages'] = []
         with self.assertRaisesRegex(ValueError, 'aether-xray, chinadns-ng'):
             validate_contract(data, self.deps, self.managed)
+
+    def test_publisher_enforces_frozen_bridge_itinerary(self):
+        spec = importlib.util.spec_from_file_location('channel_build', ROOT / 'tools/channel/build.py')
+        publisher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(publisher)
+        packages = {'aether-proxy': {'current': {'version': self.chain['target']}}}
+        publisher.validate_compatibility(self.chain['compatibility'], packages)
+        broken = copy.deepcopy(self.chain['compatibility'])
+        steps = broken['aether-proxy']['steps']
+        del steps[1]
+        steps[1]['min_from'] = steps[0]['version']
+        with self.assertRaisesRegex(ValueError, 'required_steps'):
+            publisher.validate_compatibility(broken, packages)
 
     def test_only_next_bridge_is_selectable(self):
         for current, expected in zip(['0.6.3'] + self.required, self.required + [None]):
