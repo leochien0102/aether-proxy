@@ -61,8 +61,8 @@ elif a[:2] == ['release', 'view']:
 elif a[:2] == ['release', 'upload']:
     dest = r / 'stable'; dest.mkdir(exist_ok=True)
     for p in a[3:]:
-        if p != '--clobber': shutil.copy(p, dest)
-elif a[:2] == ['release', 'delete-asset']: pass
+        if p != '--clobber' and Path(p).name != os.environ.get('DROP_UPLOAD'): shutil.copy(p, dest)
+elif a[:2] == ['release', 'delete-asset']: (r / 'stable' / a[3]).unlink()
 else: raise AssertionError(a)
 '''
 
@@ -87,6 +87,8 @@ class PromotionTest(unittest.TestCase):
                         TAG='v0.6.3-rc1', RC_TAG='v0.6.3-rc1', BUILD_SHA='a' * 40,
                         GH_REPO='offline/app', APP_REPO='offline/app', GITHUB_REPOSITORY='offline/channel',
                         PATH=str(bin_dir) + ':' + os.environ['PATH'])
+        for name in ['COMPATIBILITY_FILE', 'DROP_UPLOAD']:
+            self.env.pop(name, None)
         self.names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng']
         versions = ['0.6.3', '0.6.3', '26.001.12345~abcdef0', '26.10.31', '2025.08.09']
         for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]:
@@ -109,7 +111,7 @@ class PromotionTest(unittest.TestCase):
         self.run_step(RC, 0, self.work)
         self.run_step(RC, 1, self.work)
 
-    def test_round_trip_and_sign(self):
+    def prepare_publisher(self):
         self.candidate()
         self.assertEqual(len(list((self.root / 'release').iterdir())), 22)
         self.run_step(PROMOTE, 0, self.promote)
@@ -123,10 +125,39 @@ class PromotionTest(unittest.TestCase):
         signer.chmod(0o755)
         (self.root / 'stable').mkdir()
         self.env.update(USIGN=str(signer), USIGN_SECRET_KEY='FAKE TEST KEY')
-        p = subprocess.run(['bash', str(CHANNEL / 'scripts/publish.sh'), str(self.promote / 'publisher'), str(self.promote / 'packages')],
-                           cwd=self.promote, env=self.env, text=True, capture_output=True)
-        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
+    def publish(self, packages=True, success=True):
+        args = ['bash', str(CHANNEL / 'scripts/publish.sh'), str(self.promote / 'publisher')]
+        if packages:
+            args.append(str(self.promote / 'packages'))
+        result = subprocess.run(args, cwd=self.promote, env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+        return result
+
+    def bridge_fixture(self):
+        directory = self.root / 'bridge input'; directory.mkdir()
+        steps = []
+        predecessor = '0.6.1-r1'
+        for version in ['0.6.2-r1', '0.6.3-r1']:
+            assets = {'all': {}}
+            for kind in ['ipk', 'apk']:
+                filename = f'bridge-{version}.{kind}'
+                content = filename.encode()
+                (directory / filename).write_bytes(content)
+                assets['all'][kind] = dict(url=filename, size=len(content),
+                                           sha256=hashlib.sha256(content).hexdigest())
+            steps.append(dict(version=version, min_from=predecessor, assets=assets, reason='Offline bridge'))
+            predecessor = version
+        compatibility = {'aether-proxy': {'required_steps': [s['version'] for s in steps], 'steps': steps}}
+        path = directory / 'compatibility.json'; path.write_text(json.dumps(compatibility))
+        self.env['COMPATIBILITY_FILE'] = str(path)
+        return compatibility, {a['url'] for s in steps for a in s['assets']['all'].values()}
+
+    def test_round_trip_and_sign(self):
+        self.prepare_publisher()
+        self.publish()
         stable = self.root / 'stable'
+        self.assertNotIn('compatibility', json.loads((stable / 'manifest.json').read_text()))
         self.assertTrue((stable / 'manifest.json.sig').exists())
         manifest = json.loads((stable / 'manifest.json').read_text())
         for entry in manifest['packages'].values():
@@ -135,6 +166,112 @@ class PromotionTest(unittest.TestCase):
                     content = (stable / asset['url']).read_bytes()
                     self.assertEqual(hashlib.sha256(content).hexdigest(), asset['sha256'])
                     self.assertIn(content, [p.read_bytes() for p in (self.root / 'release').iterdir()])
+
+    def test_publisher_bridge_upload_and_data_only_retention(self):
+        self.prepare_publisher()
+        compatibility, urls = self.bridge_fixture()
+        self.publish()
+        stable = self.root / 'stable'
+        self.assertEqual(json.loads((stable / 'manifest.json').read_text())['compatibility'], compatibility)
+        self.assertTrue(all((stable / url).is_file() for url in urls))
+        # A data-only run has no local bridge bytes and must retain signed references.
+        del self.env['COMPATIBILITY_FILE']
+        shutil.rmtree(self.root / 'bridge input')
+        (stable / 'stale.ipk').write_bytes(b'stale')
+        data = self.promote / 'publisher/tools/data/build.py'
+        data.write_text(data.read_text().replace('fixture', 'updated fixture'))
+        before = {url: (stable / url).read_bytes() for url in urls}
+        self.publish(packages=False)
+        self.assertEqual(json.loads((stable / 'manifest.json').read_text())['compatibility'], compatibility)
+        self.assertEqual({url: (stable / url).read_bytes() for url in urls}, before)
+        self.assertFalse((stable / 'stale.ipk').exists())
+        calls = [json.loads(line) for line in (self.root / 'calls').read_text().splitlines()]
+        self.assertFalse(any(c[1:3] == ['release', 'delete-asset'] and c[4] in urls for c in calls))
+
+    def test_publisher_without_compatibility_keeps_old_retention_rules(self):
+        self.prepare_publisher()
+        self.publish()
+        stable = self.root / 'stable'
+        manifest = json.loads((stable / 'manifest.json').read_text())
+        entry = manifest['packages']['aether-proxy']
+        (stable / 'previous.ipk').write_bytes(b'previous')
+        entry['previous'] = {'version': '0.6.2-r1', 'assets': {'all': {'ipk': {'url': 'previous.ipk'}}}}
+        (stable / 'manifest.json').write_text(json.dumps(manifest))
+        (stable / 'unreferenced-bridge.ipk').write_bytes(b'not referenced')
+        data = self.promote / 'publisher/tools/data/build.py'
+        data.write_text(data.read_text().replace('fixture', 'updated fixture'))
+        self.publish(packages=False)
+        updated = json.loads((stable / 'manifest.json').read_text())
+        self.assertNotIn('compatibility', updated)
+        self.assertEqual(updated['packages'], manifest['packages'])
+        self.assertTrue((stable / 'previous.ipk').exists())
+        self.assertFalse((stable / 'unreferenced-bridge.ipk').exists())
+        for entry in updated['packages'].values():
+            for release in [entry.get('current'), entry.get('previous')]:
+                for formats in (release or {}).get('assets', {}).values():
+                    for asset in formats.values():
+                        self.assertTrue((stable / asset['url']).is_file())
+        for asset in updated['data'].values():
+            self.assertTrue((stable / asset['url']).is_file())
+
+    def test_publisher_invalid_bridge_contract_or_bytes_blocks(self):
+        self.prepare_publisher()
+        compatibility, urls = self.bridge_fixture()
+        path = Path(self.env['COMPATIBILITY_FILE'])
+        for value in [None, {}, {'aether-proxy': {'steps': []}}]:
+            with self.subTest(value=value):
+                path.write_text(json.dumps(value))
+                self.publish(success=False)
+                self.assertFalse((self.root / 'stable/manifest.json').exists())
+        path.write_text(json.dumps(compatibility))
+        asset = path.parent / sorted(urls)[0]
+        asset.write_bytes(b'tampered bridge')
+        result = self.publish(success=False)
+        self.assertIn('hash/size mismatch', result.stderr)
+        asset.unlink()
+        result = self.publish(success=False)
+        self.assertIn('missing compatibility asset', result.stderr)
+        self.assertNotIn('release", "upload', (self.root / 'calls').read_text())
+        self.assertFalse((self.root / 'stable/manifest.json').exists())
+
+    def test_publisher_bad_compatibility_input_fails_before_release_operations(self):
+        self.prepare_publisher()
+        path = self.root / 'invalid.json'
+        for value in [None, '{invalid', '']:
+            with self.subTest(value=value):
+                if value is not None:
+                    path.write_text(value)
+                self.env['COMPATIBILITY_FILE'] = str(path)
+                (self.root / 'calls').write_text('')
+                self.publish(success=False)
+                self.assertEqual((self.root / 'calls').read_text(), '')
+        self.env['COMPATIBILITY_FILE'] = ''
+        self.publish(success=False)
+        self.assertEqual((self.root / 'calls').read_text(), '')
+
+    def test_publisher_missing_bridge_upload_blocks_manifest_switch(self):
+        self.prepare_publisher()
+        _, urls = self.bridge_fixture()
+        self.env['DROP_UPLOAD'] = sorted(urls)[0]
+        result = self.publish(success=False)
+        self.assertIn('referenced assets missing after upload', result.stderr)
+        self.assertFalse((self.root / 'stable/manifest.json').exists())
+        self.assertNotIn('delete-asset', (self.root / 'calls').read_text())
+
+    def test_publisher_missing_inherited_bridge_blocks_manifest_switch(self):
+        self.prepare_publisher()
+        _, urls = self.bridge_fixture()
+        self.publish()
+        stable = self.root / 'stable'
+        old = (stable / 'manifest.json').read_bytes()
+        (stable / sorted(urls)[0]).unlink()
+        del self.env['COMPATIBILITY_FILE']
+        data = self.promote / 'publisher/tools/data/build.py'
+        data.write_text(data.read_text().replace('fixture', 'updated fixture'))
+        result = self.publish(packages=False, success=False)
+        self.assertIn('neither in the release nor built now', result.stderr)
+        self.assertEqual((stable / 'manifest.json').read_bytes(), old)
+        self.assertNotIn('delete-asset', (self.root / 'calls').read_text())
 
     def test_bad_hash_blocks(self):
         self.candidate()

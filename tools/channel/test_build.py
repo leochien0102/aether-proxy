@@ -187,12 +187,18 @@ PY
 release_assets | sort > "$work/existing"
 '''
         script.write_text(source)
-        result = subprocess.run(["git", "apply", str(ROOT / "tools/channel/publish-bridge-assets.patch")],
-                                cwd=script.parent.parent, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        patch = str(ROOT / "tools/channel/publish-bridge-assets.patch")
+        # A deployed publisher already contains the patch. Only patch the frozen/old
+        # copy, never the checkout selected by CHANNEL_ROOT.
+        deployed = subprocess.run(["git", "apply", "--reverse", "--check", patch],
+                                  cwd=script.parent.parent, capture_output=True, text=True)
+        if deployed.returncode != 0:
+            result = subprocess.run(["git", "apply", patch], cwd=script.parent.parent,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
         patched = script.read_text()
         subprocess.run(["bash", "-n", str(script)], check=True)
-        enumeration = patched.split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        enumeration = patched.split('> "$work/urls"', 1)[1].split("<<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
         compatibility = self.compatibility_fixture()
         manifest = {"packages": {"aether-proxy": {
             "current": {"assets": {"all": {"ipk": {"url": "current.ipk"}}}},
