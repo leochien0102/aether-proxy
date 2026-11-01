@@ -2,17 +2,24 @@
 
 // T12.3 B25: the pure daily aggregation in usage.uc (docs/b25-heatmap.md §4).
 // Fake clock: `now` values are built with timelocal, so the local dates are host-TZ
-// deterministic and never sit near a DST transition. Fake nft: tx/rx are plain numbers,
-// mirroring what aetherproxy.counters hands over from a real `nft -j list counters`.
+// deterministic and never sit near a DST transition. ucode's timelocal/localtime use
+// 1-based month numbers (mon: 10 is October), matching local_date() in usage.uc.
+// Fake nft: tx/rx are plain numbers, mirroring what aetherproxy.counters hands over
+// from a real `nft -j list counters`.
+//
+// T12.4 adds the persistence half (docs/b25-heatmap.md §3/§5): load/collect/write are
+// exercised against real files in a per-process scratch dir (state_read.uc's pattern),
+// so permission and rename semantics are the host's own.
 
+import * as fs from 'fs';
 import * as usage from 'aetherproxy.usage';
 
 const D1 = '2026-10-21';
 const D2 = '2026-10-22';
 const D3 = '2026-10-23';
-const NOON1 = timelocal({ year: 2026, mon: 9, mday: 21, hour: 12, min: 0, sec: 0 });
-const NOON2 = timelocal({ year: 2026, mon: 9, mday: 22, hour: 12, min: 0, sec: 0 });
-const NOON3 = timelocal({ year: 2026, mon: 9, mday: 23, hour: 12, min: 0, sec: 0 });
+const NOON1 = timelocal({ year: 2026, mon: 10, mday: 21, hour: 12, min: 0, sec: 0 });
+const NOON2 = timelocal({ year: 2026, mon: 10, mday: 22, hour: 12, min: 0, sec: 0 });
+const NOON3 = timelocal({ year: 2026, mon: 10, mday: 23, hour: 12, min: 0, sec: 0 });
 const CAP = 60; // 30 s running cadence doubled (docs §4.3)
 
 const RUNNING = 'running', DEGRADED = 'degraded', FAILSAFE = 'failsafe', STARTING = 'starting';
@@ -42,7 +49,120 @@ function series(c) {
 	return view(s);
 }
 
-export const cases = [
+// Scratch file helpers for the T12.4 persistence cases. Every case owns a file name
+// and (re)creates it, so the cases stay order-independent despite the shared dir.
+const SCRATCH = `/tmp/aether-proxy-test-usage.${fs.readlink('/proc/self')}`;
+
+function scratch(name, content) {
+	fs.mkdir(SCRATCH);
+	let path = `${SCRATCH}/${name}`;
+	if (content == null)
+		fs.unlink(path);
+	else
+		fs.writefile(path, content);
+	return path;
+};
+
+// A local date string built from timelocal's mday overflow (the T12.3 trim test's
+// approach): noon timestamps, so the round-trip date label is DST-safe.
+function date_of_mday(i) {
+	let tm = localtime(timelocal({ year: 2026, mon: 10, mday: i, hour: 12, min: 0, sec: 0 }));
+	return sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
+};
+
+const T124_CASES = [
+	{
+		name: 'T12.4 a missing file loads as an empty history without an error',
+		run: 'load', file: 'load-missing.json', content: null,
+		expect: { days: {}, error: false, op: 'read' }
+	},
+	{
+		name: 'T12.4 a corrupt file loads as an empty history and is left untouched',
+		run: 'load-kept', file: 'load-corrupt.json', content: '{not json',
+		expect: { days: {}, error: true, op: 'parse', kept: true }
+	},
+	{
+		name: 'T12.4 a JSON value that is not an object loads as an empty history',
+		run: 'load', file: 'load-array.json', content: '[1,2]',
+		expect: { days: {}, error: true, op: 'parse' }
+	},
+	{
+		name: 'T12.4 a days table that is not an object loads as an empty history',
+		run: 'load', file: 'load-days-array.json', content: '{"schema":1,"days":[]}',
+		expect: { days: {}, error: true, op: 'parse' }
+	},
+	{
+		name: 'T12.4 kept entries preserve their unknown fields across a load',
+		run: 'load', file: 'load-valid.json',
+		content: '{"schema":1,"updated_at":1790000000,"days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":9,"note":"x"}}}',
+		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 9, note: 'x' } },
+			error: false, op: 'parse' }
+	},
+	{
+		name: 'T12.4 a healthy share above observed is clamped back on load',
+		run: 'load', file: 'load-clamp.json',
+		content: '{"days":{"2026-10-21":{"tx":1,"rx":2,"observed":10,"healthy":20}}}',
+		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 10, healthy: 10 } },
+			error: false, op: 'parse' }
+	},
+	{
+		name: 'T12.4 malformed and non-date entries are ignored, valid neighbours kept',
+		run: 'load', file: 'load-junk.json',
+		content: '{"days":{"2026-10-21":{"tx":1,"rx":2,"observed":3,"healthy":2},' +
+			'"2026-10-22":{"tx":-1,"rx":2,"observed":3,"healthy":2},' +
+			'"2026-10-23":{"tx":1,"rx":2,"observed":3},' +
+			'"2026-10-24":"junk",' +
+			'"not-a-date":{"tx":1,"rx":2,"observed":3,"healthy":2}}}',
+		expect: { days: { '2026-10-21': { tx: 1, rx: 2, observed: 3, healthy: 2 } },
+			error: false, op: 'parse' }
+	},
+	{
+		name: 'T12.4 a successful write leaves a 0600 document without temp residue',
+		run: 'write', file: 'write-ok.json',
+		days: { '2026-10-21': { tx: 1, rx: 2, observed: 3, healthy: 4 } }, now: 1790000000,
+		expect: { ok: true, mode_0600: true, residue: 0,
+			document: { schema: 1, updated_at: 1790000000,
+				days: { '2026-10-21': { tx: 1, rx: 2, observed: 3, healthy: 4 } } } }
+	},
+	{
+		name: 'T12.4 a failed write reports the reason and a retry succeeds',
+		run: 'write-retry',
+		expect: { first_error: true, second_ok: true }
+	},
+	{
+		name: 'T12.4 collect merges completed days and the live day over the previous map',
+		run: 'collect',
+		previous: { '2026-10-20': { tx: 9, rx: 9, observed: 9, healthy: 9 },
+			'2026-10-21': { tx: 1, rx: 1, observed: 1, healthy: 1 } },
+		state: { day: '2026-10-22', tx: 5, rx: 6, observed: 7, healthy: 8,
+			days: { '2026-10-21': { tx: 2, rx: 3, observed: 4, healthy: 4 } } },
+		expect: { '2026-10-20': { tx: 9, rx: 9, observed: 9, healthy: 9 },
+			'2026-10-21': { tx: 2, rx: 3, observed: 4, healthy: 4 },
+			'2026-10-22': { tx: 5, rx: 6, observed: 7, healthy: 8 } }
+	},
+	{
+		name: 'T12.4 collect rewrites the live day over a stale copy and drops future dates',
+		run: 'collect',
+		previous: { '2026-10-22': { tx: 1, rx: 1, observed: 1, healthy: 1 },
+			'2026-10-24': { tx: 9, rx: 9, observed: 9, healthy: 9 } },
+		state: { day: '2026-10-22', tx: 0, rx: 0, observed: 0, healthy: 0, days: {} },
+		expect: { '2026-10-22': { tx: 0, rx: 0, observed: 0, healthy: 0 } }
+	},
+	{
+		name: 'T12.4 collect reports nothing to persist while the sampler has no live day',
+		run: 'collect',
+		previous: { '2026-10-21': { tx: 1, rx: 2, observed: 3, healthy: 4 } },
+		state: { day: null, tx: 0, rx: 0, observed: 0, healthy: 0, days: {} },
+		expect: null
+	},
+	{
+		name: 'T12.4 collect keeps the last 90 dates by local-date string order',
+		run: 'trim-collect',
+		expect: { kept: 90, first_kept: true, last_kept: true }
+	}
+];
+
+export const cases = [ ...T124_CASES,
 	{
 		name: 'T12.3 first sample records the baseline only, whatever the elapsed',
 		run: 'one',
@@ -210,9 +330,9 @@ export function run(c) {
 		let s = usage.create();
 		let dates = [];
 		for (let i = 1; i <= c.expect.today; i++) {
-			let now = timelocal({ year: 2026, mon: 9, mday: i, hour: 12, min: 0, sec: 0 });
+			let now = timelocal({ year: 2026, mon: 10, mday: i, hour: 12, min: 0, sec: 0 });
 			let tm = localtime(now);
-			push(dates, sprintf('%04d-%02d-%02d', tm.year, tm.mon + 1, tm.mday));
+			push(dates, sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday));
 			usage.sample(s, { tx: i * 100, rx: i * 100, now, elapsed: 0, cap: CAP,
 				state: 'stopped', proxy_ok: null });
 		}
@@ -223,6 +343,49 @@ export function run(c) {
 			first_kept: s.days[dates[c.expect.today - 2]] != null && s.days[dates[0]] == null
 				? index(dates, kept[0]) + 1 : -1
 		};
+	}
+	if (c.run == 'load' || c.run == 'load-kept') {
+		let path = scratch(c.file, c.content);
+		let got = usage.load(path);
+		let out = { days: got.days, error: got.error != null, op: got.op };
+		if (c.run == 'load-kept')
+			out.kept = fs.readfile(path) == c.content;
+		return out;
+	}
+	if (c.run == 'write') {
+		let path = scratch(c.file, null);
+		let got = usage.write(path, c.days, c.now);
+		let st = fs.stat(path);
+		return {
+			ok: got.ok == true && got.error == null,
+			mode_0600: st != null && (st.mode & 511) == 384,
+			residue: length(fs.glob(`${SCRATCH}/${c.file}.tmp.*`) ?? []),
+			document: st == null ? null : json(fs.readfile(path))
+		};
+	}
+	if (c.run == 'write-retry') {
+		let blocked = `${SCRATCH}/blocked`;
+		fs.mkdir(SCRATCH);
+		fs.unlink(blocked);
+		fs.writefile(blocked, 'not a directory');
+		let first = usage.write(`${blocked}/usage.json`, {}, 1790000000);
+		fs.unlink(blocked);
+		let second = usage.write(`${blocked}/usage.json`, {}, 1790000000);
+		fs.unlink(`${blocked}/usage.json`);
+		fs.rmdir(blocked);
+		return { first_error: first.ok == false && first.error != null, second_ok: second.ok == true };
+	}
+	if (c.run == 'collect')
+		return usage.collect(c.state, c.previous);
+	if (c.run == 'trim-collect') {
+		let previous = {};
+		for (let i = 1; i <= 95; i++)
+			previous[date_of_mday(i)] = { tx: i, rx: i, observed: 1, healthy: 1 };
+		let collected = usage.collect(
+			{ day: date_of_mday(96), tx: 0, rx: 0, observed: 0, healthy: 0, days: {} }, previous);
+		let kept = sort(keys(collected));
+		return { kept: length(kept), first_kept: kept[0] == date_of_mday(7),
+			last_kept: kept[89] == date_of_mday(96) };
 	}
 	die('unknown usage test kind');
 };

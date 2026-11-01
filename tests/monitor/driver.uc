@@ -8,6 +8,7 @@ import * as uci from 'uci';
 import * as config from 'aetherproxy.config';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as monitor from 'aetherproxy.monitor';
+import * as usage from 'aetherproxy.usage';
 import * as supervise from 'aetherproxy.supervise';
 import * as C from 'aetherproxy.const';
 
@@ -289,6 +290,105 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 		while (d.busy) uloop.run(100);
 		check(d.usage.tx == 2600 && d.usage.rx == 2100,
 			'heatmap-on: the next good read resumes the series', sprintf('%.J', d.usage));
+	}
+	no_external_children(d);
+}
+else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scenario == 'heatmap-persist-off') {
+	// T12.4 B25: the persistence wiring. The crossed day is produced by driving the pure
+	// sampler with yesterday's noon, so the next tick's real wall clock crosses the local
+	// date and flushes; every later flush goes through monitor.flush_usage() directly.
+	let d = opts.daemon;
+	let usage_dir = `${opts.ctx.root}/etc/aether-proxy`;
+	let usage_file = `${usage_dir}/usage.json`;
+	let events_path = `${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`;
+	let noon_before = days => {
+		let base = localtime(time());
+		return timelocal({ year: base.year, mon: base.mon, mday: base.mday - days, hour: 12, min: 0, sec: 0 });
+	};
+	let date_of = stamp => {
+		// ucode's localtime() already returns 1-based months (see usage.uc local_date).
+		let tm = localtime(stamp);
+		return sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
+	};
+	let events = () => fs.readfile(events_path) ?? '';
+	if (scenario == 'heatmap-persist-off') {
+		// A closed switch must not even load the history, let alone write a file (docs §2).
+		usage.sample(d.usage, { tx: 1000, rx: 2000, now: time(), elapsed: 0, cap: 60,
+			state: 'running', proxy_ok: true });
+		monitor.flush_usage(d);
+		check(fs.stat(usage_file) == null,
+			'heatmap-persist-off: a closed switch never creates or writes usage.json');
+		check(d.usage_days == null, 'heatmap-persist-off: a closed switch never loads the history');
+	}
+	else if (scenario == 'heatmap-persist') {
+		let seeded = { schema: 1, updated_at: 1790000000, days: {
+			'2026-01-01': { tx: 11, rx: 22, observed: 30, healthy: 20 } } };
+		sys.mkdir_p(usage_dir);
+		check(write(usage_file, sprintf('%.J', seeded) + '\n'), 'heatmap-persist: the seed history is in place');
+		usage.sample(d.usage, { tx: 1000, rx: 2000, now: noon_before(1), elapsed: 0, cap: 60,
+			state: 'running', proxy_ok: true });
+		usage.sample(d.usage, { tx: 1500, rx: 2600, now: noon_before(1) + 30, elapsed: 30, cap: 60,
+			state: 'running', proxy_ok: true });
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		let text = fs.readfile(usage_file);
+		check(text != null, 'heatmap-persist: the crossing tick rewrites usage.json');
+		let data = json(text);
+		let yesterday = date_of(noon_before(1)), today = date_of(time());
+		check(data.schema == 1 && type(data.updated_at) == 'int',
+			'heatmap-persist: the document carries schema 1 and a wall-clock updated_at', text);
+		check(data.days[yesterday]?.tx == 500 && data.days[yesterday]?.rx == 600 &&
+			data.days[yesterday]?.observed == 30 && data.days[yesterday]?.healthy == 30,
+			'heatmap-persist: the crossed-out day is persisted with its accumulators', text);
+		check(data.days['2026-01-01']?.tx == 11,
+			'heatmap-persist: previously persisted days survive the flush', text);
+		check(data.days[today]?.tx == 0 && data.days[today]?.observed == 0,
+			'heatmap-persist: the live day is written as an entry', text);
+		check(length(keys(data.days)) == 3, 'heatmap-persist: no stray dates are written', text);
+		check((fs.stat(usage_file).mode & 511) == 384,
+			'heatmap-persist: usage.json has mode 0600', sprintf('%J', fs.stat(usage_file).mode));
+		check(length(fs.glob(`${usage_dir}/usage.json.tmp.*`) ?? []) == 0,
+			'heatmap-persist: no atomic-write residue');
+		check(count(events(), 'FS_FAILED') == 0, 'heatmap-persist: a successful flush is silent', events());
+		// A failed rewrite leaves the target alone and does not block; the next flush retries.
+		fs.unlink(usage_file);
+		fs.mkdir(usage_file);
+		monitor.flush_usage(d);
+		check(fs.stat(usage_file)?.type == 'directory',
+			'heatmap-persist: a failed rewrite does not delete or replace the target');
+		check(count(events(), 'FS_FAILED') == 1 && count(events(), usage_file) == 1,
+			'heatmap-persist: the failed rewrite warns once', events());
+		fs.rmdir(usage_file);
+		monitor.flush_usage(d);
+		data = json(fs.readfile(usage_file));
+		check(data.days[yesterday]?.tx == 500 && data.days['2026-01-01']?.tx == 11,
+			'heatmap-persist: the next attempt after a failure persists the merged history', sprintf('%.J', data));
+		check(count(events(), 'FS_FAILED') == 1, 'heatmap-persist: the retry is silent again', events());
+		check(length(fs.glob(`${usage_dir}/usage.json.tmp.*`) ?? []) == 0,
+			'heatmap-persist: the retried write leaves no residue');
+	}
+	else {
+		// heatmap-corrupt: an unparsable file is an empty history with exactly one warn,
+		// never deleted; the next successful write overwrites it (docs §5).
+		sys.mkdir_p(usage_dir);
+		check(write(usage_file, 'not json at all'), 'heatmap-corrupt: the corrupt seed is in place');
+		usage.sample(d.usage, { tx: 1000, rx: 2000, now: noon_before(1), elapsed: 0, cap: 60,
+			state: 'running', proxy_ok: true });
+		usage.sample(d.usage, { tx: 1100, rx: 2100, now: noon_before(1) + 30, elapsed: 30, cap: 60,
+			state: 'running', proxy_ok: true });
+		monitor.flush_usage(d);
+		check(count(events(), 'FS_FAILED') == 1 && count(events(), usage_file) == 1,
+			'heatmap-corrupt: the corrupt file warns exactly once', events());
+		let data = json(fs.readfile(usage_file));
+		check(data.schema == 1 && data.days[date_of(noon_before(1))]?.tx == 100,
+			'heatmap-corrupt: the flush overwrites the corrupt file with the live history', sprintf('%.J', data));
+		usage.sample(d.usage, { tx: 1200, rx: 2200, now: noon_before(1) + 60, elapsed: 30, cap: 60,
+			state: 'running', proxy_ok: true });
+		monitor.flush_usage(d);
+		check(count(events(), 'FS_FAILED') == 1,
+			'heatmap-corrupt: the cached empty history does not warn again', events());
+		check(json(fs.readfile(usage_file)).days[date_of(noon_before(1))]?.tx == 200,
+			'heatmap-corrupt: accumulation continues on the empty history', sprintf('%.J', data));
 	}
 	no_external_children(d);
 }

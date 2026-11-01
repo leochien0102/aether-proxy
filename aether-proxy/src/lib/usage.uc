@@ -1,20 +1,28 @@
 'use strict';
 
-// B25 usage heatmap aggregation (docs/b25-heatmap.md §4, T12.3): pure per-day accounting.
-// No I/O and no clock access: the monitor passes counters, wall time and the monotonic
-// elapsed; this module only decides how they accumulate. A completed day moves into
-// `days` in memory; persistence is T12.4, so nothing here touches the filesystem.
+// B25 usage heatmap (docs/b25-heatmap.md): per-day accounting (§4, T12.3) plus its file
+// persistence (§3/§5, T12.4). The aggregation half stays pure — no clock access: the
+// monitor passes counters, wall time and the monotonic elapsed; a completed day moves
+// into `days` in memory. The persistence half owns the usage.json format, validation
+// and the atomic 0600 rewrite; the monitor decides when to call it (a crossed local
+// date, a clean daemon stop) and how failures are logged.
 
+import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
+import * as sys from 'aetherproxy.sys';
 
 // A day counts toward `observed` only while the service is supposed to intercept traffic
 // and the round could read the proxy counters (docs/b25-heatmap.md §4.6).
 const OBSERVED_STATES = [ 'running', 'degraded', 'failsafe' ];
 
+// ucode's localtime() deviates from the C struct tm: `mon`, `wday` and `yday` are
+// already 1-based, so `mon` is the calendar month number as-is. Adding 1 shifted every
+// label a month ahead (found in T12.4, 2026-11-01: the host build returns mon: 11 for
+// November), hidden so long as producers and consumers shifted consistently.
 function local_date(now) {
 	let tm = localtime(now);
 	return type(tm) != 'object' ? null
-		: sprintf('%04d-%02d-%02d', tm.year, tm.mon + 1, tm.mday);
+		: sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
 }
 
 // The heatmap credits at most the current monitor cadence doubled (docs §4.3): a sleep,
@@ -115,4 +123,83 @@ export function sample(state, s) {
 	if (state.day == null || crossed_day)
 		state.day = date;
 	return state;
+};
+
+// ---- Persistence (docs/b25-heatmap.md §3/§5, T12.4) ----
+
+const DATE_PATTERN = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+function numeric(value) {
+	return (type(value) == 'int' || type(value) == 'double') && value >= 0;
+};
+
+function valid_entry(entry) {
+	return type(entry) == 'object' && numeric(entry.tx) && numeric(entry.rx) &&
+		numeric(entry.observed) && numeric(entry.healthy);
+};
+
+// load(path) -> { days, error, op }. A missing file is an empty history without an
+// error. A corrupt or unreadable file is an empty history plus the failure detail —
+// the caller warns once and leaves the file in place for the next successful write to
+// overwrite it (docs §5). Entries without four non-negative numbers, or under a
+// non-date key, are ignored; unknown fields of a kept entry are preserved, and a
+// healthy share above observed is clamped back into range.
+export function load(path) {
+	let text = fs.readfile(path);
+	if (text == null) {
+		let detail = fs.error() ?? 'unknown error';
+		return detail == 'No such file or directory'
+			? { days: {}, error: null, op: 'read' }
+			: { days: {}, error: `read ${path}: ${detail}`, op: 'read' };
+	}
+	let data = null;
+	try {
+		data = json(text);	// throws on bad input
+	}
+	catch (e) {
+		data = null;
+	}
+	if (type(data) != 'object' || type(data.days) != 'object')
+		return { days: {}, error: `parse ${path}: expected a JSON object with a days table`, op: 'parse' };
+	let days = {};
+	for (let date, entry in data.days)
+		if (match(date, DATE_PATTERN) && valid_entry(entry))
+			days[date] = { ...entry, healthy: min(entry.healthy, entry.observed) };
+	return { days, error: null, op: 'parse' };
+};
+
+// collect(state, previous) -> the day map to persist, or null while the sampler never
+// held a live day (this run has nothing to add, so the file is left alone). This run's
+// completed days and the live day — written even when empty (docs §3) — override the
+// previous map for their date. Dates after the live day (a clock that jumped forward
+// and back) are dropped rather than rewritten, and the map keeps the last
+// USAGE_DAYS_KEEP dates by plain local-date string order (docs §5).
+export function collect(state, previous) {
+	if (state?.day == null)
+		return null;
+	let days = { ...(previous ?? {}) };
+	for (let date, entry in state.days)
+		if (valid_entry(entry))
+			days[date] = { ...entry };
+	for (let date in days)
+		if (date > state.day)
+			delete days[date];
+	days[state.day] = { tx: state.tx, rx: state.rx, observed: state.observed, healthy: state.healthy };
+	let dates = sort(keys(days));
+	while (length(dates) > C.USAGE_DAYS_KEEP)
+		delete days[shift(dates)];
+	return days;
+};
+
+// write(path, days, now) -> { ok, error }. One JSON document renamed atomically into
+// place with mode 0600 (sys.write_atomic), so a reader or a crash never sees a partial
+// file (docs §3). The success return is the write verification; on failure any previous
+// file is left untouched and the reason is reported to the caller.
+export function write(path, days, now) {
+	let parent = substr(path, 0, rindex(path, '/'));
+	if (parent != '' && !sys.mkdir_p(parent))
+		return { ok: false, error: `mkdir ${parent}: ${sys.error() ?? 'unknown error'}` };
+	if (!sys.write_atomic(path, sprintf('%.J', { schema: 1, updated_at: now, days }) + '\n'))
+		return { ok: false, error: sys.error() ?? 'unknown error' };
+	return { ok: true, error: null };
 };

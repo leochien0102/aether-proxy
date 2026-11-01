@@ -238,6 +238,9 @@ export const STATS_NFT_TIMEOUT_SECS = 5;
 // Elapsed credited to one sample is capped at the monitor interval times this factor.
 export const USAGE_ELAPSED_FACTOR = 2;
 export const USAGE_DAYS_KEEP = 90;
+// T12.4 (B25 usage persistence): daily history rewritten atomically with mode 0600
+// when a local date is crossed and on a clean daemon stop (docs/b25-heatmap.md §3/§5).
+export const USAGE_FILE = '/etc/aether-proxy/usage.json';
 
 // T8.12b: procd service signal uses the numeric SIGUSR1 value.
 export const PROBE_SIGUSR1 = 10;

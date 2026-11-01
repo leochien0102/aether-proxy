@@ -31,6 +31,10 @@ function current_dir(daemon) {
 	return `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`;
 };
 
+function usage_path(daemon) {
+	return system_path(daemon.ctx, C.USAGE_FILE);
+};
+
 function command(ctx, name) {
 	return ctx.bin_dir ? `${ctx.bin_dir}/${name}` : name;
 };
@@ -436,12 +440,47 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 	}
 };
 
+// B25 usage persistence (docs/b25-heatmap.md §5, T12.4): merge this run's days over the
+// previously persisted history and rewrite usage.json atomically with mode 0600. Called
+// when a sample crosses the local date and by the daemon's clean-stop path; a closed
+// switch must not touch the file at all. A failed write keeps the memory state and
+// never blocks the monitor — the next crossing or stop retries. Defined before its
+// caller: ucode does not hoist declarations (see tick above).
+function flush_usage(daemon) {
+	if (daemon?.snapshot?.stats?.heatmap_enabled !== true)
+		return;
+	let path = usage_path(daemon);
+	if (daemon.usage_days == null) {
+		let loaded = usage.load(path);
+		// A corrupt or unreadable file starts as an empty history with a single warn;
+		// the file itself stays until the next successful write overwrites it (docs §5).
+		if (loaded.error != null && !daemon.usage_warned) {
+			daemon.usage_warned = true;
+			log.set_run_dir(run_dir(daemon));
+			log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
+		}
+		daemon.usage_days = loaded.days;
+	}
+	let days = usage.collect(daemon.usage, daemon.usage_days);
+	if (days == null)
+		return;
+	let written = usage.write(path, days, time());
+	if (!written.ok) {
+		log.set_run_dir(run_dir(daemon));
+		log.event('warn', 'FS_FAILED', { op: 'write', path, detail: written.error });
+		return;
+	}
+	daemon.usage_days = days;
+};
+
 // B25 usage sampling (docs/b25-heatmap.md §4, T12.3): only a `true` switch samples, and
-// a closed switch must not even run the nft counter query. Data stays in memory; the
-// process restart loses the live day by design (persistence is T12.4).
+// a closed switch must not even run the nft counter query. Data lives in memory between
+// the persistence points (a crossed local date and the clean stop, T12.4); an abnormal
+// exit loses the live day by design.
 function sample_usage(daemon, obs) {
 	if (daemon.snapshot?.stats?.heatmap_enabled !== true)
 		return;
+	let live_day = daemon.usage.day;
 	let now_ms = monotonic_ms();
 	let elapsed = daemon.usage_mono_ms == null || now_ms == null
 		? 0 : max((now_ms - daemon.usage_mono_ms) / 1000, 0);
@@ -456,6 +495,10 @@ function sample_usage(daemon, obs) {
 		state: daemon.machine.state,
 		proxy_ok: obs.proxy_ok
 	});
+	// The sampler finalized the old day on the crossing (docs §5): get the merged
+	// history on disk before the new day grows.
+	if (live_day != null && daemon.usage.day != live_day)
+		flush_usage(daemon);
 };
 
 tick = function(daemon) {
@@ -500,7 +543,9 @@ function create_daemon(daemon) {
 		skip_next: false,
 		interval: null,
 		usage: usage.create(),
-		usage_mono_ms: null
+		usage_mono_ms: null,
+		usage_days: null,
+		usage_warned: false
 	};
 };
 
@@ -753,4 +798,4 @@ interval_ms = machine => {
 	return machine?.state == 'running' ? C.MONITOR_RUNNING_INTERVAL_MS : C.MONITOR_OTHER_INTERVAL_MS;
 };
 
-export { create_daemon, initial_state, interval_ms, next, tick, wait_xray_port };
+export { create_daemon, flush_usage, initial_state, interval_ms, next, tick, wait_xray_port };

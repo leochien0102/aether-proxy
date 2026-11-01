@@ -1257,6 +1257,8 @@ function run(args) {
 				if (changed.stop) {
 					stopping = true;
 					cancel_subscription_timer();
+					// The sampled days must reach usage.json before teardown discards them (T12.4).
+					monitor.flush_usage(monitor_daemon);
 					let stop_errors = shutdown(ctx, children, true);
 					if (length(stop_errors))
 						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
@@ -1294,6 +1296,8 @@ function run(args) {
 			while (monitor_daemon?.busy)
 				uloop.run(C.DAEMON_POLL_MS);
 			stopping = true;
+			// The final tick's samples must reach usage.json before teardown (T12.4).
+			monitor.flush_usage(monitor_daemon);
 			let stop_errors = shutdown(ctx, children, true);
 			if (length(stop_errors))
 				event_failure(ctx, 'stop', join('; ', stop_errors));

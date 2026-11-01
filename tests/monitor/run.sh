@@ -80,8 +80,8 @@ EOF
 
 run_case() {
 	local name="$1" root="$T/$1" conf="$T/enabled-conf"
-	if [[ "$name" = disabled-* || "$name" = heatmap-* ]]; then conf="$FIX"; fi
-	if [[ "$name" = heatmap-on ]]; then conf="$T/heatmap-conf"; fi
+	if [[ "$name" = disabled-* || "$name" = heatmap-off || "$name" = heatmap-persist-off ]]; then conf="$FIX"; fi
+	if [[ "$name" = heatmap-on || "$name" = heatmap-persist || "$name" = heatmap-corrupt ]]; then conf="$T/heatmap-conf"; fi
 	make_sysroot "$root"
 	CHILD_ROOTS+=("$root")
 	STUB_LOG="$root/var/run/aether-proxy/calls.log" \
@@ -98,6 +98,9 @@ run_case proxy-tier 2
 run_case node-refresh
 run_case heatmap-off
 run_case heatmap-on
+run_case heatmap-persist
+run_case heatmap-corrupt
+run_case heatmap-persist-off
 STUB_NFT_FAIL_ONCE=1 run_case xray-failsafe 999999
 for scenario in immediate-proxy immediate-xray immediate-retry immediate-locked; do
 	STUB_RESOLVE_FAIL=1 run_case "$scenario" 1
