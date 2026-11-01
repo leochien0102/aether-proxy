@@ -24,6 +24,9 @@
  * T10.68 presents docs/10 B19 degradation without changing effective selections
  * or the configured-versus-applied mode comparison;
  * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
+ * T12.6 adds the B25 usage heatmap: switch interpretation, the stats_history
+ * reply mapping and the pure 7×13 week grid with colour levels, health tiers
+ * and text-only tooltips;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -369,6 +372,86 @@ function node_options(labels, current) {
 	return options;
 }
 
+/* B25 usage heatmap (docs/b25-heatmap.md §7, docs/10 「B25：概览页使用热力图」).
+   Dates are 'YYYY-MM-DD' strings in the router's local calendar — the backend
+   aggregates by local date and the view passes today's local date in. */
+const HEATMAP_WEEKS = 13;
+const HEATMAP_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/* Calendar-date parse that rejects impossible dates such as 2026-02-31. */
+function parse_date(value) {
+	const m = HEATMAP_DATE_RE.exec(value);
+	if (!m)
+		return null;
+	const day = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+	return (day.getUTCFullYear() === +m[1] && day.getUTCMonth() === +m[2] - 1
+		&& day.getUTCDate() === +m[3]) ? day : null;
+}
+
+function date_key(day) {
+	const part = (n) => String(n).padStart(2, '0');
+	return day.getUTCFullYear() + '-' + part(day.getUTCMonth() + 1) + '-' + part(day.getUTCDate());
+}
+
+/* Column of a date: Monday = 0 … Sunday = 6 (docs/b25-heatmap.md §7). */
+function weekday_index(day) {
+	return (day.getUTCDay() + 6) % 7;
+}
+
+function week_start(day) {
+	return add_days(day, -weekday_index(day));
+}
+
+function add_days(day, n) {
+	const d = new Date(day.getTime());
+	d.setUTCDate(d.getUTCDate() + n);
+	return d;
+}
+
+/* Traffic with an automatic unit, 1024 steps like rate_text. */
+function byte_text(value) {
+	const units = [ 'B', 'KB', 'MB', 'GB', 'TB' ];
+	let unit = 0;
+	let v = Math.max(0, value);
+	while (v >= 1024 && unit < units.length - 1) {
+		v /= 1024;
+		unit++;
+	}
+	return (unit ? v.toFixed(1) : String(Math.round(v))) + ' ' + units[unit];
+}
+
+/* Duration buckets without implying a timestamp (same magnitudes as state_duration). */
+function duration_text(secs) {
+	const d = Math.max(0, Math.floor(secs));
+	if (d < 60)
+		return fmt(_('%s seconds', 'aether-proxy'), d);
+	if (d < 3600)
+		return fmt(_('%s minutes', 'aether-proxy'), Math.floor(d / 60));
+	if (d < 86400)
+		return fmt(_('%s hours', 'aether-proxy'), Math.floor(d / 3600));
+	return fmt(_('%s days', 'aether-proxy'), Math.floor(d / 86400));
+}
+
+function heatmap_tip(entry) {
+	return [
+		entry.date,
+		fmt(_('Proxy traffic %s', 'aether-proxy'), byte_text(entry.tx + entry.rx)),
+		fmt(_('Healthy share %s', 'aether-proxy'),
+			entry.observed > 0 ? Math.round(100 * Math.min(1, entry.healthy / entry.observed)) + '%' : '–'),
+		fmt(_('Observed %s', 'aether-proxy'), duration_text(entry.observed))
+	].join('\n');
+}
+
+/* ok = no unhealthy time; warn = some; bad = observed but never healthy;
+   none = not observed at all — neutral, never painted as a failure. */
+function health_tier(entry) {
+	if (!(entry.observed > 0))
+		return 'none';
+	if (entry.healthy >= entry.observed)
+		return 'ok';
+	return entry.healthy > 0 ? 'warn' : 'bad';
+}
+
 /* Reload failures leave runtime status unchanged. Compare against UCI instead
    of last_error, which describes startup rather than the attempted switch. */
 function node_changed(status, configured_node) {
@@ -656,6 +739,76 @@ return baseclass.extend({
 
 	mode_options: function() {
 		return Object.entries(MODE_TEXT).map(([value, text]) => ({ value, text }));
+	},
+
+	/* docs/05 「config stats」: missing, empty and anything but '1' is off. */
+	heatmap_enabled: function(value) {
+		return value === '1';
+	},
+
+	/* Local calendar date of a unix-ms timestamp, 'YYYY-MM-DD'. */
+	heatmap_today: function(ms) {
+		const d = new Date(ms);
+		const part = (n) => String(n).padStart(2, '0');
+		return d.getFullYear() + '-' + part(d.getMonth() + 1) + '-' + part(d.getDate());
+	},
+
+	/* Week rows cover the weeks of the shown data, oldest first, capped at 13:
+	   short history gives a compact grid, sparse older entries beyond 13 weeks
+	   drop off. Days without an entry stay blank (no zero-fill, no backfill),
+	   future dates never render. Colour level: log1p(tx+rx) normalized over the
+	   shown days, 0 traffic lightest (level 0..4). */
+	heatmap_view: function(reply, today) {
+		if (!reply || reply.ok === false)
+			return { state: 'error',
+				text: fmt(_('Reading the usage history failed (%s)', 'aether-proxy'),
+					(reply && typeof reply.code == 'string') ? reply.code : 'RPC_FAILED') };
+		if (reply.enabled !== true)
+			return { state: 'off' };
+
+		const today_day = parse_date(today);
+		const entries = (Array.isArray(reply.days) ? reply.days : []).reduce((list, entry) => {
+			const day = (entry && typeof entry.date == 'string') ? parse_date(entry.date) : null;
+			if (!day || (today_day && day > today_day))
+				return list;
+			const num = (v) => (Number.isFinite(v) && v >= 0) ? v : 0;
+			list.push({ day, date: entry.date, tx: num(entry.tx), rx: num(entry.rx),
+				observed: num(entry.observed), healthy: Math.min(num(entry.healthy), num(entry.observed)) });
+			return list;
+		}, []).sort((a, b) => a.day - b.day);
+
+		if (!entries.length)
+			return { state: 'empty', text: _('No data yet', 'aether-proxy') };
+
+		const last = entries[entries.length - 1].day;
+		const oldest = week_start(entries[0].day);
+		const newest = week_start(last);
+		const first = (newest.getTime() - oldest.getTime() > 7 * (HEATMAP_WEEKS - 1) * 86400000)
+			? add_days(newest, -7 * (HEATMAP_WEEKS - 1)) : oldest;
+		const shown = entries.filter((entry) => entry.day >= first);
+		const max = Math.max(...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
+		const by_date = new Map(shown.map((entry) => [ entry.date, entry ]));
+		const weeks = [];
+		for (let start = first; start <= last; start = add_days(start, 7)) {
+			const row = [];
+			for (let i = 0; i < 7; i++) {
+				const date = date_key(add_days(start, i));
+				const entry = by_date.get(date);
+				if (!entry) {
+					row.push(null);
+					continue;
+				}
+				const v = Math.log1p(entry.tx + entry.rx);
+				row.push({
+					date,
+					level: (max > 0 && v > 0) ? Math.min(4, 1 + Math.floor((v / max) * 4)) : 0,
+					health: health_tier(entry),
+					tip: heatmap_tip(entry)
+				});
+			}
+			weeks.push(row);
+		}
+		return { state: 'ok', weeks };
 	},
 
 	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */

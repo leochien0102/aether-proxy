@@ -1976,7 +1976,11 @@ function deferredPage(interval = '5', configured_node = 'n_a') {
 					cb({ '.name': 'n_b', label: 'Beta' });
 				}
 			},
-			get: (config, section, option) => option === 'node' ? configured_node : '1',
+			/* The B25 heatmap switch is not part of these scenarios: like a fresh
+			   install it reports no `stats` section, so the card stays absent
+			   (T12.6 covers it in heatmap.test.js). */
+			get: (config, section, option) => option === 'node' ? configured_node
+				: (option === 'heatmap_enabled' ? undefined : '1'),
 			set: (...args) => uciOps.push([ 'set', ...args ]),
 			save: async () => { uciOps.push([ 'save' ]); }
 		},
@@ -2018,7 +2022,8 @@ test('T10.17 scenario 1: load reads only UCI and never starts RPC or polling', a
 	assert.deepEqual(uciOps, [ [ 'load', 'aetherproxy' ] ]);
 	assert.deepEqual(calls, []);
 	assert.deepEqual(polls, []);
-	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: '1', enabled: true });
+	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: '1', enabled: true,
+		heatmap: undefined });
 });
 
 test('T10.17 scenario 2: all RPCs pending still renders complete placeholders and safe UCI controls', async () => {

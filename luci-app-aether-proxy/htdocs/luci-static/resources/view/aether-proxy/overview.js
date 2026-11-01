@@ -21,6 +21,10 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
+ * T12.6 adds the B25 usage heatmap card after the traffic card: the switch is
+ * read from UCI at load, only fetchRefresh may call stats_history (at most one
+ * read per 10 minutes or after the local date rolls over), a failed read keeps
+ * the last successful grid and the card is completely absent while disabled.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -43,6 +47,45 @@ function switchFormat(text, ...args) {
 	return text.replace(/%s/g, () => String(args.shift()));
 }
 
+/* B25 usage heatmap (docs/b25-heatmap.md §7): the history changes at most once
+   per day, so one read per 10 minutes — or after the local date rolls over —
+   is enough; stats_history never joins the 5-second stats poll. */
+const HEATMAP_TTL_MS = 10 * 60 * 1000;
+
+/* Weekday header of the grid, Monday first. */
+const HEATMAP_DAYS = [
+	_('Mon', 'aether-proxy'), _('Tue', 'aether-proxy'), _('Wed', 'aether-proxy'),
+	_('Thu', 'aether-proxy'), _('Fri', 'aether-proxy'), _('Sat', 'aether-proxy'),
+	_('Sun', 'aether-proxy')
+];
+
+/* Styles ship with this view instead of a separate resource URL: LuCI versions
+   the view script, so a cached old script never pairs with newer CSS or the
+   other way round (docs/10 T10.12). Green steps use rgba so both dark and
+   light themes keep the ramp; theme variables only carry the health colours. */
+const HEATMAP_CSS = [
+	'.ap-heat-scroll { overflow-x: auto; max-width: 100% }',
+	'.ap-heat-grid { display: grid; grid-template-columns: repeat(7, 1.6em); '
+		+ 'gap: 3px; width: max-content; padding: 2px }',
+	'.ap-heat-head { font-size: 0.8em; opacity: 0.7; text-align: center; '
+		+ 'align-self: end; white-space: nowrap }',
+	'.ap-heat-cell { width: 1.6em; height: 1.6em; border-radius: 3px }',
+	'.ap-heat-blank { background: rgba(127,127,127,0.12) }',
+	'.ap-heat-l0 { background: rgba(47,133,90,0.15) }',
+	'.ap-heat-l1 { background: rgba(47,133,90,0.35) }',
+	'.ap-heat-l2 { background: rgba(47,133,90,0.55) }',
+	'.ap-heat-l3 { background: rgba(47,133,90,0.75) }',
+	'.ap-heat-l4 { background: var(--success-color-high, #2f855a) }',
+	/* Not observed is neutral and dimmed, never a failure colour (b25 §7). */
+	'.ap-heat-none { background: rgba(127,127,127,0.3); opacity: 0.7 }',
+	'.ap-heat-warn { box-shadow: inset 0 0 0 2px var(--warning-color, #b7791f) }',
+	'.ap-heat-bad { box-shadow: inset 0 0 0 2px var(--error-color-high, #c53030); position: relative }',
+	'.ap-heat-bad::after { content: \'\'; position: absolute; top: 0; right: 0; '
+		+ 'border: 0.45em solid transparent; '
+		+ 'border-top-color: var(--error-color-high, #c53030); '
+		+ 'border-right-color: var(--error-color-high, #c53030) }'
+].join('\n');
+
 return view.extend({
 	load: function() {
 		return uci.load('aetherproxy').then(function() {
@@ -50,12 +93,15 @@ return view.extend({
 			uci.sections('aetherproxy', 'node', function(s) {
 				labels[s['.name']] = s.label || s['.name'];
 			});
-			/* An unset enabled option means 0, the schema default. */
+			/* An unset enabled option means 0, the schema default. The B25
+			   heatmap switch lives in its own `stats` section; a missing
+			   section means off (model.heatmap_enabled, docs/05). */
 			return {
 				labels: labels,
 				node: uci.get('aetherproxy', 'main', 'node'),
 				mode: uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn',
-				enabled: uci.get('aetherproxy', 'main', 'enabled') === '1'
+				enabled: uci.get('aetherproxy', 'main', 'enabled') === '1',
+				heatmap: uci.get('aetherproxy', 'stats', 'heatmap_enabled')
 			};
 		});
 	},
@@ -352,13 +398,26 @@ return view.extend({
 			if (read !== this.acceptedRead || this.enabling || this.switching)
 				return;
 			const unchanged = this.currentNode === data.node && this.currentMode === data.mode
-				&& this.enabled === data.enabled && JSON.stringify(this.labels) === JSON.stringify(data.labels);
+				&& this.enabled === data.enabled && this.heatmapCfg === data.heatmap
+				&& JSON.stringify(this.labels) === JSON.stringify(data.labels);
 			if (unchanged)
 				return;
 			this.labels = data.labels;
 			this.currentNode = data.node;
 			this.currentMode = data.mode;
 			this.enabled = data.enabled;
+			const heatmapWas = this.heatmapCfg;
+			this.heatmapCfg = data.heatmap;
+			/* A changed heatmap switch re-evaluates the card immediately: off
+			   clears it, on forces a fresh read (the previous TTL is stale). */
+			if (this.heatmapCfg !== heatmapWas) {
+				this.heatmapAt = null;
+				this.heatmapFailed = false;
+				this.heatmapError = null;
+				this.heatmapOff = false;
+				this.heatmapGood = null;
+				this.loadHeatmap();
+			}
 			this.refresh(this.status, undefined, this.latestEvents);
 		}).catch((e) => {
 			/* A failed UCI read keeps the last complete snapshot and retries on
@@ -409,8 +468,100 @@ return view.extend({
 					this.updateNotices();
 				});
 			});
-		}).finally(() => { this.refreshing = null; });
+		}).then(() => this.loadHeatmap()).finally(() => { this.refreshing = null; });
 		return this.refreshing;
+	},
+
+	/* B25 usage heatmap: stats_history is read only here — never in load(),
+	   never while the switch is off, and at most once per HEATMAP_TTL_MS (or
+	   right away when the local date has rolled over). The read runs after the
+	   status/stats/events chain so a slow or failing history call cannot delay
+	   the other cards; a failed read keeps the last successful grid and never
+	   spams the console (docs/10 「B25：概览页使用热力图」). */
+	loadHeatmap: function() {
+		if (!model.heatmap_enabled(this.heatmapCfg)) {
+			this.updateHeatmap();
+			return;
+		}
+		const now = Date.now();
+		const today = model.heatmap_today(now);
+		if (this.heatmapRequest || (this.heatmapAt != null
+			&& now - this.heatmapAt < this.heatmapTtl && this.heatmapDay === today))
+			return;
+		const request = ap.call('stats_history').then((reply) => {
+			if (this.heatmapRequest !== request)
+				return;
+			this.heatmapAt = Date.now();
+			this.heatmapDay = today;
+			const vm = model.heatmap_view(reply, today);
+			if (vm.state === 'error') {
+				/* One warning per failure streak, not one per retry. */
+				if (!this.heatmapFailed) {
+					this.heatmapFailed = true;
+					console.warn('aether-proxy: reading the usage history failed:',
+						reply?.code ?? 'RPC_FAILED');
+				}
+				this.heatmapError = vm.text;
+			}
+			else {
+				this.heatmapFailed = false;
+				this.heatmapError = null;
+				/* An `enabled:false` reply follows the applied configuration and
+				   hides the card; the UCI check re-evaluates on config changes. */
+				this.heatmapOff = vm.state === 'off';
+				this.heatmapGood = vm.state === 'off' ? null : vm;
+			}
+			this.updateHeatmap();
+		}).finally(() => {
+			if (this.heatmapRequest === request)
+				this.heatmapRequest = null;
+		});
+		this.heatmapRequest = request;
+	},
+
+	/* Renders only the heatmap region; every other card stays untouched. Off
+	   switch or an `off` reply empties the card completely — and once empty,
+	   a disabled card is left alone, so a refresh writes no region at all. */
+	updateHeatmap: function() {
+		if (!this.heatmapContainer)
+			return;
+		if (!model.heatmap_enabled(this.heatmapCfg) || this.heatmapOff) {
+			if (this.heatmapContainer.children.length)
+				dom.content(this.heatmapContainer, []);
+			return;
+		}
+		const children = [];
+		if (this.heatmapGood && this.heatmapError)
+			children.push(E('p', { style: this.colorStyle('warn') }, [ this.heatmapError ]));
+		if (this.heatmapGood) {
+			if (this.heatmapGood.state === 'empty')
+				children.push(E('p', {}, [ this.heatmapGood.text ]));
+			else
+				children.push(this.heatmapGrid(this.heatmapGood.weeks));
+		}
+		else if (this.heatmapError)
+			children.push(E('p', {}, [ this.heatmapError ]));
+		else
+			children.push(E('p', {}, [ _('Reading…', 'aether-proxy') ]));
+		dom.content(this.heatmapContainer, this.section(_('Usage heatmap', 'aether-proxy'), children));
+	},
+
+	/* 7 columns (Mon..Sun) × at most 13 week rows: a fixed-width CSS grid in a
+	   horizontally scrollable wrapper, so narrow screens scroll instead of
+	   squeezing the cells. Tooltips are plain title text; cells never take
+	   HTML (docs/b25-heatmap.md §7). */
+	heatmapGrid: function(weeks) {
+		const cells = HEATMAP_DAYS.map((day) => E('div', { 'class': 'ap-heat-head' }, [ day ]));
+		for (const week of weeks)
+			for (const cell of week)
+				cells.push(cell
+					? E('div', {
+						'class': 'ap-heat-cell ap-heat-l' + cell.level + ' ap-heat-' + cell.health,
+						'title': cell.tip
+					})
+					: E('div', { 'class': 'ap-heat-cell ap-heat-blank' }));
+		return E('div', { 'class': 'ap-heat-scroll' },
+			[ E('div', { 'class': 'ap-heat-grid' }, cells) ]);
 	},
 
 	readInterval: function() {
@@ -619,6 +770,7 @@ return view.extend({
 		this.currentMode = data.mode;
 		this.labels = data.labels;
 		this.enabled = data.enabled;
+		this.heatmapCfg = data.heatmap;
 	},
 
 	pollSwitch: async function(session) {
@@ -1048,6 +1200,21 @@ return view.extend({
 		this.enabled = data.enabled;
 		this.initialReading = true;
 
+		/* B25 heatmap state: cfg is the raw UCI value; the card is built only
+		   while the switch is on and starts with the shared reading placeholder. */
+		this.heatmapCfg = data.heatmap;
+		this.heatmapGood = null;
+		this.heatmapError = null;
+		this.heatmapOff = false;
+		this.heatmapFailed = false;
+		this.heatmapAt = null;
+		this.heatmapDay = null;
+		this.heatmapRequest = null;
+		this.heatmapTtl = HEATMAP_TTL_MS;
+		this.heatmapContainer = E('div', {});
+		this.heatmapStyle = E('style', {}, [ HEATMAP_CSS ]);
+		this.updateHeatmap();
+
 		this.content = E('div', {});
 
 		this.refresh(undefined);
@@ -1059,7 +1226,10 @@ return view.extend({
 			this.titleLine(interval), this.content
 		]);
 		this.switchOverlay = E('div', {});
-		const root = E('div', { 'class': 'cbi-map' }, [this.actionFields, this.switchOverlay]);
+		/* The style element trails the interactive structure; tests and themes
+		   address the fieldset and overlay by position (as before T12.6). */
+		const root = E('div', { 'class': 'cbi-map' },
+			[this.actionFields, this.switchOverlay, this.heatmapStyle]);
 
 		this.interval = interval;
 		/* Microtasks run after render returns its complete, UCI-backed skeleton.
@@ -1118,8 +1288,11 @@ return view.extend({
 			this.noticeContent = E('div', {});
 			this.runtimeContent = E('div', {});
 			this.trafficContainer = E('div', {});
+			/* The heatmap card sits between the traffic and component cards
+			   (docs/b25-heatmap.md §7); it fills itself via loadHeatmap. */
 			dom.content(this.content, [
-				this.noticeContent, this.runtimeContent, this.trafficContainer, this.componentSection
+				this.noticeContent, this.runtimeContent, this.trafficContainer,
+				this.heatmapContainer, this.componentSection
 			]);
 		}
 

@@ -70,6 +70,9 @@ var METHODS = {
 	sub_status: [],
 	data_status: [],
 	stats: [],
+	/* T12.6 (docs/10 「B25：概览页使用热力图」): days is optional, the plugin
+	   defaults to 90. The overview heatmap is the only caller. */
+	stats_history: [ 'days' ],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	node_parse: [ 'uri' ],

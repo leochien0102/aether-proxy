@@ -70,6 +70,7 @@ const PLUGIN_METHODS = {
 	sub_status: [],
 	data_status: [],
 	stats: [],
+	stats_history: [ 'days' ],
 	log: [ 'source', 'lines' ],
 	node_import: [ 'uri' ],
 	node_parse: [ 'uri' ],
