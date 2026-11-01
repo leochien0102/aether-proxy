@@ -1,0 +1,2 @@
+config stats 'stats'
+	option heatmap_enabled '1'

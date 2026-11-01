@@ -97,6 +97,12 @@ const other_fixtures = [
 	fixture('main', 'chinadns_bin', '/usr/bin/chinadns ng', false),
 	fixture('dns', 'dnsmasq_instance', 'dnsmasq', true),
 	fixture('dns', 'dnsmasq_instance', '', true),
+	/* T12.2 B25: any value other than '1' is off without a config error (docs/05),
+	   so the page precheck accepts exactly what the CLI accepts. */
+	fixture('stats', 'heatmap_enabled', '1', true),
+	fixture('stats', 'heatmap_enabled', '0', true),
+	fixture('stats', 'heatmap_enabled', 'yes', true),
+	fixture('stats', 'heatmap_enabled', '', true),
 	fixture('probe', 'url', 'http://host', true),
 	fixture('probe', 'url', 'https://host', true),
 	fixture('probe', 'url', 'https://host:8443/path?q=x', true),
@@ -246,6 +252,10 @@ test('T8.11b scenario 4: switch descriptions and the debug hint carry the requir
 	assert.match(model.description('lan_ifaces'), /br-lan/);
 	assert.match(model.description('xray_bin'), /留空/);
 	assert.match(model.description('dnsmasq_instance'), /留空/);
+	/* T12.2 B25: the heatmap switch carries the docs/05 closed-path clause. */
+	assert.match(model.description('heatmap_enabled'), /热力图/);
+	assert.match(model.description('heatmap_enabled'), /不采样/);
+	assert.equal(model.description('heatmap_enabled'), PO['Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept.']);
 
 	const levels = model.log_level_choices();
 	assert.deepEqual(levels.map((c) => c.value), [ 'error', 'warn', 'notice', 'info', 'debug' ]);
@@ -391,7 +401,8 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 			'fail_open', 'degrade_gfw', 'sniffing' ],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
-			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],
+			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency',
+			'heatmap_enabled' ],
 		components: [ 'xray_bin', 'chinadns_bin', 'dnsmasq_instance' ]
 	};
 
@@ -404,9 +415,10 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	/* probe and dns fields render in this page's main section but must load
 	   and save their own UCI section. */
 	const target = (field) => created.find((o) => o.field == field).ucisection;
-	for (const field of expected.boot.slice(2))
+	for (const field of expected.boot.slice(2, -1))
 		assert.equal(target(field), 'probe', field);
 	assert.equal(target('dnsmasq_instance'), 'dns');
+	assert.equal(target('heatmap_enabled'), 'stats');
 	for (const field of [ ...expected.intercept, ...expected.log, 'boot_wait_timeout',
 		'boot_check_targets', 'xray_bin', 'chinadns_bin' ])
 		assert.equal(target(field), null, field);
@@ -428,6 +440,8 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	for (const field of [ 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 		'fail_open', 'degrade_gfw', 'sniffing' ])
 		assert.equal(created.find((o) => o.field == field).default, '1', field + ': defaults on');
+	assert.equal(created.find((o) => o.field == 'heatmap_enabled').default, '0',
+		'heatmap_enabled: defaults off');
 
 	assert.equal(created.find((o) => o.field == 'log_level').default, 'notice');
 	assert.equal(created.find((o) => o.field == 'xray_log_level').default, 'warning');
@@ -497,6 +511,77 @@ test('T10.68 scenario 3: absent degrade_gfw saves nothing, off writes 0, on remo
 		flag.inputs.main = '1';
 		await h.parse();
 		assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'main', 'degrade_gfw']]);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+/* T12.2 / docs/tasks/m12.md B25: the heatmap flag saves into the `stats` section.
+ * uci.set ignores options in a section that does not exist, so enabling first
+ * creates `config stats 'stats'`; the off state stays absent, which the backend
+ * reads as the default (docs/05: 缺省/空/非 1 均视为关闭). */
+test('T12.2 heatmap flag: untouched page displays off and saves nothing', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		const flag = h.options.find(o => o.option === 'heatmap_enabled');
+		assert.ok(flag);
+		assert.equal(flag.ucisection, 'stats');
+		assert.equal(flag.formvalue('main'), '0');
+		await h.parse();
+		assert.deepEqual(h.calls, []);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+test('T12.2 heatmap flag on an upgraded config: enabling creates the section before writing', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		assert.equal(h.data.stats, undefined, 'pre-B25 configs carry no stats section');
+		const flag = h.options.find(o => o.option === 'heatmap_enabled');
+		flag.inputs.main = '1';
+		await h.parse();
+		assert.deepEqual(h.calls, [
+			['add', 'aetherproxy', 'stats', 'stats'],
+			['set', 'aetherproxy', 'stats', 'heatmap_enabled', '1']
+		]);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+test('T12.2 heatmap flag with the section present: enabling writes only the option', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		h.data.stats = {};
+		const flag = h.options.find(o => o.option === 'heatmap_enabled');
+		flag.inputs.main = '1';
+		await h.parse();
+		assert.deepEqual(h.calls, [['set', 'aetherproxy', 'stats', 'heatmap_enabled', '1']]);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+test('T12.2 heatmap flag: disabling removes the option so the backend default applies', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		const flag = h.options.find(o => o.option === 'heatmap_enabled');
+		flag.inputs.main = '1';
+		h.setSaved('stats', 'heatmap_enabled', '1');
+		assert.equal(flag.formvalue('main'), '1');
+		h.calls.length = 0;
+		flag.inputs.main = '0';
+		await h.parse();
+		assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'stats', 'heatmap_enabled']]);
 	}
 	finally {
 		globalThis._ = s => PO[s] ?? s;

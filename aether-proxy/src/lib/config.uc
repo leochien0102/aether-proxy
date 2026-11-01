@@ -274,6 +274,11 @@ function normalize_field(f, raw, field, proto, errors) {
 		if (v == '1' || v == '0')
 			return v == '1';
 
+		// stats.heatmap_enabled is off unless exactly '1'; any other value stays off
+		// without an error (docs/05), so an experimental switch cannot fail the service.
+		if (f.off_unless_one)
+			return default_of(f, proto);
+
 		push(errors, { field, code: 'invalid_bool', detail: `"${v}" is not 0 or 1` });
 		return default_of(f, proto);
 
@@ -576,9 +581,9 @@ function check_main(snap, errors, warnings) {
 // ------------------------------------------------------------------ public API
 
 // Keep singleton names in one place for normalization and both raw readers (docs/05, docs/06).
-const SINGLETON_SECTIONS = [ 'main', 'dns', 'update', 'probe', 'sub' ];
+const SINGLETON_SECTIONS = [ 'main', 'dns', 'update', 'probe', 'sub', 'stats' ];
 
-// raw: { main, dns, update, probe, sub: option objects (or null when the section is absent),
+// raw: { main, dns, update, probe, sub, stats: option objects (or null when the section is absent),
 //        hosts: [option objects in file order],
 //        subscriptions: { name: options }, nodes: { name: options } }
 // Pure. Result: { ok, snapshot | errors, warnings }.

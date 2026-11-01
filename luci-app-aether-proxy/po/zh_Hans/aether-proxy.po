@@ -2709,3 +2709,11 @@ msgstr "Hysteria 认证"
 msgctxt "aether-proxy"
 msgid "Hysteria UDP idle timeout (seconds)"
 msgstr "Hysteria UDP 空闲超时（秒）"
+
+msgctxt "aether-proxy"
+msgid "Enable usage heatmap (record daily traffic and health)"
+msgstr "启用使用热力图（记录每日流量与健康度）"
+
+msgctxt "aether-proxy"
+msgid "Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept."
+msgstr "记录每日代理流量与服务健康度，供概览页热力图使用；关闭时不采样、不写文件，已记录的历史保留。"

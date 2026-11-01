@@ -30,7 +30,9 @@ const INT_BOUNDS = {
 	node_concurrency: { min: 1 }
 };
 
-/* schema.uc: bool fields. LuCI Flag values are always the strings '0'/'1'. */
+/* schema.uc: bool fields. LuCI Flag values are always the strings '0'/'1'.
+   heatmap_enabled stays out: the backend treats any value other than '1' as
+   off without an error (docs/05), so the precheck accepts it the same way. */
 const BOOL_FIELDS = [ 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 	'fail_open', 'degrade_gfw', 'sniffing' ];
 
@@ -48,7 +50,9 @@ const DEFAULTS = {
 	boot_wait_timeout: '120', boot_check_targets: [ '223.5.5.5:53', '114.114.114.114:53' ],
 	url: 'https://www.gstatic.com/generate_204',
 	expect_code: '204', timeout: '5', fail_threshold: '3', recover_threshold: '2',
-	node_timeout: '3', node_concurrency: '8'
+	node_timeout: '3', node_concurrency: '8',
+	/* B25 usage heatmap: off unless the option is present (docs/05 stats.heatmap_enabled). */
+	heatmap_enabled: '0'
 };
 
 const LOG_LABELS = {
@@ -81,7 +85,8 @@ const FIELD_TEXT = {
 	node_concurrency: _('How many nodes to probe at the same time.', 'aether-proxy'),
 	xray_bin: _('Absolute path to the Xray binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
 	chinadns_bin: _('Absolute path to the chinadns-ng binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
-	dnsmasq_instance: _('Name of the dnsmasq instance to use; leave empty to detect it automatically.', 'aether-proxy')
+	dnsmasq_instance: _('Name of the dnsmasq instance to use; leave empty to detect it automatically.', 'aether-proxy'),
+	heatmap_enabled: _('Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept.', 'aether-proxy')
 };
 
 /* docs/09 「logd 容量」: only the debug choice carries this hint. */

@@ -23,6 +23,8 @@
 //   inactive_unchecked  preserve raw inactive protocol values without validating them
 //   proto_default  node only: per-protocol default, wins over `default`
 //   requires_when  node only: { field, value } the field is required when the other one has this value
+//   off_unless_one  any raw value other than '1' is off without an error, so a hand-edited
+//             value cannot invalidate the whole configuration (stats.heatmap_enabled)
 
 import * as C from 'aetherproxy.const';
 
@@ -210,5 +212,11 @@ const probe = [
 	{ name: 'node_concurrency', type: 'int', min: 1, default: 8 }
 ];
 
+// B25 usage heatmap (docs/b25-heatmap.md). Consumers sample only when this is true;
+// missing, empty and any value other than '1' stay off (docs/05).
+const stats = [
+	{ name: 'heatmap_enabled', type: 'bool', default: false, off_unless_one: true }
+];
+
 // Named singleton sections map to the section name; the rest are per-type collections.
-export const SCHEMA = { main, dns, update, probe, sub, host, subscription, node };
+export const SCHEMA = { main, dns, update, probe, sub, stats, host, subscription, node };

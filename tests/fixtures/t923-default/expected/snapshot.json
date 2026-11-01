@@ -64,6 +64,9 @@
     "fetch_via": "auto",
     "interval_hours": 24
   },
+  "stats": {
+    "heatmap_enabled": false
+  },
   "hosts": [
   ],
   "subscriptions": {

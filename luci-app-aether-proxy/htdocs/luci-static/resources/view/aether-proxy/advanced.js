@@ -9,8 +9,9 @@
 /*
  * Advanced page (docs/10 「高级页」, docs/tasks/m8.md T8.11b).
  *
- * The fields come from three UCI sections: `main` (interception, logging, boot
- * wait), `probe` (health checks) and `dns` (dnsmasq_instance). The four tabs
+ * The fields come from four UCI sections: `main` (interception, logging, boot
+ * wait), `probe` (health checks), `dns` (dnsmasq_instance) and `stats` (B25
+ * usage heatmap). The four tabs
  * are declared on one NamedSection for `main`; options that belong to another
  * section set LuCI's per-option `ucisection` override (form.js: load/write/
  * remove all honour it), so they still read and save the right section.
@@ -87,6 +88,18 @@ return view.extend({
 		option(s, 'boot', form.Value, 'recover_threshold', _('Recover threshold', 'aether-proxy'), 'probe');
 		option(s, 'boot', form.Value, 'node_timeout', _('Node probe timeout', 'aether-proxy'), 'probe');
 		option(s, 'boot', form.Value, 'node_concurrency', _('Node probe concurrency', 'aether-proxy'), 'probe');
+
+		/* B25 usage heatmap (docs/b25-heatmap.md), written to the `stats` section.
+		   uci.set ignores options in a section that does not exist, and installs
+		   upgraded from before B25 carry no `config stats 'stats'`, so the write
+		   creates the section first when needed. */
+		o = option(s, 'boot', form.Flag, 'heatmap_enabled',
+			_('Enable usage heatmap (record daily traffic and health)', 'aether-proxy'), 'stats');
+		o.write = function(section_id, value) {
+			if (uci.get('aetherproxy', 'stats') == null)
+				uci.add('aetherproxy', 'stats', 'stats');
+			return form.Flag.prototype.write.call(this, section_id, value);
+		};
 
 		option(s, 'components', form.Value, 'xray_bin', _('Xray binary', 'aether-proxy'));
 		option(s, 'components', form.Value, 'chinadns_bin', _('chinadns-ng binary', 'aether-proxy'));

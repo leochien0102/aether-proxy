@@ -21,6 +21,8 @@ const widgetValue = v => Array.isArray(v) ? v.map(String) : typeof v == 'boolean
 const editable = options => options.filter(o => !o.option.startsWith('_'));
 
 function configData(explicit) {
+	/* No `stats` section by default: installs upgraded from before B25 carry none
+	 * (docs/05), and the heatmap flag must still save through it. */
 	const data = {
 		main: {}, dns: {}, update: {}, probe: {}, sub: {},
 		host: { mac: ['aa:bb:cc:dd:ee:ff'] },
@@ -28,10 +30,12 @@ function configData(explicit) {
 		node: { protocol: 'vless', address: '192.168.1.2', port: '443', uuid: 'test' }
 	};
 	if (explicit)
-		for (const [section, fields] of Object.entries(schema))
+		for (const [section, fields] of Object.entries(schema)) {
+			data[section] ??= {};
 			for (const field of fields)
 				if (field.default != null)
 					data[section][field.name] = widgetValue(field.default);
+		}
 	return data;
 }
 
@@ -152,6 +156,9 @@ async function renderPage(page, explicit = false, adapter) {
 		get: (config, id, field) => field == null ? data[id] : data[id]?.[field],
 		sections: (config, type) => type === 'host' || type === 'subscription' || type === 'node'
 			? [{ '.name': type, '.type': type, ...data[type] }] : [],
+		/* uci.add(conf, type, name) records a pending named-section create; uci.get
+		 * sees it, so a second parse in the same session must not create it again. */
+		add: (...args) => { calls.push(['add', ...args]); data[args[1]] ??= {}; },
 		set: (...args) => calls.push(['set', ...args]),
 		unset: (...args) => calls.push(['unset', ...args])
 	};
@@ -167,6 +174,7 @@ async function renderPage(page, explicit = false, adapter) {
 			await o.parse(o.section.name);
 	};
 	const setSaved = (section, field, value) => {
+		data[section] ??= {};
 		data[section][field] = value;
 		for (const o of options.filter(o =>
 			(o.ucioption ?? o.option) == field && (o.ucisection ?? o.section.name) == section))
