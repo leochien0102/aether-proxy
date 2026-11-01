@@ -154,8 +154,18 @@ aether-proxy stats history [--days N] [--json] [--sys-root DIR] [--run-dir DIR]
 
 ## 10. 实现拆分
 
-1. **T12.2 后端**：config/schema/默认配置、采样与 `usage.json`、`stats history`、rpcd `stats_history`、测试。
-2. **T12.3 UI**：概览热力图、开关、i18n、空态/窄屏、前端测试。
-3. 文档收尾与 H28K 验收。
+每张卡只做一个可独立验收的层，不把后端全塞一张：
 
-两卡都在 `experiment/b25-heatmap`；T12.3 依赖 T12.2，未达预期整分支可撤。
+1. **T12.2 配置与关闭路径**：`config stats`、`heatmap_enabled` 默认 0、schema/default、
+   高级页开关、关闭时无采样/无文件/无历史的骨架；测试只覆盖开关与关闭路径。
+2. **T12.3 采样与内存聚合**：monitor tick 读计数器、增量/清零/跨天/elapsed 上限的纯函数，
+   假时钟测试；暂不落盘。
+3. **T12.4 持久化**：`usage.json` schema、0600 原子写、跨天/干净停止、90 天裁剪、损坏/写失败；
+   测试覆盖文件与 flash 预算说明。
+4. **T12.5 历史 API**：`stats history`、rpcd `stats_history`、ACL、`--days`/空数据/关闭返回；
+   不碰 UI。
+5. **T12.6 概览热力图 UI**：7×13 grid、颜色、健康度、tooltip、空态/窄屏/i18n；关闭不渲染。
+6. 文档收尾与 H28K 验收。
+
+依赖顺序：T12.2 → T12.3 → T12.4 → T12.5 → T12.6。每张卡都在
+`experiment/b25-heatmap`，完成后单独审查；未达预期可整分支撤掉。
