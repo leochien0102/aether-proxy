@@ -1,7 +1,7 @@
 # aether-proxy
 
 OpenWrt 透明代理：用 Xray 连接代理节点，用 ChinaDNS-NG 分流 DNS，局域网设备无需设置。
-只支持 firewall4（nftables）与 IPv4；提供 LuCI 界面、订阅、按设备的访问控制、DNS 分级回退、故障放行，以及带签名校验与自动回滚的更新。
+只支持 firewall4（nftables）与 IPv4；支持 VLESS、VMess、Trojan、Shadowsocks、SOCKS5、HTTP、WireGuard、Hysteria2 手工节点，提供 LuCI 界面、订阅、按设备的访问控制、DNS 分级回退、故障放行，以及带签名校验与自动回滚的更新。
 
 A transparent proxy manager for OpenWrt (fw4/nftables, IPv4) built on Xray and ChinaDNS-NG, with a LuCI UI.
 
