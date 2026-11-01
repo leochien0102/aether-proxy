@@ -412,6 +412,84 @@ function parse_standard(line, scheme, payload) {
 	return finish_node(node, insecure_warning(options, label));
 }
 
+// New schemes deliberately do not use copy_common(): transport/security are fixed,
+// and unknown sharing options must not alter the node or expose credentials.
+function parse_new_protocol(scheme, payload) {
+	let fragment = parse_fragment(payload);
+	if (fragment == null)
+		return skipped('malformed');
+	let parts = split_once(fragment.body, '?');
+	let options = parse_query(parts[1]);
+	if (options == null)
+		return skipped('malformed');
+
+	let authority = split_once(parts[0], '@');
+	let has_user = authority[1] != null;
+	let user = has_user ? url_decode(authority[0]) : null;
+	if (has_user && user == null)
+		return skipped('malformed');
+	let endpoint = parse_authority(replace(has_user ? authority[1] : authority[0], /\/$/, ''));
+	if (endpoint?.skip != null)
+		return skipped(endpoint.skip);
+	if (endpoint == null)
+		return skipped('malformed');
+
+	let protocol = scheme == 'socks5' ? 'socks' : scheme;
+	if (scheme == 'hy2' || scheme == 'hysteria2')
+		protocol = 'hysteria';
+	let node = { protocol, address: endpoint.address, port: endpoint.port,
+		transport: 'raw', security: 'none' };
+	if (fragment.label != null && fragment.label != '')
+		node.label = fragment.label;
+
+	if (protocol == 'socks' || protocol == 'http') {
+		if (has_user) {
+			// Unlike Shadowsocks methods, usernames are case-sensitive. Decode
+			// URL escapes before Base64, including escaped Base64 padding.
+			if (index(user, ':') < 0)
+				user = decode_base64(user);
+			if (user == null)
+				return skipped('malformed');
+			let credentials = split_once(user, ':');
+			if (credentials[1] == null)
+				return skipped('malformed');
+			if (credentials[0] == '' || credentials[1] == '')
+				return skipped('missing_field');
+			node.username = credentials[0];
+			node.password = credentials[1];
+		}
+	}
+	else if (protocol == 'hysteria') {
+		if (user == null || user == '')
+			return skipped('missing_field');
+		node.hysteria_auth = user;
+		node.transport = 'hysteria';
+		node.security = 'tls';
+		if (options.sni != null)
+			node.sni = options.sni;
+	}
+	else {
+		node.secret_key = user;
+		node.peer_public_key = options.publickey;
+		if (options.address != null && options.address != '')
+			node.local_address = split(options.address, ',');
+		if (options.presharedkey != null)
+			node.preshared_key = options.presharedkey;
+		if (options.keepalive != null)
+			node.keepalive = match(options.keepalive, /^-?[0-9]{1,9}$/) != null
+				? +options.keepalive : options.keepalive;
+	}
+
+	let warnings = [];
+	if (protocol == 'hysteria') {
+		// Either flag requests insecure TLS, even if the other explicitly says 0.
+		if (length(insecure_warning({ insecure: options.insecure }, fragment.label))
+			|| length(insecure_warning({ allowInsecure: options.allowInsecure }, fragment.label)))
+			warnings = [ { code: 'NODE_INSECURE_IGNORED', args: { label: fragment.label } } ];
+	}
+	return finish_node(node, warnings);
+}
+
 export function parse_line(line) {
 	line = trim(line ?? '');
 	if (line == '')
@@ -433,6 +511,9 @@ export function parse_line(line) {
 		return parse_ss(payload, null);
 	if (scheme == 'vless' || scheme == 'trojan')
 		return parse_standard(line, scheme, payload);
+
+	if (index([ 'socks', 'socks5', 'http', 'wireguard', 'hysteria2', 'hy2' ], scheme) >= 0)
+		return parse_new_protocol(scheme, payload);
 
 	return skipped('unsupported_scheme');
 };

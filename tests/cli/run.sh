@@ -636,5 +636,9 @@ else
 fi
 
 echo
+python3 "$ROOT/tests/cli/new-uri.py" "$ROOT" "$T/new-uri" \
+	&& ok 'T11.11 new URI parse/import and credential safety' \
+	|| bad 'T11.11 new URI parse/import and credential safety'
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

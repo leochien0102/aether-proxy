@@ -22,7 +22,9 @@ const NODE_PROTOCOL_FIELDS = [
 	'sni', 'alpn', 'fingerprint', 'pinned_cert_sha256', 'verify_name',
 	'reality_pbk', 'reality_sid', 'reality_spx', 'reality_pqv', 'ech_config_list',
 	'grpc_multi_mode', 'ws_heartbeat', 'xhttp_extra', 'mux', 'mux_concurrency',
-	'mux_xudp_concurrency', 'mux_xudp_udp443', 'tcp_fast_open', 'tcp_mptcp'
+	'mux_xudp_concurrency', 'mux_xudp_udp443', 'tcp_fast_open', 'tcp_mptcp',
+	'username', 'secret_key', 'peer_public_key', 'local_address', 'preshared_key', 'keepalive',
+	'hysteria_auth', 'hysteria_udp_idle_timeout'
 ];
 const NODE_OPTION_FIELDS = [ 'label', 'source', 'match_strong', 'match_weak', ...NODE_PROTOCOL_FIELDS ];
 

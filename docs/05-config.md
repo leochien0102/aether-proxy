@@ -184,19 +184,20 @@ LuCI 用 textarea 编辑这些文件，保存前做逐行校验，非法行直�
    `reality` 需要 `reality_pbk` 和 `sni`。
    SOCKS5（`protocol=socks`）和 HTTP（`protocol=http`）允许无认证，或用户名/密码认证（HTTP Basic）；`username`、`password` 必须同时有或同时没有。
    空字符串按未设置处理；只填一项时返回 `CONFIG_INVALID`，`required` 错误指向缺失字段，不在错误或事件中包含凭据值。
-   WireGuard（手工节点，不扩展 URI/订阅）要求 `secret_key`、`peer_public_key`、至少一个 `local_address`；
+   WireGuard（支持手工节点及 `wireguard://` URI/订阅导入）要求 `secret_key`、`peer_public_key`、至少一个 `local_address`；
    密钥为标准 Base64 编码的 32 字节（含规范填充，不接受 hex/base64url/空白），可选 PSK 同规则。
    `address`/`port` 是 Peer endpoint；优先使用 `node_ip`。出站设置为
    `secretKey`、`address: local_address`、`peers: [{publicKey, endpoint, allowedIPs: ['0.0.0.0/0']}]`；
    PSK 使用真实 Xray 字段 **`preSharedKey`**（26.3.27/26.10.31 源码一致，不是 `presharedKey`），keepalive 为 `keepAlive`。
-   Hysteria2 仅支持手工节点：`hysteria_auth` 必填，必须 `transport=hysteria`、`security=tls`，否则 CONFIG_INVALID；认证不得进入诊断。
+   Hysteria2 支持手工节点及 `hysteria2://` / `hy2://` URI/订阅导入：`hysteria_auth` 必填，必须 `transport=hysteria`、`security=tls`，否则 CONFIG_INVALID；认证不得进入诊断。
    出站 `protocol=hysteria`，`settings={version:2,address,port}`（node_ip 优先）；
    `streamSettings={network:'hysteria',security:'tls',tlsSettings:<现有 TLS 映射>,hysteriaSettings:{version:2,auth,...udpIdleTimeout}}`。
-   可选超时 2–600，不设不渲染；不新增 up/down/obfs。Mux 不适用、不渲染；LuCI 隐藏不适用的传输/Mux 控件并保留旧值，显示认证、endpoint、SNI/证书。其他协议保留但不校验/渲染 Hysteria 字段；URI/订阅不扩展。
+   可选超时 2–600，不设不渲染；不新增 up/down/obfs。Mux 不适用、不渲染；LuCI 隐藏不适用的传输/Mux 控件并保留旧值，显示认证、endpoint、SNI/证书。其他协议保留但不校验/渲染 Hysteria 字段；URI 的 auth → `hysteria_auth`、sni → `sni`，固定 transport/security，insecure 只告警（[06](06-nodes-subscription.md)）。
    WireGuard 不渲染通用 streamSettings/Mux，编辑框隐藏其设置；切换协议时保留旧值。
    WireGuard 字段在其他协议下保留、不校验、不渲染；任何凭据不得进入错误 detail、日志或事件。
    SOCKS / HTTP 出站使用 `settings.servers[0] = { address, port }`，认证时加 `users: [{ user, pass }]`；
-   `address` 仍优先使用引导解析的 `node_ip`，未解析时使用原始地址。分享链接/订阅 URI 不新增 SOCKS / HTTP 解析。
+   `address` 仍优先使用引导解析的 `node_ip`，未解析时使用原始地址。支持 `socks://` / `socks5://` / `http://` 分享链接及订阅：可选 userinfo（URL 编码或 Base64 的 `user:pass`）→ `username` / `password`；无 userinfo 时两项都不设，固定 `transport=raw` / `security=none`。
+   WireGuard URI 的 private-key / publickey / address / presharedkey / keepalive 分别映射到 `secret_key` / `peer_public_key` / `local_address` / `preshared_key` / `keepalive`，address 支持逗号分隔；格式见 [06](06-nodes-subscription.md)。
 7. 节点取值必须是 Xray v26.9.30 启动时能接受的（2026-10-14 用真实 Xray 校验夹具时发现，规则对照 `infra/conf/xray.go`、`transport_security.go`）：
    - `reality_pbk`：无填充 base64url 编码的 32 字节（恰好 43 个字符 `[A-Za-z0-9_-]`），否则 `invalid_reality_key`
    - `reality_sid`：十六进制、长度为偶数且不超过 16，否则 `invalid_short_id`

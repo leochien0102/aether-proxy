@@ -149,7 +149,7 @@ export const cases = [
 		} }
 	},
 	{
-		name: 'unsupported scheme', fn: 'line', input: 'hysteria2://token@h.example:443',
+		name: 'unsupported scheme', fn: 'line', input: 'tuic://token@h.example:443',
 		expect: { skip: 'unsupported_scheme' }
 	},
 	{
@@ -268,7 +268,7 @@ export const cases = [
 	},
 	{
 		name: 'decoded body with no valid nodes has a distinct error', fn: 'body',
-		input: 'hysteria2://token@h.example:443\n',
+		input: 'tuic://token@h.example:443\n',
 		expect: { ok: false, nodes: [], skipped: { unsupported_scheme: 1 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
 	},
 	{
@@ -288,6 +288,76 @@ export const cases = [
 		], skipped: {}, warnings: [], error: null }
 	}
 ];
+
+// T11.11: keep the legacy cases above unchanged apart from the unsupported scheme.
+const WG_KEY = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+for (let scheme in [ 'socks', 'socks5', 'http' ]) {
+	let protocol = scheme == 'http' ? 'http' : 'socks';
+	let base = { protocol, address: 'proxy.example', port: 1080, transport: 'raw', security: 'none' };
+	push(cases, { name: scheme + ' no auth', fn: 'line', input: scheme + '://proxy.example:1080', expect: { node: base } });
+	for (let userinfo in [ 'UsEr%3Ap%40ss%3Aword', b64enc('UsEr:p@ss:word'), 'VXNFcjpwQHNzOndvcmQ%3D' ])
+		push(cases, { name: scheme + ' userinfo ' + userinfo, fn: 'line',
+			input: scheme + '://' + userinfo + '@proxy.example:1080#name',
+			expect: { node: { ...base, username: 'UsEr', password: 'p@ss:word', label: 'name' } } });
+	for (let pair in [ [ 'user:', 'missing_field' ], [ ':pass', 'missing_field' ],
+		[ '@@@', 'malformed' ], [ 'a', 'malformed' ], [ '%ZZ', 'malformed' ] ])
+		push(cases, { name: scheme + ' bad auth ' + pair[0], fn: 'line',
+			input: scheme + '://' + pair[0] + '@proxy.example:1080', expect: { skip: pair[1] } });
+}
+for (let scheme in [ 'hy2', 'hysteria2' ]) {
+	let node = { protocol: 'hysteria', address: 'h.example', port: 443,
+		hysteria_auth: 'Auth:p@ss+', transport: 'hysteria', security: 'tls', sni: 'sni.example', label: 'hy name' };
+	push(cases, { name: scheme + ' auth SNI unknown query', fn: 'line',
+		input: scheme + '://Auth%3Ap%40ss%2B@h.example:443/?sni=sni.example&obfs=ignored#hy%20name', expect: { node } });
+	for (let query in [ 'insecure=1', 'allowInsecure=true', 'allowInsecure=0&insecure=1' ])
+		push(cases, { name: scheme + ' warning ' + query, fn: 'line',
+			input: scheme + '://Auth%3Ap%40ss%2B@h.example:443/?sni=sni.example&' + query + '#hy%20name',
+			expect: { node, warnings: [ { code: 'NODE_INSECURE_IGNORED', args: { label: 'hy name' } } ] } });
+	for (let auth in [ '', '@' ])
+		push(cases, { name: scheme + ' required auth ' + auth, fn: 'line',
+			input: scheme + '://' + auth + 'h.example:443', expect: { skip: 'missing_field' } });
+}
+const WG_NODE = { protocol: 'wireguard', address: 'wg.example', port: 51820, transport: 'raw', security: 'none',
+	secret_key: WG_KEY, peer_public_key: WG_KEY, local_address: [ '10.0.0.2/32', '10.0.0.3/32' ] };
+const WG_URI = 'wireguard://' + replace(WG_KEY, /=/g, '%3D') + '@wg.example:51820/?publickey='
+	+ replace(WG_KEY, /=/g, '%3D') + '&address=10.0.0.2%2F32%2C10.0.0.3%2F32';
+push(cases, { name: 'wireguard v2rayN required values', fn: 'line', input: WG_URI, expect: { node: WG_NODE } });
+push(cases, { name: 'wireguard PSK zero keepalive ignores reserved', fn: 'line',
+	input: WG_URI + '&presharedkey=' + WG_KEY + '&keepalive=%30&reserved=1%2C2%2C3#WG',
+	expect: { node: { ...WG_NODE, preshared_key: WG_KEY, keepalive: 0, label: 'WG' } } });
+for (let pair in [ [ '', 'missing_field' ], [ '?publickey=' + WG_KEY, 'missing_field' ],
+	[ '?address=10.0.0.2', 'missing_field' ], [ '?publickey=bad&address=10.0.0.2', 'invalid_value' ],
+	[ '?publickey=' + WG_KEY + '&address=bad', 'malformed' ] ])
+	push(cases, { name: 'wireguard required/invalid ' + pair[0], fn: 'line',
+		input: 'wireguard://' + WG_KEY + '@wg.example:51820/' + pair[0], expect: { skip: pair[1] } });
+for (let key in [ 'bad', replace(WG_KEY, /=/g, ''), WG_KEY + '=', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=' ])
+	push(cases, { name: 'wireguard invalid private key ' + key, fn: 'line',
+		input: 'wireguard://' + key + '@wg.example:51820/?publickey=' + WG_KEY + '&address=10.0.0.2',
+		expect: { skip: 'invalid_value' } });
+for (let endpoint in [ 'wg.example:51820', '@wg.example:51820' ])
+	push(cases, { name: 'wireguard missing private key ' + endpoint, fn: 'line',
+		input: 'wireguard://' + endpoint + '/?publickey=' + WG_KEY + '&address=10.0.0.2',
+		expect: { skip: 'missing_field' } });
+for (let pair in [ [ '&presharedkey=bad', 'invalid_value' ], [ '&keepalive=65536', 'malformed' ],
+	[ '&keepalive=oops', 'malformed' ] ])
+	push(cases, { name: 'wireguard invalid optional ' + pair[0], fn: 'line', input: WG_URI + pair[0], expect: { skip: pair[1] } });
+for (let scheme in [ 'socks', 'socks5', 'http', 'hy2', 'hysteria2', 'wireguard' ]) {
+	let auth = scheme == 'wireguard' ? WG_KEY + '@' : (scheme == 'hy2' || scheme == 'hysteria2' ? 'auth@' : '');
+	for (let pair in [ [ '[2001:db8::1]:443', 'ipv6_address' ], [ 'host:0', 'malformed' ],
+		[ 'host:65536', 'malformed' ], [ 'host:abc', 'malformed' ], [ 'host', 'malformed' ] ])
+		push(cases, { name: scheme + ' endpoint ' + pair[0], fn: 'line',
+			input: scheme + '://' + auth + pair[0], expect: { skip: pair[1] } });
+}
+let mixed_nodes = [
+	{ protocol: 'socks', address: 's.example', port: 1080, transport: 'raw', security: 'none' },
+	{ protocol: 'http', address: 'p.example', port: 8080, transport: 'raw', security: 'none' },
+	{ protocol: 'hysteria', address: 'h.example', port: 443, hysteria_auth: 'auth', transport: 'hysteria', security: 'tls' },
+	WG_NODE
+];
+let mixed = 'socks5://s.example:1080\nhttp://p.example:8080\nhy2://auth@h.example:443\n' + WG_URI + '\nhy2://@bad:443';
+for (let input in [ mixed, b64enc(mixed) ])
+	push(cases, { name: 'new protocols mixed subscription ' + (input == mixed ? 'plain' : 'base64'), fn: 'body', input,
+		expect: { ok: true, nodes: mixed_nodes, skipped: { missing_field: 1 }, warnings: [], error: null } });
 
 export function run(c) {
 	return c.fn == 'line' ? uri.parse_line(c.input) : uri.parse_body(c.input);
