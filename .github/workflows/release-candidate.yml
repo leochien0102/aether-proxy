@@ -37,8 +37,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib, json, os, re, shutil, subprocess
+          import hashlib, json, os, re, shutil, subprocess, sys
           from pathlib import Path
+          sys.path.insert(0, 'tools')
+          # Shared canonical-version rule with channel promote (fetched from the same commit).
+          from channel.build import canonical_version
           tag, commit = os.environ['TAG'], os.environ['BUILD_SHA']
           def field(name, key):
               return re.search(r'^' + key + r':=(\S+)$', Path(name + '/Makefile').read_text(), re.M)[1]
@@ -71,9 +74,14 @@ jobs:
                       else:
                           pkg_version = raw
                       if name != names[2]:
-                          want = field(name, 'PKG_VERSION') + '-r' + field(name, 'PKG_RELEASE')
-                          if pkg_version != want:
-                              raise SystemExit(f'Package version mismatch: {path.name}')
+                          # Real releases render the release suffix as -<release> or
+                          # -r<release> depending on the build system; the filename version
+                          # is canonical and both formats must agree (checked below).
+                          try:
+                              pkg_version = canonical_version(
+                                  field(name, 'PKG_VERSION'), field(name, 'PKG_RELEASE'), pkg_version)
+                          except ValueError as exc:
+                              raise SystemExit(f'Package version mismatch: {path.name}: {exc}')
                       elif not re.fullmatch(r'[0-9][A-Za-z0-9.+~_-]*', pkg_version):
                           raise SystemExit('Invalid translation version')
                       # Keep both SDK noarch builds, even when their bytes differ. GitHub-safe names.

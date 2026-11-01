@@ -88,6 +88,8 @@ class PromotionTest(unittest.TestCase):
             shutil.copy(ROOT / name / 'Makefile', self.app / name / 'Makefile')
             (self.work / name).symlink_to(self.app / name, target_is_directory=True)
         shutil.copytree(ROOT / 'tools', self.app / 'tools')
+        # The RC step imports the shared canonical-version rule from the checkout's tools.
+        (self.work / 'tools').symlink_to(self.app / 'tools', target_is_directory=True)
         bin_dir = self.root / 'bin'; bin_dir.mkdir()
         for name in ['gh', 'git']:
             p = bin_dir / name; p.write_text(FAKE); p.chmod(0o755)
@@ -99,13 +101,19 @@ class PromotionTest(unittest.TestCase):
         for name in ['COMPATIBILITY_FILE', 'DROP_UPLOAD']:
             self.env.pop(name, None)
         self.names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng']
-        versions = ['0.6.3', '0.6.3', '26.001.12345~abcdef0', '26.10.31', '2025.08.09']
+        # Real published naming (h28k-test/pkg061-063, same bytes as the releases): standard
+        # packages render "-<release>", the luci.mk-built luci-app renders "-r<release>", the
+        # translation package carries its own version without a release. ipk and apk of one
+        # package share the version string (the generator's one-version rule needs it).
+        self.package_versions = {
+            'aether-proxy': '0.6.3-1', 'luci-app-aether-proxy': '0.6.3-r1',
+            'luci-i18n-aether-proxy-zh-cn': '26.304.48628~fda7280',
+            'aether-xray': '26.10.31-1', 'chinadns-ng': '2025.08.09-1'}
         for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]:
             for arch in ['aarch64_generic', 'x86_64']:
                 d = self.work / f'artifacts/packages-{sdk}-{arch}'; d.mkdir(parents=True)
-                for i, (n, v) in enumerate(zip(self.names, versions)):
-                    v += '' if i == 2 else '-r1'
-                    filename = f'{n}_{v}_{"all" if i < 3 else arch}.ipk' if ext == 'ipk' else f'{n}-{v}.apk'
+                for n, v in self.package_versions.items():
+                    filename = f'{n}_{v}_{"all" if n in self.names[:3] else arch}.ipk' if ext == 'ipk' else f'{n}-{v}.apk'
                     (d / filename).write_bytes((filename + arch).encode())
 
     def run_step(self, workflow, index, cwd, success=True):
@@ -152,10 +160,12 @@ class PromotionTest(unittest.TestCase):
         return result
 
     def bridge_fixture(self):
+        # Synthetic publish.sh-side chain (bytes are fake; versions follow the real
+        # renderings). The terminal step must equal the built aether-proxy 0.6.3-1.
         directory = self.root / 'bridge input'; directory.mkdir()
         steps = []
         predecessor = '0.6.1-r1'
-        for version in ['0.6.2-r1', '0.6.3-r1']:
+        for version in ['0.6.2-r1', '0.6.3-1']:
             assets = {'all': {}}
             for kind in ['ipk', 'apk']:
                 filename = f'bridge-{version}.{kind}'
@@ -171,29 +181,38 @@ class PromotionTest(unittest.TestCase):
         return compatibility, {a['url'] for s in steps for a in s['assets']['all'].values()}
 
     def rc_bridge_fixture(self):
-        """The reviewed chain as promote consumes it: the target step's bytes are the RC's own
-        noarch artifacts (the aarch64_generic copy the generator keeps), the intermediate
-        step's bytes already sit in the stable channel."""
+        """Synthetic chain for the promote path — NOT a published chain and never committed
+        to the app repo. The terminal step carries the RC's own noarch artifacts (the
+        aarch64_generic copy the generator keeps); the intermediate step's bytes sit in the
+        fake stable channel. Versions follow the real published renderings so the terminal
+        step matches the built aether-proxy."""
         stable = self.root / 'stable'; stable.mkdir()
         (stable / 'manifest.json').write_text(json.dumps(
             {'schema': 2, 'generated': '2026-01-01T00:00:00Z', 'packages': {}, 'data': {}}))
         assets, historical = {}, {}
-        for kind, sdk, filename in [('ipk', '24.10.8', 'aether-proxy_0.6.3-r1_all.ipk'),
-                                    ('apk', '25.12.5', 'aether-proxy-0.6.3-r1.apk')]:
+        for kind, sdk, filename in [('ipk', '24.10.8', 'aether-proxy_0.6.3-1_all.ipk'),
+                                    ('apk', '25.12.5', 'aether-proxy-0.6.3-1.apk')]:
             content = (self.work / f'artifacts/packages-{sdk}-aarch64_generic' / filename).read_bytes()
             assets[kind] = dict(url=filename, size=len(content), sha256=hashlib.sha256(content).hexdigest())
-        for kind, filename in [('ipk', 'aether-proxy_0.6.2-r1_all.ipk'), ('apk', 'aether-proxy-0.6.2-r1.apk')]:
-            content = f'historical bridge {filename}'.encode()
+        for kind, filename in [('ipk', 'aether-proxy_0.6.2-1_all.ipk'), ('apk', 'aether-proxy-0.6.2-1.apk')]:
+            content = f'synthetic bridge bytes {filename}'.encode()
             (stable / filename).write_bytes(content)
             historical[kind] = dict(url=filename, size=len(content), sha256=hashlib.sha256(content).hexdigest())
-        steps = [dict(version='0.6.2-r1', min_from='0.6.1-r1', assets={'all': historical},
-                      reason='Intermediate bridge'),
-                 dict(version='0.6.3-r1', min_from='0.6.2-r1', assets={'all': assets},
-                      reason='Target step')]
-        compatibility = {'aether-proxy': {'required_steps': ['0.6.2-r1', '0.6.3-r1'], 'steps': steps}}
+        steps = [dict(version='0.6.2-1', min_from='0.6.1-1', assets={'all': historical},
+                      reason='Synthetic intermediate step'),
+                 dict(version='0.6.3-1', min_from='0.6.2-1', assets={'all': assets},
+                      reason='Synthetic target step')]
+        compatibility = {'aether-proxy': {'required_steps': ['0.6.2-1', '0.6.3-1'], 'steps': steps}}
         (self.work / 'bridges').mkdir()
         (self.work / 'bridges/compatibility.json').write_text(json.dumps(compatibility))
         return compatibility, {a['url'] for s in steps for a in s['assets']['all'].values()}
+
+    def rename_artifacts(self, prefix, old, new):
+        """Re-render versions in all four artifact directories (both formats)."""
+        for d in (self.work / 'artifacts').iterdir():
+            for p in sorted(d.iterdir()):
+                if p.name.startswith(prefix + '_') or p.name.startswith(prefix + '-'):
+                    p.rename(p.with_name(p.name.replace(old, new)))
 
     def tamper_rc_compatibility(self, text):
         """Replace the staged compatibility.json and restage SHA256SUMS, as a forged RC would."""
@@ -353,7 +372,7 @@ class PromotionTest(unittest.TestCase):
 
     def test_promote_missing_bridge_asset_blocks(self):
         self.rc_bridge_fixture()
-        (self.root / 'stable' / 'aether-proxy-0.6.2-r1.apk').unlink()
+        (self.root / 'stable' / 'aether-proxy-0.6.2-1.apk').unlink()
         self.candidate()
         p = self.run_step(PROMOTE, 0, self.promote, False)
         self.assertIn('neither in the RC prerelease', p.stderr)
@@ -362,7 +381,7 @@ class PromotionTest(unittest.TestCase):
 
     def test_promote_bridge_hash_mismatch_blocks(self):
         self.rc_bridge_fixture()
-        (self.root / 'stable' / 'aether-proxy_0.6.2-r1_all.ipk').write_bytes(b'tampered historical')
+        (self.root / 'stable' / 'aether-proxy_0.6.2-1_all.ipk').write_bytes(b'tampered historical')
         self.candidate()
         p = self.run_step(PROMOTE, 0, self.promote, False)
         self.assertIn('Bridge asset hash/size mismatch', p.stderr)
@@ -392,6 +411,18 @@ class PromotionTest(unittest.TestCase):
         self.tamper_rc_compatibility('{invalid')
         p = self.run_step(PROMOTE, 0, self.promote, False)
         self.assertIn('not valid JSON', p.stderr)
+
+    def test_promote_rejects_chain_not_ending_at_built_version(self):
+        # The terminal step is the built aether-proxy; a chain aimed at another version
+        # fails before any bridge byte is downloaded.
+        self.rc_bridge_fixture()
+        self.candidate()
+        value = json.loads((self.root / 'release' / 'compatibility.json').read_text())
+        value['aether-proxy']['steps'][-1]['version'] = '0.6.2-1'
+        self.tamper_rc_compatibility(json.dumps(value))
+        p = self.run_step(PROMOTE, 0, self.promote, False)
+        self.assertIn('terminal step must be the built aether-proxy 0.6.3-1', p.stderr)
+        self.assertFalse((self.promote / 'bridge').exists())
 
     def test_not_prerelease_blocks(self):
         self.candidate(); self.env['NOT_PRERELEASE'] = '1'
@@ -441,6 +472,46 @@ class PromotionTest(unittest.TestCase):
         self.env['TAG'] = 'v9.9.9-rc1'
         self.run_step(RC, 0, self.work, False)
 
+    def test_real_renderings_pass_version_checks_end_to_end(self):
+        # The default fixture IS the real published naming: aether-proxy renders "-1",
+        # luci-app renders "-r1" (luci.mk), the translation carries its own version. The
+        # old PKG_VERSION-rPKG_RELEASE assumption would have killed these; both workflows
+        # must accept them and keep the filename version as the manifest version.
+        self.candidate()
+        self.run_step(PROMOTE, 0, self.promote)
+        self.run_step(PROMOTE, 1, self.promote)
+        manifest = json.loads((self.promote / 'preflight/manifest.json').read_text())
+        self.assertEqual(manifest['packages']['aether-proxy']['current']['version'], '0.6.3-1')
+        self.assertEqual(manifest['packages']['luci-app-aether-proxy']['current']['version'], '0.6.3-r1')
+        self.assertEqual(manifest['packages']['chinadns-ng']['current']['version'], '2025.08.09-1')
+
+    def test_alternate_release_rendering_accepted(self):
+        # A package may render -r<release> instead of -<release>; both appear in real
+        # releases, so the accepted set has both and the version is never rewritten.
+        self.rename_artifacts('aether-proxy', '0.6.3-1', '0.6.3-r1')
+        self.candidate()
+        self.run_step(PROMOTE, 0, self.promote)
+        manifest = json.loads((self.root / 'release' / 'rc-manifest.json').read_text())
+        self.assertEqual(next(e['version'] for e in manifest['assets'] if e['package'] == 'aether-proxy'),
+                         '0.6.3-r1')
+
+    def test_mixed_release_rendering_blocks(self):
+        # ipk and apk of one package must carry the same version string: two renderings
+        # would make the manifest version (and device comparisons) ambiguous.
+        for d in (self.work / 'artifacts').iterdir():
+            for p in sorted(d.iterdir()):
+                if p.suffix == '.apk' and p.name.startswith('aether-proxy-'):
+                    p.rename(p.with_name(p.name.replace('0.6.3-1', '0.6.3-r1')))
+        self.run_step(RC, 0, self.work, False)
+        self.assertFalse((self.root / 'release').exists())
+
+    def test_makefile_mismatch_blocks(self):
+        # A stale artifact matching neither Makefile rendering is rejected, whichever
+        # rendering the other packages use.
+        self.rename_artifacts('aether-xray', '26.10.31-1', '26.10.30-1')
+        self.run_step(RC, 0, self.work, False)
+        self.assertFalse((self.root / 'release').exists())
+
     def test_rc_carries_reviewed_compatibility_file(self):
         self.rc_bridge_fixture()
         self.candidate()
@@ -488,7 +559,7 @@ class PromotionTest(unittest.TestCase):
 
     def test_inconsistent_translation_blocks_before_upload(self):
         p = next((self.work / 'artifacts').rglob('luci-i18n*.ipk'))
-        p.rename(p.with_name(p.name.replace('26.001', '26.002')))
+        p.rename(p.with_name(p.name.replace('26.304.48628', '26.305.48628')))
         self.run_step(RC, 0, self.work, False)
         self.assertFalse((self.root / 'release').exists())
 

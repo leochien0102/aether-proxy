@@ -149,11 +149,6 @@ stable 的发布脚本位于独立 channel 仓库，`scripts/publish.sh` 已（T
 然后把 `COMPATIBILITY_FILE` 与字节一起交给 `scripts/publish.sh`（preflight 与最终
 发布用同一份输入）。promote 不 checkout 应用源码、不执行 SDK/编译。
 
-`bridges/compatibility.json` 当前登记的是唯一真实可写的链：0.6.2-1 → 0.6.3-1 单步，
-ipk 资产取自已发布包的真实字节；apk 资产离线无法取得（25.12 SDK 产物只在真正打
-RC tag 时存在），必须由维护者在打 tag 前补齐——补齐前该文件过不了 promote 的
-双格式检查，也不可能被晋升，冻结契约中的 `bridges: {}` 因此保持有效。
-
 #### 检查、安装与页面
 
 `update check` 的应用条目在链上只提供下一步：`available` / `asset` 指向它，
@@ -172,6 +167,30 @@ RC tag 时存在），必须由维护者在打 tag 前补齐——补齐前该�
 
 更新页显示「先更新到 X（第 1/N 步）」；每次 bridge 作业后重新 check 并刷新状态。
 无效链显示原因且禁用按钮。没有 compatibility 时维持原有直升/分组更新行为。
+
+### 包版本写法（canonical version）
+
+包的 canonical version 就是**包文件名里的版本串**，也是包管理器报告的已安装版本；
+manifest 的 `packages.<name>.current.version`、compatibility 步骤的 `version` 与
+`min_from`、设备端的版本比较全部使用它，**不会从 Makefile 重新拼装**。真实发布里
+release 后缀有两种渲染：标准包（aether-proxy、aether-xray、chinadns-ng）是
+`<PKG_VERSION>-<PKG_RELEASE>`（如 `0.6.3-1`），经 `luci.mk` 构建的
+luci-app-aether-proxy 是 `-r<PKG_RELEASE>`（如 `0.6.3-r1`）；翻译包带自己的动态
+版本、没有 release。同一包的 ipk 与 apk 文件名版本必须一致（生成器按「一包一
+版本」拒绝分歧）。RC 与 promote 共用 `tools/channel/build.py` 的
+`canonical_version()`：按 Makefile 接受两种渲染、原样返回文件名版本，不匹配任一
+渲染即失败。正式 tag（`v<PKG_VERSION>-r<PKG_RELEASE>`，如 v0.6.3-r1）是 tag 规范，
+不等于包版本串；对应关系为：compatibility 终点步 == manifest 的 aether-proxy
+current version == RC 构建的包版本 == 设备已安装版本串，target tag 通过
+rc-manifest 的 `target_tag` 单独绑定。release 后缀必须精确匹配（`0.6.3-1` 不是
+`0.6.3-r1` 的别名，设备端 `exact-release-alias` 场景冻结了这一点）。
+
+本仓库**尚未登记任何链**：`bridges/compatibility.json` 不存在。首个真实 bridge 链
+必须在其全部步骤的 ipk+apk 字节都能核对 sha256/size 后由维护者提交，RC 才会携带；
+此前 manifest 不含 compatibility，设备按无链行为更新，冻结契约中的 `bridges: {}`
+保持有效。测试里的链一律是合成 fixture（tests/ 下，版本串遵循上述写法），
+不代表任何已发布的链。
+
 
 ## 发布通道（服务端）
 
