@@ -1,0 +1,103 @@
+{
+  "contract_version": 1,
+  "wire_schema": 2,
+  "support_window": [
+    "0.6.3",
+    "0.6.2"
+  ],
+  "clients": {
+    "0.6.3": {
+      "known_packages": [
+        "aether-xray",
+        "aether-proxy",
+        "luci-app-aether-proxy",
+        "luci-i18n-aether-proxy-zh-cn"
+      ],
+      "route": "manual-prerequisite",
+      "manual_packages": [
+        "chinadns-ng"
+      ]
+    },
+    "0.6.2": {
+      "known_packages": [
+        "aether-xray",
+        "aether-proxy",
+        "luci-app-aether-proxy",
+        "luci-i18n-aether-proxy-zh-cn"
+      ],
+      "route": "manual-prerequisite",
+      "manual_packages": [
+        "chinadns-ng"
+      ]
+    },
+    "0.3.1": {
+      "known_packages": [
+        "xray-core",
+        "aether-proxy",
+        "luci-app-aether-proxy",
+        "luci-i18n-aether-proxy-zh-cn"
+      ],
+      "route": "manual-only",
+      "manual_packages": [
+        "aether-xray",
+        "chinadns-ng"
+      ]
+    }
+  },
+  "bridges": {},
+  "required_steps": {},
+  "bridge_required_steps": [
+    "0.6.4",
+    "0.6.6",
+    "0.6.8"
+  ],
+  "bridge_example": {
+    "from": "0.6.3",
+    "target": "0.6.8",
+    "compatibility": {
+      "aether-proxy": {
+        "steps": [
+          {
+            "version": "0.6.4",
+            "min_from": "0.6.3",
+            "assets": {
+              "all": {
+                "ipk": {
+                  "url": "aether-proxy_0.6.4-r1_all.ipk",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "size": 123
+                }
+              }
+            }
+          },
+          {
+            "version": "0.6.6",
+            "min_from": "0.6.4",
+            "assets": {
+              "all": {
+                "ipk": {
+                  "url": "aether-proxy_0.6.6-r1_all.ipk",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "size": 123
+                }
+              }
+            }
+          },
+          {
+            "version": "0.6.8",
+            "min_from": "0.6.6",
+            "assets": {
+              "all": {
+                "ipk": {
+                  "url": "aether-proxy_0.6.8-r1_all.ipk",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "size": 123
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
