@@ -60,6 +60,7 @@ define Package/aether-proxy/install
 	$(INSTALL_DIR) $(1)/usr/share/aether-proxy/data
 	$(INSTALL_DATA) ./files/data/*.txt $(1)/usr/share/aether-proxy/data/
 	$(INSTALL_DATA) ./files/aether-proxy-logfilter.awk $(1)/usr/share/aether-proxy/logfilter.awk
+	$(INSTALL_DATA) ./files/aether-proxy-rawlog.sh $(1)/usr/share/aether-proxy/rawlog.sh
 	# Upstream sources and licenses of the bundled lists (gfwlist is LGPL-2.1, docs/08).
 	$(INSTALL_DATA) ./files/data/SOURCES.md $(1)/usr/share/aether-proxy/data/SOURCES.md
 	$(INSTALL_DIR) $(1)/usr/share/nftables.d/chain-pre/input

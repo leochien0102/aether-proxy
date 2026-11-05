@@ -2,7 +2,7 @@
 
 ## 原则
 
-- **不自造日志文件**。人读的日志写 logd（`logread` 可见）；机器读的结构化事件写 tmpfs 环形文件。都不落 flash。
+- 人读的日志照常写 logd（`logread` 可见）；另由应用 collector 保存一份 tmpfs 原始日志，CLI / rpcd 原始日志读取这份副本。机器读的结构化事件仍写 tmpfs 环形文件。都不落 flash，绝不清空或修改系统 logd。
 - syslog 行使用**英文**（沿用 helloworld 的分层约定：syslog 英文，界面本地化），中文只出现在 LuCI 中，
   由事件码翻译得到。
 - 事件码是**机器协议**：一旦发布就不改名、不改含义，只能新增。
@@ -56,6 +56,13 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 
 注意：被信号结束的子进程在 `uloop.process` 回调里报告的退出码也是 0，与正常退出无法区分。daemon 必须自己记录「这次是主动停止」，
 凡不是主动停止的退出一律视为崩溃并按退避重启。
+
+## 应用原始日志（T13.2）
+
+- daemon 启动时由 supervise 启动独立 collector，正常停止时发 TERM、等待退出并回收；重载及启动重试不重复启动。异常退出只记一次 warn，不退避重启，不阻断主服务。
+- collector 执行 `logread -f -e aether-proxy`：OpenWrt 的 `-f` 未指定 `-l` 时请求 `lines=0`，只取新行，不做历史回填。再次校验真实 `aether-proxy[<pid>]:` 标签，原始整行追加到 `/var/run/aether-proxy/raw.log`（tmpfs，0600）。Xray / chinadns-ng 仍走现有过滤器与 procd → logd 链路。
+- 每段最多 1 MiB（含换行字节）或 2000 行；下一行会越过字节上限时先轮转，恰好达到上限时立即轮转。`raw.log` 改名覆盖 `raw.log.1`，重新创建空的 0600 当前段，只保留一份旧段（总计最多约 2 MiB / 4000 行）。单条超过 1 MiB 的异常记录整行丢弃，不截断原始行。
+- 重启 collector 保留应用已有段并继续计数，但不向 logd 请求历史。CLI 按 `raw.log.1` → `raw.log` 顺序合并后分类、过滤、取最后 N 行；缺失或空文件返回空结果。不运行 `logread`，事件页仍读 `events.jsonl`。
 
 ## 等级
 

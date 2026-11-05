@@ -791,13 +791,13 @@ function start_sequence(ctx, opts, signal_pending) {
 
 function stop_children(ctx, children) {
 	let waiting = 0;
-	for (let key in [ 'xray', 'dns' ])
+	for (let key in [ 'xray', 'dns', 'raw_log' ])
 		if (children?.[key] != null)
 			waiting++;
 	if (waiting == 0)
 		return;
 	let remaining = waiting;
-	for (let key in [ 'xray', 'dns' ])
+	for (let key in [ 'xray', 'dns', 'raw_log' ])
 		if (children?.[key] != null)
 			children[key].stop(() => {
 				remaining--;
@@ -1171,6 +1171,14 @@ function run(args) {
 		});
 	}
 
+	// Reap a matching collector left by an unclean daemon exit before opening its files.
+	supervise.kill_stale(run_dir(ctx), 'raw-log', run_dir(ctx));
+	// Separate from dataplane children: retries/reloads must not restart the collector.
+	let raw_collector = supervise.create({ name: 'raw-log', raw_log: true,
+		run_dir: run_dir(ctx), backoff: [ 0 ],
+		argv: [ '/bin/sh', getenv('AETHER_PROXY_TEST_RAW_LOG_COLLECTOR') ?? C.RAW_LOG_COLLECTOR,
+			run_dir(ctx), ctx.bin_dir ? `${ctx.bin_dir}/logread` : 'logread' ] });
+	raw_collector.start();
 	let exit_code = 0, retry_index = 0, retry_attempt = 0, finished = false;
 
 	function run_monitor(result, children) {
@@ -1426,6 +1434,7 @@ function run(args) {
 			retry_index = 0;
 	}
 
+	stop_children(ctx, { raw_log: raw_collector });
 	for (let key, handler in signals)
 		if (handler != null)
 			handler.delete();

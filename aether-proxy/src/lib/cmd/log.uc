@@ -11,7 +11,7 @@
 
 import * as C from 'aetherproxy.const';
 import * as pipeline from 'aetherproxy.pipeline';
-import * as sys from 'aetherproxy.sys';
+import * as fs from 'fs';
 
 const XRAY_LINE_RE = /^[0-9]{4}\/[0-9]{2}\/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]/;
 const DNS_LINE_RE = /\[[A-Za-z0-9_]+\.(zig|c):[0-9]+/;
@@ -88,6 +88,10 @@ function parse_args(args) {
 			continue;
 		}
 
+		if (arg == '--run-dir' && i + 1 < length(args)) {
+			opts.run_dir = args[++i];
+			continue;
+		}
 		if (arg != '--source' && arg != '--lines')
 			return { error: `unknown option ${arg}` };
 
@@ -130,16 +134,18 @@ export function run(args) {
 		return pipeline.finish({ json: index(args, '--json') >= 0 },
 			{ ok: false, code: 'USAGE', detail: parsed.error }, 2, parsed.error);
 
-	// A missing or failing logread is the documented CMD_FAILED case (docs/10); sys.run
-	// records the CMD_FAILED event itself.
-	let res = sys.run([ 'logread' ], { timeout: C.LOGREAD_TIMEOUT_SECS });
-	if (res.code != 0)
-		return pipeline.finish(parsed.opts,
-			{ ok: false, code: 'CMD_FAILED',
-			  detail: `logread exited ${res.code}${res.timed_out ? ' (timeout)' : ''}: ${trim(res.stderr)}` },
-			1, 'logread is unavailable');
-
-	let lines = select_lines(res.stdout, parsed.opts.source, parsed.opts.lines);
+	let dir = parsed.opts.run_dir ?? C.RUN_DIR;
+	let text = '';
+	// Previous segment precedes the live segment, regardless of wall-clock jumps.
+	for (let name in [ `${C.RAW_LOG_FILE}.1`, C.RAW_LOG_FILE ]) {
+		let path = `${dir}/${name}`;
+		let data = fs.readfile(path);
+		if (data == null && fs.stat(path) != null)
+			return pipeline.finish(parsed.opts,
+				{ ok: false, code: 'FS_FAILED', detail: `cannot read ${path}` }, 1, `cannot read ${path}`);
+		text += (data ?? '') + '\n';
+	}
+	let lines = select_lines(text, parsed.opts.source, parsed.opts.lines);
 	return pipeline.finish(parsed.opts,
 		{ ok: true, source: parsed.opts.source, lines }, 0, human(lines, parsed.opts.source));
 };

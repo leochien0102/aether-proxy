@@ -261,6 +261,8 @@ export const APK_INSTALLED_PATH = '/lib/apk/db/installed';
 // T9.7 (docs/09 child output rate limiting).
 export const CHILD_LOG_FILTER = '/usr/share/aether-proxy/logfilter.awk';
 export const CHILD_LOG_FIFO_SUFFIX = '.log.fifo';
+export const RAW_LOG_FILE = 'raw.log';
+export const RAW_LOG_COLLECTOR = '/usr/share/aether-proxy/rawlog.sh';
 export const CHILD_LOG_FILTER_TEST_ENV = 'AETHER_PROXY_TEST_LOGFILTER';
 
 // T9.10 (docs/07 "真实延迟", docs/10 "切换节点"). Order defines the default site.

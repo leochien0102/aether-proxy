@@ -10,6 +10,8 @@ JGET="$ROOT/tests/cli/jget.uc"
 FIX="$ROOT/tests/fixtures/sample"
 STUB_SRC="$ROOT/tests/stubs/daemon-bin"
 export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
+export AETHER_PROXY_TEST_RAW_LOG_COLLECTOR="$ROOT/aether-proxy/files/aether-proxy-rawlog.sh"
+python3 "$ROOT/tests/daemon/raw-log.py" || exit 1
 python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
 python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
@@ -82,6 +84,10 @@ mkdir -p "$T/data" "$T/base" "$T/custom" "$T/bin"
 for f in gfwlist chnlist apple; do printf 'example.com\n' > "$T/base/$f.txt"; done
 printf '1.0.0.0/8\n' > "$T/base/chnroute4.txt"
 printf '91.108.4.0/22\n' > "$T/base/gfw_static4.txt"
+cat > "$T/bin/logread" <<'SH'
+#!/bin/sh
+exec python3 -c 'import signal; signal.pause()'
+SH
 cp "$STUB_SRC/nft" "$T/bin/nft"
 cp "$STUB_SRC/ip" "$T/bin/ip"
 cp "$STUB_SRC/resolveip" "$T/bin/resolveip"
@@ -302,6 +308,9 @@ expect 'component chinadns path' "$T/bin/chinadns-ng" \
 expect 'component chinadns version' '2025.08.09' \
 	"$(jget components.chinadns-ng.version < "$R1/var/run/aether-proxy/state.json")"
 
+raw_collector_pid=$(cat "$R1/var/run/aether-proxy/raw-log.pid")
+[ -f "$R1/var/run/aether-proxy/raw.log" ] && ok 'raw collector starts with daemon' || bad 'raw collector starts with daemon'
+
 # SIGUSR1 ticks immediately; SIGHUP with an unchanged config is an incremental no-op (T2.6).
 kill -USR1 "$DAEMON_PID"
 sleep 0.1
@@ -309,12 +318,15 @@ kill -HUP "$DAEMON_PID"
 sleep 1
 restarts=$(awk '/^xray run -c / { n++ } END { print n+0 }' "$L1")
 expect "SIGHUP with unchanged config keeps xray" 1 "$restarts"
+expect 'reload keeps collector pid' "$raw_collector_pid" "$(cat "$R1/var/run/aether-proxy/raw-log.pid")"
 [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>>"$QUIET" \
 	&& ok "daemon survives SIGHUP and USR1" || bad "daemon survives SIGHUP and USR1"
 
 # 2. SIGTERM exports the sets, tears down in order, persists stopped, and reaps children.
 stop_daemon; stop_rc=$?
 expect "SIGTERM exits successfully" 0 "$stop_rc"
+[ ! -e "/proc/$raw_collector_pid" ] && ok 'daemon reaps raw collector' || bad 'daemon reaps raw collector'
+[ ! -e "$R1/var/run/aether-proxy/raw-log.pipe" ] && ok 'collector removes pipe on daemon stop' || bad 'collector removes pipe on daemon stop'
 expect "SIGTERM state is stopped" stopped "$(jget state < "$R1/var/run/aether-proxy/state.json")"
 [ -f "$R1/var/run/aether-proxy/sets.save" ] && ok "SIGTERM writes sets.save" || bad "SIGTERM writes sets.save"
 stop_table_line=$(awk '/nft list table inet aetherproxy/ { line=NR } END { print line }' "$L1")

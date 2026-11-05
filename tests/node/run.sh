@@ -29,7 +29,13 @@ ok() { pass=$((pass + 1)); echo "PASS  $1"; }
 bad() { fail=$((fail + 1)); echo "FAIL  $1"; [ $# -gt 1 ] && echo "      $2"; }
 expect() { [ "$2" = "$3" ] && ok "$1" || bad "$1" "expected '$2', got '$3'"; }
 jget() { "$UCODE" "$JGET" -- "$1"; }
-ap() { "$UCODE" -S "$ENTRY" -- "$@"; }
+ap() {
+	if [ "${1:-}" = log ]; then
+		"$UCODE" -S "$ENTRY" -- "$@" --run-dir "$T/raw"
+	else
+		"$UCODE" -S "$ENTRY" -- "$@"
+	fi
+}
 # Length of a top-level JSON array, e.g. `alen "$out" lines`.
 alen() {
 echo "$1" | "$UCODE" -e 'import * as fs from "fs"; let v = json(fs.stdin.read("all")); print(length(v[ARGV[0]] ?? []));' -- "$2"
@@ -61,7 +67,8 @@ Thu Oct 16 12:00:04 2026 daemon.notice dnsmasq[999]: reading /tmp/resolv.conf
 Thu Oct 16 12:00:05 2026 daemon.err aether-proxy[1235]: CMD_FAILED external command failed [cmd="nft -f x" rc=1 stderr="err"]
 Thu Oct 16 12:00:06 2026 daemon.info aether-proxy[1234]: [resolver.zig:44] cached 10 entries
 EOF
-export LOGREAD_FIXTURE="$T/logd.txt"
+mkdir -p "$T/raw"
+cp "$T/logd.txt" "$T/raw/raw.log"
 
 # --- 1: --source all keeps exactly the three tagged sources; other programs never appear
 out="$(PATH="$T/bin:$PATH" ap log --json --source all 2>"$T/log-all.stderr")"; rc=$?
@@ -107,21 +114,20 @@ out="$(PATH="$T/bin:$PATH" ap log --json --source bogus 2>/dev/null)"; rc=$?
 expect "log --source bogus: exit code 2" 2 "$rc"
 expect "log --source bogus: code USAGE" USAGE "$(echo "$out" | jget code)"
 
-# No logread at all -> CMD_FAILED, exit 1. /usr/bin:/bin has no logread on the host.
+# CLI is independent of logread, including a failing system command.
 out="$(PATH=/usr/bin:/bin ap log --json 2>"$T/log-missing.stderr")"; rc=$?
-expect "log without logread: exit code 1" 1 "$rc"
-expect "log without logread: code CMD_FAILED" CMD_FAILED "$(echo "$out" | jget code)"
-# A failing logread is the same documented case.
+expect "log without logread: exit code 0" 0 "$rc"
+expect "log without logread: six lines" 6 "$(alen "$out" lines)"
 export LOGREAD_RC=5
 out="$(PATH="$T/bin:$PATH" ap log --json 2>/dev/null)"; rc=$?
-expect "logread exits 5: exit code 1" 1 "$rc"
-expect "logread exits 5: code CMD_FAILED" CMD_FAILED "$(echo "$out" | jget code)"
+expect "failing logread is not used: exit code 0" 0 "$rc"
+expect "failing logread is not used: six lines" 6 "$(alen "$out" lines)"
 unset LOGREAD_RC
 
 # T8.18: preserve the task's on-device location text; envelopes and SGR sequences
 # are synthetic because the repository does not contain the full device capture.
-export LOGREAD_FIXTURE="$ROOT/tests/node/fixtures/logd-chinadns.txt"
-mapfile -t device_lines < "$LOGREAD_FIXTURE"
+cp "$ROOT/tests/node/fixtures/logd-chinadns.txt" "$T/raw/raw.log"
+mapfile -t device_lines < "$T/raw/raw.log"
 expected_sources=(aether-proxy xray xray dns dns)
 out="$(PATH="$T/bin:$PATH" ap log --json 2>"$T/device-all.stderr")"; rc=$?
 expect "log device all: exit code 0" 0 "$rc"

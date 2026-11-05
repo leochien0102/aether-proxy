@@ -46,7 +46,7 @@ init.d / hotplug / daemon ──────────────────
 | `job start <子命令...>` | 以后台作业方式运行一个长任务，立即返回 `{"job": "<id>"}` | 否 |
 | `job status <id>` | 输出作业状态 | 否 |
 | `events [--since ts] [--level l]` | 读取结构化事件。`--since` 包含边界（`ts >= since`）；`--level` 表示**该等级及以上**（例如 `warn` 返回 warn 与 error） | 否 |
-| `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取 logd 中的相关行 | 否 |
+| `log [--source aether-proxy\|xray\|dns] [--lines n]` | 读取应用 tmpfs 原始日志副本 | 否 |
 | `custom get <名称>` / `custom set <名称> --content <文本>` | 读取 / 校验并保存自定义列表（`direct_domain`、`proxy_domain`、`direct_ip`、`proxy_ip`） | 否 |
 
 ### 按子命令加载模块（2026-10-20 定，T10.8；跨页面问题 X5）
@@ -81,13 +81,13 @@ init.d / hotplug / daemon ──────────────────
 ### `log`、`node import`、`custom`（2026-10-16 定，T8.2）
 
 **`log [--source all|aether-proxy|xray|dns] [--lines n]`**
-- 执行 `logread`（`sys.run`，10 秒），只保留标签为 `aether-proxy` 的行（`<日期> <设施>.<等级> aether-proxy[<pid>]: <消息>`）。
+- 按旧段 `/var/run/aether-proxy/raw.log.1` → 当前段 `raw.log` 顺序读取（T13.2），不执行 `logread`，不清理系统 logd。文件由 daemon 的受监管 collector 从启动后的 `logread -f -e aether-proxy` 新行追加，不做历史回填（容量、权限、轮转见 [09](09-logging.md)「应用原始日志」）。只保留标签为 `aether-proxy` 的行（`<日期> <设施>.<等级> aether-proxy[<pid>]: <消息>`）。
   Xray 与 chinadns-ng 继承 daemon 的输出、共用这个标签（[09](09-logging.md)「子进程日志」），按消息内容区分来源：
   消息匹配 `^[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:.]+ \[(Debug|Info|Warning|Error)\]` → `xray`；匹配 `\[[A-Za-z0-9_]+\.(zig|c):[0-9]+` → `dns`；其余 → `aether-proxy`。
   （2026-10-19 真机核对：Xray 规则正确；chinadns-ng 也有来自 C 源文件的行，如 `[dnl.c:541 dnl_init]`，故 `dns` 规则加上 `.c`。chinadns-ng 的行带 ANSI 颜色码，匹配前先去掉 `\x1b[…m` 序列；`text` 字段原样保留。）
   两个格式按上游源码推定，**真机验收（T8.13）时核对**，不符就改这两条规则。
 - `--source` 默认 `all`；`--lines` 为 1–2000，默认 200，取过滤后的**最后** n 行，按时间先后排列。
-- 输出：`{ "ok": true, "source": "<来源>", "lines": [ { "source": "xray", "text": "<原始整行>" }, … ] }`。没有 `logread` 或它失败 → `CMD_FAILED`，退出码 1。
+- 输出：`{ "ok": true, "source": "<来源>", "lines": [ { "source": "xray", "text": "<原始整行>" }, … ] }`。文件缺失或为空 → 空 `lines`；已有文件读取失败 → `FS_FAILED`，退出码 1。测试可用 `--run-dir` 覆盖目录，rpcd 不传递该选项；`--json` 与人读输出契约不变。
 
 **`node import <uri>`**（手动添加一个节点）
 - 用订阅同一套解析（`lib/uri.uc` 的 `parse_line`）。解析不了或协议不支持 → `{"ok": false, "code": "CONFIG_INVALID", "detail": "<原因：malformed、unsupported_scheme 等>"}`，退出码 2，不写任何东西。

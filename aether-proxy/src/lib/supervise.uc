@@ -85,22 +85,25 @@ function create(opts) {
 			return;
 
 		if (!sys.mkdir_p(opts.run_dir)) {
-			log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot create ${opts.run_dir}: ${sys.error()}` });
+			log.event(opts.raw_log ? 'warn' : 'error', 'START_FAILED', { step: 'supervise', detail: `cannot create ${opts.run_dir}: ${sys.error()}` });
 			return;
 		}
 
 		// A separate reader avoids the stdio buffering trap of popen + uloop.handle (09).
-		let argv = filtered_argv(opts, fifo);
+		// Collector failures are reported once by on_exit, not echoed back into logd.
+		let argv = opts.raw_log
+			? [ '/bin/sh', '-c', 'exec "$@" >/dev/null 2>&1', 'raw-log', ...opts.argv ]
+			: filtered_argv(opts, fifo);
 		proc = uloop.process(argv[0], slice(argv, 1), null, on_exit);
 		if (proc == null) {
 			remove_fifo(fifo);
-			log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot start ${opts.name}` });
+			log.event(opts.raw_log ? 'warn' : 'error', 'START_FAILED', { step: 'supervise', detail: `cannot start ${opts.name}` });
 			return;
 		}
 
 		pid = proc.pid();
 		if (!sys.write_atomic(pidfile, `${pid}\n`)) {
-			log.event('error', 'START_FAILED', { step: 'supervise', detail: `cannot write ${pidfile}: ${sys.error()}` });
+			log.event(opts.raw_log ? 'warn' : 'error', 'START_FAILED', { step: 'supervise', detail: `cannot write ${pidfile}: ${sys.error()}` });
 			stopping = true;
 			kill_process(pid, 'TERM');
 			stop_timer = uloop.timer(C.SUPERVISE_TERM_GRACE_MS, force_stop);
@@ -149,6 +152,12 @@ function create(opts) {
 			return;
 		}
 
+		// Optional collector is best effort: one warning, no restart loop.
+		if (opts.raw_log) {
+			log.event('warn', 'CHILD_CRASHED', { name: opts.name, pid: exited_pid, code, restart_in: null });
+			emit(cb, 'crashed', { name: opts.name, code });
+			return;
+		}
 		let delay = delays[min(restart_index, length(delays) - 1)];
 		restart_index = min(restart_index + 1, length(delays) - 1);
 		let info = { name: opts.name, pid: exited_pid, code, restart_in: delay };
