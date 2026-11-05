@@ -9,7 +9,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, element, contentChildren } = require('./loader');
-const { actionRow } = require('./button-layout');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -471,12 +470,19 @@ test('T10.16 logs: late initial replies cannot overwrite newer tab or poll resul
 	}
 });
 
-test('T10.27 scenario 1: raw-log Refresh has a spaced right-aligned row below log content', async () => {
-	const h = load_view();
-	const root = h.page.render(await h.page.load());
-	const row = actionRow(root, ['刷新', '清空日志']);
-	assert.equal(h.page.rawPanel.children.at(-1), row);
-	assert.equal(h.page.rawPanel.children.at(-2), h.page.rawContent);
+test('T13.4 rework: toolbar then clearError then rawContent, with no bottom actions', async () => {
+	const h = load_view(), v = h.page;
+	v.render(await v.load());
+	const [toolbar, error, content] = v.rawPanel.children;
+	assert.deepEqual(v.rawPanel.children, [toolbar, v.clearError, v.rawContent]);
+	assert.equal(error, v.clearError);
+	assert.equal(content, v.rawContent);
+	const buttons = descendants(v.rawPanel).filter(n => n.tag === 'button');
+	assert.deepEqual(buttons.map(text), ['刷新', '清空日志']);
+	assert.deepEqual(toolbar.children[1].children, buttons, 'both actions belong to the top right group');
+	assert.equal(buttons[1], v.clearButton);
+	assert.equal(v.rawPanel.children.at(-1), v.rawContent, 'log content is last, not an action row');
+	assert.ok(!descendants(error).concat(descendants(content)).some(n => n.tag === 'button'));
 });
 
 test('T13.3: raw DOM is newest first without mutating RPC lines, including repeated reads and refresh', async () => {
@@ -520,18 +526,24 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 	const h = load_view(), v = h.page;
 	const root = v.render();
 	const tabs = root.children[1];
-	const [filters, content, actions] = v.rawPanel.children;
+	const [toolbar, error, content] = v.rawPanel.children;
+	const [filters, actions] = toolbar.children;
 	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
+	assert.equal(error, v.clearError);
 	assert.equal(content, v.rawContent);
-	assert.deepEqual(actions.children.map(text), ['', '刷新', '清空日志']);
+	assert.deepEqual(actions.children.map(text), ['刷新', '清空日志']);
+	assert.equal(styles(toolbar)['justify-content'], 'space-between');
 	assert.equal(styles(actions)['justify-content'], 'flex-end');
-	for (const row of [tabs, filters, actions]) {
+	for (const row of [tabs, toolbar, filters, actions]) {
 		assert.equal(styles(row).display, 'flex');
 		assert.equal(styles(row)['align-items'], 'center');
 		assert.equal(styles(row).gap, '0.5em');
 		assert.equal(styles(row)['flex-wrap'], 'wrap');
-		assert.equal(styles(row).margin, '0.5em 0 1em');
 	}
+	for (const row of [tabs, toolbar])
+		assert.equal(styles(row).margin, '0.5em 0 1em');
+	for (const group of [filters, actions])
+		assert.equal(styles(group)['max-width'], '100%');
 	assert.equal(filters.children.length, 2);
 	for (const [index, label, select] of [[0, '来源', v.source], [1, '行数', v.lines]]) {
 		const group = filters.children[index];
@@ -552,9 +564,9 @@ test('T13.4: destructive confirmation, cancel, disabled lifecycle, success refre
 	let answer, options;
 	const h = load_view(o => { options = o; return new Promise(resolve => { answer = resolve; }); });
 	const v = h.page;
-	const root = v.render();
+	v.render();
 	assert.equal(v.clearButton.attrs.class, 'cbi-button cbi-button-remove');
-	actionRow(root, ['刷新', '清空日志'], [v.clearError]);
+	assert.equal(v.rawPanel.children[0].children[1].children[1], v.clearButton);
 	let pending = v.clearButton.attrs.click();
 	assert.equal(v.clearButton.disabled, true);
 	assert.equal(options.destructive, true);
@@ -602,6 +614,8 @@ test('T13.4: failed clear keeps raw logs, reports inline text and permits retry'
 	await pending;
 	assert.equal(text(v.rawContent), 'keep me');
 	assert.equal(text(v.clearError), 'FS_FAILED: <img src=x>');
+	assert.equal(v.rawPanel.children[1], v.clearError, 'failure remains below toolbar and above logs');
+	assert.equal(v.rawPanel.children[2], v.rawContent);
 	assert.ok(!descendants(v.clearError).some(n => n.tag === 'img'));
 	assert.equal(v.clearButton.disabled, false);
 	assert.equal(h.calls.length, 1, 'failure does not refresh');

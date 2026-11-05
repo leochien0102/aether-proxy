@@ -173,16 +173,18 @@ return view.extend({
 			'class': 'cbi-button cbi-button-remove', click: () => this.clearLog()
 		}, _('Clear logs', 'aether-proxy'));
 		this.rawPanel = E('div', { hidden: true }, [
-			E('div', { style: rowStyle }, [
-				E('label', { style: groupStyle }, [ E('span', {}, _('Source', 'aether-proxy')), this.source ]),
-				E('label', { style: groupStyle }, [ E('span', {}, _('Lines', 'aether-proxy')), this.lines ])
+			E('div', { style: rowStyle + '; justify-content:space-between' }, [
+				E('div', { style: groupStyle }, [
+					E('label', { style: groupStyle }, [ E('span', {}, _('Source', 'aether-proxy')), this.source ]),
+					E('label', { style: groupStyle }, [ E('span', {}, _('Lines', 'aether-proxy')), this.lines ])
+				]),
+				E('div', { style: groupStyle + '; justify-content:flex-end' }, [
+					E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')),
+					this.clearButton
+				])
 			]),
-			this.rawContent,
-			E('div', { style: rowStyle + '; justify-content:flex-end' }, [
-				this.clearError,
-				E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')),
-				this.clearButton
-			])
+			this.clearError,
+			this.rawContent
 		]);
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [
