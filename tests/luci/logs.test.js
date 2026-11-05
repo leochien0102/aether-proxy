@@ -254,7 +254,7 @@ test('T8.10 scenario 6: default events poll, tab/checkbox stop, raw refresh and 
 function text(node) {
 	return descendants(node).filter(n => n.tag == '#text').map(n => n.text).join('');
 }
-function load_view() {
+function load_view(confirm = async () => true) {
 	const calls = [], polls = [], timers = [], loads = [], writes = [];
 	globalThis.E = element;
 	const page = loadModule(viewFile, {
@@ -266,6 +266,7 @@ function load_view() {
 		dom: { content: (node, children) => { writes.push(node); setContent(node, children); } },
 		'aether-proxy.model.logs': model,
 		'aether-proxy.common': {
+			confirm,
 			call: (method, params) => {
 				let resolve;
 				const promise = new Promise(done => { resolve = done; });
@@ -473,7 +474,7 @@ test('T10.16 logs: late initial replies cannot overwrite newer tab or poll resul
 test('T10.27 scenario 1: raw-log Refresh has a spaced right-aligned row below log content', async () => {
 	const h = load_view();
 	const root = h.page.render(await h.page.load());
-	const row = actionRow(root, ['刷新']);
+	const row = actionRow(root, ['刷新', '清空日志']);
 	assert.equal(h.page.rawPanel.children.at(-1), row);
 	assert.equal(h.page.rawPanel.children.at(-2), h.page.rawContent);
 });
@@ -522,7 +523,7 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 	const [filters, content, actions] = v.rawPanel.children;
 	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
 	assert.equal(content, v.rawContent);
-	assert.deepEqual(actions.children.map(text), ['刷新']);
+	assert.deepEqual(actions.children.map(text), ['', '刷新', '清空日志']);
 	assert.equal(styles(actions)['justify-content'], 'flex-end');
 	for (const row of [tabs, filters, actions]) {
 		assert.equal(styles(row).display, 'flex');
@@ -545,6 +546,65 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 		assert.equal(styles(select).width, 'auto');
 		assert.equal(styles(select)['max-width'], '100%');
 	}
+});
+
+test('T13.4: destructive confirmation, cancel, disabled lifecycle, success refresh and lazy events', async () => {
+	let answer, options;
+	const h = load_view(o => { options = o; return new Promise(resolve => { answer = resolve; }); });
+	const v = h.page;
+	const root = v.render();
+	assert.equal(v.clearButton.attrs.class, 'cbi-button cbi-button-remove');
+	actionRow(root, ['刷新', '清空日志'], [v.clearError]);
+	let pending = v.clearButton.attrs.click();
+	assert.equal(v.clearButton.disabled, true);
+	assert.equal(options.destructive, true);
+	assert.match(options.text, /aether-proxy 原始日志和事件历史/);
+	assert.match(options.text, /系统日志不受影响/);
+	assert.match(options.text, /不能撤销/);
+	await v.clearLog();
+	assert.equal(h.calls.length, 0, 'duplicate clicks and pending confirmation cannot call RPC');
+	answer(false);
+	await pending;
+	assert.equal(v.clearButton.disabled, false);
+	assert.equal(h.calls.length, 0);
+	setContent(v.rawContent, ['old raw logs']);
+	const stale = v.fetchLog();
+	pending = v.clearLog();
+	answer(true);
+	await settle();
+	assert.equal(h.calls[1].method, 'log_clear');
+	assert.deepEqual(h.calls[1].params, {});
+	h.calls[1].resolve({ ok: true });
+	await settle();
+	assert.equal(text(v.rawContent), '');
+	assert.equal(h.calls[2].method, 'log');
+	assert.equal(v.clearButton.disabled, true, 'disabled until refresh completes');
+	h.calls[0].resolve({ ok: true, lines: [{ text: 'stale' }] });
+	await stale;
+	assert.equal(text(v.rawContent), '', 'late pre-clear reply cannot restore old data');
+	h.calls[2].resolve({ ok: true, lines: [] });
+	await pending;
+	assert.equal(v.clearButton.disabled, false);
+	assert.ok(!h.calls.some(c => c.method === 'events'), 'clear never forces event fetch');
+	const events = v.switchTab('events');
+	assert.equal(h.calls[3].method, 'events');
+	h.calls[3].resolve({ ok: true, events: [] });
+	await events;
+});
+
+test('T13.4: failed clear keeps raw logs, reports inline text and permits retry', async () => {
+	const h = load_view(), v = h.page;
+	v.render();
+	setContent(v.rawContent, ['keep me']);
+	const pending = v.clearLog();
+	await settle();
+	h.calls[0].resolve({ ok: false, code: 'FS_FAILED', detail: '<img src=x>' });
+	await pending;
+	assert.equal(text(v.rawContent), 'keep me');
+	assert.equal(text(v.clearError), 'FS_FAILED: <img src=x>');
+	assert.ok(!descendants(v.clearError).some(n => n.tag === 'img'));
+	assert.equal(v.clearButton.disabled, false);
+	assert.equal(h.calls.length, 1, 'failure does not refresh');
 });
 
 test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete translations', () => {

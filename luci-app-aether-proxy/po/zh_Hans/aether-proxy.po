@@ -5,6 +5,18 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "Clear logs"
+msgstr "清空日志"
+
+msgctxt "aether-proxy"
+msgid "Only %s raw logs and event history will be cleared. System logs are not affected. This cannot be undone."
+msgstr "只清空 %s 原始日志和事件历史，系统日志不受影响。此操作不能撤销。"
+
+msgctxt "aether-proxy"
+msgid "Unable to clear logs."
+msgstr "无法清空日志。"
+
+msgctxt "aether-proxy"
 msgid "Compatibility update chain unavailable; cannot update to the target version"
 msgstr "兼容更新链不可用，无法更新到目标版本"
 

@@ -128,7 +128,49 @@ function human(lines, source) {
 	return join('\n', map(lines, l => l.text));
 }
 
+// Truncate in place: the collector may still hold the live inode open. Atomic
+// replacement (the normal config-write rule) would leave it writing an old file.
+function clear_logs(args) {
+	let opts = { json: true, run_dir: C.RUN_DIR };
+	for (let i = 0; i < length(args); i++) {
+		if (args[i] == '--json')
+			continue;
+		if (args[i] == '--run-dir' && i + 1 < length(args)) {
+			opts.run_dir = args[++i];
+			continue;
+		}
+		return pipeline.finish(opts,
+			{ ok: false, code: 'USAGE', detail: `unknown clear option ${args[i]}` }, 2);
+	}
+
+	for (let name in [ C.RAW_LOG_FILE, `${C.RAW_LOG_FILE}.1`, C.EVENTS_FILE ]) {
+		let path = `${opts.run_dir}/${name}`;
+		// This ucode version may lose open() errno; stat distinguishes missing
+		// files from permission/I/O failures. r+ never creates a vanished file.
+		if (fs.stat(path) == null) {
+			let error = fs.error() ?? 'unknown error';
+			if (error == 'No such file or directory')
+				continue;
+			return pipeline.finish(opts,
+				{ ok: false, code: 'FS_FAILED', detail: `stat ${path}: ${error}` }, 1);
+		}
+		let file = fs.open(path, 'r+');
+		if (file == null)
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED',
+				detail: `open ${path}: ${fs.error() ?? 'unknown error'}` }, 1);
+		let truncated = file.truncate(0);
+		let error = truncated ? null : (file.error() ?? 'unknown error');
+		let closed = file.close();
+		if (!truncated || !closed)
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED',
+				detail: `clear ${path}: ${error ?? fs.error() ?? 'close failed'}` }, 1);
+	}
+	return pipeline.finish(opts, { ok: true }, 0);
+}
+
 export function run(args) {
+	if (args[0] == 'clear')
+		return clear_logs(slice(args, 1));
 	let parsed = parse_args(args);
 	if (parsed.error)
 		return pipeline.finish({ json: index(args, '--json') >= 0 },

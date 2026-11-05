@@ -482,8 +482,9 @@ function scenario_10() {
 		show([ 'components', 'data_status', 'events', 'job_status', 'list_file', 'log', 'node_parse',
 			'probe_results', 'probe_sites', 'stats', 'status', 'sub_status', 'version' ]),
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
-	expect_eq('10. ACL write methods are exactly service/check/job_start/node_import/save_file/probe_now',
-		show([ 'check', 'job_start', 'mode_use', 'node_import', 'node_use', 'probe_now', 'probe_url', 'save_file', 'service' ]),
+	expect_eq('10. ACL write methods match the write-only whitelist including log_clear',
+		show([ 'check', 'job_start', 'log_clear', 'mode_use', 'node_import', 'node_use',
+			'probe_now', 'probe_url', 'save_file', 'service' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -492,7 +493,7 @@ function scenario_10() {
 
 	let names = sort(keys(methods));
 	expect_eq('10. plugin exposes exactly the current methods',
-		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'mode_use',
+		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'log_clear', 'mode_use',
 			'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
 			'save_file', 'service', 'stats', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
@@ -534,7 +535,7 @@ function scenario_10() {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
 		data_status: 'read', stats: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
-		service: 'write', check: 'write', job_start: 'write', mode_use: 'write',
+		log_clear: 'write', service: 'write', check: 'write', job_start: 'write', mode_use: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
 
@@ -549,6 +550,13 @@ function scenario_10() {
 
 // --- 11: log maps source/lines to CLI options and validates them ---
 function scenario_11() {
+	stub_ctrl({ exit: 0, stdout: '{"ok":true}' });
+	check('T13.4 log_clear declares no parameters', deep_eq(methods.log_clear.args, {}));
+	let clear_argv = watch_cli();
+	let cleared = methods.log_clear.call({ args: {} });
+	check('T13.4 log_clear maps exact CLI arguments',
+		deep_eq(clear_argv(), [ 'log', 'clear', '--json' ]), show(clear_argv()));
+	check('T13.4 log_clear returns CLI JSON', deep_eq(cleared, { ok: true }), show(cleared));
 	stub_ctrl({ exit: 0, stdout: '{"ok":true,"source":"all","lines":[]}' });
 
 	let cases = [
@@ -812,6 +820,7 @@ function scenario_sessions() {
 		node_use: { args: { id: node_id(1), mode: 'global' }, argv: [ 'node', 'use', node_id(1), '--mode', 'global' ] },
 		mode_use: { args: { mode: 'gfw' }, argv: [ 'mode', 'use', 'gfw' ] },
 		log: { args: { source: 'dns', lines: 1 }, argv: [ 'log', '--source', 'dns', '--lines', '1' ] },
+		log_clear: { args: {}, argv: [ 'log', 'clear' ] },
 		node_import: { args: { uri: 'vless://uuid@host:443' }, argv: [ 'node', 'import', 'vless://uuid@host:443' ] },
 		node_parse: { args: { uri: 'trojan://pw@host:443' }, argv: [ 'node', 'parse', 'trojan://pw@host:443' ] },
 		list_file: { args: { name: 'direct_ip' }, argv: [ 'custom', 'get', 'direct_ip' ] },

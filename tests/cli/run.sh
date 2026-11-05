@@ -579,6 +579,12 @@ expect 'probe now ubus failure: exactly one event' 1 "$(wc -l < "$PN_RUN/events.
 expect 'probe now ubus failure: event code' CMD_FAILED "$(jget code < "$PN_RUN/events.jsonl")"
 expect 'probe now ubus failure: event exit code' 7 "$(jget args.rc < "$PN_RUN/events.jsonl")"
 
+if python3 "$ROOT/tests/cli/log-clear.py"; then
+	ok 'T13.4 application log clear CLI scenarios'
+else
+	bad 'T13.4 application log clear CLI scenarios'
+fi
+
 # T10.4: isolated installed-component discovery and shared daemon version reader.
 if python3 "$ROOT/tests/cli/components.py"; then
 	ok 'T10.4 components CLI scenarios'

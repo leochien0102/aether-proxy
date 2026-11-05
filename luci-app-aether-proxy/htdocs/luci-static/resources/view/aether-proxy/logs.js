@@ -68,7 +68,10 @@ return view.extend({
 	},
 
 	fetchLog: function() {
+		const request = this.rawRequest = (this.rawRequest ?? 0) + 1;
 		return ap.call('log', model.log_params(this.source.value, this.lines.value)).then(res => {
+			if (request != this.rawRequest)
+				return;
 			const vm = model.raw(res, uci.get('aetherproxy', 'main', 'log_level'));
 			const parts = [];
 			if (vm.hint)
@@ -79,6 +82,36 @@ return view.extend({
 			parts.push(E('pre', {}, [ vm.text ]));
 			dom.content(this.rawContent, parts);
 		});
+	},
+
+	clearLog: async function() {
+		if (this.clearButton.disabled)
+			return;
+		this.clearButton.disabled = true;
+		try {
+			if (!await ap.confirm({
+				title: _('Clear logs', 'aether-proxy'),
+				text: _('Only %s raw logs and event history will be cleared. System logs are not affected. This cannot be undone.',
+					'aether-proxy').replace('%s', 'aether-proxy'),
+				ok: _('Clear logs', 'aether-proxy'), destructive: true
+			}))
+				return;
+			dom.content(this.clearError, []);
+			const res = await ap.call('log_clear', {});
+			if (!res?.ok)
+				throw new Error([ res?.code, res?.detail ].filter(Boolean).join(': ')
+					|| _('Unable to clear logs.', 'aether-proxy'));
+			// Invalidate pre-clear reads; switching back to events fetches fresh history.
+			this.rawRequest = (this.rawRequest ?? 0) + 1;
+			dom.content(this.rawContent, []);
+			await this.fetchLog();
+		}
+		catch (err) {
+			dom.content(this.clearError, E('p', { 'class': 'alert-message error' }, [ err.message ]));
+		}
+		finally {
+			this.clearButton.disabled = false;
+		}
 	},
 
 	switchTab: function(tab) {
@@ -135,14 +168,21 @@ return view.extend({
 		this.lines = E('select', { style: selectStyle }, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
 		this.lines.value = '200';
 		this.rawContent = E('div', {});
+		this.clearError = E('div', {});
+		this.clearButton = E('button', {
+			'class': 'cbi-button cbi-button-remove', click: () => this.clearLog()
+		}, _('Clear logs', 'aether-proxy'));
 		this.rawPanel = E('div', { hidden: true }, [
 			E('div', { style: rowStyle }, [
 				E('label', { style: groupStyle }, [ E('span', {}, _('Source', 'aether-proxy')), this.source ]),
 				E('label', { style: groupStyle }, [ E('span', {}, _('Lines', 'aether-proxy')), this.lines ])
 			]),
 			this.rawContent,
-			E('div', { style: rowStyle + '; justify-content:flex-end' }, [ E('button', { 'class': 'cbi-button', click: () => this.fetchLog() },
-				_('Refresh', 'aether-proxy')) ])
+			E('div', { style: rowStyle + '; justify-content:flex-end' }, [
+				this.clearError,
+				E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')),
+				this.clearButton
+			])
 		]);
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [

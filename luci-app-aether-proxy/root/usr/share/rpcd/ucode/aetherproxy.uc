@@ -388,6 +388,14 @@ const methods = {
 		args: { source: '', lines: 0 }
 	},
 
+	// T13.4: application files only; the ACL grants this method to writers.
+	log_clear: {
+		call: function(req) {
+			return call_cli([ 'log', 'clear' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
 	// T9.13 (docs/10 "node parse"): read-only, with the same URI gate as import.
 	node_parse: {
 		call: function(req) {
