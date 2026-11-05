@@ -10,22 +10,31 @@ chmod 0600 raw.log
 [ ! -e raw.log.1 ] || chmod 0600 raw.log.1
 fifo=raw-log.pipe
 rm -f "$fifo"
-mkfifo -m 0600 "$fifo"
-reader= writer=
-cleanup() {
-	trap '' TERM INT
+reader= writer= sleeper=
+stop_pair() {
 	[ -z "$reader" ] || kill "$reader" || :
 	[ -z "$writer" ] || kill "$writer" || :
 	[ -z "$reader" ] || wait "$reader" || :
 	[ -z "$writer" ] || wait "$writer" || :
+	reader= writer=
 	rm -f "$fifo"
+}
+cleanup() {
+	trap '' TERM INT
+	[ -z "$sleeper" ] || kill "$sleeper" || :
+	[ -z "$sleeper" ] || wait "$sleeper" || :
+	stop_pair
 }
 trap cleanup EXIT
 trap 'exit 0' TERM INT
-# -f without -l asks OpenWrt logd for lines=0: new records only.
-"${2:-logread}" -f -e aether-proxy > "$fifo" &
-reader=$!
-awk -v bytes="$(wc -c < raw.log)" -v lines="$(wc -l < raw.log)" '
+delay=1
+while :; do
+	mkfifo -m 0600 "$fifo"
+	started=$(date +%s)
+	# -f without -l asks OpenWrt logd for lines=0: new records only.
+	"${2:-logread}" -f -e aether-proxy > "$fifo" &
+	reader=$!
+	awk -v bytes="$(wc -c < raw.log)" -v lines="$(wc -l < raw.log)" '
 function rotate() {
 	close("raw.log")
 	if (system("mv -f raw.log raw.log.1") != 0) exit 1
@@ -45,8 +54,19 @@ function rotate() {
 	lines++
 	if (bytes >= 1048576 || lines >= 2000) rotate()
 }
-' < "$fifo" &
-writer=$!
-# EOF from logread also ends awk. Reap both on normal exit and TERM.
-wait "$writer"
-exit 1
+	' < "$fifo" &
+	writer=$!
+	# Reader EOF ends awk; an awk failure must also stop the old reader before retry.
+	# A nonzero wait is expected here and must not trigger set -e / collector exit.
+	wait "$writer" || :
+	writer=
+	stop_pair
+	# Reset after a stable session; repeated short sessions back off 1,2,3,4,5 seconds.
+	[ "$(( $(date +%s) - started ))" -lt 30 ] || delay=1
+	# Background + wait lets TERM/INT interrupt even the capped retry delay.
+	sleep "$delay" &
+	sleeper=$!
+	wait "$sleeper" || :
+	sleeper=
+	[ "$delay" -ge 5 ] || delay=$((delay + 1))
+done
