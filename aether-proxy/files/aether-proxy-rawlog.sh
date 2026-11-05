@@ -14,10 +14,10 @@ mkfifo -m 0600 "$fifo"
 reader= writer=
 cleanup() {
 	trap '' TERM INT
-	[ -z "$reader" ] || kill "$reader" 2>/dev/null || :
-	[ -z "$writer" ] || kill "$writer" 2>/dev/null || :
-	[ -z "$reader" ] || wait "$reader" 2>/dev/null || :
-	[ -z "$writer" ] || wait "$writer" 2>/dev/null || :
+	[ -z "$reader" ] || kill "$reader" || :
+	[ -z "$writer" ] || kill "$writer" || :
+	[ -z "$reader" ] || wait "$reader" || :
+	[ -z "$writer" ] || wait "$writer" || :
 	rm -f "$fifo"
 }
 trap cleanup EXIT
