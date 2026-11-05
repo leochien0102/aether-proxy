@@ -19,6 +19,7 @@ start_service() {
 
 	# Register immediately: the daemon publishes starting before doing validation (docs/04).
 	procd_open_instance aether-proxy
+	procd_set_param limits nofile="1000000 1000000"
 	procd_set_param command "$AETHER_PROXY" daemon
 	if [ "$_AETHER_PROXY_BOOT" = 1 ]; then
 		procd_append_param command --boot

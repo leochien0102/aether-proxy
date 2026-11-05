@@ -200,7 +200,13 @@ def run_scenario(work, golden, manager, fault):
 	executable(root / 'usr/bin/aether-proxy', CLI_STUB)
 	# The plugin is really executed using the pinned interpreter, not accepted by a no-op stub.
 	executable(bin_dir / 'ucode', '#!/bin/sh\nexec "' + str(UCODE) + '" "$@"\n')
-	if fault == 'missing':
+	if fault in ('nofile-missing', 'nofile-low'):
+		init = root / 'etc/init.d/aether-proxy'
+		line = '\tprocd_set_param limits nofile="1000000 1000000"\n'
+		expect(line in init.read_text(), 'nofile fault injection finds configured limit')
+		init.write_text(init.read_text().replace(line,
+			'' if fault == 'nofile-missing' else '\tprocd_set_param limits nofile="4095 4096"\n'))
+	elif fault == 'missing':
 		(root / 'usr/share/aether-proxy/data/apple.txt').unlink()
 	elif fault == 'filter-missing':
 		(root / 'usr/share/aether-proxy/logfilter.awk').unlink()
@@ -221,6 +227,8 @@ def run_scenario(work, golden, manager, fault):
 
 def verify_scenarios(work, golden):
 	failures = {
+		'nofile-missing': 'FAIL  installed init sets nofile 1000000 1000000',
+		'nofile-low': 'FAIL  installed init sets nofile 1000000 1000000',
 		'missing': 'FAIL  file /usr/share/aether-proxy/data/apple.txt',
 		'render': 'FAIL  render chinadns matches host golden',
 		'default': 'FAIL  default check exits 0 (got 2)',
@@ -242,6 +250,8 @@ def verify_scenarios(work, golden):
 		result, root = run_scenario(work, golden, manager, '')
 		expect(result.returncode == 0 and '0 failed' in result.stdout,
 			f'{manager}: complete smoke PASS', result.stdout)
+		expect('PASS  installed init sets nofile 1000000 1000000' in result.stdout,
+			f'{manager}: installed init nofile limit checked', result.stdout)
 		expect('PASS  firmware awk limits 500 lines to 20 plus EOF summary' in result.stdout,
 			f'{manager}: installed filter and mkfifo exercised', result.stdout)
 		for kind in ARTIFACTS:

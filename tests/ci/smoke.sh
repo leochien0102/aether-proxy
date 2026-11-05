@@ -116,6 +116,12 @@ for file in /usr/bin/aether-proxy /etc/init.d/aether-proxy /etc/config/aetherpro
 	/usr/share/luci/menu.d/luci-app-aether-proxy.json; do
 	file_present "$file"
 done
+# T13.1: check the installed init script on every target, not just the repository source.
+if grep -qx '[[:space:]]*procd_set_param limits nofile="1000000 1000000"' "$root/etc/init.d/aether-proxy"; then
+	ok 'installed init sets nofile 1000000 1000000'
+else
+	bad 'installed init sets nofile 1000000 1000000'
+fi
 for name in gfwlist chnlist apple chnroute4 gfw_static4; do
 	file_present "/usr/share/aether-proxy/data/$name.txt"
 done
