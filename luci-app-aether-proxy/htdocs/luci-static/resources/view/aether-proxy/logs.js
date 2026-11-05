@@ -127,24 +127,30 @@ return view.extend({
 				])
 			]), this.eventContent
 		]);
-		this.source = E('select', {}, model.sources().map(pair => E('option', { value: pair[0] }, pair[1])));
-		this.lines = E('select', {}, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
+		const rowStyle = 'display:flex; align-items:center; gap:0.5em; '
+			+ 'flex-wrap:wrap; margin:0.5em 0 1em';
+		const groupStyle = 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; max-width:100%';
+		const selectStyle = 'width:auto; max-width:100%';
+		this.source = E('select', { style: selectStyle }, model.sources().map(pair => E('option', { value: pair[0] }, pair[1])));
+		this.lines = E('select', { style: selectStyle }, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
 		this.lines.value = '200';
 		this.rawContent = E('div', {});
 		this.rawPanel = E('div', { hidden: true }, [
-			E('label', {}, [ _('Source', 'aether-proxy'), this.source ]), E('label', {}, [ _('Lines', 'aether-proxy'), this.lines ]),
+			E('div', { style: rowStyle }, [
+				E('label', { style: groupStyle }, [ E('span', {}, _('Source', 'aether-proxy')), this.source ]),
+				E('label', { style: groupStyle }, [ E('span', {}, _('Lines', 'aether-proxy')), this.lines ])
+			]),
 			this.rawContent,
-			E('div', {
-				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-			}, [ E('button', { 'class': 'cbi-button', click: () => this.fetchLog() },
+			E('div', { style: rowStyle + '; justify-content:flex-end' }, [ E('button', { 'class': 'cbi-button', click: () => this.fetchLog() },
 				_('Refresh', 'aether-proxy')) ])
 		]);
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy')),
+			E('div', { style: rowStyle }, [
+				E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
+				E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
+			]),
 			this.eventPanel, this.rawPanel
 		]);
 		/* Give LuCI a turn to display the complete page before fetching events. */

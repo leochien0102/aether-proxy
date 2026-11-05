@@ -167,7 +167,7 @@ test('T8.10 scenario 5: raw source/line parameters, debug-only hint and error de
 		for (const lines of model.line_counts())
 			assert.deepEqual(model.log_params(source, String(lines)), { source, lines });
 	const res = { ok: true, lines: [ { text: 'first <x>' }, { text: 'second' } ] };
-	assert.equal(model.raw(res, 'debug').text, 'first <x>\nsecond');
+	assert.equal(model.raw(res, 'debug').text, 'second\nfirst <x>');
 	assert.equal(model.raw(res, 'debug').hint, '建议在 系统 → 日志 中调大缓冲区，排查完成后调回 notice');
 	for (const level of [ 'info', 'notice', 'warn', 'error', undefined ])
 		assert.equal(model.raw(res, level).hint, null);
@@ -317,9 +317,10 @@ test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with o
 	const root = v.render(await v.load());
 	assert.equal(root.tag, 'div');
 	assert.equal(root.attrs.class, 'cbi-map');
-	assert.deepEqual(root.children.slice(0, 3).map(text), [ '日志', '事件', '原始日志' ]);
-	assert.equal(root.children[3], v.eventPanel);
-	assert.equal(root.children[4], v.rawPanel);
+	assert.equal(text(root.children[0]), '日志');
+	assert.deepEqual(root.children[1].children.map(text), [ '事件', '原始日志' ]);
+	assert.equal(root.children[2], v.eventPanel);
+	assert.equal(root.children[3], v.rawPanel);
 	assert.equal(v.eventPanel.hidden, false);
 	assert.equal(v.rawPanel.hidden, true);
 	assert.equal(text(v.eventContent), '读取中…');
@@ -475,6 +476,75 @@ test('T10.27 scenario 1: raw-log Refresh has a spaced right-aligned row below lo
 	const row = actionRow(root, ['刷新']);
 	assert.equal(h.page.rawPanel.children.at(-1), row);
 	assert.equal(h.page.rawPanel.children.at(-2), h.page.rawContent);
+});
+
+test('T13.3: raw DOM is newest first without mutating RPC lines, including repeated reads and refresh', async () => {
+	const h = load_view(), v = h.page;
+	v.render();
+	const lines = Object.freeze([
+		Object.freeze({ text: 'oldest <img src=x onerror=alert(1)>' }),
+		Object.freeze({ text: 'middle\ncontinued' }),
+		Object.freeze({ text: 'newest' })
+	]);
+	const reply = Object.freeze({ ok: true, lines });
+	const expected = 'newest\nmiddle\ncontinued\noldest <img src=x onerror=alert(1)>';
+	for (let i = 0; i < 2; i++) {
+		const pending = i === 0 ? v.switchTab('raw')
+			: descendants(v.rawPanel).find(n => n.tag === 'button').attrs.click();
+		h.calls[i].resolve(reply);
+		await pending;
+		const pre = descendants(v.rawContent).find(n => n.tag === 'pre');
+		assert.equal(pre.textContent, expected);
+		assert.equal(pre.children.length, 1);
+		assert.equal(pre.children[0].tag, '#text');
+		assert.ok(!descendants(v.rawContent).some(n => n.tag === 'img'));
+		assert.deepEqual(lines.map(line => line.text), [
+			'oldest <img src=x onerror=alert(1)>', 'middle\ncontinued', 'newest'
+		]);
+	}
+	for (const reply of [{ ok: true, lines: [] }, { ok: true }, { ok: false, code: 'TIMEOUT' }]) {
+		const pending = v.fetchLog();
+		h.calls.at(-1).resolve(reply);
+		await pending;
+		assert.equal(descendants(v.rawContent).find(n => n.tag === 'pre').textContent, '');
+	}
+});
+
+function styles(node) {
+	return Object.fromEntries((node.attrs.style || '').split(';').filter(rule => rule.trim())
+		.map(rule => rule.split(':').map(part => part.trim())));
+}
+
+test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with bounded select groups', () => {
+	const h = load_view(), v = h.page;
+	const root = v.render();
+	const tabs = root.children[1];
+	const [filters, content, actions] = v.rawPanel.children;
+	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
+	assert.equal(content, v.rawContent);
+	assert.deepEqual(actions.children.map(text), ['刷新']);
+	assert.equal(styles(actions)['justify-content'], 'flex-end');
+	for (const row of [tabs, filters, actions]) {
+		assert.equal(styles(row).display, 'flex');
+		assert.equal(styles(row)['align-items'], 'center');
+		assert.equal(styles(row).gap, '0.5em');
+		assert.equal(styles(row)['flex-wrap'], 'wrap');
+		assert.equal(styles(row).margin, '0.5em 0 1em');
+	}
+	assert.equal(filters.children.length, 2);
+	for (const [index, label, select] of [[0, '来源', v.source], [1, '行数', v.lines]]) {
+		const group = filters.children[index];
+		assert.equal(group.tag, 'label');
+		assert.deepEqual(group.children, [group.children[0], select]);
+		assert.equal(text(group.children[0]), label);
+		assert.equal(styles(group).display, 'flex');
+		assert.equal(styles(group)['align-items'], 'center');
+		assert.equal(styles(group).gap, '0.5em');
+		assert.equal(styles(group)['flex-wrap'], 'wrap');
+		assert.equal(styles(group)['max-width'], '100%');
+		assert.equal(styles(select).width, 'auto');
+		assert.equal(styles(select)['max-width'], '100%');
+	}
 });
 
 test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete translations', () => {

@@ -271,7 +271,8 @@ return baseclass.extend({
 	log_params: function(source, lines) { return { source: source, lines: Number(lines) }; },
 	raw: function(res, log_level) {
 		return {
-			text: res && res.ok !== false ? (res.lines || []).map(line => line.text).join('\n') : '',
+			// Reverse a new array for display only; preserve RPC/CLI order and each line's text.
+			text: res && res.ok !== false ? (res.lines || []).map(line => line.text).reverse().join('\n') : '',
 			error: res && res.ok !== false ? null : failure(res || {}),
 			hint: log_level == 'debug' ?
 				_('Increase the buffer in System → Log; return to notice after troubleshooting.', 'aether-proxy') : null
