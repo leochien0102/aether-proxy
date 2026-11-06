@@ -1154,7 +1154,7 @@ return view.extend({
 		stateRows.push(E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
 		}, [
-			this.nodeControl ?? E('p', {}, [ vm.node_text ]),
+			this.nodeControl ?? E('p', { style: 'margin:0' }, [ vm.node_text ]),
 			E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
 				...(vm.node_address_text ? [ E('span', {}, [ vm.node_address_text ]) ] : []),
 				E('span', { style: this.colorStyle(vm.probe_level) },
