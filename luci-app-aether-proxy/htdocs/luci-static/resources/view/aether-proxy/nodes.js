@@ -160,7 +160,8 @@ return view.extend({
 		this.probeButtons = [];
 		this.selectionBoxes = {};
 
-		this.progressEl = E('div', { 'class': 'cbi-map-descr' });
+		// Keep the theme typography, but not its asymmetric description margin in this flex row.
+		this.progressEl = E('div', { 'class': 'cbi-map-descr', style: 'margin:0' });
 
 		// Rebuilds after imports, additions or switching must not discard bulk-import input.
 		const importValue = this.importText?.value ?? '';
@@ -1067,8 +1068,9 @@ return view.extend({
 			});
 
 			dom.content(self.importResult, [
-				E('p', {}, [ sum.text ]),
-				items.length ? E('ul', {}, items) : E([])
+				// Keep the summary/list gap and theme indentation, without a trailing margin.
+				E('p', { style: 'margin:' + (items.length ? '0 0 1rem' : '0') }, [ sum.text ]),
+				items.length ? E('ul', { style: 'margin-top:0;margin-bottom:0' }, items) : E([])
 			]);
 
 			if (sum.added > 0)

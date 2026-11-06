@@ -203,6 +203,54 @@ async function harness() {
 	h.root = await h.page.render();
 	return h;
 }
+test('T14.3: node progress clears theme margin through absent, running and finished states', async () => {
+	const h = await harness();
+	assert.equal(h.page.progressEl.class, 'cbi-map-descr', 'keep theme font and color');
+	assert.equal(h.page.progressEl.style.margin, '0');
+	for (const results of [null, { done: 0, total: 7, finished: false },
+		{ done: 7, total: 7, finished: true }]) {
+		h.page.results = results;
+		h.page.updateProbeColumns();
+		assert.equal(h.page.progressEl.hidden, model.progress(results) == null);
+		assert.equal(h.page.progressEl.textContent, model.progress(results) ?? '');
+		assert.equal(h.page.progressEl.style.margin, '0');
+	}
+});
+
+test('T14.3: batch import keeps summary/list gap and indentation without trailing margin', async () => {
+	for (const reply of [{ ok: true, duplicate: true }, { ok: true, duplicate: false },
+		{ ok: false, code: 'CONFIG_INVALID', detail: '<bad> ' + 'long '.repeat(30) }]) {
+		const h = await harness();
+		let rebuilds = 0;
+		h.page.rebuild = async () => { rebuilds++; };
+		h.reply = reply;
+		h.page.importText.value = 'vless://one\nvless://two';
+		await h.page.handleImport({});
+		assert.equal(rebuilds, reply.ok && !reply.duplicate ? 1 : 0);
+		assert.deepEqual(h.rpc.map(call => call[0]), ['node_import', 'node_import']);
+		const result = h.page.importResult;
+		const summary = result.children[0];
+		assert.equal(summary.style.margin, reply.ok ? '0' : '0 0 1rem');
+		assert.match(summary.textContent, reply.ok ? /2.*0/ : /0.*2/);
+		if (!reply.ok) {
+			const list = result.children[1];
+			assert.equal(list.style.marginTop, '0');
+			assert.equal(list.style.marginBottom, '0');
+			assert.equal(list.style.padding, undefined, 'theme list indentation stays intact');
+			assert.equal(list.children.length, 2);
+			assert.match(list.children[1].textContent, /^#2 CONFIG_INVALID: <bad>/);
+		}
+		assert.equal(result.style?.whiteSpace, undefined, 'long results may wrap');
+	}
+	const h = await harness();
+	h.page.importText.value = '';
+	await h.page.handleImport({});
+	assert.equal(h.rpc.length, 0);
+	const notification = h.calls.find(call => call[0] === 'notify')[2];
+	assert.equal(notification.tag, 'p');
+	assert.deepEqual(notification.style, {}, 'notification paragraph is not reset');
+});
+
 async function add(h) {
 	const addButton = button(h.root, '添加节点');
 	assert.match(addButton.class, /cbi-button-add/);

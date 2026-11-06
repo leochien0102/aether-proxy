@@ -893,6 +893,21 @@ function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabl
 	return { page, root };
 }
 
+test('T14.3: no-node fallback clears only its margin and keeps wrapping beside probe controls', () => {
+	const page = loadView({ ap: { call: () => new Promise(() => {}) } });
+	const root = page.render({ labels: {}, node: null, enabled: true });
+	page.refresh({ ok: true, state: 'stopped' }, readings(1000, 0, 0, 0, 0));
+	assert.equal(page.nodeControl, null);
+	const row = nodeRow(root);
+	const fallback = row.children[0];
+	assert.equal(fallback.tag, 'p');
+	assert.equal(fallback.textContent, tr('There are no nodes yet. Add or import nodes on the Nodes page.'));
+	assert.equal(fallback.style, 'margin:0');
+	assert.match(row.style, /align-items:center/);
+	assert.match(row.style, /flex-wrap:wrap/);
+	assert.ok(row.children.length > 1, 'probe controls remain beside the fallback');
+});
+
 /* Banner assertions ignore the stable region wrappers, not their order. */
 function pageParts(page) {
 	return page.content.children.flatMap((region) =>

@@ -149,7 +149,9 @@ return view.extend({
 		};
 	},
 	show_message: function(target, vm) {
-		target.replaceChildren(E('p', {}, [ vm.text ]), ...vm.errors.map(text => E('p', {}, [ text ])));
+		// Only internal paragraph gaps belong in the button-adjacent feedback block.
+		target.replaceChildren(...[vm.text, ...vm.errors].map((text, i) =>
+			E('p', { style: 'margin:' + (i ? '1rem 0 0' : '0') }, [ text ])));
 	},
 	show_save: function(target, result) {
 		this.show_message(target, model.save_result(result));
@@ -243,7 +245,9 @@ return view.extend({
 					timer = ap.job_progress(progress, _('Updating rule data…', 'aether-proxy'));
 					const job = await ap.run_job('update_data', []);
 					timer.stop();
-					summary.replaceChildren(...model.job_result(job).map(text => E('p', {}, [ text ])));
+					// Preserve multiline spacing without shifting the block above its button.
+					summary.replaceChildren(...model.job_result(job).map((text, i) =>
+						E('p', { style: 'margin:' + (i ? '1rem 0 0' : '0') }, [ text ])));
 					this.show_data(inventory, await ap.call('data_status'));
 				}
 				catch (e) {

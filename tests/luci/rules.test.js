@@ -688,6 +688,44 @@ test('T10.10 scenario 7: update job stays usable before reads finish and refresh
 	assert.equal(root.children[0], r.form);
 });
 
+test('T14.3: list feedback removes edge margins but preserves multiline spacing and read failures', async () => {
+	const h = load_view();
+	const r = regions(await h.page.render());
+	for (const result of [{ ok: true, changed: true }, { ok: false, code: 'CONFIG_INVALID',
+		detail: 'long '.repeat(40), errors: [{ line: 2, text: '<bad>' }, { line: 7, text: 'bad again' }] }]) {
+		h.page.show_save(r.lists[0].message, result);
+		const vm = h.vm.save_result(result);
+		assert.deepEqual(r.lists[0].message.children.map(text), [vm.text, ...vm.errors]);
+		for (const [i, paragraph] of r.lists[0].message.children.entries())
+			assert.equal(paragraph.style, 'margin:' + (i ? '1rem 0 0' : '0'));
+	}
+	h.start();
+	h.calls[0].resolve({ ok: false, code: 'RPC_FAILED', detail: 'read failed' });
+	await settle();
+	assert.equal(r.lists[0].message.children[0].style, 'margin:0');
+	assert.equal(text(r.lists[0].message), 'RPC_FAILED: read failed');
+	assert.equal(r.lists[0].button.disabled, true);
+});
+
+test('T14.3: rule update summary has no edge margins, keeps line gaps and leaves inventory alone', async () => {
+	const h = load_view();
+	const r = regions(await h.page.render());
+	assert.equal(text(r.summary), '', 'initial result is empty');
+	r.update.click({ currentTarget: r.update });
+	assert.equal(r.update.disabled, true);
+	h.jobs[0].resolve({ state: 'ok', result: { updated: ['gfwlist'], unchanged: ['apple'],
+		failed: { chnroute4: 'long '.repeat(40) } } });
+	await settle();
+	assert.equal(r.summary.children.length, 3);
+	for (const [i, paragraph] of r.summary.children.entries())
+		assert.equal(paragraph.style, 'margin:' + (i ? '1rem 0 0' : '0'));
+	h.calls.at(-1).resolve({ ok: true, checked: null, items: {} });
+	await h.actions.at(-1);
+	assert.equal(r.update.disabled, false);
+	assert.equal(r.inventory.children[0].tag, 'p');
+	assert.equal(r.inventory.children[0].style, undefined, 'ordinary inventory paragraph keeps theme margins');
+});
+
 test('T10.27 scenario 1: four list saves and rule update have spaced right-aligned rows with text first', async () => {
 	const h = load_view();
 	const root = await h.page.render(), r = regions(root);
