@@ -45,7 +45,7 @@ function switchFormat(text, ...args) {
 
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy').then(function() {
+		return ap.load_config().then(function() {
 			const labels = {};
 			uci.sections('aetherproxy', 'node', function(s) {
 				labels[s['.name']] = s.label || s['.name'];

@@ -6,6 +6,7 @@
 'require uci';
 'require ui';
 'require network';
+'require aether-proxy.common as ap';
 'require aether-proxy.model.access as model';
 
 /*
@@ -54,7 +55,7 @@ function addInput(node) {
 return view.extend({
 	load: function() {
 		return Promise.all([
-			uci.load('aetherproxy'),
+			ap.load_config(),
 			/* Hints are optional: manual MAC input works after lookup failure. */
 			L.resolveDefault(network.getHostHints(), null)
 		]);

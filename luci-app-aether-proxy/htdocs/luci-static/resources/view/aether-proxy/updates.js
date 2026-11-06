@@ -17,7 +17,7 @@
  */
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return ap.load_config();
 	},
 	run: async function(kind, name, previous) {
 		const bridge = kind == 'update_package' && !previous &&

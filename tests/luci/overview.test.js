@@ -3625,6 +3625,7 @@ test('T10.62 scenario 4: real common queue sends sites/status/version/components
 	let inflight = 0, peak = 0;
 	const ap = loadModule(path.join(RES, 'aether-proxy/common.js'), {
 		baseclass: { extend: value => value }, ui: {},
+		uci: { load: () => Promise.resolve([ 'aetherproxy' ]) },
 		rpc: { declare: options => () => new Promise(resolve => {
 			inflight++;
 			peak = Math.max(peak, inflight);

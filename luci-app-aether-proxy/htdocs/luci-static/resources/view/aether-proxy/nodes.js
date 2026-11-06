@@ -77,7 +77,11 @@ function renderPreservedList(section_id, option_index, cfgvalue) {
 
 return view.extend({
 	load: function() {
-		return subscriptions.load();
+		return ap.load_config().then(function() {
+			/* Preserve subscriptions.load()'s missing-section initialization. */
+			if (!uci.get('aetherproxy', 'sub'))
+				uci.add('aetherproxy', 'sub', 'sub');
+		});
 	},
 
 	render: function() {

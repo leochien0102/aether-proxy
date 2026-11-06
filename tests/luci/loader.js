@@ -163,6 +163,19 @@ function loadModule(file, modules, env) {
 			return loadModule(require('node:path').resolve(__dirname,
 				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/model/latency.js'),
 			{ baseclass: { extend: object => object } }, env);
+		/* Older common-module tests only exercise RPC/UI and never read UCI. */
+		if (r.name == 'uci' && /[/\\]common\.js$/.test(file) && !(r.name in modules))
+			return {};
+		/* Page harnesses keep their RPC/UI doubles, but exercise the shipped
+		 * config helper against their own UCI double (not a success-only stub). */
+		if (r.name == 'aether-proxy.common' && !modules[r.name]?.load_config) {
+			modules[r.name] ??= {};
+			const common = loadModule(require('node:path').resolve(__dirname,
+				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js'),
+			{ baseclass: { extend: object => object }, rpc: { declare: () => () => {} },
+				ui: {}, uci: modules.uci }, env);
+			modules[r.name].load_config = common.load_config;
+		}
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');
 
