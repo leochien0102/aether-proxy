@@ -32,6 +32,7 @@
 | [10-cli-luci.md](10-cli-luci.md) | `aether-proxy` 命令约定、rpcd/ubus 接口、LuCI 页面 | M8 |
 | [11-plan.md](11-plan.md) | 里程碑、任务拆分、验收标准、测试方法 | 全部任务 |
 | [12-ucode.md](12-ucode.md) | ucode 实现规范：目录布局、编码规则、测试、打包、协作流程 | 全部任务 |
+| [13-routing.md](13-routing.md) | 分流：按服务/设备选出口，启用后境外流量进 Xray 判定（**暂停**，2026-11-02 决定搁置 B20） | 恢复分流时 |
 | [tasks/](tasks/README.md) | 任务卡（当前：M0、M1） | 领卡时 |
 | [adr/](adr/) | 架构决策记录 | 改动对应设计前 |
 | [backlog.md](backlog.md) | 尚未设计的未来功能（如自定义分流），以及现有设计中要保持开放的地方 | 改动数据面、Xray 配置、订阅引用逻辑前 |

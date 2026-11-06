@@ -223,3 +223,57 @@ T1 又依赖这个节点本身，形成死锁。
 - `filter_https_rr=1`（默认）：过滤 HTTPS 记录（qtype 65），避免其中的 `ipv6hint` 让客户端走 IPv6。
 - LAN 侧 RA/DHCPv6 不由 aether-proxy 修改。如果检测到 LAN 接口存在全局 IPv6 地址，在 LuCI 状态页提示（`IPV6_PRESENT`）：
   「客户端仍可能通过 IPv6 直连，建议关闭 LAN 的 IPv6 分配」。
+
+## 替换 ChinaDNS-NG（2026-11-02：路线已定，aether-dns；本节记录判断依据）
+
+背景：chinadns-ng 最后一次提交是 2025-08-09，上游已停更（[backlog](backlog.md) B18/B20）。
+2026-11-02 所有者决定：远端分流暂缓（B20 搁置），当前主线是**长期稳定、可维护的替代实现**——
+独立项目 **aether-dns**（Rust，方案见 `../aether-dns/docs/`）。本节的 dnsmasq 验证保留为判断依据与备选路线。
+
+### dnsmasq 能力验证（2026-11-02，dnsmasq 2.93，仓库同一份源码在宿主机编译运行）
+
+| 验证项 | 结果 |
+|---|---|
+| 后缀匹配 | `server=/gfw.test/` 命中 `gfw.test`、`www.gfw.test`，不命中 `supergfw.test`（按标签匹配）✓ |
+| 更具体的域名优先 | `server=/api.openai.com/` 覆盖 `server=/openai.com/` ✓ |
+| AAAA / HTTPS 过滤 | `--filter-rr=AAAA,HTTPS` 把应答里的这两类记录去掉（`ancount=0`），A 不受影响 ✓ |
+| 4,300 条 `server=` | 配置 0.16 MiB，RSS +1.0 MB，查询 p50 0.22 ms ✓ |
+| 109,893 条 `server=`（chnlist 规模） | 配置 4.05 MiB，RSS +25 MB，p50 0.22 ms ✓ |
+| 组内多个服务器 | 默认按 RTT 选**最快**的；只有 `--strict-order` 才按声明顺序 |
+| 上游死掉（端口关闭） | 不回 SERVFAIL，dnsmasq 10 秒后丢弃查询，客户端看到超时；同组还有活服务器时 0 ms 切过去 ✓ |
+| 上游死掉 + `--use-stale-cache` | 条目过期后仍返回缓存应答 ✓（替代现在的 `cache-stale`） |
+
+结论：**dnsmasq 能覆盖「按域名选上游」的全部行为**（分组、优先级、AAAA/HTTPS 过滤、缓存、过期应答），
+但**覆盖不了 chinadns-ng 的两项核心行为**：同组多上游竞争与「按 chnroute4 判定该用国内还是可信应答」。
+所以它不是完整替代品——这也是 aether-dns 存在的理由。两个必须记住的限制：
+
+1. **没有「每个上游走 TCP」**。dnsmasq 对上游只会 UDP，截断时才重试 TCP。经代理解析要交给 Xray 的
+   `protocol:"dns"` 出站（`network:"tcp"`）＋一个 `dokodemo-door` 入站，也就是 helloworld 的
+   「Prefer module built-in DNS」（`pdnsd_enable=7`）用的那个结构。
+2. **上游不可达时不回 SERVFAIL**，客户端要等自己的超时。所以代理故障时的降级仍必须由 monitor 主动切换级别，
+   不能指望 DNS 层快速失败。
+
+### 两条路线（2026-11-02 定：主线是 aether-dns）
+
+- **主线 aether-dns**：独立进程（Rust），完整覆盖域名分类、双组竞争、集合写入、重载与缓存，
+  接口与验收见 `../aether-dns/docs/`（01 方案 / 02 兼容矩阵 / 03 验证计划）。aether-proxy 增加引擎 adapter，
+  chinadns-ng 保留在用直到 aether-dns 达到替换门槛。
+- **备选 dnsmasq**（不实施，保留为降级/应急思路）：在 `/tmp/dnsmasq.<实例>.d/aether-proxy.conf` 里
+  `no-resolv` + `server=<china_dns>` + `server=/<gfw 域名>/127.0.0.1#31053` + `filter-rr=AAAA,HTTPS`，
+  经代理解析交给 Xray 的 `dns` 出站（`network:"tcp"`）＋ `dokodemo-door` 入站。
+  它能顶住「按域名选上游」，但**顶不住双组竞争与按 chnroute 判定**，因此只能在没有分流语义的退化形态下使用。
+
+不论走哪条，`config dns` 都会增加 `engine` 字段（`aether-dns` / `chinadns-ng`，过渡期默认 `chinadns-ng`），
+让两条实现可以并存与回退。
+
+### 打包
+
+`chinadns-ng` 已改为**构建期可选**（`PACKAGE_aether-proxy_DNS_CHINADNS_NG`，默认开）。
+默认关闭要等 aether-dns 达到替换门槛（aether-dns `docs/03-validation-plan.md` P5）之后，
+否则守护进程会以 `COMPONENT_MISSING` 启动失败。
+
+### 若真要走 dnsmasq 备选，仍需在真机验证
+
+1. 4,300 条 `server=` 行在 H28K 上的启动耗时与 RSS（宿主机 x86 数字只能参考）。
+2. dnsmasq 重启对 DHCP 的体感：级别切换与 gfwlist 日更都会触发。
+3. 污染实测：不在 gfwlist 里的被墙域名，国内 DNS 返回的 IP 落在哪，验证 nft 判定是否仍然正确。

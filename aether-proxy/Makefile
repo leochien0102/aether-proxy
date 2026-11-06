@@ -13,14 +13,29 @@ include $(INCLUDE_DIR)/package.mk
 define Package/aether-proxy
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=Transparent proxy manager (Xray, ChinaDNS-NG) for fw4
+  TITLE:=Transparent proxy manager (Xray; ChinaDNS-NG optional) for fw4
   URL:=https://github.com/leochien0102/aether-proxy
   PKGARCH:=all
   DEPENDS:= \
 	+kmod-nft-tproxy +kmod-nft-socket +ip-full +curl +ca-bundle \
 	+firewall4 +resolveip +usign +dnsmasq \
 	+ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
-	+ucode-mod-log +aether-xray +chinadns-ng
+	+ucode-mod-log +aether-xray \
+	+PACKAGE_aether-proxy_DNS_CHINADNS_NG:chinadns-ng
+endef
+
+# ChinaDNS-NG is upstream-unmaintained (backlog B18). It is still the default DNS
+# engine until the dnsmasq engine lands; building without it only makes sense once
+# the dnsmasq engine is implemented, because the daemon otherwise fails to start
+# with COMPONENT_MISSING.
+define Package/aether-proxy/config
+	config PACKAGE_aether-proxy_DNS_CHINADNS_NG
+		bool "Install ChinaDNS-NG (legacy DNS engine)"
+		default y
+		help
+		  Installs chinadns-ng as the DNS forwarder. The 2026-11-02 verification
+		  (docs/03 "替换 ChinaDNS-NG") showed dnsmasq can replace it; the dnsmasq
+		  engine itself is not implemented yet, so keep this on for now.
 endef
 
 define Package/aether-proxy/description
