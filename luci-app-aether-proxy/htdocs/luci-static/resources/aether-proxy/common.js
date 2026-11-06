@@ -2,6 +2,7 @@
 'require baseclass';
 'require rpc';
 'require ui';
+'require uci';
 
 /*
  * Shared helpers for the aether-proxy LuCI pages (docs/10 「公共模块与菜单」).
@@ -49,6 +50,15 @@ function check_script_version() {
 }
 
 check_script_version();
+
+/* uci.load caches rejected promises too. Clear that cache before one retry;
+   leave the second rejection untouched so persistent faults remain visible. */
+function load_config() {
+	return uci.load('aetherproxy').catch(function() {
+		uci.unload('aetherproxy');
+		return uci.load('aetherproxy');
+	});
+}
 
 /* docs/10 「rpcd 插件」: all ubus methods of the aetherproxy object with
    their named parameters, in declaration order. */
@@ -209,6 +219,7 @@ var ap = baseclass.extend({
 	TIMEOUTS: TIMEOUTS,
 
 	call: call,
+	load_config: load_config,
 
 	/* Use elapsed wall time, not tick counts: background tabs can delay timers. */
 	job_progress: function(target, text) {

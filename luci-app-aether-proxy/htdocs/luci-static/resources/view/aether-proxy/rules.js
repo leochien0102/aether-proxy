@@ -115,7 +115,7 @@ function direct_test_controls() {
 }
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return ap.load_config();
 	},
 	list_editor: function(item) {
 		const pending = model.list_state();

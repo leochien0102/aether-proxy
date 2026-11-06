@@ -13,7 +13,7 @@
  */
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return ap.load_config();
 	},
 
 	stopPolling: function() {
