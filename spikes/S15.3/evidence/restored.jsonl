@@ -1,0 +1,647 @@
+{"t": 0.042453, "event": "openssl", "exit": 0, "stderr": "....+.+...........+++++++++++++++++++++++++++++++++++++++*....+......+.....+++++++++++++++++++++++++++++++++++++++*....+..+.......+..+..................+.......+.....+.+..............+.+........+....+.....+..........+............+...+...+.....+....+........+................+.....+......+.............+..+.+.....+...+....+.....+.......+...............+...++++++\n....+.....+......+..........+..+....+........+......+.+++++++++++++++++++++++++++++++++++++++*.+..........+...+..+...+...+.+...+..............................+..+...+.+.....+....+......+.....+.......+...............+.........+...+...+........+....+..+......+...+....+...+.....+..................+++++++++++++++++++++++++++++++++++++++*.+..+.......+........+.+..+....+.........+.........+..+..........+........+..........+........+....+.....+....+...............+..+.........+......+..........+..+......+.+.........+...........+.+............+..+.+..+...+...+.+...........+...............+....+...+..+...+...+....+...+...+.................+.+.....++++++\n-----\n"}
+{"t": 0.047199, "event": "engine_info", "engine": "aether-dns", "path": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns", "flag": "-V", "exit": 0, "stdout": "aether-dns 2026.11.04\n", "stderr": "", "sha256": "ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd"}
+{"t": 0.050454, "event": "engine_info", "engine": "aether-dns", "path": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns", "flag": "-h", "exit": 0, "stdout": "usage: aether-dns [-h|--help] [-V|--version] [-C <path>]\n", "stderr": "", "sha256": "ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd"}
+{"t": 0.050806, "event": "authority", "name": "china", "port": 41975, "ip": "192.0.2.11", "tls": false}
+{"t": 0.050983, "event": "authority", "name": "direct", "port": 37883, "ip": "192.0.2.22", "tls": false}
+{"t": 0.052058, "event": "child", "engine": "aether-dns", "pid": 387515, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-1/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 50851\nchina-dns udp://127.0.0.1#41975\ntrust-dns udp://127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.065975, "event": "ready_owned", "pid": 387515, "port": 50851}
+{"t": 0.066018, "event": "assert", "status": "PASS", "label": "aether-dns E1 minimal owned readiness"}
+{"t": 0.066086, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 50851]}
+{"t": 0.06634, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 35158], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.066406, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.066507, "event": "caller_answer", "source": ["127.0.0.1", 50851], "ip": "192.0.2.11"}
+{"t": 0.06653, "event": "assert", "status": "PASS", "label": "aether-dns E1 minimal node IPv4 from explicit private endpoint"}
+{"t": 0.066629, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.067116, "event": "wait", "engine": "aether-dns", "pid": 387515, "exit": 0, "log": "listening UDP 127.0.0.1:50851\nlistening TCP 127.0.0.1:50851\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.067152, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.067294, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.067348, "event": "socket_reusable", "port": 50851, "protocols": ["udp", "tcp"]}
+{"t": 0.067367, "event": "scenario", "engine": "aether-dns", "id": "E1", "status": "PASS"}
+{"t": 0.067411, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 50247]}
+{"t": 0.067461, "event": "assert", "status": "PASS", "label": "aether-dns E2 formal stand-in closed"}
+{"t": 0.068603, "event": "child", "engine": "aether-dns", "pid": 387516, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-2/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 44007\nchina-dns udp://127.0.0.1#41975\ntrust-dns udp://127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.083008, "event": "ready_owned", "pid": 387516, "port": 44007}
+{"t": 0.083069, "event": "assert", "status": "PASS", "label": "aether-dns E2 owned readiness"}
+{"t": 0.083146, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 44007]}
+{"t": 0.08344, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 46098], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.083517, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.083637, "event": "caller_answer", "source": ["127.0.0.1", 44007], "ip": "192.0.2.11"}
+{"t": 0.083662, "event": "assert", "status": "PASS", "label": "aether-dns E2 node IPv4 from explicit private endpoint"}
+{"t": 0.08376, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.084389, "event": "wait", "engine": "aether-dns", "pid": 387516, "exit": 0, "log": "listening UDP 127.0.0.1:44007\nlistening TCP 127.0.0.1:44007\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.084431, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.084566, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.084622, "event": "socket_reusable", "port": 44007, "protocols": ["udp", "tcp"]}
+{"t": 0.084641, "event": "scenario", "engine": "aether-dns", "id": "E2", "status": "PASS"}
+{"t": 0.097893, "event": "renderer", "enabled": false, "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns udp://127.0.0.1#41975\ntrust-dns tcp://127.0.0.1#31082\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#31082\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream udp://127.0.0.1#41975\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream udp://127.0.0.1#41975\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n"}
+{"t": 0.097967, "event": "assert", "status": "PASS", "label": "aether-dns E3 renderer boot selection False"}
+{"t": 0.099085, "event": "child", "engine": "aether-dns", "pid": 387520, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-3/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 46075\nchina-dns udp://127.0.0.1#41975\ntrust-dns udp://127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.113094, "event": "ready_owned", "pid": 387520, "port": 46075}
+{"t": 0.113173, "event": "assert", "status": "PASS", "label": "aether-dns E3 False owned readiness"}
+{"t": 0.113241, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 46075]}
+{"t": 0.113492, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 40622], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.113582, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.113689, "event": "caller_answer", "source": ["127.0.0.1", 46075], "ip": "192.0.2.11"}
+{"t": 0.113714, "event": "assert", "status": "PASS", "label": "aether-dns E3 False node IPv4 from explicit private endpoint"}
+{"t": 0.113809, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.114336, "event": "wait", "engine": "aether-dns", "pid": 387520, "exit": 0, "log": "listening UDP 127.0.0.1:46075\nlistening TCP 127.0.0.1:46075\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.114381, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.114523, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.114582, "event": "socket_reusable", "port": 46075, "protocols": ["udp", "tcp"]}
+{"t": 0.114605, "event": "assert", "status": "PASS", "label": "aether-dns E3 only selected target receives"}
+{"t": 0.129315, "event": "renderer", "enabled": true, "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns udp://127.0.0.1#41975\ntrust-dns tcp://127.0.0.1#37883\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#37883\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream udp://127.0.0.1#41975\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream tcp://127.0.0.1#37883\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n"}
+{"t": 0.129372, "event": "assert", "status": "PASS", "label": "aether-dns E3 renderer boot selection True"}
+{"t": 0.130436, "event": "child", "engine": "aether-dns", "pid": 387524, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-4/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 38377\nchina-dns tcp://127.0.0.1#37883\ntrust-dns tcp://127.0.0.1#37883\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.144356, "event": "ready_owned", "pid": 387524, "port": 38377}
+{"t": 0.144404, "event": "assert", "status": "PASS", "label": "aether-dns E3 True owned readiness"}
+{"t": 0.144462, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38377]}
+{"t": 0.144999, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 37883], "peer": ["127.0.0.1", 58382], "authority": "direct", "response_ip": "192.0.2.22"}
+{"t": 0.145094, "event": "upstream_answer", "authority": "direct", "protocol": "tcp", "ip": "192.0.2.22"}
+{"t": 0.145253, "event": "caller_answer", "source": ["127.0.0.1", 38377], "ip": "192.0.2.22"}
+{"t": 0.145295, "event": "assert", "status": "PASS", "label": "aether-dns E3 True node IPv4 from explicit private endpoint"}
+{"t": 0.14542, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.146081, "event": "wait", "engine": "aether-dns", "pid": 387524, "exit": 0, "log": "listening UDP 127.0.0.1:38377\nlistening TCP 127.0.0.1:38377\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.146121, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.146266, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.146321, "event": "socket_reusable", "port": 38377, "protocols": ["udp", "tcp"]}
+{"t": 0.146341, "event": "assert", "status": "PASS", "label": "aether-dns E3 only selected target receives"}
+{"t": 0.14635, "event": "scenario", "engine": "aether-dns", "id": "E3", "status": "PASS"}
+{"t": 0.147477, "event": "child", "engine": "aether-dns", "pid": 387525, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-5/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 53311\nchina-dns 127.0.0.1#41975\ntrust-dns 127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.16134, "event": "ready_owned", "pid": 387525, "port": 53311}
+{"t": 0.161388, "event": "assert", "status": "PASS", "label": "aether-dns E4  owned readiness"}
+{"t": 0.161448, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 53311]}
+{"t": 0.161714, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 32891], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.161783, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.161903, "event": "caller_answer", "source": ["127.0.0.1", 53311], "ip": "192.0.2.11"}
+{"t": 0.161927, "event": "assert", "status": "PASS", "label": "aether-dns E4  node IPv4 from explicit private endpoint"}
+{"t": 0.162023, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.162511, "event": "wait", "engine": "aether-dns", "pid": 387525, "exit": 0, "log": "listening UDP 127.0.0.1:53311\nlistening TCP 127.0.0.1:53311\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.162553, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.16268, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.162733, "event": "socket_reusable", "port": 53311, "protocols": ["udp", "tcp"]}
+{"t": 0.162754, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.163838, "event": "child", "engine": "aether-dns", "pid": 387526, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-6/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 58755\nchina-dns boot.test@127.0.0.1#41975\ntrust-dns boot.test@127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.17815, "event": "ready_owned", "pid": 387526, "port": 58755}
+{"t": 0.1782, "event": "assert", "status": "PASS", "label": "aether-dns E4 boot.test@ owned readiness"}
+{"t": 0.178261, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 58755]}
+{"t": 0.178493, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 42013], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.178556, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.178649, "event": "caller_answer", "source": ["127.0.0.1", 58755], "ip": "192.0.2.11"}
+{"t": 0.178672, "event": "assert", "status": "PASS", "label": "aether-dns E4 boot.test@ node IPv4 from explicit private endpoint"}
+{"t": 0.178762, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.179239, "event": "wait", "engine": "aether-dns", "pid": 387526, "exit": 0, "log": "listening UDP 127.0.0.1:58755\nlistening TCP 127.0.0.1:58755\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.179274, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.179398, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.179449, "event": "socket_reusable", "port": 58755, "protocols": ["udp", "tcp"]}
+{"t": 0.179472, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.180607, "event": "child", "engine": "aether-dns", "pid": 387527, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-7/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 54097\nchina-dns udp://127.0.0.1#41975\ntrust-dns udp://127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.19448, "event": "ready_owned", "pid": 387527, "port": 54097}
+{"t": 0.194529, "event": "assert", "status": "PASS", "label": "aether-dns E4 udp:// owned readiness"}
+{"t": 0.194585, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 54097]}
+{"t": 0.194807, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 57015], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.194867, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.194965, "event": "caller_answer", "source": ["127.0.0.1", 54097], "ip": "192.0.2.11"}
+{"t": 0.194988, "event": "assert", "status": "PASS", "label": "aether-dns E4 udp:// node IPv4 from explicit private endpoint"}
+{"t": 0.195078, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.195574, "event": "wait", "engine": "aether-dns", "pid": 387527, "exit": 0, "log": "listening UDP 127.0.0.1:54097\nlistening TCP 127.0.0.1:54097\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.195611, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.195743, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.195801, "event": "socket_reusable", "port": 54097, "protocols": ["udp", "tcp"]}
+{"t": 0.195822, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.196778, "event": "child", "engine": "aether-dns", "pid": 387528, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-8/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 42083\nchina-dns udp://boot.test@127.0.0.1#41975\ntrust-dns udp://boot.test@127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.210953, "event": "ready_owned", "pid": 387528, "port": 42083}
+{"t": 0.211017, "event": "assert", "status": "PASS", "label": "aether-dns E4 udp://boot.test@ owned readiness"}
+{"t": 0.211084, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 42083]}
+{"t": 0.211341, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 43694], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.211572, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.211693, "event": "caller_answer", "source": ["127.0.0.1", 42083], "ip": "192.0.2.11"}
+{"t": 0.211716, "event": "assert", "status": "PASS", "label": "aether-dns E4 udp://boot.test@ node IPv4 from explicit private endpoint"}
+{"t": 0.211855, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.212539, "event": "wait", "engine": "aether-dns", "pid": 387528, "exit": 0, "log": "listening UDP 127.0.0.1:42083\nlistening TCP 127.0.0.1:42083\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.212579, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.212707, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.212762, "event": "socket_reusable", "port": 42083, "protocols": ["udp", "tcp"]}
+{"t": 0.212784, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.21369, "event": "child", "engine": "aether-dns", "pid": 387529, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-9/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 38315\nchina-dns tcp://127.0.0.1#41975\ntrust-dns tcp://127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.227785, "event": "ready_owned", "pid": 387529, "port": 38315}
+{"t": 0.227827, "event": "assert", "status": "PASS", "label": "aether-dns E4 tcp:// owned readiness"}
+{"t": 0.227932, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38315]}
+{"t": 0.228397, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 33676], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.228499, "event": "upstream_answer", "authority": "china", "protocol": "tcp", "ip": "192.0.2.11"}
+{"t": 0.228637, "event": "caller_answer", "source": ["127.0.0.1", 38315], "ip": "192.0.2.11"}
+{"t": 0.228657, "event": "assert", "status": "PASS", "label": "aether-dns E4 tcp:// node IPv4 from explicit private endpoint"}
+{"t": 0.228772, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.229363, "event": "wait", "engine": "aether-dns", "pid": 387529, "exit": 0, "log": "listening UDP 127.0.0.1:38315\nlistening TCP 127.0.0.1:38315\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.229416, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.229584, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.22966, "event": "socket_reusable", "port": 38315, "protocols": ["udp", "tcp"]}
+{"t": 0.229695, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.230861, "event": "child", "engine": "aether-dns", "pid": 387530, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-10/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 39551\nchina-dns tcp://boot.test@127.0.0.1#41975\ntrust-dns tcp://boot.test@127.0.0.1#41975\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.244671, "event": "ready_owned", "pid": 387530, "port": 39551}
+{"t": 0.244715, "event": "assert", "status": "PASS", "label": "aether-dns E4 tcp://boot.test@ owned readiness"}
+{"t": 0.244771, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39551]}
+{"t": 0.245139, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 41975], "peer": ["127.0.0.1", 33690], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.245214, "event": "upstream_answer", "authority": "china", "protocol": "tcp", "ip": "192.0.2.11"}
+{"t": 0.245334, "event": "caller_answer", "source": ["127.0.0.1", 39551], "ip": "192.0.2.11"}
+{"t": 0.245353, "event": "assert", "status": "PASS", "label": "aether-dns E4 tcp://boot.test@ node IPv4 from explicit private endpoint"}
+{"t": 0.245446, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.24594, "event": "wait", "engine": "aether-dns", "pid": 387530, "exit": 0, "log": "listening UDP 127.0.0.1:39551\nlistening TCP 127.0.0.1:39551\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.245977, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.246104, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.246155, "event": "socket_reusable", "port": 39551, "protocols": ["udp", "tcp"]}
+{"t": 0.246176, "event": "assert", "status": "PASS", "label": "aether-dns E4 actual transport and literal target"}
+{"t": 0.247086, "event": "child", "engine": "aether-dns", "pid": 387531, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-11/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 55291\nchina-dns 127.0.0.1\ntrust-dns 127.0.0.1\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.260921, "event": "ready_owned", "pid": 387531, "port": 55291}
+{"t": 0.260968, "event": "assert", "status": "PASS", "label": "aether-dns E4 bare IP syntax accepted (no default-53 query)"}
+{"t": 0.261065, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.261596, "event": "wait", "engine": "aether-dns", "pid": 387531, "exit": 0, "log": "listening UDP 127.0.0.1:55291\nlistening TCP 127.0.0.1:55291\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.261633, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.261792, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.261856, "event": "socket_reusable", "port": 55291, "protocols": ["udp", "tcp"]}
+{"t": 0.261869, "event": "scenario", "engine": "aether-dns", "id": "E4", "status": "PASS", "scope": "bare IP startup only; supported #port forms queried; rejected host forms separately UNSUPPORTED"}
+{"t": 0.261882, "event": "assert", "status": "PASS", "label": "aether-dns E10 authorities receive node only, never ordinary gfw"}
+{"t": 0.262154, "event": "authority", "name": "slow", "port": 48541, "ip": "192.0.2.44", "tls": false}
+{"t": 0.262284, "event": "authority", "name": "fast", "port": 39783, "ip": "192.0.2.55", "tls": false}
+{"t": 0.2633, "event": "child", "engine": "aether-dns", "pid": 387532, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-12/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 59135\nchina-dns udp://127.0.0.1#48541,udp://127.0.0.1#39783\ntrust-dns udp://127.0.0.1#48541,udp://127.0.0.1#39783\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.277192, "event": "ready_owned", "pid": 387532, "port": 59135}
+{"t": 0.277253, "event": "assert", "status": "PASS", "label": "aether-dns E5 udp owned readiness"}
+{"t": 0.277342, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 59135]}
+{"t": 0.277733, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 48541], "peer": ["127.0.0.1", 57435], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 0.277775, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39783], "peer": ["127.0.0.1", 40738], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 0.277849, "event": "upstream_answer", "authority": "fast", "protocol": "udp", "ip": "192.0.2.55"}
+{"t": 0.277974, "event": "caller_answer", "source": ["127.0.0.1", 59135], "ip": "192.0.2.55"}
+{"t": 0.278004, "event": "assert", "status": "PASS", "label": "aether-dns E5 udp node IPv4 from explicit private endpoint"}
+{"t": 0.278134, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.278726, "event": "wait", "engine": "aether-dns", "pid": 387532, "exit": 0, "log": "listening UDP 127.0.0.1:59135\nlistening TCP 127.0.0.1:59135\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.278764, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.278892, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.278946, "event": "socket_reusable", "port": 59135, "protocols": ["udp", "tcp"]}
+{"t": 0.278967, "event": "assert", "status": "PASS", "label": "aether-dns E5 one caller query creates two concurrent exchanges"}
+{"t": 0.279879, "event": "child", "engine": "aether-dns", "pid": 387533, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-13/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 46865\nchina-dns udp://127.0.0.1#39783,udp://127.0.0.1#48541\ntrust-dns udp://127.0.0.1#39783,udp://127.0.0.1#48541\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.294229, "event": "ready_owned", "pid": 387533, "port": 46865}
+{"t": 0.294286, "event": "assert", "status": "PASS", "label": "aether-dns E5 udp owned readiness"}
+{"t": 0.294355, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 46865]}
+{"t": 0.294638, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39783], "peer": ["127.0.0.1", 45458], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 0.294664, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 48541], "peer": ["127.0.0.1", 59572], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 0.294724, "event": "upstream_answer", "authority": "fast", "protocol": "udp", "ip": "192.0.2.55"}
+{"t": 0.29483, "event": "caller_answer", "source": ["127.0.0.1", 46865], "ip": "192.0.2.55"}
+{"t": 0.294853, "event": "assert", "status": "PASS", "label": "aether-dns E5 udp node IPv4 from explicit private endpoint"}
+{"t": 0.294948, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.295442, "event": "wait", "engine": "aether-dns", "pid": 387533, "exit": 0, "log": "listening UDP 127.0.0.1:46865\nlistening TCP 127.0.0.1:46865\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.295478, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.295606, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.295659, "event": "socket_reusable", "port": 46865, "protocols": ["udp", "tcp"]}
+{"t": 0.295681, "event": "assert", "status": "PASS", "label": "aether-dns E5 one caller query creates two concurrent exchanges"}
+{"t": 0.296703, "event": "child", "engine": "aether-dns", "pid": 387534, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-14/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 55721\nchina-dns tcp://127.0.0.1#48541,tcp://127.0.0.1#39783\ntrust-dns tcp://127.0.0.1#48541,tcp://127.0.0.1#39783\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.310663, "event": "ready_owned", "pid": 387534, "port": 55721}
+{"t": 0.310711, "event": "assert", "status": "PASS", "label": "aether-dns E5 tcp owned readiness"}
+{"t": 0.310768, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 55721]}
+{"t": 0.311281, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 48541], "peer": ["127.0.0.1", 40712], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 0.311321, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 39783], "peer": ["127.0.0.1", 53608], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 0.311382, "event": "upstream_answer", "authority": "fast", "protocol": "tcp", "ip": "192.0.2.55"}
+{"t": 0.311511, "event": "caller_answer", "source": ["127.0.0.1", 55721], "ip": "192.0.2.55"}
+{"t": 0.31153, "event": "assert", "status": "PASS", "label": "aether-dns E5 tcp node IPv4 from explicit private endpoint"}
+{"t": 0.311625, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.312161, "event": "wait", "engine": "aether-dns", "pid": 387534, "exit": 0, "log": "listening UDP 127.0.0.1:55721\nlistening TCP 127.0.0.1:55721\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.31227, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.312555, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.312609, "event": "socket_reusable", "port": 55721, "protocols": ["udp", "tcp"]}
+{"t": 0.31263, "event": "assert", "status": "PASS", "label": "aether-dns E5 one caller query creates two concurrent exchanges"}
+{"t": 0.313715, "event": "child", "engine": "aether-dns", "pid": 387535, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-15/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 33087\nchina-dns tcp://127.0.0.1#39783,tcp://127.0.0.1#48541\ntrust-dns tcp://127.0.0.1#39783,tcp://127.0.0.1#48541\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.327703, "event": "ready_owned", "pid": 387535, "port": 33087}
+{"t": 0.327754, "event": "assert", "status": "PASS", "label": "aether-dns E5 tcp owned readiness"}
+{"t": 0.327812, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 33087]}
+{"t": 0.328318, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 39783], "peer": ["127.0.0.1", 53616], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 0.328402, "event": "upstream_answer", "authority": "fast", "protocol": "tcp", "ip": "192.0.2.55"}
+{"t": 0.328443, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 48541], "peer": ["127.0.0.1", 40724], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 0.328571, "event": "caller_answer", "source": ["127.0.0.1", 33087], "ip": "192.0.2.55"}
+{"t": 0.328595, "event": "assert", "status": "PASS", "label": "aether-dns E5 tcp node IPv4 from explicit private endpoint"}
+{"t": 0.328712, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.329393, "event": "wait", "engine": "aether-dns", "pid": 387535, "exit": 0, "log": "listening UDP 127.0.0.1:33087\nlistening TCP 127.0.0.1:33087\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.32944, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.329571, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.329622, "event": "socket_reusable", "port": 33087, "protocols": ["udp", "tcp"]}
+{"t": 0.329642, "event": "assert", "status": "PASS", "label": "aether-dns E5 one caller query creates two concurrent exchanges"}
+{"t": 0.329651, "event": "scenario", "engine": "aether-dns", "id": "E5", "status": "PASS"}
+{"t": 0.329995, "event": "authority", "name": "tls", "port": 40925, "ip": "192.0.2.11", "tls": true}
+{"t": 0.330917, "event": "child", "engine": "aether-dns", "pid": 387536, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-16/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 49713\nchina-dns tls://127.0.0.1#40925\ntrust-dns tls://127.0.0.1#40925\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.34249, "event": "assert", "status": "PASS", "label": "aether-dns E6 TLS must reject startup"}
+{"t": 0.342622, "event": "assert", "status": "PASS", "label": "aether-dns E6 explicit TLS diagnostic"}
+{"t": 0.342658, "event": "wait", "engine": "aether-dns", "pid": 387536, "exit": 1, "log": "tls:// P0-conditional \u672a\u5b9e\u73b0\n"}
+{"t": 0.342732, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.342882, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.342952, "event": "socket_reusable", "port": 49713, "protocols": ["udp", "tcp"]}
+{"t": 0.343986, "event": "child", "engine": "aether-dns", "pid": 387537, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-17/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 40913\nchina-dns tls://boot.test@127.0.0.1#40925\ntrust-dns tls://boot.test@127.0.0.1#40925\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.355228, "event": "assert", "status": "PASS", "label": "aether-dns E6 TLS must reject startup"}
+{"t": 0.355353, "event": "assert", "status": "PASS", "label": "aether-dns E6 explicit TLS diagnostic"}
+{"t": 0.355413, "event": "wait", "engine": "aether-dns", "pid": 387537, "exit": 1, "log": "tls:// P0-conditional \u672a\u5b9e\u73b0\n"}
+{"t": 0.35547, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.355609, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.35568, "event": "socket_reusable", "port": 40913, "protocols": ["udp", "tcp"]}
+{"t": 0.355694, "event": "scenario", "engine": "aether-dns", "id": "E6", "status": "UNSUPPORTED", "scope": "local self-signed TLS; fallback cert verification default OFF; SNI logged separately"}
+{"t": 0.356097, "event": "authority", "name": "occupier", "port": 46639, "ip": "192.0.2.99", "tls": false}
+{"t": 0.35626, "event": "authority", "name": "retry-upstream", "port": 55331, "ip": "192.0.2.11", "tls": false}
+{"t": 0.35723, "event": "child", "engine": "aether-dns", "pid": 387538, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-18/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 46639\nchina-dns udp://127.0.0.1#55331\ntrust-dns udp://127.0.0.1#55331\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.368453, "event": "assert", "status": "PASS", "label": "aether-dns E7 readiness requires owned child and expected source"}
+{"t": 0.36853, "event": "assert", "status": "PASS", "label": "aether-dns E7 collision explicitly exits nonzero"}
+{"t": 0.368643, "event": "wait", "engine": "aether-dns", "pid": 387538, "exit": 1, "log": "Address already in use (os error 98)\n"}
+{"t": 0.368707, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.368865, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.369886, "event": "child", "engine": "aether-dns", "pid": 387539, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-19/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 48499\nchina-dns udp://127.0.0.1#55331\ntrust-dns udp://127.0.0.1#55331\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.384512, "event": "ready_owned", "pid": 387539, "port": 48499}
+{"t": 0.384572, "event": "assert", "status": "PASS", "label": "aether-dns E7 retry candidate 2 of at most 10 owned readiness"}
+{"t": 0.384648, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 48499]}
+{"t": 0.38489, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 55331], "peer": ["127.0.0.1", 44126], "authority": "retry-upstream", "response_ip": "192.0.2.11"}
+{"t": 0.384984, "event": "upstream_answer", "authority": "retry-upstream", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.385056, "event": "caller_answer", "source": ["127.0.0.1", 48499], "ip": "192.0.2.11"}
+{"t": 0.385079, "event": "assert", "status": "PASS", "label": "aether-dns E7 retry candidate 2 of at most 10 node IPv4 from explicit private endpoint"}
+{"t": 0.385186, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.385721, "event": "wait", "engine": "aether-dns", "pid": 387539, "exit": 0, "log": "listening UDP 127.0.0.1:48499\nlistening TCP 127.0.0.1:48499\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.38576, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.385887, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.38594, "event": "socket_reusable", "port": 48499, "protocols": ["udp", "tcp"]}
+{"t": 0.385959, "event": "assert", "status": "PASS", "label": "aether-dns E7 normal path never queries occupier"}
+{"t": 0.385966, "event": "scenario", "engine": "aether-dns", "id": "E7", "status": "PASS", "attempts": 2}
+{"t": 0.386265, "event": "authority", "name": "live", "port": 40811, "ip": "192.0.2.11", "tls": false}
+{"t": 0.386442, "event": "authority", "name": "blackhole", "port": 43081, "ip": null, "tls": false}
+{"t": 0.388063, "event": "child", "engine": "aether-dns", "pid": 387540, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-20/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 39411\nchina-dns udp://127.0.0.1#40811\ntrust-dns udp://127.0.0.1#40811\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.401887, "event": "ready_owned", "pid": 387540, "port": 39411}
+{"t": 0.402578, "event": "child", "engine": "aether-dns", "pid": 387541, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-21/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 51799\nchina-dns udp://127.0.0.1#43081\ntrust-dns udp://127.0.0.1#43081\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.416773, "event": "ready_owned", "pid": 387541, "port": 51799}
+{"t": 0.416833, "event": "assert", "status": "PASS", "label": "aether-dns E8 parallel instances ready"}
+{"t": 0.416909, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 51799]}
+{"t": 0.417137, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 43081], "peer": ["127.0.0.1", 39742], "authority": "blackhole", "response_ip": null}
+{"t": 1.318261, "event": "assert", "status": "PASS", "label": "aether-dns E8 actual unanswered query times out"}
+{"t": 1.318458, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 1.82089, "event": "wait", "engine": "aether-dns", "pid": 387541, "exit": 0, "log": "listening UDP 127.0.0.1:51799\nlistening TCP 127.0.0.1:51799\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 1.820963, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 1.821101, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 1.821167, "event": "socket_reusable", "port": 51799, "protocols": ["udp", "tcp"]}
+{"t": 1.821208, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39411]}
+{"t": 1.821432, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 40811], "peer": ["127.0.0.1", 37094], "authority": "live", "response_ip": "192.0.2.11"}
+{"t": 1.821495, "event": "upstream_answer", "authority": "live", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 1.821584, "event": "caller_answer", "source": ["127.0.0.1", 39411], "ip": "192.0.2.11"}
+{"t": 1.821607, "event": "assert", "status": "PASS", "label": "aether-dns E8 stopping one does not stop other"}
+{"t": 1.823131, "event": "child", "engine": "aether-dns", "pid": 387544, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-22/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 35371\nchina-dns udp://127.0.0.1#43081\ntrust-dns udp://127.0.0.1#43081\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 1.836884, "event": "ready_owned", "pid": 387544, "port": 35371}
+{"t": 1.83693, "event": "assert", "status": "PASS", "label": "aether-dns E8 cancellation child ready"}
+{"t": 1.837182, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 35371]}
+{"t": 1.837495, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 43081], "peer": ["127.0.0.1", 47885], "authority": "blackhole", "response_ip": null}
+{"t": 1.888132, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 2.389551, "event": "wait", "engine": "aether-dns", "pid": 387544, "exit": 0, "log": "listening UDP 127.0.0.1:35371\nlistening TCP 127.0.0.1:35371\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 2.389622, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 2.389764, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 2.389839, "event": "socket_reusable", "port": 35371, "protocols": ["udp", "tcp"]}
+{"t": 2.389856, "event": "assert", "status": "PASS", "label": "aether-dns E8 real SIGTERM bounded cancellation cleanup"}
+{"t": 2.389951, "event": "assert", "status": "PASS", "label": "aether-dns E8 external preset preserved"}
+{"t": 2.389961, "event": "scenario", "engine": "aether-dns", "id": "E8", "status": "PASS"}
+{"t": 2.39095, "event": "child", "engine": "aether-dns", "pid": 387545, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-23/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 35573\nchina-dns udp://127.0.0.1#40811\ntrust-dns udp://127.0.0.1#40811\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.404935, "event": "ready_owned", "pid": 387545, "port": 35573}
+{"t": 2.404979, "event": "assert", "status": "PASS", "label": "aether-dns E9 victim ready"}
+{"t": 2.40504, "event": "assert", "status": "PASS", "label": "aether-dns E9 reject same-name other instance PID/config"}
+{"t": 2.405089, "event": "assert", "status": "PASS", "label": "aether-dns E9 verify owned PID/argv/directory before SIGKILL"}
+{"t": 2.405483, "event": "assert", "status": "PASS", "label": "aether-dns E9 SIGKILL leaves owned config"}
+{"t": 2.405537, "event": "wait", "engine": "aether-dns", "pid": 387545, "exit": -9, "log": "listening UDP 127.0.0.1:35573\nlistening TCP 127.0.0.1:35573\n"}
+{"t": 2.405568, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 2.405694, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 2.405756, "event": "socket_reusable", "port": 35573, "protocols": ["udp", "tcp"]}
+{"t": 2.405794, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39411]}
+{"t": 2.406, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 40811], "peer": ["127.0.0.1", 41597], "authority": "live", "response_ip": "192.0.2.11"}
+{"t": 2.406059, "event": "upstream_answer", "authority": "live", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.406155, "event": "caller_answer", "source": ["127.0.0.1", 39411], "ip": "192.0.2.11"}
+{"t": 2.406177, "event": "assert", "status": "PASS", "label": "aether-dns E9 same-name other instance remains responsive"}
+{"t": 2.406186, "event": "scenario", "engine": "aether-dns", "id": "E9", "status": "PASS"}
+{"t": 2.406289, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 2.406702, "event": "wait", "engine": "aether-dns", "pid": 387540, "exit": 0, "log": "listening UDP 127.0.0.1:39411\nlistening TCP 127.0.0.1:39411\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 2.406735, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 2.406846, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 2.406893, "event": "socket_reusable", "port": 39411, "protocols": ["udp", "tcp"]}
+{"t": 2.407038, "event": "assert", "status": "PASS", "label": "aether-dns E10 handoff/intent bytes unchanged"}
+{"t": 2.407052, "event": "scenario", "engine": "aether-dns", "id": "E10", "status": "PASS", "scope": "literal loopback only; no system resolver, nft, route or service-management invocation"}
+{"t": 2.407999, "event": "engine_info", "engine": "chinadns-ng", "path": "/workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng", "flag": "-V", "exit": 0, "stdout": "ChinaDNS-NG 2025.08.09 23af4b1 | wolfssl-5.8.2 | target:x86_64-linux-musl | cpu:x86_64 | mode:fast+lto | <https://github.com/zfl9/chinadns-ng>\n", "stderr": "", "sha256": "842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c"}
+{"t": 2.408882, "event": "engine_info", "engine": "chinadns-ng", "path": "/workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng", "flag": "-h", "exit": 0, "stdout": "usage: chinadns-ng <options...>. the existing options are as follows:\n -C, --config <path>                  format similar to the long option\n -b, --bind-addr <ip>                 listen address, default: 127.0.0.1\n -l, --bind-port <port[@proto]>       listen port number, default: 65353\n -c, --china-dns <upstreams>          china dns server, default: <114 DNS>\n -t, --trust-dns <upstreams>          trust dns server, default: <Google DNS>\n -m, --chnlist-file <paths>           path(s) of chnlist, '-' indicate stdin\n -g, --gfwlist-file <paths>           path(s) of gfwlist, '-' indicate stdin\n -M, --chnlist-first                  match chnlist first, default gfwlist first\n -d, --default-tag <tag>              chn or gfw or <user-tag> or none(default)\n -a, --add-tagchn-ip [set4,set6]      add the ip of name-tag:chn to ipset/nftset\n                                      use '--ipset-name4/6' setname if no value\n -A, --add-taggfw-ip <set4,set6>      add the ip of name-tag:gfw to ipset/nftset\n -4, --ipset-name4 <set4>             ip test for tag:none, default: chnroute\n -6, --ipset-name6 <set6>             ip test for tag:none, default: chnroute6\n                                      if setname contains @, then use nftset\n                                      format: family_name@table_name@set_name\n --group <name>                       define rule group: {dnl, upstream, ipset}\n --group-dnl <paths>                  domain name list for the current group\n --group-upstream <upstreams>         upstream dns server for the current group\n --group-ipset <set4,set6>            add the ip of the current group to ipset\n -N, --no-ipv6 [rules]                tag:<name>[@ip:*], ip:china, ip:non_china\n                                      if no rules, then filter all AAAA queries\n --filter-qtype <qtypes>              filter queries with the given qtype (u16)\n --cache <size>                       enable dns caching, size 0 means disabled\n --cache-stale <N>                    use stale cache: expired time <= N(second)\n --cache-refresh <N>                  pre-refresh the cached data if TTL <= N(%)\n --cache-nodata-ttl <ttl>             TTL of the NODATA response, default is 60\n --cache-min-ttl <ttl>                if record.ttl < min_ttl, set ttl to min_ttl\n --cache-max-ttl <ttl>                if record.ttl > max_ttl, set ttl to max_ttl\n --cache-ignore <domain>              ignore the dns cache for this domain(suffix)\n --cache-db <path>                    dns cache persistence (from/to db file)\n --verdict-cache <size>               enable verdict caching for tag:none domains\n --verdict-cache-db <path>            verdict cache persistence (from/to db file)\n --hosts [path]                       load hosts file, default path is /etc/hosts\n --dns-rr-ip <names>=<ips>            define local resource records of type A/AAAA\n --cert-verify                        enable SSL certificate validation, default: no\n --ca-certs <path>                    CA certs path for SSL certificate validation\n --no-ipset-blacklist                 add-ip: don't enable built-in ip blacklist\n                                      blacklist: 127.0.0.0/8, 0.0.0.0/8, ::1, ::\n -o, --timeout-sec <sec>              response timeout of upstream, default: 5\n -p, --repeat-times <num>             num of packets to trustdns, default:1, max:5\n -n, --noip-as-chnip                  allow no-ip reply from chinadns (tag:none)\n -f, --fair-mode                      enable fair mode (nop, only fair mode now)\n -r, --reuse-port                     enable SO_REUSEPORT, default: <disabled>\n -v, --verbose                        print the verbose log, default: <disabled>\n -V, --version                        print `chinadns-ng` version number and exit\n -h, --help                           print `chinadns-ng` help information and exit\nbug report: https://github.com/zfl9/chinadns-ng. email: zfl9.com@gmail.com (Otokaze)\n", "stderr": "", "sha256": "842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c"}
+{"t": 2.409143, "event": "authority", "name": "china", "port": 38991, "ip": "192.0.2.11", "tls": false}
+{"t": 2.409354, "event": "authority", "name": "direct", "port": 58953, "ip": "192.0.2.22", "tls": false}
+{"t": 2.410623, "event": "child", "engine": "chinadns-ng", "pid": 387548, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-24/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 56683\nchina-dns udp://127.0.0.1#38991\ntrust-dns udp://127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.424288, "event": "ready_owned", "pid": 387548, "port": 56683}
+{"t": 2.424333, "event": "assert", "status": "PASS", "label": "chinadns-ng E1 minimal owned readiness"}
+{"t": 2.424388, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 56683]}
+{"t": 2.424531, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 47819], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.424589, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.424648, "event": "caller_answer", "source": ["127.0.0.1", 56683], "ip": "192.0.2.11"}
+{"t": 2.424668, "event": "assert", "status": "PASS", "label": "chinadns-ng E1 minimal node IPv4 from explicit private endpoint"}
+{"t": 2.42481, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.425112, "event": "wait", "engine": "chinadns-ng", "pid": 387548, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#56683\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.425149, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.425274, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.425325, "event": "socket_reusable", "port": 56683, "protocols": ["udp", "tcp"]}
+{"t": 2.425344, "event": "scenario", "engine": "chinadns-ng", "id": "E1", "status": "PASS"}
+{"t": 2.425386, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41925]}
+{"t": 2.425432, "event": "assert", "status": "PASS", "label": "chinadns-ng E2 formal stand-in closed"}
+{"t": 2.426345, "event": "child", "engine": "chinadns-ng", "pid": 387549, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-25/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 44009\nchina-dns udp://127.0.0.1#38991\ntrust-dns udp://127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.440321, "event": "ready_owned", "pid": 387549, "port": 44009}
+{"t": 2.440384, "event": "assert", "status": "PASS", "label": "chinadns-ng E2 owned readiness"}
+{"t": 2.440456, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 44009]}
+{"t": 2.44061, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 33694], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.440667, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.440736, "event": "caller_answer", "source": ["127.0.0.1", 44009], "ip": "192.0.2.11"}
+{"t": 2.440756, "event": "assert", "status": "PASS", "label": "chinadns-ng E2 node IPv4 from explicit private endpoint"}
+{"t": 2.440852, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.441228, "event": "wait", "engine": "chinadns-ng", "pid": 387549, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#44009\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.441278, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.441432, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.441493, "event": "socket_reusable", "port": 44009, "protocols": ["udp", "tcp"]}
+{"t": 2.441513, "event": "scenario", "engine": "chinadns-ng", "id": "E2", "status": "PASS"}
+{"t": 2.455562, "event": "renderer", "enabled": false, "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns udp://127.0.0.1#38991\ntrust-dns tcp://127.0.0.1#31082\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#31082\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream udp://127.0.0.1#38991\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream udp://127.0.0.1#38991\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n"}
+{"t": 2.455619, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 renderer boot selection False"}
+{"t": 2.456889, "event": "child", "engine": "chinadns-ng", "pid": 387553, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-26/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 35719\nchina-dns udp://127.0.0.1#38991\ntrust-dns udp://127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.471025, "event": "ready_owned", "pid": 387553, "port": 35719}
+{"t": 2.471083, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 False owned readiness"}
+{"t": 2.471155, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 35719]}
+{"t": 2.471341, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 51344], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.471417, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.471487, "event": "caller_answer", "source": ["127.0.0.1", 35719], "ip": "192.0.2.11"}
+{"t": 2.471511, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 False node IPv4 from explicit private endpoint"}
+{"t": 2.471624, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.472059, "event": "wait", "engine": "chinadns-ng", "pid": 387553, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#35719\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.472105, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.472237, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.472296, "event": "socket_reusable", "port": 35719, "protocols": ["udp", "tcp"]}
+{"t": 2.472317, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 only selected target receives"}
+{"t": 2.484481, "event": "renderer", "enabled": true, "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns udp://127.0.0.1#38991\ntrust-dns tcp://127.0.0.1#58953\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#58953\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream udp://127.0.0.1#38991\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream tcp://127.0.0.1#58953\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n"}
+{"t": 2.484531, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 renderer boot selection True"}
+{"t": 2.485867, "event": "child", "engine": "chinadns-ng", "pid": 387557, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-27/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 51381\nchina-dns tcp://127.0.0.1#58953\ntrust-dns tcp://127.0.0.1#58953\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.489535, "event": "ready_owned", "pid": 387557, "port": 51381}
+{"t": 2.489568, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 True owned readiness"}
+{"t": 2.489621, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 51381]}
+{"t": 2.489983, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 58953], "peer": ["127.0.0.1", 43656], "authority": "direct", "response_ip": "192.0.2.22"}
+{"t": 2.490065, "event": "upstream_answer", "authority": "direct", "protocol": "tcp", "ip": "192.0.2.22"}
+{"t": 2.490148, "event": "caller_answer", "source": ["127.0.0.1", 51381], "ip": "192.0.2.22"}
+{"t": 2.490181, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 True node IPv4 from explicit private endpoint"}
+{"t": 2.490322, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.490788, "event": "wait", "engine": "chinadns-ng", "pid": 387557, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#51381\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#58953\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#58953\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.490829, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.490969, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.491022, "event": "socket_reusable", "port": 51381, "protocols": ["udp", "tcp"]}
+{"t": 2.491043, "event": "assert", "status": "PASS", "label": "chinadns-ng E3 only selected target receives"}
+{"t": 2.491057, "event": "scenario", "engine": "chinadns-ng", "id": "E3", "status": "PASS"}
+{"t": 2.492026, "event": "child", "engine": "chinadns-ng", "pid": 387558, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-28/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 36675\nchina-dns 127.0.0.1#38991\ntrust-dns 127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.50596, "event": "ready_owned", "pid": 387558, "port": 36675}
+{"t": 2.506013, "event": "assert", "status": "PASS", "label": "chinadns-ng E4  owned readiness"}
+{"t": 2.50608, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 36675]}
+{"t": 2.506289, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 47902], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.506359, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.506444, "event": "caller_answer", "source": ["127.0.0.1", 36675], "ip": "192.0.2.11"}
+{"t": 2.50647, "event": "assert", "status": "PASS", "label": "chinadns-ng E4  node IPv4 from explicit private endpoint"}
+{"t": 2.506591, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.506932, "event": "wait", "engine": "chinadns-ng", "pid": 387558, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#36675\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udpi://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcpi://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udpi://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcpi://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.506972, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.507107, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.507162, "event": "socket_reusable", "port": 36675, "protocols": ["udp", "tcp"]}
+{"t": 2.507184, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 actual transport and literal target"}
+{"t": 2.508237, "event": "child", "engine": "chinadns-ng", "pid": 387559, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-29/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 38461\nchina-dns boot.test@127.0.0.1#38991\ntrust-dns boot.test@127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.518594, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 non-TLS host@IP rejects without stripping host"}
+{"t": 2.518745, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 host@IP rejection diagnostic"}
+{"t": 2.518758, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 rejected host sends no traffic"}
+{"t": 2.518765, "event": "syntax", "engine": "chinadns-ng", "value": "boot.test@127.0.0.1#38991", "status": "UNSUPPORTED"}
+{"t": 2.518797, "event": "wait", "engine": "chinadns-ng", "pid": 387559, "exit": 1, "log": "[Upstream.zig:1038 Group.parse_failed] no host required: 'boot.test'\n[opt.zig:345 opt_china_dns] invalid opt-value: 'boot.test@127.0.0.1#38991'\nusage: chinadns-ng <options...>. the existing options are as follows:\n -C, --config <path>                  format similar to the long option\n -b, --bind-addr <ip>                 listen address, default: 127.0.0.1\n -l, --bind-port <port[@proto]>       listen port number, default: 65353\n -c, --china-dns <upstreams>          china dns server, default: <114 DNS>\n -t, --trust-dns <upstreams>          trust dns server, default: <Google DNS>\n -m, --chnlist-file <paths>           path(s) of chnlist, '-' indicate stdin\n -g, --gfwlist-file <paths>           path(s) of gfwlist, '-' indicate stdin\n -M, --chnlist-first                  match chnlist first, default gfwlist first\n -d, --default-tag <tag>              chn or gfw or <user-tag> or none(default)\n -a, --add-tagchn-ip [set4,set6]      add the ip of name-tag:chn to ipset/nftset\n                                      use '--ipset-name4/6' setname if no value\n -A, --add-taggfw-ip <set4,set6>      add the ip of name-tag:gfw to ipset/nftset\n -4, --ipset-name4 <set4>             ip test for tag:none, default: chnroute\n -6, --ipset-name6 <set6>             ip test for tag:none, default: chnroute6\n                                      if setname contains @, then use nftset\n                                      format: family_name@table_name@set_name\n --group <name>                       define rule group: {dnl, upstream, ipset}\n --group-dnl <paths>                  domain name list for the current group\n --group-upstream <upstreams>         upstream dns server for the current group\n --group-ipset <set4,set6>            add the ip of the current group to ipset\n -N, --no-ipv6 [rules]                tag:<name>[@ip:*], ip:china, ip:non_china\n                                      if no rules, then filter all AAAA queries\n --filter-qtype <qtypes>              filter queries with the given qtype (u16)\n --cache <size>                       enable dns caching, size 0 means disabled\n --cache-stale <N>                    use stale cache: expired time <= N(second)\n --cache-refresh <N>                  pre-refresh the cached data if TTL <= N(%)\n --cache-nodata-ttl <ttl>             TTL of the NODATA response, default is 60\n --cache-min-ttl <ttl>                if record.ttl < min_ttl, set ttl to min_ttl\n --cache-max-ttl <ttl>                if record.ttl > max_ttl, set ttl to max_ttl\n --cache-ignore <domain>              ignore the dns cache for this domain(suffix)\n --cache-db <path>                    dns cache persistence (from/to db file)\n --verdict-cache <size>               enable verdict caching for tag:none domains\n --verdict-cache-db <path>            verdict cache persistence (from/to db file)\n --hosts [path]                       load hosts file, default path is /etc/hosts\n --dns-rr-ip <names>=<ips>            define local resource records of type A/AAAA\n --cert-verify                        enable SSL certificate validation, default: no\n --ca-certs <path>                    CA certs path for SSL certificate validation\n --no-ipset-blacklist                 add-ip: don't enable built-in ip blacklist\n                                      blacklist: 127.0.0.0/8, 0.0.0.0/8, ::1, ::\n -o, --timeout-sec <sec>              response timeout of upstream, default: 5\n -p, --repeat-times <num>             num of packets to trustdns, default:1, max:5\n -n, --noip-as-chnip                  allow no-ip reply from chinadns (tag:none)\n -f, --fair-mode                      enable fair mode (nop, only fair mode now)\n -r, --reuse-port                     enable SO_REUSEPORT, default: <disabled>\n -v, --verbose                        print the verbose log, default: <disabled>\n -V, --version                        print `chinadns-ng` version number and exit\n -h, --help                           print `chinadns-ng` help information and exit\nbug report: https://github.com/zfl9/chinadns-ng. email: zfl9.com@gmail.com (Otokaze)\n"}
+{"t": 2.518863, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.518996, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.519067, "event": "socket_reusable", "port": 38461, "protocols": ["udp", "tcp"]}
+{"t": 2.520159, "event": "child", "engine": "chinadns-ng", "pid": 387560, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-30/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 37297\nchina-dns udp://127.0.0.1#38991\ntrust-dns udp://127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.534113, "event": "ready_owned", "pid": 387560, "port": 37297}
+{"t": 2.534171, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 udp:// owned readiness"}
+{"t": 2.534268, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 37297]}
+{"t": 2.534464, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 41018], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.53455, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.53463, "event": "caller_answer", "source": ["127.0.0.1", 37297], "ip": "192.0.2.11"}
+{"t": 2.534659, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 udp:// node IPv4 from explicit private endpoint"}
+{"t": 2.534781, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.535077, "event": "wait", "engine": "chinadns-ng", "pid": 387560, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#37297\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.535114, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.535239, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.535292, "event": "socket_reusable", "port": 37297, "protocols": ["udp", "tcp"]}
+{"t": 2.535313, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 actual transport and literal target"}
+{"t": 2.536279, "event": "child", "engine": "chinadns-ng", "pid": 387561, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-31/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 34001\nchina-dns udp://boot.test@127.0.0.1#38991\ntrust-dns udp://boot.test@127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.546718, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 non-TLS host@IP rejects without stripping host"}
+{"t": 2.546846, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 host@IP rejection diagnostic"}
+{"t": 2.546858, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 rejected host sends no traffic"}
+{"t": 2.546865, "event": "syntax", "engine": "chinadns-ng", "value": "udp://boot.test@127.0.0.1#38991", "status": "UNSUPPORTED"}
+{"t": 2.546896, "event": "wait", "engine": "chinadns-ng", "pid": 387561, "exit": 1, "log": "[Upstream.zig:1038 Group.parse_failed] no host required: 'boot.test'\n[opt.zig:345 opt_china_dns] invalid opt-value: 'udp://boot.test@127.0.0.1#38991'\nusage: chinadns-ng <options...>. the existing options are as follows:\n -C, --config <path>                  format similar to the long option\n -b, --bind-addr <ip>                 listen address, default: 127.0.0.1\n -l, --bind-port <port[@proto]>       listen port number, default: 65353\n -c, --china-dns <upstreams>          china dns server, default: <114 DNS>\n -t, --trust-dns <upstreams>          trust dns server, default: <Google DNS>\n -m, --chnlist-file <paths>           path(s) of chnlist, '-' indicate stdin\n -g, --gfwlist-file <paths>           path(s) of gfwlist, '-' indicate stdin\n -M, --chnlist-first                  match chnlist first, default gfwlist first\n -d, --default-tag <tag>              chn or gfw or <user-tag> or none(default)\n -a, --add-tagchn-ip [set4,set6]      add the ip of name-tag:chn to ipset/nftset\n                                      use '--ipset-name4/6' setname if no value\n -A, --add-taggfw-ip <set4,set6>      add the ip of name-tag:gfw to ipset/nftset\n -4, --ipset-name4 <set4>             ip test for tag:none, default: chnroute\n -6, --ipset-name6 <set6>             ip test for tag:none, default: chnroute6\n                                      if setname contains @, then use nftset\n                                      format: family_name@table_name@set_name\n --group <name>                       define rule group: {dnl, upstream, ipset}\n --group-dnl <paths>                  domain name list for the current group\n --group-upstream <upstreams>         upstream dns server for the current group\n --group-ipset <set4,set6>            add the ip of the current group to ipset\n -N, --no-ipv6 [rules]                tag:<name>[@ip:*], ip:china, ip:non_china\n                                      if no rules, then filter all AAAA queries\n --filter-qtype <qtypes>              filter queries with the given qtype (u16)\n --cache <size>                       enable dns caching, size 0 means disabled\n --cache-stale <N>                    use stale cache: expired time <= N(second)\n --cache-refresh <N>                  pre-refresh the cached data if TTL <= N(%)\n --cache-nodata-ttl <ttl>             TTL of the NODATA response, default is 60\n --cache-min-ttl <ttl>                if record.ttl < min_ttl, set ttl to min_ttl\n --cache-max-ttl <ttl>                if record.ttl > max_ttl, set ttl to max_ttl\n --cache-ignore <domain>              ignore the dns cache for this domain(suffix)\n --cache-db <path>                    dns cache persistence (from/to db file)\n --verdict-cache <size>               enable verdict caching for tag:none domains\n --verdict-cache-db <path>            verdict cache persistence (from/to db file)\n --hosts [path]                       load hosts file, default path is /etc/hosts\n --dns-rr-ip <names>=<ips>            define local resource records of type A/AAAA\n --cert-verify                        enable SSL certificate validation, default: no\n --ca-certs <path>                    CA certs path for SSL certificate validation\n --no-ipset-blacklist                 add-ip: don't enable built-in ip blacklist\n                                      blacklist: 127.0.0.0/8, 0.0.0.0/8, ::1, ::\n -o, --timeout-sec <sec>              response timeout of upstream, default: 5\n -p, --repeat-times <num>             num of packets to trustdns, default:1, max:5\n -n, --noip-as-chnip                  allow no-ip reply from chinadns (tag:none)\n -f, --fair-mode                      enable fair mode (nop, only fair mode now)\n -r, --reuse-port                     enable SO_REUSEPORT, default: <disabled>\n -v, --verbose                        print the verbose log, default: <disabled>\n -V, --version                        print `chinadns-ng` version number and exit\n -h, --help                           print `chinadns-ng` help information and exit\nbug report: https://github.com/zfl9/chinadns-ng. email: zfl9.com@gmail.com (Otokaze)\n"}
+{"t": 2.546957, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.547085, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.547153, "event": "socket_reusable", "port": 34001, "protocols": ["udp", "tcp"]}
+{"t": 2.548215, "event": "child", "engine": "chinadns-ng", "pid": 387562, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-32/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 33607\nchina-dns tcp://127.0.0.1#38991\ntrust-dns tcp://127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.561965, "event": "ready_owned", "pid": 387562, "port": 33607}
+{"t": 2.562032, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 tcp:// owned readiness"}
+{"t": 2.562095, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 33607]}
+{"t": 2.562454, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 38991], "peer": ["127.0.0.1", 45854], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 2.562523, "event": "upstream_answer", "authority": "china", "protocol": "tcp", "ip": "192.0.2.11"}
+{"t": 2.562593, "event": "caller_answer", "source": ["127.0.0.1", 33607], "ip": "192.0.2.11"}
+{"t": 2.56262, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 tcp:// node IPv4 from explicit private endpoint"}
+{"t": 2.562759, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.563213, "event": "wait", "engine": "chinadns-ng", "pid": 387562, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#33607\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#38991\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.563259, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.56339, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.563439, "event": "socket_reusable", "port": 33607, "protocols": ["udp", "tcp"]}
+{"t": 2.563458, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 actual transport and literal target"}
+{"t": 2.56443, "event": "child", "engine": "chinadns-ng", "pid": 387563, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-33/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 59323\nchina-dns tcp://boot.test@127.0.0.1#38991\ntrust-dns tcp://boot.test@127.0.0.1#38991\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.574741, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 non-TLS host@IP rejects without stripping host"}
+{"t": 2.574878, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 host@IP rejection diagnostic"}
+{"t": 2.574891, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 rejected host sends no traffic"}
+{"t": 2.574898, "event": "syntax", "engine": "chinadns-ng", "value": "tcp://boot.test@127.0.0.1#38991", "status": "UNSUPPORTED"}
+{"t": 2.574929, "event": "wait", "engine": "chinadns-ng", "pid": 387563, "exit": 1, "log": "[Upstream.zig:1038 Group.parse_failed] no host required: 'boot.test'\n[opt.zig:345 opt_china_dns] invalid opt-value: 'tcp://boot.test@127.0.0.1#38991'\nusage: chinadns-ng <options...>. the existing options are as follows:\n -C, --config <path>                  format similar to the long option\n -b, --bind-addr <ip>                 listen address, default: 127.0.0.1\n -l, --bind-port <port[@proto]>       listen port number, default: 65353\n -c, --china-dns <upstreams>          china dns server, default: <114 DNS>\n -t, --trust-dns <upstreams>          trust dns server, default: <Google DNS>\n -m, --chnlist-file <paths>           path(s) of chnlist, '-' indicate stdin\n -g, --gfwlist-file <paths>           path(s) of gfwlist, '-' indicate stdin\n -M, --chnlist-first                  match chnlist first, default gfwlist first\n -d, --default-tag <tag>              chn or gfw or <user-tag> or none(default)\n -a, --add-tagchn-ip [set4,set6]      add the ip of name-tag:chn to ipset/nftset\n                                      use '--ipset-name4/6' setname if no value\n -A, --add-taggfw-ip <set4,set6>      add the ip of name-tag:gfw to ipset/nftset\n -4, --ipset-name4 <set4>             ip test for tag:none, default: chnroute\n -6, --ipset-name6 <set6>             ip test for tag:none, default: chnroute6\n                                      if setname contains @, then use nftset\n                                      format: family_name@table_name@set_name\n --group <name>                       define rule group: {dnl, upstream, ipset}\n --group-dnl <paths>                  domain name list for the current group\n --group-upstream <upstreams>         upstream dns server for the current group\n --group-ipset <set4,set6>            add the ip of the current group to ipset\n -N, --no-ipv6 [rules]                tag:<name>[@ip:*], ip:china, ip:non_china\n                                      if no rules, then filter all AAAA queries\n --filter-qtype <qtypes>              filter queries with the given qtype (u16)\n --cache <size>                       enable dns caching, size 0 means disabled\n --cache-stale <N>                    use stale cache: expired time <= N(second)\n --cache-refresh <N>                  pre-refresh the cached data if TTL <= N(%)\n --cache-nodata-ttl <ttl>             TTL of the NODATA response, default is 60\n --cache-min-ttl <ttl>                if record.ttl < min_ttl, set ttl to min_ttl\n --cache-max-ttl <ttl>                if record.ttl > max_ttl, set ttl to max_ttl\n --cache-ignore <domain>              ignore the dns cache for this domain(suffix)\n --cache-db <path>                    dns cache persistence (from/to db file)\n --verdict-cache <size>               enable verdict caching for tag:none domains\n --verdict-cache-db <path>            verdict cache persistence (from/to db file)\n --hosts [path]                       load hosts file, default path is /etc/hosts\n --dns-rr-ip <names>=<ips>            define local resource records of type A/AAAA\n --cert-verify                        enable SSL certificate validation, default: no\n --ca-certs <path>                    CA certs path for SSL certificate validation\n --no-ipset-blacklist                 add-ip: don't enable built-in ip blacklist\n                                      blacklist: 127.0.0.0/8, 0.0.0.0/8, ::1, ::\n -o, --timeout-sec <sec>              response timeout of upstream, default: 5\n -p, --repeat-times <num>             num of packets to trustdns, default:1, max:5\n -n, --noip-as-chnip                  allow no-ip reply from chinadns (tag:none)\n -f, --fair-mode                      enable fair mode (nop, only fair mode now)\n -r, --reuse-port                     enable SO_REUSEPORT, default: <disabled>\n -v, --verbose                        print the verbose log, default: <disabled>\n -V, --version                        print `chinadns-ng` version number and exit\n -h, --help                           print `chinadns-ng` help information and exit\nbug report: https://github.com/zfl9/chinadns-ng. email: zfl9.com@gmail.com (Otokaze)\n"}
+{"t": 2.574992, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.575184, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.57527, "event": "socket_reusable", "port": 59323, "protocols": ["udp", "tcp"]}
+{"t": 2.576712, "event": "child", "engine": "chinadns-ng", "pid": 387564, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-34/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 33005\nchina-dns 127.0.0.1\ntrust-dns 127.0.0.1\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.590759, "event": "ready_owned", "pid": 387564, "port": 33005}
+{"t": 2.590807, "event": "assert", "status": "PASS", "label": "chinadns-ng E4 bare IP syntax accepted (no default-53 query)"}
+{"t": 2.590912, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.591262, "event": "wait", "engine": "chinadns-ng", "pid": 387564, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#33005\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udpi://127.0.0.1\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcpi://127.0.0.1\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udpi://127.0.0.1\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcpi://127.0.0.1\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.591309, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.591445, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.591513, "event": "socket_reusable", "port": 33005, "protocols": ["udp", "tcp"]}
+{"t": 2.591532, "event": "scenario", "engine": "chinadns-ng", "id": "E4", "status": "PASS", "scope": "bare IP startup only; supported #port forms queried; rejected host forms separately UNSUPPORTED"}
+{"t": 2.591551, "event": "assert", "status": "PASS", "label": "chinadns-ng E10 authorities receive node only, never ordinary gfw"}
+{"t": 2.591835, "event": "authority", "name": "slow", "port": 41743, "ip": "192.0.2.44", "tls": false}
+{"t": 2.592016, "event": "authority", "name": "fast", "port": 48477, "ip": "192.0.2.55", "tls": false}
+{"t": 2.592917, "event": "child", "engine": "chinadns-ng", "pid": 387565, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-35/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 45209\nchina-dns udp://127.0.0.1#41743,udp://127.0.0.1#48477\ntrust-dns udp://127.0.0.1#41743,udp://127.0.0.1#48477\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.606751, "event": "ready_owned", "pid": 387565, "port": 45209}
+{"t": 2.606794, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 udp owned readiness"}
+{"t": 2.606849, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 45209]}
+{"t": 2.607006, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41743], "peer": ["127.0.0.1", 50099], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 2.607047, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 48477], "peer": ["127.0.0.1", 46487], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 2.607098, "event": "upstream_answer", "authority": "fast", "protocol": "udp", "ip": "192.0.2.55"}
+{"t": 2.607152, "event": "caller_answer", "source": ["127.0.0.1", 45209], "ip": "192.0.2.55"}
+{"t": 2.60717, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 udp node IPv4 from explicit private endpoint"}
+{"t": 2.607281, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.6077, "event": "wait", "engine": "chinadns-ng", "pid": 387565, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#45209\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.607747, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.607932, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.608002, "event": "socket_reusable", "port": 45209, "protocols": ["udp", "tcp"]}
+{"t": 2.608026, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 one caller query creates two concurrent exchanges"}
+{"t": 2.608974, "event": "child", "engine": "chinadns-ng", "pid": 387566, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-36/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 49137\nchina-dns udp://127.0.0.1#48477,udp://127.0.0.1#41743\ntrust-dns udp://127.0.0.1#48477,udp://127.0.0.1#41743\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.622725, "event": "ready_owned", "pid": 387566, "port": 49137}
+{"t": 2.622767, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 udp owned readiness"}
+{"t": 2.622859, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 49137]}
+{"t": 2.623007, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 48477], "peer": ["127.0.0.1", 47613], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 2.623071, "event": "upstream_answer", "authority": "fast", "protocol": "udp", "ip": "192.0.2.55"}
+{"t": 2.623093, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41743], "peer": ["127.0.0.1", 44869], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 2.623144, "event": "caller_answer", "source": ["127.0.0.1", 49137], "ip": "192.0.2.55"}
+{"t": 2.623163, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 udp node IPv4 from explicit private endpoint"}
+{"t": 2.623247, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.623533, "event": "wait", "engine": "chinadns-ng", "pid": 387566, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#49137\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.62357, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.6237, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.623751, "event": "socket_reusable", "port": 49137, "protocols": ["udp", "tcp"]}
+{"t": 2.62377, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 one caller query creates two concurrent exchanges"}
+{"t": 2.624909, "event": "child", "engine": "chinadns-ng", "pid": 387567, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-37/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 52593\nchina-dns tcp://127.0.0.1#41743,tcp://127.0.0.1#48477\ntrust-dns tcp://127.0.0.1#41743,tcp://127.0.0.1#48477\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.639082, "event": "ready_owned", "pid": 387567, "port": 52593}
+{"t": 2.639135, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 tcp owned readiness"}
+{"t": 2.639195, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 52593]}
+{"t": 2.639627, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 41743], "peer": ["127.0.0.1", 60302], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 2.639671, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 48477], "peer": ["127.0.0.1", 57738], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 2.639736, "event": "upstream_answer", "authority": "fast", "protocol": "tcp", "ip": "192.0.2.55"}
+{"t": 2.6398, "event": "caller_answer", "source": ["127.0.0.1", 52593], "ip": "192.0.2.55"}
+{"t": 2.639819, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 tcp node IPv4 from explicit private endpoint"}
+{"t": 2.639934, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.640318, "event": "wait", "engine": "chinadns-ng", "pid": 387567, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#52593\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.640361, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.640487, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.640537, "event": "socket_reusable", "port": 52593, "protocols": ["udp", "tcp"]}
+{"t": 2.640556, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 one caller query creates two concurrent exchanges"}
+{"t": 2.641497, "event": "child", "engine": "chinadns-ng", "pid": 387568, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-38/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 57539\nchina-dns tcp://127.0.0.1#48477,tcp://127.0.0.1#41743\ntrust-dns tcp://127.0.0.1#48477,tcp://127.0.0.1#41743\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.655502, "event": "ready_owned", "pid": 387568, "port": 57539}
+{"t": 2.655552, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 tcp owned readiness"}
+{"t": 2.655622, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 57539]}
+{"t": 2.656108, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 48477], "peer": ["127.0.0.1", 57748], "authority": "fast", "response_ip": "192.0.2.55"}
+{"t": 2.656205, "event": "upstream_answer", "authority": "fast", "protocol": "tcp", "ip": "192.0.2.55"}
+{"t": 2.656239, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tcp", "target": ["127.0.0.1", 41743], "peer": ["127.0.0.1", 60310], "authority": "slow", "response_ip": "192.0.2.44"}
+{"t": 2.656303, "event": "caller_answer", "source": ["127.0.0.1", 57539], "ip": "192.0.2.55"}
+{"t": 2.656325, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 tcp node IPv4 from explicit private endpoint"}
+{"t": 2.65644, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.656812, "event": "wait", "engine": "chinadns-ng", "pid": 387568, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#57539\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tcp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#48477\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tcp://127.0.0.1#41743\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.65686, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.656987, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.657037, "event": "socket_reusable", "port": 57539, "protocols": ["udp", "tcp"]}
+{"t": 2.657056, "event": "assert", "status": "PASS", "label": "chinadns-ng E5 one caller query creates two concurrent exchanges"}
+{"t": 2.657065, "event": "scenario", "engine": "chinadns-ng", "id": "E5", "status": "PASS"}
+{"t": 2.657442, "event": "authority", "name": "tls", "port": 45695, "ip": "192.0.2.11", "tls": true}
+{"t": 2.658391, "event": "child", "engine": "chinadns-ng", "pid": 387569, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-39/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 37211\nchina-dns tls://127.0.0.1#45695\ntrust-dns tls://127.0.0.1#45695\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.672108, "event": "ready_owned", "pid": 387569, "port": 37211}
+{"t": 2.672152, "event": "assert", "status": "PASS", "label": "chinadns-ng E6  owned readiness"}
+{"t": 2.672207, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 37211]}
+{"t": 2.673048, "event": "tls_sni", "name": null}
+{"t": 2.674995, "event": "tls_handshake", "authority": "tls", "version": "TLSv1.3"}
+{"t": 2.675027, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tls", "target": ["127.0.0.1", 45695], "peer": ["127.0.0.1", 55012], "authority": "tls", "response_ip": "192.0.2.11"}
+{"t": 2.675121, "event": "upstream_answer", "authority": "tls", "protocol": "tls", "ip": "192.0.2.11"}
+{"t": 2.675185, "event": "caller_answer", "source": ["127.0.0.1", 37211], "ip": "192.0.2.11"}
+{"t": 2.675206, "event": "assert", "status": "PASS", "label": "chinadns-ng E6  node IPv4 from explicit private endpoint"}
+{"t": 2.675312, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.675795, "event": "wait", "engine": "chinadns-ng", "pid": 387569, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#37211\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tls://127.0.0.1#45695\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tls://127.0.0.1#45695\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.675838, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.675986, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.676042, "event": "socket_reusable", "port": 37211, "protocols": ["udp", "tcp"]}
+{"t": 2.676063, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 TLS handshake and DNS query, no UDP fallback"}
+{"t": 2.676071, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 host preserved as TLS SNI"}
+{"t": 2.677021, "event": "child", "engine": "chinadns-ng", "pid": 387570, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-40/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 34259\nchina-dns tls://boot.test@127.0.0.1#45695\ntrust-dns tls://boot.test@127.0.0.1#45695\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.692429, "event": "ready_owned", "pid": 387570, "port": 34259}
+{"t": 2.692477, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 boot.test@ owned readiness"}
+{"t": 2.692535, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 34259]}
+{"t": 2.694044, "event": "tls_sni", "name": "boot.test"}
+{"t": 2.695558, "event": "tls_handshake", "authority": "tls", "version": "TLSv1.3"}
+{"t": 2.695595, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "tls", "target": ["127.0.0.1", 45695], "peer": ["127.0.0.1", 55014], "authority": "tls", "response_ip": "192.0.2.11"}
+{"t": 2.695675, "event": "upstream_answer", "authority": "tls", "protocol": "tls", "ip": "192.0.2.11"}
+{"t": 2.695768, "event": "caller_answer", "source": ["127.0.0.1", 34259], "ip": "192.0.2.11"}
+{"t": 2.695795, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 boot.test@ node IPv4 from explicit private endpoint"}
+{"t": 2.695949, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.696373, "event": "wait", "engine": "chinadns-ng", "pid": 387570, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#34259\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: tls://boot.test@127.0.0.1#45695\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: tls://boot.test@127.0.0.1#45695\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.696412, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.696538, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.696592, "event": "socket_reusable", "port": 34259, "protocols": ["udp", "tcp"]}
+{"t": 2.696613, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 TLS handshake and DNS query, no UDP fallback"}
+{"t": 2.696621, "event": "assert", "status": "PASS", "label": "chinadns-ng E6 host preserved as TLS SNI"}
+{"t": 2.696628, "event": "scenario", "engine": "chinadns-ng", "id": "E6", "status": "PASS", "scope": "local self-signed TLS; fallback cert verification default OFF; SNI logged separately"}
+{"t": 2.696843, "event": "authority", "name": "occupier", "port": 56519, "ip": "192.0.2.99", "tls": false}
+{"t": 2.696974, "event": "authority", "name": "retry-upstream", "port": 41855, "ip": "192.0.2.11", "tls": false}
+{"t": 2.697969, "event": "child", "engine": "chinadns-ng", "pid": 387571, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-41/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 56519\nchina-dns udp://127.0.0.1#41855\ntrust-dns udp://127.0.0.1#41855\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.708437, "event": "assert", "status": "PASS", "label": "chinadns-ng E7 readiness requires owned child and expected source"}
+{"t": 2.708525, "event": "assert", "status": "PASS", "label": "chinadns-ng E7 collision explicitly exits nonzero"}
+{"t": 2.708607, "event": "wait", "engine": "chinadns-ng", "pid": 387571, "exit": 1, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#56519\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41855\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41855\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n\u001b[35;1m2026-11-07 15:19:33 E\u001b[0m \u001b[1m[server.zig:1063 do_start]\u001b[0m bind(tcp, 127.0.0.1#56519) failed: (98) Address in use\n"}
+{"t": 2.708661, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.708822, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.709904, "event": "child", "engine": "chinadns-ng", "pid": 387572, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-42/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 39435\nchina-dns udp://127.0.0.1#41855\ntrust-dns udp://127.0.0.1#41855\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.724007, "event": "ready_owned", "pid": 387572, "port": 39435}
+{"t": 2.724059, "event": "assert", "status": "PASS", "label": "chinadns-ng E7 retry candidate 2 of at most 10 owned readiness"}
+{"t": 2.724118, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 39435]}
+{"t": 2.724281, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41855], "peer": ["127.0.0.1", 51899], "authority": "retry-upstream", "response_ip": "192.0.2.11"}
+{"t": 2.724343, "event": "upstream_answer", "authority": "retry-upstream", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 2.724397, "event": "caller_answer", "source": ["127.0.0.1", 39435], "ip": "192.0.2.11"}
+{"t": 2.724415, "event": "assert", "status": "PASS", "label": "chinadns-ng E7 retry candidate 2 of at most 10 node IPv4 from explicit private endpoint"}
+{"t": 2.72451, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 2.724815, "event": "wait", "engine": "chinadns-ng", "pid": 387572, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#39435\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41855\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41855\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 2.724854, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 2.724982, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 2.725032, "event": "socket_reusable", "port": 39435, "protocols": ["udp", "tcp"]}
+{"t": 2.725052, "event": "assert", "status": "PASS", "label": "chinadns-ng E7 normal path never queries occupier"}
+{"t": 2.725059, "event": "scenario", "engine": "chinadns-ng", "id": "E7", "status": "PASS", "attempts": 2}
+{"t": 2.725357, "event": "authority", "name": "live", "port": 41831, "ip": "192.0.2.11", "tls": false}
+{"t": 2.725487, "event": "authority", "name": "blackhole", "port": 54881, "ip": null, "tls": false}
+{"t": 2.726796, "event": "child", "engine": "chinadns-ng", "pid": 387573, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-43/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 43015\nchina-dns udp://127.0.0.1#41831\ntrust-dns udp://127.0.0.1#41831\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.740536, "event": "ready_owned", "pid": 387573, "port": 43015}
+{"t": 2.741034, "event": "child", "engine": "chinadns-ng", "pid": 387574, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-44/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 51769\nchina-dns udp://127.0.0.1#54881\ntrust-dns udp://127.0.0.1#54881\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 2.754747, "event": "ready_owned", "pid": 387574, "port": 51769}
+{"t": 2.754796, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 parallel instances ready"}
+{"t": 2.754855, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 51769]}
+{"t": 2.755012, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 54881], "peer": ["127.0.0.1", 57888], "authority": "blackhole", "response_ip": null}
+{"t": 3.656111, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 actual unanswered query times out"}
+{"t": 3.656322, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 3.656684, "event": "wait", "engine": "chinadns-ng", "pid": 387574, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#51769\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#54881\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#54881\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 3.656865, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 3.657032, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 3.657097, "event": "socket_reusable", "port": 51769, "protocols": ["udp", "tcp"]}
+{"t": 3.657136, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 43015]}
+{"t": 3.657335, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41831], "peer": ["127.0.0.1", 51540], "authority": "live", "response_ip": "192.0.2.11"}
+{"t": 3.657413, "event": "upstream_answer", "authority": "live", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 3.657476, "event": "caller_answer", "source": ["127.0.0.1", 43015], "ip": "192.0.2.11"}
+{"t": 3.657497, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 stopping one does not stop other"}
+{"t": 3.658489, "event": "child", "engine": "chinadns-ng", "pid": 387576, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-45/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 38169\nchina-dns udp://127.0.0.1#54881\ntrust-dns udp://127.0.0.1#54881\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 3.672344, "event": "ready_owned", "pid": 387576, "port": 38169}
+{"t": 3.672384, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 cancellation child ready"}
+{"t": 3.672676, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 38169]}
+{"t": 3.672867, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 54881], "peer": ["127.0.0.1", 41295], "authority": "blackhole", "response_ip": null}
+{"t": 3.723407, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 3.723783, "event": "wait", "engine": "chinadns-ng", "pid": 387576, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#38169\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#54881\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#54881\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 3.723826, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 3.724013, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 3.724079, "event": "socket_reusable", "port": 38169, "protocols": ["udp", "tcp"]}
+{"t": 3.724093, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 real SIGTERM bounded cancellation cleanup"}
+{"t": 3.724199, "event": "assert", "status": "PASS", "label": "chinadns-ng E8 external preset preserved"}
+{"t": 3.724211, "event": "scenario", "engine": "chinadns-ng", "id": "E8", "status": "PASS"}
+{"t": 3.72515, "event": "child", "engine": "chinadns-ng", "pid": 387577, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387511-46/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 47253\nchina-dns udp://127.0.0.1#41831\ntrust-dns udp://127.0.0.1#41831\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 3.739078, "event": "ready_owned", "pid": 387577, "port": 47253}
+{"t": 3.739123, "event": "assert", "status": "PASS", "label": "chinadns-ng E9 victim ready"}
+{"t": 3.739182, "event": "assert", "status": "PASS", "label": "chinadns-ng E9 reject same-name other instance PID/config"}
+{"t": 3.73923, "event": "assert", "status": "PASS", "label": "chinadns-ng E9 verify owned PID/argv/directory before SIGKILL"}
+{"t": 3.73951, "event": "assert", "status": "PASS", "label": "chinadns-ng E9 SIGKILL leaves owned config"}
+{"t": 3.739559, "event": "wait", "engine": "chinadns-ng", "pid": 387577, "exit": -9, "log": "\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#47253\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41831\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41831\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:34 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 3.739592, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 3.739715, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 3.739806, "event": "socket_reusable", "port": 47253, "protocols": ["udp", "tcp"]}
+{"t": 3.739853, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 43015]}
+{"t": 3.740047, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 41831], "peer": ["127.0.0.1", 51540], "authority": "live", "response_ip": "192.0.2.11"}
+{"t": 3.740109, "event": "upstream_answer", "authority": "live", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 3.740199, "event": "caller_answer", "source": ["127.0.0.1", 43015], "ip": "192.0.2.11"}
+{"t": 3.740221, "event": "assert", "status": "PASS", "label": "chinadns-ng E9 same-name other instance remains responsive"}
+{"t": 3.740229, "event": "scenario", "engine": "chinadns-ng", "id": "E9", "status": "PASS"}
+{"t": 3.740329, "event": "assert", "status": "PASS", "label": "chinadns-ng cleanup verifies PID/argv/owned config"}
+{"t": 3.740648, "event": "wait", "engine": "chinadns-ng", "pid": 387573, "exit": 0, "log": "\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m local listen addr: 127.0.0.1#43015\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:chn upstream: udp://127.0.0.1#41831\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[groups.zig:120 on_start]\u001b[0m tag:gfw upstream: udp://127.0.0.1#41831\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m default domain name tag: gfw\n\u001b[32;1m2026-11-07 15:19:33 I\u001b[0m \u001b[1m[main.zig:164 main]\u001b[0m response timeout of upstream: 5\n"}
+{"t": 3.740692, "event": "assert", "status": "PASS", "label": "chinadns-ng child reaped"}
+{"t": 3.740814, "event": "assert", "status": "PASS", "label": "chinadns-ng owned temporary files removed"}
+{"t": 3.74087, "event": "socket_reusable", "port": 43015, "protocols": ["udp", "tcp"]}
+{"t": 3.741032, "event": "assert", "status": "PASS", "label": "chinadns-ng E10 handoff/intent bytes unchanged"}
+{"t": 3.741048, "event": "scenario", "engine": "chinadns-ng", "id": "E10", "status": "PASS", "scope": "literal loopback only; no system resolver, nft, route or service-management invocation"}
+{"t": 3.741073, "event": "assert", "status": "PASS", "label": "E10 fixture unchanged even on failure"}
+{"t": 3.741118, "event": "assert", "status": "PASS", "label": "E10 fixture unchanged even on failure"}
+{"t": 3.741277, "event": "assert", "status": "PASS", "label": "E8 all runtime resources removed"}

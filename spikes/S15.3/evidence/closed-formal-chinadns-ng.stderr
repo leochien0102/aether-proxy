@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 503, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 471, in main
+    await basic(engine)
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 297, in basic
+    await resolve(engine, u, engine + ' E2', endpoint=closed if ARGS.mutation == 'closed-formal' else None)
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 274, in resolve
+    check(ip == expected, label + ' node IPv4 from explicit private endpoint')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 54, in check
+    raise AssertionError(label)
+AssertionError: chinadns-ng E2 node IPv4 from explicit private endpoint

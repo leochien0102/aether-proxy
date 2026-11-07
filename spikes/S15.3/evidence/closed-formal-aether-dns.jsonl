@@ -1,0 +1,35 @@
+{"t": 0.036152, "event": "openssl", "exit": 0, "stderr": ".......+............+...+...+...+.........+.............+............+...............+......+..+....+........+......+.+.........+.....+.........+.+.....+...............+.......+........+......+...+..........+........+....+........+......+++++++++++++++++++++++++++++++++++++++*........+.............+.........+............+.....+.+...+..............+...+.......+...+...+..+++++++++++++++++++++++++++++++++++++++*..+............+..+.++++++\n......+.....+.......+...+......+.....+.+.........+............+.....+...............+...+......+.+.....+...+.......+...+......+...+..+.............+...+..+......+++++++++++++++++++++++++++++++++++++++*..+....+..+...............+...+....+++++++++++++++++++++++++++++++++++++++*..............+...+............+........+...+...+.+.....+....+...........+.............+.....+..........+........+.......+......+..+.......+......+..............+.+......+......+..............+....+..+....+...+...+.....+...............+.........+..........+...+............+......+..+...............+......+..........+.........+..+.+..+...+.......+..+.+...+..............+...+.........++++++\n-----\n"}
+{"t": 0.041522, "event": "engine_info", "engine": "aether-dns", "path": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns", "flag": "-V", "exit": 0, "stdout": "aether-dns 2026.11.04\n", "stderr": "", "sha256": "ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd"}
+{"t": 0.044695, "event": "engine_info", "engine": "aether-dns", "path": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns", "flag": "-h", "exit": 0, "stdout": "usage: aether-dns [-h|--help] [-V|--version] [-C <path>]\n", "stderr": "", "sha256": "ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd"}
+{"t": 0.045041, "event": "authority", "name": "china", "port": 50829, "ip": "192.0.2.11", "tls": false}
+{"t": 0.045278, "event": "authority", "name": "direct", "port": 56483, "ip": "192.0.2.22", "tls": false}
+{"t": 0.046472, "event": "child", "engine": "aether-dns", "pid": 387447, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387443-1/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 35181\nchina-dns udp://127.0.0.1#50829\ntrust-dns udp://127.0.0.1#50829\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.060355, "event": "ready_owned", "pid": 387447, "port": 35181}
+{"t": 0.060401, "event": "assert", "status": "PASS", "label": "aether-dns E1 minimal owned readiness"}
+{"t": 0.060473, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 35181]}
+{"t": 0.060737, "event": "upstream_receive", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 50829], "peer": ["127.0.0.1", 52998], "authority": "china", "response_ip": "192.0.2.11"}
+{"t": 0.060819, "event": "upstream_answer", "authority": "china", "protocol": "udp", "ip": "192.0.2.11"}
+{"t": 0.060923, "event": "caller_answer", "source": ["127.0.0.1", 35181], "ip": "192.0.2.11"}
+{"t": 0.060948, "event": "assert", "status": "PASS", "label": "aether-dns E1 minimal node IPv4 from explicit private endpoint"}
+{"t": 0.061052, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.061667, "event": "wait", "engine": "aether-dns", "pid": 387447, "exit": 0, "log": "listening UDP 127.0.0.1:35181\nlistening TCP 127.0.0.1:35181\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.061709, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.061928, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.061988, "event": "socket_reusable", "port": 35181, "protocols": ["udp", "tcp"]}
+{"t": 0.06201, "event": "scenario", "engine": "aether-dns", "id": "E1", "status": "PASS"}
+{"t": 0.062058, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 60935]}
+{"t": 0.062111, "event": "assert", "status": "PASS", "label": "aether-dns E2 formal stand-in closed"}
+{"t": 0.06315, "event": "child", "engine": "aether-dns", "pid": 387448, "config": "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.runtime/387443-2/bootstrap.conf", "text": "bind-addr 127.0.0.1\nbind-port 35041\nchina-dns udp://127.0.0.1#50829\ntrust-dns udp://127.0.0.1#50829\ndefault-tag gfw\nipset-name4 null\nipset-name6 null\ncache 0\n"}
+{"t": 0.077194, "event": "ready_owned", "pid": 387448, "port": 35041}
+{"t": 0.077244, "event": "assert", "status": "PASS", "label": "aether-dns E2 owned readiness"}
+{"t": 0.077305, "event": "caller_send", "qname": "node.s15.test", "protocol": "udp", "target": ["127.0.0.1", 60935]}
+{"t": 0.077387, "event": "assert", "status": "FAIL", "label": "aether-dns E2 node IPv4 from explicit private endpoint"}
+{"t": 0.077528, "event": "assert", "status": "PASS", "label": "aether-dns cleanup verifies PID/argv/owned config"}
+{"t": 0.078092, "event": "wait", "engine": "aether-dns", "pid": 387448, "exit": 0, "log": "listening UDP 127.0.0.1:35041\nlistening TCP 127.0.0.1:35041\nshutdown: draining queries (500 ms maximum)\n"}
+{"t": 0.07813, "event": "assert", "status": "PASS", "label": "aether-dns child reaped"}
+{"t": 0.07827, "event": "assert", "status": "PASS", "label": "aether-dns owned temporary files removed"}
+{"t": 0.078323, "event": "socket_reusable", "port": 35041, "protocols": ["udp", "tcp"]}
+{"t": 0.078433, "event": "assert", "status": "PASS", "label": "E10 fixture unchanged even on failure"}
+{"t": 0.078482, "event": "assert", "status": "PASS", "label": "E10 fixture unchanged even on failure"}
+{"t": 0.078616, "event": "assert", "status": "PASS", "label": "E8 all runtime resources removed"}
+{"t": 0.078785, "event": "failure", "status": "FAIL", "error": "aether-dns E2 node IPv4 from explicit private endpoint", "type": "AssertionError"}
