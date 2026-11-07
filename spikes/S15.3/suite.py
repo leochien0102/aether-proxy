@@ -22,7 +22,10 @@ def run(name, extra=()):
 def positive(name):
 	code, rows = run(name)
 	states = {(r['engine'], r['id']): r['status'] for r in rows if r['event'] == 'scenario'}
-	valid = code == 0
+	stderr = (BASE / 'evidence' / (name + '.stderr')).read_text()
+	valid = code == 0 and not stderr
+	if stderr:
+		print(f'FAIL {name}: unexpected stderr (see evidence)', flush=True)
 	for engine in ENGINES:
 		for n in range(1, 11):
 			wanted = 'UNSUPPORTED' if engine == 'aether-dns' and n == 6 else 'PASS'
@@ -40,7 +43,10 @@ def main():
 			name = mutation + '-' + engine
 			code, rows = run(name, ['--mutation', mutation, '--only-engine', engine])
 			failed = [r['label'] for r in rows if r['event'] == 'assert' and r['status'] == 'FAIL']
+			stderr = (BASE / 'evidence' / (name + '.stderr')).read_text()
 			valid = code != 0 and failed == [engine + ' ' + suffix]
+			valid = valid and 'AssertionError: ' + engine + ' ' + suffix in stderr
+			valid = valid and 'Task exception was never retrieved' not in stderr
 			valid = valid and any(r.get('label') == 'E8 all runtime resources removed' for r in rows)
 			print(f'{"PASS" if valid else "FAIL"} negative {name}: exit={code}, assertions={failed}', flush=True)
 			ok = ok and valid

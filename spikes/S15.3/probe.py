@@ -120,7 +120,7 @@ class Authority(asyncio.DatagramProtocol):
 	def track(self, coro):
 		task = asyncio.create_task(coro)
 		self.tasks.add(task)
-		task.add_done_callback(self.tasks.discard)
+		# Retain completed tasks until exit so authority errors cannot go unobserved.
 
 	def datagram_received(self, data, peer):
 		self.track(self.datagram(data, peer))
@@ -162,15 +162,19 @@ class Authority(asyncio.DatagramProtocol):
 			writer.close()
 			with contextlib.suppress(ConnectionResetError):
 				await writer.wait_closed()
-			self.tasks.discard(task)
 
 	async def __aexit__(self, *exc):
-		self.udp.close()
 		self.tcp.close()
-		await self.tcp.wait_closed()
-		for t in list(self.tasks):
+		# Cancel delayed UDP replies before closing their transport. Waiting for TCP
+		# first lets slow UDP tasks wake and send on an already-closed socket.
+		for t in self.tasks:
 			t.cancel()
-		await asyncio.gather(*self.tasks, return_exceptions=True)
+		results = await asyncio.gather(*self.tasks, return_exceptions=True)
+		self.udp.close()
+		await self.tcp.wait_closed()
+		for result in results:
+			if isinstance(result, BaseException) and not isinstance(result, asyncio.CancelledError):
+				raise result
 
 
 def owns_socket(pid, p):
