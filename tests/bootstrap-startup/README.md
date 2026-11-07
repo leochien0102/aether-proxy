@@ -44,6 +44,11 @@ printing a synthetic PASS. Provenance and temporary negative-control logs go in
   uloop, restricts compile-time and runtime search paths and rejects both struct
   require/import. The same environment actually executes private start/B1/stop;
   the existing B2 minimal entry also reruns its endian/ELF/FD negative controls.
+- **Queued native interval stop regression:** the unmodified original T9.46
+  probe-stop oracles run three additional times. The daemon retains cancelled
+  interval objects until uloop.done (FDs are already closed), avoiding a queued
+  minimum-libubox epoll FD pointing to freed native memory during nested draining.
+  No host/library rebuild or LD_PRELOAD is used by acceptance.
 
 C8 deliberately leaves the real orphan alive while production cleanup and the
 next daemon refuse it. Historical PIDs receive **no production signals**. Only

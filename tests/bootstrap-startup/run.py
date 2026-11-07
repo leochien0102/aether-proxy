@@ -442,6 +442,18 @@ def context(f, **controls):
         (f.root / name.replace('_', '-')).write_text(str(value))
 
 
+def interval_stop(base):
+    for index in range(3):
+        result = subprocess.run(['python3', str(ROOT / 'tests/daemon/stop-state.py')], cwd=ROOT,
+            env=dict(os.environ, T946_SCENARIO='probe', PYTHONDONTWRITEBYTECODE='1'),
+            capture_output=True, text=True, timeout=90)
+        (HERE / '.logs' / f'interval-stop-{index}.log').write_text(result.stdout + result.stderr)
+        if result.returncode:
+            print(result.stdout, result.stderr, flush=True)
+        check(result.returncode == 0,
+              f'C7 queued native scheduler interval cancellation preserves original stop-state oracles repeat {index}')
+
+
 def minimal_bootstrap(base):
     from minimal import Minimal
     work = base / 'minimal-bootstrap'
@@ -700,7 +712,7 @@ def orphan(base):
 def main(base):
     groups = dict(c1=c1, c4=c4, c10=c10, c6=unconfirmed, c7=cancellation, c9=degraded, c8=orphan,
                   c11=frozen, parallel=parallel_crash, stop_block=stop_blocks_daemon, query_loss=loss_during_query,
-                  minimal_bootstrap=minimal_bootstrap, real_cancel=real_cancellation,
+                  minimal_bootstrap=minimal_bootstrap, real_cancel=real_cancellation, interval_stop=interval_stop,
                   real=real_engines, failures=fixture_failures)
     if ONLY:
         groups[ONLY](base)

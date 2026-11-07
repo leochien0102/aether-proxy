@@ -911,6 +911,23 @@ function write_stopping(ctx) {
 	return obj;
 };
 
+function retire_interval(ctx, interval) {
+	if (interval == null)
+		return;
+	// The minimum libubox epoll timer_remove bypasses uloop_fd_delete's queued
+	// event invalidation. cancel closes/zeros the FD, but dropping the last ucode
+	// reference before the next nested run can leave cur_fds pointing to freed
+	// native memory. Retain only the cancelled object until uloop.done(), not an
+	// active timer or its FD. This also preserves stop priority during draining.
+	ctx.retired_intervals ??= [];
+	push(ctx.retired_intervals, interval);
+	if (!interval.cancel()) {
+		setup_log(ctx);
+		log.event('error', 'CMD_FAILED', { cmd: 'stop:interval_cancel', rc: 1,
+			stderr: 'uloop interval cancellation failed' });
+	}
+};
+
 function shutdown(ctx, children, normal_stop) {
 	let failures = [];
 	let private_cleanup = bootstrap.recover(ctx);
@@ -921,7 +938,7 @@ function shutdown(ctx, children, normal_stop) {
 	let stopping_state = normal_stop ? write_stopping(ctx) : null;
 	// Stop takes priority over one-shot commands and never waits for their lock (docs/04).
 	if (ctx.monitor != null) {
-		ctx.monitor.cancel();
+		retire_interval(ctx, ctx.monitor);
 		ctx.monitor = null;
 	}
 	let table = apply.nft_table_exists(ctx);
@@ -1301,7 +1318,7 @@ function run(args) {
 
 		function cancel_subscription_timer() {
 			if (subscription_timer != null) {
-				subscription_timer.cancel();
+				retire_interval(ctx, subscription_timer);
 				subscription_timer = null;
 			}
 		};
@@ -1554,6 +1571,7 @@ function run(args) {
 		if (handler != null)
 			handler.delete();
 	uloop.done();
+	ctx.retired_intervals = [];
 	return ctx.bootstrap_cleanup_failed ? 1 : exit_code;
 };
 

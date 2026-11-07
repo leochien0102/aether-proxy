@@ -194,6 +194,9 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 
 start 在前置检查前做只读残留检查，若不确定则不派生服务 child/命令；可清理的旧文件仍在原渲染校验通过后清理。
 raw-log collector 延后到此残留/校验门通过后才启动，避免失败重试因日志采集又派生 child；其正式运行期行为不改。
+停止时取消 monitor/subscription interval 后，保留已取消对象引用至 `uloop.done()`，而不是立刻释放最后引用。
+最低 libubox epoll 后端的 interval 删除可能尚有 queued FD 指针；保留对象仅防止后续嵌套 run 访问已释放内存，
+cancel 仍立即关闭 timer FD，不保留活动定时器、不允许它在停止后派生工作，也不修改 shared host/库。
 显式 cleanup 因私有残留失败时不猜测其他历史 child，但仍按 T15.1 处理 owned handoff：intent 存在则保留，
 手动 stop/禁用已清 intent 则释放片段、恢复系统 DNS；清理失败仍返回失败，不冒称完整停止成功。
 
