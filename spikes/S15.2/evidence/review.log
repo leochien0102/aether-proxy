@@ -1,0 +1,13 @@
+== branch spike/s15.2-startup-dns-order vs main: 1 commit(s), 16 file(s)
+PASS  tests/run.uc: 1246 passed, 0 failed, 0 skipped
+PASS  tests/cli/run.sh: 217 passed, 0 failed
+PASS  tests/ci/xray.sh: xray 26.10.31: 26 checked, 0 failed
+PASS  changed .uc files compile/load
+PASS  no swallowed errors in added code
+PASS  no system()/popen() outside sys.uc
+WARN  docs/ changed (only spike cards may change docs; explain in the report)
+      docs/validation/s15.2-startup-dns-design.md
+PASS  no attribution trailers in commits
+PASS  report present: reports/S15.2.md
+WARN  working tree not clean (uncommitted changes are not reviewed)
+== 0 FAIL, 2 WARN
