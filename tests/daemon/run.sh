@@ -581,8 +581,8 @@ else
 fi
 stop_daemon; expect "T15.1 R8 ordinary start fixture stops" 0 "$?"
 
-# T15.1 R1-R3: a real daemon shutdown, cleanup --wait fallback and replacement startup all
-# observe the same restart intent. The fragment must remain byte-for-byte unchanged until the
+# T15.1 R1/R2: orderly shutdown, subsequent ordinary cleanup and replacement startup all
+# observe the same restart intent. This is not the SIGKILL fallback scenario below. The fragment must remain byte-for-byte unchanged until the
 # replacement install succeeds; only that install may add a dnsmasq restart.
 RH="$T/sys-restart-handoff"; LH="$RH/calls.log"; make_root "$RH"; : > "$LH"
 start_daemon "$RH" "$LH"
@@ -608,12 +608,12 @@ if wait_for "$RH/var/run/aether-proxy/state.json" '"state": "running"'; then
 	for attempt in 1 2; do
 		timeout 15s env STUB_LOG="$LH" SYSROOT="$RH" PATH="$T/bin:$PATH" \
 			"$UCODE" -S "$ENTRY" -- cleanup $(args_for "$RH") >/dev/null 2>>"$QUIET"; cleanup_rc=$?
-		expect "T15.1 R3 protected cleanup $attempt succeeds" 0 "$cleanup_rc"
+		expect "T15.1 orderly-exit protected cleanup $attempt succeeds" 0 "$cleanup_rc"
 		cmp -s "$RH/tmp/dnsmasq.d/aether-proxy.conf" "$RH/handoff.expected" \
 			&& [ -e "$RH/var/run/aether-proxy/restart-intent" ] \
-			&& ok "T15.1 R3 protected cleanup $attempt retains fragment and intent" \
-			|| bad "T15.1 R3 protected cleanup $attempt retains fragment and intent"
-		expect "T15.1 R3 protected cleanup $attempt adds no dnsmasq restart" \
+			&& ok "T15.1 orderly-exit protected cleanup $attempt retains fragment and intent" \
+			|| bad "T15.1 orderly-exit protected cleanup $attempt retains fragment and intent"
+		expect "T15.1 orderly-exit protected cleanup $attempt adds no dnsmasq restart" \
 			"$before_restart_stop" "$(count_calls "$LH" 'dnsmasq restart')"
 	done
 
@@ -633,6 +633,97 @@ if wait_for "$RH/var/run/aether-proxy/state.json" '"state": "running"'; then
 	stop_daemon; expect "T15.1 replacement daemon ordinary stop succeeds" 0 "$?"
 else
 	bad "T15.1 restart handoff fixture reaches running" "$(cat "$RH/daemon.stderr")"
+	stop_daemon
+fi
+
+# T15.1 R3: kill the real running daemon without letting shutdown run. Do not remove any
+# residue before cleanup --wait: its stale daemon pid must be recognized as dead, while
+# the still-live dataplane children, their pid files, nft and routes need actual cleanup.
+RK="$T/sys-restart-sigkill"; LK="$RK/calls.log"; make_root "$RK"; : > "$LK"
+start_daemon "$RK" "$LK"
+if wait_for "$RK/var/run/aether-proxy/state.json" '"state": "running"'; then
+	ok "T15.1 R3 SIGKILL fixture reaches running"
+	touch "$RK/var/run/aether-proxy/restart-intent"
+	cp "$RK/tmp/dnsmasq.d/aether-proxy.conf" "$RK/handoff.expected"
+	kill_restarts=$(count_calls "$LK" 'dnsmasq restart')
+	killed_daemon="$DAEMON_PID"
+	read -r killed_xray < "$RK/var/run/aether-proxy/xray.pid"
+	read -r killed_dns < "$RK/var/run/aether-proxy/chinadns-ng.pid"
+	read -r killed_collector < "$RK/var/run/aether-proxy/raw-log.pid"
+	kill -KILL "$killed_daemon"; kill_rc=$?
+	expect "T15.1 R3 sends actual SIGKILL to daemon" 0 "$kill_rc"
+	wait "$killed_daemon"; killed_rc=$?
+	DAEMON_PID=''
+	expect "T15.1 R3 wait reaps SIGKILLed daemon with status 137" 137 "$killed_rc"
+	[ "$(cat "$RK/var/run/aether-proxy/daemon.pid")" = "$killed_daemon" ] \
+		&& [ -f "$RK/var/run/aether-proxy/xray.pid" ] \
+		&& [ -f "$RK/var/run/aether-proxy/chinadns-ng.pid" ] \
+		&& kill -0 "$killed_xray" 2>>"$QUIET" && kill -0 "$killed_dns" 2>>"$QUIET" \
+		&& [ -e "$RK/nft-table" ] && [ -s "$RK/ip-rules" ] && [ -s "$RK/ip-routes" ] \
+		&& ok "T15.1 R3 SIGKILL leaves daemon pid, live children, nft and routes for fallback" \
+		|| bad "T15.1 R3 SIGKILL leaves daemon pid, live children, nft and routes for fallback"
+
+	for attempt in 1 2; do
+		before_cleanup_lines=$(wc -l < "$LK")
+		timeout 20s env STUB_LOG="$LK" SYSROOT="$RK" PATH="$T/bin:$PATH" \
+			"$UCODE" -S "$ENTRY" -- cleanup --wait 5 $(args_for "$RK") \
+			>/dev/null 2>>"$QUIET"; cleanup_rc=$?
+		expect "T15.1 R3 SIGKILL cleanup --wait $attempt succeeds" 0 "$cleanup_rc"
+		cmp -s "$RK/tmp/dnsmasq.d/aether-proxy.conf" "$RK/handoff.expected" \
+			&& [ -e "$RK/var/run/aether-proxy/restart-intent" ] \
+			&& ok "T15.1 R3 SIGKILL cleanup --wait $attempt retains fragment bytes and intent" \
+			|| bad "T15.1 R3 SIGKILL cleanup --wait $attempt retains fragment bytes and intent"
+		expect "T15.1 R3 SIGKILL cleanup --wait $attempt adds no dnsmasq restart" \
+			"$kill_restarts" "$(count_calls "$LK" 'dnsmasq restart')"
+		[ ! -e "$RK/var/run/aether-proxy/xray.pid" ] \
+			&& [ ! -e "$RK/var/run/aether-proxy/chinadns-ng.pid" ] \
+			&& ! grep -q . "/proc/$killed_xray/cmdline" 2>>"$QUIET" \
+			&& ! grep -q . "/proc/$killed_dns/cmdline" 2>>"$QUIET" \
+			&& [ ! -e "$RK/nft-table" ] && [ ! -s "$RK/ip-rules" ] && [ ! -s "$RK/ip-routes" ] \
+			&& ok "T15.1 R3 SIGKILL cleanup --wait $attempt removes live dataplane children, child pids, nft and routes" \
+			|| bad "T15.1 R3 SIGKILL cleanup --wait $attempt removes live dataplane children, child pids, nft and routes"
+		expect "T15.1 R3 SIGKILL cleanup --wait $attempt final state is stopped" stopped \
+			"$(jget state < "$RK/var/run/aether-proxy/state.json")"
+		if [ "$attempt" = 2 ]; then
+			awk -v before="$before_cleanup_lines" 'NR > before && /^(nft delete table|ip rule del|ip route flush|dnsmasq restart)/ { exit 1 }' "$LK" \
+				&& ok "T15.1 R3 repeated cleanup --wait adds no destructive calls" \
+				|| bad "T15.1 R3 repeated cleanup --wait adds no destructive calls"
+		fi
+	done
+
+	# Observe intent and old fragment inside the successful replacement install command,
+	# not just after the daemon reaches running. This stub returns success only afterwards.
+	cat > "$RK/etc/init.d/dnsmasq" <<'EOF'
+#!/bin/sh
+printf 'dnsmasq %s\n' "$*" >> "$STUB_LOG"
+if [ -e "$SYSROOT/var/run/aether-proxy/restart-intent" ] &&
+	cmp -s "$SYSROOT/tmp/dnsmasq.d/aether-proxy.conf" "$SYSROOT/handoff.expected"; then
+	printf 'intent present and handoff unchanged during install\n' >> "$SYSROOT/install-evidence"
+fi
+exit 0
+EOF
+	start_daemon "$RK" "$LK"
+	if wait_for "$RK/var/run/aether-proxy/state.json" '"state": "running"'; then
+		grep -Fxq 'intent present and handoff unchanged during install' "$RK/install-evidence" \
+			&& [ ! -e "$RK/var/run/aether-proxy/restart-intent" ] \
+			&& cmp -s "$RK/tmp/dnsmasq.d/aether-proxy.conf" "$RK/handoff.expected" \
+			&& ok "T15.1 R3 replacement clears intent only after successful handoff install" \
+			|| bad "T15.1 R3 replacement clears intent only after successful handoff install"
+		expect "T15.1 R3 replacement performs exactly one install restart" 1 \
+			"$(count_calls "$LK" 'dnsmasq restart')"
+		expect "T15.1 R3 replacement recovers running state" running \
+			"$(jget state < "$RK/var/run/aether-proxy/state.json")"
+		[ "$(cat "$RK/var/run/aether-proxy/daemon.pid")" = "$DAEMON_PID" ] \
+			&& [ "$DAEMON_PID" != "$killed_daemon" ] \
+			&& ! grep -q . "/proc/$killed_collector/cmdline" 2>>"$QUIET" \
+			&& ok "T15.1 R3 replacement refreshes stale daemon pid and reaps old raw collector" \
+			|| bad "T15.1 R3 replacement refreshes stale daemon pid and reaps old raw collector"
+	else
+		bad "T15.1 R3 replacement reaches running" "$(cat "$RK/daemon.stderr")"
+	fi
+	stop_daemon; expect "T15.1 R3 replacement ordinary stop succeeds" 0 "$?"
+else
+	bad "T15.1 R3 SIGKILL fixture reaches running" "$(cat "$RK/daemon.stderr")"
 	stop_daemon
 fi
 
