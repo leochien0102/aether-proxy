@@ -10,7 +10,8 @@ export const cases = [
 	{ name: 'W1 renderer references single TCP UDP and mixed tuples without unused ports',
 		kind: 'references', expect: 'PASS' },
 	{ name: 'W2 T2 T3 only require TPROXY and broken artifacts fail closed', kind: 'tiers', expect: 'PASS' },
-	{ name: 'W4 pure tcp6 udp6 states addresses and malformed rows', kind: 'tables', expect: 'PASS' }
+	{ name: 'W4 pure tcp6 udp6 states addresses and malformed rows', kind: 'tables', expect: 'PASS' },
+	{ name: 'A3 explicit endian IPv4 IPv6 LE BE and invalid parameter rejection', kind: 'endian', expect: 'PASS' }
 ];
 
 function snapshot(trust) {
@@ -76,15 +77,32 @@ export function run(c) {
 		return !ready.requirements('trust-dns tcp://127.0.0.1#31082\n', sprintf('%.J', built)).ok
 			? 'PASS' : 'missing DNS tunnel accepted';
 	}
+	if (c.kind == 'endian') {
+		for (let little in [ true, false ])
+			for (let ipv6 in [ false, true ]) {
+				let address = ipv6
+					? (little ? '00000000000000000000000001000000' : '00000000000000000000000000000001')
+					: (little ? '0100007F' : '7F000001');
+				let remote = ipv6 ? '00000000000000000000000000000000' : '00000000';
+				let text = `0: ${address}:7968 ${remote}:0000 0A 00000000:00000000 00:00000000 00000000 0 0 123\n`;
+				let result = net.socket_rows(text, ipv6, little);
+				if (!result.ok || result.rows[0].address != net.address_hex(ipv6 ? '::1' : '127.0.0.1'))
+					return 'explicit byte order mismatch';
+			}
+		for (let bad in [ null, 0, 1, 'true', 'false', [], {} ])
+			if (net.socket_rows('', false, bad).ok)
+				return 'invalid byte order accepted';
+		return !net.socket_rows('', false).ok ? 'PASS' : 'missing byte order accepted';
+	}
 	let row = ' 0: 00000000000000000000000001000000:9C40 00000000000000000000000000000000:0000 ';
 	for (let state in [ '0A', '07', '01', '02' ]) {
-		let parsed = net.socket_rows(row + state + ' 00000000:00000000 00:00000000 00000000 0 0 123\n', true);
+		let parsed = net.socket_rows(row + state + ' 00000000:00000000 00:00000000 00000000 0 0 123\n', true, true);
 		if (!parsed.ok || parsed.rows[0].address != net.address_hex('::1') || parsed.rows[0].state != state)
 			return 'IPv6 state/address parse mismatch';
 	}
 	for (let bad in [ null, 'broken\n', row + '0A\n', replace(row, '9C40', 'ZZZZ') +
 		'0A 0 0 0 0 0 123\n' ])
-		if (net.socket_rows(bad, true).ok)
+		if (net.socket_rows(bad, true, true).ok)
 			return 'bad table accepted';
 	return net.address_hex('::1') != net.address_hex('127.0.0.1') && net.address_hex('::0::1') == null
 		? 'PASS' : 'address families conflated';

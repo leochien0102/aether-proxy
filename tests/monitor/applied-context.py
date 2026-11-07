@@ -38,6 +38,7 @@ exec "$(dirname "$0")/resolveip-original" "$@"
 	dnsmasq = root / 'etc/init.d/dnsmasq'
 	dnsmasq.write_text('#!/bin/sh\nprintf "dnsmasq %s\\n" "$*" >> "$STUB_LOG"\n')
 	dnsmasq.chmod(0o755)
+	subprocess.run(['python3', str(ROOT / 'tests/xray-ready/proc_fixture.py'), str(root)], check=True)
 	(root / 'proc/net/tcp').write_text(
 		'  0: 0100007F:7968 00000000:0000 0A 0 0 0 0 0 0\n'
 		'  1: 0100007F:794D 00000000:0000 0A 0 0 0 0 0 0\n')

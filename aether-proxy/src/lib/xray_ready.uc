@@ -121,11 +121,41 @@ function inodes(path) {
 	return owned;
 };
 
-function table_snapshot(path) {
+// Native Linux/OpenWrt assumes the process ABI and kernel use the same byte order;
+// cross-endian emulation is outside this contract. Keep all I/O out of net's parser.
+function native_byte_order(ctx) {
+	let path = replace(ctx.root ?? '', /\/$/, '') + C.XRAY_READY_ELF_FILE;
+	let file = fs.open(path, 'r');
+	if (file == null)
+		return failure(`cannot open ELF identity ${path}: ${fs.error() ?? 'unknown error'}`);
+	let header = file.read(16);
+	let read_error = header == null ? (fs.error() ?? 'unknown error') : null;
+	// Close before validating, so short/bad headers and read errors share one FD
+	// cleanup boundary. A failed close cannot be treated as a verified identity.
+	if (!file.close())
+		return failure(`cannot close ELF identity ${path}: ${fs.error() ?? 'unknown error'}`);
+	if (header == null)
+		return failure(`cannot read ELF identity ${path}: ${read_error}`);
+	if (length(header) != 16)
+		return failure('short ELF identification');
+	if (substr(header, 0, 4) != chr(127) + 'ELF')
+		return failure('invalid ELF magic');
+	if (index([ 1, 2 ], ord(header, 4)) < 0)
+		return failure('invalid ELF class');
+	if (ord(header, 6) != 1)
+		return failure('invalid ELF version');
+	let data = ord(header, 5);
+	if (index([ 1, 2 ], data) < 0)
+		return failure('invalid ELF data encoding');
+	return { ok: true, little_endian: data == 1 };
+};
+
+function table_snapshot(path, little_endian) {
 	let rows = [];
 	for (let protocol in [ 'tcp', 'udp' ])
 		for (let suffix in [ '', '6' ]) {
-			let parsed = net.socket_rows(fs.readfile(`${path}/net/${protocol}${suffix}`), suffix == '6');
+			let parsed = net.socket_rows(fs.readfile(`${path}/net/${protocol}${suffix}`),
+				suffix == '6', little_endian);
 			if (!parsed.ok)
 				return parsed;
 			for (let row in parsed.rows)
@@ -204,6 +234,15 @@ export function wait(ctx, child, required, on_signal) {
 		return failure('invalid child or readiness requirements');
 	let path = proc_path(ctx, pid), generation = identity(path);
 	let deadline = start + C.DAEMON_PORT_WAIT_SECS * 1000;
+	if (cancelled(ctx, on_signal))
+		return { ok: false, cancelled: true, detail: 'Xray readiness cancelled' };
+	let byte_order = native_byte_order(ctx);
+	if (cancelled(ctx, on_signal))
+		return { ok: false, cancelled: true, detail: 'Xray readiness cancelled' };
+	if (now_ms() >= deadline)
+		return failure('Xray required sockets not ready within 5 seconds');
+	if (!byte_order.ok)
+		return byte_order;
 	while (true) {
 		if (cancelled(ctx, on_signal))
 			return { ok: false, cancelled: true, detail: 'Xray readiness cancelled' };
@@ -213,7 +252,7 @@ export function wait(ctx, child, required, on_signal) {
 		// An initially unreadable rooted proc fixture is not-ready, never a reason
 		// to borrow host proc. Once verified, loss/change of identity is terminal.
 		generation ??= observed;
-		let owned = inodes(path), tables = table_snapshot(path);
+		let owned = inodes(path), tables = table_snapshot(path, byte_order.little_endian);
 		let ready = generation != null && owned != null && tables.ok;
 		if (ready)
 			for (let requirement in required)

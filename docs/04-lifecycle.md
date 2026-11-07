@@ -68,6 +68,15 @@ TCP 只认 LISTEN，UDP 认实际绑定；区分地址与 IPv4/IPv6。IPv6 通�
 本地非阻塞 IPv4 连接验证，并排除可能替它应答的其他监听 inode；IPv6-only 或未经证实的 IPv6 UDP
 通配绑定不能冒充 IPv4。所有探测 socket 都关闭；不发 DNS 查询，不访问外网，不要求上游应答。
 
+**字节序（T15.5 复审方案 A）**：`net.socket_rows(text, ipv6, little_endian)` 保持纯函数，第三参数必须
+显式为 boolean；缺失/非法立即失败，不默认小端、不尝试两个方向任选匹配。readiness 每次 wait 用已声明的
+`fs` 读取 `/proc/self/exe` 前 16 字节 ELF identification，校验 magic、EI_CLASS（1/2）、EI_VERSION（1）、
+EI_DATA（1/2），用核心 `ord()` 取得本进程 ABI 字节序；不依赖可选 `struct` 模块，不改变包依赖。
+打开、读取、校验或关闭任一失败都 fail closed；读完先关闭再校验，使短头、坏头和读失败都经过同一 FD
+回收边界。读取也计入原 5 秒 deadline，读取前后都检查取消。`ctx.root` 严格覆盖 `/proc/self/exe`，
+缺失/无效 fixture 不得回读宿主补齐。原生 Linux/OpenWrt 以本进程 ABI 字节序解释内核 proc 表；不宣称支持
+跨字节序用户态仿真或内核/用户态异字节序部署。周期 health helper 不做该读取。
+
 所有要求共享一次 5 秒单调 deadline，轮询有界；派发真实信号，每轮、成功前与超时尾部均检查停止意图，
 取消优先于 ready。`ctx.root` 同时覆盖产物与整套 PID/socket/FD fixture，不借用宿主数据补全测试。
 `xray_ready.published()` 每次重新读取 current，供初次启动、reload 正向/恢复产物后的 rollback、

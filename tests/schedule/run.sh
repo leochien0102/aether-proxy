@@ -104,6 +104,7 @@ printf 'dnsmasq %s\n' "$*" >> "$STUB_LOG"
 exit 0
 EOF
 	chmod +x "$root/etc/init.d/dnsmasq"
+	python3 "$ROOT/tests/xray-ready/proc_fixture.py" "$root" || exit 1
 	printf 'local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n' > "$root/proc/net/tcp"
 	printf 'local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n' > "$root/proc/net/tcp6"
 	: > "$root/ip-rules"

@@ -5,3 +5,4 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 python3 tests/xray-ready/run.py
 python3 tests/xray-ready/lifecycle.py
+python3 tests/xray-ready/minimal.py

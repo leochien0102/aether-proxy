@@ -9,6 +9,7 @@ import signal
 import subprocess
 import tempfile
 import time
+from proc_fixture import seed_elf
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HERE = pathlib.Path(__file__).resolve().parent
@@ -55,6 +56,7 @@ class Fixture:
         script = self.root / 'etc/init.d/dnsmasq'
         script.write_text('#!/bin/sh\nprintf "dnsmasq %s\\n" "$*" >> "$STUB_LOG"\n')
         script.chmod(0o755)
+        seed_elf(self.root)
         (self.root / 'proc/net/tcp').write_text(
             ' 0: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n')
         for file in ('ip-rules', 'ip-routes', 'conflicts', 'curl-count', 'calls.log'):
@@ -264,7 +266,9 @@ def main(base):
         child.send_signal(signal.SIGUSR1)
         wait_for(lambda: f.count('xray-dns-pending') > pending)
         check(not f.events('NODE_IP_CHANGED'), 'W9 monitor cannot publish IP change before replacement DNS ready')
-        wait_for(lambda: bool(f.events('NODE_IP_CHANGED')))
+        # The event is emitted before the monitor's atomic state write. Observe
+        # both completion records rather than racing that legitimate ordering.
+        wait_for(lambda: bool(f.events('NODE_IP_CHANGED')) and f.state()['node_ip'] == '198.51.100.44')
         check(f.state()['node_ip'] == '198.51.100.44', 'W9 monitor publishes resolved IP after DNS ready')
         f.missing(31082)
         probes = f.probes()

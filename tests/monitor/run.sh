@@ -70,6 +70,7 @@ EOF
 	: > "$root/ip-routes"
 	: > "$root/conflicts"
 	touch "$root/nft-table"
+	python3 "$ROOT/tests/xray-ready/proc_fixture.py" "$root" || exit 1
 	printf 'local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n' > "$root/proc/net/tcp"
 	printf '  0: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$root/proc/net/tcp"
 	printf '  1: 0100007F:%s 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' "$dns_hex" >> "$root/proc/net/tcp"

@@ -13,19 +13,24 @@ let ctx = { root: spec.root ?? '' };
 let child = { pid: () => pid };
 let t = clock(true);
 let before = length(fs.lsdir('/proc/self/fd'));
-let result;
+let result, successes = 0, failures = 0, cancellations = 0;
 for (let i = 0; i < (spec.repeat ?? 1); i++) {
+	let iteration_checks = 0;
 	result = ready.wait(ctx, child, spec.required, () => {
 		checks++;
-		return stopped || (spec.cancel_at_check != null && checks >= spec.cancel_at_check);
+		iteration_checks++;
+		return stopped || (spec.cancel_at_check != null && iteration_checks >= spec.cancel_at_check);
 	});
-	if (!result.ok)
+	if (result.ok) successes++;
+	else failures++;
+	if (result.cancelled) cancellations++;
+	if (!result.ok && !spec.continue_on_failure)
 		break;
 }
 let after = length(fs.lsdir('/proc/self/fd'));
 let end = clock(true);
 print(sprintf('%.J', { ...result, elapsed_ms: (end[0] - t[0]) * 1000 + (end[1] - t[1]) / 1000000,
-	fd_delta: after - before, checks }), '\n');
+	fd_delta: after - before, checks, successes, failures, cancellations }), '\n');
 if (timer != null) timer.cancel();
 if (changed != null) changed.cancel();
 signal.delete();

@@ -243,6 +243,7 @@ if [ -n "${WAN_DAEMON_PID:-}" ]; then kill -HUP "$WAN_DAEMON_PID"; fi
         (root / path).mkdir(parents=True, exist_ok=True)
     put(root / 'var/etc/dnsmasq.conf.test', 'interface=br-lan\nconf-dir=/tmp/dnsmasq.d,*.conf\n')
     put(root / 'etc/init.d/dnsmasq', '#!/bin/sh\nprintf "dnsmasq %s\\n" "$*" >> "$STUB_LOG"\n', True)
+    subprocess.run(['python3', str(ROOT / 'tests/xray-ready/proc_fixture.py'), str(root)], check=True)
     put(root / 'proc/net/tcp', '  0: 0100007F:794D 00000000:0000 0A 0 0 0\n')
     for name in ('ip-rules', 'ip-routes', 'conflicts'):
         put(root / name, '')

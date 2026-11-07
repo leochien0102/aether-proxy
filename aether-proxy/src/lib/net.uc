@@ -1,7 +1,5 @@
 'use strict';
 
-import * as struct from 'struct';
-
 // Pure IPv4 / CIDR / domain syntax helpers shared by config.uc and data.uc (docs/12 rule 1:
 // no fs, uci or system calls in here). Validators return a string unchanged when valid,
 // or null when not; parsers return the documented parts instead.
@@ -218,9 +216,12 @@ export function address_hex(address) {
 	return join('', map(words, word => sprintf('%04X', hex(word))));
 };
 
-// Linux prints each address as native-endian 32-bit words; do not assume the
-// router has the host runner's byte order.
-export function socket_rows(text, ipv6) {
+// Linux prints each address as native-endian 32-bit words; the caller supplies
+// the verified ABI order. A pure parser must neither probe it nor default to the
+// host runner's order, and accepting both directions would accept wrong addresses.
+export function socket_rows(text, ipv6, little_endian) {
+	if (type(little_endian) != 'bool')
+		return { ok: false, detail: 'socket table byte order must be an explicit boolean' };
 	if (type(text) != 'string')
 		return { ok: false, detail: 'unreadable socket table' };
 	let rows = [];
@@ -248,9 +249,8 @@ export function socket_rows(text, ipv6) {
 		if (match(f[7], /^[0-9]+$/) == null || match(f[8], /^[0-9]+$/) == null)
 			return { ok: false, detail: 'malformed socket uid/timeout fields' };
 		let network = '';
-		let little = struct.pack('I', 1) == struct.pack('<I', 1);
 		for (let i = 0; i < length(addr); i += 8) {
-			if (!little)
+			if (!little_endian)
 				network += substr(addr, i, 8);
 			else
 				for (let j = 6; j >= 0; j -= 2)

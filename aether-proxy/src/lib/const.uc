@@ -337,3 +337,5 @@ export const BOOTSTRAP_DNS_MAX_QUESTIONS = 16;
 // T15.5: upstream grammar defaults, not additional readiness endpoints.
 export const XRAY_READY_DNS_DEFAULT_PORT = 53;
 export const XRAY_READY_TLS_DEFAULT_PORT = 853;
+// T15.5 review A: native ABI byte order without an optional struct module.
+export const XRAY_READY_ELF_FILE = '/proc/self/exe';

@@ -9,6 +9,7 @@ import socket
 import subprocess
 import tempfile
 import time
+from proc_fixture import seed_elf
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HERE = pathlib.Path(__file__).resolve().parent
@@ -80,6 +81,7 @@ def row(ep, inode, state=None, address=None):
 
 def fixture(tmp, entries):
     root = tmp / f'proc-{time.monotonic_ns()}'
+    seed_elf(root)
     proc = root / 'proc/123'
     (proc / 'fd').mkdir(parents=True)
     (proc / 'net').mkdir()
@@ -180,7 +182,7 @@ def main(tmp):
             result = finish(proc)
             check(result.get('cancelled') and result['elapsed_ms'] < 800 and result['fd_delta'] == 0,
                   'W6/W10 real SIGTERM cancels promptly with no probe FD leak')
-        result = run(tmp, child.pid, [tproxy], cancel_at_check=2)
+        result = run(tmp, child.pid, [tproxy], cancel_at_check=4)
         check(result.get('cancelled') and not result['ok'],
               'W6 last socket ready cancellation wins before success return')
 
