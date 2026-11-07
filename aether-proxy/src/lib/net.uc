@@ -216,6 +216,18 @@ export function address_hex(address) {
 	return join('', map(words, word => sprintf('%04X', hex(word))));
 };
 
+function proc_address_hex(address, little_endian) {
+	let network = '';
+	for (let i = 0; i < length(address); i += 8) {
+		if (!little_endian)
+			network += substr(address, i, 8);
+		else
+			for (let j = 6; j >= 0; j -= 2)
+				network += substr(address, i + j, 2);
+	}
+	return uc(network);
+};
+
 // Linux prints each address as native-endian 32-bit words; the caller supplies
 // the verified ABI order. A pure parser must neither probe it nor default to the
 // host runner's order, and accepting both directions would accept wrong addresses.
@@ -248,15 +260,11 @@ export function socket_rows(text, ipv6, little_endian) {
 			return { ok: false, detail: 'malformed socket queue/timer fields' };
 		if (match(f[7], /^[0-9]+$/) == null || match(f[8], /^[0-9]+$/) == null)
 			return { ok: false, detail: 'malformed socket uid/timeout fields' };
-		let network = '';
-		for (let i = 0; i < length(addr); i += 8) {
-			if (!little_endian)
-				network += substr(addr, i, 8);
-			else
-				for (let j = 6; j >= 0; j -= 2)
-					network += substr(addr, i + j, 2);
-		}
-		push(rows, { address: uc(network), port: hex(local[1]), state: uc(f[3]), inode: f[9], ipv6 });
+		push(rows, {
+			address: proc_address_hex(addr, little_endian), port: hex(local[1]),
+			remote_address: proc_address_hex(remote[0], little_endian), remote_port: hex(remote[1]),
+			state: uc(f[3]), inode: f[9], ipv6
+		});
 	}
 	return { ok: true, rows };
 };

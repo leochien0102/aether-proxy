@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Controlled real sockets. Only binds/listens; never answers DNS or judges ready."""
+"""Controlled bind/connect/listen state; never sends DNS or judges readiness."""
 import json
 import pathlib
 import select
@@ -25,6 +25,8 @@ try:
             if family == socket.AF_INET6:
                 sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, item.get('v6only', 1))
             sock.bind((item['address'], item['port']))
+            if not tcp and 'peer' in item:
+                sock.connect((item['peer']['address'], item['peer']['port']))
             if tcp:
                 sock.listen(128)
             pending.remove(item)

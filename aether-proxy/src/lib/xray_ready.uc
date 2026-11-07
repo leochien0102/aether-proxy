@@ -201,6 +201,13 @@ function competing_tcp4(rows, candidate, requirement) {
 	return false;
 };
 
+function udp_inbound(row) {
+	// A connected UDP socket is restricted to its peer, even if the child owns
+	// the exact local tuple. Only an unconnected bind can serve ordinary queries.
+	let unspecified = row.ipv6 ? '00000000000000000000000000000000' : '00000000';
+	return row.state == '07' && row.remote_address == unspecified && row.remote_port == 0;
+};
+
 function satisfied(ctx, requirement, rows, owned, deadline) {
 	let wanted = net.address_hex(requirement.address);
 	for (let row in rows) {
@@ -208,7 +215,7 @@ function satisfied(ctx, requirement, rows, owned, deadline) {
 			continue;
 		if (row.protocol == 'tcp' && row.state != '0A')
 			continue;
-		if (row.protocol == 'udp' && index([ '07', '01' ], row.state) < 0)
+		if (row.protocol == 'udp' && !udp_inbound(row))
 			continue;
 		let wildcard = row.ipv6 ? '00000000000000000000000000000000' : '00000000';
 		if (length(wanted) == length(row.address)) {

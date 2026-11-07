@@ -1,0 +1,146 @@
+PASS  W1/W2/W4 actual renderer reference and pure socket parser contracts
+W1 renderer references single TCP UDP and mixed tuples without unused ports: PASS
+W2 T2 T3 only require TPROXY and broken artifacts fail closed: PASS
+W4 pure tcp6 udp6 states addresses and malformed rows: PASS
+A3 explicit endian IPv4 IPv6 LE BE and invalid parameter rejection: PASS
+PASS  W3 real tcp DNS delay cannot pass at TPROXY ready
+PASS  W1 real single tcp ignores unused port/protocol
+PASS  W3 real udp DNS delay cannot pass at TPROXY ready
+PASS  W1 real single udp ignores unused port/protocol
+PASS  W4 real connected UDP IPv4 child owns matching local tuple and specified peer
+PASS  W4 real owned connected UDP IPv4 cannot satisfy DNS inbound
+PASS  W10 real connected UDP IPv4 rejection preserves child socket and FD count
+PASS  W4 real unconnected UDP IPv4 child owns matching local tuple with zero peer
+PASS  W4 real unconnected UDP IPv4 binding satisfies DNS inbound
+PASS  W4 real connected UDP IPv6 child owns matching local tuple and specified peer
+PASS  W4 real owned connected UDP IPv6 cannot satisfy DNS inbound
+PASS  W10 real connected UDP IPv6 rejection preserves child socket and FD count
+PASS  W4 real unconnected UDP IPv6 child owns matching local tuple with zero peer
+PASS  W4 real unconnected UDP IPv6 binding satisfies DNS inbound
+PASS  W1 real mixed TCP/UDP requires both
+PASS  W3 real missing DNS fails at shared five second deadline
+PASS  W10 real missing-DNS timeout closes every FD
+PASS  W2 real T2/T3 unreferenced DNS does not block
+PASS  W10 independent succeeding wait leaves no FD
+PASS  W6 real multiple sockets share one deadline not per-port deadlines
+PASS  W4 real same port wrong protocol cannot pass
+PASS  W4 real same port wrong address cannot pass
+PASS  W4 real IPv6 loopback matches IPv6 requirement
+PASS  W4 real IPv6-only loopback is not IPv4 loopback
+PASS  W4 real IPv6-only wildcard tcp is not IPv4
+PASS  W4 real IPv6-only wildcard udp is not IPv4
+PASS  W5 real v6-only child plus other IPv4 listener cannot fake dual-stack ownership
+PASS  W10 competing IPv4 owner remains unaffected
+PASS  W4 real dual-stack TPROXY serves IPv4 with owned tcp6 inode
+PASS  W10 repeated dual-stack probes close every FD
+PASS  W5 real other process owns all ports and cannot satisfy child
+PASS  W10 rejecting child leaves other process sockets untouched
+PASS  W5 child handle PID change fails closed
+PASS  W5 real child exit aborts wait
+PASS  W6/W10 real SIGTERM cancels promptly with no probe FD leak
+PASS  W6/W10 real SIGTERM cancels promptly with no probe FD leak
+PASS  W6/W10 real SIGTERM cancels promptly with no probe FD leak
+PASS  W6 last socket ready cancellation wins before success return
+PASS  W4 proc fixture TCP state 01 is not LISTEN
+PASS  W4 proc fixture TCP state 02 is not LISTEN
+PASS  W4 proc fixture TCP state 03 is not LISTEN
+PASS  W4 proc fixture UDP IPv4 connected state is not unconnected inbound
+PASS  W4 proc fixture UDP IPv4 nonzero remote address is not unconnected inbound
+PASS  W4 proc fixture UDP IPv4 nonzero remote port is not unconnected inbound
+PASS  W4 proc fixture UDP IPv6 connected state is not unconnected inbound
+PASS  W4 proc fixture UDP IPv6 nonzero remote address is not unconnected inbound
+PASS  W4 proc fixture UDP IPv6 nonzero remote port is not unconnected inbound
+PASS  W4 proc fixture UDP bound inode accepted
+PASS  W5 proc fixture missing owned inode fails closed
+PASS  W5 proc fixture unreadable FD directory fails closed
+PASS  W5 proc fixture malformed socket table fails closed
+PASS  W5 proc fixture PID reuse starttime rejected
+PASS  W10 proc fixture failure closes file descriptors
+xray-ready: 54 passed, 0 failed
+PASS  W7 proc fixture ('tcp://8.8.8.8',) startup cannot succeed before referenced DNS
+PASS  W7 proc fixture ('tcp://8.8.8.8',) startup succeeds after DNS publication
+PASS  W7 original DNS handoff Xray startup order is unchanged
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W7 proc fixture ('udp://8.8.8.8',) startup cannot succeed before referenced DNS
+PASS  W7 proc fixture ('udp://8.8.8.8',) startup succeeds after DNS publication
+PASS  W7 original DNS handoff Xray startup order is unchanged
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W7 proc fixture ('udp://8.8.8.8', 'tcp://1.1.1.1') startup cannot succeed before referenced DNS
+PASS  W7 proc fixture ('udp://8.8.8.8', 'tcp://1.1.1.1') startup succeeds after DNS publication
+PASS  W7 original DNS handoff Xray startup order is unchanged
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W7 degraded unresolved node creates no Xray and does not wait
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W8 forward reload with mixed new references waits before hash/probe success
+PASS  W8 forward reload commits only after new child referenced DNS ready
+PASS  W8 trust-only reload preserves original no-extra-probe semantics
+PASS  W8 failed mixed forward restores single-trust child without stale second-port requirement
+PASS  W8 rollback readiness failure is explicit in returned reload error
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W8 state-write failure preserves original cause and returns rollback gate failure
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W10 periodic health remains nonblocking when referenced DNS socket disappears
+PASS  W9 SIGUSR2 cannot probe before replacement referenced DNS ready
+PASS  W9 SIGUSR2 probes only after replacement DNS ready
+PASS  W9 monitor cannot publish IP change before replacement DNS ready
+PASS  W9 monitor publishes resolved IP after DNS ready
+PASS  W9 SIGUSR2 missing DNS real TERM cancels without success probe/state
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W8/W9 monitor missing DNS real TERM cancels without success state/probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  W8/W9 reload missing DNS real TERM cancels without success state/probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+xray-ready lifecycle proc fixtures: 33 passed, 0 failed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A2 real readiness TCP UDP and repeated ELF reads work without struct
+PASS  A1 only five declared native modules; compiler and runtime struct negative controls pass
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 1 LE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 2 LE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 1 BE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 2 BE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 BE ELF cannot accept LE-encoded wrong-address fixture
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF short fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF empty fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF magic fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF class-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF class-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF data encoding-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF data encoding-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF version-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF version-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 missing rooted ELF never borrows valid host ELF or defaults endian
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 real unreadable ELF directory closes FD and fails closed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF open failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF read failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF close failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF read-close failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 cancellation at ELF check 1 wins and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 cancellation at ELF check 2 wins and closes every FD
+PASS  A4 real TERM waits at opened ELF boundary
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 real SIGTERM during ELF read cancels with FD closed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 ELF read consumes original five second budget instead of resetting it
+xray-ready minimal modules and ELF: 52 passed, 0 failed

@@ -31,6 +31,13 @@ mutations = [
         'W5 real v6-only child plus other IPv4 listener cannot fake dual-stack ownership'),
     ('skip-tail-cancel', ORIGINAL[:at] + ORIGINAL[at:].replace(cancellation, '', 1),
         'W6 last socket ready cancellation wins before success return'),
+    ('ignore-udp-inbound', replace_once("\t\tif (row.protocol == 'udp' && !udp_inbound(row))\n\t\t\tcontinue;\n", ''),
+        'W4 real owned connected UDP IPv4 cannot satisfy DNS inbound'),
+    ('ignore-udp-peer', replace_once("row.state == '07' && row.remote_address == unspecified && row.remote_port == 0",
+        "row.state == '07'"), 'W4 proc fixture UDP IPv4 nonzero remote address is not unconnected inbound'),
+    ('ignore-udp-state', replace_once("row.state == '07' && row.remote_address == unspecified && row.remote_port == 0",
+        'row.remote_address == unspecified && row.remote_port == 0'),
+        'W4 proc fixture UDP IPv4 connected state is not unconnected inbound'),
 ]
 endian_guard = ("\tif (type(little_endian) != 'bool')\n"
                 "\t\treturn { ok: false, detail: 'socket table byte order must be an explicit boolean' };")

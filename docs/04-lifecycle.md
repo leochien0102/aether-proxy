@@ -64,7 +64,10 @@ T2/T3 没有 Xray DNS 引用时不额外要求 T1 socket。已知 Xray DNS 引�
 与存活状态，并从 `/proc/<pid>/net/{tcp,tcp6,udp,udp6}` 读取该网络命名空间的表，与该 PID 的 FD socket
 inode 交叉匹配。初次 proc 尚不可读只算 not-ready；在可验证的首个采样固定 starttime，之后进程退出、
 PID/starttime 改变或身份丢失立即失败，不能接纳 respawn 的新 child。任何成功都必须核对同一已验证生命周期。
-TCP 只认 LISTEN，UDP 认实际绑定；区分地址与 IPv4/IPv6。IPv6 通配 TCP 要通过预算内、无 payload 的
+TCP 只认 LISTEN；DNS UDP 必须是未连接绑定（state `07`、远端地址全零且远端端口为 0）。即使 child
+拥有匹配的本地地址/端口，connected UDP（包括 state `01`）或任何非零远端 tuple 都不能充当 DNS 入站。
+`socket_rows` 保留规范化的 `remote_address` 与数值 `remote_port`，与本地字段使用同一显式字节序。
+区分地址与 IPv4/IPv6。IPv6 通配 TCP 要通过预算内、无 payload 的
 本地非阻塞 IPv4 连接验证，并排除可能替它应答的其他监听 inode；IPv6-only 或未经证实的 IPv6 UDP
 通配绑定不能冒充 IPv4。所有探测 socket 都关闭；不发 DNS 查询，不访问外网，不要求上游应答。
 

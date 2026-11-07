@@ -6,11 +6,17 @@ service changes, downloads or fixed host ports.
 
 - `run.py` + `driver.uc`: the real production `xray_ready` module observes real
   loopback listeners, child PID/starttime and `/proc/PID/fd` inodes. `listener.py`
-  only binds/listens/accepts without payload; it never implements the gate.
+  only binds/connects/listens/accepts without payload; it never implements the gate.
+  IPv4/IPv6 connected-UDP negatives prove the child owns the exact local tuple
+  and connected peer via real kernel tables/FDs, then require the ucode gate to
+  reject it. An unconnected socket on the same local tuple is a success control.
+  UDP connect only establishes local socket state; no DNS/payload is sent.
   Dynamic addresses/ports are also exercised through renderer-artifact mapping
   in the pure unit case. No production constants are overridden.
 - Explicitly labelled proc-fixture subcases cover TCP non-LISTEN states, missing
-  FD/inode, malformed tables and PID reuse. Both ownership and network tables
+  FD/inode, malformed tables and PID reuse. UDP fixtures independently reject
+  connected state, nonzero remote address and nonzero remote port, in both families.
+  Both ownership and network tables
   come from the same rooted fixture, never a mixture with the host.
 - `lifecycle.py`: actual daemon/supervise/reload/monitor flows, but **synthetic
   proc/socket data** from `tests/stubs/daemon-bin/xray`, not real Xray sockets.
@@ -20,7 +26,8 @@ service changes, downloads or fixed host ports.
   Tests hold referenced DNS absent/delayed, rather than prewriting ready markers.
 - `tests/unit/xray_ready.uc`: automatically discovered renderer-reference and
   strict tcp/tcp6/udp/udp6 parsing tests, including explicit boolean byte order,
-  little/big-endian IPv4/IPv6 and invalid/missing parameter rejection.
+  little/big-endian IPv4/IPv6 local and remote addresses, remote port retention,
+  and invalid/missing parameter rejection.
 - `minimal.py` + `minimal.uc`: approved review-A acceptance, not the earlier
   exploratory prototype. Restrict both compiler module_search_path and runtime
   REQUIRE_SEARCH_PATH to a copied source tree and only fs/log/socket/uci/uloop
@@ -45,7 +52,9 @@ contract targets native Linux/OpenWrt, not cross-endian user emulation.
 `python3 tests/xray-ready/mutations.py` temporarily mutates only this worktree's
 `xray_ready.uc` and `net.uc`, requires the exact named assertion failure for each mutation,
 restores both readiness and net in `finally`, then reruns the entire entry point.
-In addition to the original four gate mutations it restores a static struct import,
+UDP-specific mutations remove the inbound guard, peer check or connection-state
+check. Each must hit the real connected-socket negative or the corresponding proc
+fixture assertion. In addition to the original four gate mutations it restores a static struct import,
 accepts default parser endian, forces little-endian, skips ELF magic validation,
 and ignores close failure; each must hit its exact named negative assertion. Do not run it
 concurrently with any other suite. Logs go to ignored `.logs/`.

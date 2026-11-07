@@ -83,11 +83,16 @@ export function run(c) {
 				let address = ipv6
 					? (little ? '00000000000000000000000001000000' : '00000000000000000000000000000001')
 					: (little ? '0100007F' : '7F000001');
-				let remote = ipv6 ? '00000000000000000000000000000000' : '00000000';
-				let text = `0: ${address}:7968 ${remote}:0000 0A 00000000:00000000 00:00000000 00000000 0 0 123\n`;
+				let remote = ipv6
+					? (little ? 'B80D01207856341201EFCDAB89674523' : '20010DB812345678ABCDEF0123456789')
+					: (little ? '076433C6' : 'C6336407');
+				let text = `0: ${address}:7968 ${remote}:9C41 0A 00000000:00000000 00:00000000 00000000 0 0 123\n`;
 				let result = net.socket_rows(text, ipv6, little);
 				if (!result.ok || result.rows[0].address != net.address_hex(ipv6 ? '::1' : '127.0.0.1'))
 					return 'explicit byte order mismatch';
+				let peer = net.address_hex(ipv6 ? '2001:db8:1234:5678:abcd:ef01:2345:6789' : '198.51.100.7');
+				if (result.rows[0].remote_address != peer || result.rows[0].remote_port != 40001)
+					return 'remote tuple byte order mismatch';
 			}
 		for (let bad in [ null, 0, 1, 'true', 'false', [], {} ])
 			if (net.socket_rows('', false, bad).ok)

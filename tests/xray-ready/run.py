@@ -7,6 +7,7 @@ import pathlib
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 from proc_fixture import seed_elf
@@ -70,11 +71,37 @@ def run(tmp, pid, required, **options):
     return finish(begin(tmp, pid, required, **options))
 
 
-def row(ep, inode, state=None, address=None):
-    address = address or ep['address']
+def proc_hex(address, byteorder):
     packed = socket.inet_pton(socket.AF_INET6 if ':' in address else socket.AF_INET, address)
-    encoded = ''.join(packed[i:i+4][::-1].hex().upper() for i in range(0, len(packed), 4))
-    return (f' 0: {encoded}:{ep["port"]:04X} 00000000:0000 '
+    return ''.join(f'{int.from_bytes(packed[i:i+4], byteorder):08X}' for i in range(0, len(packed), 4))
+
+
+def owned_udp_tuple(pid, ep, peer=None):
+    # Prove the real negative's preconditions independently of the gate decision:
+    # this child owns the inode, and both local and remote tuples are the requested ones.
+    path = pathlib.Path(f'/proc/{pid}')
+    suffix = '6' if ':' in ep['address'] else ''
+    local = f'{proc_hex(ep["address"], sys.byteorder)}:{ep["port"]:04X}'
+    zero = '::' if suffix else '0.0.0.0'
+    remote = f'{proc_hex(peer["address"] if peer else zero, sys.byteorder)}:{peer["port"] if peer else 0:04X}'
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        owned = {os.readlink(fd) for fd in (path / 'fd').iterdir()}
+        for line in (path / f'net/udp{suffix}').read_text().splitlines()[1:]:
+            fields = line.split()
+            if fields[1] == local and fields[2] == remote and fields[3] == ('01' if peer else '07'):
+                if f'socket:[{fields[9]}]' in owned:
+                    return True
+        time.sleep(0.01)
+    return False
+
+
+def row(ep, inode, state=None, address=None, remote=None, remote_port=0):
+    address = address or ep['address']
+    remote = remote or ('::' if ':' in address else '0.0.0.0')
+    # These rooted fixtures explicitly use little-endian ELF metadata.
+    return (f' 0: {proc_hex(address, "little")}:{ep["port"]:04X} '
+            f'{proc_hex(remote, "little")}:{remote_port:04X} '
             f'{state or ("0A" if ep["protocol"] == "tcp" else "07")} '
             f'00000000:00000000 00:00000000 00000000 0 0 {inode}\n')
 
@@ -114,6 +141,26 @@ def main(tmp):
             check(result['ok'] and result['elapsed_ms'] >= 280,
                   f'W3 real {protocol} DNS delay cannot pass at TPROXY ready')
             check(result['elapsed_ms'] < 1500, f'W1 real single {protocol} ignores unused port/protocol')
+
+    for address, family, label in [('127.0.0.1', socket.AF_INET, 'IPv4'), ('::1', socket.AF_INET6, 'IPv6')]:
+        with socket.socket(family, socket.SOCK_DGRAM) as target:
+            target.bind((address, 0))
+            dns = endpoint('udp', address=address)
+            peer = dict(address=address, port=target.getsockname()[1])
+            with listener(tmp, [dict(dns, peer=peer)]) as child:
+                check(owned_udp_tuple(child.pid, dns, peer),
+                      f'W4 real connected UDP {label} child owns matching local tuple and specified peer')
+                result = run(tmp, child.pid, [dns])
+                check(not result['ok'] and not result.get('cancelled') and
+                      4900 <= result['elapsed_ms'] < 5700,
+                      f'W4 real owned connected UDP {label} cannot satisfy DNS inbound')
+                check(result['fd_delta'] == 0 and owned_udp_tuple(child.pid, dns, peer),
+                      f'W10 real connected UDP {label} rejection preserves child socket and FD count')
+            with listener(tmp, [dns]) as child:
+                check(owned_udp_tuple(child.pid, dns),
+                      f'W4 real unconnected UDP {label} child owns matching local tuple with zero peer')
+                check(run(tmp, child.pid, [dns])['ok'],
+                      f'W4 real unconnected UDP {label} binding satisfies DNS inbound')
 
     tproxy, tcp, udp = endpoint(role='tproxy'), endpoint(), endpoint('udp')
     with listener(tmp, [tproxy, tcp, udp]) as child:
@@ -192,6 +239,16 @@ def main(tmp):
         root, _ = fixture(tmp, [(tcp, row(tcp, '700', state=state))])
         check(not run(tmp, 123, [tcp], root=str(root), cancel_ms=50)['ok'],
               f'W4 proc fixture TCP state {state} is not LISTEN')
+    for address, label in [('127.0.0.1', 'IPv4'), ('::1', 'IPv6')]:
+        dns = endpoint('udp', address=address)
+        cases = [('connected state', dict(state='01')),
+                 ('nonzero remote address', dict(remote=address)),
+                 ('nonzero remote port', dict(remote_port=40001))]
+        for reason, fields in cases:
+            root, _ = fixture(tmp, [(dns, row(dns, '700', **fields))])
+            result = run(tmp, 123, [dns], root=str(root), cancel_ms=50)
+            check(not result['ok'] and result['fd_delta'] == 0,
+                  f'W4 proc fixture UDP {label} {reason} is not unconnected inbound')
     root, p = fixture(tmp, [(udp, None)])
     check(run(tmp, 123, [udp], root=str(root))['ok'], 'W4 proc fixture UDP bound inode accepted')
     (p / 'fd/0').unlink()
