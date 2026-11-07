@@ -134,7 +134,7 @@ class Fixture:
         (self.root / 'xray-dns-missing-port').write_text(str(port))
 
     @contextlib.contextmanager
-    def daemon(self):
+    def daemon(self, expected_exit=0):
         command = [str(ROOT / 'tests/host/prefix/bin/ucode'), '-L', str(self.base / 'modules/*.uc'),
             '-S', str(ROOT / 'aether-proxy/src/aether-proxy'), '--', 'daemon',
             '--sys-root', str(self.root), '--bin-dir', str(self.bin),
@@ -146,7 +146,8 @@ class Fixture:
                 yield child
             except Exception:
                 print('DEBUG state', self.state(), flush=True)
-                print('DEBUG events', (self.run / 'events.jsonl').read_text(), flush=True)
+                event_file = self.run / 'events.jsonl'
+                print('DEBUG events', event_file.read_text() if event_file.exists() else '<no events yet>', flush=True)
                 print('DEBUG calls', (self.root / 'calls.log').read_text(), flush=True)
                 raise
             finally:
@@ -158,8 +159,19 @@ class Fixture:
                     os.killpg(child.pid, signal.SIGKILL)
                     child.wait()
                     raise
+                if expected_exit == -signal.SIGKILL:
+                    # Explicitly owned test session cleanup, not production orphan
+                    # recovery. Also runs on a failed assertion before normal cleanup.
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # All members of this test-owned session already exited.
                 stderr = (self.base / 'stderr').read_text()
-                check(child.returncode == 0 and not stderr, 'W7-W9 proc fixture daemon exits cleanly')
+                check(child.returncode == expected_exit and not stderr,
+                      'W7-W9 proc fixture daemon exits cleanly' if expected_exit == 0 else
+                      (f'C8 fixture observes actual intentional exit {expected_exit}'
+                       if expected_exit == -signal.SIGKILL else
+                       f'C6 fixture observes actual failed cleanup exit {expected_exit}'))
 
     def running(self):
         wait_for(lambda: self.state().get('monitor') is not None and
@@ -178,8 +190,10 @@ def main(base):
             check(f.count('xray-dns-published') == 1 and bool(f.events('SERVICE_STARTED')),
                   f'W7 proc fixture {trust} startup succeeds after DNS publication')
             calls = (f.root / 'calls.log').read_text()
-            check(calls.index('chinadns-ng -C ') < calls.index('dnsmasq restart') < calls.index('xray run -c '),
-                  'W7 original DNS handoff Xray startup order is unchanged')
+            check(calls.index('bootstrap-query ') < calls.index('bootstrap-exit ') <
+                  calls.index('xray run -c ') < calls.index('ip rule add') <
+                  calls.index('chinadns-ng -C ') < calls.index('dns-owned-ready ') < calls.index('dnsmasq restart'),
+                  'W7 B3 private exit then Xray gate dataplane formal owned DNS and handoff order')
     f = Fixture(base, 'degraded', degraded=True)
     with f.daemon():
         f.running()

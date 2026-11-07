@@ -163,6 +163,10 @@ args_for() {
 start_daemon() {
 	local root="$1" log="$2"; shift 2
 	: > "$log"
+	# B3 bootstrap is a separate child with an intentionally empty exec environment.
+	# Express startup resolver controls as root-local fixtures, not inherited flags.
+	if [ "${STUB_RESOLVE_FAIL:-0}" = 1 ]; then touch "$root/resolve-always-fail"; fi
+	if [ -n "${STUB_RESOLVE_DELAY:-}" ]; then printf '%s\n' "$STUB_RESOLVE_DELAY" > "$root/resolve-delay"; fi
 	(
 		export STUB_LOG="$log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count" PATH="$T/bin:$PATH"
 		export STUB_NFT_FAIL_ONCE="${STUB_NFT_FAIL_ONCE:-0}"
@@ -276,18 +280,21 @@ expect 'T9.28 default-off initial state is T1 before first health probe' T1 \
 grep -Fq 'trust-dns tcp://127.0.0.1#31082,tcp://127.0.0.1#31083' "$R1/first-probe-chinadns.conf" \
 	&& ok 'T9.28 default-off startup chinadns config uses T1' || bad 'T9.28 default-off startup chinadns config uses T1'
 [ ! -e "$R1/var/run/aether-proxy/sets.save" ] && ok "sets.save is consumed after restoring" || bad "sets.save is consumed after restoring"
-for command in 'chinadns-ng -C' 'dnsmasq restart' 'resolveip -4 -t 3' 'xray run -c' 'nft -f' 'ip rule add'; do
+for command in 'chinadns-ng -C' 'dnsmasq restart' 'bootstrap-query ' 'xray run -c' 'nft -f' 'ip rule add'; do
 	has_line "$L1" "$command" && ok "normal call recorded: $command" || bad "normal call recorded: $command"
 done
 dns_line=$(line_no "$L1" 'chinadns-ng -C')
 install_line=$(line_no "$L1" 'dnsmasq restart')
-resolve_line=$(line_no "$L1" 'resolveip -4 -t 3')
+resolve_line=$(line_no "$L1" 'bootstrap-query ')
+private_exit_line=$(line_no "$L1" 'bootstrap-exit ')
+owned_dns_line=$(line_no "$L1" 'dns-owned-ready ')
 xray_line=$(line_no "$L1" 'xray run -c')
 nft_line=$(line_no "$L1" 'nft -f ')
 rule_line=$(line_no "$L1" 'ip rule add')
 if [ -n "$dns_line$install_line$resolve_line$xray_line$nft_line$rule_line" ] && \
-	[ "$dns_line" -lt "$install_line" ] && [ "$install_line" -lt "$resolve_line" ] && \
-	[ "$resolve_line" -lt "$xray_line" ] && [ "$xray_line" -lt "$nft_line" ] && [ "$nft_line" -lt "$rule_line" ]; then
+	[ "$resolve_line" -lt "$private_exit_line" ] && [ "$private_exit_line" -lt "$xray_line" ] && \
+	[ "$xray_line" -lt "$nft_line" ] && [ "$nft_line" -lt "$rule_line" ] && \
+	[ "$rule_line" -lt "$dns_line" ] && [ "$dns_line" -lt "$owned_dns_line" ] && [ "$owned_dns_line" -lt "$install_line" ]; then
 	ok "normal startup side effects are in required order"
 else
 	bad "normal startup side effects are in required order" "${dns_line},${install_line},${resolve_line},${xray_line},${nft_line},${rule_line}"
@@ -913,7 +920,7 @@ done
 # 7. A second daemon sees BUSY while the first still holds its startup lock.
 R7="$T/sys7"; L7="$T/sys7/calls.log"; make_root "$R7"; : > "$L7"
 STUB_RESOLVE_DELAY=2 start_daemon "$R7" "$L7"
-if wait_for "$L7" 'resolveip -4 -t 3' 200; then
+if wait_for "$L7" 'bootstrap-query ' 200; then
 	timeout 5s env STUB_LOG="$L7" SYSROOT="$R7" PATH="$T/bin:$PATH" \
 		"$UCODE" -S "$ENTRY" -- daemon $(args_for "$R7") >/dev/null 2>>"$QUIET"; rc7=$?
 	expect "second daemon exits BUSY" 3 "$rc7"

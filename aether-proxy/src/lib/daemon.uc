@@ -18,6 +18,7 @@ import * as sub from 'aetherproxy.sub';
 import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
 import * as xray_ready from 'aetherproxy.xray_ready';
+import * as bootstrap from 'aetherproxy.bootstrap';
 import * as reload from 'aetherproxy.reload';
 import * as schedule from 'aetherproxy.schedule';
 import * as updates_cache from 'aetherproxy.updates_cache';
@@ -339,7 +340,22 @@ function has_output(text) {
 };
 
 // Same steps as the daemon's stop (04), for when the daemon could not run them itself.
-function apply_cleanup(ctx) {
+function apply_cleanup(ctx, release_handoff) {
+	// Never use kill_stale on private generations: a missing PID is uncertain,
+	// not permission to discard the evidence and fork another child (8e4d6a2).
+	let private_cleanup = bootstrap.recover(ctx);
+	if (!private_cleanup.ok) {
+		let retained = [ private_cleanup.detail ];
+		// Explicit cleanup must still honor T15.1: init stop/disable has cleared
+		// intent, so release the owned handoff even if private residue needs an
+		// administrator. With restart intent present dnsmasq_remove is a no-op.
+		if (release_handoff) {
+			let removed = apply.dnsmasq_remove(ctx);
+			if (!removed.ok)
+				push(retained, removed.detail);
+		}
+		return retained;
+	}
 	let failures = [];
 	let table = apply.nft_table_exists(ctx);
 	if (!table.ok)
@@ -439,8 +455,8 @@ function cleanup_run(parsed_opts) {
 	if (previous == null)
 		log.event('error', 'FS_FAILED', { op: 'read', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
 			detail: state.error() ?? 'unknown error' });
-	let failures = apply_cleanup(ctx);
-	let saved = write_state(ctx, { state: 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false,
+	let failures = apply_cleanup(ctx, true);
+	let saved = write_state(ctx, { state: length(failures) ? 'error' : 'stopped', since: time(), dns_tier: 'T2', dns_failsafe: false,
 		degraded_mode: null, degraded_since: null });
 	if (!saved.ok)
 		push(failures, saved.detail);
@@ -467,6 +483,14 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 3, step: 'lock', detail: sys.error(), lock_busy: true };
 	}
 
+	// A retained live handle must be rechecked before any command/child is
+	// started by a retry. The first attempt still cleans disk residue only after
+	// preflight validation, preserving the existing no-system-change boundary.
+	let pending = bootstrap.recover(ctx, true);
+	if (!pending.ok) {
+		locked.close();
+		return { ok: false, code: 1, step: 'bootstrap_stop', detail: pending.detail, untouched: true };
+	}
 	step_started = monotonic_ms();
 	let integrity = sub.prepare_config({ root: ctx.root,
 		opts: { ...opts, run_dir: run_dir(ctx) } });
@@ -630,6 +654,12 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'cleanup', detail: join('; ', cleanup_failures) };
 	}
 
+	if (ctx.stopping_requested || signal_pending()) {
+		locked.close();
+		return { ok: false, code: 1, step: 'signal', detail: 'startup cancelled', interrupted: true };
+	}
+	if (ctx.start_collector != null)
+		ctx.start_collector();
 	let current = `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`;
 	step_started = monotonic_ms();
 	let published = publish_staging(ctx, staging, current);
@@ -648,35 +678,27 @@ function start_sequence(ctx, opts, signal_pending) {
 
 	let children = { xray: null, dns: null };
 	let dns_path = pre.components[C.CHINADNS_COMPONENT].path;
-	step_started = monotonic_ms();
-	children.dns = child_options(ctx, C.CHINADNS_COMPONENT, [ dns_path, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
-	children.dns.start();
-	record_step(ctx, 'start_chinadns', step_started);
-	if (children.dns.pid() == null) {
+	function stop_requested() {
+		uloop.run(1);
+		return ctx.stopping_requested || signal_pending();
+	};
+	function interrupted(step) {
 		locked.close();
-		return { ok: false, code: 1, step: 'chinadns_start', detail: 'chinadns-ng process could not be started', children };
-	}
-
-	step_started = monotonic_ms();
-	let dnsmasq = apply.dnsmasq_install(ctx, initial.artifacts.dnsmasq);
-	record_step(ctx, 'dnsmasq_install', step_started);
-	if (!dnsmasq.ok) {
-		locked.close();
-		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
-	}
-	// The old fragment remains the fail-closed boundary until the replacement handoff is
-	// installed. Clearing earlier lets shutdown or cleanup expose the system resolver.
-	let intent = apply.restart_intent_clear(ctx);
-	if (!intent.ok) {
-		locked.close();
-		return { ok: false, code: 1, step: 'restart_intent_clear', detail: intent.detail, children };
-	}
-
+		return { ok: false, code: 1, step, detail: 'startup cancelled', children, interrupted: true };
+	};
+	if (stop_requested())
+		return interrupted('bootstrap');
 	let node_id = snapshot.main.node;
-	let address = snapshot.nodes?.[node_id]?.address;
 	step_started = monotonic_ms();
-	let resolution = apply.resolve_node(ctx, address);
+	let resolution = bootstrap.resolve(ctx, snapshot, dns_path, signal_pending);
 	record_step(ctx, 'resolve_node', step_started);
+	if (stop_requested() || resolution.cancelled)
+		return interrupted('bootstrap');
+	if (resolution.fatal || resolution.cleanup_failed) {
+		locked.close();
+		return { ok: false, code: 1, step: 'bootstrap', detail: resolution.detail, children,
+			untouched: resolution.cleanup_failed == true };
+	}
 	let node_ip = resolution.ok ? resolution.ip : null;
 	let degraded = !resolution.ok;
 
@@ -705,6 +727,8 @@ function start_sequence(ctx, opts, signal_pending) {
 	}
 
 	if (!degraded) {
+		if (stop_requested())
+			return interrupted('xray_start');
 		step_started = monotonic_ms();
 		children.xray = child_options(ctx, C.XRAY_COMPONENT,
 			[ pre.components[C.XRAY_COMPONENT].path, 'run', '-c', `${current}/${C.ARTIFACT_FILES.xray}` ]);
@@ -723,6 +747,8 @@ function start_sequence(ctx, opts, signal_pending) {
 		record_step(ctx, 'start_xray_listen', step_started);
 	}
 
+	if (stop_requested())
+		return interrupted('xray_ready');
 	// Node unresolved (degraded): with fail_open=0 the interception is still installed, so
 	// proxy targets fail instead of leaking out directly (04 step 9). Xray stays down.
 	if (!degraded || snapshot.main.fail_open == false) {
@@ -746,6 +772,8 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'nft_render', detail: sys.error(), children };
 		}
+		if (stop_requested())
+			return interrupted('nft_load');
 		let nft = apply.nft_load(ctx, nft_file);
 		if (!nft.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);
@@ -754,6 +782,8 @@ function start_sequence(ctx, opts, signal_pending) {
 		}
 		// Removal errors are logged, but cannot undo an already loaded ruleset (docs/04).
 		apply.sets_remove(ctx);
+		if (stop_requested())
+			return interrupted('route_add');
 		let route = apply.route_add(ctx);
 		if (!route.ok) {
 			record_step(ctx, 'restore_nft_route', step_started);
@@ -771,6 +801,41 @@ function start_sequence(ctx, opts, signal_pending) {
 		record_step(ctx, 'hash_final', step_started);
 	}
 
+	if (stop_requested())
+		return interrupted('chinadns_start');
+	step_started = monotonic_ms();
+	children.dns = child_options(ctx, C.CHINADNS_COMPONENT,
+		[ dns_path, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
+	children.dns.start();
+	let dns_required = map([ 'udp', 'tcp' ], protocol => ({
+		address: C.DNS_TUNNEL_ADDR, port: C.CHINADNS_PORT, protocol, role: 'dns'
+	}));
+	let dns_ready = xray_ready.wait(ctx, children.dns, dns_required, signal_pending, { label: 'formal DNS' });
+	record_step(ctx, 'start_chinadns', step_started);
+	if (!dns_ready.ok) {
+		locked.close();
+		return { ok: false, code: 1, step: 'chinadns_listen', detail: dns_ready.detail,
+			children, interrupted: dns_ready.cancelled || signal_pending() };
+	}
+	if (stop_requested())
+		return interrupted('dnsmasq_install');
+	step_started = monotonic_ms();
+	let dnsmasq = apply.dnsmasq_install(ctx, initial.artifacts.dnsmasq);
+	record_step(ctx, 'dnsmasq_install', step_started);
+	if (!dnsmasq.ok) {
+		locked.close();
+		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
+	}
+	if (stop_requested())
+		return interrupted('restart_intent_clear');
+	// T15.1: only successful handoff installation permits clearing restart intent.
+	let intent = apply.restart_intent_clear(ctx);
+	if (!intent.ok) {
+		locked.close();
+		return { ok: false, code: 1, step: 'restart_intent_clear', detail: intent.detail, children };
+	}
+	if (stop_requested())
+		return interrupted('state');
 	let initial_state = {
 		state: degraded ? 'degraded' : 'starting', dns_tier: initial_tier, dns_failsafe: false,
 		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
@@ -848,6 +913,10 @@ function write_stopping(ctx) {
 
 function shutdown(ctx, children, normal_stop) {
 	let failures = [];
+	let private_cleanup = bootstrap.recover(ctx);
+	ctx.bootstrap_cleanup_failed = !private_cleanup.ok;
+	if (!private_cleanup.ok)
+		push(failures, private_cleanup.detail);
 	// Startup rollback (normal_stop false) is not a stop: its state stays starting/error.
 	let stopping_state = normal_stop ? write_stopping(ctx) : null;
 	// Stop takes priority over one-shot commands and never waits for their lock (docs/04).
@@ -882,9 +951,15 @@ function shutdown(ctx, children, normal_stop) {
 		if (fs.stat(path) != null && !fs.unlink(path))
 			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs.error() ?? 'unknown error' });
 	}
-	let saved = write_state(ctx, { state: 'stopped', dns_tier: 'T2', dns_failsafe: false, since: time(),
+	let final_state = { state: private_cleanup.ok ? 'stopped' : 'error',
+		dns_tier: 'T2', dns_failsafe: false, since: time(),
 		degraded_mode: null, degraded_since: null,
-		...(stopping_state?.last_reload != null ? { last_reload: stopping_state.last_reload } : {}) });
+		...(stopping_state?.last_reload != null ? { last_reload: stopping_state.last_reload } : {}) };
+	// Keep the stop write barrier, but do not falsely publish stopped when the
+	// private child's real exit is unconfirmed. No late callback may revive it.
+	let saved = normal_stop && !private_cleanup.ok
+		? { ok: !!state.hold_stopping(run_dir(ctx), final_state), detail: state.error() }
+		: write_state(ctx, final_state);
 	// Stop writes already report FS_FAILED; do not relabel the same I/O error as a command failure.
 	if (!saved.ok && !normal_stop)
 		push(failures, saved.detail);
@@ -894,7 +969,8 @@ function shutdown(ctx, children, normal_stop) {
 		// restoration when healthy recovery or switch-off already cleared it.
 		if (saved.ok && stopping_state?.degraded_mode == 'gfw')
 			log.event(null, 'MODE_RESTORED', { mode: stopping_state.mode });
-		log.event('notice', 'SERVICE_STOPPED', { mode: ctx.service_mode ?? '', node: ctx.service_node ?? '' });
+		if (private_cleanup.ok)
+			log.event('notice', 'SERVICE_STOPPED', { mode: ctx.service_mode ?? '', node: ctx.service_node ?? '' });
 	}
 	return failures;
 };
@@ -1185,17 +1261,33 @@ function run(args) {
 		});
 	}
 
-	// Reap a matching collector left by an unclean daemon exit before opening its files.
-	supervise.kill_stale(run_dir(ctx), 'raw-log', run_dir(ctx));
-	// Separate from dataplane children: retries/reloads must not restart the collector.
+	// Separate from dataplane children: start only after residue/preflight gates,
+	// otherwise a blocked private generation would still fork a new collector.
 	let raw_collector = supervise.create({ name: 'raw-log', raw_log: true,
 		run_dir: run_dir(ctx), backoff: [ 0 ],
 		argv: [ '/bin/sh', getenv('AETHER_PROXY_TEST_RAW_LOG_COLLECTOR') ?? C.RAW_LOG_COLLECTOR,
 			run_dir(ctx), ctx.bin_dir ? `${ctx.bin_dir}/logread` : 'logread' ] });
-	raw_collector.start();
+	let collector_started = false;
+	ctx.start_collector = () => {
+		if (!collector_started && !ctx.stopping_requested) {
+			supervise.kill_stale(run_dir(ctx), 'raw-log', run_dir(ctx));
+			raw_collector.start();
+			collector_started = true;
+		}
+	};
 	let exit_code = 0, retry_index = 0, retry_attempt = 0, finished = false;
 
 	function run_monitor(result, children) {
+		// Drain a TERM queued during post-commit frozen-file cleanup before
+		// creating schedulers or issuing the initial successful-route probe.
+		uloop.run(1);
+		if (ctx.stopping_requested) {
+			let errors = shutdown(ctx, children, true);
+			if (length(errors))
+				event_failure(ctx, 'stop', join('; ', errors));
+			finished = true;
+			return;
+		}
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
 		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children,
@@ -1333,8 +1425,11 @@ function run(args) {
 			if (length(rollback))
 				result.detail += `; rollback: ${join('; ', rollback)}`;
 		}
-		// Only after stopping any partially started children can their candidate be removed.
-		pipeline.prune_frozen(ctx, null);
+		// An unresolved private lifetime is a recheck-only error, not permission
+		// to fork cleanup commands or delete candidate evidence on each retry.
+		if (result.step != 'bootstrap_stop' &&
+		    !length(filter(ctx.bootstrap_handles ?? [], h => !h.cleaned)))
+			pipeline.prune_frozen(ctx, null);
 		let configuration_error = result.step == 'config';
 		let saved = write_state(ctx, {
 			state: 'error', dns_tier: 'T2', dns_failsafe: false, since: time(),
@@ -1457,7 +1552,7 @@ function run(args) {
 		if (handler != null)
 			handler.delete();
 	uloop.done();
-	return exit_code;
+	return ctx.bootstrap_cleanup_failed ? 1 : exit_code;
 };
 
 export { run, cleanup_run, parse_options };

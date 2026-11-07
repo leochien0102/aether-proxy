@@ -235,12 +235,15 @@ function satisfied(ctx, requirement, rows, owned, deadline) {
 	return false;
 };
 
-export function wait(ctx, child, required, on_signal) {
+function wait_sockets(ctx, child, required, on_signal, opts) {
+	let timeout_ms = opts?.timeout_ms ?? C.DAEMON_PORT_WAIT_SECS * 1000;
+	if (type(timeout_ms) != 'int' || timeout_ms < 1 || timeout_ms > 5000)
+		return failure('invalid readiness timeout');
 	let start = now_ms(), pid = child?.pid();
 	if (start == null || type(pid) != 'int' || pid <= 0 || type(required) != 'array' || !length(required))
 		return failure('invalid child or readiness requirements');
 	let path = proc_path(ctx, pid), generation = identity(path);
-	let deadline = start + C.DAEMON_PORT_WAIT_SECS * 1000;
+	let deadline = start + timeout_ms;
 	if (cancelled(ctx, on_signal))
 		return { ok: false, cancelled: true, detail: 'Xray readiness cancelled' };
 	let byte_order = native_byte_order(ctx);
@@ -275,6 +278,20 @@ export function wait(ctx, child, required, on_signal) {
 			return { ok: true };
 		uloop.run(min(C.DAEMON_POLL_MS, max(1, int(deadline - now_ms()))));
 	}
+};
+
+// Optional naming/budget for private/formal DNS reuses exactly the B2 gate.
+export function wait(ctx, child, required, on_signal, opts) {
+	if (opts != null && type(opts) != 'object')
+		return failure('invalid readiness options');
+	if (opts?.label != null && type(opts.label) != 'string')
+		return failure('invalid readiness label');
+	let result = wait_sockets(ctx, child, required, on_signal, opts);
+	if (!result.ok && opts?.label != null)
+		result.detail = replace(result.detail, /^Xray/, opts.label);
+	if (!result.ok && opts?.timeout_ms != null && opts.timeout_ms != 5000)
+		result.detail = replace(result.detail, /within 5 seconds/, `within ${opts.timeout_ms} ms`);
+	return result;
 };
 
 // Every caller (including rollback) reads current afresh; no requirement cache can

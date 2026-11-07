@@ -339,3 +339,14 @@ export const XRAY_READY_DNS_DEFAULT_PORT = 53;
 export const XRAY_READY_TLS_DEFAULT_PORT = 853;
 // T15.5 review A: native ABI byte order without an optional struct module.
 export const XRAY_READY_ELF_FILE = '/proc/self/exe';
+
+// T15.6 (8e4d6a2): private generations; bounded decision, not guaranteed killing.
+export const BOOTSTRAP_SUBDIR = 'bootstrap';
+export const BOOTSTRAP_CHILD = 'aether-bootstrap-dns';
+export const BOOTSTRAP_CONFIG = 'bootstrap.conf';
+export const BOOTSTRAP_RECORD = 'owner.json';
+export const BOOTSTRAP_STOP_MS = 5000;
+export const BOOTSTRAP_START_MS = 5000;
+export const BOOTSTRAP_CANDIDATES = 10;
+export const BOOTSTRAP_EADDRINUSE = 98;
+export const BOOTSTRAP_BOOT_ID = '/proc/sys/kernel/random/boot_id';

@@ -1,27 +1,219 @@
 #!/bin/sh
-# Version queries must not enter the long-lived DNS service loop.
+# B3 adds real private query sockets; formal DNS retains its original shell
+# lifetime/log behaviour with explicitly synthetic per-child proc ownership.
 if [ "$1" = -V ]; then
 	printf 'chinadns-ng -V\n' >> "$STUB_LOG"
-	if [ -f "$SYSROOT/chinadns-version" ]; then
-		cat "$SYSROOT/chinadns-version"
-	else
-		printf 'ChinaDNS-NG 2025.08.09 be347b5 | fixture\nAdditional banner line\n'
-	fi
+	if [ -f "$SYSROOT/chinadns-version" ]; then cat "$SYSROOT/chinadns-version";
+	else printf 'ChinaDNS-NG 2025.08.09 be347b5 | fixture\nAdditional banner line\n'; fi
 	exit 0
 fi
-argv=$*
-config=''
-while [ $# -gt 0 ]; do
-	if [ "$1" = -C ]; then shift; config=$1; break; fi
-	shift
-done
+config=$2
+case "$config" in
+*/bootstrap/*/bootstrap.conf)
+exec python3 - -C "$config" <<'PY'
+import ipaddress
+import os
+from pathlib import Path
+import select
+import signal
+import socket
+import struct
+import sys
+import time
+
+if sys.argv[1:] == ['-V']:
+    root = Path(os.environ['SYSROOT'])
+    with Path(os.environ['STUB_LOG']).open('a') as f:
+        f.write('chinadns-ng -V\n')
+    version = root / 'chinadns-version'
+    print(version.read_text() if version.exists() else
+          'ChinaDNS-NG 2025.08.09 be347b5 | fixture\nAdditional banner line')
+    sys.exit(0)
+
+config = Path(sys.argv[sys.argv.index('-C') + 1])
+root = Path(str(config).split('/var/run/aether-proxy/')[0])
+private = config.name == 'bootstrap.conf'
+log = root / 'calls.log'
+
+
+def trace(value):
+    with log.open('a') as f:
+        f.write(value + '\n')
+
+
+def control(name, default=0):
+    path = root / name
+    return float(path.read_text()) if path.exists() else default
+
+
+trace(('bootstrap-start' if private else 'chinadns-ng') + ' ' + ' '.join(sys.argv[1:]))
+port = int(next(line.split()[1] for line in config.read_text().splitlines()
+                if line.startswith('bind-port ')))
+proc = root / 'proc' / str(os.getpid())
+(proc / 'fd').mkdir(parents=True, exist_ok=True)
+(proc / 'net').mkdir(exist_ok=True)
+(proc / 'stat').write_text(Path('/proc/self/stat').read_text())
+sockets = []
+stop = False
+
+
+def terminate(*_):
+    global stop
+    stop = True
+
+
+signal.signal(signal.SIGTERM, terminate)
+signal.signal(signal.SIGINT, terminate)
+try:
+    if private and (root / 'bootstrap-reject').exists():
+        sys.exit(7)
+    delay = control('bootstrap-ready-delay' if private else 'dns-listen-delay')
+    until = time.monotonic() + delay
+    while not stop and time.monotonic() < until:
+        time.sleep(.01)
+    tables = {name: '' for name in ('tcp', 'tcp6', 'udp', 'udp6')}
+    if private:
+        for kind in (socket.SOCK_DGRAM, socket.SOCK_STREAM):
+            sock = socket.socket(socket.AF_INET, kind)
+            sock.bind(('127.0.0.1', port))
+            if kind == socket.SOCK_STREAM:
+                sock.listen()
+            sockets.append(sock)
+    # These are explicit proc fixtures, not borrowed host ownership. The private
+    # socket exchanges are real; B2 still receives its consistently rooted fixture.
+    missing = root / ('bootstrap-missing-protocol' if private else 'dns-missing-protocol')
+    for index, protocol in enumerate(('tcp', 'udp')):
+        if missing.exists() and missing.read_text().strip() == protocol:
+            continue
+        inode = 90000 + os.getpid() * 10 + index
+        tables[protocol] = (f' 0: 0100007F:{port:04X} 00000000:0000 '
+                            f'{"0A" if protocol == "tcp" else "07"} '
+                            f'00000000:00000000 00:00000000 00000000 0 0 {inode}\n')
+        (proc / 'fd' / str(index)).symlink_to(f'socket:[{inode}]')
+    for name, text in tables.items():
+        (proc / 'net' / name).write_text(text)
+    trace(('bootstrap-owned-ready' if private else 'dns-owned-ready') + f' {os.getpid()} {time.monotonic()}')
+    if not private:
+        (root / 'chinadns.pid').write_text(str(os.getpid()))
+        lines = int(control('child-log-lines'))
+        if lines:
+            second = int(time.time())
+            while not stop and int(time.time()) == second:
+                time.sleep(.001)
+            for i in range(1, lines + 1):
+                print(f'chinadns-ng log {int(time.time())} {i}', flush=True)
+        while not stop:
+            time.sleep(.02)
+    else:
+        while not stop:
+            for sock in select.select(sockets, [], [], .02)[0]:
+                peer = None
+                if sock.type == socket.SOCK_STREAM:
+                    peer, _ = sock.accept()
+                    peer.settimeout(.5)
+                    prefix = peer.recv(2)
+                    if len(prefix) != 2:
+                        peer.close()
+                        continue
+                    packet = peer.recv(struct.unpack('!H', prefix)[0])
+                else:
+                    packet, address = sock.recvfrom(65535)
+                end = 12
+                labels = []
+                while packet[end]:
+                    size = packet[end]
+                    labels.append(packet[end + 1:end + 1 + size].decode())
+                    end += size + 1
+                question = packet[12:end + 5]
+                domain = '.'.join(labels)
+                trace('bootstrap-query ' + domain)
+                modefile = root / 'bootstrap-query-mode'
+                mode = modefile.read_text().strip() if modefile.exists() else ''
+                waiting = (mode == 'tcp' and peer is not None) or (mode == 'cname' and domain == 'alias.cancel.test')
+                if waiting:
+                    trace('bootstrap-' + mode + '-wait')
+                    if peer is not None:
+                        peer.sendall(b'\x00')
+                    while not stop:
+                        time.sleep(.01)
+                    if peer is not None:
+                        peer.close()
+                    continue
+                fail = (root / 'resolve-always-fail').exists()
+                failures = root / 'resolve-failures'
+                if failures.exists() and int(failures.read_text()) > 0:
+                    failures.write_text(str(int(failures.read_text()) - 1))
+                    fail = True
+                time.sleep(control('resolve-delay'))
+                ipfile = root / 'resolve-ip'
+                candidates = ipfile.read_text().split() if ipfile.exists() else ['203.0.113.20']
+                ip = next((str(ipaddress.IPv4Address(p)) for p in candidates
+                           if p.count('.') == 3 and all(n.isdecimal() and int(n) < 256 for n in p.split('.'))), None)
+                fail = fail or ip is None
+                response = packet[:2] + struct.pack('!5H', 0x8182 if fail else 0x8180, 1, 0 if fail else 1, 0, 0) + question
+                if mode == 'tcp' and peer is None:
+                    response = packet[:2] + struct.pack('!5H', 0x8380, 1, 0, 0, 0) + question
+                elif mode == 'cname':
+                    alias = b'\x05alias\x06cancel\x04test\x00'
+                    response = packet[:2] + struct.pack('!5H', 0x8180, 1, 1, 0, 0) + question
+                    response += b'\xc0\x0c' + struct.pack('!HHIH', 5, 1, 0, len(alias)) + alias
+                elif not fail:
+                    response += b'\xc0\x0c' + struct.pack('!HHIH', 1, 1, 0, 4) + socket.inet_aton(ip)
+                if peer is not None:
+                    peer.sendall(struct.pack('!H', len(response)) + response)
+                    peer.close()
+                else:
+                    sock.sendto(response, address)
+finally:
+    for sock in sockets:
+        sock.close()
+    import shutil
+    shutil.rmtree(proc)
+    if not private:
+        (root / 'chinadns.pid').unlink(missing_ok=True)
+    trace(('bootstrap-exit' if private else 'dns-exit') + f' {os.getpid()} {time.monotonic()}')
+PY
+;;
+esac
 SYSROOT=${config%/var/run/aether-proxy/current/*}
 STUB_LOG="$SYSROOT/calls.log"
-printf 'chinadns-ng %s\n' "$argv" >> "$STUB_LOG"
+printf 'chinadns-ng %s\n' "$*" >> "$STUB_LOG"
 echo "$$" > "$SYSROOT/chinadns.pid"
-cleanup() { rm -f "$SYSROOT/chinadns.pid"; exit 0; }
+proc="$SYSROOT/proc/$$"
+cleanup() {
+	rm -rf "$proc"
+	rm -f "$SYSROOT/chinadns.pid"
+	exit 0
+}
 trap cleanup TERM INT
-# T9.7 opt-in burst, aligned to a second boundary to make quota assertions deterministic.
+if [ -f "$SYSROOT/dns-listen-delay" ]; then
+	read -r delay < "$SYSROOT/dns-listen-delay"
+	sleep "$delay" & wait $!
+fi
+python3 - "$SYSROOT" "$$" <<'PY'
+import os
+from pathlib import Path
+import sys
+import time
+root, pid = Path(sys.argv[1]), int(sys.argv[2])
+(root / 'dns-start-config.txt').write_bytes((root / 'var/run/aether-proxy/current/chinadns.conf').read_bytes())
+p = root / 'proc' / str(pid)
+(p / 'fd').mkdir(parents=True, exist_ok=True)
+(p / 'net').mkdir(exist_ok=True)
+(p / 'stat').write_text(Path(f'/proc/{pid}/stat').read_text())
+missing = root / 'dns-missing-protocol'
+for ordinal, protocol in enumerate(('tcp', 'udp', 'tcp6', 'udp6')):
+    rows = ''
+    if protocol in ('tcp', 'udp') and not (missing.exists() and missing.read_text().strip() == protocol):
+        inode = 90000 + pid * 10 + ordinal
+        rows = (f' 0: 0100007F:794D 00000000:0000 {"0A" if protocol == "tcp" else "07"} '
+                f'00000000:00000000 00:00000000 00000000 0 0 {inode}\n')
+        (p / 'fd' / str(ordinal)).symlink_to(f'socket:[{inode}]')
+    (p / 'net' / protocol).write_text(rows)
+with (root / 'calls.log').open('a') as f:
+    f.write(f'dns-owned-ready {pid} {time.monotonic()}\n')
+PY
+if [ "$?" -ne 0 ]; then printf 'cannot generate DNS proc fixture\n' >&2; exit 1; fi
 if [ -f "$SYSROOT/child-log-lines" ]; then
 	read -r lines < "$SYSROOT/child-log-lines"
 	awk -v name=chinadns-ng -v lines="$lines" 'BEGIN {

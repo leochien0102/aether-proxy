@@ -490,6 +490,12 @@ def run(directory):
             current = (ROOT / relative).read_bytes()
             if path == 'dns_test.uc':
                 check('Q11 unchanged ' + path, current == original)
+            elif path == 'daemon.uc':
+                # B3 replaces only startup with the isolated resource owner. Runtime
+                # reload/monitor retain the resolver contract checked below.
+                startup = current.split(b'function start_sequence(')[1].split(b'function stop_children(')[0]
+                check('Q11 startup alone delegates isolated resolution',
+                      startup.count(b'bootstrap.resolve(') == 1 and b'apply.resolve_node(' not in startup)
             else:
                 # B2 deliberately adds readiness here; byte equality would reject
                 # its required integration without testing the B1 boundary.
@@ -502,9 +508,9 @@ def run(directory):
                           (b'resolve_node_explicit', b'bootstrap_dns', b'bootstrap_begin')))
         source = (ROOT / 'aether-proxy/src/lib/apply.uc').read_text()
         old = subprocess.check_output(['git', 'show', 'main:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
-        start, end = 'function resolve_node(ctx, address) {', '\n// Deliberately not used'
+        start, end = 'function resolve_node(ctx, address) {', '\n};'
         check('Q11 original resolve_node unchanged', source.split(start)[1].split(end)[0].strip() ==
-              old.split(start)[1].split(end)[0].split('\nfunction write_boot_list')[0].strip())
+              old.split(start)[1].split(end)[0].strip())
 
 
 if __name__ == '__main__':
