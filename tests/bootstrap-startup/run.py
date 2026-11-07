@@ -284,6 +284,55 @@ def loss_during_query(base):
             p.communicate(timeout=8)
 
 
+def ignored_term(base):
+    work = base / 'ignored-term'
+    work.mkdir()
+    engine = work / 'engine'
+    engine.write_text('''#!/usr/bin/python3
+from pathlib import Path
+import signal, socket, sys, time
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+text = Path(sys.argv[sys.argv.index('-C') + 1]).read_text()
+port = int(next(line.split()[1] for line in text.splitlines() if line.startswith('bind-port ')))
+udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+udp.bind(('127.0.0.1', port))
+tcp.bind(('127.0.0.1', port))
+tcp.listen()
+while True:
+    time.sleep(.01)
+''')
+    engine.chmod(0o755)
+    run = work / 'run'
+    run.mkdir()
+    p = subprocess.Popen(driver_command(dict(action='hold', dir=str(run), engine=str(engine),
+        upstream='127.0.0.1#40000')), env=ENV, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        output, deadline, first = '', time.monotonic() + 5, None
+        while time.monotonic() < deadline and first is None:
+            if select.select([p.stdout], [], [], .1)[0]:
+                output += os.read(p.stdout.fileno(), 65536).decode()
+                try:
+                    first = records(output)[0]
+                except (json.JSONDecodeError, IndexError):
+                    pass
+        assert first is not None and first.get('started'), output
+        p.terminate()
+        time.sleep(.2)
+        check(lifecycle_alive(first['pid'], first['record']['process']['starttime']) and
+              (Path(first['path']) / 'owner.json').exists(),
+              'C6 actual TERM-ignoring child keeps identity until exit instead of trusting successful kill')
+        output, error = p.communicate(timeout=4)
+        result = records(output.decode())[-1]
+        check(p.returncode == 0 and result['results'][0]['end']['ok'] and empty_generations(run) and
+              not Path(f'/proc/{first["pid"]}').exists(),
+              'C6 existing supervisor KILL upgrade confirms actual callback before deleting ignored-TERM resources')
+    finally:
+        if p.poll() is None:
+            p.terminate()
+        p.communicate(timeout=8)
+
+
 def parallel_crash(base):
     processes = []
     with Authority() as authority:
@@ -713,6 +762,7 @@ def main(base):
     groups = dict(c1=c1, c4=c4, c10=c10, c6=unconfirmed, c7=cancellation, c9=degraded, c8=orphan,
                   c11=frozen, parallel=parallel_crash, stop_block=stop_blocks_daemon, query_loss=loss_during_query,
                   minimal_bootstrap=minimal_bootstrap, real_cancel=real_cancellation, interval_stop=interval_stop,
+                  ignored_term=ignored_term,
                   real=real_engines, failures=fixture_failures)
     if ONLY:
         groups[ONLY](base)
