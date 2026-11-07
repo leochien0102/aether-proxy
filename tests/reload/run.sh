@@ -191,6 +191,7 @@ chmod +x "$SYSROOT/etc/init.d/dnsmasq"
 : > "$SYSROOT/ip-routes"
 : > "$SYSROOT/conflicts"
 touch "$SYSROOT/nft-table"
+python3 "$ROOT/tests/xray-ready/proc_fixture.py" "$SYSROOT" || exit 1
 printf 'local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n' > "$SYSROOT/proc/net/tcp"
 printf '  0: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"
 printf '  1: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"

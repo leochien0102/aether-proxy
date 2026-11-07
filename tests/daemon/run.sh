@@ -142,6 +142,7 @@ printf 'dnsmasq %s\n' "$*" >> "$STUB_LOG"
 exit "${STUB_DNSMASQ_RC:-0}"
 EOF
 	chmod +x "$root/etc/init.d/dnsmasq"
+	python3 "$ROOT/tests/xray-ready/proc_fixture.py" "$root" || exit 1
 	printf 'local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n' > "$root/proc/net/tcp"
 	# The DNS substitute stays alive but opens no socket; expose its listener so the
 	# new startup tick plus a signal tick do not falsely exercise DNS fail-safe.

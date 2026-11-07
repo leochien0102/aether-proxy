@@ -159,6 +159,8 @@ exit 0
 			dnsmasq = self.root / 'etc/init.d/dnsmasq'
 			dnsmasq.write_text('#!/bin/sh\nprintf "dnsmasq %s\\n" "$*" >> "$STUB_LOG"\n')
 			dnsmasq.chmod(0o755)
+			subprocess.run(['python3', str(ROOT / 'tests/xray-ready/proc_fixture.py'),
+				str(self.root)], check=True)
 			(self.root / 'proc/net/tcp').write_text(
 				'  0: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n')
 			for file in ('ip-rules', 'ip-routes', 'conflicts', 'curl-count', 'calls.log'):
@@ -258,6 +260,9 @@ config subscription 's_00000001'
 				(fixture.root / 'refresh-now').touch()
 			child.send_signal(signal.SIGUSR1)
 			wait_for(lambda: (fixture.root / (phase + '-held')).exists(), child)
+			# Starting is followed by an immediate monitor sample. Compare stopping
+			# with the state immediately before TERM, not a pre-sample startup read.
+			before = fixture.state()
 			trace = fixture.run / 'writes.jsonl'
 			trace.write_text('')
 			(fixture.root / 'capture').touch()
@@ -283,10 +288,17 @@ config subscription 's_00000001'
 					for sig in (signal.SIGHUP, signal.SIGUSR1, signal.SIGUSR2):
 						child.send_signal(sig)
 						time.sleep(0.05)
+					# T15.5 cancels readiness immediately, so shutdown may now issue
+					# cleanup commands before the held listener is released. Only new
+					# work/probes are forbidden, not prompt cleanup of existing work.
+					def success_work(text):
+						return [line for line in text.splitlines() if line.startswith(
+							('scheduled ', 'curl ', 'xray run ', 'chinadns-ng '))]
 					check(f'{scenario}: stopping blocks due subscription, reload and new probes',
-						fixture.calls.read_text() == calls_before)
+						success_work(fixture.calls.read_text()) == success_work(calls_before))
 				if scenario == 'listener-timeout':
-					# Let the actual 5-second readiness wait fail while stopping stays frozen.
+					# Observe beyond the original five-second budget: cancellation must
+					# not later publish a stale readiness success over stopping/stopped.
 					time.sleep(5.2)
 			finally:
 				if hold.exists():

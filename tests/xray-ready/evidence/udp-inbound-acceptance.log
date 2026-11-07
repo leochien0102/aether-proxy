@@ -1,0 +1,51 @@
+== unit: exit 0; PASS lines: 1252
+1252 passed, 0 failed, 0 skipped
+
+== ready: exit 0; PASS lines: 139
+xray-ready: 54 passed, 0 failed
+xray-ready lifecycle proc fixtures: 33 passed, 0 failed
+xray-ready minimal modules and ELF: 52 passed, 0 failed
+
+== daemon: exit 0; PASS lines: 767
+logfilter: all assertions passed
+supervise-log: all assertions passed
+T9.44 version gate: 94 passed, 0 failed
+T9.47 missing events: 56 passed, 0 failed
+daemon: 326 passed, 0 failed
+
+== reload: exit 0; PASS lines: 278
+degrade: all scenarios passed
+reload: 213 passed, 0 failed
+
+== monitor: exit 0; PASS lines: 657
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 5 passed, 0 failed
+monitor-driver: 6 passed, 0 failed
+monitor-driver: 11 passed, 0 failed
+monitor-driver: 5 passed, 0 failed
+monitor-driver: 6 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+degrade: all scenarios passed
+applied-context: 302 passed, 0 failed
+frozen-paths: 42 passed, 0 failed
+T9.47 debug logging: 195 passed, 0 failed
+
+== procd: exit 0; PASS lines: 123
+procd stubs: 123 passed, 0 failed
+
+== bootstrap: exit 0; PASS lines: 76
+PASS  T15.4 selected integration scenarios complete
+
+== schedule: exit 0; PASS lines: 67
+schedule: 47 passed, 0 failed
+
+== cli: exit 0; PASS lines: 662
+T9.44 version gate: 80 passed, 0 failed
+217 passed, 0 failed
+

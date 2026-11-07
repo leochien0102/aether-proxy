@@ -487,12 +487,24 @@ def run(directory):
         for path in paths:
             relative = 'aether-proxy/src/lib/' + path
             original = subprocess.check_output(['git', 'show', 'main:' + relative], cwd=ROOT)
-            check('Q11 unchanged ' + path, (ROOT / relative).read_bytes() == original)
+            current = (ROOT / relative).read_bytes()
+            if path == 'dns_test.uc':
+                check('Q11 unchanged ' + path, current == original)
+            else:
+                # B2 deliberately adds readiness here; byte equality would reject
+                # its required integration without testing the B1 boundary.
+                check('Q11 original resolver call sites retained ' + path,
+                      [line.strip() for line in current.splitlines() if b'apply.resolve_node(' in line] ==
+                      [line.strip() for line in original.splitlines() if b'apply.resolve_node(' in line] and
+                      current.count(b'apply.resolve_node(') > 0)
+                check('Q11 B1 remains disconnected ' + path,
+                      all(token not in current for token in
+                          (b'resolve_node_explicit', b'bootstrap_dns', b'bootstrap_begin')))
         source = (ROOT / 'aether-proxy/src/lib/apply.uc').read_text()
         old = subprocess.check_output(['git', 'show', 'main:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
         start, end = 'function resolve_node(ctx, address) {', '\n// Deliberately not used'
         check('Q11 original resolve_node unchanged', source.split(start)[1].split(end)[0].strip() ==
-              old.split(start)[1].split('\nfunction write_boot_list')[0].strip())
+              old.split(start)[1].split(end)[0].split('\nfunction write_boot_list')[0].strip())
 
 
 if __name__ == '__main__':

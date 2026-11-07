@@ -1,0 +1,5 @@
+PASS  mutation tproxy-only: AssertionError: W3 real tcp DNS delay cannot pass at TPROXY ready
+PASS  mutation ignore-protocol: AssertionError: W4 real same port wrong protocol cannot pass
+PASS  mutation ignore-ownership: AssertionError: W5 real v6-only child plus other IPv4 listener cannot fake dual-stack ownership
+PASS  mutation skip-tail-cancel: AssertionError: W6 last socket ready cancellation wins before success return
+PASS  restored full xray-ready entry: xray-ready lifecycle proc fixtures: 33 passed, 0 failed
