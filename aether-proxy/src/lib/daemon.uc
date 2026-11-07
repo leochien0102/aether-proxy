@@ -658,6 +658,13 @@ function start_sequence(ctx, opts, signal_pending) {
 		locked.close();
 		return { ok: false, code: 1, step: 'dnsmasq_install', detail: dnsmasq.detail, children };
 	}
+	// The old fragment remains the fail-closed boundary until the replacement handoff is
+	// installed. Clearing earlier lets shutdown or cleanup expose the system resolver.
+	let intent = apply.restart_intent_clear(ctx);
+	if (!intent.ok) {
+		locked.close();
+		return { ok: false, code: 1, step: 'restart_intent_clear', detail: intent.detail, children };
+	}
 
 	let node_id = snapshot.main.node;
 	let address = snapshot.nodes?.[node_id]?.address;

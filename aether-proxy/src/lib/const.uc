@@ -323,3 +323,6 @@ export const CONFIG_BACKUP_FILE = '/etc/aether-proxy/config.backup';
 // T10.73 (B24): own binary first; the feeds binary remains a read-only fallback.
 export const XRAY_BINARY = '/usr/bin/aether-xray';
 export const XRAY_FALLBACK_BINARY = '/usr/bin/xray';
+
+// T15.1: volatile intent that keeps the DNS handoff closed across init restart.
+export const RESTART_INTENT_FILE = 'restart-intent';
