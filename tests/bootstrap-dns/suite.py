@@ -483,12 +483,13 @@ def run(directory):
             check('Q10 repeated real cancellation stable FD', value['before'] == value['after'] and
                   all(r.get('cancelled') for r in value['results']))
     if selected('Q11'):
-        paths = ['daemon.uc', 'reload.uc', 'monitor.uc', 'dns_test.uc']
+        paths = ['daemon.uc', 'reload.uc', 'monitor.uc', 'dns_test.uc', 'probe.uc']
         for path in paths:
             relative = 'aether-proxy/src/lib/' + path
-            original = subprocess.check_output(['git', 'show', 'main:' + relative], cwd=ROOT)
+            # Freeze B3's original code baseline, not a moving main/task revision.
+            original = subprocess.check_output(['git', 'show', 'a30d796:' + relative], cwd=ROOT)
             current = (ROOT / relative).read_bytes()
-            if path == 'dns_test.uc':
+            if path in ('dns_test.uc', 'probe.uc'):
                 check('Q11 unchanged ' + path, current == original)
             elif path == 'daemon.uc':
                 # B3 replaces only startup with the isolated resource owner. Runtime
@@ -496,6 +497,9 @@ def run(directory):
                 startup = current.split(b'function start_sequence(')[1].split(b'function stop_children(')[0]
                 check('Q11 startup alone delegates isolated resolution',
                       startup.count(b'bootstrap.resolve(') == 1 and b'apply.resolve_node(' not in startup)
+                check('Q11 daemon B1 access stays inside startup resource owner',
+                      current.count(b'bootstrap.resolve(') == 1 and all(token not in current for token in
+                          (b'bootstrap_dns', b'apply.resolve_node_explicit(', b'apply.resolve_node_failed(')))
             else:
                 # B2 deliberately adds readiness here; byte equality would reject
                 # its required integration without testing the B1 boundary.
@@ -507,7 +511,7 @@ def run(directory):
                       all(token not in current for token in
                           (b'resolve_node_explicit', b'bootstrap_dns', b'bootstrap_begin')))
         source = (ROOT / 'aether-proxy/src/lib/apply.uc').read_text()
-        old = subprocess.check_output(['git', 'show', 'main:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
+        old = subprocess.check_output(['git', 'show', 'a30d796:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
         start, end = 'function resolve_node(ctx, address) {', '\n};'
         check('Q11 original resolve_node unchanged', source.split(start)[1].split(end)[0].strip() ==
               old.split(start)[1].split(end)[0].strip())
