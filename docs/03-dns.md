@@ -204,6 +204,39 @@ verdict-cache 4096
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
 T1 又依赖这个节点本身，形成死锁。
 
+### 显式私有端点接口（T15.4，尚未接入启动）
+
+以下只提供后续隔离 bootstrap 编排的基础接口；上文现有 `resolve_node()` 及 daemon/reload/monitor
+调用路径保持不变。**本卡没有创建 bootstrap child，也没有修复或验证真机启动窗口。**
+
+- `render.chinadns.boot_upstreams(snapshot, ctx)` 是纯函数：开关为 0 返回按 `ctx.wan_dns` 展开的
+  `china_dns`，为 1 返回 `direct_dns`；复用原顺序、去重和 WAN 默认回退，不增加上游、不改变协议/host 语法。
+  正式 renderer 的 boot 组与后续编排共享它，已有渲染输出逐字节不变。
+- `bootstrap_dns.lookup(domain, endpoint, on_signal, timeout_ms)` 返回 `{ok:true, ip}` 或
+  `{ok:false, detail, cancelled?:true}`。域名通过 `net.domain()` 校验；端点只接受
+  `{address:'127.0.0.1', port:<整数1..65535>}`，拒绝 53、正式 DNS 端口及 Xray DNS tunnel 端口。
+  不接受域名/URL/通配地址/远程地址，不调用系统 resolver；**端点校验不证明 child 归属**，归属门留给后续编排。
+- 单轮默认 3000ms，测试参数只能为整数 1–3000ms；一个单调时钟 deadline 覆盖全部 UDP、TCP、追问与解析。
+  先发随机 16 位事务 ID 的 A/IN UDP 查询，使用 connected socket 限制来源；核对 ID、QR、opcode、单一
+  question 的大小写不敏感 qname 及 A/IN。错 ID 只能在原 deadline 内忽略；匹配事务的坏包、负 RCODE 明确失败。
+- TC 应答须先匹配 header/question，再向同一端点发 TCP 查询；处理分段长度前缀/报文、EOF、长度不一致，
+  最大报文 65535 字节；TCP 仍 TC 明确失败。这里只实现私有端点 UDP/TCP，上游 TLS 由真实引擎负责。
+- 校验全部 section/RR 边界、已知名字型 RDATA、压缩名字展开长度及最多 128 次指针跳转；只采用 ANSWER
+  中原问题或 CNAME 链关联的首个合法 A/IN（按 wire 顺序），不采用无关、authority 或 additional 区的 A。
+  同包链可乱序；CNAME-only 在同一端点追问；一个 lookup 累计最多 16 跳、16 个 question（TCP TC 重试不计），
+  循环/超限/NODATA 失败，不刷新 deadline、不做 AAAA/缓存/DNSSEC/通用递归。
+- `apply.resolve_node_explicit(ctx, address, endpoint, on_signal)` 对 IPv4 字面量不要求 endpoint，零 DNS，
+  返回 `source:'literal'`。域名先校验参数；最多三次默认 lookup，首次成功调用现有 `update_lkg()`，返回
+  `source:'dns'`；保存失败仍失败。三次 DNS 均失败才按原地址键读取既有 LKG，保留
+  `NODE_RESOLVE_FALLBACK`/`NODE_RESOLVE_FAILED` 事件及 `source:'lkg'` 语义，不改 ctx 的生效状态。
+- 调用方负责注册既有 uloop 信号回调；查询器按最长 100ms poll 等待并周期派发 uloop、检查 `on_signal()`，
+  报文解析也检查取消和 deadline。取消返回 `cancelled:true`，立即结束，不重试、不读回退 LKG、不写 LKG，
+  不记普通 `NODE_RESOLVE_FAILED`。各路径关闭本轮 socket，不创建 child、handoff、intent 或第二套缓存。
+
+能力和证据边界仍以 [S15.3](validation/s15.3-real-bootstrap-contract.md) 为准：aether-dns 不支持 TLS，
+回退引擎只验证了默认不校验证书的 TLS 传输；端口隔离不是域名 ACL。本接口的受控端点测试不能替代后续
+真实 child 所有权、readiness、启动编排或设备验收。
+
 ## 真机验证（2026-10-15，aarch64 / 自建 lede / 内核 6.18 / chinadns-ng 2025.06.20 / Xray 26.9.30）
 
 在一次维护窗口中按 04 的启动顺序手工拉起各组件（绕过大陆模式）：

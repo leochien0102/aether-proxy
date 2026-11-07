@@ -326,3 +326,10 @@ export const XRAY_FALLBACK_BINARY = '/usr/bin/xray';
 
 // T15.1: volatile intent that keeps the DNS handoff closed across init restart.
 export const RESTART_INTENT_FILE = 'restart-intent';
+
+// T15.4: one private endpoint lookup, including TCP fallback and CNAME follow-ups.
+export const BOOTSTRAP_DNS_TIMEOUT_MS = 3000;
+export const BOOTSTRAP_DNS_POLL_MS = 100;
+export const BOOTSTRAP_DNS_MAX_POINTERS = 128;
+export const BOOTSTRAP_DNS_MAX_CNAME = 16;
+export const BOOTSTRAP_DNS_MAX_QUESTIONS = 16;

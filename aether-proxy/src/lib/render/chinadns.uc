@@ -33,6 +33,12 @@ function trust_upstreams(dns, tier, china) {
 	return dns?.direct_dns ?? [];
 }
 
+// Shared with the isolated bootstrap orchestrator; never inspect live WAN state here.
+export function boot_upstreams(snapshot, ctx) {
+	let dns = snapshot?.dns ?? {};
+	return dns.direct_dns_enabled ? (dns.direct_dns ?? []) : expand_china_dns(dns.china_dns, ctx?.wan_dns);
+};
+
 export function render(snapshot, ctx) {
 	let main = snapshot?.main ?? {};
 	let dns = snapshot?.dns ?? {};
@@ -47,7 +53,7 @@ export function render(snapshot, ctx) {
 	// Production snapshots are already expanded by pipeline.read. Raw fixture snapshots
 	// use context.json's wan_dns, never live network I/O, keeping rendering deterministic.
 	let china = expand_china_dns(dns.china_dns, ctx?.wan_dns);
-	let direct = dns.direct_dns_enabled ? (dns.direct_dns ?? []) : china;
+	let direct = boot_upstreams(snapshot, ctx);
 	let trust = trust_upstreams(dns, tier, china);
 	// Global DNS still needs to fill gfw4 for bypass_cn devices temporarily using mode_gfw.
 	let host_gfw = length(filter(snapshot?.hosts ?? [], h => h.enabled != false &&
