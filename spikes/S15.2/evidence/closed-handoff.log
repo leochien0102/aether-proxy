@@ -1,0 +1,24 @@
+PASS A-P1 literal skips bootstrap and waits referenced DNS
+PASS A-P2 retained handoff points to unavailable listener
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 403, in <module>
+    main()
+    ~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 394, in main
+    asyncio.run(scenarios(candidate))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 228, in scenarios
+    check(CASE + ' explicit bootstrap independent of closed handoff', ip == '192.0.2.11' and source == 'dns')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 33, in check
+    raise AssertionError(name)
+AssertionError: A-P2 explicit bootstrap independent of closed handoff

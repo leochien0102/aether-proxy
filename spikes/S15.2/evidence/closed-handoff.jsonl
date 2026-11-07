@@ -1,0 +1,14 @@
+{"case": "A-P1", "kind": "listen", "protocol": "udp", "role": "bootstrap-china", "target": "127.0.0.1:54685", "time_ns": 106529878374165}
+{"case": "A-P1", "kind": "listen", "protocol": "tcp", "role": "xray-dns-31082", "target": "127.0.0.1:36541", "time_ns": 106529878465784}
+{"case": "A-P1", "kind": "listen", "protocol": "tcp", "role": "tproxy-31080", "target": "127.0.0.1:45255", "time_ns": 106529878535253}
+{"case": "A-P1", "kind": "send", "protocol": "tcp", "qname": "ready.example.test", "target": "127.0.0.1:45255", "time_ns": 106529878573863}
+{"case": "A-P1", "kind": "send", "protocol": "tcp", "qname": "ready.example.test", "target": "127.0.0.1:36541", "time_ns": 106529878736721}
+{"case": "A-P1", "kind": "receive", "protocol": "tcp", "qname": "ready.example.test", "role": "tproxy-31080", "target": "127.0.0.1:45255", "time_ns": 106529879303245}
+{"case": "A-P1", "kind": "receive", "protocol": "tcp", "qname": "ready.example.test", "role": "xray-dns-31082", "target": "127.0.0.1:36541", "time_ns": 106529879351414}
+{"case": "A-P1", "kind": "gate_open", "time_ns": 106529879589722}
+{"case": "A-P2", "kind": "listen", "protocol": "udp", "role": "old-31053", "target": "127.0.0.1:41905", "time_ns": 106529880455512}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "ordinary.google.com", "target": "127.0.0.1:41905", "time_ns": 106529880470202}
+{"case": "A-P2", "kind": "listen", "protocol": "udp", "role": "closed-31053", "target": "127.0.0.1:37851", "time_ns": 106530001180290}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:37851", "time_ns": 106530001199160}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:37851", "time_ns": 106530121666282}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:37851", "time_ns": 106530242267291}
