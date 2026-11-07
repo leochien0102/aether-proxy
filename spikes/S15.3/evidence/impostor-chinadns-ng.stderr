@@ -1,0 +1,67 @@
+Task exception was never retrieved
+future: <Task finished name='Task-27' coro=<Authority.datagram() done, defined at /workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py:134> exception=AttributeError("'NoneType' object has no attribute 'call_exception_handler'")>
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 1280, in sendto
+    self._sock.sendto(data, addr)
+    ^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'sendto'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 138, in datagram
+    self.udp.sendto(answer(data, self.ip), peer)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 1290, in sendto
+    self._fatal_error(
+    ~~~~~~~~~~~~~~~~~^
+        exc, 'Fatal write error on datagram transport')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 884, in _fatal_error
+    self._loop.call_exception_handler({
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'call_exception_handler'
+Task exception was never retrieved
+future: <Task finished name='Task-31' coro=<Authority.datagram() done, defined at /workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py:134> exception=AttributeError("'NoneType' object has no attribute 'call_exception_handler'")>
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 1280, in sendto
+    self._sock.sendto(data, addr)
+    ^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'sendto'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 138, in datagram
+    self.udp.sendto(answer(data, self.ip), peer)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 1290, in sendto
+    self._fatal_error(
+    ~~~~~~~~~~~~~~~~~^
+        exc, 'Fatal write error on datagram transport')
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/selector_events.py", line 884, in _fatal_error
+    self._loop.call_exception_handler({
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute 'call_exception_handler'
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 499, in <module>
+    asyncio.run(main())
+    ~~~~~~~~~~~^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 470, in main
+    await conflict(engine)
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 379, in conflict
+    check(ready and ip == '192.0.2.11', engine + ' E7 readiness requires owned child and expected source')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/probe.py", line 54, in check
+    raise AssertionError(label)
+AssertionError: chinadns-ng E7 readiness requires owned child and expected source

@@ -1,0 +1,15 @@
+aether-dns source: /workspace/openwrt/aether-dns commit a3d42a278ce84ba5ed54988a9d30a695b7ec97b5
+M4-01 ancestor: 325b614
+fallback source: https://github.com/zfl9/chinadns-ng/releases/download/2025.08.09/chinadns-ng+wolfssl@x86_64-linux-musl@x86_64@fast+lto
+x86_64
+rustc 1.93.1 (01f6ddf75 2026-02-11) (built from a source tarball)
+cargo 1.93.1 (083ac5135 2025-12-15) (built from a source tarball)
+/workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=539dabbbfa5f175f07563e12574df3835b75ab6f, for GNU/Linux 3.2.0, not stripped
+/workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng:                          ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, stripped
+ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd  /workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns
+842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c  /workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng
+2167328 /workspace/openwrt/aether-proxy-wt/S15.3/spikes/S15.3/.build/source/target/release/aether-dns
+ 616104 /workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng
+2783432 total
+aether-dns 2026.11.04
+ChinaDNS-NG 2025.08.09 23af4b1 | wolfssl-5.8.2 | target:x86_64-linux-musl | cpu:x86_64 | mode:fast+lto | <https://github.com/zfl9/chinadns-ng>

@@ -1,0 +1,44 @@
+PASS normal aether-dns E1
+PASS normal aether-dns E2
+PASS normal aether-dns E3
+PASS normal aether-dns E4
+PASS normal aether-dns E5
+UNSUPPORTED normal aether-dns E6
+PASS normal aether-dns E7
+PASS normal aether-dns E8
+PASS normal aether-dns E9
+PASS normal aether-dns E10
+PASS normal chinadns-ng E1
+PASS normal chinadns-ng E2
+PASS normal chinadns-ng E3
+PASS normal chinadns-ng E4
+PASS normal chinadns-ng E5
+PASS normal chinadns-ng E6
+PASS normal chinadns-ng E7
+PASS normal chinadns-ng E8
+PASS normal chinadns-ng E9
+PASS normal chinadns-ng E10
+PASS negative closed-formal-aether-dns: exit=1, assertions=['aether-dns E2 node IPv4 from explicit private endpoint']
+PASS negative closed-formal-chinadns-ng: exit=1, assertions=['chinadns-ng E2 node IPv4 from explicit private endpoint']
+PASS negative impostor-aether-dns: exit=1, assertions=['aether-dns E7 readiness requires owned child and expected source']
+PASS negative impostor-chinadns-ng: exit=1, assertions=['chinadns-ng E7 readiness requires owned child and expected source']
+PASS restored aether-dns E1
+PASS restored aether-dns E2
+PASS restored aether-dns E3
+PASS restored aether-dns E4
+PASS restored aether-dns E5
+UNSUPPORTED restored aether-dns E6
+PASS restored aether-dns E7
+PASS restored aether-dns E8
+PASS restored aether-dns E9
+PASS restored aether-dns E10
+PASS restored chinadns-ng E1
+PASS restored chinadns-ng E2
+PASS restored chinadns-ng E3
+PASS restored chinadns-ng E4
+PASS restored chinadns-ng E5
+PASS restored chinadns-ng E6
+PASS restored chinadns-ng E7
+PASS restored chinadns-ng E8
+PASS restored chinadns-ng E9
+PASS restored chinadns-ng E10
