@@ -345,6 +345,54 @@ flow_has instance && [ -e "$HANDOFF" ] \
 	&& ok "T15.1 R5 re-enable starts and reinstalls handoff" \
 	|| bad "T15.1 R5 re-enable starts and reinstalls handoff"
 
+# T15.1 review regression: a failed restart may leave intent and handoff after procd
+# has lost its instance. Disable must still stop/cleanup and keep its reload trigger.
+flow_reset; echo 1 > "$F/enabled"; flow_op start
+printf 'trigger aetherproxy\n' > "$F/svc"
+touch "$INTENT"
+flow_no_instance && [ -e "$INTENT" ] && [ -e "$HANDOFF" ] \
+	&& [ "$(cat "$F/enabled")" = 1 ] \
+	&& ok "T15.1 R5 stopped restart residue: precondition has no instance, intent, fragment and enabled=1" \
+	|| bad "T15.1 R5 stopped restart residue: precondition has no instance, intent, fragment and enabled=1"
+cp "$HANDOFF" "$F/handoff.expected"
+residue_restarts=$(cat "$F/dns-count")
+: > "$F/log"; echo 0 > "$F/enabled"; flow_op reload_service; rc=$?
+expect "T15.1 R5 stopped restart residue: disable succeeds" 0 "$rc"
+[ ! -e "$INTENT" ] && ok "T15.1 R5 stopped restart residue: disable clears intent" \
+	|| bad "T15.1 R5 stopped restart residue: disable clears intent"
+[ ! -e "$HANDOFF" ] && ok "T15.1 R5 stopped restart residue: disable removes fragment" \
+	|| bad "T15.1 R5 stopped restart residue: disable removes fragment"
+expect "T15.1 R5 stopped restart residue: disable adds exactly one dnsmasq restart" \
+	"$((residue_restarts + 1))" "$(cat "$F/dns-count")"
+flow_no_instance && ok "T15.1 R5 stopped restart residue: disable leaves no instance" \
+	|| bad "T15.1 R5 stopped restart residue: disable leaves no instance"
+[ ! -e "$MARK" ] && ok "T15.1 R5 stopped restart residue: disable leaves no manual-stop marker" \
+	|| bad "T15.1 R5 stopped restart residue: disable leaves no manual-stop marker"
+flow_has 'trigger aetherproxy' && ! flow_has 'misplaced_trigger aetherproxy' \
+	&& ok "T15.1 R5 stopped restart residue: disable keeps correctly registered reload trigger" \
+	|| bad "T15.1 R5 stopped restart residue: disable keeps correctly registered reload trigger"
+
+# Repeating enabled=0 after closure must not invoke cleanup or restart dnsmasq. Also
+# exercise an ordinary stopped service with no intent but an unrelated stale fragment:
+# this branch must preserve its old no-op semantics, not broaden cleanup policy.
+: > "$F/log"; flow_op reload_service; rc=$?
+expect "T15.1 R5 stopped without intent: repeated disable succeeds" 0 "$rc"
+expect "T15.1 R5 stopped without intent: repeated disable adds no dnsmasq restart" \
+	"$((residue_restarts + 1))" "$(cat "$F/dns-count")"
+[ ! -s "$F/log" ] && flow_no_instance && flow_has 'trigger aetherproxy' \
+	&& ok "T15.1 R5 stopped without intent: repeated disable is a no-op with trigger intact" \
+	|| bad "T15.1 R5 stopped without intent: repeated disable is a no-op with trigger intact"
+cp "$F/handoff.expected" "$HANDOFF"
+: > "$F/log"; flow_op reload_service; rc=$?
+expect "T15.1 R5 stopped without intent: ordinary disable succeeds" 0 "$rc"
+cmp -s "$HANDOFF" "$F/handoff.expected" && [ ! -s "$F/log" ] \
+	&& [ ! -e "$INTENT" ] && [ ! -e "$MARK" ] \
+	&& flow_no_instance && flow_has 'trigger aetherproxy' \
+	&& ok "T15.1 R5 stopped without intent: ordinary disable preserves existing no-op semantics" \
+	|| bad "T15.1 R5 stopped without intent: ordinary disable preserves existing no-op semantics"
+expect "T15.1 R5 stopped without intent: ordinary disable adds no dnsmasq restart" \
+	"$((residue_restarts + 1))" "$(cat "$F/dns-count")"
+
 # Preserve the original monitor-wakeup cases; DNS synchronization is an independent
 # background call, including on LAN. Only the harness waits for its logging substitute.
 run_hotplug() {

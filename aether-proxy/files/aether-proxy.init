@@ -84,8 +84,12 @@ reload_service() {
 	config_load aetherproxy
 	config_get_bool enabled main enabled 0
 	if [ "$enabled" != 1 ]; then
-		# stop_service writes the manual-stop mark; this stop is not manual, so clear it again.
-		procd_running aether-proxy && stop
+		# A failed restart can leave handoff behind without a procd instance. Its intent
+		# still needs the full stop/cleanup path; an already stopped service without intent
+		# remains a no-op. This stop is not manual, so clear its manual-stop mark afterwards.
+		if procd_running aether-proxy || [ -e "$_AETHER_PROXY_RESTART_INTENT" ]; then
+			stop
+		fi
 		rm -f "$_AETHER_PROXY_STOP_MARK"
 		return 0
 	fi
