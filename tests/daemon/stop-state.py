@@ -283,10 +283,17 @@ config subscription 's_00000001'
 					for sig in (signal.SIGHUP, signal.SIGUSR1, signal.SIGUSR2):
 						child.send_signal(sig)
 						time.sleep(0.05)
+					# T15.5 cancels readiness immediately, so shutdown may now issue
+					# cleanup commands before the held listener is released. Only new
+					# work/probes are forbidden, not prompt cleanup of existing work.
+					def success_work(text):
+						return [line for line in text.splitlines() if line.startswith(
+							('scheduled ', 'curl ', 'xray run ', 'chinadns-ng '))]
 					check(f'{scenario}: stopping blocks due subscription, reload and new probes',
-						fixture.calls.read_text() == calls_before)
+						success_work(fixture.calls.read_text()) == success_work(calls_before))
 				if scenario == 'listener-timeout':
-					# Let the actual 5-second readiness wait fail while stopping stays frozen.
+					# Observe beyond the original five-second budget: cancellation must
+					# not later publish a stale readiness success over stopping/stopped.
 					time.sleep(5.2)
 			finally:
 				if hold.exists():

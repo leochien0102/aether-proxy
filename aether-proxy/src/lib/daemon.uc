@@ -17,6 +17,7 @@ import * as config from 'aetherproxy.config';
 import * as sub from 'aetherproxy.sub';
 import * as net from 'aetherproxy.net';
 import * as monitor from 'aetherproxy.monitor';
+import * as xray_ready from 'aetherproxy.xray_ready';
 import * as reload from 'aetherproxy.reload';
 import * as schedule from 'aetherproxy.schedule';
 import * as updates_cache from 'aetherproxy.updates_cache';
@@ -303,6 +304,11 @@ function restart_xray(ctx, children, service_state, done) {
 	let start_again = () => {
 		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
 		children.xray.start();
+		let ready = xray_ready.published(ctx, children.xray);
+		if (!ready.ok) {
+			done(ready.detail);
+			return;
+		}
 		service_state.components[C.XRAY_COMPONENT] = {
 			path: binary, version: components_cmd.read_component_version(binary, 'version')
 		};
@@ -708,10 +714,11 @@ function start_sequence(ctx, opts, signal_pending) {
 			locked.close();
 			return { ok: false, code: 1, step: 'xray_start', detail: 'xray process could not be started', children };
 		}
-		if (!monitor.wait_xray_port(ctx, signal_pending)) {
+		let ready = xray_ready.published(ctx, children.xray, signal_pending);
+		if (!ready.ok) {
 			record_step(ctx, 'start_xray_listen', step_started);
 			locked.close();
-			return { ok: false, code: 1, step: 'xray_listen', detail: 'xray did not listen on the TPROXY port within 5 seconds', children, interrupted: signal_pending() };
+			return { ok: false, code: 1, step: 'xray_listen', detail: ready.detail, children, interrupted: ready.cancelled || signal_pending() };
 		}
 		record_step(ctx, 'start_xray_listen', step_started);
 	}
@@ -1236,12 +1243,16 @@ function run(args) {
 		while (signal != 'stop') {
 			if (signal == 'xray_restart') {
 				signal = null;
-				if (monitor_daemon.machine.state != 'failsafe')
+				if (monitor_daemon.machine.state != 'failsafe') {
+					monitor_daemon.busy = true;
 					restart_xray(ctx, children, monitor_daemon.state, error => {
+						monitor_daemon.busy = false;
 						if (error != null)
 							event_failure(ctx, 'sigusr2', error);
-						tick();
+						else if (!ctx.stopping_requested)
+							tick();
 					});
+				}
 				continue;
 			}
 			if (signal == 'tick') {

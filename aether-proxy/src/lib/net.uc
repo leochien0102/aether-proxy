@@ -1,5 +1,7 @@
 'use strict';
 
+import * as struct from 'struct';
+
 // Pure IPv4 / CIDR / domain syntax helpers shared by config.uc and data.uc (docs/12 rule 1:
 // no fs, uci or system calls in here). Validators return a string unchanged when valid,
 // or null when not; parsers return the documented parts instead.
@@ -189,6 +191,74 @@ export function range_to_cidrs(a, b) {
 	}
 
 	return out;
+};
+
+// Canonical network-order hex, also used for proc socket address comparisons.
+export function address_hex(address) {
+	if (type(address) != 'string')
+		return null;
+	if (ipv4(address) != null)
+		return join('', map(split(address, '.'), n => sprintf('%02X', +n)));
+	let halves = split(address, '::');
+	if (length(halves) > 2)
+		return null;
+	let left = halves[0] == '' ? [] : split(halves[0], ':');
+	let right = length(halves) == 2 && halves[1] != '' ? split(halves[1], ':') : [];
+	let missing = 8 - length(left) - length(right);
+	if (missing < 0 || (length(halves) == 1 && missing != 0) ||
+	    (length(halves) == 2 && missing == 0))
+		return null;
+	let words = [ ...left ];
+	for (let i = 0; i < missing; i++)
+		push(words, '0');
+	push(words, ...right);
+	for (let word in words)
+		if (match(word, /^[0-9a-fA-F]{1,4}$/) == null)
+			return null;
+	return join('', map(words, word => sprintf('%04X', hex(word))));
+};
+
+// Linux prints each address as native-endian 32-bit words; do not assume the
+// router has the host runner's byte order.
+export function socket_rows(text, ipv6) {
+	if (type(text) != 'string')
+		return { ok: false, detail: 'unreadable socket table' };
+	let rows = [];
+	for (let line in split(text, '\n')) {
+		let value = trim(line);
+		if (value == '' || match(value, /^(sl|local_address)[[:space:]]/) != null)
+			continue;
+		let f = split(value, /[[:space:]]+/);
+		let local = split(f[1] ?? '', ':');
+		let addr = local[0];
+		if (length(f) < 10 || match(f[0], /^[0-9]+:$/) == null ||
+		    match(addr, /^[0-9a-fA-F]+$/) == null || length(addr) != (ipv6 ? 32 : 8))
+			return { ok: false, detail: 'malformed socket table row' };
+		let remote = split(f[2], ':');
+		if (match(local[1] ?? '', /^[0-9a-fA-F]{4}$/) == null ||
+		    match(f[3], /^[0-9a-fA-F]{2}$/) == null || match(f[9], /^[0-9]+$/) == null)
+			return { ok: false, detail: 'malformed socket state/port/inode' };
+		if (length(remote[0]) != length(addr) || match(remote[0], /^[0-9a-fA-F]+$/) == null ||
+		    match(remote[1] ?? '', /^[0-9a-fA-F]{4}$/) == null)
+			return { ok: false, detail: 'malformed remote socket endpoint' };
+		if (match(f[4], /^[0-9a-fA-F]{8}:[0-9a-fA-F]{8}$/) == null ||
+		    match(f[5], /^[0-9a-fA-F]{2}:[0-9a-fA-F]{8}$/) == null ||
+		    match(f[6], /^[0-9a-fA-F]{8}$/) == null)
+			return { ok: false, detail: 'malformed socket queue/timer fields' };
+		if (match(f[7], /^[0-9]+$/) == null || match(f[8], /^[0-9]+$/) == null)
+			return { ok: false, detail: 'malformed socket uid/timeout fields' };
+		let network = '';
+		let little = struct.pack('I', 1) == struct.pack('<I', 1);
+		for (let i = 0; i < length(addr); i += 8) {
+			if (!little)
+				network += substr(addr, i, 8);
+			else
+				for (let j = 6; j >= 0; j -= 2)
+					network += substr(addr, i + j, 2);
+		}
+		push(rows, { address: uc(network), port: hex(local[1]), state: uc(f[3]), inode: f[9], ipv6 });
+	}
+	return { ok: true, rows };
 };
 
 // True if a /proc/net/tcp or /proc/net/tcp6 text has a socket in LISTEN (0A) on port.

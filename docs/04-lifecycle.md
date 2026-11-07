@@ -44,11 +44,39 @@
 | 7 | 启动 chinadns-ng（DNS 级别 T2） | 回滚 |
 | 8 | 写入 dnsmasq 片段并重启 dnsmasq | 回滚 |
 | 9 | 引导解析节点 IP（[03](03-dns.md)），用结果补全 Xray 配置并再次 `-test` | 解析失败 → 继续，状态记为 `degraded`，不启动 Xray。`fail_open=1`（默认）：跳过第 10、11 步，流量全部直连；`fail_open=0`：跳过第 10 步，**仍执行第 11 步**（加载 nft 与 ip rule），代理目标的流量失败而不是改走直连（2026-10-15 复审后补） |
-| 10 | 启动 Xray，在 5 秒内等待 `TPROXY_PORT` 进入监听（读取 `/proc/net/tcp`） | 回滚 |
+| 10 | 启动 Xray，在共用 5 秒内等待本次 child 拥有 TPROXY TCP 监听及正式 DNS 实际引用的 Xray DNS socket（见下文） | 回滚 |
 | 11 | 加载 nft 表（含恢复动态集合）、添加 ip rule / route | 回滚 |
 | 12 | 进入 monitor 循环，由它判定为 `running` / `degraded` | — |
 
 代理是否真正可用由 monitor 异步判定，LuCI 能看到状态变化。
+
+### Xray 引用驱动就绪门（T15.5，B2）
+
+`xray_ready.requirements(chinadns_text, xray_artifact)` 是纯函数；两个参数均为本轮已经发布到
+`current/` 的原始文本（Xray 为 JSON 文本），返回 `{ok:true, required:[{address,port,protocol,role}]}`
+或 `{ok:false,detail}`。不重新读取 UCI、不另做 tier 选择：解析正式 DNS 的 `china-dns`、`trust-dns`、
+`group-upstream` 行，与 Xray 的 DNS tunnel inbounds 建立引用关系并按 tuple 去重。始终要求产物中的
+TPROXY TCP；T1 单 trust 只等被引用的一个端口/协议，混合 TCP/UDP 分别检查；未引用的第二端口或协议不阻塞，
+T2/T3 没有 Xray DNS 引用时不额外要求 T1 socket。已知 Xray DNS 引用缺失对应 inbound、地址/协议冲突、
+坏 JSON 或无 TPROXY 定义均明确失败；普通远程 DNS 与私有 bootstrap 端点不由本门检测。
+
+`xray_ready.wait(ctx, child, required, on_signal)` 固定本次 `child.pid()`，核对进程 stat 的 starttime
+与存活状态，并从 `/proc/<pid>/net/{tcp,tcp6,udp,udp6}` 读取该网络命名空间的表，与该 PID 的 FD socket
+inode 交叉匹配。初次 proc 尚不可读只算 not-ready；在可验证的首个采样固定 starttime，之后进程退出、
+PID/starttime 改变或身份丢失立即失败，不能接纳 respawn 的新 child。任何成功都必须核对同一已验证生命周期。
+TCP 只认 LISTEN，UDP 认实际绑定；区分地址与 IPv4/IPv6。IPv6 通配 TCP 要通过预算内、无 payload 的
+本地非阻塞 IPv4 连接验证，并排除可能替它应答的其他监听 inode；IPv6-only 或未经证实的 IPv6 UDP
+通配绑定不能冒充 IPv4。所有探测 socket 都关闭；不发 DNS 查询，不访问外网，不要求上游应答。
+
+所有要求共享一次 5 秒单调 deadline，轮询有界；派发真实信号，每轮、成功前与超时尾部均检查停止意图，
+取消优先于 ready。`ctx.root` 同时覆盖产物与整套 PID/socket/FD fixture，不借用宿主数据补全测试。
+`xray_ready.published()` 每次重新读取 current，供初次启动、reload 正向/恢复产物后的 rollback、
+monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败路径；rollback 门失败明确带回错误；
+未 ready 或取消时不发布 IP 切换成功、不触发后续成功探针。SIGUSR2 等待期间保持 monitor busy。
+周期 health 的 TPROXY-only 观察不改成阻塞门。
+
+**本卡仍保留 DNS → dnsmasq → 原 resolve_node → Xray 的顺序及 T15.1 intent 边界**，不接入 B1，
+不创建 bootstrap child，不改变 tier/LKG/fail_open。B3 才处理启动依赖环与编排；本门不宣称消除全部 SERVFAIL 窗口。
 
 **组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 `XRAY_MIN_VERSION` / `CHINADNS_MIN_VERSION`，记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
 

@@ -14,7 +14,7 @@ import * as check from 'aetherproxy.cmd.check';
 import * as components_cmd from 'aetherproxy.cmd.components';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
-import * as monitor from 'aetherproxy.monitor';
+import * as xray_ready from 'aetherproxy.xray_ready';
 
 // Pure plan over renderer hashes, never over UCI input values.
 // docs/04「重载（`aether-proxy reload`，UCI 变更触发）」: daemon.uc's reload handler replaces base.render_hash
@@ -172,8 +172,11 @@ function start_child(daemon, key, name, argv) {
 		return `cannot start ${name}`;
 	// Forward and rollback restarts have the same readiness contract as startup.
 	// Returning at fork time would count the planned gap in the post-reload probe.
-	if (key == 'xray' && !monitor.wait_xray_port(daemon.ctx))
-		return 'xray did not listen on the TPROXY port within 5 seconds';
+	if (key == 'xray') {
+		let ready = xray_ready.published(daemon.ctx, child);
+		if (!ready.ok)
+			return ready.detail;
+	}
 	return null;
 };
 
@@ -231,6 +234,7 @@ function publish_stage(daemon, stage, current, previous) {
 };
 
 function rollback_actions(daemon, done_actions, previous, current, had_current, old_artifacts, old_components) {
+	let errors = [];
 	let restore_error = restore_current(daemon, previous, current, had_current);
 	if (restore_error != null)
 		log_failure(daemon, 'rollback_current', restore_error);
@@ -244,7 +248,10 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 			if (daemon.children.xray != null) wait_stopped(daemon.children.xray);
 			let err = start_child(daemon, 'xray', C.XRAY_COMPONENT,
 				[ old_components[C.XRAY_COMPONENT].path, 'run', '-c', `${current}/${C.ARTIFACT_FILES.xray}` ]);
-			if (err != null) log_failure(daemon, 'rollback_xray', err);
+			if (err != null) {
+				log_failure(daemon, 'rollback_xray', err);
+				push(errors, `rollback_xray: ${err}`);
+			}
 		}
 		else if (action == 'restart_chinadns') {
 			if (daemon.children.dns != null) wait_stopped(daemon.children.dns);
@@ -261,6 +268,7 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 			if (!r.ok) log_failure(daemon, 'rollback_dnsmasq', r.detail);
 		}
 	}
+	return join('; ', errors);
 };
 
 // Precheck returns paths only. Preserve the running versions unless discovery changed a path
@@ -319,8 +327,9 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 		record_detail(detail, action, started);
 		if (!result.ok) {
 			daemon.ctx.lan_ifaces = old_lan_ifaces;
-			rollback_actions(daemon, done, previous, current, publication.had_current, old_artifacts, old_components);
-			return { ok: false, detail: `${action}: ${result.detail}` };
+			let rollback_error = rollback_actions(daemon, done, previous, current,
+				publication.had_current, old_artifacts, old_components);
+			return { ok: false, detail: `${action}: ${result.detail}` + (rollback_error ? `; ${rollback_error}` : '') };
 		}
 	}
 	let updated = {
@@ -332,8 +341,11 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 	};
 	if (!state_file.write(run_dir(daemon), updated)) {
 		daemon.ctx.lan_ifaces = old_lan_ifaces;
-		rollback_actions(daemon, done, previous, current, publication.had_current, old_artifacts, daemon.state.components ?? components);
-		return { ok: false, detail: `cannot update state render_hash: ${state_file.error()}` };
+		let state_error = state_file.error();
+		let rollback_error = rollback_actions(daemon, done, previous, current, publication.had_current,
+			old_artifacts, daemon.state.components ?? components);
+		return { ok: false, detail: `cannot update state render_hash: ${state_error}` +
+			(rollback_error ? `; ${rollback_error}` : '') };
 	}
 	daemon.state = updated;
 	let removed = sys.run([ 'rm', '-rf', previous ], { timeout: 10 });

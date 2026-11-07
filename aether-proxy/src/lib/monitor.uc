@@ -12,6 +12,7 @@ import * as pipeline from 'aetherproxy.pipeline';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as net from 'aetherproxy.net';
+import * as xray_ready from 'aetherproxy.xray_ready';
 
 // tick is declared up front: finish_tick schedules it before its definition (ucode does not hoist).
 let initial_state, interval_ms, next, tick;
@@ -283,8 +284,9 @@ function update_node_ip(daemon, machine, done) {
 			}
 			// This action already owns busy and the monitor lock, so pumping uloop while
 			// waiting cannot observe our own restart as an unrelated Xray outage.
-			if (!wait_xray_port(daemon.ctx)) {
-				done('xray did not listen on the TPROXY port within 5 seconds');
+			let ready = xray_ready.published(daemon.ctx, daemon.children.xray);
+			if (!ready.ok) {
+				done(ready.detail);
 				return;
 			}
 			machine.node_ip = resolved.ip;
