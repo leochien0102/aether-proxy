@@ -1,0 +1,45 @@
+{"case": "A-P1", "kind": "listen", "protocol": "udp", "role": "bootstrap-china", "target": "127.0.0.1:60715", "time_ns": 106528511678719}
+{"case": "A-P1", "kind": "listen", "protocol": "tcp", "role": "xray-dns-31082", "target": "127.0.0.1:44469", "time_ns": 106528511808838}
+{"case": "A-P1", "kind": "listen", "protocol": "tcp", "role": "tproxy-31080", "target": "127.0.0.1:44937", "time_ns": 106528511883807}
+{"case": "A-P1", "kind": "send", "protocol": "tcp", "qname": "ready.example.test", "target": "127.0.0.1:44937", "time_ns": 106528511927256}
+{"case": "A-P1", "kind": "receive", "protocol": "tcp", "qname": "ready.example.test", "role": "tproxy-31080", "target": "127.0.0.1:44937", "time_ns": 106528512412801}
+{"case": "A-P1", "kind": "gate_open", "time_ns": 106528512662559}
+{"case": "A-P2", "kind": "listen", "protocol": "udp", "role": "old-31053", "target": "127.0.0.1:34175", "time_ns": 106528513425420}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "ordinary.google.com", "target": "127.0.0.1:34175", "time_ns": 106528513440880}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:60715", "time_ns": 106528633933395}
+{"case": "A-P2", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-china", "target": "127.0.0.1:60715", "time_ns": 106528634193622}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "ordinary.google.com", "target": "127.0.0.1:34175", "time_ns": 106528634299841}
+{"case": "A-P2", "kind": "listen", "protocol": "udp", "role": "formal-31053", "target": "127.0.0.1:53571", "time_ns": 106528754936345}
+{"case": "A-P2", "kind": "send", "protocol": "udp", "qname": "ordinary.google.com", "target": "127.0.0.1:53571", "time_ns": 106528754949685}
+{"case": "A-P2", "kind": "receive", "protocol": "udp", "qname": "ordinary.google.com", "role": "formal-31053", "target": "127.0.0.1:53571", "time_ns": 106528755124933}
+{"case": "A-P2", "kind": "send", "protocol": "tcp", "qname": "ordinary.google.com", "target": "127.0.0.1:44469", "time_ns": 106528755132513}
+{"case": "A-P2", "kind": "receive", "protocol": "tcp", "qname": "ordinary.google.com", "role": "xray-dns-31082", "target": "127.0.0.1:44469", "time_ns": 106528755429079}
+{"case": "A-P3", "kind": "listen", "protocol": "udp", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106528755909404}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106528755922994}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106528756086192}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106528876370540}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106528876734616}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106528997030402}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106528997285819}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106529117629926}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106529117861314}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106529238161399}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106529238447376}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:59222", "time_ns": 106529358740093}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-failed", "target": "127.0.0.1:59222", "time_ns": 106529359005981}
+{"case": "A-P3", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:60715", "time_ns": 106529479384707}
+{"case": "A-P3", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-china", "target": "127.0.0.1:60715", "time_ns": 106529479614384}
+{"case": "A-P4", "kind": "listen", "protocol": "tcp", "role": "bootstrap-direct", "target": "127.0.0.1:46487", "time_ns": 106529479781972}
+{"case": "A-P4", "enabled": false, "kind": "production_render", "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns 127.0.0.1#60715\ntrust-dns tcp://127.0.0.1#31082\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#31082\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream 127.0.0.1#60715\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream 127.0.0.1#60715\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n", "time_ns": 106529492162558}
+{"case": "A-P4", "kind": "send", "protocol": "udp", "qname": "node.example.test", "target": "127.0.0.1:60715", "time_ns": 106529492196638}
+{"case": "A-P4", "kind": "receive", "protocol": "udp", "qname": "node.example.test", "role": "bootstrap-china", "target": "127.0.0.1:60715", "time_ns": 106529492418945}
+{"case": "A-P4", "enabled": true, "kind": "production_render", "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns 127.0.0.1#60715\ntrust-dns tcp://127.0.0.1#46487\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#46487\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream 127.0.0.1#60715\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream tcp://127.0.0.1#46487\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n", "time_ns": 106529504605054}
+{"case": "A-P4", "kind": "send", "protocol": "tcp", "qname": "node.example.test", "target": "127.0.0.1:46487", "time_ns": 106529504645104}
+{"case": "A-P4", "kind": "receive", "protocol": "tcp", "qname": "node.example.test", "role": "bootstrap-direct", "target": "127.0.0.1:46487", "time_ns": 106529505022699}
+{"case": "A-P5", "enabled": false, "kind": "production_render", "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns 192.0.2.53\ntrust-dns tcp://127.0.0.1#31082\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#31082\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream 192.0.2.53\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream 192.0.2.53\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n", "time_ns": 106529517701990}
+{"case": "A-P5", "enabled": false, "kind": "production_render", "text": "bind-addr 127.0.0.1\nbind-port 31053\nchina-dns 192.0.2.53\ntrust-dns tcp://127.0.0.1#31082,udp://127.0.0.1#31083\nipset-name4 inet@aetherproxy@chnroute4\nipset-name6 null\ndefault-tag gfw\ngroup uproxy\ngroup-upstream tcp://127.0.0.1#31082,udp://127.0.0.1#31083\ngroup-ipset inet@aetherproxy@uproxy4,null\ngroup udirect\ngroup-upstream 192.0.2.53\ngroup-ipset inet@aetherproxy@udirect4,null\ngroup boot\ngroup-upstream 192.0.2.53\ncache 4096\ncache-stale 3600\nverdict-cache 4096\n", "time_ns": 106529529591543}
+{"case": "A-P5", "kind": "listen", "protocol": "tcp", "role": "missing-31083", "target": "127.0.0.1:34313", "time_ns": 106529529761781}
+{"case": "A-P5", "kind": "send", "protocol": "tcp", "qname": "ready.example.test", "target": "127.0.0.1:44937", "time_ns": 106529529830001}
+{"case": "A-P5", "kind": "receive", "protocol": "tcp", "qname": "ready.example.test", "role": "tproxy-31080", "target": "127.0.0.1:44937", "time_ns": 106529530130077}
+{"case": "A-P5", "kind": "gate_open", "time_ns": 106529530263656}
+{"case": "A-P5", "kind": "listen", "protocol": "tcp", "role": "delayed-31082", "target": "127.0.0.1:42557", "time_ns": 106529710722910}

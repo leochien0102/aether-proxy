@@ -1,0 +1,36 @@
+PASS A-P1 literal skips bootstrap and waits referenced DNS
+PASS A-P2 retained handoff points to unavailable listener
+PASS A-P2 explicit bootstrap independent of closed handoff
+PASS A-P2 client answer comes from tunnel
+PASS A-P2 ordinary gfw never reaches bootstrap or system
+PASS A-P2 handoff unchanged through bootstrap
+PASS A-P3 DNS attempts precede LKG
+PASS A-P3 DNS attempts precede degraded
+PASS A-P3 DNS preferred over existing LKG
+PASS A-P3 no-LKG fail_open=0 policy model
+PASS A-P3 no-LKG fail_open=1 policy model
+PASS A-P4 direct_dns_enabled=0 selects actual udp target
+PASS A-P4 direct_dns_enabled=1 selects actual tcp target
+PASS A-P5 real config references one TCP or mixed TCP UDP tunnels
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 403, in <module>
+    main()
+    ~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 394, in main
+    asyncio.run(scenarios(candidate))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 292, in scenarios
+    check(CASE + ' gate cannot pass before delayed DNS tunnel', elapsed >= 0.18)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/S15.2/spikes/S15.2/probe.py", line 33, in check
+    raise AssertionError(name)
+AssertionError: A-P5 gate cannot pass before delayed DNS tunnel

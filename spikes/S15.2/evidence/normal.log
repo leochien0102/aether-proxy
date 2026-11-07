@@ -1,0 +1,54 @@
+PASS A-P1 literal skips bootstrap and waits referenced DNS
+PASS A-P2 retained handoff points to unavailable listener
+PASS A-P2 explicit bootstrap independent of closed handoff
+PASS A-P2 client answer comes from tunnel
+PASS A-P2 ordinary gfw never reaches bootstrap or system
+PASS A-P2 handoff unchanged through bootstrap
+PASS A-P3 DNS attempts precede LKG
+PASS A-P3 DNS attempts precede degraded
+PASS A-P3 DNS preferred over existing LKG
+PASS A-P3 no-LKG fail_open=0 policy model
+PASS A-P3 no-LKG fail_open=1 policy model
+PASS A-P4 direct_dns_enabled=0 selects actual udp target
+PASS A-P4 direct_dns_enabled=1 selects actual tcp target
+PASS A-P5 real config references one TCP or mixed TCP UDP tunnels
+PASS A-P5 gate cannot pass before delayed DNS tunnel
+PASS A-P5 missing referenced DNS blocks gate
+PASS A-P5 unused second tunnel does not block gate
+PASS A-P5 mixed configured TCP UDP requirements
+PASS A-P5 TCP listener cannot satisfy UDP requirement
+PASS A-P7 restart=0 failed attempt preserves prior boundary
+PASS A-P7 restart=0 retry installs then clears intent
+PASS A-P7 restart=1 failed attempt preserves prior boundary
+PASS A-P7 restart=1 retry installs then clears intent
+PASS B-P1 literal skips bootstrap and waits referenced DNS
+PASS B-P2 retained handoff points to unavailable listener
+PASS B-P2 explicit bootstrap independent of closed handoff
+PASS B-P2 client answer comes from tunnel
+PASS B-P2 ordinary gfw never reaches bootstrap or system
+PASS B-P2 handoff unchanged through bootstrap
+PASS B-P3 DNS attempts precede LKG
+PASS B-P3 DNS attempts precede degraded
+PASS B-P3 DNS preferred over existing LKG
+PASS B-P3 no-LKG fail_open=0 policy model
+PASS B-P3 no-LKG fail_open=1 policy model
+PASS B-P4 direct_dns_enabled=0 selects actual udp target
+PASS B-P4 direct_dns_enabled=1 selects actual tcp target
+PASS B-P5 real config references one TCP or mixed TCP UDP tunnels
+PASS B-P5 gate cannot pass before delayed DNS tunnel
+PASS B-P5 missing referenced DNS blocks gate
+PASS B-P5 unused second tunnel does not block gate
+PASS B-P5 mixed configured TCP UDP requirements
+PASS B-P5 TCP listener cannot satisfy UDP requirement
+PASS B-P7 restart=0 failed attempt preserves prior boundary
+PASS B-P7 restart=0 retry installs then clears intent
+PASS B-P7 restart=1 failed attempt preserves prior boundary
+PASS B-P7 restart=1 retry installs then clears intent
+PASS A-P6 bootstrap SIGTERM bounded cleanup preserves handoff
+PASS A-P6 bootstrap child reaped and socket reusable
+PASS A-P6 port-wait SIGTERM bounded cleanup preserves handoff
+PASS A-P6 port-wait child reaped and socket reusable
+PASS B-P6 bootstrap SIGTERM bounded cleanup preserves handoff
+PASS B-P6 bootstrap child reaped and socket reusable
+PASS B-P6 port-wait SIGTERM bounded cleanup preserves handoff
+PASS B-P6 port-wait child reaped and socket reusable
