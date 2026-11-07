@@ -135,11 +135,38 @@ grep -Fxq 'trigger aetherproxy' "$T/init-triggers.log" && ok "reload trigger reg
 # stop = stop_service; procd deletes the service (instances and triggers); service_stopped.
 F="$T/flow"
 mkdir -p "$F/run"
-flow_reset() { rm -rf "$F/run" "$F/svc"; mkdir -p "$F/run"; : > "$F/log"; }
+cat > "$F/bin-aether-proxy" <<'EOF'
+#!/bin/sh
+printf 'aether-proxy %s\n' "$*" >> "$PROCD_LOG"
+if [ "$1" = cleanup ]; then
+	intent=absent; fragment=absent
+	[ -e "$FLOW_INTENT" ] && intent=present
+	[ -e "$FLOW_FRAGMENT" ] && fragment=present
+	printf 'stage cleanup-wait intent=%s fragment=%s\n' "$intent" "$fragment" >> "$PROCD_LOG"
+	if [ "$intent" = absent ] && [ "$fragment" = present ]; then
+		rm -f "$FLOW_FRAGMENT" || exit 1
+		count=$(cat "$FLOW_DNS_COUNT")
+		echo $((count + 1)) > "$FLOW_DNS_COUNT"
+		printf 'dnsmasq restart cleanup-wait\n' >> "$PROCD_LOG"
+	fi
+fi
+exit "${CHECK_RC:-0}"
+EOF
+chmod +x "$F/bin-aether-proxy"
+flow_reset() {
+	rm -rf "$F/run" "$F/svc" "$F/start-fail"
+	mkdir -p "$F/run" "$F/dnsmasq.d"
+	: > "$F/log"
+	echo 0 > "$F/dns-count"
+	rm -f "$F/dnsmasq.d/aether-proxy.conf"
+}
 flow_op() {
 	(
 		export PROCD_LOG="$F/log" CHECK_RC=0
 		export AETHER_PROXY_RUN_DIR="$F/run"
+		export FLOW_INTENT="$F/run/restart-intent"
+		export FLOW_FRAGMENT="$F/dnsmasq.d/aether-proxy.conf"
+		export FLOW_DNS_COUNT="$F/dns-count"
 		initscript=/etc/init.d/aether-proxy
 		config_load() { return 0; }
 		config_get_bool() { printf -v "$1" '%s' "$(cat "$F/enabled")"; }
@@ -156,10 +183,42 @@ flow_op() {
 		procd_send_signal() { printf 'signal %s\n' "$*" >> "$F/log"; }
 		logger() { :; }
 		. "$INIT"
-		AETHER_PROXY="$T/bin-aether-proxy"
-		start() { procd_open_service "$(basename "${basescript:-$initscript}")" "$initscript"; start_service "$@"; procd_close_service; }
-		stop() { stop_service "$@"; rm -f "$F/svc"; printf 'service_deleted\n' >> "$F/log"; service_stopped "$@"; }
-		restart() { stop "$@"; start "$@"; }
+		AETHER_PROXY="$F/bin-aether-proxy"
+		flow_cleanup() {
+			local stage="$1" intent=absent fragment=absent count
+			[ -e "$FLOW_INTENT" ] && intent=present
+			[ -e "$FLOW_FRAGMENT" ] && fragment=present
+			printf 'stage %s intent=%s fragment=%s\n' "$stage" "$intent" "$fragment" >> "$F/log"
+			if [ "$intent" = absent ] && [ "$fragment" = present ]; then
+				rm -f "$FLOW_FRAGMENT" || return 1
+				count=$(cat "$FLOW_DNS_COUNT")
+				echo $((count + 1)) > "$FLOW_DNS_COUNT"
+				printf 'dnsmasq restart %s\n' "$stage" >> "$F/log"
+			fi
+		}
+		flow_start_daemon() {
+			flow_cleanup start-cleanup || return 1
+			[ -e "$F/start-fail" ] && return 1
+			printf 'no-resolv\nserver=127.0.0.1#31053\n' > "$FLOW_FRAGMENT" || return 1
+			count=$(cat "$FLOW_DNS_COUNT")
+			echo $((count + 1)) > "$FLOW_DNS_COUNT"
+			printf 'dnsmasq restart install\n' >> "$F/log"
+			rm -f "$FLOW_INTENT" || return 1
+			printf 'stage handoff-installed intent=absent fragment=present\n' >> "$F/log"
+		}
+		start() {
+			procd_open_service "$(basename "${basescript:-$initscript}")" "$initscript"
+			start_service "$@" || return $?
+			procd_close_service
+			[ "$(cat "$F/enabled")" = 1 ] && flow_start_daemon
+		}
+		stop() {
+			stop_service "$@" || return $?
+			flow_cleanup old-shutdown || return $?
+			rm -f "$F/svc"
+			printf 'service_deleted\n' >> "$F/log"
+			service_stopped "$@"
+		}
 		"$1"
 	)
 }
@@ -215,6 +274,76 @@ flow_op stop; echo 0 > "$F/enabled"; flow_op reload_service
 echo 1 > "$F/enabled"; flow_op reload_service
 flow_has instance && ok "T9.32 flow: off then on after a manual stop starts the service" \
 	|| bad "T9.32 flow: off then on after a manual stop starts the service"
+
+# T15.1: use the real packaged restart() and rc.common's stop -> start shape. The lifecycle
+# stand-in records old shutdown, cleanup --wait and new-daemon startup cleanup separately.
+HANDOFF="$F/dnsmasq.d/aether-proxy.conf"
+INTENT="$F/run/restart-intent"
+flow_reset; echo 1 > "$F/enabled"; flow_op start
+cp "$HANDOFF" "$F/handoff.expected"
+: > "$F/log"
+flow_op restart; rc=$?
+expect "T15.1 R1/R10 init restart succeeds" 0 "$rc"
+grep -Fxq 'stage old-shutdown intent=present fragment=present' "$F/log" \
+	&& grep -Fxq 'stage cleanup-wait intent=present fragment=present' "$F/log" \
+	&& grep -Fxq 'stage start-cleanup intent=present fragment=present' "$F/log" \
+	&& ok "T15.1 R1 restart intent precedes stop and protects every cleanup stage" \
+	|| bad "T15.1 R1 restart intent precedes stop and protects every cleanup stage"
+cmp -s "$HANDOFF" "$F/handoff.expected" && [ ! -e "$INTENT" ] \
+	&& ok "T15.1 R1 successful handoff keeps fragment bytes and then clears intent" \
+	|| bad "T15.1 R1 successful handoff keeps fragment bytes and then clears intent"
+expect "T15.1 R1 restart invokes dnsmasq exactly once for replacement install" 2 "$(cat "$F/dns-count")"
+flow_has instance && [ ! -e "$MARK" ] \
+	&& ok "T15.1 R10 restart ends running without manual-stop marker" \
+	|| bad "T15.1 R10 restart ends running without manual-stop marker"
+
+: > "$F/log"; flow_op stop; rc=$?
+expect "T15.1 R4 manual stop succeeds" 0 "$rc"
+[ ! -e "$HANDOFF" ] && [ ! -e "$INTENT" ] && [ -e "$MARK" ] && flow_no_instance \
+	&& ok "T15.1 R4 manual stop clears intent, removes fragment and ends stopped" \
+	|| bad "T15.1 R4 manual stop clears intent, removes fragment and ends stopped"
+expect "T15.1 R4 manual stop adds one exact dnsmasq restart" 3 "$(cat "$F/dns-count")"
+flow_has 'trigger aetherproxy' \
+	&& ok "T15.1 R4 manual stop preserves stopped-by-user and reload trigger semantics" \
+	|| bad "T15.1 R4 manual stop preserves stopped-by-user and reload trigger semantics"
+
+# A failed replacement keeps the old privacy boundary. A later start/retry installs the
+# replacement and is the only path allowed to clear the intent.
+flow_reset; echo 1 > "$F/enabled"; flow_op start
+cp "$HANDOFF" "$F/handoff.expected"; touch "$F/start-fail"; : > "$F/log"
+flow_op restart; rc=$?
+expect "T15.1 R6 failed restart reports failure" 1 "$rc"
+cmp -s "$HANDOFF" "$F/handoff.expected" && [ -e "$INTENT" ] \
+	&& ok "T15.1 R6 failed restart retains fragment bytes and intent" \
+	|| bad "T15.1 R6 failed restart retains fragment bytes and intent"
+expect "T15.1 R6 failed restart performs no dnsmasq restart" 1 "$(cat "$F/dns-count")"
+rm -f "$F/start-fail"; flow_op start; rc=$?
+expect "T15.1 R6 replacement retry succeeds" 0 "$rc"
+[ -e "$HANDOFF" ] && [ ! -e "$INTENT" ] \
+	&& ok "T15.1 R6 successful retry clears intent only after handoff install" \
+	|| bad "T15.1 R6 successful retry clears intent only after handoff install"
+expect "T15.1 R6 retry adds exactly one install restart" 2 "$(cat "$F/dns-count")"
+
+# A failed restart can always be closed explicitly by stop, and enabled=0 follows the same
+# stop semantics while clearing the manual-stop marker afterwards.
+touch "$F/start-fail"; flow_op restart >/dev/null; rm -f "$F/start-fail"
+flow_op stop; rc=$?
+expect "T15.1 R7 stop after failed restart succeeds" 0 "$rc"
+[ ! -e "$INTENT" ] && [ ! -e "$HANDOFF" ] && flow_no_instance \
+	&& ok "T15.1 R7 stop after failed restart restores system DNS and stopped state" \
+	|| bad "T15.1 R7 stop after failed restart restores system DNS and stopped state"
+
+flow_reset; echo 1 > "$F/enabled"; flow_op start
+touch "$INTENT"; echo 0 > "$F/enabled"; flow_op reload_service; rc=$?
+expect "T15.1 R5 enabled=0 reload succeeds" 0 "$rc"
+[ ! -e "$INTENT" ] && [ ! -e "$HANDOFF" ] && [ ! -e "$MARK" ] && flow_no_instance \
+	&& ok "T15.1 R5 enabled=0 removes handoff and clears both markers" \
+	|| bad "T15.1 R5 enabled=0 removes handoff and clears both markers"
+expect "T15.1 R5 enabled=0 adds one exact dnsmasq restart" 2 "$(cat "$F/dns-count")"
+echo 1 > "$F/enabled"; flow_op reload_service
+flow_has instance && [ -e "$HANDOFF" ] \
+	&& ok "T15.1 R5 re-enable starts and reinstalls handoff" \
+	|| bad "T15.1 R5 re-enable starts and reinstalls handoff"
 
 # Preserve the original monitor-wakeup cases; DNS synchronization is an independent
 # background call, including on LAN. Only the harness waits for its logging substitute.

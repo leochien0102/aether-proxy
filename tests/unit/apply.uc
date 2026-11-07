@@ -227,17 +227,35 @@ function run_dnsmasq() {
 	let moved = apply.dnsmasq_remove({ ...c, lan_ifaces: [ 'br-gone' ] });
 	if (!moved.ok || fs.stat(`${found.confdir}/${C.DNSMASQ_FRAGMENT}`) != null)
 		return fail(`remove without a unique LAN conf-dir: ${sprintf('%.J', moved)}`);
-	apply.dnsmasq_install(c, 'server=127.0.0.1#31053\n');
+	let handoff = 'server=127.0.0.1#31053\n';
+	apply.dnsmasq_install(c, handoff);
+	let fragment = `${found.confdir}/${C.DNSMASQ_FRAGMENT}`;
+	let intent_path = `${t.base}/var/run/aether-proxy/${C.RESTART_INTENT_FILE}`;
+	write(intent_path, 'restart\n');
+	let before_preserve = length(filter(split(read(t.log_path), '\n'), l => match(l, /dnsmasq restart/)));
+	let preserved = apply.dnsmasq_remove(c);
+	let after_preserve = length(filter(split(read(t.log_path), '\n'), l => match(l, /dnsmasq restart/)));
+	if (!preserved.ok || read(fragment) != handoff || before_preserve != after_preserve)
+		return fail('restart intent did not preserve fragment byte-for-byte without restart');
+	if (!apply.restart_intent_clear(c).ok || fs.stat(intent_path) != null)
+		return fail('restart intent clear failed');
+	if (!sys.mkdir_p(intent_path) || apply.restart_intent_clear(c).ok ||
+	    index(read(`${t.base}/var/run/aether-proxy/${C.EVENTS_FILE}`), '"code": "FS_FAILED"') < 0)
+		return fail('restart intent clear failure was not explicit');
+	if (!fs.rmdir(intent_path))
+		return fail('cannot remove restart intent failure fixture');
 	let removed = apply.dnsmasq_remove(c), removed_again = apply.dnsmasq_remove(c);
 	let hup = apply.dnsmasq_hup(c);
-	if (!removed.ok || !removed_again.ok || !hup.ok || fs.stat(`${found.confdir}/${C.DNSMASQ_FRAGMENT}`) != null)
+	if (!removed.ok || !removed_again.ok || !hup.ok || fs.stat(fragment) != null)
 		return fail('dnsmasq remove/HUP mismatch');
 	if (length(filter(split(read(t.log_path), '\n'), l => match(l, /dnsmasq restart/))) != 4)
 		return fail('restart call count mismatch');
+	write(fragment, 'old-handoff\n');
+	write(intent_path, 'restart\n');
 	write(`${t.base}/etc/init.d/dnsmasq`, '#!/bin/sh\nexit 1\n');
 	fs.chmod(`${t.base}/etc/init.d/dnsmasq`, 493);
-	if (apply.dnsmasq_install(c, 'server=127.0.0.1#31053\n').ok)
-		return fail('restart failure accepted');
+	if (apply.dnsmasq_install(c, 'new-handoff\n').ok || read(fragment) != 'old-handoff\n' || fs.stat(intent_path) == null)
+		return fail('restart failure did not retain old fragment and intent');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_KILLALL_RC=1\n');
 	let hup_failed = apply.dnsmasq_hup(c);
 	// dns.dnsmasq_instance pins an instance by section name, ignoring lan_ifaces.

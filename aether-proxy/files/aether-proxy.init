@@ -9,6 +9,8 @@ _AETHER_PROXY_BOOT=0
 # Same name as STOPPED_BY_USER_FILE in lib/const.uc; the directory is overridable for tests.
 AETHER_PROXY_RUN_DIR="${AETHER_PROXY_RUN_DIR:-/var/run/aether-proxy}"
 _AETHER_PROXY_STOP_MARK="$AETHER_PROXY_RUN_DIR/stopped-by-user"
+_AETHER_PROXY_RESTART_INTENT="$AETHER_PROXY_RUN_DIR/restart-intent"
+_AETHER_PROXY_RESTARTING=0
 
 start_service() {
 	# Any start (manual, restart, reload of a stopped service, boot) clears the manual-stop mark.
@@ -37,6 +39,39 @@ start_service() {
 
 boot() {
 	_AETHER_PROXY_BOOT=1
+	start "$@"
+}
+
+restart() {
+	config_load aetherproxy
+	config_get_bool enabled main enabled 0
+	if [ "$enabled" != 1 ]; then
+		stop "$@"
+		stop_rc=$?
+		[ "$stop_rc" -eq 0 ] || return "$stop_rc"
+		start "$@"
+		return $?
+	fi
+
+	# rc.common restart is stop then start. Publish the volatile intent before stop can
+	# signal the old daemon, so its shutdown and service_stopped cleanup retain DNS handoff.
+	mkdir -p "$AETHER_PROXY_RUN_DIR" || {
+		logger -t aether-proxy "cannot create $AETHER_PROXY_RUN_DIR for restart intent"
+		return 1
+	}
+	intent_tmp="$_AETHER_PROXY_RESTART_INTENT.$$"
+	umask 077
+	if ! printf 'restart\n' > "$intent_tmp" || ! mv -f "$intent_tmp" "$_AETHER_PROXY_RESTART_INTENT"; then
+		logger -t aether-proxy "cannot write $_AETHER_PROXY_RESTART_INTENT"
+		rm -f "$intent_tmp" || logger -t aether-proxy "cannot remove $intent_tmp"
+		return 1
+	fi
+
+	_AETHER_PROXY_RESTARTING=1
+	stop "$@"
+	stop_rc=$?
+	_AETHER_PROXY_RESTARTING=0
+	[ "$stop_rc" -eq 0 ] || return "$stop_rc"
 	start "$@"
 }
 
@@ -72,9 +107,20 @@ reload_service() {
 }
 
 stop_service() {
-	# Runs for init stop, restart and the enabled=0 reload; the last one clears it again.
-	mkdir -p "$AETHER_PROXY_RUN_DIR" && : > "$_AETHER_PROXY_STOP_MARK" ||
+	if [ "$_AETHER_PROXY_RESTARTING" = 1 ]; then
+		# restart() already published its stronger intent; do not replace it with a manual stop.
+		return 0
+	fi
+
+	# Manual stop and enabled=0 must close a failed restart before the daemon is signalled.
+	if ! rm -f "$_AETHER_PROXY_RESTART_INTENT"; then
+		logger -t aether-proxy "cannot remove $_AETHER_PROXY_RESTART_INTENT"
+		return 1
+	fi
+	mkdir -p "$AETHER_PROXY_RUN_DIR" && : > "$_AETHER_PROXY_STOP_MARK" || {
 		logger -t aether-proxy "cannot write $_AETHER_PROXY_STOP_MARK"
+		return 1
+	}
 	return 0
 }
 

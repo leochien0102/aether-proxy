@@ -138,6 +138,7 @@ EOF
 	cat > "$root/etc/init.d/dnsmasq" <<'EOF'
 #!/bin/sh
 printf 'dnsmasq %s\n' "$*" >> "$STUB_LOG"
+[ -e "$SYSROOT/dnsmasq-fail" ] && exit 1
 exit "${STUB_DNSMASQ_RC:-0}"
 EOF
 	chmod +x "$root/etc/init.d/dnsmasq"
@@ -542,6 +543,12 @@ timeout 15s env STUB_LOG="$L3" SYSROOT="$R3" PATH="$T/bin:$PATH" \
 	STUB_GFW4_ELEM='["198.51.100.1",{"prefix":{"addr":"198.51.100.64","len":26}}]' \
 	"$UCODE" -S "$ENTRY" -- cleanup $(args_for "$R3") >/dev/null 2>>"$QUIET"; rc1=$?
 expect "first cleanup succeeds" 0 "$rc1"
+[ ! -e "$R3/tmp/dnsmasq.d/aether-proxy.conf" ] \
+	&& [ ! -e "$R3/var/run/aether-proxy/restart-intent" ] \
+	&& ok "T15.1 R8 ordinary cleanup without intent removes stale handoff" \
+	|| bad "T15.1 R8 ordinary cleanup without intent removes stale handoff"
+expect "T15.1 R8 ordinary cleanup restarts dnsmasq exactly once" 1 \
+	"$(count_calls "$L3" 'dnsmasq restart')"
 # Like the daemon's stop, cleanup saves the dynamic sets before deleting the table (04).
 saved="$R3/var/run/aether-proxy/sets.save"
 grep -q '198.51.100.1"' "$saved" 2>>"$QUIET" && grep -q '198.51.100.64/26' "$saved" 2>>"$QUIET" \
@@ -555,6 +562,137 @@ second_lines=$(wc -l < "$L3")
 after_first=$(awk '/^(nft delete table|ip rule del|ip route flush|dnsmasq restart)/ { n++ } END { print n+0 }' "$L3")
 after_second=$(awk '/^(nft delete table|ip rule del|ip route flush|dnsmasq restart)/ { n++ } END { print n+0 }' "$L3")
 expect "second cleanup adds no destructive calls" "$after_first" "$after_second"
+
+R8S="$T/sys-start-residue"; L8S="$R8S/calls.log"; make_root "$R8S"; : > "$L8S"
+printf 'stale-direct-handoff\n' > "$R8S/tmp/dnsmasq.d/aether-proxy.conf"
+start_daemon "$R8S" "$L8S"
+if wait_for "$R8S/var/run/aether-proxy/state.json" '"state": "running"'; then
+	grep -Fxq 'no-resolv' "$R8S/tmp/dnsmasq.d/aether-proxy.conf" \
+		&& grep -Fxq 'server=127.0.0.1#31053' "$R8S/tmp/dnsmasq.d/aether-proxy.conf" \
+		&& [ ! -e "$R8S/var/run/aether-proxy/restart-intent" ] \
+		&& ok "T15.1 R8 ordinary start removes crash residue and installs fresh handoff" \
+		|| bad "T15.1 R8 ordinary start removes crash residue and installs fresh handoff"
+	expect "T15.1 R8 ordinary start uses one cleanup and one install restart" 2 \
+		"$(count_calls "$L8S" 'dnsmasq restart')"
+	expect "T15.1 R8 ordinary start final state is running" running \
+		"$(jget state < "$R8S/var/run/aether-proxy/state.json")"
+else
+	bad "T15.1 R8 ordinary start reaches running" "$(cat "$R8S/daemon.stderr")"
+fi
+stop_daemon; expect "T15.1 R8 ordinary start fixture stops" 0 "$?"
+
+# T15.1 R1-R3: a real daemon shutdown, cleanup --wait fallback and replacement startup all
+# observe the same restart intent. The fragment must remain byte-for-byte unchanged until the
+# replacement install succeeds; only that install may add a dnsmasq restart.
+RH="$T/sys-restart-handoff"; LH="$RH/calls.log"; make_root "$RH"; : > "$LH"
+start_daemon "$RH" "$LH"
+if wait_for "$RH/var/run/aether-proxy/state.json" '"state": "running"'; then
+	cp "$RH/tmp/dnsmasq.d/aether-proxy.conf" "$RH/handoff.expected"
+	touch "$RH/var/run/aether-proxy/restart-intent"
+	before_restart_stop=$(count_calls "$LH" 'dnsmasq restart')
+	stop_daemon; rc=$?
+	expect "T15.1 R2 restart shutdown exits successfully" 0 "$rc"
+	cmp -s "$RH/tmp/dnsmasq.d/aether-proxy.conf" "$RH/handoff.expected" \
+		&& [ -e "$RH/var/run/aether-proxy/restart-intent" ] \
+		&& ok "T15.1 R2 orderly shutdown retains fragment bytes and intent" \
+		|| bad "T15.1 R2 orderly shutdown retains fragment bytes and intent"
+	expect "T15.1 R2 orderly shutdown adds no dnsmasq restart" "$before_restart_stop" \
+		"$(count_calls "$LH" 'dnsmasq restart')"
+	[ ! -e "$RH/nft-table" ] && [ ! -s "$RH/ip-rules" ] && [ ! -s "$RH/ip-routes" ] \
+		&& ok "T15.1 R2 restart shutdown still removes nft and routes" \
+		|| bad "T15.1 R2 restart shutdown still removes nft and routes"
+	expect "T15.1 R2 restart shutdown final state is stopped" stopped \
+		"$(jget state < "$RH/var/run/aether-proxy/state.json")"
+	assert_no_children "$RH"
+
+	for attempt in 1 2; do
+		timeout 15s env STUB_LOG="$LH" SYSROOT="$RH" PATH="$T/bin:$PATH" \
+			"$UCODE" -S "$ENTRY" -- cleanup $(args_for "$RH") >/dev/null 2>>"$QUIET"; cleanup_rc=$?
+		expect "T15.1 R3 protected cleanup $attempt succeeds" 0 "$cleanup_rc"
+		cmp -s "$RH/tmp/dnsmasq.d/aether-proxy.conf" "$RH/handoff.expected" \
+			&& [ -e "$RH/var/run/aether-proxy/restart-intent" ] \
+			&& ok "T15.1 R3 protected cleanup $attempt retains fragment and intent" \
+			|| bad "T15.1 R3 protected cleanup $attempt retains fragment and intent"
+		expect "T15.1 R3 protected cleanup $attempt adds no dnsmasq restart" \
+			"$before_restart_stop" "$(count_calls "$LH" 'dnsmasq restart')"
+	done
+
+	start_daemon "$RH" "$LH"
+	if wait_for "$RH/var/run/aether-proxy/state.json" '"state": "running"'; then
+		cmp -s "$RH/tmp/dnsmasq.d/aether-proxy.conf" "$RH/handoff.expected" \
+			&& [ ! -e "$RH/var/run/aether-proxy/restart-intent" ] \
+			&& ok "T15.1 R1 replacement install keeps fragment bytes then clears intent" \
+			|| bad "T15.1 R1 replacement install keeps fragment bytes then clears intent"
+		expect "T15.1 R1 replacement install adds exactly one dnsmasq restart" \
+			1 "$(count_calls "$LH" 'dnsmasq restart')"
+		expect "T15.1 R1 replacement daemon final state is running" running \
+			"$(jget state < "$RH/var/run/aether-proxy/state.json")"
+	else
+		bad "T15.1 R1 replacement daemon reaches running" "$(cat "$RH/daemon.stderr")"
+	fi
+	stop_daemon; expect "T15.1 replacement daemon ordinary stop succeeds" 0 "$?"
+else
+	bad "T15.1 restart handoff fixture reaches running" "$(cat "$RH/daemon.stderr")"
+	stop_daemon
+fi
+
+# T15.1 R6/R9: a failed replacement dnsmasq restart rolls back to the old fragment and
+# retains intent. The daemon retry later succeeds and only then clears intent.
+RF="$T/sys-restart-failure"; LF="$RF/calls.log"; make_root "$RF"; : > "$LF"
+start_daemon "$RF" "$LF"
+if wait_for "$RF/var/run/aether-proxy/state.json" '"state": "running"'; then
+	cp "$RF/tmp/dnsmasq.d/aether-proxy.conf" "$RF/handoff.expected"
+	touch "$RF/var/run/aether-proxy/restart-intent"
+	stop_daemon; expect "T15.1 failure fixture protected stop succeeds" 0 "$?"
+	touch "$RF/dnsmasq-fail"
+	AETHER_PROXY_TEST_RETRY_DELAY=1 start_daemon "$RF" "$LF"
+	if wait_for "$RF/var/run/aether-proxy/state.json" '"failed_step": "dnsmasq_install"' 200; then
+		cmp -s "$RF/tmp/dnsmasq.d/aether-proxy.conf" "$RF/handoff.expected" \
+			&& [ -e "$RF/var/run/aether-proxy/restart-intent" ] \
+			&& ok "T15.1 R9 failed install retains old fragment bytes and intent" \
+			|| bad "T15.1 R9 failed install retains old fragment bytes and intent"
+		expect "T15.1 R9 failed install makes one attempted dnsmasq restart" \
+			1 "$(count_calls "$LF" 'dnsmasq restart')"
+		expect "T15.1 R6 failed replacement state is error" error \
+			"$(jget state < "$RF/var/run/aether-proxy/state.json")"
+	else
+		bad "T15.1 R9 failed install reaches error" "$(cat "$RF/daemon.stderr")"
+	fi
+	rm -f "$RF/dnsmasq-fail"
+	if wait_for "$RF/var/run/aether-proxy/state.json" '"state": "running"' 200; then
+		cmp -s "$RF/tmp/dnsmasq.d/aether-proxy.conf" "$RF/handoff.expected" \
+			&& [ ! -e "$RF/var/run/aether-proxy/restart-intent" ] \
+			&& ok "T15.1 R6 retry success clears intent after restoring handoff" \
+			|| bad "T15.1 R6 retry success clears intent after restoring handoff"
+		expect "T15.1 R6 retry adds exactly one successful install restart" \
+			2 "$(count_calls "$LF" 'dnsmasq restart')"
+		expect "T15.1 R6 retry final state is running" running \
+			"$(jget state < "$RF/var/run/aether-proxy/state.json")"
+	else
+		bad "T15.1 R6 retry reaches running" "$(cat "$RF/daemon.stderr")"
+	fi
+
+	# Simulate init stop after another failed restart: init clears the intent before TERM.
+	touch "$RF/var/run/aether-proxy/restart-intent"
+	stop_daemon; expect "T15.1 second protected shutdown succeeds" 0 "$?"
+	touch "$RF/dnsmasq-fail"
+	AETHER_PROXY_TEST_RETRY_DELAY=5 start_daemon "$RF" "$LF"
+	wait_for "$RF/var/run/aether-proxy/state.json" '"failed_step": "dnsmasq_install"' 200 \
+		&& ok "T15.1 R7 second replacement fails before manual stop" \
+		|| bad "T15.1 R7 second replacement fails before manual stop"
+	rm -f "$RF/dnsmasq-fail" "$RF/var/run/aether-proxy/restart-intent"
+	stop_daemon; rc=$?
+	expect "T15.1 R7 manual stop after failure exits successfully" 0 "$rc"
+	[ ! -e "$RF/tmp/dnsmasq.d/aether-proxy.conf" ] \
+		&& [ ! -e "$RF/var/run/aether-proxy/restart-intent" ] \
+		&& ok "T15.1 R7 manual stop removes fragment and intent" \
+		|| bad "T15.1 R7 manual stop removes fragment and intent"
+	expect "T15.1 R7 manual stop final state is stopped" stopped \
+		"$(jget state < "$RF/var/run/aether-proxy/state.json")"
+else
+	bad "T15.1 failure fixture reaches running" "$(cat "$RF/daemon.stderr")"
+	stop_daemon
+fi
 
 # 4. Runtime nft fails once: daemon remains in error, schedules a retry, then starts.
 R4="$T/sys4"; L4="$T/sys4/calls.log"; make_root "$R4"; : > "$L4"

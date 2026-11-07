@@ -176,7 +176,7 @@ verdict-cache 4096
   ```
 - conf-dir 路径的确定方法：读取 `/var/etc/dnsmasq.conf.*` 中的 `conf-dir=` 行。有多个实例时，选择服务
   `lan_ifaces` 的那个实例。UCI `aetherproxy.dns.dnsmasq_instance` 可以显式指定（填 dnsmasq 的 UCI 段名，对应 `/var/etc/dnsmasq.conf.<段名>`；指定后只看这一个实例，不再按 `lan_ifaces` 选择）。找不到时失败（`DNSMASQ_CONFDIR_NOT_FOUND`）。
-- 写入或删除片段之后执行 `/etc/init.d/dnsmasq restart`（conf-dir 变化需要重启，SIGHUP 不会重新读取配置）。
+- 写入或删除片段之后执行 `/etc/init.d/dnsmasq restart`（conf-dir 变化需要重启，SIGHUP 不会重新读取配置）。服务自身的 `restart` 是例外的交接窗口：init 在停止旧 daemon 前建立 `/var/run/aether-proxy/restart-intent`，旧 shutdown、兜底 cleanup 与新 daemon 的启动残留清理都保留现有片段、跳过删除所需的 restart；新 daemon 成功写入片段并完成这一次安装 restart 后才清意图。若新启动失败，旧片段与意图继续保留，使查询失败而不是回落到系统直连 resolver；之后手动 stop/禁用会清意图并按普通删除流程恢复系统 DNS。
 - 如果检测到 UCI 中已配置 `list server`，记一条 WARN（`DNSMASQ_EXTRA_SERVERS`）：这些服务器会和 aether-proxy 并行，
   可能导致 DNS 泄漏或污染。只提示，不去改它。
 - 片段放在 tmpfs，整机重启后自然消失。aether-proxy 不随开机启动时，DNS 就是用户原来的配置。

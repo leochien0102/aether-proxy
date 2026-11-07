@@ -120,6 +120,7 @@
 - **配置变化的触发器在停止后也要保留**（2026-10-23 定，r14 窗口：「启用」关掉再打开并应用，服务没有启动）。procd 的 `stop` 会删除整个服务连同 `procd_add_reload_trigger` 登记的触发器，
   之后改配置不再触发 `reload_service`。开机时即使 `enabled=0` 也会登记一个不带实例的服务和触发器，所以只有「停过一次之后」才出问题。
   做法：停止完成后（`service_stopped` 的清理之后）重新向 procd 登记不带实例的服务与 `service_triggers`，与 `enabled=0` 开机时相同。
+- **restart DNS 交接意图**（2026-11-07，T15.1）：`/var/run/aether-proxy/restart-intent`（只在 tmpfs）。init 的 `restart` 必须在 `stop` 向旧 daemon 发信号前原子建立它；旧 daemon 的有序 shutdown、`service_stopped` 的 `cleanup --wait`、新 daemon 的启动残留清理看到它时都保留 dnsmasq 片段，且不执行因删除片段产生的 dnsmasq restart。新 daemon 只有在 `dnsmasq_install()` 成功后才删除意图；安装前失败/退避时保留意图和旧片段，允许本地 DNS timeout/SERVFAIL，但不回落直连。手动 `stop` 与 `enabled=0` 在停止旧 daemon 前先清意图，因此仍删除片段、恢复系统 DNS；这也用于收口一次失败的 restart。整机重启会自然清掉意图，不改变开机语义。
 - **手动停止标记**（同日定，仓库所有者：手动点了「停止」，之后改配置不应把服务拉起来）：`/var/run/aether-proxy/stopped-by-user`（重启路由器自然清掉）。
   - init 的 `stop`（页面「停止」、命令行 `/etc/init.d/aether-proxy stop`）写这个标记；`start`、`restart` 清掉它（`restart` 是先 stop 后 start，结果是清掉）。
   - `reload_service`：`enabled=0` → 停止（若在运行）并**清掉标记**；`enabled=1` 且没在运行 → 有标记就什么都不做，没有才 `start`；在运行 → 照旧发 HUP。

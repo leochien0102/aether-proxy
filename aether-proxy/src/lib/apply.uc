@@ -419,6 +419,36 @@ function dnsmasq_confdir(ctx) {
 	return result('dnsmasq conf-dir found', { confdir: found.confdir });
 };
 
+function restart_intent_path(ctx) {
+	return `${run_dir(ctx)}/${C.RESTART_INTENT_FILE}`;
+};
+
+function restart_intent(ctx) {
+	let path = restart_intent_path(ctx);
+	if (fs.lstat(path) != null)
+		return result('restart intent present', { active: true });
+	let detail = fs.error() ?? 'unknown error';
+	if (detail == 'No such file or directory')
+		return result('restart intent absent', { active: false });
+	setup_log(ctx);
+	log.event('error', 'FS_FAILED', { op: 'stat', path, detail });
+	return { ok: false, detail: `cannot inspect ${path}: ${detail}` };
+};
+
+function restart_intent_clear(ctx) {
+	let current = restart_intent(ctx);
+	if (!current.ok || !current.active)
+		return current;
+	let path = restart_intent_path(ctx);
+	if (!fs.unlink(path)) {
+		let detail = fs.error() ?? 'unknown error';
+		setup_log(ctx);
+		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail });
+		return { ok: false, detail: `cannot remove ${path}: ${detail}` };
+	}
+	return result('restart intent cleared', { active: false });
+};
+
 function dnsmasq_restart(ctx) {
 	let path = system_path(ctx, C.DNSMASQ_INIT);
 	let r = sys.run([ path, 'restart' ], { timeout: 10 });
@@ -457,6 +487,13 @@ function dnsmasq_install(ctx, content) {
 // regenerated or the LAN interfaces changed since install.
 function dnsmasq_remove(ctx) {
 	setup_log(ctx);
+	let intent = restart_intent(ctx);
+	if (!intent.ok)
+		return intent;
+	// During init restart the old fragment is the privacy boundary. Keep it byte-for-byte;
+	// a missing local listener may fail queries, but removing it would leak to direct DNS.
+	if (intent.active)
+		return result('dnsmasq fragment retained for restart');
 	let dir = system_path(ctx, C.DNSMASQ_CONFIG_DIR);
 	let names = list_files(dir);
 	if (names == null)
@@ -705,7 +742,7 @@ export {
 	sets_export, sets_save, sets_load, sets_remove,
 	route_add, route_del, table_routes,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
-	scan_extra_servers,
+	restart_intent, restart_intent_clear, scan_extra_servers,
 	read_lkg, update_lkg, resolve_node, write_boot_list, conflicts,
 	artifact_hashes
 };
