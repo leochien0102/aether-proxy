@@ -1547,7 +1547,9 @@ function run(args) {
 			retry_index = 0;
 	}
 
-	stop_children(ctx, { raw_log: raw_collector });
+	// An unstarted deferred handle does not own a historical collector PID/FIFO.
+	if (collector_started)
+		stop_children(ctx, { raw_log: raw_collector });
 	for (let key, handler in signals)
 		if (handler != null)
 			handler.delete();

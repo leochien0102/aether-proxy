@@ -181,6 +181,10 @@ printf 'chinadns-ng %s\n' "$*" >> "$STUB_LOG"
 echo "$$" > "$SYSROOT/chinadns.pid"
 proc="$SYSROOT/proc/$$"
 cleanup() {
+	if [ -f "$SYSROOT/dns-stop-delay" ]; then
+		read -r delay < "$SYSROOT/dns-stop-delay"
+		sleep "$delay"
+	fi
 	rm -rf "$proc"
 	rm -f "$SYSROOT/chinadns.pid"
 	exit 0

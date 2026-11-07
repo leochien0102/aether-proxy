@@ -195,9 +195,12 @@ function create(opts) {
 		if (stable_timer != null)
 			stable_timer.cancel();
 		stable_timer = null;
-		if (stop_timer != null)
+		// Private PID-publication failure may already have armed escalation. Do
+		// not leave that timer behind after the subsequent explicit private stop.
+		if (opts.respawn == false && stop_timer != null) {
 			stop_timer.cancel();
-		stop_timer = null;
+			stop_timer = null;
+		}
 		stopping = true;
 		done_cb = done;
 		if (proc == null) {

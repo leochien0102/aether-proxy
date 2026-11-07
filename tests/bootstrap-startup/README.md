@@ -81,7 +81,8 @@ bash tests/daemon/run.sh
 bash tests/reload/run.sh
 bash tests/monitor/run.sh
 bash tests/stubs/procd/run.sh
-bash tests/schedule/run.sh
+# Additional non-card regression: original schedule fixture predates B3.
+python3 tests/bootstrap-startup/schedule-compat.py
 CI_TOOLS_DIR=/workspace/openwrt/ci-spike/tools bash tests/review.sh
 ```
 
@@ -89,3 +90,14 @@ The old B1 Q11 startup-disconnected and B2 W7 old-order assertions are replaced
 only at the startup boundary. Runtime reload/monitor/probe resolution and the
 original `resolve_node()` body remain frozen and independently checked. No
 formal golden or shared runner/host/review infrastructure is changed.
+
+The extra raw `bash tests/schedule/run.sh` command still has its old startup
+resolver environment control and an end-of-suite custom DNS without private
+query/owned-ready support. The compatibility driver changes only those fixture
+boundaries in an ignored temporary script and verifies every ok/bad/expect oracle
+line is unchanged. `tests/schedule/` is not edited. Its raw failure and the adapted
+run are separately reported; the latter is not presented as the raw command passing.
+The inherited last-fraction-of-wall-clock stop case was timing-sensitive in an
+initial adapted run (46/1, then unchanged 47/0); this optional run is not the sole
+cancellation evidence. The specified C7 and original T9.46 deadline/stop oracles
+are separately required and are not skipped or weakened.

@@ -626,6 +626,10 @@ def orphan(base):
         child.kill()
         child.wait()
         saved = (dirs[0] / 'owner.json').read_bytes()
+        collector_record = f.run / 'raw-log.pid'
+        if not collector_record.exists():
+            collector_record.write_text('historical-fixture\n')
+        saved_collector = collector_record.read_bytes()
         command = [str(ROOT / 'tests/host/ucode'), str(ROOT / 'aether-proxy/src/aether-proxy'), '--', 'cleanup',
             '--wait', '1', '--sys-root', str(f.root), '--bin-dir', str(f.bin), '--confdir', str(f.conf.parent)]
         result = subprocess.run(command, env=f.env, text=True, capture_output=True, timeout=5)
@@ -666,6 +670,8 @@ def orphan(base):
             retry.wait(timeout=6)
             check(retry.returncode == 1 and f.state().get('state') == 'error',
                   'C8 explicit stop reports unconfirmed orphan as failure not stopped')
+            check(collector_record.read_bytes() == saved_collector,
+                  'C8 blocked unstarted collector handle never removes historical collector metadata')
         os.killpg(child.pid, signal.SIGKILL)
         time.sleep(.1)
         external = dirs[0] / 'external.keep'
