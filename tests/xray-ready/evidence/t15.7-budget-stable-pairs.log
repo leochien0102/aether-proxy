@@ -1,0 +1,310 @@
+
+== pair 1 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200187428, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200187426, "query_fallback": true, "query_return_ms": 200187428}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 1 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200188241, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200188239, "query_fallback": true, "query_return_ms": 200188241}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 2 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200188980, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200188978, "query_fallback": true, "query_return_ms": 200188980}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 2 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200189781, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200189779, "query_fallback": true, "query_return_ms": 200189781}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 3 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200190524, "connect_calls": 1, "elapsed_ms": 117, "fd_delta": 0, "original_deadline_ms": 200190522, "query_fallback": true, "query_return_ms": 200190525}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 3 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200191357, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200191355, "query_fallback": true, "query_return_ms": 200191357}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 4 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200192102, "connect_calls": 1, "elapsed_ms": 118, "fd_delta": 0, "original_deadline_ms": 200192100, "query_fallback": true, "query_return_ms": 200192103}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 4 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200192906, "connect_calls": 0, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200192904, "query_fallback": true, "query_return_ms": 200192906}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 5 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200193702, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200193700, "query_fallback": true, "query_return_ms": 200193702}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 5 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200194592, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200194590, "query_fallback": true, "query_return_ms": 200194592}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 6 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200195351, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200195349, "query_fallback": true, "query_return_ms": 200195351}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 6 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200196184, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200196182, "query_fallback": true, "query_return_ms": 200196185}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 7 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200196949, "connect_calls": 1, "elapsed_ms": 117, "fd_delta": 0, "original_deadline_ms": 200196946, "query_fallback": true, "query_return_ms": 200196949}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 7 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200197784, "connect_calls": 0, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200197781, "query_fallback": true, "query_return_ms": 200197784}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 8 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200198554, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200198552, "query_fallback": true, "query_return_ms": 200198554}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 8 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200199382, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200199380, "query_fallback": true, "query_return_ms": 200199382}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 9 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200200150, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200200148, "query_fallback": true, "query_return_ms": 200200150}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 9 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200200976, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200200974, "query_fallback": true, "query_return_ms": 200200976}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed
+
+== pair 10 mutated ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 1, "completion_return_ms": 200201731, "connect_calls": 1, "elapsed_ms": 116, "fd_delta": 0, "original_deadline_ms": 200201729, "query_fallback": true, "query_return_ms": 200201731}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 416, in <module>
+    main(Path(directory))
+    ~~~~^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 409, in main
+    budget_fault(tmp)
+    ~~~~~~~~~~~~^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 309, in budget_fault
+    check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          'P5 exhausted diag budget cannot start compatibility handshake')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/passive.py", line 26, in check
+    raise AssertionError(label)
+AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+
+== pair 10 guarded ==
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200202537, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200202535, "query_fallback": true, "query_return_ms": 200202537}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+passive readiness: 3 passed, 0 failed

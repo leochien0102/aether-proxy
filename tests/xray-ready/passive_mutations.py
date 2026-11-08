@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """T15.7 passive and handler-scope controls; run serially, always restore."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -26,7 +27,7 @@ mutations = [
         'P2 kernel v6only plus competing IPv4 owner cannot satisfy IPv4'),
     ('bad-message-fallback', 'faults', replace('return evidence;', 'evidence = { ok: true, fallback: true };'),
         'P3/P4 wire family fails closed with zero fallback accepts'),
-    ('probe-after-budget', 'faults', replace('if (stopped() || now_ms() >= deadline)', 'if (stopped())'),
+    ('probe-after-budget', 'budget', replace('if (stopped() || now_ms() >= deadline)', 'if (stopped())'),
         'P5 exhausted diag budget cannot start compatibility handshake'),
 ]
 mutations = [(SOURCE, *mutation) for mutation in mutations]
@@ -59,8 +60,46 @@ mutations += [
     (DIAG, 'handler-bad-echo', 'handler', echo_bypass,
      'P3/P4 handler-missing echo-seq fails closed with zero fallback accepts'),
 ]
+def budget_trace(output):
+    prefix = 'EVIDENCE P5 late compatibility: '
+    records = [json.loads(line[len(prefix):]) for line in output.splitlines() if line.startswith(prefix)]
+    assert len(records) == 1, output
+    trace = records[0]
+    assert trace['completion_return_ms'] >= trace['original_deadline_ms'] + 1, trace
+    assert trace['query_fallback'] is True and trace['query_return_ms'] >= trace['completion_return_ms'], trace
+    assert trace['elapsed_ms'] < 250 and trace['fd_delta'] == 0, trace
+    return trace
+
+
+def verify_budget_pair(mutated, expected):
+    command = ['python3', 'tests/xray-ready/passive.py']
+    env = dict(os.environ, PASSIVE_CASE='budget')
+    for attempt in range(1, 11):
+        SOURCE.write_text(mutated)
+        result = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+        (LOGS / f'probe-after-budget-mutated-{attempt:02}.log').write_text(result.stdout + result.stderr)
+        assert result.returncode == 1 and result.stderr.rstrip().endswith(f'AssertionError: {expected}'), (
+            result.returncode, result.stdout, result.stderr)
+        bad = budget_trace(result.stdout)
+        assert bad['connect_calls'] == 1, bad
+        SOURCE.write_text(ORIGINAL)
+        restored = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=10)
+        (LOGS / f'probe-after-budget-guarded-{attempt:02}.log').write_text(restored.stdout + restored.stderr)
+        assert restored.returncode == 0 and f'PASS  {expected}' in restored.stdout, (
+            restored.returncode, restored.stdout, restored.stderr)
+        good = budget_trace(restored.stdout)
+        assert good['connect_calls'] == 0 and good['accepts'] == 0, good
+        print(f'PASS  mutation probe-after-budget pair {attempt}: AssertionError: {expected}; '
+              f"deleted connect={bad['connect_calls']} accept={bad['accepts']}; "
+              f"restored connect={good['connect_calls']} accept={good['accepts']}; "
+              'both legal completions after original deadline', flush=True)
+
+
 try:
     for target, name, case, mutated, expected in mutations:
+        if name == 'probe-after-budget':
+            verify_budget_pair(mutated, expected)
+            continue
         target.write_text(mutated)
         result = subprocess.run(['python3', 'tests/xray-ready/passive.py'], cwd=ROOT,
             env=dict(os.environ, PASSIVE_CASE=case), text=True, capture_output=True, timeout=90)

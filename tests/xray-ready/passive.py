@@ -247,10 +247,6 @@ def faults(tmp):
         result, _ = iso.run(child.pid, [ep], opts={'timeout_ms': 110})
         check(not result['ok'] and result['elapsed_ms'] < 250 and count(counter) == start,
               'P5 multipart diag shares original short deadline')
-        set_wire(wire, [message(20, record(ep['port'], ino, None)), done()], delay=70)
-        result, _ = iso.run(child.pid, [ep], opts={'timeout_ms': 110})
-        check(not result['ok'] and count(counter) == start,
-              'P5 exhausted diag budget cannot start compatibility handshake')
         set_wire(wire, [message(20, record(ep['port'], ino, None)), done()], delay=20)
         result, _ = iso.run(child.pid, [ep], cancel_ms=30)
         check(result.get('cancelled') and count(counter) == start and result['fd_delta'] == 0,
@@ -267,6 +263,51 @@ def faults(tmp):
             result, _ = iso.run(child.pid, [ep], opts={'timeout_ms': 80})
             check(not result['ok'] and count(other_counter) == 0 and result['fd_delta'] == 0,
                   'P4 unsupported still rejects competing IPv4 ownership without probing impostor')
+
+
+def budget_fault(tmp):
+    """Same late legal result for guarded and guard-deleted runs; never fake connect."""
+    ep = endpoint(role='tproxy', address='0.0.0.0')
+    counter = tmp / 'budget-accepts'
+    iso, wire = boundary(tmp / 'budget-boundary')
+    shutil.copyfile(HERE / 'probe_socket.uc', iso.modules / 'probe_socket.uc')
+    path = iso.modules / 'aetherproxy/xray_ready.uc'
+    source = path.read_text()
+    socket_import = "import * as socket from 'socket';"
+    deadline = 'let deadline = start + timeout_ms;'
+    query = 'let evidence = diag.query(ctx, row, little_endian, deadline, stopped);'
+    assert source.count(socket_import) == source.count(deadline) == source.count(query) == 1
+    # Observation-only instrumentation in the isolated copy: expose the actual
+    # deadline, without altering its calculation, guards, clock or control flow.
+    source = source.replace(socket_import, "import * as socket from 'probe_socket';")
+    source = source.replace(deadline, deadline + '\n\tglobal.PROBE_ORIGINAL_DEADLINE = deadline;')
+    path.write_text(source.replace(query, query + '''
+                global.DIAG_TRANSPORT_STATS.query_fallback = evidence.ok && evidence.fallback;
+                global.DIAG_TRANSPORT_STATS.query_return_ms = now_ms();'''))
+    with listener(tmp, [dict(ep, address='::', v6only=0, count_path=str(counter))]) as child:
+        ino = inode(child.pid, ep['port'])
+        messages = [message(20, record(ep['port'], ino, None)), done()]
+        set_wire(wire, messages)
+        result, stats = iso.run(child.pid, [ep], opts={'timeout_ms': 110})
+        check(result['ok'] and stats['connect_calls'] == 1 and count(counter) == 1
+              and result['fd_delta'] == 0,
+              'P5 connect observer positive control delegates one real handshake')
+        start = count(counter)
+        set_wire(wire, messages, late_completion=True)
+        result, stats = iso.run(child.pid, [ep], opts={'timeout_ms': 110})
+        accepts = count(counter) - start
+        trace = dict(original_deadline_ms=stats['original_deadline_ms'],
+                     completion_return_ms=stats['completion_return_ms'],
+                     query_return_ms=stats['query_return_ms'], query_fallback=stats['query_fallback'],
+                     connect_calls=stats['connect_calls'], accepts=accepts,
+                     elapsed_ms=result['elapsed_ms'], fd_delta=result['fd_delta'])
+        print('EVIDENCE P5 late compatibility: ' + json.dumps(trace, sort_keys=True), flush=True)
+        check(stats['completion_return_ms'] >= stats['original_deadline_ms'] + 1
+              and stats['query_fallback'] is True and stats['query_return_ms'] >= stats['completion_return_ms']
+              and result['elapsed_ms'] < 250 and result['fd_delta'] == 0,
+              'P5 legal compatibility completion deterministically returns after original deadline')
+        check(not result['ok'] and stats['connect_calls'] == 0 and accepts == 0,
+              'P5 exhausted diag budget cannot start compatibility handshake')
 
 
 def handler_faults(tmp):
@@ -364,6 +405,8 @@ def main(tmp):
         kernel(tmp)
     if selection in ('all', 'faults'):
         faults(tmp)
+    if selection in ('all', 'budget'):
+        budget_fault(tmp)
     if selection in ('all', 'handler'):
         handler_faults(tmp)
 

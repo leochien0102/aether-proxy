@@ -17,6 +17,23 @@ export function error(numeric) { return spec.errno; };
 export const stats = global.DIAG_TRANSPORT_STATS ?? { created: 0, closed: 0 };
 global.DIAG_TRANSPORT_STATS = stats;
 let received = 0;
+function now_ms() {
+	let t = clock(true);
+	return t[0] * 1000 + t[1] / 1000000;
+};
+
+function late_completion() {
+	let deadline = global.PROBE_ORIGINAL_DEADLINE;
+	if (deadline == null)
+		die('budget test is missing the original deadline observation');
+	// Hold only the final legal receive result, not poll or the production clock.
+	// A loop handles early uloop wakeups; the original deadline is never changed.
+	while (now_ms() < deadline + 1)
+		uloop.run(min(100, max(1, int(deadline + 1 - now_ms()) + 1)));
+	stats.original_deadline_ms = deadline;
+	stats.completion_return_ms = now_ms();
+};
+
 export function create(family, kind, protocol) {
 	received = 0;
 	if (spec.create_error)
@@ -33,6 +50,8 @@ export function create(family, kind, protocol) {
 			let text = '';
 			for (let b in spec.messages[at++])
 				text += chr(b);
+			if (spec.late_completion && at == length(spec.messages))
+				late_completion();
 			return { data: text, length: length(text), flags: spec.flags ?? 0 };
 		},
 		close: () => {

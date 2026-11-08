@@ -1,0 +1,10 @@
+
+$ tests/host/ucode tests/run.uc
+exit 0
+1257 passed, 0 failed, 0 skipped
+
+$ bash tests/xray-ready/run.sh
+exit 0
+xray-ready: 54 passed, 0 failed
+xray-ready lifecycle proc fixtures: 33 passed, 0 failed
+xray-ready minimal modules and ELF: 52 passed, 0 failed
