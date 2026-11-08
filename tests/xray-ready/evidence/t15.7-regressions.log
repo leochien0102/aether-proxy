@@ -1,0 +1,313 @@
+
+$ tests/host/ucode tests/run.uc
+exit 0
+1256 passed, 0 failed, 0 skipped
+
+$ bash tests/xray-ready/run.sh (restored by B2 mutations)
+exit 0
+xray-ready: 54 passed, 0 failed
+xray-ready lifecycle proc fixtures: 33 passed, 0 failed
+xray-ready minimal modules and ELF: 52 passed, 0 failed
+
+$ bash tests/bootstrap-startup/run.sh
+exit 0
+EVIDENCE c1 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C1 domain without LKG resolves through private endpoint before formal DNS exists
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE c4 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C4 formal DNS dataplane handoff and probes wait for referenced Xray DNS
+PASS  C10 restart intent and exact fragment retained before handoff installation
+PASS  C4 complete private exit Xray gate route formal owned DNS handoff intent probe timeline
+PASS  C1 startup never queries system resolver or retained formal handoff
+PASS  C4 delayed Xray and owned formal DNS gates both appear in production timings
+TIMELINE {"line_order": {"bootstrap-query ": 16, "bootstrap-exit ": 17, "xray run -c ": 19, "nft -f ": 20, "ip rule add": 22, "chinadns-ng -C ": 24, "dns-owned-ready ": 25, "dnsmasq restart": 26, "curl ": 28}, "steps_ms": {"lock": 0, "config": 12, "precheck": 14, "conflicts": 27, "write_boot_list": 0, "render_validate": 65, "cleanup_previous": 21, "publish": 6, "hash_initial": 69, "resolve_node": 147, "xray_render_validate": 8, "start_xray_listen": 736, "restore_nft_route": 32, "hash_final": 71, "start_chinadns": 525, "dnsmasq_install": 7, "state_write": 0}, "xray_publication": "3109976 184873.96719956", "dns_publication": ["dns-owned-ready 3110080 184874.506376117"], "intent_after_install": false}
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE c10 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C10 failed Xray startup keeps intent fragment and zero handoff installs
+PASS  C10 retry clears intent only after replacement handoff installed
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE c6 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C6 withheld-exit-callback fixture bounded failure preserves generation
+PASS  C8 confirmed old lifecycle disappearance permits owned cleanup without signals
+EVIDENCE c7 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C7 actual daemon SIGTERM at private-ready no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C7 actual daemon SIGTERM at udp-query no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C7 actual daemon SIGTERM at tcp-query no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C7 actual daemon SIGTERM at cname-query no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C7 actual daemon SIGTERM at xray-gate no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C7 actual daemon SIGTERM at formal-gate no later fork handoff success probe
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE c9 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C9 unresolved no Xray wait initial direct=0 fail_open=0
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C9 unresolved no Xray wait initial direct=1 fail_open=0
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C9 unresolved no Xray wait initial direct=0 fail_open=1
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C9 unresolved no Xray wait initial direct=1 fail_open=1
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE c8 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C8 actual daemon SIGKILL orphan retained cleanup fails without signals
+PASS  C8 missing-pid identity retained with zero guessed signals
+PASS  C8 corrupt identity retained with zero guessed signals
+PASS  C10 uncertain orphan cleanup still preserves restart-protected handoff
+PASS  C10 explicit stop releases handoff despite retained uncertain orphan and failed cleanup
+PASS  C8 uncertain residue blocks next daemon before any command or child fork
+PASS  C8 explicit stop reports unconfirmed orphan as failure not stopped
+PASS  C8 blocked unstarted collector handle never removes historical collector metadata
+PASS  C8 disappeared lifecycle does not authorize deleting external generation entries
+PASS  C8 PID-record reuse fixture clears proven old files without signalling same-name unrelated process
+PASS  C8 external harness ends orphan then production performs owned idempotent cleanup
+PASS  C8 fixture observes actual intentional exit -9
+EVIDENCE c11 actual daemon + synthetic proc fixture; real private query sockets
+PASS  C11 startup reuses frozen node and snapshot despite UCI changing during private wait
+PASS  W7-W9 proc fixture daemon exits cleanly
+PASS  C11 invalid preflight has zero command child bootstrap or handoff mutation
+PASS  W7-W9 proc fixture daemon exits cleanly
+EVIDENCE parallel actual daemon + synthetic proc fixture; real private query sockets
+PASS  C6 private generation owns exactly one engine child and no FIFO reader
+PASS  C6 private generation owns exactly one engine child and no FIFO reader
+PASS  C6 actual unexpected private SIGKILL has no automatic respawn after formal backoff
+PASS  C6 another same-engine private instance still resolves after first crashes
+PASS  C6 first stop deletes only its generation and leaves sibling socket alive
+PASS  C6 resource driver waits and exits after real child callback
+PASS  C6 resource driver waits and exits after real child callback
+EVIDENCE stop_block actual daemon + synthetic proc fixture; real private query sockets
+PASS  C6 actual daemon withheld-exit fixture blocks next stage and retry with retained evidence
+PASS  C6 unconfirmed private cleanup never publishes stopped or successful exit
+PASS  C6 fixture observes actual failed cleanup exit 1
+EVIDENCE query_loss actual daemon + synthetic proc fixture; real private query sockets
+PASS  C5 child lost during actual lookup cannot query replacement endpoint or cache impostor
+EVIDENCE minimal_bootstrap actual daemon + synthetic proc fixture; real private query sockets
+PASS  C13 five-module isolation struct negatives plus real production bootstrap B1 start stop execute
+EVIDENCE real_cancel actual daemon + synthetic proc fixture; real private query sockets
+PASS  C7 real aether-dns SIGTERM cancels B1 and stops child with stable FD no cache
+PASS  C7 real chinadns-ng SIGTERM cancels B1 and stops child with stable FD no cache
+EVIDENCE interval_stop actual daemon + synthetic proc fixture; real private query sockets
+PASS  C7 queued interval stop preserves all fields and timestamp under normal
+PASS  C7 queued interval stop preserves all fields and timestamp under wall-boundary
+PASS  C7 queued interval stop preserves all fields and timestamp under delayed-consumer
+EVIDENCE ignored_term actual daemon + synthetic proc fixture; real private query sockets
+PASS  C6 actual TERM-ignoring child keeps identity until exit instead of trusting successful kill
+PASS  C6 existing supervisor KILL upgrade confirms actual callback before deleting ignored-TERM resources
+EVIDENCE real real engines/sockets
+ENGINE aether-dns ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd aether-dns 2026.11.04
+PASS  C12 real aether-dns tcp=False production bootstrap+B1 stop and idempotence
+PASS  C6 real aether-dns repeated callback-confirmed cleanup stable FD no files
+PASS  C2 real aether-dns selected upstream protocol and only node queries
+PASS  C6 real aether-dns external file unchanged
+PASS  C12 real aether-dns tcp=True production bootstrap+B1 stop and idempotence
+PASS  C6 real aether-dns repeated callback-confirmed cleanup stable FD no files
+PASS  C2 real aether-dns selected upstream protocol and only node queries
+PASS  C6 real aether-dns external file unchanged
+PASS  C2 real aether-dns frozen china/direct selection enabled=False
+PASS  C2 real aether-dns frozen china/direct selection enabled=True
+PASS  C1 literal has zero bootstrap even without engine
+PASS  C3 real aether-dns LKG save failure not reported as DNS success
+PASS  C3 real aether-dns DNS-first three failures before LKG negative=False cached=True
+PASS  C3 real aether-dns DNS-first three failures before LKG negative=True cached=True
+PASS  C3 real aether-dns DNS-first three failures before LKG negative=True cached=False
+PASS  C6 withheld-exit-callback fixture bounded failure preserves generation
+PASS  C8 confirmed old lifecycle disappearance permits owned cleanup without signals
+ENGINE chinadns-ng 842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c ChinaDNS-NG 2025.08.09 23af4b1 | wolfssl-5.8.2 | target:x86_64-linux-musl | cpu:x86_64 | mode:fast+lto | <https://github.com/zfl9/chinadns-ng>
+PASS  C12 real chinadns-ng tcp=False production bootstrap+B1 stop and idempotence
+PASS  C6 real chinadns-ng repeated callback-confirmed cleanup stable FD no files
+PASS  C2 real chinadns-ng selected upstream protocol and only node queries
+PASS  C6 real chinadns-ng external file unchanged
+PASS  C12 real chinadns-ng tcp=True production bootstrap+B1 stop and idempotence
+PASS  C6 real chinadns-ng repeated callback-confirmed cleanup stable FD no files
+PASS  C2 real chinadns-ng selected upstream protocol and only node queries
+PASS  C6 real chinadns-ng external file unchanged
+PASS  C2 real chinadns-ng frozen china/direct selection enabled=False
+PASS  C2 real chinadns-ng frozen china/direct selection enabled=True
+PASS  C1 literal has zero bootstrap even without engine
+PASS  C3 real chinadns-ng LKG save failure not reported as DNS success
+PASS  C3 real chinadns-ng DNS-first three failures before LKG negative=False cached=True
+PASS  C3 real chinadns-ng DNS-first three failures before LKG negative=True cached=True
+PASS  C3 real chinadns-ng DNS-first three failures before LKG negative=True cached=False
+PASS  C6 withheld-exit-callback fixture bounded failure preserves generation
+PASS  C8 confirmed old lifecycle disappearance permits owned cleanup without signals
+EVIDENCE failures real engines/sockets
+PASS  C5 real occupied first candidate not accepted and reaped before second candidate
+PASS  C3 runtime missing-UDP begin failure safely cleaned before LKG outcome cached=False
+PASS  C3 runtime missing-UDP begin failure safely cleaned before LKG outcome cached=True
+PASS  C5 real repeated collision bounded ten candidates each first child reaped before retry
+PASS  C5 injected private pid publication failure stops resources without querying
+PASS  C5 injected private config publication failure stops resources without querying
+PASS  C5 real aether unsupported TLS rejected without protocol downgrade or respawn
+bootstrap-startup: 92 passed, 0 failed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A2 real readiness TCP UDP and repeated ELF reads work without struct
+PASS  A1 only five declared native modules; compiler and runtime struct negative controls pass
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 1 LE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 2 LE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 1 BE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 ELF class 2 BE selects explicit proc byte order with stable FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A3 BE ELF cannot accept LE-encoded wrong-address fixture
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF short fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF empty fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF magic fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF class-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF class-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF data encoding-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF data encoding-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF version-0 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 invalid ELF version-3 fails closed and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 missing rooted ELF never borrows valid host ELF or defaults endian
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 real unreadable ELF directory closes FD and fails closed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF open failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF read failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF close failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 injected ELF read-close failure is checked and owned FD count stays stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 cancellation at ELF check 1 wins and closes every FD
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 cancellation at ELF check 2 wins and closes every FD
+PASS  A4 real TERM waits at opened ELF boundary
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 real SIGTERM during ELF read cancels with FD closed
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  A4 ELF read consumes original five second budget instead of resetting it
+xray-ready minimal modules and ELF: 52 passed, 0 failed
+
+$ bash tests/bootstrap-dns/run.sh
+exit 0
+PASS  Q1 boot selection preserves WAN expansion order and upstream syntax
+PASS  Q2 explicit endpoint and domain validation rejects invalid inputs
+PASS  Q2 literal zero DNS without endpoint
+PASS  Q2 invalid endpoint fails without DNS LKG retry
+PASS  Q2 invalid endpoint fails without DNS LKG retry
+PASS  Q2 invalid endpoint fails without DNS LKG retry
+PASS  Q2 invalid domain bypasses warm LKG and network
+PASS  Q2 no system resolver or command API
+PASS  Q3 A IN case insensitive first wire IPv4
+PASS  Q4 reject wrong-source
+PASS  Q4 reject wrong-id
+PASS  Q4 reject qr
+PASS  Q4 reject opcode
+PASS  Q4 reject question
+PASS  Q4 reject question-label-dot
+PASS  Q4 reject qtype
+PASS  Q4 reject qclass
+PASS  Q4 reject qd
+PASS  Q4 reject tc-question
+PASS  Q5 UDP TCP share original deadline
+PASS  Q5 same endpoint fragmented tc
+PASS  Q5 same endpoint fragmented tcp-max
+PASS  Q5 reject tcp-eof
+PASS  Q5 reject tcp-short-length
+PASS  Q5 reject tcp-long-length
+PASS  Q5 reject tcp-tc
+PASS  Q5 reject tcp-wrong-id
+PASS  Q5 reject tcp-timeout
+PASS  Q5 reject tcp-surplus
+PASS  Q6 associated cname
+PASS  Q6 associated cname-only
+PASS  Q6 associated hops-16
+PASS  Q6 reject cycle
+PASS  Q6 reject hops
+PASS  Q6 reject cumulative-hops
+PASS  Q6 reject questions
+PASS  Q6 reject unrelated
+PASS  Q6 reject additional
+PASS  Q7 reject malformed short
+PASS  Q7 reject malformed pointer-cycle
+PASS  Q7 reject malformed pointer-out
+PASS  Q7 reject malformed pointer-budget
+PASS  Q7 reject malformed rr-boundary
+PASS  Q7 reject malformed bad-a
+PASS  Q7 reject malformed trailing
+PASS  Q7 reject malformed section-count
+PASS  Q7 reject malformed name-long
+PASS  Q7 reject malformed cname-boundary
+PASS  Q8 DNS precedes warm LKG
+PASS  Q8 three DNS attempts before nx LKG
+PASS  Q8 three DNS attempts before servfail LKG
+PASS  Q8 three DNS attempts before nodata LKG
+PASS  Q8 three DNS attempts before silent LKG
+PASS  Q10 three default rounds bounded nine seconds
+PASS  Q8 no LKG explicit failure and final events
+PASS  Q8 LKG write failure is not success or fallback
+PASS  Q9 real SIGTERM cancel-udp no retry write fallback
+PASS  Q9 real SIGTERM cancel-tcp no retry write fallback
+PASS  Q9 real SIGTERM cancel-cname no retry write fallback
+PASS  Q10 repeated answer stable FD and bounded activity
+PASS  Q10 other endpoint unaffected by answer
+PASS  Q10 repeated nx stable FD and bounded activity
+PASS  Q10 other endpoint unaffected by nx
+PASS  Q10 repeated flood stable FD and bounded activity
+PASS  Q10 other endpoint unaffected by flood
+PASS  Q10 default single round three seconds
+PASS  Q10 repeated real cancellation stable FD
+PASS  Q11 startup alone delegates isolated resolution
+PASS  Q11 daemon B1 access stays inside startup resource owner
+PASS  Q11 original resolver call sites retained reload.uc
+PASS  Q11 B1 remains disconnected reload.uc
+PASS  Q11 original resolver call sites retained monitor.uc
+PASS  Q11 B1 remains disconnected monitor.uc
+PASS  Q11 unchanged dns_test.uc
+PASS  Q11 unchanged probe.uc
+PASS  Q11 original resolve_node unchanged
+PASS  T15.4 selected integration scenarios complete
+
+$ bash tests/daemon/run.sh
+exit 0
+logfilter: all assertions passed
+supervise-log: all assertions passed
+T9.44 version gate: 94 passed, 0 failed
+T9.47 missing events: 56 passed, 0 failed
+daemon: 326 passed, 0 failed
+
+$ bash tests/reload/run.sh
+exit 0
+degrade: all scenarios passed
+reload: 213 passed, 0 failed
+
+$ bash tests/monitor/run.sh
+exit 0
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 2 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 5 passed, 0 failed
+monitor-driver: 6 passed, 0 failed
+monitor-driver: 11 passed, 0 failed
+monitor-driver: 5 passed, 0 failed
+monitor-driver: 6 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+monitor-driver: 3 passed, 0 failed
+degrade: all scenarios passed
+applied-context: 302 passed, 0 failed
+frozen-paths: 42 passed, 0 failed
+T9.47 debug logging: 195 passed, 0 failed
+
+$ bash tests/stubs/procd/run.sh
+exit 0
+procd stubs: 123 passed, 0 failed

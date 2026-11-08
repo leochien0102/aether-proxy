@@ -1,5 +1,35 @@
 # T15.5 reference-driven Xray readiness
 
+## T15.7 passive TCPv6 evidence
+
+`bash tests/xray-ready/passive.sh` calls production `socket_diag` and
+`xray_ready`, first against the real Linux kernel/child proc/loopback listeners,
+then against explicitly labelled transport-only injected wire faults in copied
+modules. `listener.py` counts real TCP accepts; 50 supported waits must leave
+count zero, followed by a counted ordinary-connect instrumentation control.
+The existing five-module isolation executes this path with both struct negative
+controls. A cached real Xray also runs `-test`, starts, passes owned readiness
+and terminates. This is not H28K validation and absence of Error is not the proof.
+
+`diag_socket.uc` only replaces transport in a copied `socket_diag`: real FD
+allocation/close, synthetic receive bytes/errors/poll timing. Production parser,
+PID/starttime/proc/FD checks, cancellation, deadline and legacy IPv4 compatibility
+connect remain intact. The working real dual-stack listener makes any accidental
+fallback measurable. Correctly classified unsupported/denied/missing-attribute
+cases must create exactly one counted handshake; bad data, v6only=1, cancellation,
+changed generation, unknown errors and exhausted budgets must not.
+Pure `tests/unit/socket_diag.uc` checks LE/BE multipart, attribute alignment,
+unknown extensions and clean completion; BE is a fixture, not a device claim.
+Rooted proc fixtures cannot obtain host netlink or connect evidence.
+
+`python3 tests/xray-ready/passive_mutations.py` requires four exact assertion
+failures (old active branch, ignored v6only, bad-message fallback, post-budget
+probe), restores production source in `finally`, then reruns the passive entry.
+Do not run mutations concurrently with any other suite. Original B2 12 controls
+remain in `mutations.py`; both sets must run for this card. Logs: `.logs/`.
+
+## Original B2 coverage
+
 Run from the worktree: `bash tests/xray-ready/run.sh`.
 Requires the existing host ucode bootstrap and Python 3; no root, external DNS,
 service changes, downloads or fixed host ports.

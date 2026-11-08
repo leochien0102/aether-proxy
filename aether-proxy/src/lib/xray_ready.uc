@@ -6,6 +6,7 @@ import * as uloop from 'uloop';
 import * as socket from 'socket';
 import * as C from 'aetherproxy.const';
 import * as net from 'aetherproxy.net';
+import * as diag from 'aetherproxy.socket_diag';
 
 function failure(detail) {
 	return { ok: false, detail };
@@ -164,7 +165,9 @@ function table_snapshot(path, little_endian) {
 	return { ok: true, rows };
 };
 
-function tcp4_reachable(ctx, requirement, deadline) {
+function tcp4_reachable(ctx, requirement, deadline, stopped) {
+	if (stopped() || now_ms() >= deadline)
+		return false;
 	// A fixture must never borrow a host listener to prove IPv6 dual-stack behavior.
 	if ((ctx.root ?? '') != '')
 		return false;
@@ -183,7 +186,7 @@ function tcp4_reachable(ctx, requirement, deadline) {
 		connected = result != null && result[0][1] != 0 && sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0;
 	}
 	let closed = sock.close();
-	return connected && closed;
+	return connected && closed && !stopped() && now_ms() < deadline;
 };
 
 function competing_tcp4(rows, candidate, requirement) {
@@ -208,7 +211,7 @@ function udp_inbound(row) {
 	return row.state == '07' && row.remote_address == unspecified && row.remote_port == 0;
 };
 
-function satisfied(ctx, requirement, rows, owned, deadline) {
+function satisfied(ctx, requirement, rows, owned, deadline, little_endian, stopped) {
 	let wanted = net.address_hex(requirement.address);
 	for (let row in rows) {
 		if (!owned[row.inode] || row.port != requirement.port || row.protocol != requirement.protocol)
@@ -227,9 +230,19 @@ function satisfied(ctx, requirement, rows, owned, deadline) {
 				return true;
 			// Otherwise a v6-only child plus somebody else's IPv4 listener could
 			// make the local connect succeed without proving this inode is dual-stack.
-			if (row.address == wildcard && row.protocol == 'tcp' &&
-			    !competing_tcp4(rows, row, requirement) && tcp4_reachable(ctx, requirement, deadline))
-				return true;
+			if (row.address == wildcard && row.protocol == 'tcp') {
+				if ((ctx.root ?? '') != '')
+					return false;
+				let evidence = diag.query(ctx, row, little_endian, deadline, stopped);
+				if (!evidence.ok)
+					return evidence;
+				if (!evidence.fallback)
+					return evidence.dual_stack;
+				// Only explicit unsupported/denied or a complete matching record
+				// without the attribute permits the legacy side-effecting check.
+				return !competing_tcp4(rows, row, requirement) &&
+					tcp4_reachable(ctx, requirement, deadline, stopped);
+			}
 		}
 	}
 	return false;
@@ -264,16 +277,28 @@ function wait_sockets(ctx, child, required, on_signal, opts) {
 		generation ??= observed;
 		let owned = inodes(path), tables = table_snapshot(path, byte_order.little_endian);
 		let ready = generation != null && owned != null && tables.ok;
+		let diag_error = null;
 		if (ready)
-			for (let requirement in required)
-				if (!satisfied(ctx, requirement, tables.rows, owned, deadline))
+			for (let requirement in required) {
+				let result = satisfied(ctx, requirement, tables.rows, owned, deadline,
+					byte_order.little_endian, () => cancelled(ctx, on_signal) ||
+						child.pid() != pid || identity(path) != generation);
+				if (type(result) == 'object') {
+					diag_error = result;
 					ready = false;
+					break;
+				}
+				if (!result)
+					ready = false;
+			}
 		if (cancelled(ctx, on_signal))
 			return { ok: false, cancelled: true, detail: 'Xray readiness cancelled' };
 		if (child.pid() != pid || (generation != null && identity(path) != generation))
 			return failure('Xray child exited or changed generation');
 		if (now_ms() >= deadline)
 			return failure('Xray required sockets not ready within 5 seconds');
+		if (diag_error != null)
+			return diag_error;
 		if (ready)
 			return { ok: true };
 		uloop.run(min(C.DAEMON_POLL_MS, max(1, int(deadline - now_ms()))));

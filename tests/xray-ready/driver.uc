@@ -20,7 +20,7 @@ for (let i = 0; i < (spec.repeat ?? 1); i++) {
 		checks++;
 		iteration_checks++;
 		return stopped || (spec.cancel_at_check != null && iteration_checks >= spec.cancel_at_check);
-	});
+	}, spec.opts);
 	if (result.ok) successes++;
 	else failures++;
 	if (result.cancelled) cancellations++;

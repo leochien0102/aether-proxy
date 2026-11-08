@@ -11,6 +11,12 @@ import time
 spec = json.loads(pathlib.Path(sys.argv[1]).read_text())
 started = time.monotonic()
 sockets = []
+counts = {}
+for item in spec:
+    if 'count_path' in item:
+        path = pathlib.Path(item['count_path'])
+        path.write_text('0')
+        counts[item['port']] = (path, 0)
 pending = list(spec)
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 try:
@@ -35,6 +41,11 @@ try:
         for server in ready:
             conn, _ = server.accept()
             conn.close()
+            port = server.getsockname()[1]
+            if port in counts:
+                path, count = counts[port]
+                counts[port] = (path, count + 1)
+                path.write_text(str(count + 1))
 except SystemExit:
     pass
 finally:
