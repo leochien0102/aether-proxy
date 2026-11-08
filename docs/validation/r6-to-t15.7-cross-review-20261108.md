@@ -3,6 +3,7 @@
 > 编制日期：2026-11-08；所有时间按 UTC+08:00。本文是交叉审查底稿，不是新的实现卡或再次测试授权。
 > **源码统计截止快照：`356e6f274b1ae23569e3baea3335ed1c7907e934`。** 不包含本文自己的新提交。
 > 本次只读取本地Git、源码、任务卡及已有记录；未重新操作H28K、未改生产代码、未追加测试。
+> 后续审查收口：原底稿为`48f9251`；[独立回执](r6-to-t15.7-cross-review-verdict-20261108.md)已按所有者许可原样入库。本版补齐F1–F6的保证边界及后续状态，不改上面的源码统计截止点，也不把历史未复核项改写为已重新测试。
 
 ## 0. 审查摘要与阅读次序
 
@@ -10,8 +11,8 @@
 2. 此后aether-proxy主线接受 **7个任务**：T15.1、S15.2、S15.3、T15.4、T15.5、T15.6、T15.7。两个S卡仅提供探针证据；B1/B2/B3是T15.4/5/6的设计阶段名，不是另外三张任务。
 3. 已交付：restart handoff连续性、隔离节点bootstrap、显式IPv4查询器、引用驱动的owned readiness、成功启动重排、被动双栈验证及兼容回退。
 4. 最近实际设备验收：2026-11-08 17:53，H28K运行本地包 **`0.6.3-r6.t157`**、running/T1/bypass_cn；17:59只读确认游戏模式未启用、UDP代理选择集为空。不是本报告生成时又进行了一轮设备测试。
-5. 主要未完成项：aether-proxy的schedule旧夹具、B3测试端口竞争；WSL→H28K UDP/53前置缺包的更细定位；命名/独立semver/正式发布/中断体验优化等backlog。
-6. **优先请审查的范围边界**：受保护的init `restart`不等于任意opkg `stop → start`升级、首次start或人工stop均受同一隐私保证。不能把标记UDP计数推广为所有协议不泄漏，也不能把就绪当作上游健康。
+5. 主要后续项：aether-proxy的schedule旧夹具、B3测试端口竞争；init低优先级契约小修候选；命名/独立semver/正式发布/中断体验优化等backlog。UDP在后续Windows、mirrored、Debian桥接对照后按所有者决定归档，仅在其他独立环境复现相同问题时再评估，不继续扩查。
+6. **保证范围**：T15.1保护由init `restart`预先建立的intent触发，并延续到其失败重试。普通opkg `stop → start`升级、首次接管、没有既存intent的daemon崩溃respawn不主动建立同等保护；人工stop/禁用则有意释放handoff。不能把标记UDP计数推广为所有协议不泄漏，也不能把就绪当作上游健康。
 
 建议先读§1–3和§7–9，再按§4生产文件表下钻；提交与证据定位见§10–11。
 
@@ -37,8 +38,8 @@ r6已经包含早先的T14.x成果（包括raw-log collector、uci.load retry、
 
 实际对象核对表明：
 
-- `cb28b84b20175e8b139428343f3a71b5fe320df2`属于 **aether-dns**，是M4-01缓存刷新卡的冻结提交；不是aether-proxy r6基线。
-- 会话中曾出现的`8264c51`、`b4909f0`属于aether-dns早期撤回实现/合并对象；均不是该仓库当前main祖先，也不在aether-proxy对象库中。
+- `aether-dns@cb28b84b20175e8b139428343f3a71b5fe320df2`是M4-01缓存刷新卡的冻结提交；不是aether-proxy r6基线。
+- 会话中曾出现的`aether-dns@8264c51`、`aether-dns@b4909f0`是该仓库早期撤回实现/合并对象；均不是aether-dns当前main祖先，也不在aether-proxy对象库中。
 - 本文不把这些撤回对象算入已交付，不从它们补回代码。所有提交号必须连同仓库识别。
 
 ### 1.3 r6至截止点的实际diff规模
@@ -95,7 +96,7 @@ r6已经包含早先的T14.x成果（包括raw-log collector、uci.load retry、
   → B1显式查询私有端点：DNS优先，失败才按地址LKG
   → stop私有child并确认退出，清本代文件
   → 补全并-test Xray，启动Xray
-  → B2等待owned TPROXY及正式DNS实际引用的socket/协议
+  → B2等待owned TPROXY TCP及正式DNS实际引用的socket/协议
   → 应有的nft/route
   → 正式DNS启动并验证owned UDP/TCP
   → dnsmasq_install成功
@@ -111,7 +112,7 @@ r6已经包含早先的T14.x成果（包括raw-log collector、uci.load retry、
 - **B1不是通用递归resolver**：仅A/IN、有限CNAME与显式TC→同端点TCP，随机事务ID、来源/问题关联和长度检查；每轮3秒、最多3轮，解析/回退共享本轮deadline。
 - **DNS优先/LKG不抢先**：已存在LKG仍先查询；写LKG失败不是解析成功。取消不重试、不fallback、不写缓存。
 - **无LKG解析失败**：保持既有degraded/fail_open/初始tier分支，不启动或永远等待不存在的Xray，不偷偷临时开启T2/T3。
-- **readiness≠健康**：owned监听与地址族能力不是上游能否回答或代理端到端连通；后者仍由monitor负责。
+- **readiness≠健康**：owned监听与地址族能力不是上游能否回答或代理端到端连通；后者仍由monitor负责。协议范围是TPROXY TCP、DNS实际引用协议及正式DNS的UDP/TCP，不包括TPROXY UDP31080；产物声明tcp,udp或设备当时确有UDP监听，不等于该UDP已纳入门禁。
 - **仅startup切B1**：reload、monitor、probe的运行期节点解析没有顺带改为私有bootstrap；它们的计划Xray重启门则按B2改进。
 - **首次start及普通stop不同于restart**：首次接管前没有旧handoff；手动stop/禁用明确释放handoff。这些不是T15.1的restart连续性保证。
 
@@ -138,19 +139,19 @@ r6已经包含早先的T14.x成果（包括raw-log collector、uci.load retry、
 
 | 文件 | r6后实际变化 | 交叉审查重点 |
 |---|---|---|
-| [init](../../aether-proxy/files/aether-proxy.init) | restart intent、stop/disable边界与兜底 | intent必须在stop前；无实例的禁用也能收口；普通stop不能误保留 |
+| [init](../../aether-proxy/files/aether-proxy.init) | restart intent、stop/disable边界与兜底 | 正常文件操作下先清intent/写stop-mark再kill；rc.common不采用stop_service返回值，异常日志与最终rc边界见§8.2a |
 | [apply](../../aether-proxy/src/lib/apply.uc) | intent/handoff保留、B1显式入口及共享失败/LKG收口 | 安装成功才清intent；保存失败/取消语义；原resolve_node运行期行为未改 |
 | [bootstrap](../../aether-proxy/src/lib/bootstrap.uc) | 新增443行生命周期/私有配置/所有权记录 | start/stop注册时机、预算、known与unknown残留、只删本代、历史PID零信号 |
 | [bootstrap_dns](../../aether-proxy/src/lib/bootstrap_dns.uc) | 新增363行显式节点查询器 | TC/CNAME/压缩/关联A、坏报文、socket来源、总deadline及取消 |
 | [const](../../aether-proxy/src/lib/const.uc) | tmpfs路径、预算、协议常量等 | 不新增用户选项或包依赖；版本仅占位符由包构建替换 |
 | [daemon](../../aether-proxy/src/lib/daemon.uc) | 启动顺序、失败/停止收口、collector时机与timer对象保活 | 不能只审“后移DNS”；需审冻结快照、残留优先级、错误传播及既有可观测性 |
-| [monitor](../../aether-proxy/src/lib/monitor.uc) | 节点IP刷新后的planned restart门改为published readiness | busy/锁/停止优先、NODE_IP_CHANGED不能先于就绪；周期health不变阻塞门 |
+| [monitor](../../aether-proxy/src/lib/monitor.uc) | 节点IP刷新后的planned restart门改为published readiness | busy/锁/停止优先、NODE_IP_CHANGED不能先于就绪；周期health不改成阻塞门；旧wait_xray_port仍定义/导出但已无生产调用者，保留兼容测试接口不在本轮清理 |
 | [net](../../aether-proxy/src/lib/net.uc) | 纯地址与proc socket表解析 | native-endian 32位字、IPv4/6、远端UDP tuple；纯函数不读文件/不导入struct |
 | [reload](../../aether-proxy/src/lib/reload.uc) | 正向和rollback新child门、rollback错误传播 | 读取当时current产物、不跨代缓存requirements；回滚失败不能吞 |
 | [chinadns renderer](../../aether-proxy/src/lib/render/chinadns.uc) | 抽取共享boot_upstreams | 正式产物字节与golden不变；不静默改上游语法/顺序 |
 | [socket_diag](../../aether-proxy/src/lib/socket_diag.uc) | 新增225行最小TCPv6 INET_DIAG | tuple/inode/state/序号/长度与终止、ENOENT上下文、无隐含新模块依赖 |
 | [supervise](../../aether-proxy/src/lib/supervise.uc) | 短命child可选不respawn及退出/错误观察 | 默认正式child监督行为不变；不将PID文件缺失等同于已退出 |
-| [xray_ready](../../aether-proxy/src/lib/xray_ready.uc) | 新增引用导出、owned gate、ELF字节序、T15.7被动优先 | TCP/UDP区别、v6only、FD归属、兼容分类、所有端口共享预算、取消优先 |
+| [xray_ready](../../aether-proxy/src/lib/xray_ready.uc) | 新增引用导出、owned gate、ELF字节序、T15.7被动优先 | TPROXY仅TCP，DNS按引用TCP/UDP；v6only、FD归属、兼容分类、所有需求共享预算与取消优先 |
 
 **顺带但重要的生产修复**：[retire_interval](../../aether-proxy/src/lib/daemon.uc#L914-L929)保留已cancel的uloop interval对象至uloop.done，避免最低版本libubox的queued fd回调指向已释放对象。它不保留活动timer FD，不是关闭scheduler；这是B3本地停止回归暴露后做的兼容修复，不能在“只改启动顺序”概述中漏掉。共享host/libubox源码没有被修改或替换。
 
@@ -241,9 +242,9 @@ r6已经包含早先的T14.x成果（包括raw-log collector、uci.load retry、
 
 | ID | 归属/类型 | 已有事实 | 后续动作与边界 | 是否阻塞已关闭T15.7 |
 |---|---|---|---|---|
-| **L1** | aether-proxy／测试夹具 | schedule原入口main与任务分支同样35/5；B3新bootstrap配置下旧stub目录定位失败。r6后只补过ELF fixture准备，尚未正式适配该旧入口 | 独立小卡只修夹具，保留全部业务oracle，不改生产调度；不能把它说成已证明生产scheduler坏了 | 否；但影响后续回归基础 |
+| **L1** | aether-proxy／测试夹具 | schedule原入口35/5。待适配两处：旧解析失败环境开关未映射到B3 bootstrap夹具控制文件；最后的慢停止stub把-C配置文件路径当目录。现有兼容补测保留原oracle可到47/0，原入口尚未正式修复 | 独立小卡只修夹具，保留全部业务oracle，不改生产调度；不能把它说成已证明生产scheduler坏了 | 否；但影响后续回归基础 |
 | **L2** | aether-proxy／测试资源竞争 | B3 Authority先UDP bind0，再TCP绑定同号端口，曾EADDRINUSE | 独立修双协议端口选择/有界重试；不改生产bootstrap，不加sleep或放宽断言 | 否，已定位且原入口一次重跑通过 |
-| **L3** | 客户端至H28K抓包入口／尚未归属两个组件 | 两轮窄抓包共9失败DNS请求未出现在H28K抓包入口；1691正常请求完整往返 | 只查WSL→H28K **IPv4 UDP/53 DNS测试请求**；Windows原生或独立LAN客户端对照、WSL/Windows出口同步抓包。具体NAT/过滤/链路/网卡入口未定 | 否，不归责B3/aether-dns处理链 |
+| **L3** | 历史观察／后续已归档 | 截止快照时9失败请求未见H28K入口；后续Windows原生、mirrored、Debian桥接各600/600通过 | 按“WSL＋NAT环境相关、具体归因未定”保留记录，不作常规组件验收基线；仅其他独立环境复现相同问题再评估。见[最终归档](udp53-wsl-mirrored-trial-20261108.md) | 否，不列为当前组件已知故障，不继续扩查 |
 | **L4** | aether-proxy／产品一致性backlog | 逻辑组件/日志/状态键仍有chinadns-ng与xray旧称 | M4-02：先决定逻辑名与物理回退路径分离、JSON兼容迁移，再独立实现；不是全局字符串替换 | 否 |
 | **L5** | aether-dns＋aether-proxy兼容／版本backlog | aether-dns仍为日期版本；代理现有检查需按具体引擎拆分 | M4-03：独立semver，不与proxy同号；先定起始号、最低兼容范围、opkg日期→semver排序/迁移路径 | 否；正式发版前需明确策略 |
 | **L6** | aether-proxy／可选可用性优化 | restart仍有旧DNS停止、新服务构建及一次dnsmasq安装restart窗口；T15.1已去掉删除handoff引起的另一次restart | M4-06必须重估，不按历史“两次重启/零超时”直接实现；先定可接受中断和成本，不假定HUP可重读全部配置 | 否，是已接受fail-closed下的体验议题 |
@@ -273,19 +274,31 @@ WSL -- UDP/53 --> H28K dnsmasq --> 本地31053 --> T1 TCP DNS tunnel/Xray
 - 不确定的历史私有残留会保留记录并阻止继续启动，可能需人工处理；不保证异常孤儿自动回收，不猜PID强杀。
 - 有界stop不保证D-state等进程按时消失；发送信号不等于完成回收。
 - 不支持只读属性的内核可走原有界主动验证，仍可能有旧握手副作用；H28K已实测被动路径，不宣称所有平台都完全被动。
+- 兼容分类依赖已列举的英文socket.strerror文本（含常见glibc/musl差异）；不保证任意libc/locale。无法识别时保守失败，不把当前H28K被动路径成功当成所有错误文字环境已覆盖。
 - readiness只证明所需owned socket/地址族，不证明DNS/代理上游健康；无LKG时按原degraded/fail_open处理，不伪造可用。
 - 当前设备验证集中于T1、bypass_cn、现有节点及两项TCP trust；其他协议/失败/取消矩阵主要来自本地真实进程与fixture，不冒称全在生产设备注入。
 
-### 8.2 请重点确认：restart保护与opkg升级的区别
+### 8.2 已接受的保护范围：intent、升级与daemon respawn
 
-这是**保证范围的审查项，不是本报告新做的故障实验或自动开的任务**。
+所有者同意本轮按现有范围收口，**不启动受控升级或respawn扩保实现**；以下包含代码路径分析，不是新增设备故障注入或测得的泄漏时长。
 
-- [init.restart](../../aether-proxy/files/aether-proxy.init#L45-L76)创建intent，才具有T15.1保护。
-- [普通stop_service](../../aether-proxy/files/aether-proxy.init#L113-L128)会清intent，沿既定语义释放handoff。
-- 实际部署记录是OpenWrt包钩子的独立stop/start；[包脚本](../../aether-proxy/Makefile#L73-L85)还包含fw4 reload。标准包管理器stop/start不等于调用该init.restart函数。
-- 因此，本文只宣称已验证的restart路径不回落；**不宣称所有opkg升级窗口、首次接管前窗口或人工stop后均受同样保护。** 本轮没有对opkg升级阶段做同等标记出口抓包来给“所有升级不泄漏”背书。
+- [init.restart](../../aether-proxy/files/aether-proxy.init#L45-L76)预先创建intent，保护由这个标记触发。安装前失败/退避后的重试或respawn若仍继承该intent，也继续保留handoff；不能把respawn一概写成没有保护。
+- 正常文件操作下，[普通stop_service](../../aether-proxy/files/aether-proxy.init#L113-L128)先清intent并写stop-mark，随后沿手动stop/禁用语义释放handoff。异常返回传播不是这个顺序的保证，见下一节。
+- 标准包管理器独立stop/start不等于调用init.restart；[包脚本](../../aether-proxy/Makefile#L73-L85)还有fw4 reload。未给所有opkg升级窗口作同等标记出口抓包背书。
+- **正常运行后daemon崩溃，由procd直接respawn命令且没有既存intent时**，不会自动创建intent；若新启动正常推进至[apply_cleanup](../../aether-proxy/src/lib/daemon.uc#L650-L655)，[dnsmasq_remove](../../aether-proxy/src/lib/apply.uc#L489-L529)可能摘掉旧handoff并重启dnsmasq，直到末段install重新接管。此间有回落系统resolver的潜在窗口；未在H28K制造daemon崩溃测量。私有残留导致提前阻断等分支也不能一概写成必然回落。
+- 首次接管前没有旧handoff，人工stop/禁用则有意恢复系统DNS；不把这些路径等同于受保护restart。
 
-请你交叉审查后决定：接受这种边界，还是把“受控包升级也保持handoff”另立单一目标卡。不能为省事把普通stop改成永久保留，也不能在未确认前擅自扩大隐私保证。
+回执中的11秒是SERVICE_STOPPED→SERVICE_STARTED事件间隔，不是已测得的11秒泄漏长度。已有设备restart标记计数结论不外推到全部opkg/首次接管/普通无intent respawn路径。是否将来扩保需另立最小目标，不能把普通stop改成永久保留。
+
+### 8.2a stop返回值与TERM兼容差异（尚未修代码）
+
+当前固件rc.common的procd stop依次调用stop_service、procd_kill、service_stopped，不采用stop_service的返回值。本init的service_stopped最终返回cleanup结果，所以restart里的stop_rc并不保证收到了前置标记操作错误。
+
+- intent删除失败可使旧handoff保留，方向为fail-closed；不能把这报告为普通stop已成功释放。
+- stop-mark写失败时，后续UCI reload可能再次启动服务。现有日志可见，但CLI最终rc未必反映前置失败；这是真实异常路径边界，不因文字澄清就标为已修。
+- 自定义restart还缺rc.common在stop阶段的TERM屏蔽与start前恢复。若后续立init小修卡，应完整恢复对应语义（含提前返回），不能只忽略TERM而不恢复。
+
+当前仅明确记录；低优先级init契约候选另排，不重写procd、不承诺在不可写文件系统下仍能持久保存manual-stop，也不扩生命周期自动恢复。
 
 ### 8.3 其他未冻结候选，不塞入当前任务
 
@@ -299,10 +312,10 @@ S15.3明确：aether-dns当前不支持TLS；回退chinadns-ng只验证了默认
 
 - [ ] r6基线、当前源码、设备本地包、正式发布状态是否区分准确？
 - [ ] 7个任务的目标是否都能对应到接受合并、历史报告与现存代码？
-- [ ] T15.1是否只对有intent的restart保留handoff，手动stop/禁用是否确实释放？
-- [ ] 是否接受§8.2的普通升级/首次接管边界，还是需单独扩大保护目标？
+- [ ] 是否区分有intent的restart/失败重试与普通无intent respawn，且只在文件操作正常时宣称手动stop/禁用释放？
+- [ ] 是否明确接受§8.2的升级/首次接管/普通respawn边界，并保留§8.2a异常返回与TERM差异未修的事实？
 - [ ] B1是否保持DNS优先/有界TC-CNAME/LKG保存失败与取消语义，且只接startup？
-- [ ] B2是否只等待真实配置引用的端口/协议，不能靠无关PID或connected UDP过关？
+- [ ] B2是否明确TPROXY只检查TCP、DNS按实际引用协议检查，不能靠无关PID或connected UDP过关，而非宣称已覆盖TPROXY UDP？
 - [ ] B3是否先确认私有child停止，失败不删证据、不继续fork，且无LKG分支不永远等Xray？
 - [ ] daemon collector延后、timer对象保活、rollback错误传播等附带生产改动是否已审，而非只看DNS顺序？
 - [ ] T15.7是否保留归属/字节序/取消/总预算，ENOENT仅在合法无证据DUMP上下文回退？
@@ -311,7 +324,7 @@ S15.3明确：aether-dns当前不支持TLS；回退chinadns-ng只验证了默认
 - [ ] L1/L2明确归aether-proxy测试；L3未误归aether-dns或泛UDP代理？
 - [ ] 当前无新增依赖、未改UCI/LuCI/golden、未重启设备等结论是否与diff/部署记录相符？
 
-建议实施顺序仅供你审定：先L1恢复旧schedule回归入口，再L2稳定测试端口；L4/L5分卡做命名与版本；L3按真实使用影响决定是否优先取证；L6需先决定体验目标；L7正式发布另行授权。**不在本报告编制过程中启动任何实现、安装或新测试。**
+所有者确认的有序安排：先完成本轮文档边界收口，只冻结T15.8处理L1；其后才逐张处理L2及有限init契约候选，不并行扩卡。L3已归档，除其他独立环境复现相同问题外不重开。L4/L5/L6与正式发布分别决策，不绑入当前测试修复。**本轮只整理文档和卡片，不启动实现、设备操作或新测试。**
 
 ---
 

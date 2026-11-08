@@ -56,9 +56,11 @@
 `current/` 的原始文本（Xray 为 JSON 文本），返回 `{ok:true, required:[{address,port,protocol,role}]}`
 或 `{ok:false,detail}`。不重新读取 UCI、不另做 tier 选择：解析正式 DNS 的 `china-dns`、`trust-dns`、
 `group-upstream` 行，与 Xray 的 DNS tunnel inbounds 建立引用关系并按 tuple 去重。始终要求产物中的
-TPROXY TCP；T1 单 trust 只等被引用的一个端口/协议，混合 TCP/UDP 分别检查；未引用的第二端口或协议不阻塞，
+TPROXY TCP（不检查TPROXY UDP31080；产物声明tcp,udp不等于该UDP已被门禁验证）；T1 单 trust 只等被引用的一个端口/协议，混合 TCP/UDP 分别检查；未引用的第二端口或协议不阻塞，
 T2/T3 没有 Xray DNS 引用时不额外要求 T1 socket。已知 Xray DNS 引用缺失对应 inbound、地址/协议冲突、
 坏 JSON 或无 TPROXY 定义均明确失败；普通远程 DNS 与私有 bootstrap 端点不由本门检测。
+
+旧`monitor.wait_xray_port`仍定义/导出，保留兼容测试接口，但已无生产调用者；计划重启使用本节的published readiness，周期健康检测不改为阻塞门。
 
 `xray_ready.wait(ctx, child, required, on_signal)` 固定本次 `child.pid()`，核对进程 stat 的 starttime
 与存活状态，并从 `/proc/<pid>/net/{tcp,tcp6,udp,udp6}` 读取该网络命名空间的表，与该 PID 的 FD socket
@@ -179,12 +181,15 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
   之后改配置不再触发 `reload_service`。开机时即使 `enabled=0` 也会登记一个不带实例的服务和触发器，所以只有「停过一次之后」才出问题。
   做法：停止完成后（`service_stopped` 的清理之后）重新向 procd 登记不带实例的服务与 `service_triggers`，与 `enabled=0` 开机时相同。
 - **restart DNS 交接意图**（2026-11-07，T15.1）：`/var/run/aether-proxy/restart-intent`（只在 tmpfs）。init 的 `restart` 必须在 `stop` 向旧 daemon 发信号前原子建立它；旧 daemon 的有序 shutdown、`service_stopped` 的 `cleanup --wait`、新 daemon 的启动残留清理看到它时都保留 dnsmasq 片段，且不执行因删除片段产生的 dnsmasq restart。新 daemon 只有在 `dnsmasq_install()` 成功后才删除意图；安装前失败/退避时保留意图和旧片段，允许本地 DNS timeout/SERVFAIL，但不回落直连。手动 `stop` 与 `enabled=0` 在停止旧 daemon 前先清意图，因此仍删除片段、恢复系统 DNS；这也用于收口一次失败的 restart。整机重启会自然清掉意图，不改变开机语义。
+  - **保护范围（2026-11-08交叉审查收口）**：保护由已有intent触发。未完成restart的失败重试/respawn若继承intent仍保留handoff；正常运行后daemon崩溃的普通procd respawn不调用init.restart、也不新建intent。无intent且启动正常推进到cleanup时，可能移除旧handoff并暂回系统resolver。独立stop/start的opkg升级、首次接管、人工stop也不宣称同等restart连续性。本轮接受这一边界，不扩保；服务事件间隔不当成已测泄漏时长，未在设备制造崩溃。
 - **手动停止标记**（同日定，仓库所有者：手动点了「停止」，之后改配置不应把服务拉起来）：`/var/run/aether-proxy/stopped-by-user`（重启路由器自然清掉）。
   - init 的 `stop`（页面「停止」、命令行 `/etc/init.d/aether-proxy stop`）写这个标记；`start`、`restart` 清掉它（`restart` 是先 stop 后 start，结果是清掉）。
   - `reload_service`：`enabled=0` → 停止（若在运行）并**清掉标记**；`enabled=1` 且没在运行 → 有标记就什么都不做，没有才 `start`；在运行 → 照旧发 HUP。
   - 结果：开关关着时改配置不启动；开关开着但手动停止后改配置不启动；开关从关到开（中间经过 `enabled=0` 分支清标记）会启动。
   - 实现（T9.32 复核定）：标记写在 `stop_service` 钩子里（rc.common 的 procd 模式按 `stop_service` → 删除服务 → `service_stopped` 的顺序调用），不覆盖 `stop`；`enabled=0` 分支在自己的 stop 之后再清掉它。
     重新登记只需 `procd_open_service` + `procd_close_service`：后者自己会加 `service_triggers`，在两者之间再调一次会把触发器塞进 `instances` 对象（复核时修正，H28K 实测停止后触发器仍在、连续两次配置变化后仍在）。
+  - **异常返回的已知边界（尚未修代码）**：固件rc.common的procd stop不采用stop_service返回值，会继续kill并调用service_stopped；本init最终rc来自cleanup。正常“先清intent/写标记再停止”的顺序成立，不等于前置FS失败可以靠return阻止kill或向调用者传播。intent删除失败可能保留旧handoff；stop-mark写失败时后续配置reload可能拉起服务。现有日志可见，不将最终rc=0当作所有前置操作成功，有限init契约修复另排。
+  - 自定义restart目前尚未保留rc.common在stop期间`trap '' TERM`、start前恢复的完整语义，列为低优先级兼容候选；本次仅记录，不改为永久忽略TERM。
   - `aether-proxy cleanup` 命令本身不写 `stopping`（它不依赖 daemon 存活，直接清理并写 `stopped`）。
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
