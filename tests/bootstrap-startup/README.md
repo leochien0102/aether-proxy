@@ -44,11 +44,15 @@ printing a synthetic PASS. Provenance and temporary negative-control logs go in
   uloop, restricts compile-time and runtime search paths and rejects both struct
   require/import. The same environment actually executes private start/B1/stop;
   the existing B2 minimal entry also reruns its endian/ELF/FD negative controls.
-- **Queued native interval stop regression:** the unmodified original T9.46
-  probe-stop oracles run three additional times. The daemon retains cancelled
-  interval objects until uloop.done (FDs are already closed), avoiding a queued
-  minimum-libubox epoll FD pointing to freed native memory during nested draining.
-  No host/library rebuild or LD_PRELOAD is used by acceptance.
+- **Queued native interval/stop sampling:** original T9.46 field/time and late-write
+  oracles run in normal, wall-boundary-before-TERM and delayed-consumer variants,
+  not three retries to obtain a pass. The predicate returns its matched snapshot;
+  no second read may confuse final stopped with stopping. Fields are compared
+  against an independently recorded last publication at TERM handler entry.
+  A complete timestamped write trajectory and both controller/handler snapshots
+  are saved on failure. The daemon's existing cancelled-interval retention fix
+  remains unchanged; no host/library rebuild or LD_PRELOAD is used by acceptance.
+  See `evidence/README.md` for the real-daemon counterexample and negative controls.
 
 C8 deliberately leaves the real orphan alive while production cleanup and the
 next daemon refuse it. Historical PIDs receive **no production signals**. Only
@@ -88,6 +92,8 @@ bash tests/monitor/run.sh
 bash tests/stubs/procd/run.sh
 # Additional non-card regression: original schedule fixture predates B3.
 python3 tests/bootstrap-startup/schedule-compat.py
+# T9.46 sampling and field/time negative controls:
+python3 tests/bootstrap-startup/t946-controls.py
 CI_TOOLS_DIR=/workspace/openwrt/ci-spike/tools bash tests/review.sh
 ```
 

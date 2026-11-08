@@ -492,15 +492,20 @@ def context(f, **controls):
 
 
 def interval_stop(base):
-    for index in range(3):
+    variants = [ ('normal', {}), ('wall-boundary', {'T946_FORCE_WALL_BOUNDARY': '1'}),
+                 ('delayed-consumer', {'T946_FORCE_WALL_BOUNDARY': '1', 'T946_DELAY_STOP_SAMPLE': '1'}) ]
+    for name, controls in variants:
+        env = dict(os.environ, T946_SCENARIO='probe', PYTHONDONTWRITEBYTECODE='1',
+                   T946_FORCE_WALL_BOUNDARY='0', T946_DELAY_STOP_SAMPLE='0')
+        env.update(controls)
         result = subprocess.run(['python3', str(ROOT / 'tests/daemon/stop-state.py')], cwd=ROOT,
-            env=dict(os.environ, T946_SCENARIO='probe', PYTHONDONTWRITEBYTECODE='1'),
+            env=env,
             capture_output=True, text=True, timeout=90)
-        (HERE / '.logs' / f'interval-stop-{index}.log').write_text(result.stdout + result.stderr)
+        (HERE / '.logs' / f'interval-stop-{name}.log').write_text(result.stdout + result.stderr)
         if result.returncode:
             print(result.stdout, result.stderr, flush=True)
         check(result.returncode == 0,
-              f'C7 queued native scheduler interval cancellation preserves original stop-state oracles repeat {index}')
+              f'C7 queued interval stop preserves all fields and timestamp under {name}')
 
 
 def minimal_bootstrap(base):

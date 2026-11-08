@@ -1,0 +1,1802 @@
+{
+  "production_baseline": "830cc8e",
+  "variant": "old-second-read",
+  "conditions": {
+    "actual_daemon": true,
+    "synthetic_proc_fixture": true,
+    "wall_boundary_before_TERM": true,
+    "consumer_paused_until_stopped": true,
+    "production_source_mutated": false
+  },
+  "normalization": "Only absolute worktree prefix replaced with $WORKTREE; values/times not altered.",
+  "observation": {
+    "before": {
+      "state": "running",
+      "dns_tier": "T1",
+      "dns_failsafe": false,
+      "node_id": "n_00000000000000000000000000000001",
+      "mode": "gfw",
+      "node_ip": "203.0.113.20",
+      "since": 1794099465,
+      "waiting_network": false,
+      "degraded_mode": null,
+      "degraded_since": null,
+      "last_error": null,
+      "components": {
+        "xray": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+          "version": "26.9.30"
+        },
+        "chinadns-ng": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+          "version": "2025.08.09"
+        }
+      },
+      "wan_dns": [],
+      "render_hash": {
+        "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+        "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+        "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+        "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+      },
+      "last_probe": {
+        "ok": true,
+        "latency_ms": 12,
+        "at": 1794099465
+      },
+      "monitor": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "table_missing_count": 0,
+        "xray_down_count": 0,
+        "xray_down_reported": false,
+        "chinadns_down_count": 0,
+        "chinadns_down_reported": false,
+        "ever_healthy": true,
+        "proxy_fail_count": 0,
+        "proxy_ok_count": 1,
+        "dns_fail_count": 0,
+        "t3_since": null,
+        "last_t2_retry": null,
+        "t2_retry_pending": false,
+        "last_node_refresh": 1794099465,
+        "node_ip": "203.0.113.20",
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "since": 1794099465
+      }
+    },
+    "controller_before": {
+      "state": "running",
+      "dns_tier": "T1",
+      "dns_failsafe": false,
+      "node_id": "n_00000000000000000000000000000001",
+      "mode": "gfw",
+      "node_ip": "203.0.113.20",
+      "since": 1794099465,
+      "waiting_network": false,
+      "degraded_mode": null,
+      "degraded_since": null,
+      "last_error": null,
+      "components": {
+        "xray": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+          "version": "26.9.30"
+        },
+        "chinadns-ng": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+          "version": "2025.08.09"
+        }
+      },
+      "wan_dns": [],
+      "render_hash": {
+        "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+        "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+        "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+        "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+      },
+      "last_probe": {
+        "ok": true,
+        "latency_ms": 12,
+        "at": 1794099465
+      },
+      "monitor": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "table_missing_count": 0,
+        "xray_down_count": 0,
+        "xray_down_reported": false,
+        "chinadns_down_count": 0,
+        "chinadns_down_reported": false,
+        "ever_healthy": true,
+        "proxy_fail_count": 0,
+        "proxy_ok_count": 1,
+        "dns_fail_count": 0,
+        "t3_since": null,
+        "last_t2_retry": null,
+        "t2_retry_pending": false,
+        "last_node_refresh": 1794099465,
+        "node_ip": "203.0.113.20",
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "since": 1794099465
+      }
+    },
+    "controller_before_sampled": {
+      "wall_ns": 1794099466003607978,
+      "monotonic_ns": 172298782088846
+    },
+    "term_at": 1794099466,
+    "term_sent": {
+      "wall_ns": 1794099466003615387,
+      "monotonic_ns": 172298782090276
+    },
+    "term_send_returned": {
+      "wall_ns": 1794099466003650147,
+      "monotonic_ns": 172298782125086
+    },
+    "stopping": {
+      "state": "stopped",
+      "dns_tier": "T2",
+      "dns_failsafe": false,
+      "since": 1794099467,
+      "degraded_mode": null,
+      "degraded_since": null
+    },
+    "matched_stopping": {
+      "state": "stopping",
+      "dns_tier": "T1",
+      "dns_failsafe": false,
+      "node_id": "n_00000000000000000000000000000001",
+      "mode": "gfw",
+      "node_ip": "203.0.113.20",
+      "since": 1794099466,
+      "waiting_network": false,
+      "degraded_mode": null,
+      "degraded_since": null,
+      "last_error": null,
+      "components": {
+        "xray": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+          "version": "26.9.30"
+        },
+        "chinadns-ng": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+          "version": "2025.08.09"
+        }
+      },
+      "wan_dns": [],
+      "render_hash": {
+        "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+        "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+        "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+        "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+      },
+      "last_probe": {
+        "ok": true,
+        "latency_ms": 12,
+        "at": 1794099465
+      },
+      "monitor": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "table_missing_count": 0,
+        "xray_down_count": 0,
+        "xray_down_reported": false,
+        "chinadns_down_count": 0,
+        "chinadns_down_reported": false,
+        "ever_healthy": true,
+        "proxy_fail_count": 0,
+        "proxy_ok_count": 1,
+        "dns_fail_count": 0,
+        "t3_since": null,
+        "last_t2_retry": null,
+        "t2_retry_pending": false,
+        "last_node_refresh": 1794099465,
+        "node_ip": "203.0.113.20",
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "since": 1794099465
+      }
+    },
+    "stopping_sampled": {
+      "wall_ns": 1794099467138776118,
+      "monotonic_ns": 172299917251377
+    },
+    "matched_stopping_sampled": {
+      "wall_ns": 1794099466024029176,
+      "monotonic_ns": 172298802504495
+    },
+    "term_handled": {
+      "kind": "received",
+      "name": "SIGTERM",
+      "monotonic": [
+        172298,
+        795413732
+      ],
+      "wall": [
+        1794099466,
+        16939493
+      ],
+      "already_stopping": false,
+      "published": "{\n\t\"state\": \"running\",\n\t\"dns_tier\": \"T1\",\n\t\"dns_failsafe\": false,\n\t\"node_id\": \"n_00000000000000000000000000000001\",\n\t\"mode\": \"gfw\",\n\t\"node_ip\": \"203.0.113.20\",\n\t\"since\": 1794099465,\n\t\"waiting_network\": false,\n\t\"degraded_mode\": null,\n\t\"degraded_since\": null,\n\t\"last_error\": null,\n\t\"components\": {\n\t\t\"xray\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray\",\n\t\t\t\"version\": \"26.9.30\"\n\t\t},\n\t\t\"chinadns-ng\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng\",\n\t\t\t\"version\": \"2025.08.09\"\n\t\t}\n\t},\n\t\"wan_dns\": [\n\t],\n\t\"render_hash\": {\n\t\t\"nft\": \"1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc\",\n\t\t\"chinadns\": \"e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30\",\n\t\t\"dnsmasq\": \"81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0\",\n\t\t\"xray\": \"65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4\"\n\t},\n\t\"last_probe\": {\n\t\t\"ok\": true,\n\t\t\"latency_ms\": 12,\n\t\t\"at\": 1794099465\n\t},\n\t\"monitor\": {\n\t\t\"state\": \"running\",\n\t\t\"dns_tier\": \"T1\",\n\t\t\"dns_failsafe\": false,\n\t\t\"table_missing_count\": 0,\n\t\t\"xray_down_count\": 0,\n\t\t\"xray_down_reported\": false,\n\t\t\"chinadns_down_count\": 0,\n\t\t\"chinadns_down_reported\": false,\n\t\t\"ever_healthy\": true,\n\t\t\"proxy_fail_count\": 0,\n\t\t\"proxy_ok_count\": 1,\n\t\t\"dns_fail_count\": 0,\n\t\t\"t3_since\": null,\n\t\t\"last_t2_retry\": null,\n\t\t\"t2_retry_pending\": false,\n\t\t\"last_node_refresh\": 1794099465,\n\t\t\"node_ip\": \"203.0.113.20\",\n\t\t\"degraded_mode\": null,\n\t\t\"degraded_since\": null,\n\t\t\"last_probe\": {\n\t\t\t\"ok\": true,\n\t\t\t\"latency_ms\": 12,\n\t\t\t\"at\": 1794099465\n\t\t},\n\t\t\"since\": 1794099465\n\t}\n}\n"
+    },
+    "controller_to_handler_diff": {},
+    "error": "Traceback (most recent call last):\n  File \"$WORKTREE/tests/bootstrap-startup/.runtime-t946-0be_9op9/old-sampler.py\", line 287, in daemon\n    yield child\n  File \"$WORKTREE/tests/bootstrap-startup/.runtime-t946-0be_9op9/old-sampler.py\", line 401, in <module>\n    check(f'{scenario}: stopping preserves every other field and TERM timestamp',\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    \t{key: value for key, value in stopping.items() if key not in ('state', 'since')}\n     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    \t== {key: value for key, value in before.items() if key not in ('state', 'since')}\n     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    \tand term_at <= stopping['since'] <= term_at + 1)\n     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"$WORKTREE/tests/bootstrap-startup/.runtime-t946-0be_9op9/old-sampler.py\", line 22, in check\n    raise AssertionError(name)\nAssertionError: probe: stopping preserves every other field and TERM timestamp\n",
+    "captured": {
+      "wall_ns": 1794099467140422184,
+      "monotonic_ns": 172299918897453
+    },
+    "final_state": {
+      "state": "stopped",
+      "dns_tier": "T2",
+      "dns_failsafe": false,
+      "since": 1794099467,
+      "degraded_mode": null,
+      "degraded_since": null
+    },
+    "field_diff": {
+      "components": {
+        "before": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "dns_tier": {
+        "before": "T1",
+        "after": "T2"
+      },
+      "last_error": {
+        "before": null,
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "last_probe": {
+        "before": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "mode": {
+        "before": "gfw",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "monitor": {
+        "before": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "node_id": {
+        "before": "n_00000000000000000000000000000001",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "node_ip": {
+        "before": "203.0.113.20",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "render_hash": {
+        "before": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "since": {
+        "before": 1794099465,
+        "after": 1794099467
+      },
+      "state": {
+        "before": "running",
+        "after": "stopped"
+      },
+      "waiting_network": {
+        "before": false,
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "wan_dns": {
+        "before": [],
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      }
+    },
+    "controller_field_diff": {
+      "components": {
+        "before": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "dns_tier": {
+        "before": "T1",
+        "after": "T2"
+      },
+      "last_error": {
+        "before": null,
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "last_probe": {
+        "before": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "mode": {
+        "before": "gfw",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "monitor": {
+        "before": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "node_id": {
+        "before": "n_00000000000000000000000000000001",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "node_ip": {
+        "before": "203.0.113.20",
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "render_hash": {
+        "before": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "since": {
+        "before": 1794099465,
+        "after": 1794099467
+      },
+      "state": {
+        "before": "running",
+        "after": "stopped"
+      },
+      "waiting_network": {
+        "before": false,
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      },
+      "wan_dns": {
+        "before": [],
+        "after": null,
+        "before_present": true,
+        "after_present": false
+      }
+    }
+  },
+  "term_handler_events": [
+    {
+      "kind": "received",
+      "name": "SIGTERM",
+      "monotonic": [
+        172298,
+        795413732
+      ],
+      "wall": [
+        1794099466,
+        16939493
+      ],
+      "already_stopping": false,
+      "published": "{\n\t\"state\": \"running\",\n\t\"dns_tier\": \"T1\",\n\t\"dns_failsafe\": false,\n\t\"node_id\": \"n_00000000000000000000000000000001\",\n\t\"mode\": \"gfw\",\n\t\"node_ip\": \"203.0.113.20\",\n\t\"since\": 1794099465,\n\t\"waiting_network\": false,\n\t\"degraded_mode\": null,\n\t\"degraded_since\": null,\n\t\"last_error\": null,\n\t\"components\": {\n\t\t\"xray\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray\",\n\t\t\t\"version\": \"26.9.30\"\n\t\t},\n\t\t\"chinadns-ng\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng\",\n\t\t\t\"version\": \"2025.08.09\"\n\t\t}\n\t},\n\t\"wan_dns\": [\n\t],\n\t\"render_hash\": {\n\t\t\"nft\": \"1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc\",\n\t\t\"chinadns\": \"e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30\",\n\t\t\"dnsmasq\": \"81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0\",\n\t\t\"xray\": \"65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4\"\n\t},\n\t\"last_probe\": {\n\t\t\"ok\": true,\n\t\t\"latency_ms\": 12,\n\t\t\"at\": 1794099465\n\t},\n\t\"monitor\": {\n\t\t\"state\": \"running\",\n\t\t\"dns_tier\": \"T1\",\n\t\t\"dns_failsafe\": false,\n\t\t\"table_missing_count\": 0,\n\t\t\"xray_down_count\": 0,\n\t\t\"xray_down_reported\": false,\n\t\t\"chinadns_down_count\": 0,\n\t\t\"chinadns_down_reported\": false,\n\t\t\"ever_healthy\": true,\n\t\t\"proxy_fail_count\": 0,\n\t\t\"proxy_ok_count\": 1,\n\t\t\"dns_fail_count\": 0,\n\t\t\"t3_since\": null,\n\t\t\"last_t2_retry\": null,\n\t\t\"t2_retry_pending\": false,\n\t\t\"last_node_refresh\": 1794099465,\n\t\t\"node_ip\": \"203.0.113.20\",\n\t\t\"degraded_mode\": null,\n\t\t\"degraded_since\": null,\n\t\t\"last_probe\": {\n\t\t\t\"ok\": true,\n\t\t\t\"latency_ms\": 12,\n\t\t\t\"at\": 1794099465\n\t\t},\n\t\t\"since\": 1794099465\n\t}\n}\n"
+    },
+    {
+      "kind": "published",
+      "name": "SIGTERM",
+      "monotonic": [
+        172298,
+        796452021
+      ],
+      "wall": [
+        1794099466,
+        17977752
+      ],
+      "already_stopping": true,
+      "published": "{\n\t\"state\": \"stopping\",\n\t\"dns_tier\": \"T1\",\n\t\"dns_failsafe\": false,\n\t\"node_id\": \"n_00000000000000000000000000000001\",\n\t\"mode\": \"gfw\",\n\t\"node_ip\": \"203.0.113.20\",\n\t\"since\": 1794099466,\n\t\"waiting_network\": false,\n\t\"degraded_mode\": null,\n\t\"degraded_since\": null,\n\t\"last_error\": null,\n\t\"components\": {\n\t\t\"xray\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray\",\n\t\t\t\"version\": \"26.9.30\"\n\t\t},\n\t\t\"chinadns-ng\": {\n\t\t\t\"path\": \"$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng\",\n\t\t\t\"version\": \"2025.08.09\"\n\t\t}\n\t},\n\t\"wan_dns\": [\n\t],\n\t\"render_hash\": {\n\t\t\"nft\": \"1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc\",\n\t\t\"chinadns\": \"e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30\",\n\t\t\"dnsmasq\": \"81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0\",\n\t\t\"xray\": \"65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4\"\n\t},\n\t\"last_probe\": {\n\t\t\"ok\": true,\n\t\t\"latency_ms\": 12,\n\t\t\"at\": 1794099465\n\t},\n\t\"monitor\": {\n\t\t\"state\": \"running\",\n\t\t\"dns_tier\": \"T1\",\n\t\t\"dns_failsafe\": false,\n\t\t\"table_missing_count\": 0,\n\t\t\"xray_down_count\": 0,\n\t\t\"xray_down_reported\": false,\n\t\t\"chinadns_down_count\": 0,\n\t\t\"chinadns_down_reported\": false,\n\t\t\"ever_healthy\": true,\n\t\t\"proxy_fail_count\": 0,\n\t\t\"proxy_ok_count\": 1,\n\t\t\"dns_fail_count\": 0,\n\t\t\"t3_since\": null,\n\t\t\"last_t2_retry\": null,\n\t\t\"t2_retry_pending\": false,\n\t\t\"last_node_refresh\": 1794099465,\n\t\t\"node_ip\": \"203.0.113.20\",\n\t\t\"degraded_mode\": null,\n\t\t\"degraded_since\": null,\n\t\t\"last_probe\": {\n\t\t\t\"ok\": true,\n\t\t\t\"latency_ms\": 12,\n\t\t\t\"at\": 1794099465\n\t\t},\n\t\t\"since\": 1794099465\n\t}\n}\n"
+    }
+  ],
+  "full_state_trajectory": [
+    {
+      "kind": "write_request",
+      "monotonic": [
+        172297,
+        568957288
+      ],
+      "wall": [
+        1794099464,
+        790482999
+      ],
+      "value": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": null,
+      "published": null
+    },
+    {
+      "kind": "write_enter",
+      "monotonic": [
+        172297,
+        569042777
+      ],
+      "wall": [
+        1794099464,
+        790568458
+      ],
+      "value": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": null,
+      "published": null
+    },
+    {
+      "kind": "write_completed",
+      "monotonic": [
+        172297,
+        569137346
+      ],
+      "wall": [
+        1794099464,
+        790663007
+      ],
+      "value": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": true,
+      "published": null
+    },
+    {
+      "kind": "write_request",
+      "monotonic": [
+        172298,
+        297417596
+      ],
+      "wall": [
+        1794099465,
+        518943227
+      ],
+      "value": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      }
+    },
+    {
+      "kind": "write_enter",
+      "monotonic": [
+        172298,
+        297500366
+      ],
+      "wall": [
+        1794099465,
+        519025937
+      ],
+      "value": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      }
+    },
+    {
+      "kind": "write_completed",
+      "monotonic": [
+        172298,
+        297719253
+      ],
+      "wall": [
+        1794099465,
+        519244924
+      ],
+      "value": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      },
+      "result": true,
+      "published": {
+        "state": "starting",
+        "since": 1794099464,
+        "dns_tier": "T1",
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "degraded_mode": null,
+        "degraded_since": null
+      }
+    },
+    {
+      "kind": "write_request",
+      "monotonic": [
+        172298,
+        318031017
+      ],
+      "wall": [
+        1794099465,
+        539556758
+      ],
+      "value": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      }
+    },
+    {
+      "kind": "write_enter",
+      "monotonic": [
+        172298,
+        318156555
+      ],
+      "wall": [
+        1794099465,
+        539682176
+      ],
+      "value": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      }
+    },
+    {
+      "kind": "write_completed",
+      "monotonic": [
+        172298,
+        318403103
+      ],
+      "wall": [
+        1794099465,
+        539928784
+      ],
+      "value": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": true,
+      "published": {
+        "state": "starting",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        }
+      }
+    },
+    {
+      "kind": "hold_entry",
+      "monotonic": [
+        172298,
+        795807158
+      ],
+      "wall": [
+        1794099466,
+        17332889
+      ],
+      "value": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    },
+    {
+      "kind": "write_enter",
+      "monotonic": [
+        172298,
+        795937606
+      ],
+      "wall": [
+        1794099466,
+        17463267
+      ],
+      "value": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": null,
+      "published": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    },
+    {
+      "kind": "write_completed",
+      "monotonic": [
+        172298,
+        796278753
+      ],
+      "wall": [
+        1794099466,
+        17804434
+      ],
+      "value": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      },
+      "result": true,
+      "published": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099465,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    },
+    {
+      "kind": "write_request",
+      "monotonic": [
+        172299,
+        909175528
+      ],
+      "wall": [
+        1794099467,
+        130701139
+      ],
+      "value": {
+        "state": "stopped",
+        "dns_tier": "T2",
+        "dns_failsafe": false,
+        "since": 1794099467,
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": null,
+      "published": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    },
+    {
+      "kind": "write_enter",
+      "monotonic": [
+        172299,
+        909237658
+      ],
+      "wall": [
+        1794099467,
+        130763259
+      ],
+      "value": {
+        "state": "stopped",
+        "dns_tier": "T2",
+        "dns_failsafe": false,
+        "since": 1794099467,
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": null,
+      "published": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    },
+    {
+      "kind": "write_completed",
+      "monotonic": [
+        172299,
+        909407596
+      ],
+      "wall": [
+        1794099467,
+        130933297
+      ],
+      "value": {
+        "state": "stopped",
+        "dns_tier": "T2",
+        "dns_failsafe": false,
+        "since": 1794099467,
+        "degraded_mode": null,
+        "degraded_since": null
+      },
+      "result": true,
+      "published": {
+        "state": "stopping",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "node_id": "n_00000000000000000000000000000001",
+        "mode": "gfw",
+        "node_ip": "203.0.113.20",
+        "since": 1794099466,
+        "waiting_network": false,
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_error": null,
+        "components": {
+          "xray": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+            "version": "26.9.30"
+          },
+          "chinadns-ng": {
+            "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+            "version": "2025.08.09"
+          }
+        },
+        "wan_dns": [],
+        "render_hash": {
+          "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+          "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+          "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+          "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+        },
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "monitor": {
+          "state": "running",
+          "dns_tier": "T1",
+          "dns_failsafe": false,
+          "table_missing_count": 0,
+          "xray_down_count": 0,
+          "xray_down_reported": false,
+          "chinadns_down_count": 0,
+          "chinadns_down_reported": false,
+          "ever_healthy": true,
+          "proxy_fail_count": 0,
+          "proxy_ok_count": 1,
+          "dns_fail_count": 0,
+          "t3_since": null,
+          "last_t2_retry": null,
+          "t2_retry_pending": false,
+          "last_node_refresh": 1794099465,
+          "node_ip": "203.0.113.20",
+          "degraded_mode": null,
+          "degraded_since": null,
+          "last_probe": {
+            "ok": true,
+            "latency_ms": 12,
+            "at": 1794099465
+          },
+          "since": 1794099465
+        }
+      }
+    }
+  ],
+  "actual_write_values": [
+    {
+      "state": "stopping",
+      "dns_tier": "T1",
+      "dns_failsafe": false,
+      "node_id": "n_00000000000000000000000000000001",
+      "mode": "gfw",
+      "node_ip": "203.0.113.20",
+      "since": 1794099466,
+      "waiting_network": false,
+      "degraded_mode": null,
+      "degraded_since": null,
+      "last_error": null,
+      "components": {
+        "xray": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/xray",
+          "version": "26.9.30"
+        },
+        "chinadns-ng": {
+          "path": "$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/bin/chinadns-ng",
+          "version": "2025.08.09"
+        }
+      },
+      "wan_dns": [],
+      "render_hash": {
+        "nft": "1d6d8486ed6d10c1af481b219adeff0ceb3b419ffa98940f11a1042fcc37b6fc",
+        "chinadns": "e8f6f7d9d836f9a0e2f8908661c6509649b740b0efad250904002b11764850be,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/gfwlist.txt:391196688aa55d3321deffa736f8d103b4813470952b748e9c2c9deb17fa60f5,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/proxy_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/direct_domain.txt:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,$WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/applied/b095a2cac887feb94a4ea929e94ea05166c17fc37c9b99c698d8440b56822f7c/boot.txt:0c79740b6d70149f87098a9be41f6072dac0ba1d78d0d191a8ab0a560554fd30",
+        "dnsmasq": "81f60384d7f232415f641425e057d5ff94fc892f4bb50f2ea947601681e709e0",
+        "xray": "65f91a275a5d846fd9ef95d5c8065dfaa218d330ce78688a1bc12772aa341ef4"
+      },
+      "last_probe": {
+        "ok": true,
+        "latency_ms": 12,
+        "at": 1794099465
+      },
+      "monitor": {
+        "state": "running",
+        "dns_tier": "T1",
+        "dns_failsafe": false,
+        "table_missing_count": 0,
+        "xray_down_count": 0,
+        "xray_down_reported": false,
+        "chinadns_down_count": 0,
+        "chinadns_down_reported": false,
+        "ever_healthy": true,
+        "proxy_fail_count": 0,
+        "proxy_ok_count": 1,
+        "dns_fail_count": 0,
+        "t3_since": null,
+        "last_t2_retry": null,
+        "t2_retry_pending": false,
+        "last_node_refresh": 1794099465,
+        "node_ip": "203.0.113.20",
+        "degraded_mode": null,
+        "degraded_since": null,
+        "last_probe": {
+          "ok": true,
+          "latency_ms": 12,
+          "at": 1794099465
+        },
+        "since": 1794099465
+      }
+    },
+    {
+      "state": "stopped",
+      "dns_tier": "T2",
+      "dns_failsafe": false,
+      "since": 1794099467,
+      "degraded_mode": null,
+      "degraded_since": null
+    }
+  ],
+  "stdout": "",
+  "stderr": "",
+  "calls": "nft -c -f $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/staging/precheck.nft\nip rule help\nnft list tables\nnft list chains inet fw4\nkillall -0 clash\nkillall -0 mihomo\nxray version\nchinadns-ng -V\nnft -c -f $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/staging/aether-proxy.nft\nxray run -test -c $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/staging/xray.json\nnft list table inet aetherproxy\nip rule show\nip -4 route show table all\nbootstrap-start -C $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/bootstrap/a57d1b75880ffc9da77046b3854dcad0/bootstrap.conf\nbootstrap-owned-ready 2621896 172297.824676565\nbootstrap-query node.example.com\nbootstrap-exit 2621896 172297.937608946\nxray run -test -c $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/current/xray.json\nxray run -c $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/current/xray.json\nnft -f $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/current/aether-proxy.nft\nip rule show\nip rule add fwmark 0x00080000/0x00080000 lookup 233 pref 900\nip route replace local default dev lo table 233\nchinadns-ng -C $WORKTREE/tests/daemon/.stop-state-u0z3r_pe/busy-probe/var/run/aether-proxy/current/chinadns.conf\ndns-owned-ready 2622012 172298.199006086\ndnsmasq restart\nnft list table inet aetherproxy\ncurl --silent --output /dev/null --write-out %{http_code} %{time_total} --max-time 5 -x http://127.0.0.1:31081 https://www.gstatic.com/generate_204\nnft list table inet aetherproxy\ncurl --silent --output /dev/null --write-out %{http_code} %{time_total} --max-time 5 -x http://127.0.0.1:31081 https://www.gstatic.com/generate_204\nnft list table inet aetherproxy\nnft -j list set inet aetherproxy gfw4\nnft -j list set inet aetherproxy udirect4\nnft -j list set inet aetherproxy uproxy4\nnft delete table inet aetherproxy\nip rule show\nip rule del fwmark 0x00080000/0x00080000 lookup 233 pref 900\nip rule show\nip -4 route show table all\nip route flush table 233\ndnsmasq restart\n",
+  "raw_sha256": {
+    "observation.json": "1e53f92f398ae65f057149cb8ea63464866e8ffe9a34eb76e8038e45b19b07f9",
+    "term-handled.jsonl": "d4b470d08387251477bd4c5521230225c66e7585f0f1e61e4bb2a4b640a8fd2a",
+    "state-events.jsonl": "32d6d30874c3687f4e33e5241011345d04453924fca0f5aca6c363f6607d8a41",
+    "writes.jsonl": "38fdabf3f02baa9847756ae790f19f8736da51f4dd2882192f81d03b9045d8f5",
+    "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "calls.log": "f4dd30452366f8ebb6346932b0c13de4ad80ce74fb8e924ee45be4c823613e70"
+  },
+  "interpretation": {
+    "production_stopping_preserves_all_other_fields": true,
+    "original_since_bound_holds": true,
+    "controller_before_equals_handler_before": true,
+    "matched_state": "stopping",
+    "compared_state": "stopped",
+    "final_state": "stopped"
+  }
+}
