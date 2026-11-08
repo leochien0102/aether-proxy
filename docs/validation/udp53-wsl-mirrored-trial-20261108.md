@@ -99,8 +99,25 @@ WSL内部源地址为172.27.228.101；Windows原生源地址为192.168.5.10。NA
 2. WSL/NAT跨LAN UDP不作为常规组件回归/验收输入，不单凭其失败判断软件问题仍存在，也不要求靠切换mirrored才能验收。
 3. 常规验证选Windows原生、独立LAN客户端或设备本机受控路径；仍须验证实际UDP功能，不能以TCP通过代替。WSL内部单元、loopback与受控集成测试仍有效。
 4. 对照通过不等于证明所有软件UDP路径无缺陷。NAT原始数据保留作归因未定的调查参考，不常规重复、不自动扩大成主机网络迁移。
-5. 只有可信独立环境也复现或证据指向组件处理，才评估是否重开组件问题；若另查Windows/NAT或Docker/Traefik兼容，需新目标与授权，不修改DNS策略来碰运气。
+5. 按所有者最终决定，本事项归档后不再继续扩查；**仅当其他可信独立环境复现相同问题时，才重新评估是否开启调查**。WSL/NAT下再次出现本身不触发重开，也不借本事项扩大到Windows驱动或Docker/Traefik网络迁移。
 6. 既有r6→T15.7交叉审查底稿的固定源码范围不被本次环境实验改写。
+
+## 8. 补充独立Linux对照与最终归档
+
+随后在用户提供的Debian 13 VirtualBox VM内，以普通用户运行相同类别负载。网卡1桥接物理LAN，网卡3保留Host-only管理；DNS实际走enp0s3、源192.168.5.119直达H28K，WSL只承担SSH控制，不作为DNS客户端。
+
+| 环境 | 请求 | 正常NXDOMAIN | 超时/异常 |
+|---|---:|---:|---:|
+| WSL NAT | 600 | 595 | 5 |
+| Windows原生 | 600 | 600 | 0 |
+| WSL mirrored | 600 | 600 | 0 |
+| Debian 13 VM桥接LAN | 600 | 600 | 0 |
+
+Debian桥接结果p95为172.04ms、最大197.03ms。对照进一步支持“WSL＋NAT环境相关、具体归因未定”的归档，不将其列为aether-proxy/aether-dns当前已知缺陷或验收阻断，不宣称已精确定位某Windows模块或所有软件路径都无缺陷。
+
+VM持久化配置阶段被用户中止；其具体执行进度未确认，**不按持久化成功记录**。用户关闭VM并决定后续重建/删除，未为核查而重新启动，也未代用户删除VM、还原快照或继续改配置。临时生成且未使用的Windows诊断密钥已清理，实际使用现有WSL密钥。
+
+**最终决定：保留这笔记录与原始证据，本次到此；除非其他独立环境复现相同问题，不再扩查。**
 
 ## 原始证据（本机忽略目录）
 
@@ -115,6 +132,10 @@ aether-dns/dist/logs/udp53-mirrored-20261108/
   environment-before.json / environment-after.json / rollback-state.json
   sender.pcap / router.pcap / queries.json / packet-paths.json / summary.json
   router-after.txt / cleanup.txt
+aether-dns/dist/logs/debian-bridged-udp53-20261108/
+  summary.json / queries.json / environment.json
+  before.vbox / after-bridge.vbox / config-change.json
+  guest-before.txt / guest-lease.txt / guest-after.txt / h28k-after.txt
 ```
 
 原始pcap已核对两端文件哈希，正常对照与失败记录均保留；这些原始文件不会自动随aether-proxy克隆取得，也不提交设备配置或未脱敏日志到公开仓库。
