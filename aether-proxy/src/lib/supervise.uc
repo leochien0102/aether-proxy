@@ -72,12 +72,14 @@ function create(opts) {
 		die('supervise.create: name, argv, run_dir and non-empty backoff are required');
 
 	let cb = opts.on_event;
+	let inherit_output = opts.respawn == false && opts.inherit_output == true;
 	let pidfile = pid_path(opts.run_dir, opts.name);
 	let fifo = fifo_path(opts.run_dir, opts.name);
 	let delays = map(opts.backoff, d => max(+d, 0));
 	let stable_secs = max(+(opts.stable_secs ?? 300), 0);
 	let proc = null, pid = null, stopping = false, restart_index = 0, done_cb = null;
 	let restart_timer = null, stop_timer = null, stable_timer = null;
+	let start_error = null;
 	let on_exit = null, force_stop = null;
 
 	function start_child() {
@@ -91,18 +93,24 @@ function create(opts) {
 
 		// A separate reader avoids the stdio buffering trap of popen + uloop.handle (09).
 		// Collector failures are reported once by on_exit, not echoed back into logd.
-		let argv = opts.raw_log
+		// A short-lived private child inherits the daemon log stream directly: no
+		// untracked awk reader may outlive a failed bootstrap. Formal children keep
+		// the existing filter and crash backoff unchanged (T15.6).
+		let argv = inherit_output ? opts.argv : opts.raw_log
 			? [ '/bin/sh', '-c', 'exec "$@" >/dev/null 2>&1', 'raw-log', ...opts.argv ]
 			: filtered_argv(opts, fifo);
 		proc = uloop.process(argv[0], slice(argv, 1), null, on_exit);
 		if (proc == null) {
-			remove_fifo(fifo);
+			if (!inherit_output)
+				remove_fifo(fifo);
 			log.event(opts.raw_log ? 'warn' : 'error', 'START_FAILED', { step: 'supervise', detail: `cannot start ${opts.name}` });
 			return;
 		}
 
 		pid = proc.pid();
+		start_error = null;
 		if (!sys.write_atomic(pidfile, `${pid}\n`)) {
+			start_error = `cannot write ${pidfile}: ${sys.error()}`;
 			log.event(opts.raw_log ? 'warn' : 'error', 'START_FAILED', { step: 'supervise', detail: `cannot write ${pidfile}: ${sys.error()}` });
 			stopping = true;
 			kill_process(pid, 'TERM');
@@ -114,7 +122,8 @@ function create(opts) {
 		emit(cb, 'started', { name: opts.name, pid });
 		if (stable_timer != null)
 			stable_timer.cancel();
-		stable_timer = uloop.timer(stable_secs * 1000, () => { restart_index = 0; stable_timer = null; });
+		if (opts.respawn != false)
+			stable_timer = uloop.timer(stable_secs * 1000, () => { restart_index = 0; stable_timer = null; });
 	};
 
 	function finish_stop(exited_pid) {
@@ -143,7 +152,8 @@ function create(opts) {
 			stable_timer.cancel();
 		stable_timer = null;
 		unlink_pid(pidfile);
-		remove_fifo(fifo);
+		if (!inherit_output)
+			remove_fifo(fifo);
 
 		// A signal-terminated child can report exit code zero, so code alone cannot distinguish
 		// intentional shutdown from a crash (docs/09「子进程日志（S1 已定，2026-10-15）」).
@@ -153,7 +163,7 @@ function create(opts) {
 		}
 
 		// Optional collector is best effort: one warning, no restart loop.
-		if (opts.raw_log) {
+		if (opts.raw_log || opts.respawn == false) {
 			log.event('warn', 'CHILD_CRASHED', { name: opts.name, pid: exited_pid, code, restart_in: null });
 			emit(cb, 'crashed', { name: opts.name, code });
 			return;
@@ -185,11 +195,18 @@ function create(opts) {
 		if (stable_timer != null)
 			stable_timer.cancel();
 		stable_timer = null;
+		// Private PID-publication failure may already have armed escalation. Do
+		// not leave that timer behind after the subsequent explicit private stop.
+		if (opts.respawn == false && stop_timer != null) {
+			stop_timer.cancel();
+			stop_timer = null;
+		}
 		stopping = true;
 		done_cb = done;
 		if (proc == null) {
 			unlink_pid(pidfile);
-			remove_fifo(fifo);
+			if (!inherit_output)
+				remove_fifo(fifo);
 			finish_stop(pid);
 			return;
 		}
@@ -201,7 +218,10 @@ function create(opts) {
 		start,
 		stop,
 		running: () => proc != null && process_exists(pid),
-		pid: () => pid
+		pid: () => pid,
+		// proc is cleared only by the real uloop exit callback, never by kill(0).
+		exited: () => proc == null,
+		error: () => start_error
 	};
 };
 

@@ -658,7 +658,20 @@ function resolve_node(ctx, address) {
 	return { ok: false, detail: `cannot resolve ${address}` };
 };
 
-// Deliberately not used by production startup/reload yet (T15.4 / docs/03).
+// T15.6 reuses B1's final failure outcome after a safely stopped runtime bootstrap.
+// Runtime reload/monitor keep resolve_node(), including its existing retry policy.
+function resolve_node_failed(ctx, address) {
+	setup_log(ctx);
+	let lkg = read_lkg(ctx)[address];
+	if (lkg != null) {
+		log.event('warn', 'NODE_RESOLVE_FALLBACK', { node: address, domain: address, lkg_ip: lkg });
+		return result('last-known-good address used', { ip: lkg, source: 'lkg' });
+	}
+	log.event('error', 'NODE_RESOLVE_FAILED', { node: address, domain: address, lkg_ip: '' });
+	return { ok: false, detail: `cannot resolve ${address}` };
+};
+
+// Explicit endpoint only at startup; protocol and cancellation remain B1's contract.
 function resolve_node_explicit(ctx, address, endpoint, on_signal) {
 	setup_log(ctx);
 	if (type(address) == 'string' && net.ipv4(address) != null)
@@ -679,13 +692,7 @@ function resolve_node_explicit(ctx, address, endpoint, on_signal) {
 			return failed(ctx, 'resolve_node_explicit', saved.detail);
 		return result('node address resolved', { ip: resolved.ip, source: 'dns' });
 	}
-	let lkg = read_lkg(ctx)[address];
-	if (lkg != null) {
-		log.event('warn', 'NODE_RESOLVE_FALLBACK', { node: address, domain: address, lkg_ip: lkg });
-		return result('last-known-good address used', { ip: lkg, source: 'lkg' });
-	}
-	log.event('error', 'NODE_RESOLVE_FAILED', { node: address, domain: address, lkg_ip: '' });
-	return { ok: false, detail: `cannot resolve ${address}` };
+	return resolve_node_failed(ctx, address);
 };
 
 function write_boot_list(ctx, domains) {
@@ -774,6 +781,6 @@ export {
 	route_add, route_del, table_routes,
 	dnsmasq_confdir, dnsmasq_install, dnsmasq_remove, dnsmasq_hup, dnsmasq_extra_servers,
 	restart_intent, restart_intent_clear, scan_extra_servers,
-	read_lkg, update_lkg, resolve_node, resolve_node_explicit, write_boot_list, conflicts,
+	read_lkg, update_lkg, resolve_node, resolve_node_failed, resolve_node_explicit, write_boot_list, conflicts,
 	artifact_hashes
 };

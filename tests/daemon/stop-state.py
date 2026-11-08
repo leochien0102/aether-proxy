@@ -3,6 +3,7 @@
 
 from contextlib import contextmanager
 import json
+import traceback
 import os
 from pathlib import Path
 import shutil
@@ -25,12 +26,38 @@ def check(name, condition):
 def wait_for(predicate, child=None, timeout=12):
 	deadline = time.monotonic() + timeout
 	while time.monotonic() < deadline:
-		if predicate():
-			return
+		value = predicate()
+		if value:
+			return value
 		if child is not None and child.poll() is not None:
 			raise AssertionError(f'daemon exited early: {child.returncode}')
 		time.sleep(0.02)
 	raise AssertionError('timed out waiting for lifecycle transition')
+
+
+def field_diff(before, after, prefix=''):
+	result = {}
+	for key in sorted(set(before) | set(after)):
+		path = prefix + key
+		if key not in before or key not in after:
+			result[path] = {'before': before.get(key), 'after': after.get(key),
+				'before_present': key in before, 'after_present': key in after}
+		elif isinstance(before[key], dict) and isinstance(after[key], dict):
+			result.update(field_diff(before[key], after[key], path + '.'))
+		elif before[key] != after[key]:
+			result[path] = {'before': before[key], 'after': after[key]}
+	return result
+
+
+def wait_state(fixture, wanted, child=None, timeout=12):
+	def sample():
+		value = fixture.state()
+		return value if value.get('state') == wanted else None
+	return wait_for(sample, child, timeout)
+
+
+def stamp():
+	return {'wall_ns': time.time_ns(), 'monotonic_ns': time.monotonic_ns()}
 
 
 def objects(text):
@@ -118,6 +145,32 @@ exit 0
 	assert source.count('export function load(cursor) {') == 1
 	(modules / 'config.uc').write_text(source.replace('export function load(cursor) {', hook, 1))
 
+	# Observation only: record the actual TERM handler entry, not the earlier
+	# controller send or an arbitrary poll of state.json. No uloop dispatch here.
+	daemon_path = modules / 'daemon.uc'
+	source = daemon_path.read_text()
+	needle = 'function write_stopping(ctx) {'
+	assert source.count(needle) == 1
+	helper = '''function trace_term(ctx, kind, name) {
+	let fp = fs.open(run_dir(ctx) + '/term-handled.jsonl', 'a');
+	if (fp == null) die('cannot open TERM trace');
+	let text = sprintf('%J\\n', { kind, name, monotonic: clock(true), wall: clock(),
+		already_stopping: ctx.stopping_requested ?? false,
+		published: fs.readfile(run_dir(ctx) + '/state.json') });
+	let written = fp.write(text), closed = fp.close();
+	if (written != length(text) || !closed) die('cannot write TERM trace');
+};
+
+'''
+	source = source.replace(needle, helper + needle, 1)
+	handler = "\t\t\tif (kind == 'stop') {"
+	assert source.count(handler) == 1
+	source = source.replace(handler, handler + "\n\t\t\t\ttrace_term(ctx, 'received', name);", 1)
+	publish = '\t\t\t\twrite_stopping(ctx);'
+	assert source.count(publish) == 1
+	source = source.replace(publish, publish + "\n\t\t\t\ttrace_term(ctx, 'published', name);", 1)
+	daemon_path.write_text(source)
+
 	# Force the production node-refresh action without waiting ten minutes. No control-flow
 	# replacement: supervision, callbacks, readiness waiting and persistence are real.
 	monitor_path = modules / 'monitor.uc'
@@ -137,7 +190,29 @@ exit 0
 	assert source.count(needle) == 1
 	replacement = "\tlet result = obj.state == 'stopping' && getenv('STOP_WRITE_FAIL') == '1'\n" + \
 		"\t\t? false : sys.write_atomic(path, sprintf('%.J', obj) + '\\n');"
+	trace_helper = '''let trace_published = null;
+function trace_state(kind, run_dir, obj, result) {
+	let value = json(sprintf('%J', obj));
+	let entry = { kind, monotonic: clock(true), wall: clock(), value, result,
+		published: trace_published };
+	let fp = fs.open(run_dir + '/state-events.jsonl', 'a');
+	if (fp == null) die('cannot open full state trace');
+	let text = sprintf('%J\\n', entry), written = fp.write(text);
+	let closed = fp.close();
+	if (written != length(text) || !closed) die('cannot write full state trace');
+	if (kind == 'write_completed' && result)
+		trace_published = value;
+};
+
+'''
+	source = source.replace('function write_value(run_dir, obj) {',
+		trace_helper + "function write_value(run_dir, obj) {\n\ttrace_state('write_enter', run_dir, obj, null);", 1)
+	source = source.replace('function write(run_dir, obj) {',
+		"function write(run_dir, obj) {\n\ttrace_state('write_request', run_dir, obj, null);", 1)
+	source = source.replace('function hold_stopping(run_dir, obj) {',
+		"function hold_stopping(run_dir, obj) {\n\ttrace_state('hold_entry', run_dir, obj, null);", 1)
 	state_path.write_text(source.replace(needle, replacement + '''
+	trace_state('write_completed', run_dir, obj, result);
 	let trace = fs.open(run_dir + '/writes.jsonl', 'a');
 	if (trace == null) die('cannot open state trace');
 	trace.write(sprintf('%.J', obj) + '\\n');
@@ -167,6 +242,7 @@ exit 0
 				(self.root / file).touch()
 			self.calls = self.root / 'calls.log'
 			self.trace = self.root / 'validation.jsonl'
+			self.observations = {}
 			self.env = dict(os.environ, SYSROOT=str(self.root), STUB_LOG=str(self.calls),
 				LD_LIBRARY_PATH=str(ROOT / 'tests/host/prefix/lib') + ':' + os.environ.get('LD_LIBRARY_PATH', ''),
 				STUB_CURL_COUNT_FILE=str(self.root / 'curl-count'), PATH=str(binaries) + ':' + os.environ['PATH'],
@@ -184,6 +260,21 @@ exit 0
 			path = self.run / 'events.jsonl'
 			return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+		def save_evidence(self, error=None):
+			kind = 'failure' if error is not None else 'success'
+			out = ROOT / 'tests/bootstrap-startup/.logs' / f't946-{kind}-{time.time_ns()}-{self.root.name}'
+			out.mkdir(parents=True)
+			data = dict(self.observations, error=error, captured=stamp(), final_state=self.state())
+			data['field_diff'] = field_diff(data.get('before', {}), data.get('stopping', {}))
+			data['controller_field_diff'] = field_diff(data.get('controller_before', {}), data.get('stopping', {}))
+			(out / 'observation.json').write_text(json.dumps(data, indent=2) + '\n')
+			for path in (self.root / 'stdout', self.root / 'stderr', self.calls,
+				self.run / 'state-events.jsonl', self.run / 'writes.jsonl', self.run / 'term-handled.jsonl'):
+				if path.exists():
+					shutil.copyfile(path, out / path.name)
+			print('T9.46 ' + kind + ' evidence:', out, flush=True)
+			return out
+
 		@contextmanager
 		def daemon(self):
 			with (self.root / 'stdout').open('w') as stdout, (self.root / 'stderr').open('w') as stderr:
@@ -191,8 +282,12 @@ exit 0
 					'-S', str(ENTRY), '--', 'daemon', *self.args]
 				with subprocess.Popen(command, env=self.env, stdout=stdout, stderr=stderr,
 						start_new_session=True) as child:
+					failure = None
 					try:
 						yield child
+					except BaseException:
+						failure = traceback.format_exc()
+						raise
 					finally:
 						if child.poll() is None:
 							child.terminate()
@@ -204,6 +299,9 @@ exit 0
 							os.killpg(child.pid, signal.SIGKILL)
 							child.wait()
 							raise
+						finally:
+							if failure is not None:
+								self.save_evidence(failure)
 
 		def captured(self):
 			path = self.root / 'state-during-stop.jsonl'
@@ -263,17 +361,42 @@ config subscription 's_00000001'
 			# Starting is followed by an immediate monitor sample. Compare stopping
 			# with the state immediately before TERM, not a pre-sample startup read.
 			before = fixture.state()
+			if phase == 'probe' and os.environ.get('T946_FORCE_WALL_BOUNDARY') == '1':
+				# Diagnostic counterexample: keep the same synchronous probe held
+				# across a wall second. This never relaxes the stop deadline.
+				wait_for(lambda: int(time.time()) > before['last_probe']['at'], child)
 			trace = fixture.run / 'writes.jsonl'
 			trace.write_text('')
 			(fixture.root / 'capture').touch()
 			term_at = int(time.time())
+			fixture.observations.update(before=before, controller_before=before,
+				controller_before_sampled=stamp(), term_at=term_at, term_sent=stamp())
 			child.terminate()
+			fixture.observations['term_send_returned'] = stamp()
+			exit_deadline = None
 			try:
 				if phase == 'probe':
-					time.sleep(0.1)
+					# TERM has been sent while the synchronous probe is held. Release
+					# the barrier, rather than guessing delivery with a sleep.
 					hold.unlink()
-				wait_for(lambda: fixture.state().get('state') == 'stopping', child, timeout=1)
-				stopping = fixture.state()
+				stopping = wait_state(fixture, 'stopping', child, timeout=1)
+				sampled = stamp()
+				fixture.observations.update(stopping=stopping, matched_stopping=stopping,
+					stopping_sampled=sampled, matched_stopping_sampled=sampled)
+				if phase == 'probe' and os.environ.get('T946_DELAY_STOP_SAMPLE') == '1':
+					# A deterministic descheduled-consumer counterexample: the live
+					# file may already be stopped, but keep the matched observation.
+					# Share, rather than add to, the original 12-second exit budget.
+					exit_deadline = time.monotonic() + 12
+					wait_state(fixture, 'stopped', timeout=max(0, exit_deadline - time.monotonic()))
+					check('probe: matched stopping sample survives delayed consumer',
+						stopping['state'] == 'stopping' and fixture.state()['state'] == 'stopped')
+				term_events = [json.loads(line) for line in
+					(fixture.run / 'term-handled.jsonl').read_text().splitlines()]
+				handled = next(item for item in term_events if item['kind'] == 'received')
+				before = json.loads(handled['published'])
+				fixture.observations.update(before=before, term_handled=handled,
+					controller_to_handler_diff=field_diff(fixture.observations['controller_before'], before))
 				check(f'{scenario}: stopping published before busy completion',
 					phase == 'probe' or hold.exists())
 				check(f'{scenario}: stopping preserves every other field and TERM timestamp',
@@ -303,16 +426,27 @@ config subscription 's_00000001'
 			finally:
 				if hold.exists():
 					hold.unlink()
-			child.wait(timeout=12)
+			child.wait(timeout=12 if exit_deadline is None else max(0, exit_deadline - time.monotonic()))
 			writes = objects(trace.read_text())
+			state_events = [json.loads(line) for line in (fixture.run / 'state-events.jsonl').read_text().splitlines()]
+			prior = [entry for entry in state_events if entry['kind'] == 'write_completed' and entry['result']
+				and tuple(entry['monotonic']) < tuple(handled['monotonic'])]
+			check(f'{scenario}: TERM snapshot matches independent last committed state',
+				bool(prior) and prior[-1]['value'] == before)
+			# The controller's pre-send sample is not a transaction boundary. A
+			# completed monitor observation before TERM handling may precede stop.
+			# The write barrier protects every field from the first stopping write.
+			stop_index = next(i for i, value in enumerate(writes) if value['state'] == 'stopping')
 			check(f'{scenario}: completion never overwrites stopping or its fields',
-				writes[0]['state'] == 'stopping' and all(
-					value == stopping for value in writes if value['state'] != 'stopped'))
+				writes[stop_index]['state'] == 'stopping' and all(
+					value == stopping for value in writes[stop_index:] if value['state'] != 'stopped'))
 			check(f'{scenario}: stopped with no runtime residue',
 				child.returncode == 0 and fixture.state()['state'] == 'stopped'
 				and not any((fixture.run / name).exists() for name in ('daemon.pid', 'xray.pid', 'chinadns-ng.pid'))
 				and not (fixture.root / 'nft-table').exists()
 				and (fixture.root / 'ip-rules').read_text() == '')
+			if os.environ.get('T946_SAVE_SUCCESS') == '1':
+				fixture.save_evidence()
 
 	# A one-shot fault leaves the old file in place, then permits final stopped to succeed.
 	fixture = Fixture('stop-write-transient')

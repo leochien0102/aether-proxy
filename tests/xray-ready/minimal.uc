@@ -13,10 +13,17 @@ if (!runtime_missing || !compiler_missing)
 	die('struct negative control failed');
 let loaded = [];
 for (let name in [ 'net', 'config', 'render.xray', 'render.chinadns', 'xray_ready',
-	'daemon', 'reload', 'monitor', 'bootstrap_dns', 'apply' ]) {
+	'daemon', 'reload', 'monitor', 'bootstrap_dns', 'bootstrap', 'apply' ]) {
 	loadstring("import * as m from 'aetherproxy." + name + "'; return m;", options)();
 	push(loaded, name);
 }
+let bootstrap = loadstring("import * as m from 'aetherproxy.bootstrap'; return m;", options)();
+if (!bootstrap.stop(null).ok || !bootstrap.recover({ run_dir: '/proc/nonexistent-aether-bootstrap-test' }).ok)
+	die('minimal bootstrap cleanup execution failed');
+let text = bootstrap.render({ dns: { china_dns: [ '127.0.0.1#40001' ] } },
+	{ address: '127.0.0.1', port: 40002 });
+if (index(text, 'trust-dns 127.0.0.1#40001\n') < 0 || index(text, 'group ') >= 0)
+	die('minimal private bootstrap render failed');
 print(sprintf('%.J', { runtime_missing, compiler_missing, loaded }), '\n');
 // Execute the real test driver and repaired readiness path, not an import-only
 // approximation. ARGV[0] remains the driver's spec; it initializes signal dispatch.

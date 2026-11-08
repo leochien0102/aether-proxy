@@ -6,10 +6,11 @@
 LAN 客户端 ─53─▶ dnsmasq（系统实例）─▶ chinadns-ng 127.0.0.1:31053
                                          ├─ china 组 ──▶ 国内 DNS（UDP，直连）
                                          ├─ trust 组 ──▶ 按 DNS 级别：T1 / T2 / T3
-                                         ├─ 自定义组 boot ──▶ 直连境外 DNS（引导解析节点域名）
+                                         ├─ 自定义组 boot ──▶ 按开关选定的 china/direct DNS（运行期引导节点）
                                          ├─ 自定义组 udirect ──▶ 国内 DNS，结果写入 udirect4
                                          └─ 自定义组 uproxy  ──▶ 同 trust，结果写入 uproxy4
-路由器本机（resolveip、curl）走 /etc/resolv.conf → dnsmasq → 同一条链路
+运行期路由器本机（resolveip、curl）走 /etc/resolv.conf → dnsmasq → 同一条链路
+启动期节点解析另走隔离 bootstrap → 显式 B1 查询；正式 DNS 等 Xray 引用门后才启动（T15.6）
 ```
 
 已核实的 ChinaDNS-NG 行为（zfl9/chinadns-ng README，2025.08.09 构建为 wolfssl 版）：
@@ -37,7 +38,7 @@ LAN 客户端 ─53─▶ dnsmasq（系统实例）─▶ chinadns-ng 127.0.0.1:
 |---|---|---|---|
 | `uproxy` | `/etc/aether-proxy/custom/proxy_domain.txt` | 与 trust 相同（随 DNS 级别切换） | `inet@aetherproxy@uproxy4` |
 | `udirect` | `/etc/aether-proxy/custom/direct_domain.txt` | china_dns | `inet@aetherproxy@udirect4` |
-| `boot` | 所有节点的域名（渲染时生成 `/var/run/aether-proxy/boot.txt`） | direct_dns | — |
+| `boot` | 所有节点的域名（渲染时生成 `/var/run/aether-proxy/boot.txt`） | 开关关用展开的 china_dns，开用 direct_dns | — |
 
 **有启用的 `gfw` 设备覆盖时**（02「主机策略模型」，2026-10-22）：`bypass_cn` 下另加 `add-taggfw-ip inet@aetherproxy@gfw4,null`；`global` 下另加 `gfwlist-file` 与同一行 `add-taggfw-ip`。
 两种情况下 gfwlist 域名本来就走 trust（`bypass_cn` 中 gfwlist 优先，`global` 的 default-tag 就是 `gfw`），所以**解析结果不变**，只是把这些域名的 IP 写进 `gfw4` 供 `mode_gfw` 使用。没有 `gfw` 设备时配置与之前逐字节相同。
@@ -87,7 +88,7 @@ Xray 的两个 DNS 入站同时开 TCP 与 UDP（`network: "tcp,udp"`），由 c
   - **不使用 T2**：启动时 trust 组直接用 **T1**（不先用 T2 等健康检测）；代理不健康 → T3（`allow_china_fallback=1` 时），否则留在 T1；T3 的「每 5 分钟试回 T2」改为不试，回 T1 照旧靠「代理健康检测连续通过 `recover_threshold` 次」。
     monitor 的 T2 阶段 DNS 探测不再发生。
   - **boot 组**（节点域名的引导解析）改用 `china_dns`（展开 `wan` 后的列表）：节点域名一般没被墙，运营商 DNS 解析最快；少数节点域名被污染的情况由用户打开直连 DNS 解决。
-  - 启动时 chinadns-ng 先于 Xray 起来，Xray 监听之前的一两秒里境外查询会失败，属预期。
+  - 启动时先用隔离 bootstrap 解析节点，确认私有 child 退出后启动 Xray；其实际引用 socket 就绪后才启动正式 DNS 并等待 owned UDP/TCP。无节点 IP 的 degraded 分支仍使用原初始 T1，不临时开 T2/T3。首次接管前的系统 DNS 窗口和上游不可用导致的失败不属于本卡保证。
 - 为 1 时与现在完全相同（启动先 T2，boot 组用 `direct_dns`）。
 - 说明（写进页面）：何时需要打开（节点域名被污染、代理不可用时仍需解析未被墙的境外域名）；局限（被墙域名直连一定解析不了；常见境外 DNS 直连常被重置，先用「检测」看看）。
 - **检测**（`aether-proxy dns test-direct`，作业种类 `dns_test`，[10](10-cli-luci.md)）：不依赖服务是否运行、也不看开关，对 `direct_dns` 的每一项从路由器直接查询：
@@ -184,8 +185,8 @@ verdict-cache 4096
 ## 引导解析（节点域名）
 
 1. 渲染时把所有节点域名写入 `boot.txt`，chinadns-ng 对这些域名使用 `direct_dns`（`direct_dns_enabled=0` 时用展开后的 `china_dns`，2026-10-23），不经过 Xray。
-2. 启动流程中，chinadns-ng 和 dnsmasq 片段就位之后，用 `resolveip -4 -t 3 <域名>` 解析当前节点的域名
-   （走系统解析器，最终落到 `boot` 组）。**失败（退出码非 0 或没有合法 IPv4）就重试，最多 3 次**，第一次成功即停，最坏约 9 秒。
+2. **启动（T15.6）**：IPv4 字面量不创建 bootstrap；域名由同一冻结快照启动隔离私有 DNS，确认本 child 拥有动态 loopback UDP/TCP 后调用 B1 `resolve_node_explicit()`。DNS 优先、最多三轮/每轮 3 秒（含 TCP/CNAME）；所有结果都先 stop 私有 child，真实退出回调确认并清理后才进入 Xray。资源停止不确定时失败阻断，不能用 LKG 继续。
+   **运行期 reload/monitor 不切换路径**：仍用 `resolveip -4 -t 3 <域名>`，走系统解析器和正式 `boot` 组。**失败（退出码非 0 或没有合法 IPv4）就重试，最多 3 次**，第一次成功即停，最坏约 9 秒。
    返回多个 IPv4 时取第一个合法地址，不做轮换或测速；需要固定 IP 的用户直接把节点地址写成 IP。
    （2026-10-20 改，backlog B13：原来只试一次、`-t 5`。`boot` 组走 `direct_dns`，这个网络里直连境外 DNS 时好时坏，一次 TCP 重置就让切换节点失败。）
    reload 切换节点、monitor 定时重新解析都用同一个函数，同样重试。
@@ -204,10 +205,10 @@ verdict-cache 4096
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
 T1 又依赖这个节点本身，形成死锁。
 
-### 显式私有端点接口（T15.4，尚未接入启动）
+### 显式私有端点接口（T15.4；T15.6 仅在启动接入）
 
-以下只提供后续隔离 bootstrap 编排的基础接口；上文现有 `resolve_node()` 及 daemon/reload/monitor
-调用路径保持不变。**本卡没有创建 bootstrap child，也没有修复或验证真机启动窗口。**
+B1 的协议、重试、LKG 与取消契约不变。daemon startup 经 `bootstrap.resolve()` 使用该接口；
+运行期 reload/monitor 的 `resolve_node()` 和 probe 路径不变。真实设备窗口仍需负责人另行验收。
 
 - `render.chinadns.boot_upstreams(snapshot, ctx)` 是纯函数：开关为 0 返回按 `ctx.wan_dns` 展开的
   `china_dns`，为 1 返回 `direct_dns`；复用原顺序、去重和 WAN 默认回退，不增加上游、不改变协议/host 语法。
@@ -236,6 +237,16 @@ T1 又依赖这个节点本身，形成死锁。
 能力和证据边界仍以 [S15.3](validation/s15.3-real-bootstrap-contract.md) 为准：aether-dns 不支持 TLS，
 回退引擎只验证了默认不校验证书的 TLS 传输；端口隔离不是域名 ACL。本接口的受控端点测试不能替代后续
 真实 child 所有权、readiness、启动编排或设备验收。
+
+### 隔离资源边界（T15.6，批准修订 8e4d6a2）
+
+- `bootstrap.start(ctx, snapshot, engine, on_signal)` 使用前置检查选定引擎；目录为 run_dir/bootstrap 下不可复用随机代，0700，配置/owner/PID 为 0600。私有配置只含 loopback 动态端点、完整 boot 上游、`default-tag gfw`、空集合和 `cache 0`；不接入 handoff，不提供客户端路由或域名 ACL。
+- fork 前原子准备并回读 owner 记录（目录身份、文件清单、父生命周期、选定引擎/完整 argv 与配置字节）；fork 后尽早记录 PID/starttime/实际 exe/完整 argv，ready 后刷新实际执行身份。fork 到登记间若父被 SIGKILL，缺失 PID 仍属不确定，不能推断没有 child。
+- 最多 10 个候选共用 5 秒启动/owned-ready deadline；只有已确认退出并有 EADDRINUSE 证据才能重试冲突。B2 的同一归属/ELF/UDP 规则检查私有 UDP/TCP，不要求 TPROXY。B1 查询中若本 child 生命周期丢失，终止该次工作，不能把后来占位的端点当成原 resolver。
+- `stop(handle)` 请求原 supervisor 停止，最多 5 秒判定；**真实直属退出回调到达后**才删除本代已知文件。无自动 respawn；私有 child 显式继承 daemon 输出，不建立额外日志 FIFO/awk reader，正式 child 的过滤和退避保持原样。重复 stop 幂等。
+- 未确认退出、清理失败或记录不确定：保留 handle/代记录，返回失败，禁止进入 Xray、正式 DNS、handoff 或下一候选/代。停止判定有界，不承诺 D-state/SIGSTOP/无调度时一定杀死进程。
+- 父被 SIGKILL 后的 cleanup/下次 start **不对历史 PID 发 TERM/KILL**。仅在旧生命周期已消失/换身份且 owned 范围可确认时清旧文件；仍执行、记录缺失/损坏或外置项不确定时保留证据并失败。孤儿不宣称能 wait，需要管理员处理时服务可以暂时拒绝启动。没有 gate/token/pidfd 或新 init 服务。
+- restart intent 继续保护旧片段；私有资源成功结束不等于 handoff 安装成功。手动 stop/禁用清 intent 后，显式 cleanup 即使因私有残留返回失败，也释放已确认 owned 的 DNS handoff；不因此猜 PID 强杀或继续启动。
 
 ## 真机验证（2026-10-15，aarch64 / 自建 lede / 内核 6.18 / chinadns-ng 2025.06.20 / Xray 26.9.30）
 

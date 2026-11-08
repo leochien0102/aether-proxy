@@ -39,14 +39,14 @@
 | 2 | 读取配置并校验（含主机冲突、节点存在等） | 退出码 2，**系统状态不做任何改动** |
 | 3 | 前置检查：模块、命令、接口、组件二进制（[02](02-dataplane.md)、[01](01-architecture.md)） | `PRECHECK_FAILED` |
 | 4 | 仅 `--boot`：等待网络（见下文） | 超时记 WARN 后**继续** |
-| 5 | 渲染全部产物到 `/var/run/aether-proxy/staging/`，并校验：`xray run -test -c`、`nft -c -f`、chinadns 配置（见 [03](03-dns.md) 的核实项） | `RENDER_INVALID`，系统不改动 |
+| 5 | 读取/冻结同一 applied_context，渲染全部产物到 staging，执行现有 `xray run -test -c` 与 `nft -c -f` 校验；之后才允许清理旧运行资源 | `RENDER_INVALID`，不接管系统 |
 | 6 | staging 提交为当前（`mv`），记录 `render_hash` | — |
-| 7 | 启动 chinadns-ng（DNS 级别 T2） | 回滚 |
-| 8 | 写入 dnsmasq 片段并重启 dnsmasq | 回滚 |
-| 9 | 引导解析节点 IP（[03](03-dns.md)），用结果补全 Xray 配置并再次 `-test` | 解析失败 → 继续，状态记为 `degraded`，不启动 Xray。`fail_open=1`（默认）：跳过第 10、11 步，流量全部直连；`fail_open=0`：跳过第 10 步，**仍执行第 11 步**（加载 nft 与 ip rule），代理目标的流量失败而不是改走直连（2026-10-15 复审后补） |
-| 10 | 启动 Xray，在共用 5 秒内等待本次 child 拥有 TPROXY TCP 监听及正式 DNS 实际引用的 Xray DNS socket（见下文） | 回滚 |
-| 11 | 加载 nft 表（含恢复动态集合）、添加 ip rule / route | 回滚 |
-| 12 | 进入 monitor 循环，由它判定为 `running` / `degraded` | — |
+| 7 | 字面量零 bootstrap；域名先启动独占私有 DNS，以 B1 显式端点解析，再 stop 并确认真实退出、清理本代。保持 DNS 优先、三轮/每轮 3 秒、失败才 LKG | 普通解析失败无 LKG → degraded；资源停止/清理不确定 → error，保留证据并阻断，不能靠 LKG 绕过 |
+| 8 | 有 IPv4 时补全 Xray、再次 `-test`、启动 Xray；共用 5 秒等待本 child 的 TPROXY TCP 与正式 DNS 实际引用 socket | 回滚；degraded 无 IPv4 时不 fork Xray、不等待不存在的 socket |
+| 9 | 加载 nft 表（恢复动态集合）、添加 ip rule / route | 无 IPv4 且 fail_open=1 跳过；fail_open=0 仍安装，保持原代理目标失败语义 |
+| 10 | 启动正式 DNS，核对本 child 的未连接 UDP 与 TCP LISTEN 归属 | 回滚；初始 tier 仍为开关关 T1、开 T2，不临时改变级别 |
+| 11 | 安装 dnsmasq handoff，成功后才清 T15.1 restart intent | 安装前失败/退避保留旧片段和 intent；不扩大安装成功后原有回滚边界 |
+| 12 | 写最终启动状态，进入 monitor 并立即健康检测 | 停止意图优先，取消后不派生新服务 child、不安装 handoff 或启动成功探针 |
 
 代理是否真正可用由 monitor 异步判定，LuCI 能看到状态变化。
 
@@ -87,8 +87,10 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 未 ready 或取消时不发布 IP 切换成功、不触发后续成功探针。SIGUSR2 等待期间保持 monitor busy。
 周期 health 的 TPROXY-only 观察不改成阻塞门。
 
-**本卡仍保留 DNS → dnsmasq → 原 resolve_node → Xray 的顺序及 T15.1 intent 边界**，不接入 B1，
-不创建 bootstrap child，不改变 tier/LKG/fail_open。B3 才处理启动依赖环与编排；本门不宣称消除全部 SERVFAIL 窗口。
+**T15.5 的历史接入范围**是保留 DNS → dnsmasq → 原 resolve_node → Xray。T15.6 仅将 startup 改为
+隔离 bootstrap/B1 → 确认私有退出 → Xray/B2 → nft/route → 正式 DNS owned UDP/TCP → handoff → 清 intent。
+运行期 reload/monitor/probe 的节点解析不切换；B2 的引用/归属/UDP/ELF 判定不变，仅允许内部可选 timeout_ms/label。
+不宣称整个 restart 零超时、所有孤儿自动回收或消除上游故障导致的 SERVFAIL。
 
 **组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 `XRAY_MIN_VERSION` / `CHINADNS_MIN_VERSION`，记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
 
@@ -134,7 +136,7 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 
 ### 进程模型（已定）
 
-启动顺序有硬依赖：chinadns-ng → dnsmasq → 解析节点 → Xray 监听 → 加载 nft。procd 的多个实例是在
+启动顺序有硬依赖：隔离 bootstrap/B1 并确认退出 → Xray 引用就绪 → nft/route → 正式 DNS owned 就绪 → dnsmasq handoff。procd 的多个实例是在
 `start_service` 返回后才统一拉起的，表达不了这种顺序。所以：
 
 - procd **只托管一个实例**：`aether-proxy daemon`（respawn `3600 5 5`，`term_timeout 30`：SIGTERM 要等当前一轮检测的同步部分，再导出集合、删表、重启 dnsmasq；procd 默认等 5 秒就 SIGKILL，远远不够）。
@@ -175,8 +177,28 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 - 子进程的 pid 写入 `/var/run/aether-proxy/<name>.pid`，`cleanup` 依据它杀进程，**只杀命令行确实匹配的进程**
   （读取 `/proc/<pid>/cmdline` 核对），避免误杀复用了该 pid 的其他进程。
 
-所以「启动」表里第 7、10 步的「启动」都由 daemon 派生子进程完成。表中的「回滚」等于执行 `cleanup`，
+所以「启动」表里私有 DNS、Xray、正式 DNS 都由 daemon 派生；私有实例无自动 respawn，确认退出后才删本代文件。表中的「回滚」等于执行 `cleanup`，
 之后 daemon **不退出**：状态写为 `error`，在 daemon 内按退避重试（见「启动」，2026-10-17 改正此处的旧说法）。
+
+### 私有 bootstrap 的停止与残留（T15.6 / 8e4d6a2）
+
+私有 child 通常在正式服务启动前已经退出。异常停止时，daemon 仍持有该 supervisor 的 handle，
+最多等待 5 秒真实退出回调；stop 请求、KILL 返回 0、PID 文件缺失或 kill -0 都不是退出证明。
+超时保留 handle 与 run_dir/bootstrap 代记录，返回清理失败；最终状态不能写成 stopped，daemon 返回失败，
+不派生下一候选/代或继续 Xray、正式 DNS、handoff。后续重试先只检查保留的资源；确认后才可恢复正常启动。
+
+父被 SIGKILL 后，cleanup/下次 start 只读检查历史身份，绝不自动信号历史 PID。
+旧生命周期确已消失/换身份且文件范围可确认时，定向清理；仍执行、PID 未发布、元数据损坏或文件归属不明，
+保留证据并失败，允许管理员处理前暂时拒绝启动。不承诺 D-state/SIGSTOP 的进程在期限内被强杀，
+不声称能 wait 非直属孤儿；没有 gate/token、pidfd、新依赖或 init 服务。
+
+start 在前置检查前做只读残留检查，若不确定则不派生服务 child/命令；可清理的旧文件仍在原渲染校验通过后清理。
+raw-log collector 延后到此残留/校验门通过后才启动，避免失败重试因日志采集又派生 child；其正式运行期行为不改。
+停止时取消 monitor/subscription interval 后，保留已取消对象引用至 `uloop.done()`，而不是立刻释放最后引用。
+最低 libubox epoll 后端的 interval 删除可能尚有 queued FD 指针；保留对象仅防止后续嵌套 run 访问已释放内存，
+cancel 仍立即关闭 timer FD，不保留活动定时器、不允许它在停止后派生工作，也不修改 shared host/库。
+显式 cleanup 因私有残留失败时不猜测其他历史 child，但仍按 T15.1 处理 owned handoff：intent 存在则保留，
+手动 stop/禁用已清 intent 则释放片段、恢复系统 DNS；清理失败仍返回失败，不冒称完整停止成功。
 
 ## 重载（`aether-proxy reload`，UCI 变更触发）
 
