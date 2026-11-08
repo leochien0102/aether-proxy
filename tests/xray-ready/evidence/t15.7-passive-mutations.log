@@ -1,0 +1,5 @@
+PASS  mutation old-active: AssertionError: P1 kernel supported path accepts exactly zero probe connections
+PASS  mutation ignore-v6only: AssertionError: P2 kernel v6only plus competing IPv4 owner cannot satisfy IPv4
+PASS  mutation bad-message-fallback: AssertionError: P3/P4 wire family fails closed with zero fallback accepts
+PASS  mutation probe-after-budget: AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+PASS  restored passive entry: passive readiness: 58 passed, 0 failed

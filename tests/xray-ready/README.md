@@ -1,5 +1,63 @@
 # T15.5 reference-driven Xray readiness
 
+## T15.7 passive TCPv6 evidence
+
+`bash tests/xray-ready/passive.sh` calls production `socket_diag` and
+`xray_ready`, first against the real Linux kernel/child proc/loopback listeners,
+then against explicitly labelled transport-only injected wire faults in copied
+modules. `listener.py` counts real TCP accepts; 50 supported waits must leave
+count zero, followed by a counted ordinary-connect instrumentation control.
+The existing five-module isolation executes this path with both struct negative
+controls. A cached real Xray also runs `-test`, starts, passes owned readiness
+and terminates. This is not H28K validation and absence of Error is not the proof.
+
+`diag_socket.uc` only replaces transport in a copied `socket_diag`: real FD
+allocation/close, synthetic receive bytes/errors/poll timing. Production parser,
+PID/starttime/proc/FD checks, cancellation, deadline and legacy IPv4 compatibility
+connect remain intact. The working real dual-stack listener makes any accidental
+fallback measurable. Correctly classified unsupported/denied/missing-attribute
+cases must create exactly one counted handshake; bad data, v6only=1, cancellation,
+changed generation, unknown errors and exhausted budgets must not.
+Pure `tests/unit/socket_diag.uc` checks LE/BE multipart, attribute alignment,
+unknown extensions and clean completion; BE is a fixture, not a device claim.
+Rooted proc fixtures cannot obtain host netlink or connect evidence.
+
+`handler_faults()` additionally tests missing TCPv6 DUMP handlers: a correlated
+full-echo NLMSG_ERROR(-ENOENT) and multipart NLMSG_DONE(-ENOENT) each permit exactly
+one counted legacy handshake, but only before any socket evidence. Wrong echo/seq,
+bad framing, partial/contradictory records, v6only=1, normal empty DONE, transport
+ENOENT, timeout/cancellation/generation changes and competing IPv4 ownership remain
+negative controls. Pure fixtures cover both byte orders and valid capped echoes.
+These are injected transport statuses, not a claim that the host lacks a handler.
+
+`python3 tests/xray-ready/passive_mutations.py` requires nine exact assertion
+failures: the original four (old active branch, ignored v6only, bad-message
+fallback, post-budget probe), plus disabled handler ERROR/DONE compatibility,
+global ENOENT classification, accepted partial evidence and ignored error echo.
+It restores both production sources in `finally`, then reruns the passive entry.
+
+The probe-after-budget control runs `PASSIVE_CASE=budget` under both deleted and
+restored guards for 10 paired rounds, requiring the exact named AssertionError
+(not any nonzero exit) for deletion and the same assertion's PASS after restoration.
+In isolated source copies only, observation assignments expose the original
+calculated deadline and diag query return; no clock, deadline, branch or guard is
+changed by the instrumentation. The transport holds the final legal missing-attr
+DONE receive result until at least deadline+1ms, looping across early uloop wakeups.
+Every pair verifies a successful fallback result actually returned after that
+original deadline, using the unchanged 110ms short budget. The new case additionally
+requires <250ms elapsed; no existing timing limit or cancellation check is relaxed.
+`probe_socket.uc` counts entry to real socket.connect and delegates create/connect/
+poll/getopt/close unchanged. A timely compatibility positive control must produce
+one observed connect and one real accept. Late results require zero connects AND
+zero additional accepts; the mutation is caught even if accept scheduling misses
+an attempted connect. Full timestamps/counters for every pair are retained in logs.
+Production files have no permanent change for this test.
+
+Do not run mutations concurrently with any other suite. Original B2 12 controls
+remain in `mutations.py`; both sets must run for this card. Logs: `.logs/`.
+
+## Original B2 coverage
+
 Run from the worktree: `bash tests/xray-ready/run.sh`.
 Requires the existing host ucode bootstrap and Python 3; no root, external DNS,
 service changes, downloads or fixed host ports.

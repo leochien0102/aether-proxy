@@ -67,9 +67,25 @@ PID/starttime 改变或身份丢失立即失败，不能接纳 respawn 的新 ch
 TCP 只认 LISTEN；DNS UDP 必须是未连接绑定（state `07`、远端地址全零且远端端口为 0）。即使 child
 拥有匹配的本地地址/端口，connected UDP（包括 state `01`）或任何非零远端 tuple 都不能充当 DNS 入站。
 `socket_rows` 保留规范化的 `remote_address` 与数值 `remote_port`，与本地字段使用同一显式字节序。
-区分地址与 IPv4/IPv6。IPv6 通配 TCP 要通过预算内、无 payload 的
-本地非阻塞 IPv4 连接验证，并排除可能替它应答的其他监听 inode；IPv6-only 或未经证实的 IPv6 UDP
-通配绑定不能冒充 IPv4。所有探测 socket 都关闭；不发 DNS 查询，不访问外网，不要求上游应答。
+区分地址与 IPv4/IPv6。IPv4 需求命中本 child 的 IPv6 通配 TCP LISTEN 时，优先以只读
+NETLINK_SOCK_DIAG/INET_DIAG 查询本进程原生 network namespace（T15.7）。专用非阻塞 socket 的单次请求
+核对 seq、完整 multipart/DONE、消息与属性边界、family/TCP LISTEN、地址/端口及 inode，只有匹配记录的
+`INET_DIAG_SKV6ONLY=0` 才证明双栈；`=1` 明确不满足 IPv4。保留 PID/starttime 与 FD inode 归属验证；
+这不是透明代理、防火墙或上游健康证明。IPv4/映射地址、IPv6 需求与 UDP 判定不变。
+
+仅在接口明确不支持（EAFNOSUPPORT/EPROTONOSUPPORT/EOPNOTSUPP）、权限拒绝（EPERM/EACCES），或完整可信匹配
+记录确实缺少 v6only 属性时，才沿旧规则作预算内本地非阻塞 IPv4 握手，并排除可能替它应答的其他监听 inode。
+TCPv6 DUMP 的诊断 handler 不可用还可能返回 ENOENT：仅在专用请求的 seq/消息边界完整关联、尚无任何
+socket 记录或矛盾证据时，合法 `NLMSG_ERROR(-ENOENT)`（echo 核对原 TCPv6 DUMP）或 multipart
+`NLMSG_DONE` 的 `-ENOENT` 状态允许同一兼容回退。create/send 等传输的 ENOENT 不属于“不支持”；
+已有部分记录（含 v6only=1/缺属性）后的错误、正常 DONE 没有匹配 socket、未知负状态仍失败。
+该兼容路径仍可能产生旧 TPROXY loopback 日志，并非所有平台都完全被动；不修改 Xray 日志等级或过滤 Error。
+坏消息、未知错误、超时、属性冲突、tuple/inode 不符、v6only=1、换代、取消或耗尽预算均不得回退凑成功。
+错误分类经现有 socket.strerror 解析本机 errno，避免假定 MIPS 与 asm-generic errno 同号；非标准/本地化错误文字
+无法确认类别时保守失败。diag、解析和兼容验证共享原 deadline（含 B3 短预算），最长 100ms 等待并派发信号，
+成功前仍复核生命周期；所有 diag/兼容 socket 各路径关闭，不建立缓存/worker/运行文件。
+`ctx.root` 非空时不向宿主发 diag 或握手补证。所有路径不发 DNS 查询，不访问外网，不要求上游应答。
+IPv6-only 或未经证实的 IPv6 UDP 通配绑定仍不能冒充 IPv4。
 
 **字节序（T15.5 复审方案 A）**：`net.socket_rows(text, ipv6, little_endian)` 保持纯函数，第三参数必须
 显式为 boolean；缺失/非法立即失败，不默认小端、不尝试两个方向任选匹配。readiness 每次 wait 用已声明的

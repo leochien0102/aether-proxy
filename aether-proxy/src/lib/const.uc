@@ -350,3 +350,12 @@ export const BOOTSTRAP_START_MS = 5000;
 export const BOOTSTRAP_CANDIDATES = 10;
 export const BOOTSTRAP_EADDRINUSE = 98;
 export const BOOTSTRAP_BOOT_ID = '/proc/sys/kernel/random/boot_id';
+
+// T15.7: Linux UAPI, not architecture or version-based capability guesses.
+export const SOCKET_DIAG = {
+	family: 16, netlink_protocol: 4, tcp: 6, listen: 10,
+	by_family: 20, error: 2, done: 3, multi: 2, dump_intr: 16, capped: 256,
+	request_dump: 0x301, protocol: 10, v6only: 11, max_datagram: 65536,
+	compatible_errors: [ 'Operation not permitted', 'Permission denied', 'Protocol not supported',
+		'Operation not supported', 'Not supported', 'Address family not supported by protocol' ]
+};

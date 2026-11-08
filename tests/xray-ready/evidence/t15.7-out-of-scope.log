@@ -1,0 +1,211 @@
+
+== schedule (exit 1) ==
+PASS last slot today passed
+PASS last slot not yet reached
+PASS last slot exact
+PASS last slot null minute defaults to 30
+PASS last slot crosses month
+PASS missing record uses start time
+PASS data prioritized when both due
+PASS data after slot checks check using daemon start
+PASS data disabled selects check
+PASS malformed record uses daemon start
+PASS auto installs newer xray
+PASS off does not install
+PASS notify does not install
+PASS not newer does not install
+PASS null asset does not install
+PASS same version installs once
+PASS new version is eligible
+PASS  update schedule pure-function cases
+PASS  T9.17 common zero interval never schedules inheriting subscription
+PASS  T9.17 explicit six hours is not due before boundary
+PASS  T9.17 explicit six hours is due exactly at boundary
+PASS  T9.17 effective interval scheduling boundaries
+PASS  T9.17 daemon schedules explicit six-hour override of common zero
+PASS  T9.17 daemon does not schedule inherited zero interval
+PASS  T9.17 reload of common interval enables inherited scheduling and jitter
+PASS  due subscription starts a job
+PASS  missing update record does not schedule at daemon start
+PASS  scheduler passes config and run directories
+PASS  scheduler passes system and binary roots
+PASS  update scheduler starts due data before check
+PASS  data is scheduled before package check
+PASS  check exit 3 is retried without recording
+PASS  data attempt timestamp recorded
+PASS  successful check attempt timestamp recorded
+PASS  data_auto=0 suppresses data and schedules check
+PASS  auto policy starts xray package job while running
+PASS  auto install version is recorded
+PASS  same version is not auto-installed again
+PASS  new available version triggers another auto install
+PASS  T9.6 opkg stale auto setup reaches running
+PASS  T9.6 opkg stale cache does not auto-install
+PASS  T9.6 opkg stale auto_install record unchanged
+PASS  T9.6 opkg stale detection emits no events
+PASS  T9.6 opkg same cache fresh at equality auto-installs
+PASS  T9.6 opkg fresh auto_install version recorded
+PASS  T9.6 opkg scheduler preserves cache bytes
+PASS  T9.6 apk stale auto setup reaches running
+PASS  T9.6 apk stale cache does not auto-install
+PASS  T9.6 apk stale auto_install record unchanged
+PASS  T9.6 apk stale detection emits no events
+PASS  T9.6 apk same cache fresh at equality auto-installs
+PASS  T9.6 apk fresh auto_install version recorded
+PASS  T9.6 apk scheduler preserves cache bytes
+PASS  notify policy does not install while running
+FAIL  auto degraded scheduler setup
+FAIL  notify degraded scheduler setup
+PASS  corrupt update schedule record logs FS_FAILED once
+FAIL  reload-jitter test daemon enters degraded
+FAIL  unresolved current node enters degraded for failsafe test
+FAIL  stop-timer test daemon enters degraded: state=error stderr=/workspace/openwrt/aether-proxy-wt/T15.7/tests/schedule/tmp.d1j4x5/bin/chinadns-ng: 9: cannot create /workspace/openwrt/aether-proxy-wt/T15.7/tests/schedule/tmp.d1j4x5/root3/var/run/aether-proxy/bootstrap/ff2137e51a437fe7dbf9a0bdc2cba34a/bootstrap.conf/calls.log: Directory nonexistent
+/workspace/openwrt/aether-proxy-wt/T15.7/tests/schedule/tmp.d1j4x5/bin/chinadns-ng: 10: cannot create /workspace/openwrt/aether-proxy-wt/T15.7/tests/schedule/tmp.d1j4x5/root3/var/run/aether-proxy/bootstrap/ff2137e51a437fe7dbf9a0bdc2cba34a/bootstrap.conf/chinadns.pid: Directory nonexistent stdout=
+schedule: 35 passed, 5 failed
+
+== schedule-main (exit 1) ==
+PASS last slot today passed
+PASS last slot not yet reached
+PASS last slot exact
+PASS last slot null minute defaults to 30
+PASS last slot crosses month
+PASS missing record uses start time
+PASS data prioritized when both due
+PASS data after slot checks check using daemon start
+PASS data disabled selects check
+PASS malformed record uses daemon start
+PASS auto installs newer xray
+PASS off does not install
+PASS notify does not install
+PASS not newer does not install
+PASS null asset does not install
+PASS same version installs once
+PASS new version is eligible
+PASS  update schedule pure-function cases
+PASS  T9.17 common zero interval never schedules inheriting subscription
+PASS  T9.17 explicit six hours is not due before boundary
+PASS  T9.17 explicit six hours is due exactly at boundary
+PASS  T9.17 effective interval scheduling boundaries
+PASS  T9.17 daemon schedules explicit six-hour override of common zero
+PASS  T9.17 daemon does not schedule inherited zero interval
+PASS  T9.17 reload of common interval enables inherited scheduling and jitter
+PASS  due subscription starts a job
+PASS  missing update record does not schedule at daemon start
+PASS  scheduler passes config and run directories
+PASS  scheduler passes system and binary roots
+PASS  update scheduler starts due data before check
+PASS  data is scheduled before package check
+PASS  check exit 3 is retried without recording
+PASS  data attempt timestamp recorded
+PASS  successful check attempt timestamp recorded
+PASS  data_auto=0 suppresses data and schedules check
+PASS  auto policy starts xray package job while running
+PASS  auto install version is recorded
+PASS  same version is not auto-installed again
+PASS  new available version triggers another auto install
+PASS  T9.6 opkg stale auto setup reaches running
+PASS  T9.6 opkg stale cache does not auto-install
+PASS  T9.6 opkg stale auto_install record unchanged
+PASS  T9.6 opkg stale detection emits no events
+PASS  T9.6 opkg same cache fresh at equality auto-installs
+PASS  T9.6 opkg fresh auto_install version recorded
+PASS  T9.6 opkg scheduler preserves cache bytes
+PASS  T9.6 apk stale auto setup reaches running
+PASS  T9.6 apk stale cache does not auto-install
+PASS  T9.6 apk stale auto_install record unchanged
+PASS  T9.6 apk stale detection emits no events
+PASS  T9.6 apk same cache fresh at equality auto-installs
+PASS  T9.6 apk fresh auto_install version recorded
+PASS  T9.6 apk scheduler preserves cache bytes
+PASS  notify policy does not install while running
+FAIL  auto degraded scheduler setup
+FAIL  notify degraded scheduler setup
+PASS  corrupt update schedule record logs FS_FAILED once
+FAIL  reload-jitter test daemon enters degraded
+FAIL  unresolved current node enters degraded for failsafe test
+FAIL  stop-timer test daemon enters degraded: state=error stderr=/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/.logs/main-baseline/tests/schedule/tmp.mC0TFD/bin/chinadns-ng: 9: cannot create /workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/.logs/main-baseline/tests/schedule/tmp.mC0TFD/root3/var/run/aether-proxy/bootstrap/94fc05ea2f4777d903426d23258be9f2/bootstrap.conf/calls.log: Directory nonexistent
+/workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/.logs/main-baseline/tests/schedule/tmp.mC0TFD/bin/chinadns-ng: 10: cannot create /workspace/openwrt/aether-proxy-wt/T15.7/tests/xray-ready/.logs/main-baseline/tests/schedule/tmp.mC0TFD/root3/var/run/aether-proxy/bootstrap/94fc05ea2f4777d903426d23258be9f2/bootstrap.conf/chinadns.pid: Directory nonexistent stdout=
+schedule: 35 passed, 5 failed
+
+== invocation-environment failure (not product change) ==
+Terminated
+Terminated
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+Terminated
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+Terminated
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+Terminated
+Terminated
+Terminated
+Terminated
+PASS collector append, rotation, bounds, permissions, sources, CLI isolation, stop/reap
+PASS exact 1 MiB boundary, oversized-line rejection and restart counting
+PASS supervised start/stop and transient reader failure without CHILD_CRASHED
+PASS normal EOF reconnects and collects later SERVICE_STARTED/PROXY_HEALTHY
+PASS consecutive failures back off 1,2,3,4,5,5s; TERM interrupts sleep/reaps
+PASS exit 5 recovers and collects later health event in the same collector
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/daemon/raw-log.py", line 236, in <module>
+    stop_cleanly(p, signal.SIGINT)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.7/tests/daemon/raw-log.py", line 163, in stop_cleanly
+    assert proc.wait(timeout=2) == 0
+           ~~~~~~~~~^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 1279, in wait
+    return self._wait(timeout=timeout)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.14/subprocess.py", line 2076, in _wait
+    raise TimeoutExpired(self.args, timeout)
+subprocess.TimeoutExpired: Command '['/bin/sh', '/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh', "/tmp/tmpnsstpuuu/run ' directory", '/tmp/tmpnsstpuuu/logread']' timed out after 2 seconds
+
+== foreground raw-log retest ==
+Terminated
+Terminated
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+Terminated
+/workspace/openwrt/aether-proxy-wt/T15.7/aether-proxy/files/aether-proxy-rawlog.sh: 15: kill: No such process
+
+Terminated
+Terminated
+Terminated
+Terminated
+PASS collector append, rotation, bounds, permissions, sources, CLI isolation, stop/reap
+PASS exact 1 MiB boundary, oversized-line rejection and restart counting
+PASS supervised start/stop and transient reader failure without CHILD_CRASHED
+PASS normal EOF reconnects and collects later SERVICE_STARTED/PROXY_HEALTHY
+PASS consecutive failures back off 1,2,3,4,5,5s; TERM interrupts sleep/reaps
+PASS exit 5 recovers and collects later health event in the same collector
+PASS awk exit reconnects, old pair reaped, INT cleans live pair/FIFO, bounds retained

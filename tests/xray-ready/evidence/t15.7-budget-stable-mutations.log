@@ -1,0 +1,19 @@
+PASS  mutation old-active: AssertionError: P1 kernel supported path accepts exactly zero probe connections
+PASS  mutation ignore-v6only: AssertionError: P2 kernel v6only plus competing IPv4 owner cannot satisfy IPv4
+PASS  mutation bad-message-fallback: AssertionError: P3/P4 wire family fails closed with zero fallback accepts
+PASS  mutation probe-after-budget pair 1: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 2: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 3: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 4: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 5: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 6: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 7: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 8: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 9: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation probe-after-budget pair 10: AssertionError: P5 exhausted diag budget cannot start compatibility handshake; deleted connect=1 accept=1; restored connect=0 accept=0; both legal completions after original deadline
+PASS  mutation missing-handler-disabled: AssertionError: P4 handler-missing error uses exactly one counted legacy handshake
+PASS  mutation missing-handler-done-disabled: AssertionError: P4 handler-missing done uses exactly one counted legacy handshake
+PASS  mutation global-ENOENT: AssertionError: P4 handler-missing transport create-ENOENT is not unsupported
+PASS  mutation handler-after-evidence: AssertionError: P3/P4 handler-missing done-after-record-0 fails closed with zero fallback accepts
+PASS  mutation handler-bad-echo: AssertionError: P3/P4 handler-missing echo-seq fails closed with zero fallback accepts
+PASS  restored passive entry: passive readiness: 101 passed, 0 failed

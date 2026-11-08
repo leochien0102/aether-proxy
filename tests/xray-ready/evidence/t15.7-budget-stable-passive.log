@@ -1,0 +1,191 @@
+PASS  P1 kernel real dual-stack owned listener ready; 50 waits FD stable
+PASS  P1 kernel supported path accepts exactly zero probe connections
+PASS  P1 counter positive control observes one ordinary IPv4 handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P6 minimal five modules execute real passive diag; struct double negative; zero new accepts
+PASS  P6 rooted tcp6 fixture borrows neither host netlink nor host listener
+PASS  P2 kernel v6only plus competing IPv4 owner cannot satisfy IPv4
+PASS  P2 kernel ::1 cannot impersonate IPv4 loopback
+PASS  P2 kernel explicit IPv4 remains ready
+PASS  P2 kernel mapped IPv4 follows original no-connect tuple rule
+PASS  P7 cached real Xray is available (no download)
+PASS  P7 real Xray accepts unchanged tunnel configuration semantics
+PASS  P7 actual Xray TCPv6 lifecycle uses real passive owned readiness
+PASS  P7 actual Xray lifecycle terminates cleanly
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P6 rooted fixture performs zero diag allocations and zero compatibility handshakes
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire matched multipart v6only=0 never falls back
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire matched multipart v6only=1 never falls back
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire family fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire state fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire port fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire address fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire inode fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire sequence fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire short-header fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire short-record fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire bad-length fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire bad-attribute fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire short-attribute fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire conflict fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire bad-protocol fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire interrupted fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire done-error fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire unknown-error fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire bad-error fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire empty-dump fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire duplicate fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 wire after-done fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3 wire truncated datagram cannot fall back
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport unknown-create never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport unknown-send never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport receive never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport poll never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport close never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 transport missing-DONE never authorizes fallback; repeated FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 compatibility unsupported uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 compatibility permission uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 compatibility send-permission uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 compatibility netlink-unsupported uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 compatibility missing-attribute uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 diag short budgets do not renew; repeated timeout FDs stable
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 real SIGTERM interrupts diag wait without fallback or FD leak
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 real SIGTERM interrupts diag wait without fallback or FD leak
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 real SIGTERM interrupts diag wait without fallback or FD leak
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 diag consumes default shared five-second budget without fallback
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 multipart diag shares original short deadline
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 cancellation before fallback beats a working listener
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 changed child generation cannot enter compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 unsupported still rejects competing IPv4 ownership without probing impostor
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 connect observer positive control delegates one real handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+EVIDENCE P5 late compatibility: {"accepts": 0, "completion_return_ms": 200245394, "connect_calls": 0, "elapsed_ms": 115, "fd_delta": 0, "original_deadline_ms": 200245392, "query_fallback": true, "query_return_ms": 200245394}
+PASS  P5 legal compatibility completion deterministically returns after original deadline
+PASS  P5 exhausted diag budget cannot start compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing error uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing done uses exactly one counted legacy handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-sequence fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-sequence fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-short fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-short fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-extra fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-not-multipart fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-interrupted fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-interrupted fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-positive-status fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-unknown-status fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-empty-normal fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-trailing fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-trailing fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-then-record fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-then-record fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing echo-seq fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing echo-not-dump fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing echo-family fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing echo-protocol fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing echo-port fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-after-record-0 fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-after-record-0 fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-after-record-1 fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-after-record-1 fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-after-record-None fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-after-record-None fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing error-after-conflict fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P3/P4 handler-missing done-after-conflict fails closed with zero fallback accepts
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing transport create-ENOENT is not unsupported
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing transport send-ENOENT is not unsupported
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing error budget prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing error cancel prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing error generation prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing done budget prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing done cancel prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing done generation prevents compatibility handshake
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P5 handler-missing no response remains timeout not unsupported
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing error still excludes competing IPv4 ownership
+PASS  A2 isolated existing-module imports and readiness succeed without struct
+PASS  P4 handler-missing done still excludes competing IPv4 ownership
+passive readiness: 101 passed, 0 failed
