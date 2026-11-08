@@ -1,0 +1,34 @@
+== calls.log
+nft -c -f /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/staging/precheck.nft
+ip rule help
+nft list tables
+nft list chains inet fw4
+killall -0 clash
+killall -0 mihomo
+xray version
+nft -c -f /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/staging/aether-proxy.nft
+xray run -test -c /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/staging/xray.json
+nft list table inet aetherproxy
+ip rule show
+ip -4 route show table all
+slow-chinadns /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/current/chinadns.conf
+nft list table inet aetherproxy
+ip rule show
+ip -4 route show table all
+nft list table inet aetherproxy
+ip rule show
+ip -4 route show table all
+
+== daemon.stderr
+/workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/bin/chinadns-ng: 9: cannot create /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/bootstrap/d95c476cded4d9f2e5332deb855d9994/bootstrap.conf/calls.log: Directory nonexistent
+/workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/bin/chinadns-ng: 10: cannot create /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root3/var/run/aether-proxy/bootstrap/d95c476cded4d9f2e5332deb855d9994/bootstrap.conf/chinadns.pid: Directory nonexistent
+
+== var/run/aether-proxy/state.json
+{
+	"state": "stopped",
+	"dns_tier": "T2",
+	"dns_failsafe": false,
+	"since": 1794146342,
+	"degraded_mode": null,
+	"degraded_since": null
+}

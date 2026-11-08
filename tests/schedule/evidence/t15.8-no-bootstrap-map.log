@@ -1,0 +1,61 @@
+PASS last slot today passed
+PASS last slot not yet reached
+PASS last slot exact
+PASS last slot null minute defaults to 30
+PASS last slot crosses month
+PASS missing record uses start time
+PASS data prioritized when both due
+PASS data after slot checks check using daemon start
+PASS data disabled selects check
+PASS malformed record uses daemon start
+PASS auto installs newer xray
+PASS off does not install
+PASS notify does not install
+PASS not newer does not install
+PASS null asset does not install
+PASS same version installs once
+PASS new version is eligible
+PASS  update schedule pure-function cases
+PASS  T9.17 common zero interval never schedules inheriting subscription
+PASS  T9.17 explicit six hours is not due before boundary
+PASS  T9.17 explicit six hours is due exactly at boundary
+PASS  T9.17 effective interval scheduling boundaries
+PASS  T9.17 daemon schedules explicit six-hour override of common zero
+PASS  T9.17 daemon does not schedule inherited zero interval
+PASS  T9.17 reload of common interval enables inherited scheduling and jitter
+PASS  due subscription starts a job
+PASS  missing update record does not schedule at daemon start
+PASS  scheduler passes config and run directories
+PASS  scheduler passes system and binary roots
+PASS  update scheduler starts due data before check
+PASS  data is scheduled before package check
+PASS  check exit 3 is retried without recording
+PASS  data attempt timestamp recorded
+PASS  successful check attempt timestamp recorded
+PASS  data_auto=0 suppresses data and schedules check
+PASS  auto policy starts xray package job while running
+PASS  auto install version is recorded
+PASS  same version is not auto-installed again
+PASS  new available version triggers another auto install
+PASS  T9.6 opkg stale auto setup reaches running
+PASS  T9.6 opkg stale cache does not auto-install
+PASS  T9.6 opkg stale auto_install record unchanged
+PASS  T9.6 opkg stale detection emits no events
+PASS  T9.6 opkg same cache fresh at equality auto-installs
+PASS  T9.6 opkg fresh auto_install version recorded
+PASS  T9.6 opkg scheduler preserves cache bytes
+PASS  T9.6 apk stale auto setup reaches running
+PASS  T9.6 apk stale cache does not auto-install
+PASS  T9.6 apk stale auto_install record unchanged
+PASS  T9.6 apk stale detection emits no events
+PASS  T9.6 apk same cache fresh at equality auto-installs
+PASS  T9.6 apk fresh auto_install version recorded
+PASS  T9.6 apk scheduler preserves cache bytes
+PASS  notify policy does not install while running
+FAIL  auto degraded scheduler setup
+FAIL  notify degraded scheduler setup
+PASS  corrupt update schedule record logs FS_FAILED once
+FAIL  reload-jitter test daemon enters degraded
+FAIL  unresolved current node enters degraded for failsafe test
+FAIL  stop-timer test daemon enters degraded: state=running stderr= stdout=
+schedule: 35 passed, 5 failed
