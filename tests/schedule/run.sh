@@ -153,6 +153,12 @@ args_for() {
 
 start_daemon() {
 	local root="$1"; shift
+	# Startup now queries the private B3 fixture; retain the old flag for runtime resolveip.
+	if [ "${SCHEDULE_RESOLVE_FAIL:-1}" = 1 ]; then
+		touch "$root/resolve-always-fail"
+	else
+		rm -f "$root/resolve-always-fail"
+	fi
 	(
 		export STUB_LOG="$root/calls.log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count"
 		export SCHEDULE_LOG="$root/schedule-calls.log" SCHEDULE_UCODE="$UCODE" PATH="$T/bin:$PATH"
@@ -541,28 +547,9 @@ R="$T/root3"
 now=$(date +%s)
 printf '{ "s_00000001": { "last_attempt": %s, "last_ok": null, "nodes": 0, "skipped": {}, "error": null } }\n' "$((now + 1000))" \
 	> "$R/etc/aether-proxy/state/sub.json"
-cat > "$T/bin/chinadns-ng" <<'EOF'
-#!/bin/sh
-config=''
-while [ "$#" -gt 0 ]; do
-	if [ "$1" = -C ]; then shift; config="$1"; break; fi
-	shift
-done
-SYSROOT=${config%/var/run/aether-proxy/current/*}
-STUB_LOG="$SYSROOT/calls.log"
-printf 'slow-chinadns %s\n' "$*" >> "$STUB_LOG"
-echo "$$" > "$SYSROOT/chinadns.pid"
-child=''
-on_stop() {
-	if [ -n "$child" ]; then /bin/kill -TERM "$child"; fi
-	sleep 0.8
-	rm -f "$SYSROOT/chinadns.pid"
-	exit 0
-}
-trap on_stop TERM INT
-while :; do sleep 1 & child=$!; wait "$child"; child=''; done
-EOF
-chmod +x "$T/bin/chinadns-ng"
+# Reuse B3 private query/owned-proc support and delay only the formal DNS stop.
+# The shared stub executes this real sleep in its TERM handler, not in the harness.
+printf '0.8\n' > "$R/dns-stop-delay"
 SCHEDULE_HOURS=0.1 start_daemon "$R"
 if wait_monitor_state degraded; then
 	ok "stop-timer test daemon enters degraded"

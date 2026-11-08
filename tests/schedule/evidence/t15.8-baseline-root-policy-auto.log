@@ -1,0 +1,52 @@
+== calls.log
+nft -c -f /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/staging/precheck.nft
+ip rule help
+nft list tables
+nft list chains inet fw4
+killall -0 clash
+killall -0 mihomo
+xray version
+chinadns-ng -V
+nft -c -f /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/staging/aether-proxy.nft
+xray run -test -c /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/staging/xray.json
+nft list table inet aetherproxy
+ip rule show
+ip -4 route show table all
+bootstrap-start -C /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/bootstrap/9b900789aba7b222ee29f4491dcd08c2/bootstrap.conf
+bootstrap-owned-ready 100326 4986.432318325
+bootstrap-query node.example.com
+bootstrap-exit 100326 4986.544530329
+xray run -test -c /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/current/xray.json
+xray run -c /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/current/xray.json
+nft -f /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/current/aether-proxy.nft
+ip rule show
+ip rule add fwmark 0x00080000/0x00080000 lookup 233 pref 900
+ip route replace local default dev lo table 233
+chinadns-ng -C /workspace/openwrt/aether-proxy-wt/T15.8/tests/schedule/tmp.IjqF6k/root-policy-auto/var/run/aether-proxy/current/chinadns.conf
+dns-owned-ready 100497 4986.800157207
+dnsmasq restart
+nft list table inet aetherproxy
+curl --silent --output /dev/null --write-out %{http_code} %{time_total} --max-time 5 -x http://127.0.0.1:31081 https://www.gstatic.com/generate_204
+nft list table inet aetherproxy
+nft -j list set inet aetherproxy gfw4
+nft -j list set inet aetherproxy udirect4
+nft -j list set inet aetherproxy uproxy4
+nft delete table inet aetherproxy
+ip rule show
+ip rule del fwmark 0x00080000/0x00080000 lookup 233 pref 900
+ip rule show
+ip -4 route show table all
+ip route flush table 233
+dnsmasq restart
+
+== daemon.stderr
+
+== var/run/aether-proxy/state.json
+{
+	"state": "stopped",
+	"dns_tier": "T2",
+	"dns_failsafe": false,
+	"since": 1794146263,
+	"degraded_mode": null,
+	"degraded_since": null
+}

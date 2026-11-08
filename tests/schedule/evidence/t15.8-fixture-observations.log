@@ -1,0 +1,13 @@
+All bytes outside the two fixture adaptations equal 6c3a0ca.
+formal DNS pid=126055 child=126240: actual sleep 0.8 observed
+sleep child=126240 observed lifetime=0.795s
+fixed: exit=0
+formal DNS pid=146262 child=149321: actual sleep 0.8 observed
+sleep child=149321 observed lifetime=0.804s
+no-bootstrap-map: exit=1
+formal DNS pid=157620 child=158475: actual sleep 0.8 observed
+sleep child=158475 observed lifetime=0.804s
+old-slow-stub: exit=1
+formal DNS pid=165127 child=165336: actual sleep 0.8 observed
+sleep child=165336 observed lifetime=0.804s
+restored-compat: exit=0
