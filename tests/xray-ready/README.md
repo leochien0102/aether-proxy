@@ -22,9 +22,19 @@ Pure `tests/unit/socket_diag.uc` checks LE/BE multipart, attribute alignment,
 unknown extensions and clean completion; BE is a fixture, not a device claim.
 Rooted proc fixtures cannot obtain host netlink or connect evidence.
 
-`python3 tests/xray-ready/passive_mutations.py` requires four exact assertion
-failures (old active branch, ignored v6only, bad-message fallback, post-budget
-probe), restores production source in `finally`, then reruns the passive entry.
+`handler_faults()` additionally tests missing TCPv6 DUMP handlers: a correlated
+full-echo NLMSG_ERROR(-ENOENT) and multipart NLMSG_DONE(-ENOENT) each permit exactly
+one counted legacy handshake, but only before any socket evidence. Wrong echo/seq,
+bad framing, partial/contradictory records, v6only=1, normal empty DONE, transport
+ENOENT, timeout/cancellation/generation changes and competing IPv4 ownership remain
+negative controls. Pure fixtures cover both byte orders and valid capped echoes.
+These are injected transport statuses, not a claim that the host lacks a handler.
+
+`python3 tests/xray-ready/passive_mutations.py` requires nine exact assertion
+failures: the original four (old active branch, ignored v6only, bad-message
+fallback, post-budget probe), plus disabled handler ERROR/DONE compatibility,
+global ENOENT classification, accepted partial evidence and ignored error echo.
+It restores both production sources in `finally`, then reruns the passive entry.
 Do not run mutations concurrently with any other suite. Original B2 12 controls
 remain in `mutations.py`; both sets must run for this card. Logs: `.logs/`.
 

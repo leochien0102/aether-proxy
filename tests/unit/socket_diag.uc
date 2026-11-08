@@ -4,7 +4,8 @@ import * as diag from 'aetherproxy.socket_diag';
 
 export const cases = [
 	{ name: 'P3 P6 diag LE BE multipart clean completion and unknown attributes', kind: 'valid', expect: 'PASS' },
-	{ name: 'P3 diag strict alignment sequence completion and attribute flags', kind: 'invalid', expect: 'PASS' }
+	{ name: 'P3 diag strict alignment sequence completion and attribute flags', kind: 'invalid', expect: 'PASS' },
+	{ name: 'P4 handler ENOENT LE BE restricted to clean correlated TCPv6 dump', kind: 'handler', expect: 'PASS' }
 ];
 
 function number(n, size, little) {
@@ -22,13 +23,45 @@ function zeros(n) {
 	return out;
 };
 
-function message(kind, payload, little) {
+function message(kind, payload, little, flags) {
 	return number(16 + length(payload), 4, little) + number(kind, 2, little) +
-		number(2, 2, little) + number(42, 4, little) + number(12345, 4, little) + payload;
+		number(flags ?? 2, 2, little) + number(42, 4, little) + number(12345, 4, little) + payload;
 };
 
 function attribute(kind, little) {
 	return number(5, 2, little) + number(kind, 2, little) + zeros(4);
+};
+
+function handler_case(row, little, body) {
+	let req = diag.request(row, 42, little);
+	let negative = number(0xfffffffe, 4, little);
+	let error = message(2, negative + req, little);
+	let done = message(3, negative, little);
+	for (let response in [ error, done, message(2, negative + substr(req, 0, 16), little, 258) ]) {
+		let state = {};
+		if (!diag.consume(state, response, row, 42, little).ok || !state.done || !state.fallback)
+			return 'clean correlated missing handler not classified';
+		for (let v6only in [ null, 0, 1 ]) {
+			let attr = v6only == null ? '' : number(5, 2, little) + number(11, 2, little) + chr(v6only) + zeros(3);
+			state = {};
+			if (!diag.consume(state, message(20, body + attr, little), row, 42, little).ok)
+				return 'partial evidence precondition failed';
+			if (diag.consume(state, response, row, 42, little).ok)
+				return 'handler error after partial evidence accepted';
+		}
+	}
+	let wrong_seq = diag.request(row, 43, little);
+	let wrong_dump = substr(req, 0, 6) + number(1, 2, little) + substr(req, 8);
+	for (let bad in [ message(2, negative + wrong_seq, little), message(2, negative + wrong_dump, little),
+		message(2, negative + substr(req, 0, 71), little), message(2, negative + req + zeros(4), little),
+		message(3, negative, little, 0), message(3, negative, little, 18),
+		message(3, negative + zeros(4), little), message(3, number(2, 4, little), little),
+		message(3, number(0xfffffffb, 4, little), little), message(3, zeros(4), little) ])
+		if (diag.consume({}, bad, row, 42, little).ok)
+			return 'invalid missing-handler context accepted';
+	if (diag.consume({}, error, row, 43, little).ok || diag.consume({}, done, row, 43, little).ok)
+		return 'uncorrelated missing-handler status accepted';
+	return 'PASS';
 };
 
 export function run(c) {
@@ -39,7 +72,12 @@ export function run(c) {
 		let record = message(20, body + attribute(11, little) + attribute(123, little), little);
 		let done = message(3, zeros(4), little);
 		let state = {};
-		if (c.kind == 'valid') {
+		if (c.kind == 'handler') {
+			let result = handler_case(row, little, body);
+			if (result != 'PASS')
+				return result;
+		}
+		else if (c.kind == 'valid') {
 			let req = diag.request(row, 42, little);
 			if (length(req) != 72 || substr(req, 24, 2) != number(row.port, 2, false))
 				return 'incorrect request framing';

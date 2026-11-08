@@ -1,0 +1,13 @@
+PASS  mutation tproxy-only: AssertionError: W3 real tcp DNS delay cannot pass at TPROXY ready
+PASS  mutation ignore-protocol: AssertionError: W4 real same port wrong protocol cannot pass
+PASS  mutation ignore-ownership: AssertionError: W5 real v6-only child plus other IPv4 listener cannot fake dual-stack ownership
+PASS  mutation skip-tail-cancel: AssertionError: W6 last socket ready cancellation wins before success return
+PASS  mutation ignore-udp-inbound: AssertionError: W4 real owned connected UDP IPv4 cannot satisfy DNS inbound
+PASS  mutation ignore-udp-peer: AssertionError: W4 proc fixture UDP IPv4 nonzero remote address is not unconnected inbound
+PASS  mutation ignore-udp-state: AssertionError: W4 proc fixture UDP IPv4 connected state is not unconnected inbound
+PASS  mutation restore-struct: AssertionError: A2 isolated existing-module imports and readiness succeed without struct
+PASS  mutation default-parser-endian: A3 explicit parser byte order: invalid byte order accepted
+PASS  mutation force-little: AssertionError: A3 ELF class 1 BE selects explicit proc byte order with stable FD
+PASS  mutation ignore-elf-magic: AssertionError: A4 invalid ELF magic fails closed and closes every FD
+PASS  mutation ignore-elf-close: AssertionError: A4 injected ELF close failure is checked and owned FD count stays stable
+PASS  restored full xray-ready entry: xray-ready minimal modules and ELF: 52 passed, 0 failed

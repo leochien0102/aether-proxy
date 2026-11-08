@@ -1,0 +1,10 @@
+PASS  mutation old-active: AssertionError: P1 kernel supported path accepts exactly zero probe connections
+PASS  mutation ignore-v6only: AssertionError: P2 kernel v6only plus competing IPv4 owner cannot satisfy IPv4
+PASS  mutation bad-message-fallback: AssertionError: P3/P4 wire family fails closed with zero fallback accepts
+PASS  mutation probe-after-budget: AssertionError: P5 exhausted diag budget cannot start compatibility handshake
+PASS  mutation missing-handler-disabled: AssertionError: P4 handler-missing error uses exactly one counted legacy handshake
+PASS  mutation missing-handler-done-disabled: AssertionError: P4 handler-missing done uses exactly one counted legacy handshake
+PASS  mutation global-ENOENT: AssertionError: P4 handler-missing transport create-ENOENT is not unsupported
+PASS  mutation handler-after-evidence: AssertionError: P3/P4 handler-missing done-after-record-0 fails closed with zero fallback accepts
+PASS  mutation handler-bad-echo: AssertionError: P3/P4 handler-missing echo-seq fails closed with zero fallback accepts
+PASS  restored passive entry: passive readiness: 99 passed, 0 failed

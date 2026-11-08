@@ -75,6 +75,10 @@ NETLINK_SOCK_DIAG/INET_DIAG 查询本进程原生 network namespace（T15.7）�
 
 仅在接口明确不支持（EAFNOSUPPORT/EPROTONOSUPPORT/EOPNOTSUPP）、权限拒绝（EPERM/EACCES），或完整可信匹配
 记录确实缺少 v6only 属性时，才沿旧规则作预算内本地非阻塞 IPv4 握手，并排除可能替它应答的其他监听 inode。
+TCPv6 DUMP 的诊断 handler 不可用还可能返回 ENOENT：仅在专用请求的 seq/消息边界完整关联、尚无任何
+socket 记录或矛盾证据时，合法 `NLMSG_ERROR(-ENOENT)`（echo 核对原 TCPv6 DUMP）或 multipart
+`NLMSG_DONE` 的 `-ENOENT` 状态允许同一兼容回退。create/send 等传输的 ENOENT 不属于“不支持”；
+已有部分记录（含 v6only=1/缺属性）后的错误、正常 DONE 没有匹配 socket、未知负状态仍失败。
 该兼容路径仍可能产生旧 TPROXY loopback 日志，并非所有平台都完全被动；不修改 Xray 日志等级或过滤 Error。
 坏消息、未知错误、超时、属性冲突、tuple/inode 不符、v6only=1、换代、取消或耗尽预算均不得回退凑成功。
 错误分类经现有 socket.strerror 解析本机 errno，避免假定 MIPS 与 asm-generic errno 同号；非标准/本地化错误文字

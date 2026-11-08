@@ -59,6 +59,17 @@ def done(endian='<', flags=2, status=0):
     return message(3, struct.pack(endian + 'i', status), flags, endian=endian)
 
 
+def request_wire(port, seq=1, endian='<'):
+    body = bytes([socket.AF_INET6, socket.IPPROTO_TCP, 0, 0]) + struct.pack(endian + 'I', 1 << 10)
+    body += struct.pack('!HH', port, 0) + bytes(36) + bytes([255]) * 8
+    return struct.pack(endian + 'IHHII', 72, 20, 0x301, seq, 0) + body
+
+
+def handler_error(port, echo=None, **fields):
+    echoed = request_wire(port) if echo is None else echo
+    return message(2, struct.pack('<i', -2) + echoed, **fields)
+
+
 def boundary(base):
     base.mkdir()
     iso = Minimal(base)
@@ -258,12 +269,103 @@ def faults(tmp):
                   'P4 unsupported still rejects competing IPv4 ownership without probing impostor')
 
 
+def handler_faults(tmp):
+    """ENOENT is scoped to a clean correlated TCPv6 DUMP, never socket I/O."""
+    ep = endpoint(role='tproxy', address='0.0.0.0')
+    counter = tmp / 'handler-accepts'
+    iso, wire = boundary(tmp / 'handler-boundary')
+    with listener(tmp, [dict(ep, address='::', v6only=0, count_path=str(counter))]) as child:
+        ino = inode(child.pid, ep['port'])
+        error, completion = handler_error(ep['port']), done(status=-2)
+        start = count(counter)
+        for label, response in [('error', error), ('done', completion)]:
+            set_wire(wire, [response])
+            result, stats = iso.run(child.pid, [ep])
+            check(result['ok'] and result['fd_delta'] == 0 and stats['created'] == stats['closed'] == 1
+                  and count(counter) == start + 1,
+                  f'P4 handler-missing {label} uses exactly one counted legacy handshake')
+            start += 1
+
+        bad = {
+            'error-sequence': [handler_error(ep['port'], seq=2)],
+            'done-sequence': [message(3, struct.pack('<i', -2), seq=2)],
+            'error-short': [message(2, struct.pack('<i', -2) + request_wire(ep['port'])[:15])],
+            'done-short': [message(3, b'\xfe\xff\xff')],
+            'done-extra': [message(3, struct.pack('<ii', -2, 0))],
+            'done-not-multipart': [done(status=-2, flags=0)],
+            'error-interrupted': [handler_error(ep['port'], flags=18)],
+            'done-interrupted': [done(status=-2, flags=18)],
+            'done-positive-status': [done(status=2)],
+            'done-unknown-status': [done(status=-5)],
+            'done-empty-normal': [done()],
+            'error-trailing': [error + b'x'],
+            'done-trailing': [completion + b'x'],
+            'error-then-record': [error + message(20, record(ep['port'], ino))],
+            'done-then-record': [completion + message(20, record(ep['port'], ino))],
+        }
+        for offset, value, label in [(8, 2, 'echo-seq'), (7, 0, 'echo-not-dump'),
+                                     (16, socket.AF_INET, 'echo-family'), (17, 17, 'echo-protocol'),
+                                     (24, 0, 'echo-port')]:
+            echo = bytearray(request_wire(ep['port']))
+            echo[offset] = value
+            if label == 'echo-port':
+                echo[24:26] = b'\0\0'
+            bad[label] = [handler_error(ep['port'], echo=bytes(echo))]
+        for v6only in (0, 1, None):
+            evidence = message(20, record(ep['port'], ino, v6only))
+            bad[f'error-after-record-{v6only}'] = [evidence, error]
+            bad[f'done-after-record-{v6only}'] = [evidence, completion]
+        contradictory = message(20, record(ep['port'], ino, 1) + attr(11, b'\0'))
+        bad['error-after-conflict'] = [contradictory, error]
+        bad['done-after-conflict'] = [contradictory, completion]
+        for label, responses in bad.items():
+            set_wire(wire, responses)
+            result, stats = iso.run(child.pid, [ep], opts={'timeout_ms': 100})
+            check(not result['ok'] and result['fd_delta'] == 0 and stats['created'] == stats['closed']
+                  and count(counter) == start,
+                  f'P3/P4 handler-missing {label} fails closed with zero fallback accepts')
+
+        for label, fields in [('create-ENOENT', dict(create_error=True, errno=2)),
+                              ('send-ENOENT', dict(send_error=True, errno=2))]:
+            set_wire(wire, **fields)
+            result, _ = iso.run(child.pid, [ep], opts={'timeout_ms': 100})
+            check(not result['ok'] and result['fd_delta'] == 0 and count(counter) == start,
+                  f'P4 handler-missing transport {label} is not unsupported')
+        for label, response in [('error', error), ('done', completion)]:
+            for scenario, options in [('budget', dict(opts={'timeout_ms': 40})),
+                                      ('cancel', dict(cancel_ms=30)),
+                                      ('generation', dict(change_ms=30, other_pid=child.pid + 999999))]:
+                set_wire(wire, [response], delay=70)
+                result, stats = iso.run(child.pid, [ep], **options)
+                expected = (result.get('cancelled') if scenario == 'cancel' else
+                            'generation' in result['detail'] if scenario == 'generation' else
+                            35 <= result['elapsed_ms'] < 180)
+                check(not result['ok'] and expected and result['fd_delta'] == 0 and count(counter) == start
+                      and stats['created'] == stats['closed'] == 1,
+                      f'P5 handler-missing {label} {scenario} prevents compatibility handshake')
+        set_wire(wire, timeout=True)
+        result, _ = iso.run(child.pid, [ep], opts={'timeout_ms': 80})
+        check(not result['ok'] and result['fd_delta'] == 0 and count(counter) == start,
+              'P5 handler-missing no response remains timeout not unsupported')
+    other_counter = tmp / 'handler-other-accepts'
+    with listener(tmp, [dict(ep, address='::', v6only=1)]) as child:
+        with listener(tmp, [dict(ep, address='127.0.0.1', count_path=str(other_counter))]):
+            for label, response in [('error', error), ('done', completion)]:
+                set_wire(wire, [response])
+                result, stats = iso.run(child.pid, [ep], opts={'timeout_ms': 80})
+                check(not result['ok'] and result['fd_delta'] == 0 and count(other_counter) == 0
+                      and stats['created'] == stats['closed'],
+                      f'P4 handler-missing {label} still excludes competing IPv4 ownership')
+
+
 def main(tmp):
     selection = os.environ.get('PASSIVE_CASE', 'all')
     if selection in ('all', 'kernel'):
         kernel(tmp)
     if selection in ('all', 'faults'):
         faults(tmp)
+    if selection in ('all', 'handler'):
+        handler_faults(tmp)
 
 
 if __name__ == '__main__':

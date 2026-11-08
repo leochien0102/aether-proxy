@@ -31,6 +31,17 @@ function compatible(errno) {
 	return index(C.SOCKET_DIAG.compatible_errors, socket.strerror(errno)) >= 0;
 };
 
+function negative_errno(code) {
+	return code > 0x7fffffff ? 0x100000000 - code : 0;
+};
+
+function dump_handler_missing(errno, state) {
+	// Linux may report a missing TCPv6 diag handler as ENOENT. This is NOT
+	// a general transport capability error: only the validated reply to our
+	// dedicated TCPv6 DUMP, before any socket evidence, authorizes fallback.
+	return !state.seen && socket.strerror(errno) == 'No such file or directory';
+};
+
 // SOCK_DIAG_BY_FAMILY, dump TCP LISTEN with a source-port filter. The cookie
 // is INET_DIAG_NOCOOKIE; every returned tuple/inode is still checked explicitly.
 export function request(row, seq, little) {
@@ -90,7 +101,8 @@ function record(text, row, little) {
 };
 
 // Pure incremental decoder shared by the real transport and wire-fault tests.
-// No result (including missing attribute) is authorized before a clean DONE.
+// Socket attributes (including missing attributes) require a clean DONE; only
+// validated terminal capability/handler errors can authorize earlier fallback.
 export function consume(state, text, row, seq, little) {
 	if (type(little) != 'bool' || type(text) != 'string' || length(text) < 16 || state.done)
 		return failure('invalid datagram/state/byte order');
@@ -119,16 +131,22 @@ export function consume(state, text, row, seq, little) {
 			    (!(flags & C.SOCKET_DIAG.capped) && substr(payload, 4, 72) != original))
 				return failure('invalid error request body/extensions');
 			let code = uint(payload, 0, 4, little);
-			let errno = code > 0x7fffffff ? 0x100000000 - code : 0;
-			if (!errno || !compatible(errno) || state.seen)
+			let errno = negative_errno(code);
+			if (!errno || state.seen || (!compatible(errno) && !dump_handler_missing(errno, state)))
 				return failure('netlink error/ack');
 			state.done = true;
 			state.fallback = true;
 		}
 		else if (kind == C.SOCKET_DIAG.done) {
-			if (!(flags & C.SOCKET_DIAG.multi) || length(payload) != 4 || uint(payload, 0, 4, little) != 0)
+			if (!(flags & C.SOCKET_DIAG.multi) || length(payload) != 4)
 				return failure('invalid dump completion');
-			if (!state.seen)
+			let code = uint(payload, 0, 4, little);
+			if (code != 0) {
+				if (!dump_handler_missing(negative_errno(code), state))
+					return failure('dump completion error after evidence or unknown status');
+				state.fallback = true;
+			}
+			else if (!state.seen)
 				return failure('no matching socket record');
 			state.done = true;
 		}
