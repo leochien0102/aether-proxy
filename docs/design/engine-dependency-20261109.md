@@ -41,8 +41,13 @@ select PACKAGE_aether-dns if PACKAGE_chinadns-ng<PACKAGE_aether-proxy
 即"默认带出 aether-dns；**用户显式把 chinadns-ng 选成 y 时不再强制 aether-dns**"。`DEFAULT_VARIANT` 通过
 （`metadata.pm:277` → `package-dumpinfo.mk:29`）决定哪个 provider 被排到首位。
 
-**配方归属（DNS 侧 2026-11-09 评审意见）**：包配方必须纳入交付，但**不由 DNS 实现卡直接改其他仓库**；
-`PKG_VERSION`/`PKG_RELEASE`、`PROVIDES`、`DEFAULT_VARIANT`、源码 pin 与 hash 归包维护方（当前为 openwrt-actions）。
+**配方归属（DNS 侧推荐方案 A，待所有者批准远端与 CI）**：
+
+- **aether-dns 仓库**：维护权威 OpenWrt 配方与 CI，产出独立 ipk；
+- **aether-proxy-channel**：校验固定发布资产并纳入既有签名清单，**不维护第二份配方**；
+- **openwrt-actions**：消费固定版本的 DNS 配方/产物；现有 `aether-dns-local` 配方保留为历史迁移证据，
+  不再作为第二个权威来源；
+- `chinadns-ng` 的 `PROVIDES` 仍由其包维护方负责。
 
 ### opkg 行为实测（2026-11-09，SDK host opkg + 离线 root + 自制 ipk）
 
@@ -90,8 +95,9 @@ select PACKAGE_aether-dns if PACKAGE_chinadns-ng<PACKAGE_aether-proxy
 | 刷机 | 镜像一次装全 | 构建期解析 | aether-dns（两者都在时仍优先它） | 不适用 |
 | 固件构建 | `+dns-engine` + `PROVIDES` + `DEFAULT_VARIANT` | 构建期 | 同上 | 构建期暴露 |
 
-**0.7.0 是桥接版本**：它带按引擎下限、存在性选择、reload 一致性与事务逻辑，但**仍依赖 `chinadns-ng`**，
-所以从任何 0.x 升上来都不涉及引擎变化。
+**0.7.0 是桥接版本**：它带按引擎下限、存在性选择、reload 一致性与事务逻辑，但**不安装也不升级引擎包**、
+仍依赖 `chinadns-ng`——所以从任何 0.x 升上来都不会因依赖变化失败；但存在性选择仍可能让实际引擎切换
+（例如设备本来就装着 aether-dns），这一点要在发布说明里写明。
 
 ## 4. 升级事务
 
@@ -115,37 +121,49 @@ select PACKAGE_aether-dns if PACKAGE_chinadns-ng<PACKAGE_aether-proxy
 - 因此引擎替换期间，运行中的旧引擎进程继续用已打开的 inode 服务；只有它**下次被重启**（崩溃重生、DNS 级别切换、用户重启、设备重启）才会用到新二进制。
 - 有桥接后，这个窗口里跑的 proxy 是 0.7.0，它接受新旧两种引擎，窗口不再是"不可启动"风险。
 
-### 4.3 前置判定（阻断项 3 的解法）
+### 4.3 前置判定：两个条件都要满足（阻断项 1、3 的解法）
 
-**不能**用"某个已装包提供了 `dns-engine`"当满足条件——那会让未选中的合格 chinadns-ng 掩盖被优先选中的过旧 aether-dns。
-必须按 daemon 的同一套解析结果判定：
+跳过必须同时满足**运行时策略**与**目标 proxy 的包依赖**；二者独立，任一不满足都不能跳过：
 
 ```text
-resolve = 显式 main.chinadns_bin（可执行时）→ /usr/bin/aether-dns → PATH 中的 chinadns-ng
-engine  = basename(resolve)
-min     = { aether-dns: 1.0.0, chinadns-ng: 2025.08.09 }[engine]（未知引擎无下限）
-满足    = resolve 存在 且 (min 不存在 或 version(resolve) >= min)
+run_ok = 按 daemon 的同一套解析顺序得到的引擎存在
+         且 (无下限 或 version(engine) >= min(engine))
+pkg_ok = 已装元数据中存在提供 dns-engine 的包（包安装记录里的 Provides）
+skip   = run_ok && pkg_ok
 ```
+
+| 已装状态 | run_ok | pkg_ok | 引擎步骤 |
+|---|---|---|---|
+| 无引擎 | ✗ | ✗ | 首装 aether-dns（失败可卸载） |
+| 只有旧 `chinadns-ng 2025.08.09-1`（无 Provides） | ✓ | ✗ | 首装 aether-dns；**会让实际引擎切到 aether-dns**，结果里要写明 |
+| `aether-dns 1.0.0`（带 Provides） | ✓ | ✓ | 跳过 |
+| `aether-dns 2026.11.04` 日期版（无 Provides） | ✓ | ✗ | 需替换为 1.0.0 但没有准确恢复资产 → `manual_required`，**在任何安装之前返回** |
+| `aether-dns 0.9.x`（带 Provides 的旧构建） | ✗ | ✓ | 升级到 1.0.0（有准确恢复资产才自动，否则 `manual_required`） |
+| 自定义路径（engine 未知） | ✓ | 视情况 | `pkg_ok` 不满足时首装 aether-dns（**不改变被选中的引擎**，只为满足包依赖）；满足则跳过 |
 
 要点：
 
-- 判定必须**复用 `component_id.engine()` 与同一解析顺序**，不得在 update 流程里另写一份；
-- 若 `aether-dns` 尚未安装但即将安装，则按"安装后会被选中"的情形判断（`1.0.0 >= 1.0.0`）；
-- engine 未知（自定义路径）→ 视为满足、无下限；
-- 判定输入取当前实际解析结果，而不是 UCI 里写了什么。
+- 判定必须复用 `component_id.engine()` 与 daemon 的同一解析顺序，不得另写一份；
+- **未知引擎在运行时放行，但不豁免包依赖**；
+- 日期版的 `run_ok` 为真只说明"能过版本闸门"，`pkg_ok` 仍为假——这正是"日期版本能被选中、却无法满足 1.0.0 包依赖"的体现；
+- 判定输入取当前实际解析结果，不是 UCI 里写了什么。
 
 ### 4.4 引擎步骤的三种情形（阻断项 2 的解法）
 
-回滚**不能只卸载**：H28K 原本装有日期版，且 `chinadns_bin` 显式指向它；卸载后旧 proxy 会因为"显式路径不可执行"而 fail-closed，仍然起不来。
+回滚**不能只卸载**：H28K 原本装有日期版、且 `chinadns_bin` 显式指向它；卸载后旧 proxy 会因为"显式路径不可执行"而 fail-closed，仍然起不来。
+
+**"可自动替换"的前提**（比"清单里有 previous"严格得多）：安装前已取得并校验与当前已装包**准确对应**的恢复资产——
+版本、包修订（`-rN`）、架构、包管理器格式一致，`size`/`sha256` 通过，并且能证明重装它会恢复 opkg 元数据。
+仅清单里存在某个 previous，**不足**以保证恢复原组合。
 
 | 情形 | 判定 | 动作 | 失败回滚 |
 |---|---|---|---|
-| **首次新增**（未装 aether-dns） | 引擎不满足且 aether-dns 不存在 | 装 aether-dns | 卸载本次装的包（旧 proxy 不依赖它，安全） |
-| **替换**（已装，且清单有 previous 资产） | 引擎不满足，清单有可回退版本 | 记下当前版本 → 装新包 | 从未被覆盖前重装 previous（`opkg install --force-downgrade`），**不卸载** |
-| **替换但无回退资产**（如日期版） | 已装版本不在清单里 | **拒绝事务**，输出人工迁移指引（备份 + `--force-downgrade`）；不改任何包 | 不适用（什么都没做） |
+| **首次新增**（未装 aether-dns） | `pkg_ok=false` 且 aether-dns 不存在 | 装 aether-dns | 卸载本次装的包（旧 proxy 不依赖它，安全） |
+| **替换**（已装，且满足上述恢复资产要求） | `pkg_ok`/`run_ok` 不满足，且有准确恢复资产 | 记下当前版本与资产 → 装新包 | 重装恢复资产（opkg 会重写 status 元数据），**不卸载**，并校验版本回到原值 |
+| **替换但无准确恢复资产**（如日期版） | 已装包无法被精确认领 | **拒绝事务**，返回 `manual_required` 与人工迁移指引；不改任何包 | 不适用（什么都没做） |
 
-第三种情形是本轮真正的迁移入口：日期版从未公开发布，清单里没有它可回退，所以**只能人工迁移**，
-且必须先做备份（二进制 + 已装状态），并验证恢复路径。
+第三种是本轮真正的迁移入口：日期版从未公开发布，清单里没有可精确认领的资产，**只能人工迁移**，
+且必须先备份（二进制 + 已装状态）并验证恢复路径。
 
 ### 4.5 步骤三态与幂等
 
@@ -165,13 +183,34 @@ min     = { aether-dns: 1.0.0, chinadns-ng: 2025.08.09 }[engine]（未知引擎�
 作业结果新增 `prerequisite: { package, version, action: installed|skipped|rolled_back|manual_required }`；
 aether-dns 的实际安装仍走既有 `UPDATE_INSTALLED` 事件，不新增事件码。
 
+### 4.7 桥接的通道保证（阻断项 2）
+
+"把 `previous` 指向 0.7.0"本身**不保证**旧客户端会先装它。app 里已有的可执行机制是签名链：
+
+- `bridge_plan()`（`update.uc`）读取清单的 `compatibility.aether-proxy.steps[]`，每步有 `version`/`min_from`/`reason`/`assets`，
+  `required_steps` 必须与步骤版本逐一对应；
+- 只有 `installed == step.min_from`（**精确串匹配**，含 `-rN`）才进入该步；每次更新只装**一步**，
+  返回 `BRIDGE_INSTALLED` 与 `steps_remaining`；
+- 终端版本必须等于 `packages.aether-proxy.current.version`；
+- 非精确前序（例如 `0.6.3-r6`）得到 `BRIDGE_UNAVAILABLE`：**显式失败、不做任何安装**。
+
+因此通道侧可执行的方案是：
+
+1. **主保证＝发布顺序**：0.7.0 先作为 `current` 发布并保持一段窗口，让旧客户端自然升上来；之后再把 1.0.0 设为
+   `current`、`previous=0.7.0`。
+2. **可选加速＝链**：为精确命中 `0.6.3-r7` 的群体登记一条链（step 0.7.0，终端 1.0.0），这类设备自动分两跳完成。
+3. 其余旧版本不登记链：直接尝试 1.0.0 时 opkg 因缺 `dns-engine` 失败，旧版本保留、服务不受影响——这是**安全失败**，
+   但提示文案无法在旧版本里改进。
+
+结论：通道能给的是"**不会装出不可启动的组合**"，不是"一定先装 0.7.0"。验收与发布说明都按这个口径写。
+
 ## 5. 各仓库改动清单
 
 | 仓库 | 改动 |
 |---|---|
 | **aether-proxy** | 0.7.0：按引擎下限、存在性候选、reload 一致性、事务逻辑（仍 `Depends: chinadns-ng`）；1.0.0：`DEPENDS` 改 `+dns-engine`；`UPDATE_PACKAGES` 增加 `aether-dns`；LuCI 更新页与结果文案；`docs/01/04/05/08/09/10` |
-| **aether-proxy-channel** | 0.7.0 与 1.0.0 的资产/清单；发布 aether-dns 资产（依 §8 归属）；`previous` 链要保证 1.0.0 的 previous 是 0.7.0 |
-| **openwrt-actions** | 固件 config；`aether-dns-local/Makefile`：`PKG_VERSION:=1.0.0`、`PKG_RELEASE:=1`、`PROVIDES:=dns-engine`、`DEFAULT_VARIANT:=1`、源码 pin 与 hash；保留日期版包作为迁移测试样本 |
+| **aether-proxy-channel** | 0.7.0 与 1.0.0 的资产/清单；按方案 A 校验并纳入 aether-dns 固定资产（不维护第二份配方）；`previous` 保证 1.0.0 的 previous 是 0.7.0；可选登记 r7 的 compatibility 链 |
+| **openwrt-actions** | 固件 config 消费固定版本 DNS 产物；现有 `aether-dns-local` 配方保留为历史迁移证据，不再作为第二权威来源；保留日期版包作为迁移测试样本 |
 | **aether-dns** | banner 用 `env!("CARGO_PKG_VERSION")`；`Cargo.toml`/`Cargo.lock` 1.0.0；测试同时断言 banner 第二字段 == crate 版本 **且** 目标版本确为 1.0.0；发布说明写清反向组合与手工迁移 |
 
 ## 6. 测试用例
@@ -247,6 +286,17 @@ aether-dns 的实际安装仍走既有 `UPDATE_INSTALLED` 事件，不新增事�
 | D33 | 事务失败注入（可选） | 按 D9 语义恢复；服务不停留在不可启动状态 |
 | D34 | 日期版 → 1.0.0 的人工迁移命令 | 普通 install 被拒（`Not downgrading`）、`--force-downgrade` 成功、备份与恢复路径可用 |
 
+### H. 双条件与桥接链（proxy 仓库，unit + `tests/update/`）
+
+| 编号 | 前置 | 动作 | 期望 |
+|---|---|---|---|
+| D35 | 日期版已装（`run_ok` 真、`pkg_ok` 假） | 更新 proxy | `manual_required`，**在任何安装之前**返回，包与状态都不变 |
+| D36 | 只有旧 chinadns-ng（无 Provides） | 更新 proxy | 首装 aether-dns 后再装 proxy；结果写明实际引擎已切到 aether-dns |
+| D37 | 自定义引擎路径 + 无任何 provider | 更新 proxy | 首装 aether-dns 满足包依赖，但**不改变被选中的引擎** |
+| D38 | 精确前序 r7 + 已登记链 | 更新 proxy | `BRIDGE_INSTALLED`，只装 0.7.0，`steps_remaining` 正确 |
+| D39 | 非精确前序（r6）+ 已登记链 | 更新 proxy | `BRIDGE_UNAVAILABLE`，不做任何安装，服务不受影响 |
+| D40 | previous 资产的版本/修订/架构与已装不符 | 更新 proxy | 判为"无准确恢复资产"→ `manual_required` |
+
 ## 7. 兼容与回退
 
 - 手工降级不受支持：`opkg install` 旧 ipk 仍可执行，但"旧 proxy + DNS 1.0.0"会拒启；救急办法是把 `chinadns_bin`
@@ -257,9 +307,8 @@ aether-dns 的实际安装仍走既有 `UPDATE_INSTALLED` 事件，不新增事�
 
 ## 8. 未决
 
-1. **aether-dns 的构建与分发归属**（DNS 侧建议 A）：A DNS CI 产包 → channel 校验后纳入既有签名清单；
-   B 包定义搬进 proxy 仓库由 channel 构建；C proxy 直连 DNS release（不建议）。
-   仍需约定支持架构、源码提交、工具链、包哈希与旧包留存。
-2. **apk（25.x）未验证**：DNS 侧确认**目前没有可用的 25.x/apk 测试环境**，Debian VM 不能替代；
-   本设计的依赖行为只在 opkg 上实测过，apk 需在拿到 25.x 环境后复测。
-3. **aether-dns 是否进更新页主列表**：D25 依赖此决定。
+1. **分发方案**：DNS 侧推荐 A，**需所有者批准远端与 CI 启用**；批准后按 §2 的分工执行
+   （aether-dns 仓库维护权威配方与 CI、channel 只校验并签名、openwrt-actions 消费固定产物）。
+2. **是否登记 r7 的 compatibility 链**：登记则精确命中 r7 的设备自动两跳；不登记则只靠发布顺序窗口。
+3. **apk（25.x）未验证**：DNS 侧确认目前没有可用环境，Debian VM 不能替代；依赖行为只在 opkg 上实测过。
+4. **aether-dns 是否进更新页主列表**：D25 依赖此决定。
