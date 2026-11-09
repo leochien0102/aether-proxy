@@ -1,0 +1,81 @@
+test_P1_dynamic_answers_and_close (__main__.Ports.test_P1_dynamic_answers_and_close) ... Exception in thread Thread-1 (serve):
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/run.py", line 86, in serve
+    peer, _ = sock.accept()
+              ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/socket.py", line 299, in accept
+    sock = socket(self.family, self.type, self.proto, fileno=fd)
+TypeError: Boundary.factory() got an unexpected keyword argument 'fileno'
+ERROR
+test_P1_dynamic_answers_and_close (__main__.Ports.test_P1_dynamic_answers_and_close) ... FAIL
+test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success) ... Exception in thread Thread-2 (serve):
+Traceback (most recent call last):
+  File "/usr/lib/python3.14/threading.py", line 1082, in _bootstrap_inner
+    self._context.run(self.run)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/usr/lib/python3.14/threading.py", line 1024, in run
+    self._target(*self._args, **self._kwargs)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/run.py", line 86, in serve
+    peer, _ = sock.accept()
+              ~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/socket.py", line 299, in accept
+    sock = socket(self.family, self.type, self.proto, fileno=fd)
+TypeError: Boundary.factory() got an unexpected keyword argument 'fileno'
+ERROR
+test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success) ... FAIL
+test_P3_sixteen_conflicts_explicit_cleanup (__main__.Ports.test_P3_sixteen_conflicts_explicit_cleanup) ... ok
+test_P4_fixed_success_and_each_protocol_conflict (__main__.Ports.test_P4_fixed_success_and_each_protocol_conflict) ... ok
+test_P5_listen_contention_is_bounded (__main__.Ports.test_P5_listen_contention_is_bounded) ... ok
+test_P5_non_contention_errors_and_thread_start (__main__.Ports.test_P5_non_contention_errors_and_thread_start) ... ok
+
+======================================================================
+ERROR: test_P1_dynamic_answers_and_close (__main__.Ports.test_P1_dynamic_answers_and_close)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 157, in test_P1_dynamic_answers_and_close
+    self.assertTrue(query(authority, tcp=True), 'P1 real TCP A/IN answer')
+                    ~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 122, in query
+    prefix = client.recv(2)
+TimeoutError: timed out
+
+======================================================================
+ERROR: test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 181, in test_P2_real_first_conflict_then_success
+    self.assertTrue(query(authority) and query(authority, tcp=True))
+                                         ~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 122, in query
+    prefix = client.recv(2)
+TimeoutError: timed out
+
+======================================================================
+FAIL: test_P1_dynamic_answers_and_close (__main__.Ports.test_P1_dynamic_answers_and_close)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 143, in tearDown
+    self.assertEqual(fd_count(), self.before_fd, 'FD baseline after harness cleanup')
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 5 != 4 : FD baseline after harness cleanup
+
+======================================================================
+FAIL: test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/ports.py", line 143, in tearDown
+    self.assertEqual(fd_count(), self.before_fd, 'FD baseline after harness cleanup')
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 6 != 5 : FD baseline after harness cleanup
+
+----------------------------------------------------------------------
+Ran 6 tests in 2.108s
+
+FAILED (failures=2, errors=2)

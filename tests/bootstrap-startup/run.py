@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """B3 real engine/socket and actual daemon+proc-fixture experiments, not a model."""
 import contextlib
+import errno
 import hashlib
 import importlib.util
 import json
@@ -43,14 +44,40 @@ class Authority:
         self.ip, self.negative, self.silent = ip, negative, silent
         self.requests = []
         self.done = threading.Event()
-        self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp.bind(('127.0.0.1', port))
-        self.port = self.udp.getsockname()[1]
-        self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tcp.bind(('127.0.0.1', self.port))
-        self.tcp.listen()
-        self.thread = threading.Thread(target=self.serve)
-        self.thread.start()
+        # T15.9: UDP and TCP have separate port spaces; this is bounded
+        # trial allocation, not an atomic reservation across both protocols.
+        for attempt in range(16):
+            self.udp = self.tcp = None
+            binding = False
+            try:
+                self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self.tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                binding = True
+                self.udp.bind(('127.0.0.1', port))
+                binding = False
+                selected = self.udp.getsockname()[1]
+                binding = True
+                self.tcp.bind(('127.0.0.1', selected))
+                self.tcp.listen()
+            except BaseException as error:
+                for resource in (self.udp, self.tcp):
+                    if resource is not None:
+                        resource.close()
+                # Only bind/listen contention may choose another dynamic port.
+                # Fixed endpoints (including the impostor control) never move.
+                if (binding and port == 0 and isinstance(error, OSError) and
+                        error.errno == errno.EADDRINUSE and attempt < 15):
+                    continue
+                raise
+            break
+        self.port = selected
+        try:
+            self.thread = threading.Thread(target=self.serve)
+            self.thread.start()
+        except BaseException:
+            self.udp.close()
+            self.tcp.close()
+            raise
 
     def serve(self):
         while not self.done.is_set():

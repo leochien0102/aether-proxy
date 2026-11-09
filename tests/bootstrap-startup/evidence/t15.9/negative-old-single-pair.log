@@ -1,0 +1,28 @@
+test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success) ... FAIL
+
+======================================================================
+FAIL: test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-1yxc6j55/tests/bootstrap-startup/ports.py", line 183, in test_P2_real_first_conflict_then_success
+    authority = b3.Authority()
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-1yxc6j55/tests/bootstrap-startup/run.py", line 51, in __init__
+    self.tcp.bind(('127.0.0.1', self.port))
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-1yxc6j55/tests/bootstrap-startup/ports.py", line 72, in bind
+    return super().bind(address)
+           ~~~~~~~~~~~~^^^^^^^^^
+OSError: [Errno 98] Address already in use
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-1yxc6j55/tests/bootstrap-startup/ports.py", line 185, in test_P2_real_first_conflict_then_success
+    self.fail(f'P2 first real TCP conflict must retry, not escape: {error}')
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: P2 first real TCP conflict must retry, not escape: [Errno 98] Address already in use
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)

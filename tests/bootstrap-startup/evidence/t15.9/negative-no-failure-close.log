@@ -1,0 +1,18 @@
+test_P3_sixteen_conflicts_explicit_cleanup (__main__.Ports.test_P3_sixteen_conflicts_explicit_cleanup) ... FAIL
+
+======================================================================
+FAIL: test_P3_sixteen_conflicts_explicit_cleanup (__main__.Ports.test_P3_sixteen_conflicts_explicit_cleanup)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-sulai6kf/tests/bootstrap-startup/ports.py", line 211, in test_P3_sixteen_conflicts_explicit_cleanup
+    self.closed(control.sockets, 'P3 failed candidates explicitly closed without GC')
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.ports-control-sulai6kf/tests/bootstrap-startup/ports.py", line 157, in closed
+    self.assertTrue(all(s.fileno() == -1 and s.explicit_closes > 0 for s in resources), label)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : P3 failed candidates explicitly closed without GC
+
+----------------------------------------------------------------------
+Ran 1 test in 0.001s
+
+FAILED (failures=1)
