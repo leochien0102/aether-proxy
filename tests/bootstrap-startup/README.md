@@ -1,5 +1,41 @@
 # T15.6 isolated bootstrap startup
 
+## T15.9 Authority port-pair fixture checks
+
+```sh
+python3 tests/bootstrap-startup/ports.py
+python3 tests/bootstrap-startup/ports-controls.py
+```
+
+These separate entries do not expand `run.sh` or shared review runners. The
+Authority now tries at most 16 real IPv4 loopback UDP/TCP pairs for `port=0`,
+retrying only bind/listen EADDRINUSE after closing both acquired sockets. Both
+sockets remain held through service; this is not atomic cross-protocol allocation.
+A nonzero explicit port never changes or retries. Other errors, including socket
+creation and thread startup failures, propagate after explicit cleanup. The DNS
+handler, requests, original call sites and two-second close join are unchanged.
+
+`ports.py` runs six unittest groups (not six individual assertions): P1 real
+UDP/TCP A/IN answers and protocol records; P2 a real TCP occupier plus a forced
+first UDP candidate; P3 eight exhaustion runs of exactly 16 conflicts each; P4
+fixed-port success and UDP/TCP conflicts; P5 non-contention create/bind/listen,
+getsockname and thread errors, plus controlled listen EADDRINUSE. Socket syscall
+and thread errors are explicitly injected, not claims about a real permission or
+FD exhaustion event. Strong references to acquired real sockets plus explicit
+close counters/fileno checks ensure GC cannot hide omitted cleanup. FD counts
+and service-thread sets return to baseline; cleanup assertions precede the
+harness's defensive cleanup.
+
+`ports-controls.py` uses independent temporary minimal file trees under this
+directory, never changes the working `run.py`, and requires precise P2/P3
+assertions for the old single-pair constructor and missing failure-path closes.
+It then reruns the unmodified full ports entry. Copies are removed on exit.
+Evidence is in `evidence/t15.9/`, including the unchanged original B3 full entry
+(92/0 plus minimal-module 52/0), pinned engine provenance, negative outputs and
+restoration. P6's source/oracle comparison and coverage mapping are in the T15.9
+report. This card does not require the historical full regression list below or
+B3's production mutation matrix, nor any device/network-environment operations.
+
 Authority: original task `a30d796`, revised resource contract `8e4d6a2`.
 
 ```sh

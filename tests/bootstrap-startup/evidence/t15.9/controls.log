@@ -1,0 +1,3 @@
+PASS negative-old-single-pair precise assertion: P2 first real TCP conflict must retry, not escape
+PASS negative-no-failure-close precise assertion: P3 failed candidates explicitly closed without GC
+PASS restored ports entry: 6 tests, FD/thread assertions intact

@@ -1,0 +1,11 @@
+test_P1_dynamic_answers_and_close (__main__.Ports.test_P1_dynamic_answers_and_close) ... ok
+test_P2_real_first_conflict_then_success (__main__.Ports.test_P2_real_first_conflict_then_success) ... ok
+test_P3_sixteen_conflicts_explicit_cleanup (__main__.Ports.test_P3_sixteen_conflicts_explicit_cleanup) ... ok
+test_P4_fixed_success_and_each_protocol_conflict (__main__.Ports.test_P4_fixed_success_and_each_protocol_conflict) ... ok
+test_P5_listen_contention_is_bounded (__main__.Ports.test_P5_listen_contention_is_bounded) ... ok
+test_P5_non_contention_errors_and_thread_start (__main__.Ports.test_P5_non_contention_errors_and_thread_start) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.136s
+
+OK

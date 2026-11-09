@@ -1,0 +1,5 @@
+source=/workspace/openwrt/aether-dns commit=a3d42a278ce84ba5ed54988a9d30a695b7ec97b5
+rustc 1.93.1 (01f6ddf75 2026-02-11) (built from a source tarball)
+cargo 1.93.1 (083ac5135 2025-12-15) (built from a source tarball)
+ce09a595062617e8dd8a68191805e7bceee6650030f67c4d179042c663c8babd  /workspace/openwrt/aether-proxy-wt/T15.9/tests/bootstrap-startup/.build/source/target/release/aether-dns
+842ea4e9816efd91d39bc76ead5c4a42e79011757e37c521b4270b675cfcb30c  /workspace/openwrt/ci-spike/tools/chinadns-ng-2025.08.09/chinadns-ng

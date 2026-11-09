@@ -1,0 +1,7 @@
+PASS P6 AST identical outside Authority.__init__ and errno import
+PASS P6 serve text unchanged sha256=a4c3882ddac73d4653b24721bd46f422a724920c74d81ec4794537c70126ef51
+PASS P6 close text unchanged sha256=547c037318f1fc0121e7210ecf1544e8edc15d48abb91ce4566f2349086f8531
+PASS forbidden paths, task card, shared facilities and original B3 runner: empty diff
+CLEAN removed untracked start-task baseline artifact: tests/cli/.dns-test-q1n5bgow
+CLEAN removed untracked start-task baseline artifact: tests/daemon/__pycache__
+PASS independent control copies and B3 temporary runtime roots removed
