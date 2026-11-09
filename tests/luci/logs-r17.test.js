@@ -80,10 +80,13 @@ for (const name of ['ss_spec', 'ss_spec_mangle']) {
 	});
 }
 
-const STEPS = {
+// T15.11: current literal failures must match exactly; historical logs remain supported separately.
+const CURRENT_STEPS = {
 	lock: '获取锁', config: '读取配置', precheck: '预检', component_version: '组件版本', signal: '处理停止信号',
 	wait_network: '等待网络', render: '生成配置', cleanup: '清理旧状态', publish: '发布配置',
-	hash: '计算配置哈希', chinadns_start: '启动 chinadns-ng', dnsmasq_install: '安装 dnsmasq 片段',
+	hash: '计算配置哈希', bootstrap: '引导节点解析', bootstrap_stop: '停止私有引导 DNS',
+	chinadns_listen: '等待正式 DNS 监听', restart_intent_clear: '清除 restart 交接意图',
+	dnsmasq_install: '安装 dnsmasq 片段',
 	write_boot_list: '写入引导域名列表', xray_render: '生成 Xray 配置', xray_test: '校验 Xray 配置',
 	xray_start: '启动 Xray', xray_listen: '等待 Xray 监听', sets_load: '读取已保存的动态集合',
 	nft_render: '生成 nftables 规则', nft_load: '加载 nftables 规则', route_add: '添加策略路由',
@@ -91,7 +94,8 @@ const STEPS = {
 	subscription_schedule: '调度订阅更新', sigusr2: '收到信号后重启 Xray',
 	reload_stop: '为重载停止服务', stop: '停止服务'
 };
-for (const [step, expected] of Object.entries(STEPS)) {
+const HISTORICAL_STEPS = { chinadns_start: '启动 chinadns-ng' };
+for (const [step, expected] of Object.entries({ ...CURRENT_STEPS, ...HISTORICAL_STEPS })) {
 	test('T10.60 scenario 3: START_FAILED translates ' + step + ' and reload/monitor prefixes with raw hover', () => {
 		for (const [prefix, context] of [['', ''], ['reload:', '重载时'], ['monitor:', '监控时']]) {
 			const args = Object.freeze({ step: prefix + step, detail: 'conflict:ss_spec' });
@@ -101,6 +105,7 @@ for (const [step, expected] of Object.entries(STEPS)) {
 			const row = logs.events({ ok: true, events: [failed] }).rows[0];
 			assert.equal(row.text, text);
 			assert.equal(row.title, JSON.stringify(args));
+			assert.deepEqual(args, { step: prefix + step, detail: 'conflict:ss_spec' });
 		}
 	});
 }
@@ -159,15 +164,18 @@ function checkStepTranslations(source) {
 	for (const step of steps) {
 		const text = logs.message(event('START_FAILED', { step, detail: 'test' }));
 		assert.doesNotMatch(text, new RegExp('启动失败（' + step + '）'), 'missing translation: ' + step);
-		assert.ok(Object.prototype.hasOwnProperty.call(STEPS, step), 'missing expected Chinese step: ' + step);
-		assert.equal(text, '启动失败（' + STEPS[step] + '）：test', 'missing Chinese translation: ' + step);
+		assert.ok(Object.prototype.hasOwnProperty.call(CURRENT_STEPS, step), 'missing expected Chinese step: ' + step);
+		assert.equal(text, '启动失败（' + CURRENT_STEPS[step] + '）：test', 'missing Chinese translation: ' + step);
 	}
 }
 
 test('T10.60 scenario 4: every literal daemon failure step has a Chinese translation', () => {
 	const source = fs.readFileSync(path.join(ROOT, 'aether-proxy/src/lib/daemon.uc'), 'utf8');
 	checkStepTranslations(source);
-	assert.deepEqual([...daemonSteps(source)].sort(), Object.keys(STEPS).sort());
+	assert.equal(daemonSteps(source).size, 31, 'current daemon literal failure set has exactly 31 steps');
+	assert.deepEqual([...daemonSteps(source)].sort(), Object.keys(CURRENT_STEPS).sort());
+	for (const step of Object.keys(HISTORICAL_STEPS))
+		assert.ok(!daemonSteps(source).has(step), 'historical step is not a current literal failure: ' + step);
 	for (const added of ["return { step: 'new_step' };", "event_failure(ctx, 'new_step', 'test');"])
 		assert.throws(() => checkStepTranslations(source + '\n' + added), /missing translation: new_step/);
 });
