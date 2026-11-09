@@ -39,7 +39,7 @@
 
 H28K入口`root@192.168.5.254`，使用WSL既有SSH密钥；本次交接整理不访问设备。
 
-- 最近实机安装/验收：2026-11-09，**本地包0.6.3-r6.t1510**，running/T1/bypass_cn。正式r7发行阶段没有再次安装设备，不能写成已在H28K安装CI正式r7。
+- 最近实机安装/验收：2026-11-09 12:43，用户经**在线更新**把 H28K 从本地包`0.6.3-r6.t1510`升到 **CI 正式 r7**（`aether-proxy`/`luci-app-aether-proxy` 均`0.6.3-r7`），running/T1/bypass_cn、boot ID未变、无新增失败事件。通道签名清单的包哈希与 Release 资产逐字节相同，故"通道包不是验证过的包"在 r7 上不成立；证据、时间线与未覆盖项见[P1验收](../validation/p1-h28k-r7-online-update-20261109.md)。正式r7发行阶段本身仍未安装设备，那段历史结论原样保留在[发布验收](../validation/0.6.3-r7-release-20261109.md)。
 - boot ID记录为`97edbacd-fd63-4a21-beb7-0cc59ac22b93`，设备未重启，活动配置未变。
 - restart命令返回0约1.678秒，发起至running/T1约11.748秒；stop返回0约4.603秒；start请求约0.098秒、恢复T1约11.175秒。**异步命令耗时与服务恢复/事件间隔分开，均不是泄漏长度。**
 - 119个restart样本handoff始终存在且字节不变；手动stop标记为空文件、片段移除、trigger保留，start后恢复。随后30秒采样正常，本机UDP53/TCP31053两次NOERROR，无新增启动失败/崩溃/loopback。
@@ -50,7 +50,7 @@ H28K入口`root@192.168.5.254`，使用WSL既有SSH密钥；本次交接整理�
 
 ## 4. 必须保留的保证边界
 
-1. 保护由**已有restart-intent**触发。失败restart遗留intent时，后续重试/respawn仍可继承；普通无intent respawn、opkg独立stop/start、首次接管不主动建同等保护。手动stop/禁用有意恢复系统resolver。
+1. 保护由**已有restart-intent**触发。失败restart遗留intent时，后续重试/respawn仍可继承；普通无intent respawn、opkg独立stop/start、首次接管不主动建同等保护。手动stop/禁用有意恢复系统resolver。更新流程对 aether-proxy 调用 `init restart`，属受保护路径，不计入“opkg独立stop/start”。
 2. 不宣称零中断或所有协议/微秒均无泄漏。TPROXY readiness只查TCP；DNS按实际引用协议，正式DNS检查UDP/TCP。就绪不等于上游或端到端代理健康。
 3. 非0不表示服务完全没停：固件仍继续kill/callback；不可写FS可能留intent/缺manual-stop标记，后续reload仍可能拉起。只是修错误可见性，不保证所有故障下持久停用。
 4. 不向无法核实的历史私有PID自动发信号，不扩成pidfd/gate/全生命周期自动回收；私有停止的5秒判定也不是整个init stop的总时长。
@@ -59,7 +59,7 @@ H28K入口`root@192.168.5.254`，使用WSL既有SSH密钥；本次交接整理�
 
 ## 5. 以后可以讨论，但没有冻结新卡
 
-- 是否把H28K从本地验收包切到**CI正式r7**：属于新的设备操作，先确认用户窗口，不自动做。
+- ~~是否把H28K从本地验收包切到**CI正式r7**~~：**已完成**（2026-11-09 在线更新，证据见[P1验收](../validation/p1-h28k-r7-online-update-20261109.md)），不再是待办。
 - M4-02组件逻辑命名/JSON兼容迁移，主要属于proxy；不是全局字符串替换。当前逻辑名仍可为chinadns-ng，实际运行路径可能是aether-dns，不代表引擎未生效。
 - M4-03引擎独立semver：DNS制定自己的版本，proxy按具体引擎定义兼容最低值/范围；需先双项目约定，不能用chinadns日期最低值直接比较新semver。
 - M4-06中断体验：旧“两次dnsmasq重启”已过时，现仅安装阶段一次；需先重估目标，不默认承诺零超时。
