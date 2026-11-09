@@ -149,7 +149,7 @@ def main():
 		for index, (name, version, mode, old) in enumerate(scenarios(reproduce)):
 			f = Fixture(base, str(index), name, version, mode)
 			label = f'{"check" if check_only else "start"} {name} {mode} {version}'
-			expected = {'component': name, 'version': version, 'min': MINIMUM[name]}
+			expected = {'component': 'dns' if name == 'chinadns-ng' else name, 'version': version, 'min': MINIMUM[name]}
 			if check_only:
 				started = time.monotonic()
 				r = subprocess.run([str(UCODE), '-S', str(ENTRY), '--', 'check', '--json', *f.args,

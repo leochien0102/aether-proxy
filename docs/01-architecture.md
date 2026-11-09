@@ -87,7 +87,7 @@ M4-02（阶段 1）：对外 JSON 的 DNS 权威逻辑 id 为 `dns`，`chinadns-
    测试 `--bin-dir` 将后两个候选替换为测试目录的 `aether-xray`、`xray`；不搜索其它 PATH 项。
 2. DNS：测试 `--bin-dir` 的 `chinadns-ng` → UCI `aetherproxy.main.chinadns_bin` 显式指定的路径 →
    系统 PATH 的 `chinadns-ng`。显式覆盖若已配置但不可执行，不再回退 PATH；新逻辑 id `dns` 不作为文件名。
-3. 都没有：start 失败，事件 `COMPONENT_MISSING`（DNS 的 `component` 仍为 `chinadns-ng`），
+3. 都没有：start 失败，事件 `COMPONENT_MISSING`（M4-02b2：DNS 的 `component` 为 `dns`，历史记录可能为 `chinadns-ng`），
    LuCI 引导用户安装（[08](08-updates.md)「首次安装引导」）。
 
 （2026-10-15 起组件一律以软件包安装，不再有 aether-proxy 自管的 `/usr/share/aether-proxy/bin/` 版本目录。）

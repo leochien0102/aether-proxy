@@ -69,7 +69,7 @@ test('T10.52 scenario 2: mixed precheck details are all shown and two plugins us
 	assert.equal(vm.error_text,
 		'检测到 ShadowSocksR Plus+、PassWall 2 正在运行，请先在它们的页面停用，再启动。'
 		+ '无法检查其他代理插件：nft list tables failed (2)。'
-		+ '启动前检查未通过：component:xray。将在约 300 秒后第 3 次重试。');
+		+ '启动前检查未通过：xray。将在约 300 秒后第 3 次重试。');
 });
 
 test('T10.52 scenario 2: an older conflict cannot leak into the latest attempt', () => {
@@ -78,7 +78,7 @@ test('T10.52 scenario 2: an older conflict cannot leak into the latest attempt',
 		...attempt(['component:xray'], 2, NOW, 60)
 	];
 	assert.equal(build(events).error_text,
-		'启动前检查未通过：component:xray。将在约 60 秒后第 2 次重试。');
+		'启动前检查未通过：xray。将在约 60 秒后第 2 次重试。');
 	assert.doesNotMatch(build(events).error_text, /ShadowSocksR/);
 });
 
@@ -147,7 +147,7 @@ test('T10.52 scenario 5: PRECHECK_FAILED formats conflicts but preserves origina
 	const item = event('PRECHECK_FAILED', args);
 	assert.equal(logs.message(item),
 		'预检失败：与 ShadowSocksR Plus+ 冲突、与 clash 冲突、与 future 冲突、'
-		+ '无法检查其他代理插件（nft failed）；缺少 component:xray');
+		+ '无法检查其他代理插件（nft failed）；缺少 xray');
 	const row = logs.events({ ok: true, events: [item] }).rows[0];
 	assert.equal(row.text, logs.message(item));
 	assert.equal(row.title, JSON.stringify(args));

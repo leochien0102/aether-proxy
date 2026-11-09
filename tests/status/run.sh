@@ -116,7 +116,7 @@ out="$(ap "$PATH_NOCHINADNS" status --json --confdir "$FIX/sample" --run-dir "$R
 expect "s2: exit code 0" 0 "$rc"
 expect "s2: exactly one notice" "<missing>" "$(echo "$out" | jget notices.1.code)"
 expect "s2: code" "COMPONENT_MISSING" "$(echo "$out" | jget notices.0.code)"
-expect "s2: component is chinadns-ng" "chinadns-ng" "$(echo "$out" | jget notices.0.args.component)"
+expect "s2: component is dns" "dns" "$(echo "$out" | jget notices.0.args.component)"
 
 # A configured chinadns_bin that is not executable counts as missing, like in check.
 mkdir -p "$T/conf-noexec" "$T/noexec"
@@ -128,7 +128,7 @@ out="$(ap "$PATH_NOCHINADNS" status --json --confdir "$T/conf-noexec" --run-dir 
 expect "s2b: exit code 0" 0 "$rc"
 expect "s2b: exactly one notice" "<missing>" "$(echo "$out" | jget notices.1.code)"
 expect "s2b: code" "COMPONENT_MISSING" "$(echo "$out" | jget notices.0.code)"
-expect "s2b: component is chinadns-ng" "chinadns-ng" "$(echo "$out" | jget notices.0.args.component)"
+expect "s2b: component is dns" "dns" "$(echo "$out" | jget notices.0.args.component)"
 
 # ------------------------------------------------------------------
 # Scenario 3: UPDATE_AVAILABLE

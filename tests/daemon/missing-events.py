@@ -45,6 +45,7 @@ def main():
 					for suffix in ('', '-original'):
 						(f.bin / (name + suffix)).rename(path / (name + suffix))
 				f.env['PATH'] = str(path) + ':' + f.env['PATH']
+			expected_ids = ['dns' if name == 'chinadns-ng' else name for name in missing]
 			label = f'{policy} missing={",".join(missing) or "none"}'
 			# check/status must remain read-only even after repeated page polling.
 			before = f.events()
@@ -57,7 +58,7 @@ def main():
 				channel = 'warnings' if command == 'check' else 'notices'
 				items = [w['args']['component'] for w in value.get(channel, [])
 					if w['code'] == 'COMPONENT_MISSING']
-				check(f'{label} {command} exact {channel}', r.returncode == 0 and sorted(items) == sorted(missing))
+				check(f'{label} {command} exact {channel}', r.returncode == 0 and sorted(items) == sorted(expected_ids))
 				if command == 'check':
 					check(f'{label} check skips only missing Xray validation',
 						value['validation']['xray'].get('skipped', False) == ('xray' in missing)
@@ -68,11 +69,11 @@ def main():
 				events = f.events()
 				items = [e for e in events if e['code'] == 'COMPONENT_MISSING']
 				check(f'{label} start exact missing error events',
-					sorted(e['args']['component'] for e in items) == sorted(missing)
+					sorted(e['args']['component'] for e in items) == sorted(expected_ids)
 					and all(e['level'] == 'error' and set(e['args']) == {'component'} for e in items))
 				pre = [e for e in events if e['code'] == 'PRECHECK_FAILED']
 				check(f'{label} aggregate precheck preserved',
-					len(pre) == 1 and sorted(pre[0]['args']['missing']) == sorted('component:' + n for n in missing)
+					len(pre) == 1 and sorted(pre[0]['args']['missing']) == sorted('component:' + n for n in expected_ids)
 					if missing else not pre)
 				calls = f.calls.read_text()
 				children_absent = not (f.root / 'xray.pid').exists() and not (f.root / 'chinadns.pid').exists()

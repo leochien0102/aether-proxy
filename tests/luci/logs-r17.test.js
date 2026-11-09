@@ -37,18 +37,18 @@ const PRECHECK_CASES = [
 	['multiple conflicts', ['conflict:ssr-plus', 'conflict:passwall2'],
 		'与 ShadowSocksR Plus+ 冲突、与 PassWall 2 冲突'],
 	['mixed missing requirements', ['component:xray', 'conflict:ssr-plus', 'command:nft'],
-		'与 ShadowSocksR Plus+ 冲突；缺少 component:xray、command:nft'],
-	['no conflicts', ['component:xray', 'command:nft'], '缺少 component:xray、command:nft'],
+		'与 ShadowSocksR Plus+ 冲突；缺少 xray、command:nft'],
+	['no conflicts', ['component:xray', 'command:nft'], '缺少 xray、command:nft'],
 	['only check diagnostic (review)', ['conflict-check:nft failed'], '无法检查其他代理插件（nft failed）'],
 	['legacy check diagnostic', ['conflict-check:nft failed', 'component:xray'],
-		'无法检查其他代理插件（nft failed）；缺少 component:xray'],
+		'无法检查其他代理插件（nft failed）；缺少 xray'],
 	['mixed check diagnostic', ['conflict:ssr-plus', 'conflict-check:nft failed', 'component:xray'],
-		'与 ShadowSocksR Plus+ 冲突、无法检查其他代理插件（nft failed）；缺少 component:xray'],
+		'与 ShadowSocksR Plus+ 冲突、无法检查其他代理插件（nft failed）；缺少 xray'],
 	['empty list', [], '缺少 '],
-	['scalar legacy missing', 'component:xray', '缺少 component:xray'],
+	['scalar legacy missing', 'component:xray', '缺少 xray'],
 	['absent missing', undefined, '缺少 ?'],
 	['literal replacement characters', ['conflict:future$&', 'component:$&'],
-		'与 future$& 冲突；缺少 component:$&']
+		'与 future$& 冲突；缺少 $&']
 ];
 for (const [name, missing, expected] of PRECHECK_CASES) {
 	test('T10.60 scenario 1: PRECHECK_FAILED ' + name, () => {
@@ -122,7 +122,7 @@ test('T10.60 scenario 3: unknown steps and ordinary detail remain byte-identical
 test('T10.60 scenario 3: detail formats conflict lists, missing entries, checks and unknown plugin names', () => {
 	for (const [detail, expected] of [
 		['conflict:ss_spec_mangle,conflict:passwall', '与 ShadowSocksR Plus+ 冲突、与 PassWall 冲突'],
-		['component:xray,conflict:ss_spec', '与 ShadowSocksR Plus+ 冲突；缺少 component:xray'],
+		['component:xray,conflict:ss_spec', '与 ShadowSocksR Plus+ 冲突；缺少 xray'],
 		['conflict:future$&', '与 future$& 冲突'],
 		['conflict-check:nft $& failed', '无法检查其他代理插件（nft $& failed）']
 	])
@@ -187,12 +187,56 @@ test('T10.60 scenarios 1-3: English text and translated placeholder composition 
 		assert.equal(english.message(event('PRECHECK_FAILED', { missing: ['conflict:ss_spec'] })),
 			'Precheck failed: Conflict with ShadowSocksR Plus+');
 		assert.equal(english.message(event('PRECHECK_FAILED', { missing: ['component:xray', 'conflict:ss_spec'] })),
-			'Precheck failed: Conflict with ShadowSocksR Plus+; Missing component:xray');
+			'Precheck failed: Conflict with ShadowSocksR Plus+; Missing xray');
 		assert.equal(english.message(event('PRECHECK_FAILED', { missing: ['component:xray'] })),
-			'Precheck failed: Missing component:xray');
+			'Precheck failed: Missing xray');
 		assert.equal(english.message(event('START_FAILED', { step: 'reload:precheck', detail: 'conflict:ss_spec' })),
 			'Start failed (During reload: Precheck): Conflict with ShadowSocksR Plus+');
 	} finally {
 		globalThis._ = translate;
 	}
+});
+
+
+// M4-02b2: real Chinese translations must agree for new and persisted ids.
+test('M4-02b2 S5: new and historical component events have identical Chinese text', () => {
+	for (const code of ['COMPONENT_MISSING', 'COMPONENT_TOO_OLD']) {
+		const args = Object.freeze({ component: 'chinadns-ng', version: '2025.06.20', min: '2025.08.09' });
+		const legacy = logs.message(event(code, args));
+		const current = logs.message(event(code, { ...args, component: 'dns' }));
+		assert.equal(current, legacy);
+		assert.ok(current.includes('DNS 引擎'), current);
+		assert.ok(!current.includes('chinadns-ng'), current);
+		assert.equal(args.component, 'chinadns-ng');
+		const xray = logs.message(event(code, { ...args, component: 'xray' }));
+		assert.equal(xray, translate(code === 'COMPONENT_MISSING'
+			? 'Component missing: {component}' : 'Component {component} version {version} requires {min}')
+			.replace('{component}', 'xray').replace('{version}', args.version).replace('{min}', args.min));
+	}
+});
+
+test('M4-02b2 S5: component prechecks stay missing and unknown ids pass through', () => {
+	for (const id of ['dns', 'chinadns-ng']) {
+		assert.equal(logs.message(event('PRECHECK_FAILED', { missing: ['component:' + id, 'component:xray'] })),
+			'预检失败：缺少 DNS 引擎、xray');
+		assert.deepEqual(conflicts.groups(['component:' + id]),
+			{ conflicts: [], checks: [], other: ['DNS 引擎'] });
+	}
+	assert.equal(conflicts.component_name('future$&'), 'future$&');
+	assert.equal(conflicts.component_name('passwall'), 'passwall');
+	assert.equal(conflicts.format_log_item('component:xray'), 'xray');
+	assert.equal(conflicts.format_log_item('component:future$&'), 'future$&');
+	assert.deepEqual(conflicts.parse_item('component:'), { kind: 'other', value: 'component:' });
+});
+
+test('M4-02b2 S6: new and historical notices share Chinese text and package guidance', () => {
+	const notices = ['dns', 'chinadns-ng', 'xray', 'future-engine'].map(component =>
+		Object.freeze({ code: 'COMPONENT_MISSING', args: Object.freeze({ component }) }));
+	const vm = overview.build({ ok: true, notices });
+	assert.equal(vm.notices[0], vm.notices[1]);
+	assert.equal(vm.notices[0],
+		'缺少组件 DNS 引擎，请先安装再启动服务。或从发布页下载 chinadns-ng 包手工安装。');
+	assert.equal(vm.notices[2], '缺少组件 xray，请先安装再启动服务。');
+	assert.equal(vm.notices[3], '缺少组件 future-engine，请先安装再启动服务。');
+	assert.equal(notices[1].args.component, 'chinadns-ng');
 });
