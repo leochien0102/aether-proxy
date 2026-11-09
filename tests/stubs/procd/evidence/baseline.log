@@ -1,0 +1,11 @@
+== branch fix/t15.10-init-stop-contract vs main: 0 commit(s), 0 file(s)
+PASS  tests/run.uc: 1257 passed, 0 failed, 0 skipped
+PASS  tests/cli/run.sh: 217 passed, 0 failed
+PASS  tests/ci/xray.sh: xray 26.10.31: 26 checked, 0 failed
+PASS  changed .uc files compile/load
+PASS  no swallowed errors in added code
+PASS  no system()/popen() outside sys.uc
+PASS  no attribution trailers in commits
+FAIL  no reports/<card>.md in the branch (docs/tasks/README.md)
+WARN  working tree not clean (uncommitted changes are not reviewed)
+== 1 FAIL, 1 WARN

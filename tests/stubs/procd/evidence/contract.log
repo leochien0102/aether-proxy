@@ -1,0 +1,195 @@
+PASS  disabled start is a no-op
+PASS  disabled start skips check
+PASS  disabled start registers no instance
+PASS  enabled start succeeds
+PASS  T9.27 start never invokes check
+PASS  start opens named instance
+PASS  start command is daemon
+PASS  respawn policy recorded
+PASS  stdout/stderr inherited by procd
+PASS  boot succeeds
+PASS  boot appends --boot
+PASS  T9.27 start ignores failing check substitute
+PASS  T9.27 failing check substitute cannot prevent daemon registration
+PASS  T9.27 boot never invokes check
+PASS  running reload bypasses check even when it would fail
+PASS  running reload never invokes check
+PASS  running reload sends HUP without check
+PASS  reload returns HUP delivery failure
+PASS  reload logs HUP delivery failure
+PASS  valid reload succeeds
+PASS  reload sends HUP
+PASS  reload with enabled=0 succeeds
+PASS  reload with enabled=0 stops the service
+PASS  reload of a stopped service succeeds
+PASS  reload of a stopped service starts it
+PASS  service_stopped cleanup succeeds
+PASS  T9.32 service_stopped re-registers the service with triggers
+PASS  service_stopped runs cleanup --wait 35
+PASS  service_stopped preserves cleanup failure status
+PASS  T9.32 service_stopped registers triggers even when cleanup fails
+PASS  service_stopped logs cleanup failure
+PASS  service_triggers succeeds
+PASS  reload trigger registered
+PASS  T9.32 flow: started service has instance and trigger
+PASS  T9.32 flow: enabled=0 reload succeeds
+PASS  T9.32 flow: stop deleted the service (as procd does)
+PASS  T9.32 flow: after enabled=0 stop the service is registered again, no instance, with trigger
+PASS  T9.32 flow: re-registration adds triggers only through close_service
+PASS  T9.32 flow: enabled=0 branch leaves no manual-stop marker
+PASS  T9.32 flow: enabled=1 reload after enabled=0 starts the service
+PASS  T9.32 flow: init stop writes the manual-stop marker
+PASS  T9.32 flow: manual stop keeps the reload trigger
+PASS  T9.32 flow: reload after manual stop succeeds
+PASS  T9.32 flow: reload after manual stop does not start
+PASS  T9.32 flow: start clears the marker and starts
+PASS  T9.32 flow: restart of a manually stopped service ends without marker
+PASS  T9.32 flow: restart of a running service ends without marker
+PASS  T9.32 flow: running reload still sends HUP
+PASS  T9.32 flow: enabled=0 reload clears the marker of a manual stop
+PASS  T9.32 flow: off then on after a manual stop starts the service
+PASS  T15.1 R1/R10 init restart succeeds
+PASS  T15.1 R1 restart intent precedes stop and protects every cleanup stage
+PASS  T15.1 R1 successful handoff keeps fragment bytes and then clears intent
+PASS  T15.1 R1 restart invokes dnsmasq exactly once for replacement install
+PASS  T15.1 R10 restart ends running without manual-stop marker
+PASS  T15.1 R4 manual stop succeeds
+PASS  T15.1 R4 manual stop clears intent, removes fragment and ends stopped
+PASS  T15.1 R4 manual stop adds one exact dnsmasq restart
+PASS  T15.1 R4 manual stop preserves stopped-by-user and reload trigger semantics
+PASS  T15.1 R6 failed restart reports failure
+PASS  T15.1 R6 failed restart retains fragment bytes and intent
+PASS  T15.1 R6 failed restart performs no dnsmasq restart
+PASS  T15.1 R6 replacement retry succeeds
+PASS  T15.1 R6 successful retry clears intent only after handoff install
+PASS  T15.1 R6 retry adds exactly one install restart
+PASS  T15.1 R7 stop after failed restart succeeds
+PASS  T15.1 R7 stop after failed restart restores system DNS and stopped state
+PASS  T15.1 R5 enabled=0 reload succeeds
+PASS  T15.1 R5 enabled=0 removes handoff and clears both markers
+PASS  T15.1 R5 enabled=0 adds one exact dnsmasq restart
+PASS  T15.1 R5 re-enable starts and reinstalls handoff
+PASS  T15.1 R5 stopped restart residue: precondition has no instance, intent, fragment and enabled=1
+PASS  T15.1 R5 stopped restart residue: disable succeeds
+PASS  T15.1 R5 stopped restart residue: disable clears intent
+PASS  T15.1 R5 stopped restart residue: disable removes fragment
+PASS  T15.1 R5 stopped restart residue: disable adds exactly one dnsmasq restart
+PASS  T15.1 R5 stopped restart residue: disable leaves no instance
+PASS  T15.1 R5 stopped restart residue: disable leaves no manual-stop marker
+PASS  T15.1 R5 stopped restart residue: disable keeps correctly registered reload trigger
+PASS  T15.1 R5 stopped without intent: repeated disable succeeds
+PASS  T15.1 R5 stopped without intent: repeated disable adds no dnsmasq restart
+PASS  T15.1 R5 stopped without intent: repeated disable is a no-op with trigger intact
+PASS  T15.1 R5 stopped without intent: ordinary disable succeeds
+PASS  T15.1 R5 stopped without intent: ordinary disable preserves existing no-op semantics
+PASS  T15.1 R5 stopped without intent: ordinary disable adds no dnsmasq restart
+PASS  LAN ifup is ignored
+PASS  LAN does not send USR1
+PASS  T9.23 LAN ifup still invokes dns sync-wan
+PASS  disabled hotplug is a no-op
+PASS  disabled hotplug skips service lookup
+PASS  disabled hotplug does not send USR1
+PASS  stopped service hotplug is a no-op
+PASS  stopped service does not send USR1
+PASS  WAN ifup succeeds
+PASS  WAN sends USR1
+PASS  ubus failure is returned
+PASS  ubus failure is logged
+PASS  USR1 delivery failure is returned
+PASS  USR1 delivery failure is logged
+PASS  missing DEVICE exits successfully
+PASS  missing DEVICE does not send USR1
+PASS  T9.23 hotplug ifup exits successfully
+PASS  T9.23 hotplug ifup invokes dns sync-wan
+PASS  T9.23 hotplug ifup runs sync-wan in background
+PASS  T9.23 hotplug ifupdate exits successfully
+PASS  T9.23 hotplug ifupdate invokes dns sync-wan
+PASS  T9.23 hotplug ifupdate runs sync-wan in background
+PASS  T9.23 ifupdate does not send USR1
+PASS  T9.23 ifupdate skips service lookup
+PASS  T9.23 hotplug other action 'ifdown' exits successfully
+PASS  T9.23 hotplug other action 'ifdown' makes no call
+PASS  T9.23 hotplug other action 'iflink' exits successfully
+PASS  T9.23 hotplug other action 'iflink' makes no call
+PASS  T9.23 hotplug other action 'reload' exits successfully
+PASS  T9.23 hotplug other action 'reload' makes no call
+PASS  T9.23 hotplug other action '' exits successfully
+PASS  T9.23 hotplug other action '' makes no call
+PASS  uci-defaults creates randomized minute
+PASS  uci-defaults writes and commits minute
+PASS  uci-defaults preserves existing minute
+PASS  existing minute is not overwritten
+PASS  uci get error fails closed
+PASS  uci get failure is logged
+procd stubs: 123 passed, 0 failed
+PASS  I2 intent cleanup=0: external stop rc
+PASS  I2 intent cleanup=0: kill cleanup trigger order
+PASS  I2 intent cleanup=0: original log
+PASS  I2 intent cleanup=3: external stop rc
+PASS  I2 intent cleanup=3: kill cleanup trigger order
+PASS  I2 intent cleanup=3: original log
+PASS  I2 intent cleanup=37: external stop rc
+PASS  I2 intent cleanup=37: kill cleanup trigger order
+PASS  I2 intent cleanup=37: original log
+PASS  I2 mark-create cleanup=0: external stop rc
+PASS  I2 mark-create cleanup=0: kill cleanup trigger order
+PASS  I2 mark-create cleanup=0: original log
+PASS  I2 mark-create cleanup=3: external stop rc
+PASS  I2 mark-create cleanup=3: kill cleanup trigger order
+PASS  I2 mark-create cleanup=3: original log
+PASS  I2 mark-create cleanup=37: external stop rc
+PASS  I2 mark-create cleanup=37: kill cleanup trigger order
+PASS  I2 mark-create cleanup=37: original log
+PASS  I3 cleanup=0: exact original status and full closure
+PASS  I3 cleanup=3: exact original status and full closure
+PASS  I3 cleanup=37: exact original status and full closure
+PASS  I3 same shell: failure consumed, second stop and independent callback succeed
+PASS  I3 independent callback preserves cleanup rc
+PASS  I4 intent cleanup=0 running=1 intent=True: status
+PASS  I4 intent cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 intent cleanup=0 running=1 intent=True: trailing mark removal attempted
+PASS  I4 mark-create cleanup=0 running=1 intent=True: status
+PASS  I4 mark-create cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-create cleanup=0 running=1 intent=True: trailing mark removal attempted
+PASS  I4 none cleanup=37 running=1 intent=True: status
+PASS  I4 none cleanup=37 running=1 intent=True: original closure/no-op boundary
+PASS  I4 none cleanup=37 running=1 intent=True: trailing mark removal attempted
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: status
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: trailing mark removal attempted
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: status
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: trailing mark removal attempted
+PASS  I4 none cleanup=0 running=0 intent=True: status
+PASS  I4 none cleanup=0 running=0 intent=True: original closure/no-op boundary
+PASS  I4 none cleanup=0 running=0 intent=True: trailing mark removal attempted
+PASS  I4 none cleanup=0 running=0 intent=False: status
+PASS  I4 none cleanup=0 running=0 intent=False: original closure/no-op boundary
+PASS  I4 none cleanup=0 running=0 intent=False: trailing mark removal attempted
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: status
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: trailing mark removal attempted
+PASS  I1 restart enabled=0 cleanup=37: stop failure skips start / start rc preserved
+PASS  I1 restart enabled=0 cleanup=0: stop failure skips start / start rc preserved
+PASS  I1 restart enabled=1 cleanup=37: stop failure skips start / start rc preserved
+PASS  I1 restart enabled=1 cleanup=0: stop failure skips start / start rc preserved
+PASS  I5 enabled=0 cleanup=0: owned PID ready at stop
+PASS  I5 enabled=0 cleanup=0: TERM ignored during stop (resumed trace)
+PASS  I5 enabled=0 cleanup=0: phase before restored TERM
+PASS  I5 enabled=0 cleanup=0: default TERM restored at start
+PASS  I5 enabled=0 cleanup=37: owned PID ready at stop
+PASS  I5 enabled=0 cleanup=37: TERM ignored during stop (resumed trace)
+PASS  I5 enabled=0 cleanup=37: phase before restored TERM
+PASS  I5 enabled=0 cleanup=37: default TERM restored at returned
+PASS  I5 enabled=1 cleanup=0: owned PID ready at stop
+PASS  I5 enabled=1 cleanup=0: TERM ignored during stop (resumed trace)
+PASS  I5 enabled=1 cleanup=0: phase before restored TERM
+PASS  I5 enabled=1 cleanup=0: default TERM restored at start
+PASS  I5 enabled=1 cleanup=37: owned PID ready at stop
+PASS  I5 enabled=1 cleanup=37: TERM ignored during stop (resumed trace)
+PASS  I5 enabled=1 cleanup=37: phase before restored TERM
+PASS  I5 enabled=1 cleanup=37: default TERM restored at returned
+PASS  I5 enabled=1 cleanup=0: owned PID ready at stop
+PASS  I5 ordinary stop: TERM remains default
+init contract (/bin/sh): 69 passed, 0 failed
+UNSUPPORTED BusyBox ash not available; /bin/sh is local host coverage only

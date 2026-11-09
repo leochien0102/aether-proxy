@@ -1,0 +1,90 @@
+TRACE mode=stop fault=intent cleanup=0 rc=1 events=['lock', 'fail-intent-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-hii06ruo/run/restart-intent', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'result 1']
+PASS  I2 intent cleanup=0: external stop rc
+PASS  I2 intent cleanup=0: kill cleanup trigger order
+PASS  I2 intent cleanup=0: original log
+TRACE mode=stop fault=intent cleanup=3 rc=3 events=['lock', 'fail-intent-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-7epwsv10/run/restart-intent', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=3)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 3']
+PASS  I2 intent cleanup=3: external stop rc
+PASS  I2 intent cleanup=3: kill cleanup trigger order
+PASS  I2 intent cleanup=3: original log
+TRACE mode=stop fault=intent cleanup=37 rc=37 events=['lock', 'fail-intent-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-j98e6xcc/run/restart-intent', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I2 intent cleanup=37: external stop rc
+PASS  I2 intent cleanup=37: kill cleanup trigger order
+PASS  I2 intent cleanup=37: original log
+TRACE mode=stop fault=mark-create cleanup=0 rc=1 events=['lock', 'logger -t aether-proxy cannot write /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-5wkx1jee/run/stopped-by-user', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'result 1']
+PASS  I2 mark-create cleanup=0: external stop rc
+PASS  I2 mark-create cleanup=0: kill cleanup trigger order
+PASS  I2 mark-create cleanup=0: original log
+TRACE mode=stop fault=mark-create cleanup=3 rc=3 events=['lock', 'logger -t aether-proxy cannot write /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-bap49ibn/run/stopped-by-user', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=3)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 3']
+PASS  I2 mark-create cleanup=3: external stop rc
+PASS  I2 mark-create cleanup=3: kill cleanup trigger order
+PASS  I2 mark-create cleanup=3: original log
+TRACE mode=stop fault=mark-create cleanup=37 rc=37 events=['lock', 'logger -t aether-proxy cannot write /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-jss65x5e/run/stopped-by-user', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I2 mark-create cleanup=37: external stop rc
+PASS  I2 mark-create cleanup=37: kill cleanup trigger order
+PASS  I2 mark-create cleanup=37: original log
+TRACE mode=stop fault=none cleanup=0 rc=0 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'result 0']
+PASS  I3 cleanup=0: exact original status and full closure
+TRACE mode=stop fault=none cleanup=3 rc=3 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=3)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 3']
+PASS  I3 cleanup=3: exact original status and full closure
+TRACE mode=stop fault=none cleanup=37 rc=37 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I3 cleanup=37: exact original status and full closure
+TRACE mode=reset fault=intent cleanup=0 rc=0 events=['lock', 'fail-intent-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-bu573mxz/run/restart-intent', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'first 1', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'after-failure-callback 0', 'lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'second 0', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'independent 0']
+PASS  I3 same shell: failure consumed, second stop and independent callback succeed
+TRACE mode=service_stopped fault=none cleanup=37 rc=37 events=['cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I3 independent callback preserves cleanup rc
+TRACE mode=reload_service fault=intent cleanup=0 rc=1 events=['lock', 'fail-intent-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-mh9p_7lu/run/restart-intent', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'result 1']
+PASS  I4 intent cleanup=0 running=1 intent=True: status
+PASS  I4 intent cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 intent cleanup=0 running=1 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=mark-create cleanup=0 rc=1 events=['lock', 'logger -t aether-proxy cannot write /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-td7c5ia6/run/stopped-by-user', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-td7c5ia6/run/stopped-by-user', 'result 1']
+PASS  I4 mark-create cleanup=0 running=1 intent=True: status
+PASS  I4 mark-create cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-create cleanup=0 running=1 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=none cleanup=37 rc=37 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I4 none cleanup=37 running=1 intent=True: status
+PASS  I4 none cleanup=37 running=1 intent=True: original closure/no-op boundary
+PASS  I4 none cleanup=37 running=1 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=mark-remove cleanup=0 rc=1 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'fail-mark-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-7j6gpfgq/run/stopped-by-user', 'result 1']
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: status
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=0 running=1 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=mark-remove cleanup=37 rc=37 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'fail-mark-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-vxhb8whi/run/stopped-by-user', 'result 37']
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: status
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=37 running=1 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=none cleanup=0 rc=0 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'result 0']
+PASS  I4 none cleanup=0 running=0 intent=True: status
+PASS  I4 none cleanup=0 running=0 intent=True: original closure/no-op boundary
+PASS  I4 none cleanup=0 running=0 intent=True: trailing mark removal attempted
+TRACE mode=reload_service fault=none cleanup=0 rc=0 events=['result 0']
+PASS  I4 none cleanup=0 running=0 intent=False: status
+PASS  I4 none cleanup=0 running=0 intent=False: original closure/no-op boundary
+PASS  I4 none cleanup=0 running=0 intent=False: trailing mark removal attempted
+TRACE mode=reload_service fault=mark-remove cleanup=0 rc=1 events=['fail-mark-remove', 'logger -t aether-proxy cannot remove /workspace/openwrt/aether-proxy-wt/T15.10/tests/stubs/procd/.contract-i12ek0t0/run/stopped-by-user', 'result 1']
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: status
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: original closure/no-op boundary
+PASS  I4 mark-remove cleanup=0 running=0 intent=False: trailing mark removal attempted
+TRACE mode=restart fault=none cleanup=37 rc=37 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I1 restart enabled=0 cleanup=37: stop failure skips start / start rc preserved
+TRACE mode=restart fault=none cleanup=0 rc=23 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'start', 'result 23']
+PASS  I1 restart enabled=0 cleanup=0: stop failure skips start / start rc preserved
+TRACE mode=restart fault=none cleanup=37 rc=37 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'logger -t aether-proxy aether-proxy cleanup failed (rc=37)', 'open-service', 'trigger aetherproxy', 'close-service', 'result 37']
+PASS  I1 restart enabled=1 cleanup=37: stop failure skips start / start rc preserved
+TRACE mode=restart fault=none cleanup=0 rc=23 events=['lock', 'kill', 'cleanup cleanup --wait 35', 'open-service', 'trigger aetherproxy', 'close-service', 'start', 'result 23']
+PASS  I1 restart enabled=1 cleanup=0: stop failure skips start / start rc preserved
+PASS  I5 enabled=0 cleanup=0: owned PID ready at stop
+FAIL  I5 enabled=0 cleanup=0: TERM ignored during stop (resumed trace): ('', ['lock', 'kill'])
+TRACE TERM enabled=0 cleanup=0 ordinary=False owned_pid=566846 exit=-15 events=['lock', 'kill']
+PASS  I5 enabled=0 cleanup=37: owned PID ready at stop
+FAIL  I5 enabled=0 cleanup=37: TERM ignored during stop (resumed trace): ('', ['lock', 'kill'])
+TRACE TERM enabled=0 cleanup=37 ordinary=False owned_pid=566850 exit=-15 events=['lock', 'kill']
+PASS  I5 enabled=1 cleanup=0: owned PID ready at stop
+FAIL  I5 enabled=1 cleanup=0: TERM ignored during stop (resumed trace): ('', ['lock', 'kill'])
+TRACE TERM enabled=1 cleanup=0 ordinary=False owned_pid=566854 exit=-15 events=['lock', 'kill']
+PASS  I5 enabled=1 cleanup=37: owned PID ready at stop
+FAIL  I5 enabled=1 cleanup=37: TERM ignored during stop (resumed trace): ('', ['lock', 'kill'])
+TRACE TERM enabled=1 cleanup=37 ordinary=False owned_pid=566858 exit=-15 events=['lock', 'kill']
+PASS  I5 enabled=1 cleanup=0: owned PID ready at stop
+PASS  I5 ordinary stop: TERM remains default
+TRACE TERM enabled=1 cleanup=0 ordinary=True owned_pid=566862 exit=-15 events=['lock', 'kill']
+init contract (/bin/sh): 57 passed, 4 failed

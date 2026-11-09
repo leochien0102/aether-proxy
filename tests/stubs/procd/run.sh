@@ -162,6 +162,8 @@ flow_reset() {
 }
 flow_op() {
 	(
+		# rc.common permits stop with no instance argument; it does not enable nounset.
+		set +u
 		export PROCD_LOG="$F/log" CHECK_RC=0
 		export AETHER_PROXY_RUN_DIR="$F/run"
 		export FLOW_INTENT="$F/run/restart-intent"
@@ -212,13 +214,14 @@ flow_op() {
 			procd_close_service
 			[ "$(cat "$F/enabled")" = 1 ] && flow_start_daemon
 		}
-		stop() {
-			stop_service "$@" || return $?
-			flow_cleanup old-shutdown || return $?
+		procd_lock() { :; }
+		procd_kill() {
+			# Model old-daemon shutdown at the kill boundary, never short-circuit callback.
+			flow_cleanup old-shutdown
 			rm -f "$F/svc"
 			printf 'service_deleted\n' >> "$F/log"
-			service_stopped "$@"
 		}
+		. "$ROOT/tests/stubs/procd/rc-common-stop.sh"
 		"$1"
 	)
 }

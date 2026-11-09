@@ -188,8 +188,9 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
   - 结果：开关关着时改配置不启动；开关开着但手动停止后改配置不启动；开关从关到开（中间经过 `enabled=0` 分支清标记）会启动。
   - 实现（T9.32 复核定）：标记写在 `stop_service` 钩子里（rc.common 的 procd 模式按 `stop_service` → 删除服务 → `service_stopped` 的顺序调用），不覆盖 `stop`；`enabled=0` 分支在自己的 stop 之后再清掉它。
     重新登记只需 `procd_open_service` + `procd_close_service`：后者自己会加 `service_triggers`，在两者之间再调一次会把触发器塞进 `instances` 对象（复核时修正，H28K 实测停止后触发器仍在、连续两次配置变化后仍在）。
-  - **异常返回的已知边界（尚未修代码）**：固件rc.common的procd stop不采用stop_service返回值，会继续kill并调用service_stopped；本init最终rc来自cleanup。正常“先清intent/写标记再停止”的顺序成立，不等于前置FS失败可以靠return阻止kill或向调用者传播。intent删除失败可能保留旧handoff；stop-mark写失败时后续配置reload可能拉起服务。现有日志可见，不将最终rc=0当作所有前置操作成功，有限init契约修复另排。
-  - 自定义restart目前尚未保留rc.common在stop期间`trap '' TERM`、start前恢复的完整语义，列为低优先级兼容候选；本次仅记录，不改为永久忽略TERM。
+  - **停止错误传播（T15.10）**：固件rc.common仍按`stop_service → procd_kill → service_stopped`执行，不因hook失败跳过kill或callback。init只在本次shell调用中暂存已检查的intent删除/stop-mark创建错误，由callback消费并复位；cleanup非0时优先精确保留其原rc，cleanup成功才返回hook错误。cleanup和trigger重新登记仍执行；下次stop或独立callback不继承旧错误。enabled=0 reload仍清manual-stop标记，优先返回stop错误，否则返回末尾标记删除错误；无实例但有intent仍收口，无实例且无intent仍不扩大cleanup。
+  - **异常FS边界**：非0不代表服务完全未停。intent删除失败可能保留旧handoff，stop-mark写失败时后续配置reload可能拉起服务；本卡只修错误可见性，不承诺不可写FS下仍持久保存停用状态，不新增状态文件或保护入口。
+  - **restart TERM契约（T15.10）**：enabled开/关两分支均仅在实际stop前`trap '' TERM`，stop返回后无论成功或失败都先`trap - TERM`恢复默认处理，再返回错误或进入start；不承诺保存调用者自定义trap。准备intent之前不扩大屏蔽，普通stop不新增屏蔽；stop失败不start，start返回值仍保留。不扩opkg/普通无intent respawn保护。
   - `aether-proxy cleanup` 命令本身不写 `stopping`（它不依赖 daemon 存活，直接清理并写 `stopped`）。
 - daemon 每次启动时执行一次 `cleanup`，清掉上一轮崩溃留下的残留。时机在第 5 步渲染校验通过之后、第 6 步之前：
   第 2–5 步失败时承诺「系统不改动」，残留也原样保留，交给 `service_stopped` 的 `cleanup` 处理。
