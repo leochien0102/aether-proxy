@@ -145,12 +145,12 @@ function job_argv(kind, args) {
 		return length(args) == 0 ? [ 'job', 'start', 'update', 'data' ] : null;
 
 	if (kind == 'update_package') {
-		// [<package>] or ["xray-core", "--previous"] (docs/08: older UI/backend configs are unsafe).
+		// [<package>] or ["aether-xray", "--previous"] (docs/08: older UI/backend configs are unsafe).
 		if (length(args) < 1 || length(args) > 2)
 			return null;
 		if (index(C.UPDATE_PACKAGES, args[0]) < 0)
 			return null;
-		if (length(args) == 2 && (args[0] != 'xray-core' || args[1] != '--previous'))
+		if (length(args) == 2 && (args[0] != 'aether-xray' || args[1] != '--previous'))
 			return null;
 
 		return [ 'job', 'start', 'update', 'package', ...args ];
@@ -386,6 +386,14 @@ const methods = {
 			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
 		},
 		args: { source: '', lines: 0 }
+	},
+
+	// T13.4: application files only; the ACL grants this method to writers.
+	log_clear: {
+		call: function(req) {
+			return call_cli([ 'log', 'clear' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
 	},
 
 	// T9.13 (docs/10 "node parse"): read-only, with the same URI gate as import.

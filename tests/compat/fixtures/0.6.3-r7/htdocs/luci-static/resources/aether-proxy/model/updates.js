@@ -7,7 +7,7 @@
  * Manual rollback is Xray-only, per docs/10 "r13：取消三包手动回滚".
  * Grouped forward updates follow docs/10 "B17：更新页显示「一起更新」的结果".
  */
-const PACKAGES = [ 'xray-core', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
+const PACKAGES = [ 'aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 /* Keep whitespace out of msgids: po2lmo stores it but _() trims it, so a
    leading space never matches on the device (m10 X3). English needs a space
    before an ASCII parenthesis; the Chinese full-width one needs none. */
@@ -16,11 +16,11 @@ function arch_note(arch) {
 	return (note.startsWith('(') ? ' ' : '') + note;
 }
 function restarts(name) {
-	return name != 'xray-core';
+	return name != 'aether-xray';
 }
 function can_rollback(name, entry) {
 	// Older service packages may not understand the current configuration.
-	if (name != 'xray-core' || !entry)
+	if (name != 'aether-xray' || !entry)
 		return false;
 	return entry.previous != null && entry.installed != null && entry.previous != entry.installed;
 }
@@ -45,7 +45,8 @@ function failure(r) {
 		JOB_LOST: _('Job process exited unexpectedly', 'aether-proxy'),
 		UPDATE_VERIFY_FAILED: _('Verification failed', 'aether-proxy'),
 		NO_SPACE: _('Not enough space', 'aether-proxy'),
-		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy')
+		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy'),
+		BRIDGE_UNAVAILABLE: _('Compatibility update chain unavailable; cannot update to the target version', 'aether-proxy')
 	};
 	const reason = messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy');
 	return r.detail ? _('%s: %s', 'aether-proxy').format(reason, r.detail) : reason;
@@ -108,6 +109,11 @@ return baseclass.extend({
 			_('%s %s', 'aether-proxy').format(text,
 				_('The service will be briefly interrupted.', 'aether-proxy')) : text;
 	},
+	migration_note: function() {
+		return _('This application updates only aether-xray. Existing xray-core packages are not removed '
+			+ 'and are no longer updated by this application. Without aether-xray, /usr/bin/xray is used '
+			+ 'as a fallback; an explicit Xray binary path takes precedence.', 'aether-proxy');
+	},
 	manual_install_note: function() {
 		return _('To install another version: download the three packages for that version from the release page, '
 			+ 'then upload and install them on the system Software page, or use opkg install. '
@@ -128,6 +134,12 @@ return baseclass.extend({
 			can_check: !pending && !busy,
 			rows: PACKAGES.map(name => {
 				const p = updates?.packages?.[name];
+				const bridge = p?.bridge_required === true;
+				const blocked = p?.code == 'BRIDGE_UNAVAILABLE' ||
+					(bridge && (!p.next_step?.version || p.asset == null));
+				const update_label = bridge && p.next_step?.version ?
+					_('Update to %s first (step 1/%s)', 'aether-proxy').format(p.next_step.version, p.steps_remaining) :
+					_('Update now', 'aether-proxy');
 				let text;
 				if (pending)
 					text = loading;
@@ -135,6 +147,10 @@ return baseclass.extend({
 					text = _('Not checked', 'aether-proxy');
 				else if (!p)
 					text = _('Not in channel', 'aether-proxy');
+				else if (blocked)
+					text = failure({ ...p, code: 'BRIDGE_UNAVAILABLE' });
+				else if (bridge)
+					text = update_label + (p.next_step.reason ? ' — ' + p.next_step.reason : '');
 				else if (p.asset == null)
 					text = _('Unavailable on this device', 'aether-proxy') + ' (' + updates.arch + ')';
 				else if (p.installed == null)
@@ -144,15 +160,16 @@ return baseclass.extend({
 				return {
 					name,
 					installed: pending ? loading : (p ? (p.installed ?? _('Not installed', 'aether-proxy')) : '–'),
-					available: pending ? loading : (p?.available ?? '–'),
+					available: pending ? loading : (p?.next_step?.version ?? p?.available ?? '–'),
 					previous: pending ? loading : (p?.previous ?? '–'), status: text,
-					install: !!p && p.asset != null && p.installed == null,
-					update: !!p && p.asset != null && p.installed != null && p.newer === true,
+					install: !!p && !blocked && p.asset != null && p.installed == null,
+					update: !!p && !blocked && p.asset != null && p.installed != null && p.newer === true,
+					bridge_required: bridge, blocked, update_label,
 					rollback: can_rollback(name, p),
-					disabled: pending || !!busy,
+					disabled: pending || !!busy || blocked,
 					rollback_label: _('Roll back to %s', 'aether-proxy').format(p?.previous ?? '–'),
 					confirmation_title: _('Roll back %s', 'aether-proxy').format(name),
-					confirmation: name == 'xray-core' && p ? this.confirmation(name, p.installed, p.previous) : ''
+					confirmation: name == 'aether-xray' && p ? this.confirmation(name, p.installed, p.previous) : ''
 				};
 			})
 		};

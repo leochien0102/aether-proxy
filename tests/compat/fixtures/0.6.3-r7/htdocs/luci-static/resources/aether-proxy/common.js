@@ -2,6 +2,7 @@
 'require baseclass';
 'require rpc';
 'require ui';
+'require uci';
 
 /*
  * Shared helpers for the aether-proxy LuCI pages (docs/10 「公共模块与菜单」).
@@ -50,6 +51,15 @@ function check_script_version() {
 
 check_script_version();
 
+/* uci.load caches rejected promises too. Clear that cache before one retry;
+   leave the second rejection untouched so persistent faults remain visible. */
+function load_config() {
+	return uci.load('aetherproxy').catch(function() {
+		uci.unload('aetherproxy');
+		return uci.load('aetherproxy');
+	});
+}
+
 /* docs/10 「rpcd 插件」: all ubus methods of the aetherproxy object with
    their named parameters, in declaration order. */
 var METHODS = {
@@ -71,6 +81,7 @@ var METHODS = {
 	data_status: [],
 	stats: [],
 	log: [ 'source', 'lines' ],
+	log_clear: [],
 	node_import: [ 'uri' ],
 	node_parse: [ 'uri' ],
 	list_file: [ 'name' ],
@@ -208,6 +219,7 @@ var ap = baseclass.extend({
 	TIMEOUTS: TIMEOUTS,
 
 	call: call,
+	load_config: load_config,
 
 	/* Use elapsed wall time, not tick counts: background tabs can delay timers. */
 	job_progress: function(target, text) {
@@ -239,7 +251,9 @@ var ap = baseclass.extend({
 			};
 
 			ui.showModal(options.title, [
-				E('p', options.text),
+				/* The body may name a node or subscription: never parse it as HTML.
+				 * `?? ''` keeps an absent body from rendering the string "undefined". */
+				E('p', {}, [ options.text ?? '' ]),
 				E('div', { 'class': 'right' }, [
 					E('button', {
 						'type': 'button',
@@ -251,7 +265,7 @@ var ap = baseclass.extend({
 						'type': 'button',
 						'class': 'cbi-button ' + (options.destructive ? 'cbi-button-remove' : 'cbi-button-action'),
 						'click': function() { finish(true); }
-					}, options.ok)
+					}, [ options.ok ])
 				])
 			]);
 		});

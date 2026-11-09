@@ -17,9 +17,11 @@
  */
 return view.extend({
 	load: function() {
-		return uci.load('aetherproxy');
+		return ap.load_config();
 	},
 	run: async function(kind, name, previous) {
+		const bridge = kind == 'update_package' && !previous &&
+			this.status?.updates_available?.packages?.[name]?.bridge_required === true;
 		this.busy = true;
 		let timer;
 		try {
@@ -31,6 +33,18 @@ return view.extend({
 				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);
 			timer.stop();
 			this.summary.textContent = model.job_result(kind, name, job);
+			if (bridge && job.state == 'ok' && job.result?.ok !== false) {
+				// Re-check only: each following step still requires a separate click.
+				// Clear stale actions if the check or subsequent status read fails.
+				this.status = { updates_available: null };
+				timer = ap.job_progress(this.progress, model.job_progress('update_check'));
+				const check = await ap.run_job('update_check', []);
+				timer.stop();
+				this.summary.textContent += ' ' + model.job_result('update_check', null, check) + ' ' +
+					_('Please refresh the page before continuing to the next update step.', 'aether-proxy');
+				if (check.state == 'failed' || check.result?.ok === false)
+					return;
+			}
 			this.status = await ap.call('status');
 		}
 		catch (e) {
@@ -62,8 +76,11 @@ return view.extend({
 					destructive: true
 				}))
 					return;
-				return this.run('update_package', row.name, previous);
-			}) }, label);
+				if (row.disabled)
+					return;
+				// Companion rows must not install the target's page/translation independently.
+				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous);
+			}) }, [ label ]);
 	},
 	show_inventory: function() {
 		const vm = model.table(this.status, this.busy, Date.now() / 1000);
@@ -72,26 +89,27 @@ return view.extend({
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
 		}, _('Check for updates', 'aether-proxy'));
 		const jobButtons = [check];
-		this.inventory.replaceChildren(E('p', {}, vm.error ?? ''), E('table', { class: 'table' }, [
+		this.inventory.replaceChildren(E('p', {}, [ vm.error ?? '' ]), E('table', { class: 'table' }, [
 			E('tr', { class: 'tr table-titles' },
-				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Latest', 'aether-proxy'),
+				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Version', 'aether-proxy'),
 					_('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
 					.map(text => E('th', { class: 'th' }, text))),
 			...vm.rows.map(row => {
 				const actions = [];
 				if (row.install)
-					actions.push(this.package_button(row, _('Install', 'aether-proxy'), false));
-				if (row.update)
-					actions.push(this.package_button(row, _('Update now', 'aether-proxy'), false));
+					actions.push(this.package_button(row, row.bridge_required ? row.update_label : _('Install', 'aether-proxy'), false));
+				if (row.update || row.blocked)
+					actions.push(this.package_button(row, row.update_label, false));
 				if (row.rollback)
 					actions.push(this.package_button(row, row.rollback_label, true));
 				jobButtons.push(...actions);
 				return E('tr', { class: 'tr' }, [
+					/* Version strings come from the signed manifest, not from this page. */
 					...[ row.name, row.installed, row.available, row.previous, row.status ]
-						.map(text => E('td', { class: 'td' }, text)), E('td', { class: 'td' }, actions)
+						.map(text => E('td', { class: 'td' }, [ text ])), E('td', { class: 'td' }, actions)
 				]);
 			})
-		]), E('p', {}, model.manual_install_note()),
+		]), E('p', {}, model.manual_install_note()), E('p', {}, model.migration_note()),
 		E('div', {
 			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
 				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
@@ -122,10 +140,10 @@ return view.extend({
 		option = section.option(form.Flag, 'data_auto', _('Automatically update rule data', 'aether-proxy'));
 		option.default = '1';
 		option = section.option(form.Value, 'data_hour', _('Update hour', 'aether-proxy'));
-		option.datatype = 'range(0,23)';
+		option.validate = form_defaults.integer(0, 23);
 		option.placeholder = '4';
 		option = section.option(form.Value, 'data_minute', _('Update minute', 'aether-proxy'));
-		option.datatype = 'range(0,59)';
+		option.validate = form_defaults.integer(0, 59);
 		option.placeholder = '30';
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
 			_('Leave empty to use the default release channel.', 'aether-proxy'));

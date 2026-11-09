@@ -44,8 +44,9 @@ T11.13 does not change the wire schema to 1.
 T9.39 covers page/RPC shapes, **not dependency closure**. Its backend is already
 new and its stub package manager does not enforce real package dependencies.
 Passing it is not evidence that a complete 0.3.1 device can directly upgrade to
-0.6.3. The historical 0.3.1 snapshot remains a useful interface regression test,
-not a claim that 0.3.1 remains in the current support window.
+0.6.3. Historical 0.3.1 snapshot runs remain in Git history; the active frozen
+client below is the latest formal release, not a claim that 0.3.1 remains in the
+current support window.
 
 Run after `bash tests/host/bootstrap.sh`:
 
@@ -109,6 +110,9 @@ docs/08 "更新接口（固定）" describes the wire shapes this suite pins: su
 `status`/`job start` omit `ok` (the frozen client reads `ok !== false`), and
 `job status` returns the flat job record (settled in the T9.39 review).
 
-Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (after the 0.3.1-r1 release — the
-frozen page now reads grouped results, so the install text expects the
-companions wording and the simulated channel moved one version ahead).
+Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7
+(latest formal client, extracted unchanged from its release tag). The r7 page
+lists aether-xray directly rather than a retired xray-core row. The harness still
+keeps a legacy installed xray-core record and verifies that updates never install
+or alter it. The simulated 0.6.4-r1 channel is test metadata only, not a real
+release, migration bridge, or promise of future compatibility.
