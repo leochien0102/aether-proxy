@@ -26,7 +26,7 @@ init.d / hotplug / daemon ──────────────────
 | `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup [--wait <秒>]` | 幂等清理。`--wait`：锁被占用时每秒重试、最多等这么久（0–120，默认 0 即不等，init 的 `service_stopped` 用 35，04「启停」） | 否 |
 | `status` | 人读格式与 `--json` 都包含 `mode`（2026-10-23，r13 窗口脚本按人读格式读不到）；输出 `state.json`（含 `wan_dns`：已应用的观测值，`status` 不重新查询 ubus，见 04「状态」），并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
-| `components` | 现场查找 Xray、chinadns-ng 并读取版本（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
+| `components` | 现场查找 Xray、DNS 引擎并读取版本（M4-02：JSON 双写 `dns` 与兼容别名 `chinadns-ng`）（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `probe results` | 读取最近的节点检测结果（[07](07-probe.md)） | 否 |
@@ -642,7 +642,14 @@ T10.2、T10.3 在 H28K（主题 `proton2025`，服务未启用）上预览时仓
 4. **「服务未启用」提示**：原文是「打开上方的『启用』」，重排后开关不在提示上方了。→ 改为「服务未启用：打开『启用』开关后会自动启动」。
 5. **组件版本只有 aether-proxy 一行**：`status.components` 由 daemon 在启动时写入 `state.json`，服务没运行就没有。概览页要的是「装了什么」，与服务是否运行无关，所以改为现场查找：
    - **命令行 `aether-proxy components --json`**（只读、不记事件；接受 `--confdir`、`--bin-dir` 测试选项）：
-     `{ "ok": true, "components": { "xray": { "found": true, "path": "/usr/bin/xray", "version": "26.9.30" }, "chinadns-ng": { "found": false, "path": null, "version": null } } }`。
+     `{ "ok": true, "components": { "xray": { "found": true, "path": "/usr/bin/xray", "version": "26.9.30" }, "dns": { "found": false, "path": null, "version": null, "engine": null }, "chinadns-ng": { "found": false, "path": null, "version": null, "engine": null } } }`。
+     M4-02 阶段 1：`dns` 是权威逻辑键，`chinadns-ng` 是兼容别名，两项深度相等；冲突以 `dns` 为准。
+     DNS 项的 `engine` 仅按路径 basename 输出 `aether-dns`、`chinadns-ng` 或 `null`；缺失组件仍 `ok:true`、退出 0。
+     人读输出仅两行：`xray: <version> (<path>)`、`dns: <version> (<path>, engine <engine>)`；
+     未知版本为 `–`，未知 engine 省略 `, engine …`，缺失则 `dns: not found`。
+     `status` 在输出中规范化旧状态组件表，文件字节与 mtime 不变；停止态未带 `components` 时不造字段。
+     阶段 2 才迁移事件与 LuCI 展示；本阶段事件字段仍用 `chinadns-ng`，现有页面继续读别名，
+     概览页仍取现场 `components`，更新页仍取 `status.components`；别名删除条件见 04。
      查找用 `cmd/check.uc` 的 `find_component`（与 `check`、`status` 的 `notices` 相同；配置中的 `xray_bin`、`chinadns_bin` 作为 `configured`，读不到配置时按未配置处理）；
      版本按 daemon 已有的读法（`xray version`、`chinadns-ng -V`，取第一行第二个字段，`component_version.parse_version`），每个组件超时 3 秒、`quiet`，失败或超时版本为 `null`。
      把 daemon 中的 `read_component_version` 挪到可共用的位置，不要复制一份。

@@ -5,6 +5,7 @@
 // not service failures. This must work even before the daemon has ever started.
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
+import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as check from 'aetherproxy.cmd.check';
 import * as component_version from 'aetherproxy.component_version';
@@ -42,7 +43,13 @@ export function run(args) {
 		let version = found == null ? null : read_component_version(found.path,
 			name == C.XRAY_COMPONENT ? 'version' : '-V', C.COMPONENTS_TIMEOUT_SECS);
 		components[name] = { found: found != null, path: found?.path ?? null, version };
-		push(lines, `${name}: ${found == null ? 'not found' : `${version ?? '–'} (${found.path})`}`);
+	}
+	components = component_id.with_aliases(components);
+	// Render logical components only; the legacy alias is a JSON compatibility detail.
+	for (let name in [ C.XRAY_COMPONENT, C.DNS_COMPONENT ]) {
+		let entry = components[name];
+		let engine = entry.engine == null ? '' : `, engine ${entry.engine}`;
+		push(lines, `${name}: ${entry.found ? `${entry.version ?? '–'} (${entry.path}${engine})` : 'not found'}`);
 	}
 	cursor.unload(C.UCI_PACKAGE);
 	return pipeline.finish(parsed.opts, { ok: true, components }, 0, join('\n', lines));

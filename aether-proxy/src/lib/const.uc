@@ -99,6 +99,8 @@ export const ARTIFACT_FILES = {
 	xray: 'xray.json'
 };
 export const XRAY_COMPONENT = 'xray';
+// Legacy logical id / compatibility alias: internal discovery, events and requests still use it.
+// Reassess migration in phase 2 (M4-02).
 export const CHINADNS_COMPONENT = 'chinadns-ng';
 export const PRECHECK_NFT_FILE = 'precheck.nft';
 
@@ -359,3 +361,6 @@ export const SOCKET_DIAG = {
 	compatible_errors: [ 'Operation not permitted', 'Permission denied', 'Protocol not supported',
 		'Operation not supported', 'Not supported', 'Address family not supported by protocol' ]
 };
+
+// M4-02: authoritative DNS logical id, independent of the physical engine.
+export const DNS_COMPONENT = 'dns';

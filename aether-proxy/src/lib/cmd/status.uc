@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
+import * as component_id from 'aetherproxy.component_id';
 import * as log from 'aetherproxy.log';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as config from 'aetherproxy.config';
@@ -194,6 +195,8 @@ export function run(args) {
 			2, pipeline.describe_errors({ code: 'CONFIG_INVALID', detail: 'configuration invalid', errors: cfg.errors }));
 
 	// Old or stopped state files predate the runtime-only fields (docs/02).
+	if (index(keys(current), 'components') >= 0)
+		current.components = component_id.with_aliases(current.components);
 	current.degraded_mode ??= null;
 	current.degraded_since ??= null;
 	current.probe = probe_summary(run_dir);

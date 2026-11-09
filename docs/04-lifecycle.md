@@ -19,11 +19,19 @@
 `last_probe`（`ok`、`latency_ms`、`at`）、`last_error`（事件码）、`components`（各组件的版本与路径）、`render_hash`（各产物的哈希）、
 `wan_dns`（本次成功应用的渲染所用的运营商下发 IPv4 DNS，按接口名排序、保持接口内顺序并去重；`china_dns` 含 `wan` 但取不到时为 `[]`，此时渲染用 `223.5.5.5`；不含 `wan` 时为 `null`。启动和重载成功应用后更新，产物没变也更新；失败的重载不覆盖原值。2026-10-22 T9.23）。
 
-`components` 的版本（2026-10-16 定，T8.9a）：`{ "xray": { "path", "version" }, "chinadns-ng": { "path", "version" } }`。daemon 在启动流程的前置检查找到组件后，
+`components` 的版本（2026-10-16 定，T8.9a）：`{ "xray": { "path", "version" }, "dns": { "path", "version", "engine" }, "chinadns-ng": { "path", "version", "engine" } }`。daemon 在启动流程的前置检查找到组件后，
 分别执行 `<xray> version` 与 `<chinadns-ng> -V`（各 5 秒超时），取输出**第一行的第二个字段**作为版本（实测 `Xray 26.9.30 (Xray, Penetrates Everything.) …`、
 `ChinaDNS-NG 2025.06.20 be347b5 | …`，[08](08-updates.md)「S7 探针结论」）。取不到（命令失败、超时、输出不符合格式）→ `version` 为 `null`，**不影响启动**，也不记事件。
 收到 SIGUSR2 重启 Xray 时（`xray-core` 软件包更新后，二进制可能换了）重新取一次 Xray 的版本并写回 `state.json`。版本解析是纯函数。
 **重载也要保留版本**（2026-10-20，backlog B13）：重载写回 `state.json` 时，组件路径没变就沿用原来的 `version`；路径变了（例如改了 `xray_bin`）就按上面的方法重新取。原来重载只写 `path`，第一次重载后版本就没了。
+
+M4-02 阶段 1：`dns` 是权威逻辑键，`chinadns-ng` 是兼容别名，两项深度相等；
+冲突时以 `dns` 为准。`engine` 仅由 `path` 的 basename 判定为 `aether-dns`、`chinadns-ng` 或 `null`，
+不读取文件、不执行命令、不看版本。daemon 启动与重载发布组件元数据时双写，但仍只查询两个物理组件一次。
+`status` 对旧状态（只有任一 DNS 键）在输出中补齐另一键及 `engine`，不写回文件、不改变 mtime；
+停止态没有 `components` 时不补空对象。`xray` 及 DNS 项的其它元数据原样保留。
+阶段 2 才迁移事件与 LuCI 展示；`COMPONENT_MISSING` / `COMPONENT_TOO_OLD` 的 `component`
+本阶段仍为 `chinadns-ng`。别名不是永久契约：只有 LuCI 与事件迁移完成、且经过至少一个正式版本后才删除旧键，本卡不删。
 
 ## 启动（`aether-proxy daemon [--boot]` 的前半段）
 
