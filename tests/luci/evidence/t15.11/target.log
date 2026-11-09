@@ -1,0 +1,310 @@
+TAP version 13
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED single conflict
+ok 1 - T10.60 scenario 1: PRECHECK_FAILED single conflict
+  ---
+  duration_ms: 2.639582
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED multiple conflicts
+ok 2 - T10.60 scenario 1: PRECHECK_FAILED multiple conflicts
+  ---
+  duration_ms: 0.235827
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED mixed missing requirements
+ok 3 - T10.60 scenario 1: PRECHECK_FAILED mixed missing requirements
+  ---
+  duration_ms: 0.371236
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED no conflicts
+ok 4 - T10.60 scenario 1: PRECHECK_FAILED no conflicts
+  ---
+  duration_ms: 0.155228
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED only check diagnostic (review)
+ok 5 - T10.60 scenario 1: PRECHECK_FAILED only check diagnostic (review)
+  ---
+  duration_ms: 0.256377
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED legacy check diagnostic
+ok 6 - T10.60 scenario 1: PRECHECK_FAILED legacy check diagnostic
+  ---
+  duration_ms: 0.242277
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED mixed check diagnostic
+ok 7 - T10.60 scenario 1: PRECHECK_FAILED mixed check diagnostic
+  ---
+  duration_ms: 0.145398
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED empty list
+ok 8 - T10.60 scenario 1: PRECHECK_FAILED empty list
+  ---
+  duration_ms: 0.191718
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED scalar legacy missing
+ok 9 - T10.60 scenario 1: PRECHECK_FAILED scalar legacy missing
+  ---
+  duration_ms: 0.213338
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED absent missing
+ok 10 - T10.60 scenario 1: PRECHECK_FAILED absent missing
+  ---
+  duration_ms: 0.284297
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 1: PRECHECK_FAILED literal replacement characters
+ok 11 - T10.60 scenario 1: PRECHECK_FAILED literal replacement characters
+  ---
+  duration_ms: 0.188408
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 2: historical ss_spec resolves in logs and overview startup reason
+ok 12 - T10.60 scenario 2: historical ss_spec resolves in logs and overview startup reason
+  ---
+  duration_ms: 0.755052
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 2: historical ss_spec_mangle resolves in logs and overview startup reason
+ok 13 - T10.60 scenario 2: historical ss_spec_mangle resolves in logs and overview startup reason
+  ---
+  duration_ms: 0.104459
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates lock and reload/monitor prefixes with raw hover
+ok 14 - T10.60 scenario 3: START_FAILED translates lock and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 1.95712
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates config and reload/monitor prefixes with raw hover
+ok 15 - T10.60 scenario 3: START_FAILED translates config and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.259737
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates precheck and reload/monitor prefixes with raw hover
+ok 16 - T10.60 scenario 3: START_FAILED translates precheck and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.306787
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates component_version and reload/monitor prefixes with raw hover
+ok 17 - T10.60 scenario 3: START_FAILED translates component_version and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.161319
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates signal and reload/monitor prefixes with raw hover
+ok 18 - T10.60 scenario 3: START_FAILED translates signal and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.155339
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates wait_network and reload/monitor prefixes with raw hover
+ok 19 - T10.60 scenario 3: START_FAILED translates wait_network and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.192198
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates render and reload/monitor prefixes with raw hover
+ok 20 - T10.60 scenario 3: START_FAILED translates render and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.122399
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates cleanup and reload/monitor prefixes with raw hover
+ok 21 - T10.60 scenario 3: START_FAILED translates cleanup and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.169009
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates publish and reload/monitor prefixes with raw hover
+ok 22 - T10.60 scenario 3: START_FAILED translates publish and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.114729
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates hash and reload/monitor prefixes with raw hover
+ok 23 - T10.60 scenario 3: START_FAILED translates hash and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.196862
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates bootstrap and reload/monitor prefixes with raw hover
+ok 24 - T10.60 scenario 3: START_FAILED translates bootstrap and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.133619
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates bootstrap_stop and reload/monitor prefixes with raw hover
+ok 25 - T10.60 scenario 3: START_FAILED translates bootstrap_stop and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.165418
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates chinadns_listen and reload/monitor prefixes with raw hover
+ok 26 - T10.60 scenario 3: START_FAILED translates chinadns_listen and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.120968
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates restart_intent_clear and reload/monitor prefixes with raw hover
+ok 27 - T10.60 scenario 3: START_FAILED translates restart_intent_clear and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.231398
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates dnsmasq_install and reload/monitor prefixes with raw hover
+ok 28 - T10.60 scenario 3: START_FAILED translates dnsmasq_install and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.176038
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates write_boot_list and reload/monitor prefixes with raw hover
+ok 29 - T10.60 scenario 3: START_FAILED translates write_boot_list and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.893406
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates xray_render and reload/monitor prefixes with raw hover
+ok 30 - T10.60 scenario 3: START_FAILED translates xray_render and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.120879
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates xray_test and reload/monitor prefixes with raw hover
+ok 31 - T10.60 scenario 3: START_FAILED translates xray_test and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.154188
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates xray_start and reload/monitor prefixes with raw hover
+ok 32 - T10.60 scenario 3: START_FAILED translates xray_start and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.097869
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates xray_listen and reload/monitor prefixes with raw hover
+ok 33 - T10.60 scenario 3: START_FAILED translates xray_listen and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.081429
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates sets_load and reload/monitor prefixes with raw hover
+ok 34 - T10.60 scenario 3: START_FAILED translates sets_load and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.113429
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates nft_render and reload/monitor prefixes with raw hover
+ok 35 - T10.60 scenario 3: START_FAILED translates nft_render and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.124168
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates nft_load and reload/monitor prefixes with raw hover
+ok 36 - T10.60 scenario 3: START_FAILED translates nft_load and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.088329
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates route_add and reload/monitor prefixes with raw hover
+ok 37 - T10.60 scenario 3: START_FAILED translates route_add and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.075849
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates state and reload/monitor prefixes with raw hover
+ok 38 - T10.60 scenario 3: START_FAILED translates state and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.075179
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates lock_release and reload/monitor prefixes with raw hover
+ok 39 - T10.60 scenario 3: START_FAILED translates lock_release and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.072249
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates uloop_init and reload/monitor prefixes with raw hover
+ok 40 - T10.60 scenario 3: START_FAILED translates uloop_init and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.072449
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates subscription_schedule and reload/monitor prefixes with raw hover
+ok 41 - T10.60 scenario 3: START_FAILED translates subscription_schedule and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.071619
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates sigusr2 and reload/monitor prefixes with raw hover
+ok 42 - T10.60 scenario 3: START_FAILED translates sigusr2 and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.154343
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates reload_stop and reload/monitor prefixes with raw hover
+ok 43 - T10.60 scenario 3: START_FAILED translates reload_stop and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.111079
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates stop and reload/monitor prefixes with raw hover
+ok 44 - T10.60 scenario 3: START_FAILED translates stop and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.235458
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: START_FAILED translates chinadns_start and reload/monitor prefixes with raw hover
+ok 45 - T10.60 scenario 3: START_FAILED translates chinadns_start and reload/monitor prefixes with raw hover
+  ---
+  duration_ms: 0.370166
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: unknown steps and ordinary detail remain byte-identical
+ok 46 - T10.60 scenario 3: unknown steps and ordinary detail remain byte-identical
+  ---
+  duration_ms: 0.523411
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: detail formats conflict lists, missing entries, checks and unknown plugin names
+ok 47 - T10.60 scenario 3: detail formats conflict lists, missing entries, checks and unknown plugin names
+  ---
+  duration_ms: 0.144848
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 3: rendered conflict diagnostics are text nodes and hover retains original args
+ok 48 - T10.60 scenario 3: rendered conflict diagnostics are text nodes and hover retains original args
+  ---
+  duration_ms: 3.392283
+  type: 'test'
+  ...
+# Subtest: T10.60 scenario 4: every literal daemon failure step has a Chinese translation
+ok 49 - T10.60 scenario 4: every literal daemon failure step has a Chinese translation
+  ---
+  duration_ms: 2.753461
+  type: 'test'
+  ...
+# Subtest: T10.60 scenarios 1-3: English text and translated placeholder composition stay coherent
+ok 50 - T10.60 scenarios 1-3: English text and translated placeholder composition stay coherent
+  ---
+  duration_ms: 1.522873
+  type: 'test'
+  ...
+1..50
+# tests 50
+# suites 0
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 111.148813

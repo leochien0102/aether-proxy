@@ -1,0 +1,75 @@
+✔ T10.60 scenario 1: PRECHECK_FAILED single conflict (4.006446ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED multiple conflicts (0.184648ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED mixed missing requirements (0.324876ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED no conflicts (0.155518ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED only check diagnostic (review) (0.395166ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED legacy check diagnostic (0.217337ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED mixed check diagnostic (0.176618ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED empty list (0.194408ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED scalar legacy missing (0.296457ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED absent missing (0.398996ms)
+✔ T10.60 scenario 1: PRECHECK_FAILED literal replacement characters (0.212298ms)
+✔ T10.60 scenario 2: historical ss_spec resolves in logs and overview startup reason (1.066499ms)
+✔ T10.60 scenario 2: historical ss_spec_mangle resolves in logs and overview startup reason (0.170788ms)
+✔ T10.60 scenario 3: START_FAILED translates lock and reload/monitor prefixes with raw hover (0.420946ms)
+✔ T10.60 scenario 3: START_FAILED translates config and reload/monitor prefixes with raw hover (0.152989ms)
+✔ T10.60 scenario 3: START_FAILED translates precheck and reload/monitor prefixes with raw hover (0.224737ms)
+✔ T10.60 scenario 3: START_FAILED translates component_version and reload/monitor prefixes with raw hover (0.135088ms)
+✔ T10.60 scenario 3: START_FAILED translates signal and reload/monitor prefixes with raw hover (0.195398ms)
+✔ T10.60 scenario 3: START_FAILED translates wait_network and reload/monitor prefixes with raw hover (0.232727ms)
+✔ T10.60 scenario 3: START_FAILED translates render and reload/monitor prefixes with raw hover (0.174119ms)
+✔ T10.60 scenario 3: START_FAILED translates cleanup and reload/monitor prefixes with raw hover (0.114659ms)
+✔ T10.60 scenario 3: START_FAILED translates publish and reload/monitor prefixes with raw hover (0.136898ms)
+✔ T10.60 scenario 3: START_FAILED translates hash and reload/monitor prefixes with raw hover (0.105719ms)
+✔ T10.60 scenario 3: START_FAILED translates chinadns_start and reload/monitor prefixes with raw hover (0.095379ms)
+✔ T10.60 scenario 3: START_FAILED translates dnsmasq_install and reload/monitor prefixes with raw hover (0.126938ms)
+✔ T10.60 scenario 3: START_FAILED translates write_boot_list and reload/monitor prefixes with raw hover (0.099909ms)
+✔ T10.60 scenario 3: START_FAILED translates xray_render and reload/monitor prefixes with raw hover (0.159168ms)
+✔ T10.60 scenario 3: START_FAILED translates xray_test and reload/monitor prefixes with raw hover (0.101009ms)
+✔ T10.60 scenario 3: START_FAILED translates xray_start and reload/monitor prefixes with raw hover (0.089649ms)
+✔ T10.60 scenario 3: START_FAILED translates xray_listen and reload/monitor prefixes with raw hover (0.193668ms)
+✔ T10.60 scenario 3: START_FAILED translates sets_load and reload/monitor prefixes with raw hover (0.174088ms)
+✔ T10.60 scenario 3: START_FAILED translates nft_render and reload/monitor prefixes with raw hover (0.745082ms)
+✔ T10.60 scenario 3: START_FAILED translates nft_load and reload/monitor prefixes with raw hover (0.092239ms)
+✔ T10.60 scenario 3: START_FAILED translates route_add and reload/monitor prefixes with raw hover (0.112478ms)
+✔ T10.60 scenario 3: START_FAILED translates state and reload/monitor prefixes with raw hover (0.134759ms)
+✔ T10.60 scenario 3: START_FAILED translates lock_release and reload/monitor prefixes with raw hover (0.116119ms)
+✔ T10.60 scenario 3: START_FAILED translates uloop_init and reload/monitor prefixes with raw hover (0.079719ms)
+✔ T10.60 scenario 3: START_FAILED translates subscription_schedule and reload/monitor prefixes with raw hover (0.069939ms)
+✔ T10.60 scenario 3: START_FAILED translates sigusr2 and reload/monitor prefixes with raw hover (0.070099ms)
+✔ T10.60 scenario 3: START_FAILED translates reload_stop and reload/monitor prefixes with raw hover (0.066779ms)
+✔ T10.60 scenario 3: START_FAILED translates stop and reload/monitor prefixes with raw hover (0.063609ms)
+✔ T10.60 scenario 3: unknown steps and ordinary detail remain byte-identical (0.244968ms)
+✔ T10.60 scenario 3: detail formats conflict lists, missing entries, checks and unknown plugin names (0.162179ms)
+✔ T10.60 scenario 3: rendered conflict diagnostics are text nodes and hover retains original args (4.011492ms)
+✖ T10.60 scenario 4: every literal daemon failure step has a Chinese translation (1.006659ms)
+✔ T10.60 scenarios 1-3: English text and translated placeholder composition stay coherent (1.877829ms)
+ℹ tests 46
+ℹ suites 0
+ℹ pass 45
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 122.73992
+
+✖ failing tests:
+
+test at tests/luci/logs-r17.test.js:167:1
+✖ T10.60 scenario 4: every literal daemon failure step has a Chinese translation (1.006659ms)
+  AssertionError [ERR_ASSERTION]: missing translation: bootstrap_stop
+      at checkStepTranslations (/workspace/openwrt/aether-proxy-wt/T15.11/tests/luci/logs-r17.test.js:161:10)
+      at TestContext.<anonymous> (/workspace/openwrt/aether-proxy-wt/T15.11/tests/luci/logs-r17.test.js:169:2)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: '启动失败（bootstrap_stop）：test',
+    expected: /启动失败（bootstrap_stop）/,
+    operator: 'doesNotMatch',
+    diff: 'simple'
+  }

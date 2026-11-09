@@ -205,6 +205,22 @@ msgid "Hash configuration"
 msgstr "计算配置哈希"
 
 msgctxt "aether-proxy"
+msgid "Bootstrap node resolution"
+msgstr "引导节点解析"
+
+msgctxt "aether-proxy"
+msgid "Stop private bootstrap DNS"
+msgstr "停止私有引导 DNS"
+
+msgctxt "aether-proxy"
+msgid "Wait for formal DNS listener"
+msgstr "等待正式 DNS 监听"
+
+msgctxt "aether-proxy"
+msgid "Clear restart handoff intent"
+msgstr "清除 restart 交接意图"
+
+msgctxt "aether-proxy"
 msgid "Start chinadns-ng"
 msgstr "启动 chinadns-ng"
 
