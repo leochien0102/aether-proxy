@@ -161,8 +161,9 @@ function check_staged(opts, res, staging) {
 	// Missing/old components are diagnostics, not check failures (docs/10, T9.44).
 	// Leave inventory fields unchanged; only startup treats a known-old version as fatal.
 	for (let name, c in pc.components) {
+		let component = name == C.CHINADNS_COMPONENT ? C.DNS_COMPONENT : name;
 		if (!c.found) {
-			push(result.warnings, { code: 'COMPONENT_MISSING', args: { component: name } });
+			push(result.warnings, { code: 'COMPONENT_MISSING', args: { component } });
 			continue;
 		}
 		// cmd/components imports this module for discovery, so do not import it back here.
@@ -172,7 +173,7 @@ function check_staged(opts, res, staging) {
 		let min = name == C.XRAY_COMPONENT ? C.XRAY_MIN_VERSION : C.CHINADNS_MIN_VERSION;
 		let order = component_version.version_cmp(version, min);
 		if (order != null && order < 0)
-			push(result.warnings, { code: 'COMPONENT_TOO_OLD', args: { component: name, version, min } });
+			push(result.warnings, { code: 'COMPONENT_TOO_OLD', args: { component, version, min } });
 	}
 
 	let validation = {};

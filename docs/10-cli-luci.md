@@ -319,7 +319,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 
 | code | 条件 | args |
 |---|---|---|
-| `COMPONENT_MISSING` | `xray` 或 `chinadns-ng` 按 01「组件二进制的查找顺序」找不到（与 `check` 用同一个查找函数） | `component` |
+| `COMPONENT_MISSING` | `xray` 或 DNS 引擎（id `dns`）按 01「组件二进制的查找顺序」找不到（与 `check` 用同一个查找函数） | `component` |
 | `UPDATE_AVAILABLE` | `updates.json` 中某个包 `newer == true`；`aether-xray` 在 `update.xray_auto == 'off'` 时不提示 | `package`、`available` |
 | `IPV6_PRESENT` | `main.lan_ifaces` 中某个接口在 `/proc/net/if_inet6` 有全局地址（scope 字段为 `00`） | `iface` |
 | `DNSMASQ_EXTRA_SERVERS` | dnsmasq 生成的配置与 confdir 中（除自己的片段外）存在 `server=` 行——与启动时 `apply` 的检测相同，把检测部分抽成不记事件的共用函数 | `servers`（数组） |
@@ -494,7 +494,11 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - `chinadns-ng`：保留「不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载
     `chinadns-ng` 包（本机架构 <arch>）手工安装。」；没有 `updates_available` 时省略架构部分。
   - 未知：无说明。
-  概览页 `COMPONENT_MISSING` 的 chinadns-ng 下载引导与日志页文案不变（事件迁移属阶段 2b）。
+  M4-02b2：概览页 `COMPONENT_MISSING` 的组件名与日志页共用 `model/conflicts.js` 导出的映射：
+  `dns` 与历史 `chinadns-ng` 均显示「DNS 引擎」（复用 msgid `DNS engine`），
+  `xray` 与未知 id 原样显示。两种 DNS id 都追加 chinadns-ng 包下载引导。
+  文案参数来自 `status.notices[].args.component`，不按位置或引擎猜测；日志页两类组件事件同样映射
+  `{component}`，`PRECHECK_FAILED` 的 `component:<id>` 去前缀后映射，仍归入「缺少」而非冲突/检查。
 - **「检查更新」按钮** → `ap.run_job('update_check', [])`，结束后重新取 `status`。
 - **作业期间**所有安装、更新、回滚、检查按钮都不可用（共用一把更新锁，[08](08-updates.md)「调度」）。
 - **作业结果的文字**（模型计算）：
@@ -657,7 +661,8 @@ T10.2、T10.3 在 H28K（主题 `proton2025`，服务未启用）上预览时仓
      人读输出仅两行：`xray: <version> (<path>)`、`dns: <version> (<path>, engine <engine>)`；
      未知版本为 `–`，未知 engine 省略 `, engine …`，缺失则 `dns: not found`。
      `status` 在输出中规范化旧状态组件表，文件字节与 mtime 不变；停止态未带 `components` 时不造字段。
-     M4-02b 阶段 2a 已迁移 LuCI 展示；事件字段仍用 `chinadns-ng`，留待阶段 2b，
+     M4-02b 阶段 2a 已迁移 LuCI 展示；M4-02b2 阶段 2b 已将 DNS 事件、check warnings
+     与 status notices 的 `component` 迁为 `dns`，历史 `chinadns-ng` 仍兼容显示；
      概览页仍取现场 `components`，更新页仍取 `status.components`；别名删除条件见 04。
      查找用 `cmd/check.uc` 的 `find_component`（与 `check`、`status` 的 `notices` 相同；配置中的 `xray_bin`、`chinadns_bin` 作为 `configured`，读不到配置时按未配置处理）；
      版本按 daemon 已有的读法（`xray version`、`chinadns-ng -V`，取第一行第二个字段，`component_version.parse_version`），每个组件超时 3 秒、`quiet`，失败或超时版本为 `null`。

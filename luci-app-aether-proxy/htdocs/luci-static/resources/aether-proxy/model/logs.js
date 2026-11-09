@@ -211,6 +211,8 @@ function message(event, names) {
 	if (!Object.prototype.hasOwnProperty.call(TEMPLATES, event.code))
 		return event.code + ' ' + JSON.stringify(args);
 	return event_template(event.code, args, names).replace(/\{(\w+)\}/g, (match, key) => {
+		if (['COMPONENT_MISSING', 'COMPONENT_TOO_OLD'].includes(event.code) && key === 'component')
+			return conflicts.component_name(args[key] ?? '?');
 		if (event.code === 'PRECHECK_FAILED' && key === 'missing')
 			return precheck_missing(args[key]);
 		if (event.code === 'START_FAILED' && key === 'step')

@@ -72,7 +72,7 @@ function component_notices(snapshot, opts) {
 
 	for (let name, key in { [C.XRAY_COMPONENT]: 'xray_bin', [C.CHINADNS_COMPONENT]: 'chinadns_bin' })
 		if (check.find_component(name, snapshot.main[key], lookup) == null)
-			push(notices, { code: 'COMPONENT_MISSING', args: { component: name } });
+			push(notices, { code: 'COMPONENT_MISSING', args: { component: name == C.CHINADNS_COMPONENT ? C.DNS_COMPONENT : name } });
 
 	return notices;
 }

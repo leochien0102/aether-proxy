@@ -530,8 +530,10 @@ function start_sequence(ctx, opts, signal_pending) {
 	let failed_pre = filter(pre.items, item => !item.ok);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
 		if (!pre.components[name]?.found) {
-			log.event('error', 'COMPONENT_MISSING', { component: name });
-			push(failed_pre, { item: `component:${name}`, ok: false, detail: `${name} missing` });
+			// Keep discovery keys internal; public diagnostics use the logical DNS id (M4-02b2).
+			let component = name == C.CHINADNS_COMPONENT ? C.DNS_COMPONENT : name;
+			log.event('error', 'COMPONENT_MISSING', { component });
+			push(failed_pre, { item: `component:${component}`, ok: false, detail: `${component} missing` });
 		}
 	}
 	record_step(ctx, 'precheck', step_started);
@@ -572,7 +574,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		let version = components[name].version;
 		let order = component_version.version_cmp(version, min);
 		if (order != null && order < 0)
-			push(too_old, { component: name, version, min });
+			push(too_old, { component: name == C.CHINADNS_COMPONENT ? C.DNS_COMPONENT : name, version, min });
 	}
 	if (length(too_old)) {
 		locked.close();

@@ -228,7 +228,7 @@ function notice_text(n) {
 	switch (n.code) {
 		case 'COMPONENT_MISSING':
 			return sentences([ fmt(_('The component %s is missing; install it before starting the service.', 'aether-proxy'),
-				args.component ?? '?'), ...(args.component == 'chinadns-ng' ? [
+				conflicts.component_name(args.component ?? '?')), ...(['dns', 'chinadns-ng'].includes(args.component) ? [
 				_('Or download the chinadns-ng package from the release page and install it manually.', 'aether-proxy')
 			] : []) ]);
 

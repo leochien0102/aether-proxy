@@ -146,6 +146,11 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `CMD_RUN` | debug | `cmd`、`rc`、`ms`（每次执行外部命令后记录，只在 debug 等级输出；`cmd`/stderr 中的 URL 去掉 userinfo 与 query） |
 | `FS_FAILED` | error | `op`（open/read/parse/write/rename/unlink/mkdir/stat/list，以及 `reload-config` 等说明具体步骤的值）、`path`、`detail`（调用方在 `sys.write_atomic` 等返回失败时记录） |
 
+M4-02b2：`COMPONENT_MISSING` / `COMPONENT_TOO_OLD` 的 `component` 现值为 `xray` 或 `dns`；历史记录仍可能是
+`chinadns-ng`，读取方将 `dns` 与 `chinadns-ng` 都显示为「DNS 引擎」，不回写历史文件。
+`PRECHECK_FAILED.missing` 的新 DNS 项为 `component:dns`（旧项 `component:chinadns-ng` 仍可读）。
+事件码、级别及版本闸门不变，DNS 的 `min` 仍为 `2025.08.09`，不新增 `engine` 事件字段。
+
 新增事件码时同步修改本表、LuCI 的翻译模板和 po 文件。
 
 ## logd 容量

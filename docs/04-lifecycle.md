@@ -30,8 +30,10 @@ M4-02 阶段 1：`dns` 是权威逻辑键，`chinadns-ng` 是兼容别名，两�
 不读取文件、不执行命令、不看版本。daemon 启动与重载发布组件元数据时双写，但仍只查询两个物理组件一次。
 `status` 对旧状态（只有任一 DNS 键）在输出中补齐另一键及 `engine`，不写回文件、不改变 mtime；
 停止态没有 `components` 时不补空对象。`xray` 及 DNS 项的其它元数据原样保留。
-阶段 2 才迁移事件与 LuCI 展示；`COMPONENT_MISSING` / `COMPONENT_TOO_OLD` 的 `component`
-本阶段仍为 `chinadns-ng`。别名不是永久契约：只有 LuCI 与事件迁移完成、且经过至少一个正式版本后才删除旧键，本卡不删。
+M4-02b 阶段 2a 已迁移 LuCI 展示，M4-02b2 阶段 2b 已迁移事件与通知：
+`COMPONENT_MISSING` / `COMPONENT_TOO_OLD` 的 DNS `component` 为 `dns`，
+precheck 的 item/detail 为 `component:dns` / `dns missing`。历史记录不回写，读取方兼容旧 id `chinadns-ng`。
+别名不是永久契约：只有 LuCI 与事件迁移完成、且经过至少一个正式版本后才删除旧键，本卡不删。
 
 ## 启动（`aether-proxy daemon [--boot]` 的前半段）
 
