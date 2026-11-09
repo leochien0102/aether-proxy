@@ -1,0 +1,9 @@
+PASS  reverse control hook-masked: exit=1, exact assertions:
+  FAIL  I2 intent cleanup=0: external stop rc
+  FAIL  I2 mark-create cleanup=0: external stop rc
+PASS  reverse control no-stop-term-mask: exit=1, exact assertions:
+  FAIL  I5 enabled=0 cleanup=0: TERM ignored during stop (resumed trace)
+  FAIL  I5 enabled=1 cleanup=37: TERM ignored during stop (resumed trace)
+PASS  reverse control no-term-restore: exit=1, exact assertions:
+  FAIL  I5 enabled=0 cleanup=0: default TERM restored at start
+  FAIL  I5 enabled=1 cleanup=37: default TERM restored at returned
