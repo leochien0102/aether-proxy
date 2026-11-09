@@ -180,16 +180,32 @@ return baseclass.extend({
 	components: function(status) {
 		const pending = status === undefined;
 		const loading = _('Reading…', 'aether-proxy');
-		return [ 'xray', 'chinadns-ng' ].map(name => ({
-			name, version: pending ? loading : (status?.components?.[name]?.version ?? _('Unknown', 'aether-proxy')),
-			path: pending ? loading : (status?.components?.[name]?.path ?? '–'),
-			note: !pending && name == 'chinadns-ng' ?
-				_('Not automatically updated through the release channel: '
-					+ 'install or update from feeds on the Software page, '
-					+ 'or download the chinadns-ng package%s from the release page and install it manually.',
-					'aether-proxy')
-					.format(status?.updates_available ? arch_note(status.updates_available.arch) : '') : ''
-		}));
+		const entries = status?.components;
+		// Prefer the logical id; the alias only supports backends predating M4-02.
+		const dns = Object.prototype.hasOwnProperty.call(entries ?? {}, 'dns')
+			? entries.dns : entries?.['chinadns-ng'];
+		// An explicit null is unknown, not permission to guess from the path.
+		const engine = dns?.engine === undefined && typeof dns?.path == 'string'
+			? dns.path.replace(/^.*\//, '') : dns?.engine;
+		let note = '';
+		if (!pending && engine == 'aether-dns')
+			note = _('Provided by the aether-dns package: this application\'s release channel does not update it.',
+				'aether-proxy');
+		else if (!pending && engine == 'chinadns-ng')
+			note = _('Not automatically updated through the release channel: '
+				+ 'install or update from feeds on the Software page, '
+				+ 'or download the chinadns-ng package%s from the release page and install it manually.',
+				'aether-proxy')
+				.format(status?.updates_available ? arch_note(status.updates_available.arch) : '');
+		return [ 'xray', 'dns' ].map(id => {
+			const c = id == 'dns' ? dns : entries?.[id];
+			return {
+				name: id == 'dns' ? _('DNS engine', 'aether-proxy') : id,
+				version: pending ? loading : (c?.version ?? _('Unknown', 'aether-proxy')),
+				path: pending ? loading : (c?.path ?? '–'),
+				note: id == 'dns' ? note : ''
+			};
+		});
 	},
 	job_result: function(kind, name, job) {
 		// Job transport errors have no result; completed CLI failures do.

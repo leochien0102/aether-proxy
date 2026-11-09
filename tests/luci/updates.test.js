@@ -132,7 +132,7 @@ test('T8.9b scenario 4: check and install result messages cover success, rollbac
 });
 test('T8.9b scenario 5: running versions, paths and optional architecture note', () => {
 	const s = { ...status(), components: { xray: { version: null, path: '/xray' },
-		'chinadns-ng': { version: 'DNSVER', path: '/dns' } } };
+		'chinadns-ng': { version: 'DNSVER', path: '/dns', engine: 'chinadns-ng' } } };
 	const rows = model.components(s);
 	assert.equal(rows[0].version, '未知');
 	assert.equal(rows[0].path, '/xray');
@@ -490,7 +490,7 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	assert.equal(table.children.length, 5);
 	for (const row of table.children.slice(1))
 		assert.deepEqual(row.children.slice(1, 5).map(text), Array(4).fill('读取中…'));
-	for (const name of [ 'xray', 'chinadns-ng' ])
+	for (const name of [ 'xray', 'DNS 引擎' ])
 		assert.ok(h.page.inventory.children.some(n => text(n) == name + ': 读取中… — 读取中… '));
 	assert.equal(buttons(h.page.inventory).length, 1, 'no package actions before status');
 	assert.equal(text(buttons(h.page.inventory)[0]), '检查更新');
@@ -926,5 +926,52 @@ test('T10.46 scenario 5: pre-install and transport failures retain causes withou
 			assert.ok(result.endsWith('：WHY'));
 			assert.doesNotMatch(result, /两个页面包没有改动|后端已回滚|已回滚到/);
 		}
+	}
+});
+
+// Exact translated notes also guard against applying an architecture to the wrong package.
+const AETHER_DNS_NOTE = '由 aether-dns 包提供：本应用的发布通道不更新它。';
+const CHINADNS_NOTE = '不经发布通道自动更新：请在软件包页面从软件源安装或更新，'
+	+ '或从发布页下载 chinadns-ng 包（本机架构 test_arch）手工安装。';
+
+test('M4-02b S1 S3: authoritative dns selects package-specific notes and preserves xray', () => {
+	for (const [engine, note] of [ [ 'aether-dns', AETHER_DNS_NOTE ], [ 'chinadns-ng', CHINADNS_NOTE ],
+		[ null, '' ], [ 'other', '' ] ]) {
+		const s = { ...status(), components: {
+			xray: { version: 'XRAY', path: '/usr/bin/xray' },
+			dns: { version: 'DNS', path: '/usr/bin/aether-dns', engine },
+			'chinadns-ng': { version: 'STALE', path: '/usr/bin/chinadns-ng', engine: 'chinadns-ng' }
+		} };
+		assert.deepEqual(model.components(s), [
+			{ name: 'xray', version: 'XRAY', path: '/usr/bin/xray', note: '' },
+			{ name: 'DNS 引擎', version: 'DNS', path: '/usr/bin/aether-dns', note }
+		]);
+	}
+});
+
+test('M4-02b S2 S3: legacy paths infer only recognized basenames when engine is absent', () => {
+	for (const [binary, note] of [ [ '/usr/bin/aether-dns', AETHER_DNS_NOTE ],
+		[ '/usr/bin/chinadns-ng', CHINADNS_NOTE ], [ '/opt/foo', '' ], [ null, '' ],
+		[ '/opt/not-aether-dns', '' ] ]) {
+		const s = { ...status(), components: {
+			'chinadns-ng': { version: 'OLD', path: binary }
+		} };
+		assert.deepEqual(model.components(s)[1],
+			{ name: 'DNS 引擎', version: 'OLD', path: binary ?? '–', note });
+	}
+});
+
+test('M4-02b S4: pending failed and missing component rows retain existing wording', () => {
+	assert.deepEqual(model.components(undefined), [
+		{ name: 'xray', version: '读取中…', path: '读取中…', note: '' },
+		{ name: 'DNS 引擎', version: '读取中…', path: '读取中…', note: '' }
+	]);
+	for (const s of [ { ok: false, code: 'TIMEOUT' }, {}, { components: {
+		dns: { found: false, version: null, path: null, engine: null }
+	} } ]) {
+		assert.deepEqual(model.components(s), [
+			{ name: 'xray', version: '未知', path: '–', note: '' },
+			{ name: 'DNS 引擎', version: '未知', path: '–', note: '' }
+		]);
 	}
 });

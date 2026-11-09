@@ -308,7 +308,8 @@ function component_rows(version, inventory) {
 		path: '/usr/bin/aether-proxy'
 	}];
 	/* Inventory is independent of runtime status, including failed status reads. */
-	for (const name of [ 'xray', 'chinadns-ng' ]) {
+	for (const id of [ 'xray', 'dns' ]) {
+		const name = id == 'dns' ? _('DNS engine', 'aether-proxy') : id;
 		if (inventory === undefined) {
 			components.push({ name, version: _('Reading…', 'aether-proxy'), path: _('Reading…', 'aether-proxy') });
 			continue;
@@ -317,11 +318,14 @@ function component_rows(version, inventory) {
 			components.push({ name, version: _('Reading failed', 'aether-proxy'), path: '' });
 			continue;
 		}
-		const c = inventory.components?.[name];
+		// The logical DNS entry is authoritative, even when the alias disagrees.
+		const entries = inventory.components;
+		const c = id == 'dns' && !Object.prototype.hasOwnProperty.call(entries ?? {}, 'dns')
+			? entries?.['chinadns-ng'] : entries?.[id];
 		components.push({
 			name,
 			version: c?.found === true && c.version != null ? String(c.version) : null,
-			path: c?.found === false ? _('Not found', 'aether-proxy')
+			path: c?.found === false || (id == 'dns' && !c) ? _('Not found', 'aether-proxy')
 				: (c?.found === true && c.path != null ? String(c.path) : null)
 		});
 	}
