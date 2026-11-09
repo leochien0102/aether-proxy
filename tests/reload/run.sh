@@ -221,6 +221,22 @@ fi
 wait_field state running && ok 'T9.5 startup reaches running' || bad 'T9.5 startup reaches running'
 versions_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components < "$SYSROOT/var/run/aether-proxy/state.json")
 
+# M4-02: check published state, not merely the pure normalizer.
+assert_dns_aliases() {
+	if python3 - "$SYSROOT/var/run/aether-proxy/state.json" <<'PYTEST'
+import json
+import sys
+with open(sys.argv[1]) as stream:
+    components = json.load(stream)['components']
+assert set(components) == {'xray', 'dns', 'chinadns-ng'}, components
+assert components['dns'] == components['chinadns-ng'], components
+assert components['dns']['engine'] == 'chinadns-ng', components
+PYTEST
+	then ok "$1"; else bad "$1"; fi
+}
+assert_dns_aliases 'M4-02 startup publishes deep-equal DNS aliases'
+
+
 # No-change reload still runs prerequisites and nft validation, but neither Xray test nor actions.
 reload_checkpoint
 kill -HUP "$DAEMON_PID"
@@ -338,6 +354,7 @@ wait_field node_ip 198.51.100.7 \
 	&& ok 'T9.5 previous address reload committed' || bad 'T9.5 previous address reload committed'
 expect 'T9.5 reload preserves both component versions at unchanged paths' "$versions_before" \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components < "$SYSROOT/var/run/aether-proxy/state.json")"
+assert_dns_aliases 'M4-02 reload publishes deep-equal DNS aliases'
 expect 'T9.5 unchanged paths do not query Xray version again' 1 "$(count_calls "$LOG" 'xray version')"
 expect 'T9.5 unchanged paths do not query ChinaDNS version again' 1 "$(count_calls "$LOG" 'chinadns-ng -V')"
 

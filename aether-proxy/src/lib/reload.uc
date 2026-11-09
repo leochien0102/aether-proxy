@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
+import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
 import * as state_file from 'aetherproxy.state';
@@ -281,7 +282,7 @@ function component_metadata(previous, components) {
 			components_cmd.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V');
 		updated[name] = { path, version: version ?? null };
 	}
-	return updated;
+	return component_id.with_aliases(updated);
 };
 
 // Binary overrides and WAN observations need fresh metadata even when outputs do not change.

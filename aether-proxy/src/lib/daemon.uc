@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as uloop from 'uloop';
 import * as socket from 'socket';
 import * as C from 'aetherproxy.const';
+import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
 import * as state from 'aetherproxy.state';
@@ -841,7 +842,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
 		degraded_mode: null, degraded_since: null,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
-		components,
+		components: component_id.with_aliases(components),
 		wan_dns: initial.wan_dns,
 		render_hash: hashed.hashes
 	};
