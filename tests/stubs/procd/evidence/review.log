@@ -1,0 +1,13 @@
+== branch fix/t15.10-init-stop-contract vs main: 1 commit(s), 17 file(s)
+PASS  tests/run.uc: 1257 passed, 0 failed, 0 skipped
+PASS  tests/cli/run.sh: 217 passed, 0 failed
+PASS  tests/ci/xray.sh: xray 26.10.31: 26 checked, 0 failed
+PASS  changed .uc files compile/load
+PASS  no swallowed errors in added code
+PASS  no system()/popen() outside sys.uc
+WARN  docs/ changed (only spike cards may change docs; explain in the report)
+      docs/04-lifecycle.md
+PASS  no attribution trailers in commits
+PASS  report present: reports/T15.10.md
+WARN  working tree not clean (uncommitted changes are not reviewed)
+== 0 FAIL, 2 WARN
