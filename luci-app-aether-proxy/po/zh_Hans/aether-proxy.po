@@ -2737,3 +2737,11 @@ msgstr "Hysteria 认证"
 msgctxt "aether-proxy"
 msgid "Hysteria UDP idle timeout (seconds)"
 msgstr "Hysteria UDP 空闲超时（秒）"
+
+msgctxt "aether-proxy"
+msgid "DNS engine"
+msgstr "DNS 引擎"
+
+msgctxt "aether-proxy"
+msgid "Provided by the aether-dns package: this application's release channel does not update it."
+msgstr "由 aether-dns 包提供：本应用的发布通道不更新它。"

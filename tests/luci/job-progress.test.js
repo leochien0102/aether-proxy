@@ -525,9 +525,12 @@ test('T10.46 scenario 5: Xray rollback restores controls after a rejected status
 
 test('T10.15 scenario 4: chinadns-ng instructions embed optional arch; xray missing notice is unchanged', () => {
 	const updates = model('updates');
-	assert.equal(updates.components(status())[1].note,
+	const withDns = { ...status(), components: {
+		'chinadns-ng': { version: 'DNSVER', path: '/usr/bin/chinadns-ng', engine: 'chinadns-ng' }
+	} };
+	assert.equal(updates.components(withDns)[1].note,
 		'不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包（本机架构 test_arch）手工安装。');
-	assert.equal(updates.components({ updates_available: null })[1].note,
+	assert.equal(updates.components({ ...withDns, updates_available: null })[1].note,
 		'不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 chinadns-ng 包手工安装。');
 	const overview = model('overview');
 	const vm = overview.build({ ok: true, notices: [

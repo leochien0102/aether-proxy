@@ -845,13 +845,13 @@ test('T10.3 scenario 5 / T10.4: own component first, version failure null, insta
 	assert.deepEqual(vm.components, [
 		{ name: 'aether-proxy', version: '0.1.0-r2', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' },
-		{ name: 'chinadns-ng', version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
+		{ name: 'DNS 引擎', version: '2025.06.20', path: '/usr/bin/chinadns-ng' }
 	]);
 	assert.equal(build({ ok: true }, { ok: false }).components[0].version, null);
 	assert.deepEqual(build({ ok: false }, { ok: false }, null, NOW, true, null, { ok: false }).components, [
 		{ name: 'aether-proxy', version: null, path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: '读取失败', path: '' },
-		{ name: 'chinadns-ng', version: '读取失败', path: '' }
+		{ name: 'DNS 引擎', version: '读取失败', path: '' }
 	]);
 });
 
@@ -1081,12 +1081,12 @@ test('T10.4 scenario 4c: three installed-component rows, missing versions, missi
 	assert.deepEqual(rows, [
 		{ name: 'aether-proxy', version: '0.1.0-r2', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: null, path: '/usr/bin/xray' },
-		{ name: 'chinadns-ng', version: null, path: '未找到' }
+		{ name: 'DNS 引擎', version: null, path: '未找到' }
 	]);
 	const cells = findAll(loadView().componentTable(rows), 'tr').map((row) => row.children.map((c) => c.textContent));
 	assert.deepEqual(cells.slice(1), [
 		[ 'aether-proxy', '0.1.0-r2', '/usr/bin/aether-proxy' ],
-		[ 'xray', '–', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
+		[ 'xray', '–', '/usr/bin/xray' ], [ 'DNS 引擎', '–', '未找到' ]
 	]);
 	for (const failure of [ null, { ok: false, code: 'TIMEOUT' } ]) {
 		const result = build({ ok: true, components: inventory.components },
@@ -1094,7 +1094,7 @@ test('T10.4 scenario 4c: three installed-component rows, missing versions, missi
 		assert.equal(result.length, 3);
 		assert.deepEqual(result.slice(1), [
 			{ name: 'xray', version: '读取失败', path: '' },
-			{ name: 'chinadns-ng', version: '读取失败', path: '' }
+			{ name: 'DNS 引擎', version: '读取失败', path: '' }
 		]);
 	}
 });
@@ -1204,7 +1204,7 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 	assert.deepEqual(pending, [
 		{ name: 'aether-proxy', version: '0.2.0-r6', path: '/usr/bin/aether-proxy' },
 		{ name: 'xray', version: '读取中…', path: '读取中…' },
-		{ name: 'chinadns-ng', version: '读取中…', path: '读取中…' }
+		{ name: 'DNS 引擎', version: '读取中…', path: '读取中…' }
 	]);
 	const inventory = { ok: true, components: {
 		xray: { found: true, version: '26.9.30', path: '/usr/bin/xray' },
@@ -1212,12 +1212,12 @@ test('T10.5 scenario 1c: component pending, successful and failed states determi
 	} };
 	assert.deepEqual(model.component_rows(null, inventory).slice(1), [
 		{ name: 'xray', version: '26.9.30', path: '/usr/bin/xray' },
-		{ name: 'chinadns-ng', version: '2025.08.09', path: '/usr/bin/chinadns-ng' }
+		{ name: 'DNS 引擎', version: '2025.08.09', path: '/usr/bin/chinadns-ng' }
 	]);
 	for (const failure of [ null, { ok: false, code: 'RPC_FAILED' }, { ok: false, code: 'TIMEOUT' } ])
 		assert.deepEqual(model.component_rows(null, failure).slice(1), [
 			{ name: 'xray', version: '读取失败', path: '' },
-			{ name: 'chinadns-ng', version: '读取失败', path: '' }
+			{ name: 'DNS 引擎', version: '读取失败', path: '' }
 		]);
 });
 
@@ -1252,7 +1252,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	const root = page.render(data);
 	assert.ok(!calls.includes('components'), 'request starts only after synchronous render returns');
 	assert.deepEqual(componentCells(root), [
-		[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+		[ 'xray', '读取中…', '读取中…' ], [ 'DNS 引擎', '读取中…', '读取中…' ]
 	]);
 	await page.initialRequest;
 	const blocks = sections(root).slice(0, -1);
@@ -1270,7 +1270,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	} });
 	await page.componentRequest;
 	assert.deepEqual(componentCells(root), [
-		[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'chinadns-ng', '–', '未找到' ]
+		[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'DNS 引擎', '–', '未找到' ]
 	]);
 	sections(root).slice(0, -1).forEach((block, i) => assert.equal(block, blocks[i]));
 	assert.equal(findAll(root, 'table')[0], tables[0], 'traffic table is not replaced');
@@ -1292,12 +1292,12 @@ test('T10.5 scenario 2b / T10.13: failed post-render inventory shows failures in
 		} });
 		const root = page.render(await page.load());
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+			[ 'xray', '读取中…', '读取中…' ], [ 'DNS 引擎', '读取中…', '读取中…' ]
 		]);
 		await page.componentRequest;
 		assert.deepEqual(componentCells(root), [
 			[ 'xray', '读取失败', '' ],
-			[ 'chinadns-ng', '读取失败', '' ]
+			[ 'DNS 引擎', '读取失败', '' ]
 		]);
 	}
 });
@@ -1871,7 +1871,7 @@ test('T10.13 scenario 3: inventory failures carry code/detail below table; unkno
 		assert.equal(model.components_failed(failure), true);
 		assert.deepEqual(rows.slice(1), [
 			{ name: 'xray', version: '读取失败', path: '' },
-			{ name: 'chinadns-ng', version: '读取失败', path: '' }
+			{ name: 'DNS 引擎', version: '读取失败', path: '' }
 		]);
 		const error = model.component_error(failure);
 		assert.equal(error.text, `读取组件信息失败（${failure?.code ?? 'RPC_FAILED'}）`);
@@ -1909,7 +1909,7 @@ test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds wi
 		const root = page.render(await page.load());
 		assert.equal(retryButtons(root).length, 0, 'no retry while initially reading');
 		await page.componentRequest;
-		assert.deepEqual(componentCells(root), [ [ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ] ]);
+		assert.deepEqual(componentCells(root), [ [ 'xray', '读取失败', '' ], [ 'DNS 引擎', '读取失败', '' ] ]);
 		const [retry] = retryButtons(root);
 		assert.ok(retry);
 		assert.equal(retry.attrs.class, 'cbi-button cbi-button-action');
@@ -1918,7 +1918,7 @@ test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds wi
 		const runtime = sections(root)[0], traffic = sections(root)[1], button = page.probeButton;
 		const pending = retry.attrs.click();
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+			[ 'xray', '读取中…', '读取中…' ], [ 'DNS 引擎', '读取中…', '读取中…' ]
 		]);
 		assert.equal(retryButtons(root).length, 0, 'old retry removed while reading');
 		assert.equal(retry.attrs.click(), pending, 'repeated stale clicks share the in-flight request');
@@ -1930,7 +1930,7 @@ test('T10.13 scenario 4: retry resets both rows, reissues once, then succeeds wi
 		} });
 		await pending;
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'chinadns-ng', '2025.08.09', '/usr/bin/chinadns-ng' ]
+			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'DNS 引擎', '2025.08.09', '/usr/bin/chinadns-ng' ]
 		]);
 		assert.equal(retryButtons(root).length, 0);
 		assert.equal(sections(root)[0], runtime);
@@ -1963,7 +1963,7 @@ test('T10.13 scenario 4: successful initial inventory has no retry; a failed ret
 			assert.equal(requests, 4, 'each generation has two timeout attempts');
 			assert.equal(retryButtons(root).length, 1);
 			assert.deepEqual(componentCells(root), [
-				[ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ]
+				[ 'xray', '读取失败', '' ], [ 'DNS 引擎', '读取失败', '' ]
 			]);
 		}
 	}
@@ -2052,7 +2052,7 @@ test('T10.17 scenario 2: all RPCs pending still renders complete placeholders an
 	assert.deepEqual(findAll(sections(root)[1], 'span').map(visibleText), [ '代理连接 –', '总连接 –' ]);
 	assert.equal(ownVersion(root), '读取中…');
 	assert.deepEqual(componentCells(root), [
-		[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+		[ 'xray', '读取中…', '读取中…' ], [ 'DNS 引擎', '读取中…', '读取中…' ]
 	]);
 	assert.ok(serviceButtons(root).every(disabled));
 	assert.equal(page.probeButton.disabled, true);
@@ -2258,7 +2258,7 @@ for (const failure of COMPONENT_ERRORS) {
 		if (failure?.code === 'TIMEOUT')
 			await h.reply('components', failure);
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '读取失败', '' ], [ 'chinadns-ng', '读取失败', '' ]
+			[ 'xray', '读取失败', '' ], [ 'DNS 引擎', '读取失败', '' ]
 		]);
 		assert.equal(page.componentContent.children.length, 2, 'one explanation row follows the table');
 		const [table, reason] = page.componentContent.children;
@@ -2275,7 +2275,7 @@ for (const failure of COMPONENT_ERRORS) {
 		const request = retry.attrs.click();
 		assert.equal(page.componentContent.children.length, 1, 'reason and retry disappear while reading');
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '读取中…', '读取中…' ], [ 'chinadns-ng', '读取中…', '读取中…' ]
+			[ 'xray', '读取中…', '读取中…' ], [ 'DNS 引擎', '读取中…', '读取中…' ]
 		]);
 		await Promise.resolve();
 		await h.reply('components', { ok: true, components: {
@@ -2286,7 +2286,7 @@ for (const failure of COMPONENT_ERRORS) {
 		assert.equal(page.componentContent.children.length, 1, 'successful retry removes the entire reason row');
 		assert.equal(retryButtons(root).length, 0);
 		assert.deepEqual(componentCells(root), [
-			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'chinadns-ng', '2025.08.09', '/usr/bin/chinadns-ng' ]
+			[ 'xray', '26.9.30', '/usr/bin/xray' ], [ 'DNS 引擎', '2025.08.09', '/usr/bin/chinadns-ng' ]
 		]);
 	});
 }
@@ -2492,7 +2492,7 @@ test('T10.24 scenario 1: first since is baseline; changed since rereads versions
 	assert.deepEqual(counts(), [2, 2], 'changed since reissues each request once');
 	assert.equal(ownVersion(root), '读取中…');
 	assert.deepEqual(componentCells(root), [
-		['xray', '读取中…', '读取中…'], ['chinadns-ng', '读取中…', '读取中…']
+		['xray', '读取中…', '读取中…'], ['DNS 引擎', '读取中…', '读取中…']
 	]);
 	await h.reply('stats', readings(3000, 0, 0, 0, 0));
 	await restart;
@@ -3545,7 +3545,7 @@ test('T10.62 scenario 3: first TIMEOUT keeps loading; second success fills only 
 	assert.equal(page.componentRequest, request, 'retry belongs to the same generation');
 	assert.equal(page.components, undefined);
 	assert.deepEqual(componentCells(root), [
-		['xray', '读取中…', '读取中…'], ['chinadns-ng', '读取中…', '读取中…']
+		['xray', '读取中…', '读取中…'], ['DNS 引擎', '读取中…', '读取中…']
 	]);
 	assert.equal(retryButtons(root).length, 0);
 	assert.deepEqual(writes, [], 'first timeout never paints an error');
@@ -4102,4 +4102,37 @@ test('T10.79: failed automatic/manual probes stay error regardless of latency', 
 		for (const code of ['PROBE_TIMEOUT', 'PROBE_FAILED'])
 			assert.equal(model.manual_probe({ ok: false, code, latency_ms: ms }, 'GitHub', {}, NOW).probe_level, 'error');
 	}
+});
+
+// M4-02b: logical DNS identity must survive both backend generations.
+test('M4-02b S1: authoritative dns renders exactly three rows with unchanged xray', () => {
+	const model = dashboardModel();
+	const rows = model.component_rows({ ok: true, version: 'APP' }, { ok: true, components: {
+		xray: { found: true, version: 'XRAY', path: '/usr/bin/xray' },
+		dns: { found: true, version: 'DNS', path: '/usr/bin/aether-dns', engine: 'aether-dns' },
+		'chinadns-ng': { found: true, version: 'STALE', path: '/usr/bin/chinadns-ng' }
+	} });
+	assert.deepEqual(rows, [
+		{ name: 'aether-proxy', version: 'APP', path: '/usr/bin/aether-proxy' },
+		{ name: 'xray', version: 'XRAY', path: '/usr/bin/xray' },
+		{ name: 'DNS 引擎', version: 'DNS', path: '/usr/bin/aether-dns' }
+	]);
+});
+
+test('M4-02b S2: legacy alias renders DNS engine and never a chinadns-ng component name', () => {
+	const rows = dashboardModel().component_rows(null, { ok: true, components: {
+		xray: { found: true, version: 'XRAY', path: '/usr/bin/xray' },
+		'chinadns-ng': { found: true, version: 'OLD', path: '/usr/bin/aether-dns' }
+	} });
+	const table = loadView().componentTable(rows);
+	assert.deepEqual(findAll(table, 'tr').slice(1).map(row => row.children.map(cell => cell.textContent)), [
+		[ 'aether-proxy', '–', '/usr/bin/aether-proxy' ],
+		[ 'xray', 'XRAY', '/usr/bin/xray' ],
+		[ 'DNS 引擎', 'OLD', '/usr/bin/aether-dns' ]
+	]);
+});
+
+test('M4-02b S4: absent DNS entry is missing rather than a failed inventory', () => {
+	assert.deepEqual(dashboardModel().component_rows(null, { ok: true, components: {} })[2],
+		{ name: 'DNS 引擎', version: null, path: '未找到' });
 });

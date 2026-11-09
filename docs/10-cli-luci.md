@@ -332,7 +332,10 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   `dns_failsafe` 为真时另显示「DNS 已回退到原配置」；进入当前状态的时间（`since`，显示为「x 分钟前」之类的相对时间）；`last_error` 不为空时显示事件码。
 - DNS 级别 `dns_tier`；当前节点：用 UCI 中该节点的 `label`，找不到就显示段名，另附 `node_ip`。
 - 最近一次健康检测：`last_probe.ok` 为真显示「正常，<latency_ms> ms」，为假显示「失败」，没有就显示「尚未检测」，附相对时间。
-- 组件版本：`components` 中每项的名称、版本、路径；以及 aether-proxy 自身版本（`version` 方法，页面加载时取一次）。
+- 组件版本：固定显示本程序、`xray`、逻辑组件 `dns` 三行的名称、版本、路径；DNS 行显示「DNS 引擎」。
+  `dns` 优先，旧后端没有该键时回退 `chinadns-ng` 兼容别名；不把引擎名当组件名。
+  `engine` 表示物理引擎（`aether-dns` / `chinadns-ng` / `null`），字段缺失时才按 path 的 basename 兜底，
+  仍无法识别则为未知。aether-proxy 自身版本取 `version` 方法，页面加载时取一次。
 - 待处理提示：`notices` 每项一条中文提示（`IPV6_PRESENT` 用 03 的原话；其余各写一句并带上 args）。
 - 按钮：启动、重启、停止，按状态决定是否可用（`stopped`/`error` 时只有启动可用；其他状态启动不可用）。停止用 `cbi-button-negative` 并要求确认（「停止后所有流量直连」）。
   点击后经 `ap.call('service', …)`，1.5 秒后立即刷新一次，其余靠定时刷新；返回 `ok: false` 时用 `ui.addNotification` 显示 `code` 与 `detail`。
@@ -483,9 +486,15 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
     确认框写明「将安装 <previous>，替换当前的 <installed>」；`aether-proxy` 与两个 luci 包另加一句「服务会重启」。
   - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。2026-10-25 起 `aether-proxy` 与 `luci-app-aether-proxy` 一起更新，结果文字与刷新提示见「B17：更新页显示「一起更新」的结果」（T10.67）。
   - 表下一行：上次检查时间（相对时间）与清单地址（`url`）；`updates_available` 为 `null` 时显示「尚未检查」。
-- **运行中的组件**：`status.components` 中 `xray`、`chinadns-ng` 的版本（`null` 显示「未知」）与路径。chinadns-ng 另注「不进发布通道，请在软件包页面从软件源安装或更新」，附 `arch`（没有 `updates_available` 时不显示 arch）。
-  **2026-10-21 改（T10.15，跨页面问题 X6 与 r8 窗口前端第 6 条）**：chinadns-ng 的说明改为「不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载 `chinadns-ng` 包（本机架构 <arch>）手工安装。」，
-  架构放进句子里对应的位置，不再接在句末；没有 `updates_available` 时省略「（本机架构 …）」。概览页的组件缺失提示中，chinadns-ng 缺失时同样补上「或从发布页下载 `chinadns-ng` 包手工安装」（xray 的提示不变）。
+- **运行中的组件**：`status.components` 中 `xray`、逻辑组件 `dns` 的版本（`null` 显示「未知」）与路径；
+  DNS 行显示「DNS 引擎」，优先读 `dns`，旧后端没有该键时回退 `chinadns-ng`。
+  `engine` 为物理引擎标识；仅字段缺失时按 path basename 兜底，无法识别或显式 `null` 为未知。
+  说明按提供组件的软件包区分，不把逻辑组件名当作引擎或包名：
+  - `aether-dns`：显示「由 aether-dns 包提供：本应用的发布通道不更新它。」，不插入 arch。
+  - `chinadns-ng`：保留「不经发布通道自动更新：请在软件包页面从软件源安装或更新，或从发布页下载
+    `chinadns-ng` 包（本机架构 <arch>）手工安装。」；没有 `updates_available` 时省略架构部分。
+  - 未知：无说明。
+  概览页 `COMPONENT_MISSING` 的 chinadns-ng 下载引导与日志页文案不变（事件迁移属阶段 2b）。
 - **「检查更新」按钮** → `ap.run_job('update_check', [])`，结束后重新取 `status`。
 - **作业期间**所有安装、更新、回滚、检查按钮都不可用（共用一把更新锁，[08](08-updates.md)「调度」）。
 - **作业结果的文字**（模型计算）：
@@ -648,13 +657,13 @@ T10.2、T10.3 在 H28K（主题 `proton2025`，服务未启用）上预览时仓
      人读输出仅两行：`xray: <version> (<path>)`、`dns: <version> (<path>, engine <engine>)`；
      未知版本为 `–`，未知 engine 省略 `, engine …`，缺失则 `dns: not found`。
      `status` 在输出中规范化旧状态组件表，文件字节与 mtime 不变；停止态未带 `components` 时不造字段。
-     阶段 2 才迁移事件与 LuCI 展示；本阶段事件字段仍用 `chinadns-ng`，现有页面继续读别名，
+     M4-02b 阶段 2a 已迁移 LuCI 展示；事件字段仍用 `chinadns-ng`，留待阶段 2b，
      概览页仍取现场 `components`，更新页仍取 `status.components`；别名删除条件见 04。
      查找用 `cmd/check.uc` 的 `find_component`（与 `check`、`status` 的 `notices` 相同；配置中的 `xray_bin`、`chinadns_bin` 作为 `configured`，读不到配置时按未配置处理）；
      版本按 daemon 已有的读法（`xray version`、`chinadns-ng -V`，取第一行第二个字段，`component_version.parse_version`），每个组件超时 3 秒、`quiet`，失败或超时版本为 `null`。
      把 daemon 中的 `read_component_version` 挪到可共用的位置，不要复制一份。
    - **rpcd 方法 `components`**（无参数，read，超时 15 秒；`ap` 的硬超时 20 秒），ACL 的 read 增加它。
-   - **页面**：`load()` 中调用一次（与其他请求一样经 `ap.call`），不随刷新重复调用。组件表三行：`aether-proxy`（版本取 `version`，路径「–」）、`xray`、`chinadns-ng`
+   - **页面**：`load()` 中调用一次（与其他请求一样经 `ap.call`），不随刷新重复调用。组件表三行：`aether-proxy`（版本取 `version`，路径「–」）、`xray`、「DNS 引擎」（逻辑 `dns`，旧后端回退别名）
      （`found` 为真 → 版本，取不到为「–」，以及路径；`found` 为假 → 版本「–」、路径列写「未找到」；整个调用失败 → 这两行版本与路径都为「–」）。概览页不再使用 `status.components`。
    - 更新页「运行中的组件」**不改**：它要的就是正在运行的版本。
 6. **节点下拉为空**（T10.3 的 `TODO(design)`）：没有节点、或下拉没有选中项时，「使用此节点」不可用。定为设计，删掉该 `TODO`。
