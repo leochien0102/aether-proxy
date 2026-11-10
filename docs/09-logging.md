@@ -152,7 +152,8 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `SUB_SHRANK` | warn | `sub`、`old`、`new` |
 | `SUB_NO_VALID_NODES` | error | `sub`、`skipped`（按原因计数）。解码成功但没有任何可导入的节点（与 `SUB_DECODE_FAILED` 区分） |
 | `UPDATE_AVAILABLE` | notice | `package`、`current`、`latest` |
-| `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `package`、`version`（数据更新的 `UPDATE_VERIFY_FAILED` 用 `item`） |
+| `UPDATE_STARTED` | notice | `package`、`version`；下载与校验通过后、开始安装前记录 |
+| `UPDATE_INSTALLED` / `UPDATE_VERIFY_FAILED` / `UPDATE_ROLLED_BACK` | notice / error / error | `package`、`version`（数据更新的 `UPDATE_VERIFY_FAILED` 用 `item`）；`UPDATE_INSTALLED` 安装并校验通过后才记，因此时间戳可能晚于 `SERVICE_STOPPED/STARTED` |
 | `DATA_UPDATED` | notice | `items` |
 | `MANIFEST_BAD_SIGNATURE` | error | `url` |
 | `UPDATE_FETCH_FAILED` | error | `urls`（所有发布通道地址都连不上；与验签失败区分，见 08「检查」） |

@@ -1130,5 +1130,6 @@ expect 'T9.42 grouped install reports ARCH_UNSUPPORTED for a bad size' ARCH_UNSU
 # T11.14: signed backend compatibility chains (kept after shared fixture tests).
 source "$ROOT/tests/update/bridge-chain.sh"
 source "$ROOT/tests/update/prerequisite.sh"
+source "$ROOT/tests/update/events.sh"
 
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

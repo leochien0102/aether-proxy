@@ -387,14 +387,16 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 1. 下载并验签清单；取本机架构与包管理器对应的资产（`--previous` 时取 `previous`），按清单校验 `size` 与 `sha256`。
 2. 记下当前已装版本（用于回滚判断）。
-3. 安装：opkg 用 `opkg install <文件>`；apk 用 `apk add --allow-untrusted <文件>`。**只在第 1 步的验签与哈希都通过之后**才这样调用——
+3. 开始安装前记 `UPDATE_STARTED {package, version}`（下载与校验失败不记）；每个包独立记录，包括 companions 与引擎前置 aether-dns。安装：opkg 用 `opkg install <文件>`；apk 用 `apk add --allow-untrusted <文件>`。**只在第 1 步的验签与哈希都通过之后**才这样调用——
    完整性由我们的签名清单保证，`--allow-untrusted` 只是跳过 apk 对 SDK 临时构建密钥的签名检查。
 4. 安装后检查（失败 → 安装清单中的 `previous` 资产回滚，记 ERR `UPDATE_ROLLED_BACK`）：
    - `aether-xray`：服务在运行时向 daemon 发 SIGUSR2（只重启 Xray，04「信号一览」；经 procd：`ubus call service signal '{"name":"aether-proxy","signal":12}'`，`signal` 必须是整数，不带 `instance`），之后 60 秒内 `state.json` 的 `last_probe` 出现一次晚于安装时刻的成功；更新前就不健康（`state` 不是 `running`）时，只检查 TPROXY 端口在 5 秒内进入监听。服务未运行时只检查 `/usr/bin/aether-xray version` 输出的版本等于清单版本的上游部分。
    - `aether-proxy`：`/etc/init.d/aether-proxy restart`（超时 90 秒：stop 最多等 daemon 30 秒，即 `term_timeout`，再加 `cleanup` 与 start 中的 `check`）后 120 秒内 `state` 进入 `running` 或 `degraded`；服务原本未运行时 restart 之后只检查 `aether-proxy check` 通过。
    - luci 包：不做检查（页面文件在下次加载时生效）。
    - **回滚之后要让旧版生效**（2026-10-20 T7.7 发现：只重装不重启，内存里跑的仍是检查失败的那一版）：`aether-proxy` 在更新前服务处于 `starting`、`running` 或 `degraded` 时执行一次 restart（同样 90 秒超时）；`aether-xray` 在更新前服务处于 `running`、`degraded` 或 `starting` 时发一次 SIGUSR2。回滚后不再做检查，结果仍是 `UPDATE_VERIFY_FAILED`（`rolled_back: true`）；restart 或信号失败记 `CMD_FAILED`。`--previous` 的检查失败、改装回 `current` 时同样处理。
-5. 成功记 `UPDATE_INSTALLED`。
+5. 安装并校验通过后记 `UPDATE_INSTALLED`，日志页显示「已完成更新」；proxy 校验包含重启，所以完成事件晚于相应的服务停止/启动事件。
+
+兼容：0.7.0 及更早的日志页不认识 `UPDATE_STARTED`，会显示原始 `code {json}`，属于可接受过渡；前后端一起升级完成后不会出现。仍保持下文「更新一起更新」的先后端、后页面顺序。
 
 ~~**回滚一起回滚**~~（2026-10-22 定，r11 窗口；**2026-10-23 随「取消三包手动回滚」废止**，见下文，保留原文备查）：只回滚 `aether-proxy` 而页面（`luci-app-aether-proxy`）仍是新版时，新页面用到的新接口（`probe_sites`、`node_use`、`node_parse` 等）在旧后端上一律 `USAGE`，
 页面长期处于半坏状态（r11 窗口 R7 回滚期间实际看到「站点列表读取失败（USAGE）」）。所以：
@@ -450,7 +452,7 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 双条件满足则前置 `skipped`；若 backend 目标和已装相同、组内也无其它安装，返回
   `UPDATE_UP_TO_DATE`（`ok:true`，退出码 0），不安装、不重启、不写 `UPDATE_INSTALLED`。
   失败后重试只补缺的步骤；此前已回滚卸载的首装引擎仍属缺失步骤。
-  引擎实际安装沿用 `UPDATE_INSTALLED`，不新增事件码或改变事件字段；`--previous` 的适用范围不变。
+  引擎实际安装前记 `UPDATE_STARTED`，校验成功沿用 `UPDATE_INSTALLED`，不改变事件字段；`--previous` 的适用范围不变。
 
 **更新接口（固定）**（2026-10-25 定，backlog B17）：页面与 rpcd 插件都在 `luci-app-aether-proxy` 里，只有它们调用的命令行属于 `aether-proxy`。为保证「先更新了后端，旧页面仍能把自己更新掉」，下面这些对**上一个正式版**的页面与插件保持兼容：以后的后端**只能加字段、加可选参数，不能删除、改名或改变含义**。
 - 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。

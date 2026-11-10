@@ -909,6 +909,7 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 		let code = selected.bridge_step && downloaded.code == 'UPDATE_VERIFY_FAILED' ? 'BRIDGE_UNAVAILABLE' : downloaded.code;
 		return { ok: false, code, exit: 1, detail: downloaded.detail ?? downloaded.code };
 	}
+	log.event('notice', 'UPDATE_STARTED', { package: name, version: asset.version });
 	let installed = install_package(ctx, pm, downloaded.path, previous == true);
 	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
 		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
@@ -956,6 +957,7 @@ function update_companion(opts, ctx, selected, plat, name) {
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
 	if (!downloaded.ok)
 		return { status: 'failed', code: downloaded.code, detail: downloaded.detail ?? downloaded.code };
+	log.event('notice', 'UPDATE_STARTED', { package: name, version: asset.version });
 	let result = install_package(ctx, plat.pm, downloaded.path, false);
 	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
 		log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
@@ -1077,6 +1079,7 @@ function prerequisite_prepare(opts, selected, plat) {
 	let downloaded = download_asset(opts, selected.urls, asset, `new-${asset.url}`);
 	if (!downloaded.ok)
 		return { ...downloaded, prerequisite, recovery };
+	log.event('notice', 'UPDATE_STARTED', { package: 'aether-dns', version: asset.version });
 	let installed_new = install_package(ctx, plat.pm, downloaded.path, installed.version != null);
 	discard_prerequisite_asset(downloaded.path);
 	let transaction = { ok: true, changed: true, prerequisite, recovery, original: installed.version };

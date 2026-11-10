@@ -449,8 +449,12 @@ msgid "Update available for {package}: {current} to {latest}"
 msgstr "软件包 {package} 有更新：{current} → {latest}"
 
 msgctxt "aether-proxy"
-msgid "Installed {package} version {version}"
-msgstr "已安装 {package} 版本 {version}"
+msgid "Update started: {package} {version}"
+msgstr "开始更新：{package} {version}"
+
+msgctxt "aether-proxy"
+msgid "Update finished: {package} {version}"
+msgstr "已完成更新：{package} {version}"
 
 msgctxt "aether-proxy"
 msgid "Update verification failed for {package}: {version}"
