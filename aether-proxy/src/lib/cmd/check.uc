@@ -10,6 +10,7 @@ import * as log from 'aetherproxy.log';
 import * as sys from 'aetherproxy.sys';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as component_version from 'aetherproxy.component_version';
+import * as component_id from 'aetherproxy.component_id';
 
 // Locates a component binary in the order of docs/01 "组件二进制的查找顺序".
 // Shared with the `status` notices (docs/10 「概览页」). Returns { path, source } or null.
@@ -27,14 +28,16 @@ export function find_component(name, configured, options) {
 				return { path, source: options?.bin_dir ? 'bin-dir' : 'path' };
 		return null;
 	}
-	if (options?.bin_dir) {
-		let from_bin_dir = `${options.bin_dir}/${name}`;
-		if (fs.access(from_bin_dir, 'x'))
-			return { path: from_bin_dir, source: 'bin-dir' };
-	}
-
+	// Overrides pin an engine, including a broken pin: never silently fall back.
 	if (configured != null && configured != '')
 		return fs.access(configured, 'x') ? { path: configured, source: 'uci' } : null;
+
+	let candidates = options?.bin_dir
+		? [ `${options.bin_dir}/aether-dns`, `${options.bin_dir}/${name}` ]
+		: [ C.AETHER_DNS_BINARY ];
+	for (let path in candidates)
+		if (fs.access(path, 'x'))
+			return { path, source: options?.bin_dir ? 'bin-dir' : 'path' };
 
 	for (let dir in split(getenv('PATH') ?? '', ':')) {
 		if (dir != '' && fs.access(`${dir}/${name}`, 'x'))
@@ -170,7 +173,10 @@ function check_staged(opts, res, staging) {
 		let query = sys.run([ c.path, name == C.XRAY_COMPONENT ? 'version' : '-V' ],
 			{ timeout: C.COMPONENT_VERSION_TIMEOUT_SECS, quiet: true });
 		let version = query.code == 0 ? component_version.parse_version(query.stdout) : null;
-		let min = name == C.XRAY_COMPONENT ? C.XRAY_MIN_VERSION : C.CHINADNS_MIN_VERSION;
+		let min = name == C.XRAY_COMPONENT ? C.XRAY_MIN_VERSION :
+			component_id.min_version(component_id.engine(c.path));
+		if (min == null)
+			continue;
 		let order = component_version.version_cmp(version, min);
 		if (order != null && order < 0)
 			push(result.warnings, { code: 'COMPONENT_TOO_OLD', args: { component, version, min } });

@@ -423,7 +423,7 @@ rm -f "$SYSROOT/nft-check-sleep"
 	|| bad 'T9.8 elapsed includes delayed live hashing after SIGHUP'
 
 # A new executable plus a rendered port change exercises apply_plan's fresh version lookup.
-# --bin-dir intentionally takes precedence over UCI, so remove the default fixture name.
+# Remove the default fixture name so later discovery can exercise both explicit and default paths.
 cp "$T/bin/xray" "$T/bin/xray-original"
 rm "$T/bin/xray"
 cat > "$T/bin/xray-alt" <<'EOF'
@@ -459,7 +459,7 @@ expect 'T9.5 path-only reload records discovered path' "$T/bin/xray" \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.xray.path < "$SYSROOT/var/run/aether-proxy/state.json")"
 
 # Live gfw4 elements make the rough plan differ only in nft; the export re-render then matches,
-# so the final plan is empty. A path change must still refresh metadata on that branch too.
+# so the final hash plan is empty. M4-03a must retain the executable-path restart on that branch.
 printf '["198.51.100.1"]\n' > "$SYSROOT/gfw4-elem"
 reload_checkpoint
 nft_before=$(count_calls "$LOG" 'nft -f ')
@@ -482,7 +482,10 @@ wait_field components.xray.version 26.10.10 \
 	&& ok 'T9.5 path change refreshes version when only live set elements differ' \
 	|| bad 'T9.5 path change refreshes version when only live set elements differ'
 expect 'T9.5 live-element reload does not replace nft' "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
-expect 'T9.8 live-set no-op has no success event' "$applied_before" "$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
+expect 'M4-03a live-set path change emits success event' "$((applied_before + 1))" \
+	"$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
+expect 'M4-03a live-set path change restarts Xray' "$((xray_starts_before + 1))" \
+	"$(count_calls "$SYSROOT/calls.log" 'xray run -c ')"
 expect 'T9.8 live-set no-op skips Xray test' "$tests_before" "$(count_calls "$LOG" 'xray run -test')"
 
 # Failure paths now belong to the daemon, rather than init's discarded check output.

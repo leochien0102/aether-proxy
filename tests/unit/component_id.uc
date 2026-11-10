@@ -16,7 +16,14 @@ push(cases, { name: 'aliases preserve input and fields; dns wins conflict', kind
 push(cases, { name: 'missing path produces null engine', kind: 'missing', expect: 'PASS' });
 push(cases, { name: 'undefined DNS metadata preserved conservatively', kind: 'malformed', expect: 'PASS' });
 
+for (let pair in [ [ 'aether-dns', '1.0.0' ], [ 'chinadns-ng', '2025.08.09' ],
+	[ null, null ], [ 'custom', null ] ])
+	push(cases, { name: sprintf('M4-03a floor %.J', pair[0]), kind: 'floor',
+		engine: pair[0], want: pair[1], expect: 'PASS' });
+
 export function run(c) {
+	if (c.kind == 'floor')
+		return ids.min_version(c.engine) === c.want ? 'PASS' : 'FAIL: wrong engine floor';
 	if (c.kind == 'invalid')
 		return ids.with_aliases(c.value) === null ? 'PASS' : 'FAIL: invented table';
 	if (c.kind == 'malformed') {

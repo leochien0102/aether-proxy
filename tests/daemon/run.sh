@@ -18,6 +18,7 @@ python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
 python3 "$ROOT/tests/daemon/stop-state.py" || exit 1
 python3 "$ROOT/tests/daemon/stopping-unit.py" || exit 1
 python3 "$ROOT/tests/daemon/version-gate.py" || exit 1
+python3 "$ROOT/tests/daemon/engine-selection.py" || exit 1
 python3 "$ROOT/tests/daemon/missing-events.py" || exit 1
 python3 "$ROOT/tests/daemon/config-recovery.py" || exit 1
 T="$(mktemp -d)"
