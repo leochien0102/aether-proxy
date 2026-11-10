@@ -61,7 +61,8 @@ function prerequisite_result(text, r) {
 	if (p.action == 'skipped')
 		return text;
 	const note = p.action == 'rolled_back' ?
-		_('DNS engine rolled back to %s', 'aether-proxy').format(p.version) :
+		(p.version == null ? _('New DNS engine install was undone', 'aether-proxy') :
+			_('DNS engine rolled back to %s', 'aether-proxy').format(p.version)) :
 		_('DNS engine installed first: aether-dns %s', 'aether-proxy').format(p.version);
 	return text + ' ' + note;
 }

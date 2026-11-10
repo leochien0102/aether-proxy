@@ -969,9 +969,12 @@ test('M4-03c U3: failed rollback includes restored DNS engine version in every r
 	await display_group_result(group_result('skipped', 'skipped', {
 		...result, rolled_back: false, code: 'UPDATE_VERIFY_FAILED'
 	}), '校验失败 DNS 引擎已回滚到 1.0.0');
-	// First-install undo reports null; do not invent a version or an unfrozen removal sentence.
-	assert.equal(transaction_text({ ...result, prerequisite: { ...prerequisite('rolled_back'), version: null } }),
-		'安装后检查失败，已回滚到 X DNS 引擎已回滚到 null');
+	// First-install undo has no restored version; render the frozen undo wording.
+	const undone = { ...result, prerequisite: { ...prerequisite('rolled_back'), version: null } };
+	const undoneText = transaction_text(undone);
+	assert.equal(undoneText, '安装后检查失败，已回滚到 X 已撤销本次新装的 DNS 引擎');
+	assert.doesNotMatch(undoneText, /null/);
+	await display_group_result(group_result('skipped', 'skipped', undone), undoneText);
 });
 
 test('M4-03c U4: manual prerequisite failure preserves detail without claiming installation', async () => {

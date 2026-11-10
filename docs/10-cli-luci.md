@@ -505,7 +505,14 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - 检查：成功 →「检查完成」，附有更新的包数；失败按 `code`：`UPDATE_FETCH_FAILED` 连不上发布通道、`MANIFEST_BAD_SIGNATURE` 签名校验失败、`CONFIG_INVALID` 没有可用的通道地址；`BUSY` 另一个更新作业正在运行；`JOB_LOST` 作业进程意外退出；其他码原样显示并附 `detail`。
   - 安装/回滚（`update package` 的结果 `{ ok, package, from, to, rolled_back, code, detail }`）：`ok` 为真 →「<包> 已从 <from> 更新到 <to>」（`from` 为 `null` 时「已安装 <to>」）；
     `rolled_back` 为真 →「安装后检查失败，已回滚到 <from>」；`ok` 为假且未回滚 → 按 `code` 显示（`UPDATE_VERIFY_FAILED` 校验失败——有 `detail` 时附上、`NO_SPACE` 空间不足、`ARCH_UNSUPPORTED` 本机不可用，以及上面检查用的几个码），其他码原样显示。
-- **升级事务作业结果契约**（M4-03b，后端字段；本卡不实现新的 LuCI 展示）：
+  - `UPDATE_UP_TO_DATE` 优先于版本、companions 和刷新提示显示「已是最新：<包>」（msgid `Already up to date: %s`）；使用结果中的 `package`，缺失时使用发起更新的包名。
+  - `PREREQ_MANUAL_REQUIRED` 显示「无法自动满足 DNS 引擎前置」（msgid `Cannot satisfy the DNS engine prerequisite automatically`），有 `detail` 时沿用失败原因的追加规则，不声称已安装。
+  - 前置事务结果追加到原结果之后、刷新提示之前，成功、失败及 companions 均适用：
+    - `installed` →「已先安装 DNS 引擎：aether-dns <version>」（msgid `DNS engine installed first: aether-dns %s`）。
+    - `rolled_back` 且 `version` 非空 →「DNS 引擎已回滚到 <version>」（msgid `DNS engine rolled back to %s`）。
+    - `rolled_back` 且 `version` 为 `null`（撤销首次安装）→「已撤销本次新装的 DNS 引擎」（msgid `New DNS engine install was undone`），不显示字面量 `null`。
+    - `skipped` 或没有 `prerequisite` → 不增加文字，保留旧结果；`manual_required` 仅按上述失败码显示原因，未知 action 不追加文字。
+- **升级事务作业结果契约**（M4-03b 后端字段；M4-03c 展示规则见上）：
   - `BRIDGE_INSTALLED`：本次桥接 backend 已安装成功，`steps_remaining` 是剩余步数；只处理一跳。
   - `PREREQ_MANUAL_REQUIRED`：`ok:false`，作业失败、退出码 1；前置引擎不能安全自动迁移，
     `detail` 包含备份二进制/已装元数据及验证恢复路径的人工指引，在任何安装之前拒绝。

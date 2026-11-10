@@ -2759,5 +2759,9 @@ msgid "DNS engine rolled back to %s"
 msgstr "DNS 引擎已回滚到 %s"
 
 msgctxt "aether-proxy"
+msgid "New DNS engine install was undone"
+msgstr "已撤销本次新装的 DNS 引擎"
+
+msgctxt "aether-proxy"
 msgid "Cannot satisfy the DNS engine prerequisite automatically"
 msgstr "无法自动满足 DNS 引擎前置"
