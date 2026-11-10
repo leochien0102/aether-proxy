@@ -1,9 +1,5 @@
 #!/bin/sh
 if [ "$1" = list ] && [ "$2" = -I ]; then
-	if [ "${UPDATE_DNS_BASELINE:-0}" = 1 ] && [ "$3" = aether-dns ]; then
-		printf 'aether-dns-1.0.0-r1 noarch {installed}\n'
-		exit 0
-	fi
 	# T9.16: opt-in per-package inventory; absent files mean not installed.
 	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
 		if [ -n "${UPDATE_PACKAGE_QUERY_CALLS:-}" ]; then

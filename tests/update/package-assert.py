@@ -7,29 +7,14 @@ import sys
 root, manager, mode, output = sys.argv[1:]
 root = Path(root)
 result = json.loads(output)
-prerequisite = result.pop('prerequisite', None)
-if prerequisite is not None:
-    assert prerequisite['action'] in ('installed', 'skipped', 'rolled_back', 'manual_required')
-if result.get('code') == 'UPDATE_UP_TO_DATE':
-    result['code'] = None
 backend = 'aether-proxy'
 app = 'luci-app-aether-proxy'
 i18n = 'luci-i18n-aether-proxy-zh-cn'
 old, current = '0.1.0-r1', '0.2.0-r1'
 inventory = root / 'package-inventory'
 events = [json.loads(line) for line in (root / 'run/events.jsonl').read_text().splitlines()]
-events = [event for event in events if event['args'].get('package') != 'aether-dns']
 calls = (root / 'package-calls').read_text().splitlines()
-# apk has unknown Provides and therefore executes the independently tested prerequisite.
-calls = [call for call in calls if 'aether-dns' not in call]
-
 restarts = (root / 'init-calls').read_text().splitlines()
-if prerequisite and prerequisite['action'] == 'rolled_back':
-    assert restarts[-1:] == ['restart']
-    restarts.pop()
-elif prerequisite and prerequisite['action'] == 'installed' and result.get('from') == result.get('to'):
-    assert restarts[-1:] == ['restart']
-    restarts.pop()
 signals = (root / 'signals').read_text().splitlines()
 queries = (root / 'package-queries').read_text().splitlines()
 cache = json.loads((root / 'run/updates.json').read_text())
@@ -97,7 +82,7 @@ else:
         assert signal.startswith(prefix), signal
         assert json.loads(signal[len(prefix):]) == {'name': 'aether-proxy', 'signal': 12}, signal
     assert (inventory / package).read_text().strip() == version
-    installed = [event['args'] for event in events if event['code'] == 'UPDATE_INSTALLED' and event['args']['package'] != 'aether-dns']
+    installed = [event['args'] for event in events if event['code'] == 'UPDATE_INSTALLED']
     assert installed == [{'package': package, 'version': version}], installed
     # Exactly one final refresh: each other manifest package is queried once.
     for name in (backend, app, i18n, 'aether-xray'):

@@ -21,8 +21,7 @@ try:
         assert text.count(before) == 1, name
         text = text.replace(before, after)
         if name == 'engine_order':
-            anchor = ('let result = transaction.ok ? '
-                      'package_update_selected(opts, name, previous, selected) : transaction;')
+            anchor = 'let result = transaction.ok ? install() : transaction;'
             assert text.count(anchor) == 1
             text = text.replace(anchor, anchor + '\n\ttransaction = prerequisite_prepare(opts, selected, plat);'
                                 + '\n\tprerequisite = transaction.prerequisite ?? fallback;')

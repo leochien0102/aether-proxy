@@ -2,7 +2,7 @@
 # M4-03b: signed transactions exercise real discovery and mutable package metadata.
 prereq_prepare() {
 	policy_reset
-	unset UPDATE_DNS_BASELINE
+	python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" target
 	export UPDATE_ENGINE_PROBES="$T/engine-probes"
 	: > "$UPDATE_ENGINE_PROBES"
 	export UPDATE_ENGINE_BIN_DIR="$T/bin"
@@ -31,7 +31,7 @@ prereq_assert() {
 }
 "$UCODE" "$ROOT/tests/update/prerequisite-unit.uc"
 expect 'M4-03b pure prerequisite decisions exit' 0 "$?"
-for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12; do
+for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12 T14 T14-bridge; do
 	prereq_prepare
 	case "$scenario" in
 		T1|T9)
@@ -45,11 +45,13 @@ for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12; do
 		T8)
 			prereq_binary custom-engine 0.1.0
 			printf "config main 'main'\n option chinadns_bin '%s'\n" "$T/bin/custom-engine" >> "$T/conf/aetherproxy" ;;
-		T10)
-			python3 "$ROOT/tests/update/bridge-manifest.py" "$T" valid
-			printf '0.6.3-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy" ;;
+		T10|T14|T14-bridge)
+			python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" "$scenario"
+			if [ "$scenario" != T10 ]; then
+				printf '0.7.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy"
+			fi ;;
 	esac
-	if [ "$scenario" = T9 ]; then printf '0.2.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy"; fi
+	if [ "$scenario" = T9 ]; then printf '1.0.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy"; fi
 	if [ "$scenario" = T6 ]; then
 		python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" recovery
 	fi
@@ -57,6 +59,11 @@ for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12; do
 		python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" "$scenario"
 	fi
 	prereq_sign
+	if [ "$scenario" = T12 ]; then
+		out=$(run_check)
+		expect 'M4-03b T12 unknown package check exit' 0 "$?"
+		expect 'M4-03b T12 check retains backend target' 1.0.0-r1 "$(get "$out" packages.aether-proxy.available)"
+	fi
 	case "$scenario" in T5|T6) export UPDATE_INSTALL_FAIL_PACKAGE=aether-proxy ;; esac
 	out=$(policy_run aether-proxy)
 	rc=$?
@@ -75,11 +82,13 @@ for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12; do
 	unset UPDATE_INSTALL_FAIL_PACKAGE
 	if [ "$scenario" = T5 ]; then
 		: > "$UPDATE_PACKAGE_CALLS"
+		: > "$T/run/events.jsonl"
 		out=$(policy_run aether-proxy)
 		expect 'M4-03b T11 retry exit' 0 "$?"
 		prereq_assert T11
 		: > "$UPDATE_PACKAGE_CALLS"
 		: > "$UPDATE_INIT_CALLS"
+		: > "$T/run/events.jsonl"
 		out=$(policy_run aether-proxy)
 		prereq_assert T11-idempotent
 	fi
@@ -92,8 +101,7 @@ p.write_text(p.read_text().split("config main 'main'")[0])
 PY
 	fi
 done
+rm -f "$T/bin/aether-dns" "$T/bin/chinadns-ng" "$T/bin/custom-engine"
 unset UPDATE_ENGINE_BIN_DIR UPDATE_ENGINE_PROBES
-export UPDATE_DNS_BASELINE=1
-prereq_binary aether-dns 1.0.0
 unset UPDATE_PACKAGE_STATE_DIR UPDATE_PACKAGE_QUERY_CALLS
 make_manifest

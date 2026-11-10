@@ -1,9 +1,5 @@
 #!/bin/sh
 if [ "$1" = status ]; then
-	if [ "${UPDATE_DNS_BASELINE:-0}" = 1 ] && [ "$2" = aether-dns ]; then
-		printf 'Package: aether-dns\nVersion: 1.0.0-r1\nProvides: dns-engine\n'
-		exit 0
-	fi
 	[ -z "${UPDATE_INSTALLED_SLEEP:-}" ] || sleep "$UPDATE_INSTALLED_SLEEP"
 	# T9.16: opt-in per-package inventory; absent files mean not installed.
 	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then

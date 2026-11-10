@@ -6,13 +6,25 @@ import sys
 
 root, scenario, output = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 result = json.loads(output)
-prerequisite = result['prerequisite']
+prerequisite = result.get('prerequisite')
 calls = (root / 'package-calls').read_text().splitlines()
 restarts = (root / 'init-calls').read_text().splitlines()
 events = [json.loads(line) for line in (root / 'run/events.jsonl').read_text().splitlines()]
 inventory = root / 'package-inventory'
-assert prerequisite['package'] == 'aether-dns', result
-assert prerequisite['action'] in ('installed', 'skipped', 'rolled_back', 'manual_required'), result
+manifest = json.loads((root / 'ch1/manifest.json').read_text())
+if scenario.startswith('T14'):
+    assert 'aether-dns' not in manifest['packages'], manifest
+    assert not (root / 'bin/aether-dns').exists() and not (root / 'bin/chinadns-ng').exists()
+    assert not (inventory / 'aether-dns').exists() and not (inventory / 'chinadns-ng').exists()
+    assert 'prerequisite' not in result, result
+    assert not (root / 'engine-probes').read_text()
+    queries = (root / 'package-queries').read_text().splitlines()
+    assert 'aether-dns' not in queries and 'chinadns-ng' not in queries, queries
+    assert not any(e['args'].get('package') in ('aether-dns', 'chinadns-ng') for e in events), events
+else:
+    assert manifest['packages']['aether-proxy']['current']['version'] == '1.0.0-r1'
+    assert prerequisite['package'] == 'aether-dns', result
+    assert prerequisite['action'] in ('installed', 'skipped', 'rolled_back', 'manual_required'), result
 
 
 def package(call):
@@ -23,7 +35,16 @@ def package(call):
 
 
 order = [package(call) for call in calls]
-if scenario == 'T1':
+installed_events = [(e['args']['package'], e['args']['version'])
+                    for e in events if e['code'] == 'UPDATE_INSTALLED']
+if scenario.startswith('T14'):
+    assert order == ['aether-proxy'], calls
+    assert installed_events == [('aether-proxy', '0.7.1-r1')], installed_events
+    assert result['ok'] and result['to'] == '0.7.1-r1', result
+    if scenario == 'T14-bridge':
+        assert manifest['packages']['aether-proxy']['current']['version'] == '1.1.0-r1'
+        assert result['code'] == 'BRIDGE_INSTALLED', result
+elif scenario == 'T1':
     assert prerequisite['action'] == 'skipped', result
     assert order == ['aether-proxy'], calls
 elif scenario in ('T2', 'T3', 'T8', 'T10', 'T11', 'T12'):
@@ -70,3 +91,14 @@ elif scenario in ('T9', 'T11-idempotent'):
         assert not any(e['code'] == 'UPDATE_INSTALLED' for e in events)
 else:
     raise AssertionError(scenario)
+
+# Never filter DNS calls/events out of the oracle: the exact sequence is the contract.
+if not scenario.startswith('T14'):
+    expected_events = []
+    if scenario in ('T1',):
+        expected_events = [('aether-proxy', '1.0.0-r1')]
+    elif scenario in ('T2', 'T3', 'T8', 'T10', 'T11', 'T12'):
+        expected_events = [('aether-dns', '1.0.0-r1'), ('aether-proxy', '1.0.0-r1')]
+    elif scenario in ('T5', 'T6'):
+        expected_events = [('aether-dns', '1.0.0-r1')]
+    assert installed_events == expected_events, (installed_events, expected_events)

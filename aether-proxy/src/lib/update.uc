@@ -978,7 +978,7 @@ function update_together(opts, ctx, selected, plat, asset) {
 	let from = installed_version(ctx, plat.pm, C.PROG);
 	if (!from.ok)
 		return group_failure('CMD_FAILED', from.detail);
-	let result = (from.version == null || version_newer(asset.version, from.version))
+	let result = version_newer(asset.version, from.version)
 		? install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, false)
 		: { ok: true, exit: 0, value: { ok: true, package: C.PROG, from: from.version,
 			to: from.version, rolled_back: false, code: null } };
@@ -999,74 +999,6 @@ function update_together(opts, ctx, selected, plat, asset) {
 	result.value ??= { ok: false, package: C.PROG, from: from.version, to: asset.version,
 		rolled_back: false, code: result.code, detail: result.detail };
 	result.value.companions = companions;
-	if (result.ok && from.version == asset.version && index(values(companions), 'installed') < 0) {
-		result.value.code = 'UPDATE_UP_TO_DATE';
-		result.code = 'UPDATE_UP_TO_DATE';
-	}
-	return result;
-}
-
-function package_update_selected(opts, name, previous, selected) {
-	opts ??= {};
-	if (index(C.UPDATE_PACKAGES, name) < 0) {
-		log.set_run_dir(opts.run_dir ?? system_path(opts.sys_root ?? '', C.RUN_DIR));
-		return { ok: false, code: 'USAGE', exit: 2, detail: `unsupported package '${name}'` };
-	}
-	// Reject before fetching anything, including for callers that bypass the CLI parser.
-	// Older backend/UI packages may not understand the current configuration (docs/08).
-	if (previous == true && name != C.XRAY_CORE_PACKAGE)
-		return { ok: false, code: 'USAGE', exit: 2,
-			detail: `--previous is only supported for ${C.XRAY_CORE_PACKAGE}` };
-	if (!selected.ok)
-		return selected;
-	let ctx = selected.ctx;
-	let plat = platform(ctx);
-	if (!plat.ok)
-		return plat;
-	let arch = plat.arch, pm = plat.pm;
-	let together = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]);
-	let primary = together ? C.PROG : name;
-	if (previous != true && index(keys(selected.manifest), 'compatibility') >= 0
-		&& (primary == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0)) {
-		let installed = installed_version(ctx, pm, C.PROG);
-		if (!installed.ok)
-			return group_failure('CMD_FAILED', installed.detail);
-		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
-		if (!plan.ok)
-			return group_failure(plan.code, plan.detail);
-		if (plan.active) {
-			// Even direct CLI requests for a page/translation cannot pull target
-			// assets across a pending backend bridge. Intermediate steps contain
-			// only a backend; old pages remain compatible with the new backend.
-			let old = selected.manifest.packages[C.PROG];
-			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
-			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
-				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
-			let result = install_with_rollback(opts, ctx, staged, C.PROG, arch, pm, plan.next.asset, false);
-			if (result.ok) {
-				result.value.code = 'BRIDGE_INSTALLED';
-				result.value.steps_remaining = plan.remaining - 1;
-			}
-			write_updates(ctx, selected, plat);
-			return result;
-		}
-	}
-	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
-	if (asset == null) {
-		log.event('error', 'ARCH_UNSUPPORTED', { arch });
-		let detail = `no ${pm} asset for ${primary} on ${arch}`;
-		// No usable backend asset: refuse the whole group rather than update pages against an
-		// unknown backend (docs/08 "更新一起更新", settled in the T9.38 review).
-		return together ? group_failure('ARCH_UNSUPPORTED', detail)
-			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
-	}
-	let result = together ? update_together(opts, ctx, selected, plat, asset)
-		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
-	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
-	// offering what was just installed. The install outcome stands even if the refresh fails.
-	let refreshed = write_updates(ctx, selected, plat);
-	if (!refreshed.ok)
-		log.event('error', 'CMD_FAILED', { cmd: 'update check (refresh after install)', rc: refreshed.exit, stderr: refreshed.detail });
 	return result;
 }
 
@@ -1175,26 +1107,17 @@ function prerequisite_rollback(ctx, plat, transaction) {
 	return restored;
 }
 
-export function package_update(opts, name, previous) {
-	opts ??= {};
-	// Keep argument rejection ahead of network IO and preserve --previous policy.
-	if (index(C.UPDATE_PACKAGES, name) < 0 || (previous == true && name != C.XRAY_CORE_PACKAGE))
-		return package_update_selected(opts, name, previous, null);
-	let selected = fetch_manifest(opts);
-	let grouped = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]
-		|| (selected.manifest?.compatibility != null && index(C.UPDATE_COMPANIONS, name) >= 0));
-	if (!grouped)
-		return package_update_selected(opts, name, previous, selected);
+function install_target(opts, selected, plat, target, install) {
+	// Gate on this hop, not manifest current: a legacy bridge can lead to a >=1.0.0 terminal.
+	let order = component_version.version_cmp(target, C.PREREQ_ENGINE_FROM_VERSION);
+	if (order == null || order < 0)
+		return install();
+	let ctx = selected.ctx;
 	let fallback = { package: 'aether-dns', version: null, action: 'manual_required' };
-	if (!selected.ok)
-		return prerequisite_result(selected, fallback);
-	let ctx = selected.ctx, plat = platform(ctx);
-	if (!plat.ok)
-		return prerequisite_result(plat, fallback);
 	let transaction = prerequisite_prepare(opts, selected, plat);
 	let prerequisite = transaction.prerequisite ?? fallback;
 	let before = service_state(ctx);
-	let result = transaction.ok ? package_update_selected(opts, name, previous, selected) : transaction;
+	let result = transaction.ok ? install() : transaction;
 	// Companion failures leave the verified backend installed: never remove its dependency.
 	let companion_failed = false;
 	for (let package, status in result.value?.companions ?? {})
@@ -1221,5 +1144,86 @@ export function package_update(opts, name, previous) {
 	}
 	if (transaction.recovery?.path != null)
 		discard_prerequisite_asset(transaction.recovery.path);
+	if (result.ok && !transaction.changed && result.value?.from == target && result.value?.to == target) {
+		if (index(values(result.value.companions ?? {}), 'installed') < 0) {
+			result.code = 'UPDATE_UP_TO_DATE';
+			result.value.code = 'UPDATE_UP_TO_DATE';
+		}
+	}
 	return prerequisite_result(result, prerequisite);
+}
+
+function package_update_selected(opts, name, previous, selected) {
+	opts ??= {};
+	if (index(C.UPDATE_PACKAGES, name) < 0) {
+		log.set_run_dir(opts.run_dir ?? system_path(opts.sys_root ?? '', C.RUN_DIR));
+		return { ok: false, code: 'USAGE', exit: 2, detail: `unsupported package '${name}'` };
+	}
+	// Reject before fetching anything, including for callers that bypass the CLI parser.
+	// Older backend/UI packages may not understand the current configuration (docs/08).
+	if (previous == true && name != C.XRAY_CORE_PACKAGE)
+		return { ok: false, code: 'USAGE', exit: 2,
+			detail: `--previous is only supported for ${C.XRAY_CORE_PACKAGE}` };
+	if (!selected.ok)
+		return selected;
+	let ctx = selected.ctx;
+	let plat = platform(ctx);
+	if (!plat.ok)
+		return plat;
+	let arch = plat.arch, pm = plat.pm;
+	let together = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]);
+	let primary = together ? C.PROG : name;
+	if (previous != true && index(keys(selected.manifest), 'compatibility') >= 0
+		&& (primary == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0)) {
+		let installed = installed_version(ctx, pm, C.PROG);
+		if (!installed.ok)
+			return group_failure('CMD_FAILED', installed.detail);
+		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
+		if (!plan.ok)
+			return group_failure(plan.code, plan.detail);
+		if (plan.active) {
+			// Even direct CLI requests for a page/translation cannot pull target
+			// assets across a pending backend bridge. Intermediate steps contain
+			// only a backend; old pages remain compatible with the new backend.
+			let old = selected.manifest.packages[C.PROG];
+			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
+			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
+				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
+			let result = install_target(opts, selected, plat, plan.next.version,
+				() => install_with_rollback(opts, ctx, staged, C.PROG, arch, pm, plan.next.asset, false));
+			if (result.ok) {
+				result.value.code = 'BRIDGE_INSTALLED';
+				result.value.steps_remaining = plan.remaining - 1;
+			}
+			write_updates(ctx, selected, plat);
+			return result;
+		}
+	}
+	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
+	if (asset == null) {
+		log.event('error', 'ARCH_UNSUPPORTED', { arch });
+		let detail = `no ${pm} asset for ${primary} on ${arch}`;
+		// No usable backend asset: refuse the whole group rather than update pages against an
+		// unknown backend (docs/08 "更新一起更新", settled in the T9.38 review).
+		return together ? group_failure('ARCH_UNSUPPORTED', detail)
+			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
+	}
+	let result = together
+		? install_target(opts, selected, plat, asset.version,
+			() => update_together(opts, ctx, selected, plat, asset))
+		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
+	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
+	// offering what was just installed. The install outcome stands even if the refresh fails.
+	let refreshed = write_updates(ctx, selected, plat);
+	if (!refreshed.ok)
+		log.event('error', 'CMD_FAILED', { cmd: 'update check (refresh after install)', rc: refreshed.exit, stderr: refreshed.detail });
+	return result;
+}
+
+export function package_update(opts, name, previous) {
+	opts ??= {};
+	// Argument rejection stays ahead of manifest IO, including --previous policy.
+	if (index(C.UPDATE_PACKAGES, name) < 0 || (previous == true && name != C.XRAY_CORE_PACKAGE))
+		return package_update_selected(opts, name, previous, null);
+	return package_update_selected(opts, name, previous, fetch_manifest(opts));
 };
