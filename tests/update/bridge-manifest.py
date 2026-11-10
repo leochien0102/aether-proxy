@@ -30,6 +30,8 @@ packages = {}
 for name in (backend, 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
     packages[name] = dict(current=release(name, versions[-1]),
                           previous=release(name, versions[0]))
+packages['aether-dns'] = dict(current=release('aether-dns', '1.0.0-r1'),
+                              previous=release('aether-dns', '1.0.0-r1'))
 steps = []
 for prior, version in zip(versions, versions[1:]):
     steps.append(dict(release(backend, version), min_from=prior,

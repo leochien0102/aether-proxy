@@ -54,7 +54,7 @@ make_manifest() {
  python3 - "$T" <<'PY'
 import hashlib,json,os,sys
 t=sys.argv[1]; content=b'local package fixture\n'; m={'schema':2,'generated':'2026-10-15T00:00:00Z','packages':{},'data':{'chnroute4':{'version':'v1','url':'data.gz','sha256':'a'*64,'size':1,'content_sha256':'b'*64,'lines':1}}}
-for name,version,old in [('aether-xray','26.10.10-r1','26.7.28-r1'),('aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-app-aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-i18n-aether-proxy-zh-cn','0.2.0-r1','0.1.0-r1')]:
+for name,version,old in [('aether-dns','1.0.0-r1','1.0.0-r1'),('aether-xray','26.10.10-r1','26.7.28-r1'),('aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-app-aether-proxy','0.2.0-r1','0.1.0-r1'),('luci-i18n-aether-proxy-zh-cn','0.2.0-r1','0.1.0-r1')]:
   releases=[]
   for ver in (version,old):
    a={}
@@ -72,6 +72,9 @@ PY
  "$USIGN" -S -m "$T/ch2/manifest.json" -s "$T/sec" >/dev/null 2>&1
 }
 make_manifest
+export UPDATE_DNS_BASELINE=1
+printf '#!/bin/sh\necho "aether-dns 1.0.0"\n' > "$T/bin/aether-dns"
+chmod +x "$T/bin/aether-dns"
 cat > "$T/bin/aether-proxy" <<WRAPPER
 #!/bin/sh
 exec "$UCODE" -S "$ENTRY" -- "\$@"
@@ -911,6 +914,8 @@ for mode in empty unset; do
 	expect "T8.16 $mode PATH default finds bin opkg" /bin/opkg "$(get "$out" manager.path)"
 	expect "T8.16 $mode PATH default searches usr sbin first" /usr/sbin/apk "$(get "$out" probed.0)"
 done
+printf '#!/bin/sh\necho "chinadns-ng 2026.11.10"\n' > "$T/path-tools/chinadns-ng"
+chmod +x "$T/path-tools/chinadns-ng"
 # Shared callers must reuse discovery for installation too, not rebuild a bare command name.
 : > "$UPDATE_PM_PATH_CALLS"
 export UPDATE_PACKAGE_STATE_FILE="$T/path-installed-version"
@@ -1129,5 +1134,6 @@ expect 'T9.42 grouped install reports ARCH_UNSUPPORTED for a bad size' ARCH_UNSU
 
 # T11.14: signed backend compatibility chains (kept after shared fixture tests).
 source "$ROOT/tests/update/bridge-chain.sh"
+source "$ROOT/tests/update/prerequisite.sh"
 
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

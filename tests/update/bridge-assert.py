@@ -7,7 +7,15 @@ import sys
 root, manager, mode, installed, target, output = sys.argv[1:]
 root = Path(root)
 result = json.loads(output)
+prerequisite = result.pop('prerequisite', None)
+if prerequisite is not None:
+    assert prerequisite['action'] in ('installed', 'skipped', 'rolled_back', 'manual_required')
+if result.get('code') == 'UPDATE_UP_TO_DATE':
+    result['code'] = None
 calls = (root / 'package-calls').read_text().splitlines()
+# apk has unknown Provides and therefore executes the independently tested prerequisite.
+calls = [call for call in calls if 'aether-dns' not in call]
+
 inventory = root / 'package-inventory'
 expected = [] if mode in ('blocked', 'guard', 'check') else [target]
 if mode == 'mismatch-rollback':
@@ -16,7 +24,8 @@ elif mode == 'rollback':
     expected.append(installed)
 assert len(calls) == len(expected), (calls, expected, result)
 if mode in ('blocked', 'guard'):
-    assert not (root / 'init-calls').read_text(), result
+    assert (root / 'init-calls').read_text().splitlines() == (
+        ['restart'] if prerequisite and prerequisite['action'] == 'rolled_back' else []), result
     assert not (root / 'signals').read_text(), result
 for call, version in zip(calls, expected):
     filename = (f'aether-proxy_{version}_aarch64_generic.ipk' if manager == 'opkg'

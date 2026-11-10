@@ -3,8 +3,12 @@
 // Device-side update discovery, PATH package-manager lookup and shared local-data hashes
 // (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 更新一起更新").
 // Downloaded metadata is never trusted before usign succeeds.
+// DNS prerequisites and recovery follow docs/design/engine-dependency-20261109 §4.3–4.6.
 
 import * as fs from 'fs';
+import * as check_cmd from 'aetherproxy.cmd.check';
+import * as component_id from 'aetherproxy.component_id';
+import * as component_version from 'aetherproxy.component_version';
 import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
 import * as config from 'aetherproxy.config';
@@ -161,21 +165,33 @@ function package_manager(bin_dir) {
 	return null;
 }
 
-function installed_version(ctx, pm, name) {
+function installed_metadata(ctx, pm, name) {
 	let bin = ctx.pm_bin;
 	let argv = pm == 'opkg' ? [ bin, 'status', name ] : [ bin, 'list', '-I', name ];
 	let result = sys.run(argv, { timeout: 10, quiet: true });
 	if (result.code != 0) {
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });
-		return { ok: false, detail: `${pm} exited ${result.code}: ${trim(result.stderr)}` };
+		return { ok: false, version: null, provides: [], detail: `${pm} exited ${result.code}: ${trim(result.stderr)}` };
 	}
 	if (pm == 'opkg') {
 		let match_version = match(result.stdout, /(^|\n)Version:[ \t]*([^\r\n]+)/);
-		return { ok: true, version: match_version ? trim(match_version[2]) : null };
+		let provided = match(result.stdout, /(^|\n)Provides:[ \t]*([^\r\n]+)/);
+		let provides = provided ? map(split(provided[2], ','), item =>
+			replace(trim(item), /[ \t]+\(.*$/, '')) : [];
+		let status = match(result.stdout, /(^|\n)Status:[ \t]*([^\r\n]+)/);
+		if (status != null && match(trim(status[2]), /(^| )installed$/) == null)
+			return { ok: true, version: null, provides: [] };
+		return { ok: true, version: match_version ? trim(match_version[2]) : null, provides };
 	}
 	let token = split(trim(split(trim(result.stdout), '\n')[0] ?? ''), /[[:space:]]+/)[0] ?? '';
 	let prefix = `${name}-`;
-	return { ok: true, version: substr(token, 0, length(prefix)) == prefix ? substr(token, length(prefix)) : null };
+	// apk list cannot reliably report Provides; unknown is deliberately unsatisfied.
+	return { ok: true, provides: [],
+		version: substr(token, 0, length(prefix)) == prefix ? substr(token, length(prefix)) : null };
+}
+
+function installed_version(ctx, pm, name) {
+	return installed_metadata(ctx, pm, name);
 }
 
 function version_parts(version) {
@@ -962,7 +978,7 @@ function update_together(opts, ctx, selected, plat, asset) {
 	let from = installed_version(ctx, plat.pm, C.PROG);
 	if (!from.ok)
 		return group_failure('CMD_FAILED', from.detail);
-	let result = version_newer(asset.version, from.version)
+	let result = (from.version == null || version_newer(asset.version, from.version))
 		? install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, false)
 		: { ok: true, exit: 0, value: { ok: true, package: C.PROG, from: from.version,
 			to: from.version, rolled_back: false, code: null } };
@@ -983,10 +999,14 @@ function update_together(opts, ctx, selected, plat, asset) {
 	result.value ??= { ok: false, package: C.PROG, from: from.version, to: asset.version,
 		rolled_back: false, code: result.code, detail: result.detail };
 	result.value.companions = companions;
+	if (result.ok && from.version == asset.version && index(values(companions), 'installed') < 0) {
+		result.value.code = 'UPDATE_UP_TO_DATE';
+		result.code = 'UPDATE_UP_TO_DATE';
+	}
 	return result;
 }
 
-export function package_update(opts, name, previous) {
+function package_update_selected(opts, name, previous, selected) {
 	opts ??= {};
 	if (index(C.UPDATE_PACKAGES, name) < 0) {
 		log.set_run_dir(opts.run_dir ?? system_path(opts.sys_root ?? '', C.RUN_DIR));
@@ -997,7 +1017,6 @@ export function package_update(opts, name, previous) {
 	if (previous == true && name != C.XRAY_CORE_PACKAGE)
 		return { ok: false, code: 'USAGE', exit: 2,
 			detail: `--previous is only supported for ${C.XRAY_CORE_PACKAGE}` };
-	let selected = fetch_manifest(opts);
 	if (!selected.ok)
 		return selected;
 	let ctx = selected.ctx;
@@ -1049,4 +1068,158 @@ export function package_update(opts, name, previous) {
 	if (!refreshed.ok)
 		log.event('error', 'CMD_FAILED', { cmd: 'update check (refresh after install)', rc: refreshed.exit, stderr: refreshed.detail });
 	return result;
+}
+
+// Pure decision: runtime capability never substitutes for package Provides.
+export function prerequisite_satisfied(found, metadata) {
+	let floor = component_id.min_version(component_id.engine(found?.path));
+	let order = component_version.version_cmp(found?.version, floor);
+	let run_ok = found != null && (floor == null || (order != null && order >= 0));
+	let pkg_ok = false;
+	for (let item in metadata)
+		if (item.ok && index(item.provides ?? [], 'dns-engine') >= 0)
+			pkg_ok = true;
+	return run_ok && pkg_ok;
+};
+
+function prerequisite_result(result, prerequisite) {
+	result.prerequisite = prerequisite;
+	result.exit ??= result.ok ? 0 : 1;
+	result.value ??= { ok: result.ok, package: C.PROG, from: null, to: null,
+		rolled_back: false, code: result.code, detail: result.detail };
+	result.value.prerequisite = prerequisite;
+	return result;
+}
+
+function prerequisite_manual(detail) {
+	return { ok: false, exit: 1, code: 'PREREQ_MANUAL_REQUIRED',
+		detail: detail + '; back up the engine binary and installed package metadata, '
+			+ 'verify an exact restore path, then migrate aether-dns manually' };
+}
+
+function prerequisite_asset(manifest, plat, previous) {
+	let asset = package_asset(manifest, 'aether-dns', plat.arch, plat.pm, previous);
+	let extension = '.' + asset_format(plat.pm);
+	return asset != null && substr(asset.url, -length(extension)) == extension ? asset : null;
+}
+
+function discard_prerequisite_asset(path) {
+	if (path != null && unlink_file(path) == null)
+		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs_error() });
+}
+
+function prerequisite_prepare(opts, selected, plat) {
+	let ctx = selected.ctx;
+	let cursor = uci.cursor(opts.confdir);
+	let loaded = config.load(cursor);
+	if (!loaded.ok)
+		return { ok: false, exit: 1, code: 'CONFIG_INVALID', detail: 'configuration is invalid' };
+	let found = check_cmd.find_component(C.CHINADNS_COMPONENT, loaded.snapshot.main.chinadns_bin, ctx);
+	if (found != null) {
+		let banner = sys.run([ found.path, '-V' ], { timeout: 10 });
+		found = { ...found, version: banner.code == 0
+			? component_version.parse_version(banner.stdout + banner.stderr) : null };
+	}
+	let installed = installed_metadata(ctx, plat.pm, 'aether-dns');
+	let legacy = installed_metadata(ctx, plat.pm, C.CHINADNS_COMPONENT);
+	let prerequisite = { package: 'aether-dns', version: installed.version, action: 'skipped' };
+	if (prerequisite_satisfied(found, [ installed, legacy ]))
+		return { ok: true, prerequisite, changed: false };
+	// TODO(design): no failed/not-started action exists; before mutation use manual_required
+	// alongside the original failure code, rather than falsely claiming installation.
+	prerequisite.action = 'manual_required';
+	if (!installed.ok)
+		return { ...prerequisite_manual('cannot determine installed aether-dns'), prerequisite };
+	let asset = prerequisite_asset(selected.manifest, plat, false);
+	if (asset == null)
+		return { ...prerequisite_manual('no verifiable engine asset for this platform'), prerequisite };
+	let recovery = null;
+	if (installed.version != null) {
+		let prior = prerequisite_asset(selected.manifest, plat, true);
+		if (prior == null || prior.version != installed.version)
+			return { ...prerequisite_manual('no exact engine recovery asset (including package revision)'), prerequisite };
+		recovery = download_asset(opts, selected.urls, prior, prior.url);
+		if (!recovery.ok)
+			return { ...prerequisite_manual('exact engine recovery asset failed verification'), prerequisite };
+	}
+	let downloaded = download_asset(opts, selected.urls, asset, `new-${asset.url}`);
+	if (!downloaded.ok)
+		return { ...downloaded, prerequisite, recovery };
+	let installed_new = install_package(ctx, plat.pm, downloaded.path, installed.version != null);
+	discard_prerequisite_asset(downloaded.path);
+	let transaction = { ok: true, changed: true, prerequisite, recovery, original: installed.version };
+	prerequisite.version = asset.version;
+	prerequisite.action = 'installed';
+	if (!installed_new.ok || !verify_installed_version(ctx, plat.pm, 'aether-dns', asset.version))
+		return { ...transaction, ok: false, exit: 1, code: 'UPDATE_VERIFY_FAILED',
+			detail: installed_new.detail ?? 'engine installed version mismatch' };
+	log.event('notice', 'UPDATE_INSTALLED', { package: 'aether-dns', version: asset.version });
+	return transaction;
+}
+
+function prerequisite_rollback(ctx, plat, transaction) {
+	let restored;
+	if (transaction.original != null) {
+		restored = install_package(ctx, plat.pm, transaction.recovery.path, true).ok
+			&& verify_installed_version(ctx, plat.pm, 'aether-dns', transaction.original);
+	}
+	else {
+		let argv = [ ctx.pm_bin, plat.pm == 'opkg' ? 'remove' : 'del', 'aether-dns' ];
+		restored = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS }).code == 0
+			&& verify_installed_version(ctx, plat.pm, 'aether-dns', null);
+	}
+	if (restored) {
+		transaction.prerequisite.action = 'rolled_back';
+		transaction.prerequisite.version = transaction.original;
+	}
+	return restored;
+}
+
+export function package_update(opts, name, previous) {
+	opts ??= {};
+	// Keep argument rejection ahead of network IO and preserve --previous policy.
+	if (index(C.UPDATE_PACKAGES, name) < 0 || (previous == true && name != C.XRAY_CORE_PACKAGE))
+		return package_update_selected(opts, name, previous, null);
+	let selected = fetch_manifest(opts);
+	let grouped = previous != true && (name == C.PROG || name == C.UPDATE_COMPANIONS[0]
+		|| (selected.manifest?.compatibility != null && index(C.UPDATE_COMPANIONS, name) >= 0));
+	if (!grouped)
+		return package_update_selected(opts, name, previous, selected);
+	let fallback = { package: 'aether-dns', version: null, action: 'manual_required' };
+	if (!selected.ok)
+		return prerequisite_result(selected, fallback);
+	let ctx = selected.ctx, plat = platform(ctx);
+	if (!plat.ok)
+		return prerequisite_result(plat, fallback);
+	let transaction = prerequisite_prepare(opts, selected, plat);
+	let prerequisite = transaction.prerequisite ?? fallback;
+	let before = service_state(ctx);
+	let result = transaction.ok ? package_update_selected(opts, name, previous, selected) : transaction;
+	// Companion failures leave the verified backend installed: never remove its dependency.
+	let companion_failed = false;
+	for (let package, status in result.value?.companions ?? {})
+		if (status == 'failed')
+			companion_failed = true;
+	if (result.ok && transaction.changed && result.value?.from == result.value?.to) {
+		if (!restart_service(ctx)) {
+			result.ok = false;
+			result.exit = 1;
+			result.code = 'UPDATE_VERIFY_FAILED';
+			result.value.ok = false;
+			result.value.code = result.code;
+			result.detail = 'restart after engine-only installation failed';
+		}
+		if (result.ok) {
+			result.value.code = null;
+			result.code = null;
+		}
+	}
+	if (!result.ok && transaction.changed && !companion_failed) {
+		if (!prerequisite_rollback(ctx, plat, transaction))
+			result.detail = (result.detail ?? result.code) + '; engine rollback failed';
+		activate_rollback(ctx, C.PROG, before);
+	}
+	if (transaction.recovery?.path != null)
+		discard_prerequisite_asset(transaction.recovery.path);
+	return prerequisite_result(result, prerequisite);
 };

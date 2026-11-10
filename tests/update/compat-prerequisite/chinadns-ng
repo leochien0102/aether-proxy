@@ -1,0 +1,8 @@
+#!/bin/sh
+# Frozen-client harness predates DNS prerequisites; opt-in read-only runtime fixture.
+if [ "$1" = -V ]; then
+	printf 'chinadns-ng 2025.08.09\n'
+	exit 0
+fi
+printf 'fixture only supports -V\n' >&2
+exit 2
