@@ -508,7 +508,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - `UPDATE_UP_TO_DATE` 优先于版本、companions 和刷新提示显示「已是最新：<包>」（msgid `Already up to date: %s`）；使用结果中的 `package`，缺失时使用发起更新的包名。
   - `PREREQ_MANUAL_REQUIRED` 显示「无法自动满足 DNS 引擎前置」（msgid `Cannot satisfy the DNS engine prerequisite automatically`），有 `detail` 时沿用失败原因的追加规则，不声称已安装。
   - 前置事务结果追加到原结果之后、刷新提示之前，成功、失败及 companions 均适用：
-    - `installed` →「已先安装 DNS 引擎：aether-dns <version>」（msgid `DNS engine installed first: aether-dns %s`）。
+    - `installed` →「已先安装 DNS 引擎 aether-dns <version>」（msgid `DNS engine installed first: aether-dns %s`）。
     - `rolled_back` 且 `version` 非空 →「DNS 引擎已回滚到 <version>」（msgid `DNS engine rolled back to %s`）。
     - `rolled_back` 且 `version` 为 `null`（撤销首次安装）→「已撤销本次新装的 DNS 引擎」（msgid `New DNS engine install was undone`），不显示字面量 `null`。
     - `skipped` 或没有 `prerequisite` → 不增加文字，保留旧结果；`manual_required` 仅按上述失败码显示原因，未知 action 不追加文字。
