@@ -15,7 +15,7 @@ const { promisify } = require('node:util');
 const { loadModule, createRpc, element } = require('../luci/loader');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '../..');
-const FROZEN = path.join(__dirname, 'fixtures/0.6.3-r7');
+const FROZEN = path.join(__dirname, 'fixtures/0.7.0-r1');
 const RES = path.join(FROZEN, 'htdocs/luci-static/resources');
 const PLUGIN = path.join(FROZEN, 'root/usr/share/rpcd/ucode/aetherproxy.uc');
 const UCODE = path.join(ROOT, 'tests/host/ucode');
@@ -23,12 +23,12 @@ const ENTRY = path.join(ROOT, 'aether-proxy/src/aether-proxy');
 const USIGN = path.join(ROOT, 'tests/host/prefix/bin/usign');
 const NAMES = ['aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'];
 const MANAGED = ['aether-xray', ...NAMES.slice(1)];
-const CURRENT = { 'xray-core': '99.1-r9', 'aether-xray': '26.10.21-r1', 'aether-proxy': '0.6.4-r1',
-	'luci-app-aether-proxy': '0.6.4-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
+const CURRENT = { 'xray-core': '99.1-r9', 'aether-xray': '26.10.21-r1', 'aether-proxy': '0.7.1-r1',
+	'luci-app-aether-proxy': '0.7.1-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
 // The backend is already new: the previous release's page must update itself.
 const INSTALLED = { 'xray-core': '99.1-r8', 'aether-xray': '26.9.30-r1',
 	'aether-proxy': CURRENT['aether-proxy'],
-	'luci-app-aether-proxy': '0.6.3-r7', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
+	'luci-app-aether-proxy': '0.7.0-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
 
 globalThis._ = text => text;
 globalThis.E = element;
@@ -170,7 +170,7 @@ function assert_inventory(model, status, installed) {
 	assert.equal(table.checked, '10 seconds ago');
 	assert.deepEqual(table.rows.map(row => row.name), NAMES);
 	for (const row of table.rows) {
-		// The r7 frozen page names aether-xray directly; exact NAMES above excludes xray-core.
+		// The 0.7.0 frozen page names aether-xray directly; exact NAMES above excludes xray-core.
 		assert.equal(row.installed, installed[row.name]);
 		assert.equal(row.available, CURRENT[row.name]);
 		assert.equal(row.previous, INSTALLED[row.name]);
@@ -191,7 +191,7 @@ function assert_package_text(model, job) {
 	assert.equal(r.to, CURRENT[r.package]);
 	assert.equal(r.rolled_back, false);
 	assert.equal(r.code, null);
-	// The 0.6.3-r7 page reads the grouped result (T9.38/T10.67): the backend was already
+	// The 0.7.0-r1 page reads the grouped result (T9.38/T10.67): the backend was already
 	// current, so it must not claim an aether-proxy update, only the two page packages.
 	assert.deepEqual(r.companions, { 'luci-app-aether-proxy': 'installed', 'luci-i18n-aether-proxy-zh-cn': 'installed' });
 	const text = model.job_result('update_package', 'luci-app-aether-proxy', job);
@@ -200,7 +200,7 @@ function assert_package_text(model, job) {
 	return text;
 }
 
-test('T9.39 frozen 0.6.3-r7 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
+test('T9.39 frozen 0.7.0-r1 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
 	const f = await fixture();
 	t.after(() => f.close());
 	const replies = [];

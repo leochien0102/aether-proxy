@@ -45,11 +45,26 @@ function failure(r) {
 		JOB_LOST: _('Job process exited unexpectedly', 'aether-proxy'),
 		UPDATE_VERIFY_FAILED: _('Verification failed', 'aether-proxy'),
 		NO_SPACE: _('Not enough space', 'aether-proxy'),
+		PREREQ_MANUAL_REQUIRED: _('Cannot satisfy the DNS engine prerequisite automatically', 'aether-proxy'),
 		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy'),
 		BRIDGE_UNAVAILABLE: _('Compatibility update chain unavailable; cannot update to the target version', 'aether-proxy')
 	};
 	const reason = messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy');
 	return r.detail ? _('%s: %s', 'aether-proxy').format(reason, r.detail) : reason;
+}
+// Keep prerequisite wording before refresh guidance, including failed transactions (M4-03c).
+function prerequisite_result(text, r) {
+	const p = r.prerequisite;
+	// TODO(design): no additional wording is frozen for unknown actions or manual_required.
+	if (!p || ![ 'installed', 'skipped', 'rolled_back' ].includes(p.action))
+		return text;
+	if (p.action == 'skipped')
+		return text;
+	const note = p.action == 'rolled_back' ?
+		(p.version == null ? _('New DNS engine install was undone', 'aether-proxy') :
+			_('DNS engine rolled back to %s', 'aether-proxy').format(p.version)) :
+		_('DNS engine installed first: aether-dns %s', 'aether-proxy').format(p.version);
+	return text + ' ' + note;
 }
 function companion_result(r) {
 	// The backend reports only the first failed companion's cause at the top level.
@@ -62,7 +77,7 @@ function companion_result(r) {
 	const installed = pages.filter(p => r.companions[p.name] == 'installed');
 	const failed = pages.filter(p => r.companions[p.name] == 'failed');
 	if (r.ok === false && !failed.length)
-		return failure(r);
+		return prerequisite_result(failure(r), r);
 	const updated = r.from != r.to;
 	const parts = [];
 	if (updated)
@@ -79,20 +94,27 @@ function companion_result(r) {
 	});
 	if (!parts.length)
 		parts.push(_('Already up to date', 'aether-proxy'));
-	const text = _('%s.', 'aether-proxy').format(
+	const original = _('%s.', 'aether-proxy').format(
 		parts.reduce((a, b) => _('%s; %s', 'aether-proxy').format(a, b)));
-	return installed.length ? _('%s %s', 'aether-proxy').format(text,
-		_('Please refresh the page.', 'aether-proxy')) : text;
+	const text = prerequisite_result(original, r);
+	if (!installed.length)
+		return text;
+	const refresh = _('Please refresh the page.', 'aether-proxy');
+	// The legacy Chinese sentence join has no space; keep its bytes when no note was added.
+	return text == original ? _('%s %s', 'aether-proxy').format(text, refresh) : text + ' ' + refresh;
 }
 function package_result(name, r) {
+	if (r.code == 'UPDATE_UP_TO_DATE')
+		return _('Already up to date: %s', 'aether-proxy').format(r.package ?? name);
 	if (r.rolled_back)
-		return _('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from);
+		return prerequisite_result(
+			_('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from), r);
 	if (r.companions)
 		return companion_result(r);
 	if (!r.ok)
-		return failure(r);
-	const text = r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
-		_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to);
+		return prerequisite_result(failure(r), r);
+	const text = prerequisite_result(r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
+		_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to), r);
 	return text + (restarts(name) ?
 		' ' + _('Page files may have changed; please refresh your browser.', 'aether-proxy') : '');
 }
@@ -180,16 +202,32 @@ return baseclass.extend({
 	components: function(status) {
 		const pending = status === undefined;
 		const loading = _('Reading…', 'aether-proxy');
-		return [ 'xray', 'chinadns-ng' ].map(name => ({
-			name, version: pending ? loading : (status?.components?.[name]?.version ?? _('Unknown', 'aether-proxy')),
-			path: pending ? loading : (status?.components?.[name]?.path ?? '–'),
-			note: !pending && name == 'chinadns-ng' ?
-				_('Not automatically updated through the release channel: '
-					+ 'install or update from feeds on the Software page, '
-					+ 'or download the chinadns-ng package%s from the release page and install it manually.',
-					'aether-proxy')
-					.format(status?.updates_available ? arch_note(status.updates_available.arch) : '') : ''
-		}));
+		const entries = status?.components;
+		// Prefer the logical id; the alias only supports backends predating M4-02.
+		const dns = Object.prototype.hasOwnProperty.call(entries ?? {}, 'dns')
+			? entries.dns : entries?.['chinadns-ng'];
+		// An explicit null is unknown, not permission to guess from the path.
+		const engine = dns?.engine === undefined && typeof dns?.path == 'string'
+			? dns.path.replace(/^.*\//, '') : dns?.engine;
+		let note = '';
+		if (!pending && engine == 'aether-dns')
+			note = _('Provided by the aether-dns package: this application\'s release channel does not update it.',
+				'aether-proxy');
+		else if (!pending && engine == 'chinadns-ng')
+			note = _('Not automatically updated through the release channel: '
+				+ 'install or update from feeds on the Software page, '
+				+ 'or download the chinadns-ng package%s from the release page and install it manually.',
+				'aether-proxy')
+				.format(status?.updates_available ? arch_note(status.updates_available.arch) : '');
+		return [ 'xray', 'dns' ].map(id => {
+			const c = id == 'dns' ? dns : entries?.[id];
+			return {
+				name: id == 'dns' ? _('DNS engine', 'aether-proxy') : id,
+				version: pending ? loading : (c?.version ?? _('Unknown', 'aether-proxy')),
+				path: pending ? loading : (c?.path ?? '–'),
+				note: id == 'dns' ? note : ''
+			};
+		});
 	},
 	job_result: function(kind, name, job) {
 		// Job transport errors have no result; completed CLI failures do.

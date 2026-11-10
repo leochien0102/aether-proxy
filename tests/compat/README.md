@@ -16,8 +16,9 @@ Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the
 0.6.3 / 0.7.0 source; tests do not fetch tags. The migration rows in docs/08 are
 checked against this fixture. Supported clients require manual chinadns-ng
 provisioning; 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
-0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files remain at
-0.6.3-r7; rolling the version contract does not replace those snapshots.
+0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files are now at
+0.7.0-r1, extracted after publication; rolling the version contract alone does
+not replace those snapshots.
 Do not add new package names to frozen known lists just
 to make a newly introduced hard dependency pass: provide a real bridge or an
 explicit manual migration and document the packages.
@@ -112,9 +113,11 @@ docs/08 "更新接口（固定）" describes the wire shapes this suite pins: su
 `status`/`job start` omit `ok` (the frozen client reads `ok !== false`), and
 `job status` returns the flat job record (settled in the T9.39 review).
 
-Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7
-(latest formal client, extracted unchanged from its release tag). The r7 page
-lists aether-xray directly rather than a retired xray-core row. The harness still
+Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7;
+0.7.0-r1 (M4-03e, latest formal client, extracted unchanged from tag
+`v0.7.0-r1`). The 0.7.0 page lists aether-xray directly rather than a retired
+xray-core row and displays DNS components by logical id/engine. Its update model
+also supports prerequisite transaction results (M4-03c). The harness still
 keeps a legacy installed xray-core record and verifies that updates never install
-or alter it. The simulated 0.6.4-r1 channel is test metadata only, not a real
+or alter it. The simulated 0.7.1-r1 channel is test metadata only, not a real
 release, migration bridge, or promise of future compatibility.
