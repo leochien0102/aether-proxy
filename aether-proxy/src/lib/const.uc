@@ -368,3 +368,6 @@ export const DNS_COMPONENT = 'dns';
 // M4-03a: existence-first DNS selection and engine-specific runtime floor.
 export const AETHER_DNS_MIN_VERSION = '1.0.0';
 export const AETHER_DNS_BINARY = '/usr/bin/aether-dns';
+
+// M4-03b: only these backend targets depend on the dns-engine virtual package.
+export const PREREQ_ENGINE_FROM_VERSION = '1.0.0';

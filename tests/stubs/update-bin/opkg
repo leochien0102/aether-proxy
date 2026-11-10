@@ -8,6 +8,9 @@ if [ "$1" = status ]; then
 		fi
 		if [ -f "$UPDATE_PACKAGE_STATE_DIR/$2" ]; then
 			printf 'Package: %s\nVersion: %s\n' "$2" "$(cat "$UPDATE_PACKAGE_STATE_DIR/$2")"
+			if [ -f "$UPDATE_PACKAGE_STATE_DIR/$2.provides" ]; then
+				printf 'Provides: %s\n' "$(cat "$UPDATE_PACKAGE_STATE_DIR/$2.provides")"
+			fi
 		fi
 		exit 0
 	fi
@@ -26,7 +29,7 @@ if [ "$1" = install ]; then
 	shift
 	[ "${1:-}" = --force-downgrade ] && shift
 	[ "${UPDATE_INSTALL_EXIT:-0}" = 0 ] || exit "$UPDATE_INSTALL_EXIT"
-	file=${1##*/}; version=${file#*_}; version=${version%%_*}
+	file=${1##*/}; file=${file#new-}; version=${file#*_}; version=${version%%_*}
 	if [ -n "${UPDATE_PACKAGE_STATE_DIR:-}" ]; then
 		name=${file%%_*}
 		if [ "${UPDATE_INSTALL_FAIL_PACKAGE:-}" = "$name" ]; then
@@ -34,6 +37,17 @@ if [ "$1" = install ]; then
 			exit 7
 		fi
 		printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_DIR/$name"
+		if [ "$name" = aether-dns ]; then
+			if [ "$version" = 1.0.0-r1 ]; then
+				printf 'dns-engine\n' > "$UPDATE_PACKAGE_STATE_DIR/$name.provides"
+			else
+				rm -f "$UPDATE_PACKAGE_STATE_DIR/$name.provides"
+			fi
+			if [ -n "${UPDATE_ENGINE_BIN_DIR:-}" ]; then
+				printf '#!/bin/sh\necho "aether-dns %s"\n' "${version%-r*}" > "$UPDATE_ENGINE_BIN_DIR/aether-dns"
+				chmod +x "$UPDATE_ENGINE_BIN_DIR/aether-dns"
+			fi
+		fi
 	else
 		[ -z "${UPDATE_PACKAGE_STATE_FILE:-}" ] || printf '%s\n' "$version" > "$UPDATE_PACKAGE_STATE_FILE"
 	fi
@@ -41,6 +55,12 @@ if [ "$1" = install ]; then
 	if [ -n "${UPDATE_PACKAGE_DB_FILE:-}" ]; then
 		touch "$UPDATE_PACKAGE_DB_FILE" || exit 1
 	fi
+	exit 0
+fi
+if [ "$1" = remove ]; then
+	printf '%s\n' "$*" >> "${UPDATE_PACKAGE_CALLS:?}"
+	[ -z "${UPDATE_ENGINE_BIN_DIR:-}" ] || rm -f "$UPDATE_ENGINE_BIN_DIR/$2"
+	rm -f "$UPDATE_PACKAGE_STATE_DIR/$2" "$UPDATE_PACKAGE_STATE_DIR/$2.provides"
 	exit 0
 fi
 exit 2

@@ -420,6 +420,37 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 组里没有一个包需要更新时，结果与现在「已是最新」相同（退出码 0）。
 - 清单里没有本机可用的 `aether-proxy` `current` 资产（`ARCH_UNSUPPORTED`）时整组拒绝、页面包也不装，`companions` 全为 `skipped`：不在后端未知的情况下改页面（2026-10-25 T9.38 复核定，原为实现中的 TODO(design)）。
 
+**DNS 引擎前置事务**（M4-03b，0.7.0 实现，触发规则以
+[engine-dependency-20261109 §4.3–§4.6](design/engine-dependency-20261109.md) 为准）：
+
+- **先确定本次 backend 目标，再判断是否触发**：桥接分支取 `plan.next.version`，普通组更新取所选 backend
+  资产的版本。只有 `version_cmp(target, PREREQ_ENGINE_FROM_VERSION) >= 0` 才进入事务；
+  `PREREQ_ENGINE_FROM_VERSION = '1.0.0'`。不能拿桥接链的最终 `current` 版本代替本次桥接步。
+  低于门槛的更新完全保持原流程：不解析引擎、不执行 `-V`、不查询前置包元数据、不安装引擎，
+  结果不含 `prerequisite`。原因是 0.7.x 仍依赖 `chinadns-ng`，其生产清单不必含 `aether-dns`。
+- 触发后，在任何 backend（含桥接步）安装之前判断 `skip = run_ok && pkg_ok`：
+  `run_ok` 复用 daemon 的引擎解析顺序及按引擎版本下限（未知自定义引擎无下限）；
+  `pkg_ok` 依据已装包元数据的 `Provides: dns-engine`，不能用版本够新代替。
+  opkg 同次 `status` 读取版本和 Provides；apk 无法可靠取得 Provides，按未知、不满足处理（25.x 未验证）。
+- 双条件不满足时，只从签名清单 `packages['aether-dns'].current` 读取前置资产，不把它加入更新页主列表。
+  首装按 size/sha256 校验后安装并校验版本；后续 backend 失败时卸载本次新增的引擎。
+  替换已有引擎前，必须取得清单 `previous` 中与已装版本及 `-rN` 精确一致、架构/包格式匹配且校验通过的恢复资产；
+  新包安装及恢复都允许 opkg `--force-downgrade`（日期版转 1.0.0 可能被视作降级）。
+  失败时回装精确资产并校验原版本，**不卸载**原有引擎。页面包失败不撤销已验证 backend 所需的引擎。
+- 没有可自动安装来源、已装状态无法确定或无法取得精确恢复资产时，返回
+  `{ ok:false, code:'PREREQ_MANUAL_REQUIRED' }`，退出码 1；在任何安装之前拒绝，
+  `detail` 提示先备份二进制和包安装元数据、验证精确恢复路径，再人工迁移。
+- 产生事务时，成功或失败的安装结果都新增
+  `prerequisite: { package: 'aether-dns', version, action }`。
+  `action` 为 `installed | skipped | rolled_back | manual_required`；`version` 为已安装、跳过时保留、
+  回滚后恢复的版本（首装撤销后为 null），人工处理时为原库存版本或 null。
+  下载/校验等安装前失败沿用原失败码；因 action 没有 failed/not_started，暂用 `manual_required` 表示前置未完成，
+  不把它误报为已安装。只有实际恢复成功才用 `rolled_back`；恢复失败的 `detail` 明确说明。
+- 双条件满足则前置 `skipped`；若 backend 目标和已装相同、组内也无其它安装，返回
+  `UPDATE_UP_TO_DATE`（`ok:true`，退出码 0），不安装、不重启、不写 `UPDATE_INSTALLED`。
+  失败后重试只补缺的步骤；此前已回滚卸载的首装引擎仍属缺失步骤。
+  引擎实际安装沿用 `UPDATE_INSTALLED`，不新增事件码或改变事件字段；`--previous` 的适用范围不变。
+
 **更新接口（固定）**（2026-10-25 定，backlog B17）：页面与 rpcd 插件都在 `luci-app-aether-proxy` 里，只有它们调用的命令行属于 `aether-proxy`。为保证「先更新了后端，旧页面仍能把自己更新掉」，下面这些对**上一个正式版**的页面与插件保持兼容：以后的后端**只能加字段、加可选参数，不能删除、改名或改变含义**。
 - 命令：`aether-proxy status`（JSON）、`aether-proxy job start update check`、`aether-proxy job start update package <包>`、`aether-proxy job status <id>`，以及它们的退出码含义。
 - `status` 中更新页用到的字段：`components`、`updates_available` 及其下的 `checked`、`arch`、`packages.<包>.installed` / `available` / `previous` / `newer`；失败时的 `ok: false`、`code`。

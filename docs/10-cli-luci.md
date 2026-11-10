@@ -505,6 +505,18 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - 检查：成功 →「检查完成」，附有更新的包数；失败按 `code`：`UPDATE_FETCH_FAILED` 连不上发布通道、`MANIFEST_BAD_SIGNATURE` 签名校验失败、`CONFIG_INVALID` 没有可用的通道地址；`BUSY` 另一个更新作业正在运行；`JOB_LOST` 作业进程意外退出；其他码原样显示并附 `detail`。
   - 安装/回滚（`update package` 的结果 `{ ok, package, from, to, rolled_back, code, detail }`）：`ok` 为真 →「<包> 已从 <from> 更新到 <to>」（`from` 为 `null` 时「已安装 <to>」）；
     `rolled_back` 为真 →「安装后检查失败，已回滚到 <from>」；`ok` 为假且未回滚 → 按 `code` 显示（`UPDATE_VERIFY_FAILED` 校验失败——有 `detail` 时附上、`NO_SPACE` 空间不足、`ARCH_UNSUPPORTED` 本机不可用，以及上面检查用的几个码），其他码原样显示。
+- **升级事务作业结果契约**（M4-03b，后端字段；本卡不实现新的 LuCI 展示）：
+  - `BRIDGE_INSTALLED`：本次桥接 backend 已安装成功，`steps_remaining` 是剩余步数；只处理一跳。
+  - `PREREQ_MANUAL_REQUIRED`：`ok:false`，作业失败、退出码 1；前置引擎不能安全自动迁移，
+    `detail` 包含备份二进制/已装元数据及验证恢复路径的人工指引，在任何安装之前拒绝。
+  - `UPDATE_UP_TO_DATE`：`ok:true`，作业成功、退出码 0；引擎双条件满足且组内全部跳过，
+    不安装、不重启、不产生 `UPDATE_INSTALLED`。
+  - 只有**本次要安装的 backend 版本** ≥ `PREREQ_ENGINE_FROM_VERSION`（1.0.0）才产生前置事务；
+    桥接取本次 `plan.next.version`，不取链终点。触发后成功或失败的 `result` 都有
+    `prerequisite: { package, version, action }`，action 为
+    `installed | skipped | rolled_back | manual_required`。含义及失败恢复见 [08「DNS 引擎前置事务」](08-updates.md)。
+    下载/校验失败仍沿用既有码，必须同时看 `ok`、`code`、`detail`，不能只凭 action 判断成功。
+    低于门槛的旧版更新完全保持原流程，**不产生 prerequisite 字段**；未知新增字段仍可被旧页面忽略。
 - **更新策略**（`update` 段）：`xray_auto`（`off` 不提示、`notify` 只提示、`auto` 自动安装，各附一句说明；`auto` 的说明写明「只在运行正常时安装，同一版本只尝试一次，检查失败自动回滚」）、
   `data_auto`、`data_hour`（0–23）、`data_minute`（0–59，空表示 30，占位文字写「30」）、`channel_urls`（`DynamicList`）。
   `channel_urls` 每项用模型做与命令行**相同规则**的校验（`lib/config.uc` 的 `url`：`http://` 或 `https://` 开头、主机部分非空、不含空白），作为 `validate`。列表删空时 LuCI 会删除该选项，命令行回到默认通道（05「`config update`」），所以不阻止保存，只在说明中写「留空则使用默认的发布通道」。
