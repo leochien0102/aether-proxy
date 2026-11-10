@@ -149,7 +149,8 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 M4-02b2：`COMPONENT_MISSING` / `COMPONENT_TOO_OLD` 的 `component` 现值为 `xray` 或 `dns`；历史记录仍可能是
 `chinadns-ng`，读取方将 `dns` 与 `chinadns-ng` 都显示为「DNS 引擎」，不回写历史文件。
 `PRECHECK_FAILED.missing` 的新 DNS 项为 `component:dns`（旧项 `component:chinadns-ng` 仍可读）。
-事件码、级别及版本闸门不变，DNS 的 `min` 仍为 `2025.08.09`，不新增 `engine` 事件字段。
+M4-03a：事件码、级别、字段形状不变，不新增 `engine` 事件字段。`COMPONENT_TOO_OLD.min` 随被选中 DNS 引擎变化：
+`aether-dns` 为 `1.0.0`，`chinadns-ng` 为 `2025.08.09`；未知引擎不设下限。`check` 同源判断，仅给 warning。
 反向过渡（已知、非缺陷）：≤0.6.3-r7 的 LuCI 不认识 `dns`，会把这两类事件与通知显示成原始 id，并丢掉 chinadns-ng 包下载引导；
 前后端随更新页一起升级（B17）时不会出现，只有单独用 CLI 更新后端、前端仍是旧版时短暂出现。
 

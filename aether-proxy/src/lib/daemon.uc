@@ -569,8 +569,15 @@ function start_sequence(ctx, opts, signal_pending) {
 	// Reject known-old binaries before boot waiting, validation, cleanup or any takeover.
 	// Unknown versions deliberately remain informational (docs/04 components).
 	let too_old = [];
-	let minimums = { [C.XRAY_COMPONENT]: C.XRAY_MIN_VERSION, [C.CHINADNS_COMPONENT]: C.CHINADNS_MIN_VERSION };
+	// Keep the fingerprint private; components JSON describes the running process only.
+	ctx.dns_binary_signature = reload.binary_signature(components[C.CHINADNS_COMPONENT].path);
+	let minimums = {
+		[C.XRAY_COMPONENT]: C.XRAY_MIN_VERSION,
+		[C.CHINADNS_COMPONENT]: component_id.min_version(component_id.engine(components[C.CHINADNS_COMPONENT].path))
+	};
 	for (let name, min in minimums) {
+		if (min == null)
+			continue;
 		let version = components[name].version;
 		let order = component_version.version_cmp(version, min);
 		if (order != null && order < 0)

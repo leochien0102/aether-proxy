@@ -78,15 +78,16 @@ aether-proxy daemon（常驻）── 探测代理健康 → 切换 DNS 级别 /
 ## 组件二进制的查找顺序
 
 M4-02（阶段 1）：对外 JSON 的 DNS 权威逻辑 id 为 `dns`，`chinadns-ng` 为兼容别名，
-不再用逻辑 id 表示物理引擎。此命名迁移**不改变查找行为**：内部仍以 `chinadns-ng` 查找，
-`main.chinadns_bin` 显式覆盖及测试 `--bin-dir` 优先级保持现状；不自动查找 `aether-dns`。
+不再用逻辑 id 表示物理引擎。M4-03a（0.7.0）在内部兼容 id `chinadns-ng` 下统一发现 DNS 引擎。
 `engine` 只由返回路径的 basename 推导（`aether-dns` / `chinadns-ng` / `null`），不解析符号链接、
-不执行命令、不根据版本猜测；默认引擎与 `CHINADNS_MIN_VERSION` 闸门均不变。
+不执行命令、不根据版本猜测；最低版本按被选中引擎取值（见 [04](04-lifecycle.md)）。
 
 1. Xray：UCI `aetherproxy.main.xray_bin` 显式指定的路径 → `/usr/bin/aether-xray` → `/usr/bin/xray`。
    测试 `--bin-dir` 将后两个候选替换为测试目录的 `aether-xray`、`xray`；不搜索其它 PATH 项。
-2. DNS：测试 `--bin-dir` 的 `chinadns-ng` → UCI `aetherproxy.main.chinadns_bin` 显式指定的路径 →
-   系统 PATH 的 `chinadns-ng`。显式覆盖若已配置但不可执行，不再回退 PATH；新逻辑 id `dns` 不作为文件名。
+2. DNS：UCI `aetherproxy.main.chinadns_bin` 显式指定的路径 → `/usr/bin/aether-dns` →
+   系统 PATH 的 `chinadns-ng`。测试 `--bin-dir` 将默认候选替换为目录内 `aether-dns` → `chinadns-ng`。
+   显式覆盖若已配置但不可执行，直接报告缺失，不回退任何候选；新逻辑 id `dns` 不作为文件名。
+   按存在性优先选择（可执行），不按版本排序；选中后启动失败不回退另一引擎。
 3. 都没有：start 失败，事件 `COMPONENT_MISSING`（M4-02b2：DNS 的 `component` 为 `dns`，历史记录可能为 `chinadns-ng`），
    LuCI 引导用户安装（[08](08-updates.md)「首次安装引导」）。
 

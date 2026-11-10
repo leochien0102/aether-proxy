@@ -364,3 +364,7 @@ export const SOCKET_DIAG = {
 
 // M4-02: authoritative DNS logical id, independent of the physical engine.
 export const DNS_COMPONENT = 'dns';
+
+// M4-03a: existence-first DNS selection and engine-specific runtime floor.
+export const AETHER_DNS_MIN_VERSION = '1.0.0';
+export const AETHER_DNS_BINARY = '/usr/bin/aether-dns';

@@ -17,7 +17,7 @@ import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as xray_ready from 'aetherproxy.xray_ready';
 
-// Pure plan over renderer hashes, never over UCI input values.
+// Pure plan over renderer hashes and resolved component identities, never raw UCI inputs.
 // docs/04「重载（`aether-proxy reload`，UCI 变更触发）」: daemon.uc's reload handler replaces base.render_hash
 // with hashes of the actual current files before calling run(). Both planning passes
 // below therefore compare against the installed outputs, not stale state.json hashes.
@@ -28,9 +28,13 @@ function plan(old, fresh) {
 	let actions = [];
 	if (old.hashes?.nft != fresh.hashes?.nft)
 		push(actions, 'nft_replace');
-	if (old.hashes?.xray != fresh.hashes?.xray)
+	if (old.hashes?.xray != fresh.hashes?.xray ||
+	    old.components?.[C.XRAY_COMPONENT]?.path != fresh.components?.[C.XRAY_COMPONENT]?.path)
 		push(actions, 'restart_xray');
-	if (old.hashes?.chinadns != fresh.hashes?.chinadns)
+	let old_dns = old.components?.[C.CHINADNS_COMPONENT];
+	let fresh_dns = fresh.components?.[C.CHINADNS_COMPONENT];
+	if (old.hashes?.chinadns != fresh.hashes?.chinadns ||
+	    old_dns?.path != fresh_dns?.path || old_dns?.version != fresh_dns?.version)
 		push(actions, 'restart_chinadns');
 	if (old.hashes?.dnsmasq != fresh.hashes?.dnsmasq)
 		push(actions, 'dnsmasq_restart');
@@ -272,21 +276,52 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 	return join('; ', errors);
 };
 
-// Precheck returns paths only. Preserve the running versions unless discovery changed a path
-// (docs/04 "components"); a quiet informational lookup cannot fail the reload.
+// M4-03a: avoid a version subprocess on unchanged reloads. No public JSON fields are added.
+export function binary_signature(path) {
+	let st = fs.stat(path);
+	if (st == null) {
+		log.event('error', 'FS_FAILED', { op: 'stat', path, detail: fs.error() ?? 'unknown error' });
+		return null;
+	}
+	return sprintf('%.J', [ st.size, st.mtime, st.ino ]);
+};
+
+// Preserve resolved versions so planning and publication use the same observation.
 function component_metadata(previous, components) {
 	let updated = {};
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
 		let path = components[name].path;
-		let version = previous?.[name]?.path == path ? previous[name].version :
+		let version = index(keys(components[name]), 'version') >= 0 ? components[name].version :
+			previous?.[name]?.path == path ? previous[name].version :
 			components_cmd.read_component_version(path, name == C.XRAY_COMPONENT ? 'version' : '-V');
 		updated[name] = { path, version: version ?? null };
 	}
 	return component_id.with_aliases(updated);
 };
 
-// Binary overrides and WAN observations need fresh metadata even when outputs do not change.
-// The documented action plan still depends only on rendered outputs, not UCI inputs.
+// Precheck returns paths only; DNS replacement is signalled by stat, not queried every reload.
+function resolve_components(daemon, components) {
+	let previous = daemon.state.components;
+	let dns = components[C.CHINADNS_COMPONENT];
+	let signature = binary_signature(dns.path);
+	// TODO(design): stat/query/start races have no transaction contract; on stat failure,
+	// keep the current child and metadata rather than publishing an uncertain identity.
+	if (signature == null)
+		return { ok: false, detail: `cannot stat DNS binary ${dns.path}` };
+	let changed = previous?.[C.CHINADNS_COMPONENT]?.path != dns.path ||
+		signature != daemon.ctx.dns_binary_signature;
+	let resolved = component_metadata(previous, components);
+	if (changed && previous?.[C.CHINADNS_COMPONENT]?.path == dns.path) {
+		resolved[C.CHINADNS_COMPONENT].version = components_cmd.read_component_version(dns.path, '-V');
+		resolved = component_id.with_aliases({
+			[C.XRAY_COMPONENT]: resolved[C.XRAY_COMPONENT],
+			[C.CHINADNS_COMPONENT]: resolved[C.CHINADNS_COMPONENT]
+		});
+	}
+	return { ok: true, components: resolved, signature };
+};
+
+// WAN and input observations can change without requiring a process or renderer action.
 function retain_metadata(daemon, components, wan_dns, metadata) {
 	let previous = daemon.state.components;
 	// WAN can become available with the same address as the fallback, leaving all
@@ -459,20 +494,21 @@ function run_candidate(daemon, started_ms, transaction) {
 		discard_stage(daemon, stage);
 		return failure(daemon, 'validation', validated, validated.code);
 	}
-	if (!length(rough_plan)) {
-		if (!discard_stage(daemon, stage))
-			return failure(daemon, 'staging_cleanup', `cannot discard ${stage}`);
-		let retained = retain_metadata(daemon, validated.components, loaded.wan_dns, metadata);
-		if (!retained.ok)
-			return failure(daemon, 'components', retained.detail);
-		return applied_result(daemon, loaded, []);
+	// Resolve identities before any empty-plan shortcut: hashes cannot detect a new executable.
+	let resolved = resolve_components(daemon, validated.components);
+	if (!resolved.ok) {
+		discard_stage(daemon, stage);
+		return failure(daemon, 'components', resolved.detail);
 	}
+	validated.components = resolved.components;
 	let hashes = rough_hashes.hashes;
 	let actions = rough_plan;
 	let artifacts = built.artifacts;
 	let old_hashes = daemon.state.render_hash ?? {};
-	let old_plan = { hashes: old_hashes, enabled: daemon.snapshot.main.enabled == true };
-	let fresh_plan = { hashes, enabled: snapshot.main.enabled == true };
+	let old_plan = { hashes: old_hashes, enabled: daemon.snapshot.main.enabled == true,
+		components: daemon.state.components };
+	let fresh_plan = { hashes, enabled: snapshot.main.enabled == true, components: validated.components };
+	actions = plan(old_plan, fresh_plan);
 	let old_components = daemon.state.components ?? validated.components;
 	let components = validated.components;
 	let old_lan_ifaces = daemon.ctx.lan_ifaces;
@@ -532,7 +568,7 @@ function run_candidate(daemon, started_ms, transaction) {
 			return failure(daemon, 'hash', h.detail);
 		}
 		hashes = h.hashes;
-		fresh_plan = { hashes, enabled: snapshot.main.enabled == true };
+		fresh_plan = { hashes, enabled: snapshot.main.enabled == true, components };
 		actions = plan(old_plan, fresh_plan);
 		if (length(actions) == 1 && actions[0] == 'stop') {
 			discard_stage(daemon, stage);
@@ -545,6 +581,7 @@ function run_candidate(daemon, started_ms, transaction) {
 		let retained = retain_metadata(daemon, components, loaded.wan_dns, metadata);
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
+		daemon.ctx.dns_binary_signature = resolved.signature;
 		return applied_result(daemon, loaded, []);
 	}
 	let old_state = daemon.state;
@@ -559,6 +596,7 @@ function run_candidate(daemon, started_ms, transaction) {
 		daemon.ctx.dnsmasq_instance = old_instance;
 		return failure(daemon, 'actions', applied.detail);
 	}
+	daemon.ctx.dns_binary_signature = resolved.signature;
 	steps.actions = elapsed_ms(step_started);
 	log.event(null, 'RELOAD_APPLIED', {
 		from_node: old_state.node_id,

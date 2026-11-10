@@ -23,7 +23,7 @@
 分别执行 `<xray> version` 与 `<chinadns-ng> -V`（各 5 秒超时），取输出**第一行的第二个字段**作为版本（实测 `Xray 26.9.30 (Xray, Penetrates Everything.) …`、
 `ChinaDNS-NG 2025.06.20 be347b5 | …`，[08](08-updates.md)「S7 探针结论」）。取不到（命令失败、超时、输出不符合格式）→ `version` 为 `null`，**不影响启动**，也不记事件。
 收到 SIGUSR2 重启 Xray 时（`xray-core` 软件包更新后，二进制可能换了）重新取一次 Xray 的版本并写回 `state.json`。版本解析是纯函数。
-**重载也要保留版本**（2026-10-20，backlog B13）：重载写回 `state.json` 时，组件路径没变就沿用原来的 `version`；路径变了（例如改了 `xray_bin`）就按上面的方法重新取。原来重载只写 `path`，第一次重载后版本就没了。
+**重载也要保留版本**（M4-03a）：路径变了就重新查询版本并重启对应子进程。DNS 同路径时比较二进制 stat 的 size/mtime/inode，信号变化才查询 `-V`；版本改变则重启 DNS，否则沿用运行版本。不变的 reload 不额外查询版本。此缓存仅在 daemon 内，不加入 `components` JSON；xray 同路径升级不在本卡范围。
 
 M4-02 阶段 1：`dns` 是权威逻辑键，`chinadns-ng` 是兼容别名，两项深度相等；
 冲突时以 `dns` 为准。`engine` 仅由 `path` 的 basename 判定为 `aether-dns`、`chinadns-ng` 或 `null`，
@@ -120,7 +120,7 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 运行期 reload/monitor/probe 的节点解析不切换；B2 的引用/归属/UDP/ELF 判定不变，仅允许内部可选 timeout_ms/label。
 不宣称整个 restart 零超时、所有孤儿自动回收或消除上游故障导致的 SERVFAIL。
 
-**组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 `XRAY_MIN_VERSION` / `CHINADNS_MIN_VERSION`，记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
+**组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 Xray 的 `XRAY_MIN_VERSION`，或被选中 DNS 引擎的下限（M4-03a：`aether-dns` 为 `AETHER_DNS_MIN_VERSION=1.0.0`，`chinadns-ng` 为 `CHINADNS_MIN_VERSION=2025.08.09`；自定义路径 engine 未知则不设下限、信息性放行），记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
 
 **与其他代理插件的冲突**（第 3 步的一部分；2026-10-24 定，r15 窗口：ssr-plus 被 `reload_config` 重新拉起，aether-proxy 每次启动都 `PRECHECK_FAILED conflict:ss_spec`，页面只写「启动失败，详见日志页」）。
 这些插件都接管 dnsmasq 与透明代理规则，同一时间只能有一个在运行。下表的名字已按各插件源码核实（2026-10-24：fw876/helloworld、Openwrt-Passwall/openwrt-passwall 与 openwrt-passwall2、immortalwrt/homeproxy、vernesong/OpenClash、nikkinikki-org/OpenWrt-nikki 的 master/main 分支）：
@@ -240,7 +240,7 @@ init 脚本中注册 `procd_add_reload_trigger "aetherproxy"`。`reload_service`
 check 失败时只写一行 syslog、不记事件，概览页的「切换未生效」提示（10，T10.11）反而找不到原因。现在只由 daemon 做，失败照样不做任何改动，并按下面各步记事件。）
 
 1. 重新读取配置与规则数据并校验（**整个重载只读一次**），失败则不做任何改动。
-2. 把全部产物渲染到 staging，逐个与当前产物比对哈希。校验（前置检查、`nft -c`）每次都做；**`xray run -test` 只在 `xray.json` 与 `current/` 中的不同时做**
+2. 把全部产物渲染到 staging，逐个与当前产物比对哈希。M4-03a：DNS 路径或版本变化也产生 `restart_chinadns`，即使产物哈希完全相同也不能空计划短路；成功重启后才发布对应组件元数据。两轮计划都保留组件重启条件。校验（前置检查、`nft -c`）每次都做；**`xray run -test` 只在 `xray.json` 与 `current/` 中的不同时做**
    （H28K 上约 6 秒；只改模式、名单时 Xray 配置不变，不必重测）。
 3. 节点或节点地址变了：先对新节点做一次引导解析（[03](03-dns.md)），失败则不做任何改动；**解析放在第 2 步的渲染之前**，渲染直接用新 IP，只渲染一次
    （`node_ip4` 随之变化，nft 也要替换）。运行中的 DNS 级别沿用 monitor 当前的值。

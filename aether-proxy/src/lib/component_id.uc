@@ -11,6 +11,15 @@ export function engine(path) {
 	return basename == 'aether-dns' || basename == 'chinadns-ng' ? basename : null;
 };
 
+// M4-03a: custom binaries have no defined engine floor and remain informational.
+export function min_version(engine) {
+	if (engine == 'aether-dns')
+		return C.AETHER_DNS_MIN_VERSION;
+	if (engine == 'chinadns-ng')
+		return C.CHINADNS_MIN_VERSION;
+	return null;
+};
+
 export function with_aliases(components) {
 	if (type(components) != 'object')
 		return null;
