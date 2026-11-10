@@ -45,11 +45,25 @@ function failure(r) {
 		JOB_LOST: _('Job process exited unexpectedly', 'aether-proxy'),
 		UPDATE_VERIFY_FAILED: _('Verification failed', 'aether-proxy'),
 		NO_SPACE: _('Not enough space', 'aether-proxy'),
+		PREREQ_MANUAL_REQUIRED: _('Cannot satisfy the DNS engine prerequisite automatically', 'aether-proxy'),
 		ARCH_UNSUPPORTED: _('Unavailable on this device', 'aether-proxy'),
 		BRIDGE_UNAVAILABLE: _('Compatibility update chain unavailable; cannot update to the target version', 'aether-proxy')
 	};
 	const reason = messages[r.code] ?? r.code ?? _('Unknown', 'aether-proxy');
 	return r.detail ? _('%s: %s', 'aether-proxy').format(reason, r.detail) : reason;
+}
+// Keep prerequisite wording before refresh guidance, including failed transactions (M4-03c).
+function prerequisite_result(text, r) {
+	const p = r.prerequisite;
+	// TODO(design): no additional wording is frozen for unknown actions or manual_required.
+	if (!p || ![ 'installed', 'skipped', 'rolled_back' ].includes(p.action))
+		return text;
+	if (p.action == 'skipped')
+		return text;
+	const note = p.action == 'rolled_back' ?
+		_('DNS engine rolled back to %s', 'aether-proxy').format(p.version) :
+		_('DNS engine installed first: aether-dns %s', 'aether-proxy').format(p.version);
+	return text + ' ' + note;
 }
 function companion_result(r) {
 	// The backend reports only the first failed companion's cause at the top level.
@@ -62,7 +76,7 @@ function companion_result(r) {
 	const installed = pages.filter(p => r.companions[p.name] == 'installed');
 	const failed = pages.filter(p => r.companions[p.name] == 'failed');
 	if (r.ok === false && !failed.length)
-		return failure(r);
+		return prerequisite_result(failure(r), r);
 	const updated = r.from != r.to;
 	const parts = [];
 	if (updated)
@@ -79,20 +93,27 @@ function companion_result(r) {
 	});
 	if (!parts.length)
 		parts.push(_('Already up to date', 'aether-proxy'));
-	const text = _('%s.', 'aether-proxy').format(
+	const original = _('%s.', 'aether-proxy').format(
 		parts.reduce((a, b) => _('%s; %s', 'aether-proxy').format(a, b)));
-	return installed.length ? _('%s %s', 'aether-proxy').format(text,
-		_('Please refresh the page.', 'aether-proxy')) : text;
+	const text = prerequisite_result(original, r);
+	if (!installed.length)
+		return text;
+	const refresh = _('Please refresh the page.', 'aether-proxy');
+	// The legacy Chinese sentence join has no space; keep its bytes when no note was added.
+	return text == original ? _('%s %s', 'aether-proxy').format(text, refresh) : text + ' ' + refresh;
 }
 function package_result(name, r) {
+	if (r.code == 'UPDATE_UP_TO_DATE')
+		return _('Already up to date: %s', 'aether-proxy').format(r.package ?? name);
 	if (r.rolled_back)
-		return _('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from);
+		return prerequisite_result(
+			_('Post-install check failed; rolled back to %s', 'aether-proxy').format(r.from), r);
 	if (r.companions)
 		return companion_result(r);
 	if (!r.ok)
-		return failure(r);
-	const text = r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
-		_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to);
+		return prerequisite_result(failure(r), r);
+	const text = prerequisite_result(r.from == null ? _('%s installed: %s', 'aether-proxy').format(name, r.to) :
+		_('%s updated from %s to %s', 'aether-proxy').format(name, r.from, r.to), r);
 	return text + (restarts(name) ?
 		' ' + _('Page files may have changed; please refresh your browser.', 'aether-proxy') : '');
 }
