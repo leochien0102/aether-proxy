@@ -10,13 +10,15 @@ packages enter the closure check automatically, but system packages such as
 kmod/ip-full do not. When adding a managed dependency, register it in the
 publisher inventory too; do not hide channel packages as system packages.
 
-`update-contract.json` freezes known client packages, the 0.6.3/0.6.2 support
-window, explicit manual package exceptions and an ordered bridge example.
-Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the current
-0.6.3 source; tests do not fetch tags. The migration rows in docs/08 are checked
-against this fixture. Current clients require manual chinadns-ng provisioning;
-0.3.1 is **manual-only**, not a direct updater to 0.6.3. Older clients are outside
-the supported window. Do not add new package names to frozen known lists just
+`update-contract.json` freezes known client packages, the 0.7.0-r1/0.6.3-r7
+support window, explicit manual package exceptions and an ordered bridge example.
+Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the
+0.6.3 / 0.7.0 source; tests do not fetch tags. The migration rows in docs/08 are
+checked against this fixture. Supported clients require manual chinadns-ng
+provisioning; 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
+0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files remain at
+0.6.3-r7; rolling the version contract does not replace those snapshots.
+Do not add new package names to frozen known lists just
 to make a newly introduced hard dependency pass: provide a real bridge or an
 explicit manual migration and document the packages.
 

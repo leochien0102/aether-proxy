@@ -64,7 +64,7 @@
 
 ### 硬依赖闭包与支持窗口
 
-支持窗口固定为**当前正式版 + 上一个正式版**；当前为 **0.6.3-r6 + 0.6.2-r1**。更老版本全部 **manual-only**，不承诺通道直升。
+支持窗口固定为**当前正式版 + 上一个正式版**；当前为 **0.7.0-r1 + 0.6.3-r7**。更老版本全部 **manual-only**，不承诺通道直升。
 页面/RPC 的兼容与包安装的兼容是两件事：T9.39 中旧页面调用新后端成功，
 不代表旧更新器有能力安装新后端的硬依赖。
 
@@ -84,11 +84,12 @@
 
 | 客户端 | 路径 | 必须手工安装/核实的通道依赖 |
 |---|---|---|
+| 0.7.0 | manual-prerequisite | chinadns-ng |
 | 0.6.3 | manual-prerequisite | chinadns-ng |
-| 0.6.2 | manual-prerequisite | chinadns-ng |
+| 0.6.2 | manual-only | chinadns-ng |
 | 0.3.1 | manual-only | aether-xray, chinadns-ng |
 
-0.6.2 / 0.6.3 的冻结已知包都是上述四个 `UPDATE_PACKAGES`。
+0.6.3 / 0.7.0 的冻结已知包都是上述四个 `UPDATE_PACKAGES`。
 **0.3.1 只认识 `xray-core` 和三个应用/页面包，不认识 `aether-xray`、
 `chinadns-ng`，所以绝不能声称可直接升 0.6.3。** 其他窗口外版本同为 manual-only；
 没有专属冻结条目不表示获得直升授权。
