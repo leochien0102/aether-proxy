@@ -929,6 +929,105 @@ test('T10.46 scenario 5: pre-install and transport failures retain causes withou
 	}
 });
 
+// M4-03c uses the backend prerequisite wire shape, not version-based UI inference.
+const prerequisite = action => ({ package: 'aether-dns', version: '1.0.0', action });
+function transaction_text(result, name = 'aether-proxy') {
+	return model.job_result('update_package', name, { state: result.ok ? 'ok' : 'failed', result });
+}
+const engine_installed = '已先安装 DNS 引擎 aether-dns 1.0.0';
+const browser_refresh = '页面文件可能已变化，请刷新浏览器。';
+
+test('M4-03c U1: installed prerequisite precedes refresh in single and companion results', async () => {
+	assert.equal(transaction_text({ ok: true, from: 'X', to: 'Y', prerequisite: prerequisite('installed') }),
+		'aether-proxy 已从 X 更新到 Y ' + engine_installed + ' ' + browser_refresh);
+	assert.equal(transaction_text({ ok: true, from: null, to: 'Y', prerequisite: prerequisite('installed') }),
+		'aether-proxy 已安装 Y ' + engine_installed + ' ' + browser_refresh);
+	await display_group_result(group_result('installed', 'installed', {
+		prerequisite: prerequisite('installed')
+	}), backend_updated + '；界面、翻译已同时更新。 ' + engine_installed + ' ' + refresh_page);
+	await display_group_result(group_result('installed', 'failed', {
+		ok: false, code: 'UPDATE_VERIFY_FAILED', prerequisite: prerequisite('installed')
+	}), backend_updated + '；界面已同时更新；翻译更新失败：校验失败。 ' + engine_installed + ' ' + refresh_page);
+});
+
+test('M4-03c U2: skipped prerequisite is byte-identical to absent prerequisite', () => {
+	for (const result of [ { ok: true, from: 'X', to: 'Y' }, group_result(),
+		group_result('skipped', 'skipped', { ok: false, rolled_back: true }),
+		{ ok: false, code: 'UPDATE_VERIFY_FAILED', detail: 'WHY' } ]) {
+		assert.equal(transaction_text({ ...result, prerequisite: prerequisite('skipped') }),
+			transaction_text(result));
+	}
+});
+
+test('M4-03c U3: failed rollback includes restored DNS engine version in every result branch', async () => {
+	const result = { ok: false, rolled_back: true, from: 'X', prerequisite: prerequisite('rolled_back') };
+	assert.equal(transaction_text(result), '安装后检查失败，已回滚到 X DNS 引擎已回滚到 1.0.0');
+	await display_group_result(group_result('skipped', 'skipped', result),
+		'安装后检查失败，已回滚到 X DNS 引擎已回滚到 1.0.0');
+	assert.equal(transaction_text({ ...result, rolled_back: false, code: 'UPDATE_VERIFY_FAILED' }),
+		'校验失败 DNS 引擎已回滚到 1.0.0');
+	await display_group_result(group_result('skipped', 'skipped', {
+		...result, rolled_back: false, code: 'UPDATE_VERIFY_FAILED'
+	}), '校验失败 DNS 引擎已回滚到 1.0.0');
+	// First-install undo has no restored version; render the frozen undo wording.
+	const undone = { ...result, prerequisite: { ...prerequisite('rolled_back'), version: null } };
+	const undoneText = transaction_text(undone);
+	assert.equal(undoneText, '安装后检查失败，已回滚到 X 已撤销本次新装的 DNS 引擎');
+	assert.doesNotMatch(undoneText, /null/);
+	await display_group_result(group_result('skipped', 'skipped', undone), undoneText);
+});
+
+test('M4-03c U4: manual prerequisite failure preserves detail without claiming installation', async () => {
+	for (const detail of [ undefined, 'Back up binary and package metadata; verify the exact recovery path.' ]) {
+		const result = { ok: false, code: 'PREREQ_MANUAL_REQUIRED', detail,
+			prerequisite: prerequisite('manual_required') };
+		const expected = '无法自动满足 DNS 引擎前置' + (detail ? '：' + detail : '');
+		assert.equal(transaction_text(result), expected);
+		assert.doesNotMatch(transaction_text(result), /已先安装/);
+		await display_group_result(group_result('skipped', 'skipped', result), expected);
+	}
+	assert.equal(transaction_text({ ok: false, code: 'NO_SPACE', prerequisite: prerequisite('manual_required') }),
+		'空间不足');
+	assert.equal(transaction_text({ ok: true, from: 'X', to: 'Y', prerequisite: prerequisite('future') }),
+		'aether-proxy 已从 X 更新到 Y ' + browser_refresh);
+});
+
+test('M4-03c U5: up-to-date code takes priority over versions companions and refresh', async () => {
+	const result = { ok: true, package: 'aether-proxy', code: 'UPDATE_UP_TO_DATE', from: 'X', to: 'X',
+		prerequisite: prerequisite('skipped') };
+	assert.equal(transaction_text(result), '已是最新：aether-proxy');
+	assert.equal(transaction_text(result, 'luci-app-aether-proxy'), '已是最新：aether-proxy');
+	assert.equal(transaction_text({ ...result, package: undefined }), '已是最新：aether-proxy');
+	await display_group_result(group_result('skipped', 'skipped', result), '已是最新：aether-proxy');
+	assert.doesNotMatch(transaction_text(result), /X|已从|刷新/);
+});
+
+test('M4-03c U6: legacy companion results retain exact punctuation and refresh bytes', async () => {
+	await display_group_result(group_result(), backend_updated + '；界面、翻译已同时更新。请刷新页面。');
+	await display_group_result(group_result('skipped', 'skipped'), backend_updated + '。');
+	await display_group_result(group_result('skipped', 'skipped', { to: '0.3.0-r1' }), '已是最新。');
+});
+
+test('M4-03c frozen English msgids preserve ordering and failure detail', () => {
+	const translate = globalThis._;
+	try {
+		globalThis._ = s => s;
+		assert.equal(transaction_text({ ok: true, from: 'X', to: 'Y', prerequisite: prerequisite('installed') }),
+			'aether-proxy updated from X to Y DNS engine installed first: aether-dns 1.0.0 ' +
+			'Page files may have changed; please refresh your browser.');
+		assert.equal(transaction_text({ ok: false, rolled_back: true, from: 'X',
+			prerequisite: prerequisite('rolled_back') }),
+			'Post-install check failed; rolled back to X DNS engine rolled back to 1.0.0');
+		assert.equal(transaction_text({ ok: false, code: 'PREREQ_MANUAL_REQUIRED', detail: 'WHY' }),
+			'Cannot satisfy the DNS engine prerequisite automatically: WHY');
+		assert.equal(transaction_text({ ok: true, code: 'UPDATE_UP_TO_DATE', package: 'aether-proxy' }),
+			'Already up to date: aether-proxy');
+	}
+	finally {
+		globalThis._ = translate;
+	}
+});
+
 // Exact translated notes also guard against applying an architecture to the wrong package.
 const AETHER_DNS_NOTE = '由 aether-dns 包提供：本应用的发布通道不更新它。';
 const CHINADNS_NOTE = '不经发布通道自动更新：请在软件包页面从软件源安装或更新，'

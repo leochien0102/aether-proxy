@@ -2745,3 +2745,23 @@ msgstr "DNS 引擎"
 msgctxt "aether-proxy"
 msgid "Provided by the aether-dns package: this application's release channel does not update it."
 msgstr "由 aether-dns 包提供：本应用的发布通道不更新它。"
+
+msgctxt "aether-proxy"
+msgid "Already up to date: %s"
+msgstr "已是最新：%s"
+
+msgctxt "aether-proxy"
+msgid "DNS engine installed first: aether-dns %s"
+msgstr "已先安装 DNS 引擎 aether-dns %s"
+
+msgctxt "aether-proxy"
+msgid "DNS engine rolled back to %s"
+msgstr "DNS 引擎已回滚到 %s"
+
+msgctxt "aether-proxy"
+msgid "New DNS engine install was undone"
+msgstr "已撤销本次新装的 DNS 引擎"
+
+msgctxt "aether-proxy"
+msgid "Cannot satisfy the DNS engine prerequisite automatically"
+msgstr "无法自动满足 DNS 引擎前置"
