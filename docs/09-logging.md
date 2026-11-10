@@ -57,6 +57,16 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 注意：被信号结束的子进程在 `uloop.process` 回调里报告的退出码也是 0，与正常退出无法区分。daemon 必须自己记录「这次是主动停止」，
 凡不是主动停止的退出一律视为崩溃并按退避重启。
 
+**读 DNS 引擎的 `upstream` 行（2026-11-10 核实）**：`aether-dns` 在上游交换失败时打印
+`upstream <addr>: <error>`（`src/server.rs`），其中 `<addr>` 实际是**客户端**（dnsmasq 连 31053 的源地址与临时端口），
+不是上游；真实上游见渲染配置的 `trust-dns`（T1 为 `127.0.0.1#31082`、`#31083` 两个 Xray DNS 入站）。
+引擎对组内每个上游**并行竞速**、单个上游 5 秒超时；全部失败才向客户端返回合成 SERVFAIL 并留下这一行。
+
+- 这行只说明"有一次查询失败了"，不能按 `127.0.0.1:<port>` 判断上游是环回地址；
+- 同批里同时出现 `timeout after 5 s` 与 `Connection reset by peer`，是因为报告的 `last error` 取自竞速中最后结束的那个上游；
+- 判断上游是否健康看 `trust-dns` 指向、Xray 的 DNS 入站是否在监听，以及同时段有没有 `SERVICE_*` / `XRAY_*` / `DNS_TIER_CHANGED` 事件；
+- 措辞缺陷（应打印真实上游并区分客户端）属 DNS 仓库，proxy 侧只记录读法。
+
 ## 应用原始日志（T13.2）
 
 - daemon 启动时由 supervise 启动独立 collector，正常停止时发 TERM、等待退出并回收；重载及启动重试不重复启动。异常退出只记一次 warn，不退避重启，不阻断主服务。
