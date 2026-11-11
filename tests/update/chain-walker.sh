@@ -68,6 +68,10 @@ walker_assert() {
 }
 "$UCODE" "$ROOT/tests/update/walker-budget.uc" -- "$ROOT/aether-proxy/src/lib/update.uc"
 expect 'M4-07 fractional budget arithmetic exit' 0 "$?"
+for path in proxy companion; do
+	"$UCODE" "$ROOT/tests/update/walker-postdownload.uc" -- "$ROOT/aether-proxy/src/lib/update.uc" "$T" "$path"
+	expect "M4-07 $path post-download admission exit" 0 "$?"
+done
 for manager in opkg apk; do
 	if [ "$manager" = apk ]; then
 		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
