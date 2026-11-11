@@ -72,6 +72,28 @@ class ChannelBuilderTests(unittest.TestCase):
             predecessor = version
         return {"aether-proxy": chain}
 
+    def test_prebuilt_aether_dns_is_collected_in_both_formats(self):
+        # aether-dns is built and released by the DNS repository; the publish workflow only
+        # verifies the pinned assets and stages them for this collector.
+        self.add_packages("1.0.0-r1", packages=("aether-dns",))
+        packages, copied, ignored = build.collect_packages(self.packages)
+        entry = packages["aether-dns"]
+        self.assertEqual(entry["version"], "1.0.0-r1")
+        self.assertEqual(set(entry["assets"]), {"aarch64_generic", "x86_64"})
+        for arch in entry["assets"]:
+            self.assertEqual(set(entry["assets"][arch]), {"ipk", "apk"})
+        self.assertIn("aether-dns-1.0.0-r1_aarch64_generic.apk", copied)
+        self.assertEqual(ignored, [])
+
+    def test_prebuilt_aether_dns_requires_both_formats(self):
+        self.add_packages("1.0.0-r1", packages=("aether-dns",), apk=False)
+        with self.assertRaises(ValueError):
+            build.collect_packages(self.packages)
+
+    def test_aether_dns_is_architecture_specific(self):
+        self.assertIn("aether-dns", build.PACKAGE_NAMES)
+        self.assertNotIn("aether-dns", build.ARCH_ALL)
+
     def test_compatibility_input_copies_and_retains_all_bridge_assets(self):
         self.add_packages("0.6.8-r1", packages=("aether-proxy",))
         compatibility = self.compatibility_fixture()

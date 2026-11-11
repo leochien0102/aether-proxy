@@ -310,6 +310,11 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   - `data`：每天 04:00（北京时间）只发布数据，不编译包；`build.py` 不带 `--packages` 时沿用已发布清单的软件包条目。
   - `xray-bump`：每天检查上游最新版本（含 prerelease），有更新就改 `PKG_VERSION`/`PKG_HASH`（`go.mod` 要求更高时同时改 Go 工具链）并开 PR。
     用 `GITHUB_TOKEN` 开的 PR 不会触发 workflow，所以接着在该分支上 `workflow_dispatch` 一次 `packages`（非 `main` 分支不发布）。
+- **`aether-dns` 由 DNS 仓库构建**（2026-11-11，A 方案）：`aether-dns` 的 ipk/apk 由
+  `leochien0102/aether-dns` 的 CI 在 tag 上产出并发布；channel 只在 publish 阶段按
+  `AETHER_DNS_RELEASE` 与 `AETHER_DNS_SHA256SUMS` 下载、校验并 stage 到 `packages/<arch>/channel/`，
+  再交给 `build.py` 生成清单。channel **不构建**它；sha256、`Provides: dns-engine` 或格式不符都会中止发布。
+  清单仍由 channel 签名，设备只信任签名清单。
 - **`publish.sh` 的资产规则**：Release 中已有的文件**一律不覆盖**。版本不变时 `build.py` 沿用旧条目（旧的 sha256），而重新编译出的包字节不同，覆盖就会让所有设备校验失败。
   顺序：下载并验签已发布的清单 → 生成数据与清单（`unchanged` 则结束）→ 签名并用 `keys/` 验签 → 上传清单引用而 Release 缺少的文件 → 核对引用的文件都在（GitHub 会改名含特殊字符的文件）
   → 上传 `manifest.json.sig`、`manifest.json` → 删除不再被引用的旧资产。
