@@ -79,9 +79,34 @@ def next_step(chain, current, required):
     return versions[versions.index(current) + 1]
 
 
-def check_closure(name, client, deps, managed):
-    missing = deps & managed - set(client['known_packages'])
-    unregistered = missing - set(client.get('manual_packages', []))
+def resolve_dependencies(deps, managed, provides):
+    # Virtual names are not in the channel inventory: resolve BEFORE intersection,
+    # or deleting a mapping would silently remove a hard dependency from coverage.
+    for virtual, package in provides.items():
+        if package not in managed:
+            raise ValueError(f'provides: {virtual} points to unregistered package: {package}')
+    if provides.get('dns-engine') != 'aether-dns':
+        raise ValueError('provides: dns-engine must resolve to managed aether-dns')
+    return {provides.get(dep, dep) for dep in deps}
+
+
+def manual_dependencies(client, provides):
+    manual = set(client.get('manual_packages', []))
+    # Frozen clients require chinadns-ng by name. Only its actual PROVIDES
+    # metadata can prove that this manual prerequisite satisfies the virtual dep.
+    for package in list(manual):
+        makefile = ROOT / package / 'Makefile'
+        if makefile.is_file():
+            declared = re.search(r'^\s*PROVIDES:=(.*)$', makefile.read_text(), re.M)
+            if declared:
+                manual.update(provides[v] for v in declared[1].split() if v in provides)
+    return manual
+
+
+def check_closure(name, client, deps, managed, provides):
+    resolved = resolve_dependencies(deps, managed, provides)
+    missing = resolved & managed - set(client['known_packages'])
+    unregistered = missing - manual_dependencies(client, provides)
     if unregistered:
         raise ValueError(f'{name}: managed hard dependencies outside client closure: ' +
                          ', '.join(sorted(unregistered)))
@@ -101,7 +126,7 @@ def validate_contract(data, deps, managed, docs=None):
         if clients[supported]['route'] == 'manual-only':
             raise ValueError('supported client cannot be manual-only')
     for name, client in clients.items():
-        missing = check_closure(name, client, deps, managed)
+        missing = check_closure(name, client, deps, managed, data.get('provides', {}))
         migration = set(client.get('manual_packages', []))
         if name not in data['support_window'] and client['route'] != 'manual-only':
             raise ValueError(f'{name}: older clients must be manual-only')
@@ -135,6 +160,20 @@ class ContractTests(unittest.TestCase):
     def test_repository_contract_and_docs(self):
         validate_contract(self.data, self.deps, self.managed, DOC.read_text())
 
+    def test_virtual_dependency_negative_cases(self):
+        for mutation in ('delete-provides', 'unknown-aether-dns', 'unregistered-provider'):
+            with self.subTest(mutation=mutation):
+                data = copy.deepcopy(self.data)
+                if mutation == 'delete-provides':
+                    del data['provides']
+                elif mutation == 'unknown-aether-dns':
+                    data['clients']['1.0.0']['known_packages'].remove('aether-dns')
+                else:
+                    data['provides']['dns-engine'] = 'unregistered-engine'
+                with self.assertRaises(ValueError) as caught:
+                    validate_contract(data, self.deps, self.managed)
+                print(f'PASS negative {mutation}: {caught.exception}')
+
     def test_unregistered_dependency_fails_for_supported_clients(self):
         for client in self.data['support_window']:
             data = copy.deepcopy(self.data)
@@ -165,7 +204,10 @@ class ContractTests(unittest.TestCase):
     def test_wire_schema_and_current_known_packages(self):
         const = (ROOT / 'aether-proxy/src/lib/const.uc').read_text()
         known = set(re.findall(r"'([^']+)'", re.search(r'UPDATE_PACKAGES = \[(.*?)\]', const)[1]))
-        self.assertEqual(known, set(self.data['clients'][self.data['support_window'][0]]['known_packages']))
+        engines = set(self.data['provides'].values())
+        self.assertEqual(known | engines,
+                         set(self.data['clients'][self.data['support_window'][0]]['known_packages']))
+        self.assertEqual(known, set(self.data['clients']['0.7.0']['known_packages']))
         update = (ROOT / 'aether-proxy/src/lib/update.uc').read_text()
         self.assertIn('manifest.schema != 2', update)
         tree = ast.parse((ROOT / 'tools/channel/build.py').read_text())
@@ -176,7 +218,9 @@ class ContractTests(unittest.TestCase):
 
     def test_system_packages_are_not_update_dependencies(self):
         validate_contract(self.data, self.deps | {'kmod-example', 'ip-full'}, self.managed)
-        self.assertIn('chinadns-ng', self.deps & self.managed)
+        resolved = resolve_dependencies(self.deps, self.managed, self.data['provides'])
+        self.assertIn('aether-dns', resolved & self.managed)
+        self.assertIn('dns-engine', self.deps)
         self.assertNotIn('ip-full', self.deps & self.managed)
         self.assertEqual(hard_dependencies('define Package/aether-proxy\n DEPENDS:= +FLAG:future-managed +ip-full # +ignored\nendef'), {'future-managed', 'ip-full'})
 
@@ -188,7 +232,7 @@ class ContractTests(unittest.TestCase):
             validate_contract(data, self.deps, self.managed)
         data = copy.deepcopy(self.data)
         data['clients']['0.3.1']['manual_packages'] = []
-        with self.assertRaisesRegex(ValueError, 'aether-xray, chinadns-ng'):
+        with self.assertRaisesRegex(ValueError, 'aether-dns, aether-xray'):
             validate_contract(data, self.deps, self.managed)
 
     def test_publisher_enforces_frozen_bridge_itinerary(self):
@@ -246,7 +290,7 @@ if __name__ == '__main__':
         try:
             check_closure('0.3.1', data['clients']['0.3.1'],
                           hard_dependencies((ROOT / 'aether-proxy/Makefile').read_text()),
-                          managed_packages())
+                          managed_packages(), data.get('provides', {}))
         except ValueError as error:
             raise SystemExit(str(error))
         raise SystemExit(0)

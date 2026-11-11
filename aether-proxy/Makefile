@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aether-proxy
-PKG_VERSION:=0.7.0
+PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
@@ -20,7 +20,7 @@ define Package/aether-proxy
 	+kmod-nft-tproxy +kmod-nft-socket +ip-full +curl +ca-bundle \
 	+firewall4 +resolveip +usign +dnsmasq \
 	+ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
-	+ucode-mod-log +aether-xray +chinadns-ng
+	+ucode-mod-log +aether-xray +dns-engine
 endef
 
 define Package/aether-proxy/description

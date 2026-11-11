@@ -2,10 +2,20 @@
   "contract_version": 1,
   "wire_schema": 2,
   "support_window": [
-    "0.7.0",
-    "0.6.3"
+    "1.0.0",
+    "0.7.0"
   ],
   "clients": {
+    "1.0.0": {
+      "known_packages": [
+        "aether-xray",
+        "aether-proxy",
+        "luci-app-aether-proxy",
+        "luci-i18n-aether-proxy-zh-cn",
+        "aether-dns"
+      ],
+      "route": "direct"
+    },
     "0.7.0": {
       "known_packages": [
         "aether-xray",
@@ -25,7 +35,7 @@
         "luci-app-aether-proxy",
         "luci-i18n-aether-proxy-zh-cn"
       ],
-      "route": "manual-prerequisite",
+      "route": "manual-only",
       "manual_packages": [
         "chinadns-ng"
       ]
@@ -119,5 +129,8 @@
         ]
       }
     }
+  },
+  "provides": {
+    "dns-engine": "aether-dns"
   }
 }

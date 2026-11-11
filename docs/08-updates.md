@@ -64,7 +64,7 @@
 
 ### 硬依赖闭包与支持窗口
 
-支持窗口固定为**当前正式版 + 上一个正式版**；当前为 **0.7.0-r1 + 0.6.3-r7**。更老版本全部 **manual-only**，不承诺通道直升。
+支持窗口固定为**当前正式版 + 上一个正式版**；当前为 **1.0.0-r1 + 0.7.0-r1**。更老版本全部 **manual-only**，不承诺通道直升。
 页面/RPC 的兼容与包安装的兼容是两件事：T9.39 中旧页面调用新后端成功，
 不代表旧更新器有能力安装新后端的硬依赖。
 
@@ -72,7 +72,14 @@
 但闭包约束仅作用于**通道发布/管理的依赖**，以 `tools/channel/build.py` 的
 `PACKAGE_NAMES` 为来源，新增 managed package 自动进入检查。`kmod-*`、
 `ip-full`、ucode 等系统包由固件/软件源负责，不作为更新通道依赖误报。
-通道集合与硬依赖的交集目前是 `aether-xray`、`chinadns-ng`。
+虚拟硬依赖必须先按契约 `provides`（`dns-engine → aether-dns`）解析，再与通道集合求交集；
+当前受保护的依赖是 `aether-xray`、`aether-dns`。缺失映射、提供者未登记在 managed 集合、
+客户端既不认识提供者又无手工前置时，契约测试必须失败。
+
+`dns-engine` 由 `aether-dns`（默认变体）与 `chinadns-ng` 共同提供，设备只需满足其一；
+`chinadns-ng` 不设默认变体。旧客户端手工前置的 `chinadns-ng` 仅在其 Makefile
+明确声明 `PROVIDES:=dns-engine` 时，才可覆盖解析后的引擎依赖；不扩大旧客户端已知包快照。
+升级事务负责先装 `aether-dns`，不会把虚拟名当作可下载的实体包。
 
 每个支持客户端必须认识所需通道依赖，或在迁移表明确登记 bridge / 手工前置包。
 新依赖不能因“不在 UPDATE_PACKAGES”被静默忽略；加入 managed package 和硬依赖后，
@@ -84,12 +91,15 @@
 
 | 客户端 | 路径 | 必须手工安装/核实的通道依赖 |
 |---|---|---|
+| 1.0.0 | direct | — |
 | 0.7.0 | manual-prerequisite | chinadns-ng |
-| 0.6.3 | manual-prerequisite | chinadns-ng |
+| 0.6.3 | manual-only | chinadns-ng |
 | 0.6.2 | manual-only | chinadns-ng |
 | 0.3.1 | manual-only | aether-xray, chinadns-ng |
 
-0.6.3 / 0.7.0 的冻结已知包都是上述四个 `UPDATE_PACKAGES`。
+1.0.0 的契约已知包是四个 `UPDATE_PACKAGES` 加 `aether-dns`（前置事务管理，不加入更新页主列表）。
+0.6.3 / 0.7.0 的冻结已知包仍是上述四个 `UPDATE_PACKAGES`。
+0.x 不能跨过迁移步骤直升 1.0.0：先满足手工前置并升级到 0.7.0，再由其前置事务升级到 1.0.0。
 **0.3.1 只认识 `xray-core` 和三个应用/页面包，不认识 `aether-xray`、
 `chinadns-ng`，所以绝不能声称可直接升 0.6.3。** 其他窗口外版本同为 manual-only；
 没有专属冻结条目不表示获得直升授权。
@@ -443,7 +453,11 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 - 双条件不满足时，只从签名清单 `packages['aether-dns'].current` 读取前置资产，不把它加入更新页主列表。
   首装按 size/sha256 校验后安装并校验版本；后续 backend 失败时卸载本次新增的引擎。
   替换已有引擎前，必须取得清单 `previous` 中与已装版本及 `-rN` 精确一致、架构/包格式匹配且校验通过的恢复资产；
-  新包安装及恢复都允许 opkg `--force-downgrade`（日期版转 1.0.0 可能被视作降级）。
+  新包安装及恢复都使用 opkg `--force-downgrade`（例如 `2026.11.04-1` → `1.0.0-r1` 是降级）。
+  apk 保持 `add --allow-untrusted <本地资产>`，不加 `--allow-downgrade`：25.12.5 SDK 的 apk-tools 3.0.5
+  中 `app_add.c:add_main()` 对本地包调用 `apk_dep_from_pkg()`，`package.c` 将其固定为
+  `APK_DEPMASK_CHECKSUM` 精确依赖，允许替换成较旧资产；`add` 没有 `--allow-downgrade` 选项。
+  源码依据：上游 apk-tools `v3.0.5` 的 `src/app_add.c`、`src/package.c`（SDK 版本见 `spikes/S5/README.md`）。
   失败时回装精确资产并校验原版本，**不卸载**原有引擎。页面包失败不撤销已验证 backend 所需的引擎。
 - 没有可自动安装来源、已装状态无法确定或无法取得精确恢复资产时，返回
   `{ ok:false, code:'PREREQ_MANUAL_REQUIRED' }`，退出码 1；在任何安装之前拒绝，
