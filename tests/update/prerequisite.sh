@@ -67,7 +67,7 @@ for scenario in T1 T2 T3 T4-download T4-hash T5 T6 T7 T8 T9 T10 T12 T14 T14-brid
 	case "$scenario" in T5|T6) export UPDATE_INSTALL_FAIL_PACKAGE=aether-proxy ;; esac
 	out=$(policy_run aether-proxy)
 	rc=$?
-	case "$scenario" in T4-*|T5|T6|T7) expected=1 ;; *) expected=0 ;; esac
+	case "$scenario" in T4-*|T5|T6|T7|T14-bridge) expected=1 ;; *) expected=0 ;; esac
 	expect "M4-03b $scenario exit" "$expected" "$rc"
 	prereq_assert "$scenario"
 	if [ "$scenario" = T8 ]; then

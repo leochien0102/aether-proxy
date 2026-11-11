@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T11.14: sourced by run.sh; signed CLI installs advance exactly one backend step.
+# T11.14 / M4-07: discovery still offers one step; installation walks the signed chain.
 bridge_prepare() {
 	local scenario=$1 installed=$2 channel package
 	policy_reset
@@ -26,16 +26,16 @@ for manager in opkg apk; do
 		chmod +x "$T/bin/apk"
 	fi
 	for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn; do
-		bridge_prepare valid 0.6.3-r1
 		installed=0.6.3-r1
 		for target in 0.6.4-r1 0.6.6-r1 0.6.8-r1; do
+			bridge_prepare valid "$installed"
 			: > "$UPDATE_PACKAGE_CALLS"
 			out=$(run_check)
 			expect "T11.14 $manager $package check $target exit" 0 "$?"
 			bridge_assert "$package check $target" check "$installed" "$target"
 			out=$(policy_run "$package")
 			expect "T11.14 $manager $package chain $installed -> $target exit" 0 "$?"
-			bridge_assert "$package chain $installed -> $target" installed "$installed" "$target"
+			bridge_assert "$package chain $installed -> terminal" installed "$installed" 0.6.8-r1
 			installed=$target
 		done
 	done

@@ -4,6 +4,7 @@
 // (docs/08 "检查", "本机数据的哈希" and "软件包安装 / 更新一起更新").
 // Downloaded metadata is never trusted before usign succeeds.
 // DNS prerequisites and recovery follow docs/design/engine-dependency-20261109 §4.3–4.6.
+// Fresh-CLI bridge handoffs follow docs/design/update-chain-20261111 §3.
 
 import * as fs from 'fs';
 import * as check_cmd from 'aetherproxy.cmd.check';
@@ -16,6 +17,39 @@ import * as data from 'aetherproxy.data';
 import * as log from 'aetherproxy.log';
 import * as net from 'aetherproxy.net';
 import * as sys from 'aetherproxy.sys';
+
+// Internal handoff state is scheduling metadata, never a substitute for signed policy.
+let chain_deadline = null;
+
+function budget_left() {
+	let now = clock(true);
+	return now == null ? 0 : chain_deadline - now[0] - now[1] / 1000000000.0;
+}
+
+function budget_ready() {
+	return chain_deadline == null || budget_left() >= C.UPDATE_CHAIN_MIN_BUDGET_SECS;
+}
+
+function run(argv, opts) {
+	// Budget is admission control, not a cancellation deadline. Once admitted,
+	// verification and recovery retain their own timeouts, just like flash writes.
+	return sys.run(argv, opts);
+}
+
+function group_failure(code, detail) {
+	let companions = {};
+	for (let name in C.UPDATE_COMPANIONS)
+		companions[name] = 'skipped';
+	return { ok: false, code, detail, exit: 1,
+		value: { ok: false, package: C.PROG, from: null, to: null,
+			rolled_back: false, code, detail, companions } };
+}
+
+function incomplete() {
+	let detail = 'Update chain incomplete: time budget exhausted; retry to continue from the installed version';
+	log.event('error', 'BRIDGE_INCOMPLETE', { detail });
+	return group_failure('BRIDGE_INCOMPLETE', detail);
+}
 
 function fs_error() {
 	return fs.error() ?? 'unknown error';
@@ -57,7 +91,7 @@ function curl(ctx, url, output, max_size, via_proxy) {
 	if (via_proxy)
 		push(argv, '-x', `http://${C.HTTP_LISTEN}:${C.HTTP_PORT}`);
 	push(argv, '-o', output, url);
-	let result = sys.run(argv, { timeout: C.UPDATE_COMMAND_TIMEOUT_SECS, quiet: true });
+	let result = run(argv, { timeout: C.UPDATE_COMMAND_TIMEOUT_SECS, quiet: true });
 	if (result.code != 0)
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });
 	return result;
@@ -122,7 +156,7 @@ function download_manifest(ctx, base, proxied_first, index) {
 		return { reached: false };
 	// Verify before parsing: nothing from an unverified file is interpreted.
 	let usign = ctx.bin_dir ? `${ctx.bin_dir}/usign` : 'usign';
-	let verified = sys.run([ usign, '-V', '-q', '-m', manifest_path, '-P', ctx.keys_dir ], { timeout: 10, quiet: true });
+	let verified = run([ usign, '-V', '-q', '-m', manifest_path, '-P', ctx.keys_dir ], { timeout: 10, quiet: true });
 	let manifest = verified.code == 0 ? read_object(manifest_path) : null;
 	if (manifest == null || manifest.schema != 2) {
 		log.event('error', 'MANIFEST_BAD_SIGNATURE', { url: base });
@@ -168,7 +202,7 @@ function package_manager(bin_dir) {
 function installed_metadata(ctx, pm, name) {
 	let bin = ctx.pm_bin;
 	let argv = pm == 'opkg' ? [ bin, 'status', name ] : [ bin, 'list', '-I', name ];
-	let result = sys.run(argv, { timeout: 10, quiet: true });
+	let result = run(argv, { timeout: 10, quiet: true });
 	if (result.code != 0) {
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });
 		return { ok: false, version: null, provides: [], detail: `${pm} exited ${result.code}: ${trim(result.stderr)}` };
@@ -221,7 +255,7 @@ function version_newer(available, installed) {
 
 function file_sha256(path, quiet) {
 	let argv = [ 'sha256sum', path ];
-	let hash = sys.run(argv, { timeout: 10, quiet: true });
+	let hash = run(argv, { timeout: 10, quiet: true });
 	if (hash.code != 0) {
 		if (!quiet)
 			log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: hash.code, stderr: trim(hash.stderr) });
@@ -424,7 +458,7 @@ function free_bytes(ctx) {
 	if (override != null && match(override, /^[0-9]+$/) != null)
 		return +override;
 	let argv = [ 'df', '-Pk', ctx.tmp_dir ];
-	let result = sys.run(argv, { timeout: 5, quiet: true });
+	let result = run(argv, { timeout: 5, quiet: true });
 	if (result.code != 0) {
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });
 		return null;
@@ -754,8 +788,8 @@ function install_package(ctx, pm, path, previous) {
 	let argv = pm == 'opkg'
 		? [ bin, 'install', ...(previous ? [ '--force-downgrade' ] : []), path ]
 		: [ bin, 'add', '--allow-untrusted', path ];
-	// TODO(design): package-manager runtime is unspecified; use the background-job ceiling so a
-	// slow flash write is not interrupted at the shorter health-check deadline.
+	// Never shorten a flash write to the remaining scheduling budget. The caller
+	// admits forward installs; rollback must remain possible even after expiry.
 	let result = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS });
 	if (result.code == 0)
 		return { ok: true };
@@ -795,7 +829,7 @@ function wait_for(ctx, timeout, predicate) {
 		let now = monotonic_seconds();
 		if (now == null || now >= deadline)
 			break;
-		let sleep = sys.run([ 'sleep', `${poll_seconds()}` ], { timeout: poll_seconds() + 1, quiet: true });
+		let sleep = run([ 'sleep', `${poll_seconds()}` ], { timeout: poll_seconds() + 1, quiet: true });
 		if (sleep.code != 0) {
 			log.event('error', 'CMD_FAILED', { cmd: 'sleep', rc: sleep.code, stderr: trim(sleep.stderr) });
 			return false;
@@ -819,7 +853,7 @@ function signal_xray(ctx) {
 	let ubus = ctx.bin_dir ? `${ctx.bin_dir}/ubus` : 'ubus';
 	// procd's `service signal` policy: name string, signal int32; no instance = all instances.
 	let request = sprintf('%.J', { name: C.UPDATE_SERVICE_NAME, signal: C.UPDATE_SIGUSR2 });
-	let signal = sys.run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
+	let signal = run([ ubus, 'call', 'service', 'signal', request ], { timeout: 5 });
 	if (signal.code != 0) {
 		log.event('error', 'CMD_FAILED', {
 			cmd: `ubus call service signal ${request}`, rc: signal.code, stderr: trim(signal.stderr)
@@ -831,7 +865,7 @@ function signal_xray(ctx) {
 
 function restart_service(ctx) {
 	let init = system_path(ctx.root, C.UPDATE_INIT);
-	let restarted = sys.run([ init, 'restart' ], { timeout: C.UPDATE_RESTART_TIMEOUT_SECS });
+	let restarted = run([ init, 'restart' ], { timeout: C.UPDATE_RESTART_TIMEOUT_SECS });
 	if (restarted.code != 0) {
 		log.event('error', 'CMD_FAILED', {
 			cmd: `${init} restart`, rc: restarted.code, stderr: trim(restarted.stderr)
@@ -867,7 +901,7 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 		if (index([ 'starting', 'degraded', 'failsafe' ], before_state?.state) >= 0)
 			return wait_for(ctx, wait_limit(C.UPDATE_PORT_WAIT_SECS), () => port_listening(ctx));
 		if (before_state == null || index([ 'stopped', 'error' ], before_state.state) >= 0) {
-			let result = sys.run([ xray_binary(ctx), 'version' ], { timeout: 10, quiet: true });
+			let result = run([ xray_binary(ctx), 'version' ], { timeout: 10, quiet: true });
 			if (result.code != 0)
 				return false;
 			let found = split(trim(result.stdout), /[[:space:]]+/)[1] ?? null;
@@ -891,7 +925,7 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 			push(argv, '--confdir', opts.confdir);
 		if (ctx.bin_dir != null)
 			push(argv, '--bin-dir', ctx.bin_dir);
-		return sys.run(argv, { timeout: 35, quiet: true }).code == 0;
+		return run(argv, { timeout: 35, quiet: true }).code == 0;
 	}
 	return false;
 }
@@ -899,6 +933,8 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 // Install one manifest-selected package. All package-manager calls happen only after the
 // signed manifest and downloaded asset have both been verified.
 function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous) {
+	if (!budget_ready())
+		return incomplete();
 	let from = installed_version(ctx, pm, name);
 	if (!from.ok)
 		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: from.detail };
@@ -908,6 +944,11 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 	if (!downloaded.ok) {
 		let code = selected.bridge_step && downloaded.code == 'UPDATE_VERIFY_FAILED' ? 'BRIDGE_UNAVAILABLE' : downloaded.code;
 		return { ok: false, code, exit: 1, detail: downloaded.detail ?? downloaded.code };
+	}
+	if (!budget_ready()) {
+		if (unlink_file(downloaded.path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
+		return incomplete();
 	}
 	log.event('notice', 'UPDATE_STARTED', { package: name, version: asset.version });
 	let installed = install_package(ctx, pm, downloaded.path, previous == true);
@@ -957,6 +998,12 @@ function update_companion(opts, ctx, selected, plat, name) {
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
 	if (!downloaded.ok)
 		return { status: 'failed', code: downloaded.code, detail: downloaded.detail ?? downloaded.code };
+	if (!budget_ready()) {
+		if (unlink_file(downloaded.path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
+		let failure = incomplete();
+		return { status: 'failed', code: failure.code, detail: failure.detail };
+	}
 	log.event('notice', 'UPDATE_STARTED', { package: name, version: asset.version });
 	let result = install_package(ctx, plat.pm, downloaded.path, false);
 	if (fs.stat(downloaded.path) != null && !fs.unlink(downloaded.path))
@@ -965,15 +1012,6 @@ function update_companion(opts, ctx, selected, plat, name) {
 		return { status: 'failed', code: 'CMD_FAILED', detail: result.detail };
 	log.event('notice', 'UPDATE_INSTALLED', { package: name, version: asset.version });
 	return { status: 'installed' };
-}
-
-function group_failure(code, detail) {
-	let companions = {};
-	for (let name in C.UPDATE_COMPANIONS)
-		companions[name] = 'skipped';
-	return { ok: false, code, detail, exit: 1,
-		value: { ok: false, package: C.PROG, from: null, to: null,
-			rolled_back: false, code, detail, companions } };
 }
 
 function update_together(opts, ctx, selected, plat, asset) {
@@ -1050,7 +1088,7 @@ function prerequisite_prepare(opts, selected, plat) {
 		return { ok: false, exit: 1, code: 'CONFIG_INVALID', detail: 'configuration is invalid' };
 	let found = check_cmd.find_component(C.CHINADNS_COMPONENT, loaded.snapshot.main.chinadns_bin, ctx);
 	if (found != null) {
-		let banner = sys.run([ found.path, '-V' ], { timeout: 10 });
+		let banner = run([ found.path, '-V' ], { timeout: 10 });
 		found = { ...found, version: banner.code == 0
 			? component_version.parse_version(banner.stdout + banner.stderr) : null };
 	}
@@ -1079,6 +1117,11 @@ function prerequisite_prepare(opts, selected, plat) {
 	let downloaded = download_asset(opts, selected.urls, asset, `new-${asset.url}`);
 	if (!downloaded.ok)
 		return { ...downloaded, prerequisite, recovery };
+	if (!budget_ready()) {
+		discard_prerequisite_asset(downloaded.path);
+		discard_prerequisite_asset(recovery?.path);
+		return { ...incomplete(), prerequisite };
+	}
 	log.event('notice', 'UPDATE_STARTED', { package: 'aether-dns', version: asset.version });
 	let installed_new = install_package(ctx, plat.pm, downloaded.path, installed.version != null);
 	discard_prerequisite_asset(downloaded.path);
@@ -1100,7 +1143,7 @@ function prerequisite_rollback(ctx, plat, transaction) {
 	}
 	else {
 		let argv = [ ctx.pm_bin, plat.pm == 'opkg' ? 'remove' : 'del', 'aether-dns' ];
-		restored = sys.run(argv, { timeout: C.JOB_TIMEOUT_SECS }).code == 0
+		restored = run(argv, { timeout: C.JOB_TIMEOUT_SECS }).code == 0
 			&& verify_installed_version(ctx, plat.pm, 'aether-dns', null);
 	}
 	if (restored) {
@@ -1112,6 +1155,8 @@ function prerequisite_rollback(ctx, plat, transaction) {
 
 function install_target(opts, selected, plat, target, install) {
 	// Gate on this hop, not manifest current: a legacy bridge can lead to a >=1.0.0 terminal.
+	if (!budget_ready())
+		return incomplete();
 	let order = component_version.version_cmp(target, C.PREREQ_ENGINE_FROM_VERSION);
 	if (order == null || order < 0)
 		return install();
@@ -1156,6 +1201,58 @@ function install_target(opts, selected, plat, target, install) {
 	return prerequisite_result(result, prerequisite);
 }
 
+function continue_chain(opts, ctx, name, before, installed, remaining) {
+	while (true) {
+		// Check actual progress independently of bridge_plan: even a changed signed chain
+		// must not authorize a repeated/non-forward handoff or extend the original hop cap.
+		if (!version_newer(installed, before) || remaining <= 0)
+			return group_failure('BRIDGE_UNAVAILABLE', 'bridge did not advance or hop limit exhausted');
+		if (!budget_ready())
+			return incomplete();
+		let cli = ctx.bin_dir ? `${ctx.bin_dir}/${C.PROG}` : C.UPDATE_CHAIN_CLI;
+		// Preserve subsecond precision explicitly across the process boundary;
+		// rounding a deadline must never silently replenish an exhausted budget.
+		let deadline_text = sprintf('%.9f', chain_deadline);
+		let argv = [ 'env', `AETHER_PROXY_CHAIN_DEADLINE=${deadline_text}`,
+			`AETHER_PROXY_CHAIN_LEFT=${remaining}`, `AETHER_PROXY_CHAIN_FROM=${before}`,
+			cli, 'update', 'package', name, '--json' ];
+		for (let option, key in { '--confdir': 'confdir', '--run-dir': 'run_dir',
+			'--sys-root': 'sys_root', '--bin-dir': 'bin_dir' })
+			if (opts[key] != null)
+				push(argv, option, opts[key]);
+		// The installed CLI owns all subsequent semantics, including a new verified manifest.
+		// Do not put an ancestor deadline around the child's admitted flash writes.
+		// The fresh CLI owns admission and each command keeps its original timeout.
+		let child = run(argv, { quiet: true });
+		if (child.timed_out || budget_left() <= 0)
+			return incomplete();
+		let value = null;
+		try { value = json(child.stdout); }
+		catch (e) {
+			log.event('error', 'CMD_FAILED', { cmd: 'update package (handoff)', rc: child.code,
+				stderr: `invalid CLI result: ${e}` });
+		}
+		if (type(value) != 'object' || type(value.ok) != 'bool')
+			return group_failure('CMD_FAILED', `installed CLI exited ${child.code}: ${trim(child.stderr)}`);
+		if (!value.ok || child.code != 0 || value.code != 'BRIDGE_INSTALLED')
+			return { ok: value.ok && child.code == 0, exit: child.code, code: value.code,
+				detail: value.detail, value };
+		// Released CLIs may still return after a single hop. Schedule their successor,
+		// rather than requiring old published code to understand our internal context.
+		let plat = platform(ctx);
+		if (!plat.ok)
+			return plat;
+		let actual = installed_version(ctx, plat.pm, C.PROG);
+		if (!actual.ok || type(actual.version) != 'string' || !version_newer(actual.version, installed))
+			return group_failure('BRIDGE_UNAVAILABLE', 'cannot verify handoff progress');
+		if (!(value.steps_remaining > 0))
+			return { ok: true, exit: 0, code: value.code, detail: value.detail, value };
+		before = installed;
+		installed = actual.version;
+		remaining--;
+	}
+}
+
 function package_update_selected(opts, name, previous, selected) {
 	opts ??= {};
 	if (index(C.UPDATE_PACKAGES, name) < 0) {
@@ -1184,6 +1281,9 @@ function package_update_selected(opts, name, previous, selected) {
 		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
 		if (!plan.ok)
 			return group_failure(plan.code, plan.detail);
+		if (!plan.active)
+			return { ok: true, exit: 0, value: { ok: true, package: C.PROG,
+				from: installed.version, to: installed.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
 		if (plan.active) {
 			// Even direct CLI requests for a page/translation cannot pull target
 			// assets across a pending backend bridge. Intermediate steps contain
@@ -1192,13 +1292,24 @@ function package_update_selected(opts, name, previous, selected) {
 			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
 			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
 				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
+			let remaining = getenv('AETHER_PROXY_CHAIN_LEFT');
+			let limit = remaining == null ? plan.remaining : min(+remaining, plan.remaining);
+			if (limit <= 0)
+				return group_failure('BRIDGE_UNAVAILABLE', 'bridge hop limit exhausted');
 			let result = install_target(opts, selected, plat, plan.next.version,
-				() => install_with_rollback(opts, ctx, staged, C.PROG, arch, pm, plan.next.asset, false));
+				() => plan.remaining == 1
+					? update_together(opts, ctx, staged, plat, plan.next.asset)
+					: install_with_rollback(opts, ctx, staged, C.PROG, arch, pm, plan.next.asset, false));
 			if (result.ok) {
 				result.value.code = 'BRIDGE_INSTALLED';
 				result.value.steps_remaining = plan.remaining - 1;
+				log.event('notice', 'BRIDGE_INSTALLED', { package: C.PROG, version: plan.next.version });
 			}
 			write_updates(ctx, selected, plat);
+			if (!result.ok)
+				return result;
+			if (plan.remaining > 1)
+				return continue_chain(opts, ctx, name, installed.version, plan.next.version, limit - 1);
 			return result;
 		}
 	}
@@ -1228,5 +1339,34 @@ export function package_update(opts, name, previous) {
 	// Argument rejection stays ahead of manifest IO, including --previous policy.
 	if (index(C.UPDATE_PACKAGES, name) < 0 || (previous == true && name != C.XRAY_CORE_PACKAGE))
 		return package_update_selected(opts, name, previous, null);
-	return package_update_selected(opts, name, previous, fetch_manifest(opts));
+	log.set_run_dir(opts.run_dir ?? system_path(opts.sys_root ?? '', C.RUN_DIR));
+	let now = clock(true);
+	if (now == null)
+		return incomplete();
+	let inherited = getenv('AETHER_PROXY_CHAIN_DEADLINE');
+	let left = getenv('AETHER_PROXY_CHAIN_LEFT');
+	if (inherited != null && match(inherited, /^[0-9]+(\.[0-9]+)?$/) == null)
+		return group_failure('BRIDGE_UNAVAILABLE', 'invalid bridge deadline');
+	if (left != null && match(left, /^[0-9]+$/) == null)
+		return group_failure('BRIDGE_UNAVAILABLE', 'invalid bridge hop limit');
+	chain_deadline = now[0] + now[1] / 1000000000.0 + C.JOB_TIMEOUT_SECS;
+	if (inherited != null)
+		chain_deadline = min(chain_deadline, +inherited);
+	if (budget_left() <= 0)
+		return incomplete();
+	let selected = fetch_manifest(opts);
+	let before = getenv('AETHER_PROXY_CHAIN_FROM');
+	if (selected.ok && before != null) {
+		let plat = platform(selected.ctx);
+		if (!plat.ok)
+			return plat;
+		let installed = installed_version(selected.ctx, plat.pm, C.PROG);
+		if (!installed.ok || type(installed.version) != 'string' || !version_newer(installed.version, before))
+			return group_failure('BRIDGE_UNAVAILABLE', 'installed backend did not strictly advance');
+	}
+	let result = package_update_selected(opts, name, previous, selected);
+	if (budget_left() <= 0)
+		result = incomplete();
+	chain_deadline = null;
+	return result;
 };

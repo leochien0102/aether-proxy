@@ -12,6 +12,15 @@ restarts = (root / 'init-calls').read_text().splitlines()
 events = [json.loads(line) for line in (root / 'run/events.jsonl').read_text().splitlines()]
 inventory = root / 'package-inventory'
 manifest = json.loads((root / 'ch1/manifest.json').read_text())
+if scenario == 'T14-bridge':
+    assert result['code'] == 'PREREQ_MANUAL_REQUIRED', result
+    assert (inventory / 'aether-proxy').read_text().strip() == '0.7.1-r1'
+    assert len(calls) == 1 and len(restarts) == 1, (calls, restarts)
+    assert not (inventory / 'aether-dns').exists()
+    # The first hop must stay below the engine gate; only the fresh CLI's
+    # terminal hop discovers the missing prerequisite and fails safely.
+    assert not any(e['code'] == 'UPDATE_STARTED' and e['args']['package'] == 'aether-dns' for e in events)
+    sys.exit(0)
 if scenario.startswith('T14'):
     assert 'aether-dns' not in manifest['packages'], manifest
     assert not (root / 'bin/aether-dns').exists() and not (root / 'bin/chinadns-ng').exists()

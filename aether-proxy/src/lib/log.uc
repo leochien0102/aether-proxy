@@ -38,6 +38,7 @@ const EVENTS = {
 	SUB_SHRANK: 'warn',
 	UPDATE_AVAILABLE: 'notice',
 	UPDATE_STARTED: 'notice', UPDATE_INSTALLED: 'notice', UPDATE_VERIFY_FAILED: 'error', UPDATE_ROLLED_BACK: 'error',
+	BRIDGE_INSTALLED: 'notice', BRIDGE_INCOMPLETE: 'error',
 	DATA_UPDATED: 'notice',
 	UPDATE_FETCH_FAILED: 'error', MANIFEST_BAD_SIGNATURE: 'error',
 	NO_SPACE: 'error', ARCH_UNSUPPORTED: 'error',

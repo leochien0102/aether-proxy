@@ -62,6 +62,8 @@ const TEMPLATES = {
 	SUB_NO_VALID_NODES: _('Subscription {sub} has no valid nodes; skipped {skipped}', 'aether-proxy'),
 	UPDATE_AVAILABLE: _('Update available for {package}: {current} to {latest}', 'aether-proxy'),
 	UPDATE_STARTED: _('Update started: {package} {version}', 'aether-proxy'),
+	BRIDGE_INSTALLED: _('Update chain step installed: {package} {version}', 'aether-proxy'),
+	BRIDGE_INCOMPLETE: _('Update chain incomplete: {detail}', 'aether-proxy'),
 	UPDATE_INSTALLED: _('Update finished: {package} {version}', 'aether-proxy'),
 	UPDATE_VERIFY_FAILED: _('Update verification failed for {package}: {version}', 'aether-proxy'),
 	UPDATE_ROLLED_BACK: _('Rolled back {package} to {version}', 'aether-proxy'),
