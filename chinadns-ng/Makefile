@@ -44,6 +44,7 @@ define Package/chinadns-ng
   TITLE:=ChinaDNS-NG DNS forwarder (upstream static build, aether-proxy channel)
   URL:=https://github.com/zfl9/chinadns-ng
   DEPENDS:=@(aarch64||x86_64)
+  PROVIDES:=dns-engine
 endef
 
 define Package/chinadns-ng/description

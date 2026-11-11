@@ -101,6 +101,39 @@ p.write_text(p.read_text().split("config main 'main'")[0])
 PY
 	fi
 done
+# M4-05: a date version is numerically newer; both managers must still install
+# the exact local 1.0.0 asset, and restore the exact date asset on backend failure.
+for manager in opkg apk; do
+	if [ "$manager" = apk ]; then
+		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
+		chmod +x "$T/bin/apk"
+	fi
+	for outcome in success rollback; do
+		prereq_prepare
+		printf '2026.11.04-r2\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-dns"
+		prereq_binary aether-dns 2026.11.04
+		python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" recovery
+		prereq_sign
+		if [ "$outcome" = rollback ]; then export UPDATE_INSTALL_FAIL_PACKAGE=aether-proxy; fi
+		out=$(policy_run aether-proxy)
+		rc=$?
+		if [ "$outcome" = success ]; then expected=0; else expected=1; fi
+		expect "M4-05 $manager date downgrade $outcome exit" "$expected" "$rc"
+		if python3 "$ROOT/tests/update/downgrade-assert.py" "$T" "$manager" "$outcome" "$out"; then
+			ok "M4-05 $manager date downgrade $outcome exact arguments and inventory"
+		else
+			bad "M4-05 $manager date downgrade $outcome exact arguments and inventory"
+		fi
+		if [ "$manager" = opkg ] && [ "$outcome" = success ]; then
+			components=$(ap components --json --confdir "$T/conf" --bin-dir "$T/bin")
+			expect 'M4-05 migrated components inventory exit' 0 "$?"
+			expect 'M4-05 migrated components.dns.version' 1.0.0 "$(get "$components" components.dns.version)"
+			expect 'M4-05 migrated components.dns.engine' aether-dns "$(get "$components" components.dns.engine)"
+		fi
+		unset UPDATE_INSTALL_FAIL_PACKAGE
+	done
+	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
+done
 rm -f "$T/bin/aether-dns" "$T/bin/chinadns-ng" "$T/bin/custom-engine"
 unset UPDATE_ENGINE_BIN_DIR UPDATE_ENGINE_PROBES
 unset UPDATE_PACKAGE_STATE_DIR UPDATE_PACKAGE_QUERY_CALLS
