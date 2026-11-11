@@ -141,6 +141,8 @@ def scenarios(reproduce):
 				yield name, value, 'banner', False
 
 
+# 2026-11-11：CI 上曾因负载把一次正常的 5 秒超时拖过 10 秒上界（重跑即过）。上界放宽到 30 秒，
+# 仍然能抓住真正的挂起；下界保持不变。
 def main():
 	check_only = '--check-only' in sys.argv
 	reproduce = '--reproduce' in sys.argv
@@ -164,7 +166,7 @@ def main():
 					[{'code': 'COMPONENT_TOO_OLD', 'args': expected}] if old else []))
 				check(label + ': no version failure events', not f.events())
 				if mode == 'timeout':
-					check(label + ': bounded real timeout', 4.5 <= time.monotonic() - started < 10)
+					check(label + ': bounded real timeout', 4.5 <= time.monotonic() - started < 30)
 				continue
 			started = time.monotonic()
 			with f.daemon(boot=old and not reproduce) as child:
@@ -198,7 +200,7 @@ def main():
 						check(label + ': no failed-query event',
 							not any(e['code'] == 'CMD_FAILED' for e in f.events()))
 					if mode == 'timeout':
-						check(label + ': bounded real timeout', 4.5 <= time.monotonic() - started < 10)
+						check(label + ': bounded real timeout', 4.5 <= time.monotonic() - started < 30)
 				too_old = [e for e in f.events() if e['code'] == 'COMPONENT_TOO_OLD']
 				check(label + ': exact error event policy',
 					len(too_old) == 1 and too_old[0]['level'] == 'error' and too_old[0]['args'] == expected
