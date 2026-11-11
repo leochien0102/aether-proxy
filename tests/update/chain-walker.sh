@@ -28,7 +28,10 @@ if [ "$1" = update ]; then
 				exit 0
 			fi ;;
 		fail) export UPDATE_INSTALL_FAIL_PACKAGE=aether-proxy ;;
-		timeout) sleep 2 ;;
+		timeout)
+			# Model budget consumed before the successor admits its next transaction.
+			AETHER_PROXY_CHAIN_DEADLINE=$(python3 -c 'import time; print(time.monotonic()+179)') || exit 1
+			export AETHER_PROXY_CHAIN_DEADLINE ;;
 		extend)
 			python3 "$WALKER_ROOT/tests/update/walker-fixture.py" "$WALKER_T" extend || exit 1
 			for channel in ch1 ch2; do
@@ -70,7 +73,7 @@ for manager in opkg apk; do
 		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
 		chmod +x "$T/bin/apk"
 	fi
-	for scenario in W1 W2 W3 W4 W5 W6 W6-newer W7-cap W7-progress fresh-signature legacy legacy-no-progress; do
+	for scenario in W1 W2 W3 W4 W5 W5-low W6 W6-newer W7-cap W7-progress fresh-signature legacy legacy-no-progress; do
 		walker_prepare
 		case "$scenario" in
 			W2) printf '0.7.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy" ;;
@@ -79,8 +82,11 @@ for manager in opkg apk; do
 			W5)
 				export WALKER_MODE=timeout
 				export AETHER_PROXY_CHAIN_DEADLINE
-				AETHER_PROXY_CHAIN_DEADLINE=$(python3 -c 'import time; print(time.monotonic()+1.5)')
+				AETHER_PROXY_CHAIN_DEADLINE=$(python3 -c 'import time; print(time.monotonic()+300)')
 				printf '%s\n' "$AETHER_PROXY_CHAIN_DEADLINE" > "$T/start-deadline" ;;
+			W5-low)
+				export AETHER_PROXY_CHAIN_DEADLINE
+				AETHER_PROXY_CHAIN_DEADLINE=$(python3 -c 'import time; print(time.monotonic()+179)') ;;
 			legacy-no-progress) export WALKER_MODE=legacy-no-progress ;;
 			legacy)
 				export WALKER_MODE=legacy
@@ -101,14 +107,14 @@ for manager in opkg apk; do
 		expect "M4-07 $manager $scenario exit" "$expected" "$rc"
 		walker_assert "$scenario"
 		unset AETHER_PROXY_CHAIN_DEADLINE
-		walker_restore
-		if [ "$scenario" = W4 ] || [ "$scenario" = W5 ]; then
+		if [ "$scenario" = W4 ] || [ "$scenario" = W5 ] || [ "$scenario" = W5-low ]; then
 			export WALKER_MODE=normal
 			: > "$UPDATE_PACKAGE_CALLS"; : > "$UPDATE_INIT_CALLS"; : > "$T/run/events.jsonl"; : > "$T/handoffs"
 			out=$(policy_run aether-proxy)
 			expect "M4-07 $manager $scenario retry exit" 0 "$?"
-			walker_assert W2
+			if [ "$scenario" = W5-low ]; then walker_assert W1; else walker_assert W2; fi
 		fi
+		walker_restore
 	done
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi
 done

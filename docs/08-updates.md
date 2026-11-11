@@ -171,8 +171,12 @@ stable 的发布脚本位于独立 channel 仓库，`scripts/publish.sh` 已（T
 重新验签并计算下一步。中间步仅安装后端、重启检查，记录 `BRIDGE_INSTALLED`，再调用刚安装的
 `/usr/bin/aether-proxy update package <包> --json` 续步；新 CLI 必须重新下载并验签清单，
 不能复用旧进程的内存链。终点步执行引擎前置事务与分组更新；最终结果向上传递。
-所有步骤共享 `JOB_TIMEOUT_SECS`（600 秒）的单调时钟截止时间，续步不能延长预算；
-超时返回 `BRIDGE_INCOMPLETE`（退出 1），文案为“Update chain incomplete: time budget exhausted;
+所有步骤共享 `JOB_TIMEOUT_SECS`（600 秒）的单调时钟准入预算，续步不能延长预算。
+每步安装前及 handoff 前要求至少剩余 180 秒（等于阈值可开始），不足即停止调度；
+预算只决定是否开始，不截断已准入的 flash 写入、检查或恢复。装包命令保留原本的
+`JOB_TIMEOUT_SECS` 超时上限，handoff 不设置可能中断子进程写入的祖先截止计时器；
+因此已准入步骤可以越过调度截止时间完成，完成后不再准入新步骤。
+预算不足或耗尽返回 `BRIDGE_INCOMPLETE`（退出 1），文案为“Update chain incomplete: time budget exhausted;
 retry to continue from the installed version”。已成功步骤不回滚，重试从已装版本继续。
 步数受首次签名链剩余 `required_steps` 限制，新清单只能收紧该预算；每步必须严格前进。
 已经达到或超过签名链终点时返回 `UPDATE_UP_TO_DATE`，不安装、不重启。

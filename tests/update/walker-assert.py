@@ -40,7 +40,7 @@ if scenario == 'legacy':
 expected = {
     'W1': [('aether-proxy', '0.7.0-r1'), ('aether-dns', '1.0.0-r1'), ('aether-proxy', '1.0.0-r1')],
     'W2': [('aether-dns', '1.0.0-r1'), ('aether-proxy', '1.0.0-r1')],
-    'W3': [], 'W6': [], 'W6-newer': [],
+    'W3': [], 'W6': [], 'W6-newer': [], 'W5-low': [],
     'W4': [('aether-proxy', '0.7.0-r1'), ('aether-dns', '1.0.0-r1'), ('aether-proxy', '1.0.0-r1')],
     'W5': [('aether-proxy', '0.7.0-r1')],
     'W7-cap': [('aether-proxy', '0.7.0-r1'), ('aether-proxy', '0.8.0-r1')],
@@ -85,6 +85,12 @@ elif scenario == 'W4':
     assert calls[-1].startswith(('remove aether-dns', 'del aether-dns')), calls
     assert not (state / 'aether-dns').exists()
     assert len(handoffs) == 1
+elif scenario == 'W5-low':
+    assert result['code'] == 'BRIDGE_INCOMPLETE' and backend() == '0.6.3-r1', result
+    assert not calls and not restarts and not handoffs
+    assert not started
+    assert not (state / 'aether-dns').exists()
+    assert any(e['code'] == 'BRIDGE_INCOMPLETE' for e in events)
 elif scenario == 'W5':
     assert result['code'] == 'BRIDGE_INCOMPLETE' and backend() == '0.7.0-r1', result
     assert len(restarts) == 1 and len(handoffs) == 1
@@ -93,7 +99,7 @@ elif scenario == 'W5':
     assert abs(float(handoffs[0].split()[0]) - original_deadline) < 0.000001, handoffs
 # A bridge completion must follow its successful install and must not duplicate starts.
 bridges = [e['args']['version'] for e in events if e['code'] == 'BRIDGE_INSTALLED']
-if scenario not in ('W3', 'W6', 'W6-newer'):
+if scenario not in ('W3', 'W6', 'W6-newer', 'W5-low'):
     assert bridges[0] == ('1.0.0-r1' if scenario == 'W2' else '0.7.0-r1'), bridges
 for name in ('luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
     assert (state / name).read_text().strip() == '1.0.0-r1'

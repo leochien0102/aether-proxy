@@ -374,3 +374,5 @@ export const PREREQ_ENGINE_FROM_VERSION = '1.0.0';
 
 // M4-07: pin handoffs to the newly installed CLI, never a PATH fallback.
 export const UPDATE_CHAIN_CLI = '/usr/bin/aether-proxy';
+// M4-07 review: reserve time before starting a hop; never cancel an admitted flash write.
+export const UPDATE_CHAIN_MIN_BUDGET_SECS = 180;
