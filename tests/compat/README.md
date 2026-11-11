@@ -24,7 +24,7 @@ Makefile PROVIDES metadata, not by pretending old clients know aether-dns.
 Negative tests print the rejection for a deleted provides map, an unknown
 current-client aether-dns, and an unregistered provider target.
 0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files are now at
-0.7.0-r1, extracted after publication; rolling the version contract alone does
+1.0.0-r1, extracted after publication; rolling the version contract alone does
 not replace those snapshots.
 Do not add new package names to frozen known lists just
 to make a newly introduced hard dependency pass: provide a real bridge or an
@@ -121,10 +121,14 @@ docs/08 "更新接口（固定）" describes the wire shapes this suite pins: su
 `job status` returns the flat job record (settled in the T9.39 review).
 
 Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7;
-0.7.0-r1 (M4-03e, latest formal client, extracted unchanged from tag
-`v0.7.0-r1`). The 0.7.0 page lists aether-xray directly rather than a retired
-xray-core row and displays DNS components by logical id/engine. Its update model
-also supports prerequisite transaction results (M4-03c). The harness still
-keeps a legacy installed xray-core record and verifies that updates never install
-or alter it. The simulated 0.7.1-r1 channel is test metadata only, not a real
-release, migration bridge, or promise of future compatibility.
+0.7.0-r1 (M4-03e); 1.0.0-r1 (M4-08, latest formal client, extracted unchanged
+from tag `v1.0.0-r1`, commit `59c3f3b`). The 1.0.0 release's log page includes
+M4-04's update-start/update-finished event wording; that log page is not one of
+the five frozen update integration files. All five frozen files are byte-identical
+to the previous 0.7.0-r1 snapshot, so no behavioral expectations change.
+The update page lists aether-xray directly rather than a retired xray-core row
+and displays DNS components by logical id/engine. Its update model also supports
+prerequisite transaction results (M4-03c). The harness still keeps a legacy
+installed xray-core record and verifies that updates never install or alter it.
+The simulated 1.1.0-r1 channel is test metadata only, not a real release,
+migration bridge, or promise of future compatibility.
