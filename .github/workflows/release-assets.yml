@@ -138,10 +138,10 @@ jobs:
           names += sorted(n for n in packages if n.startswith('luci-i18n-aether-proxy-'))
           if len(names) == 2:
               raise SystemExit('::error::Asset selection failed: missing i18n package')
-          names += ['aether-xray', 'chinadns-ng']
+          names += ['aether-xray', 'chinadns-ng', 'aether-dns']
           for name in names:
               assets = packages[name]['current']['assets']
-              arches = ['aarch64_generic', 'x86_64'] if name in ('aether-xray', 'chinadns-ng') else sorted(assets)
+              arches = ['aarch64_generic', 'x86_64'] if name in ('aether-xray', 'chinadns-ng', 'aether-dns') else sorted(assets)
               if not arches:
                   raise SystemExit(f'::error::Asset selection failed: no architectures for {name}')
               for arch in arches:
