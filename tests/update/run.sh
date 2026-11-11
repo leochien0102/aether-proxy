@@ -583,7 +583,7 @@ import * as C from 'aetherproxy.const';
 let source = fs.readfile(ARGV[0]);
 let start = index(source, 'function restart_service(');
 let end = index(source, '\nfunction activate_rollback(');
-let factory = loadstring('(function(sys, C, system_path) { ' + substr(source, start, end - start) +
+let factory = loadstring('(function(sys, C, system_path) { let run = sys.run; ' + substr(source, start, end - start) +
 	' return restart_service({ root: "/fixture" }); })')();
 let called = null;
 let ok = factory({ run: (argv, opts) => { called = { argv, opts }; return { code: 0 }; } },
@@ -1130,6 +1130,7 @@ expect 'T9.42 grouped install reports ARCH_UNSUPPORTED for a bad size' ARCH_UNSU
 # T11.14: signed backend compatibility chains (kept after shared fixture tests).
 source "$ROOT/tests/update/bridge-chain.sh"
 source "$ROOT/tests/update/prerequisite.sh"
+source "$ROOT/tests/update/chain-walker.sh"
 source "$ROOT/tests/update/events.sh"
 
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]

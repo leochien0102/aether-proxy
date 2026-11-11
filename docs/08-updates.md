@@ -167,15 +167,24 @@ stable 的发布脚本位于独立 channel 仓库，`scripts/publish.sh` 已（T
 `code: BRIDGE_UNAVAILABLE` / `detail`；不影响独立 Xray 与数据检查。
 页面/翻译条目同样受 bridge 门禁约束，不单独提供跨步安装按钮。
 
-每次 `update package aether-proxy` 或应用/页面/翻译安装入口重新验签并计算下一步，
-仅安装该步后端包，成功返回 `BRIDGE_INSTALLED`，不会在同一作业继续安装下一步或 target
-的页面包。到达 target 后，正常分组更新可补齐页面/翻译包。失败停止；资产下载/hash/size
+自 M4-07（目标 1.1.0）起，每次 `update package aether-proxy` 或应用/页面/翻译安装入口
+重新验签并计算下一步。中间步仅安装后端、重启检查，记录 `BRIDGE_INSTALLED`，再调用刚安装的
+`/usr/bin/aether-proxy update package <包> --json` 续步；新 CLI 必须重新下载并验签清单，
+不能复用旧进程的内存链。终点步执行引擎前置事务与分组更新；最终结果向上传递。
+所有步骤共享 `JOB_TIMEOUT_SECS`（600 秒）的单调时钟截止时间，续步不能延长预算；
+超时返回 `BRIDGE_INCOMPLETE`（退出 1），文案为“Update chain incomplete: time budget exhausted;
+retry to continue from the installed version”。已成功步骤不回滚，重试从已装版本继续。
+步数受首次签名链剩余 `required_steps` 限制，新清单只能收紧该预算；每步必须严格前进。
+已经达到或超过签名链终点时返回 `UPDATE_UP_TO_DATE`，不安装、不重启。
+上述内部调度通过环境传递截止时间、剩余步数与前驱版本，不新增公开必选参数，也不改变链格式。
+已发布的 0.6.3 等旧二进制行为不变，仍可能需要手动再次点击。
+失败停止；资产下载/hash/size
 失败返回 `BRIDGE_UNAVAILABLE`，安装或健康验证失败保留既有失败码。
 验证失败仅尝试恢复精确匹配更新前版本的前驱 bridge 或 `previous`；不能把 target 当恢复包。
 没有可验证的恢复资产时明确报失败，不擅自安装其他版本。
 `--previous` 仍只允许 `aether-xray`，不影响 bridge 路径。
 
-更新页显示「先更新到 X（第 1/N 步）」；每次 bridge 作业后重新 check 并刷新状态。
+更新页显示「先更新到 X（第 1/N 步）」；自动续步作业完成后重新 check 并刷新状态。
 无效链显示原因且禁用按钮。没有 compatibility 时维持原有直升/分组更新行为。
 
 ### 包版本写法（canonical version）

@@ -449,6 +449,14 @@ msgid "Update available for {package}: {current} to {latest}"
 msgstr "软件包 {package} 有更新：{current} → {latest}"
 
 msgctxt "aether-proxy"
+msgid "Update chain step installed: {package} {version}"
+msgstr "更新链步骤已安装：{package} {version}"
+
+msgctxt "aether-proxy"
+msgid "Update chain incomplete: {detail}"
+msgstr "更新链未完成：{detail}"
+
+msgctxt "aether-proxy"
 msgid "Update started: {package} {version}"
 msgstr "开始更新：{package} {version}"
 

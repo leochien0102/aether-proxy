@@ -10,6 +10,9 @@ result = json.loads(output)
 calls = (root / 'package-calls').read_text().splitlines()
 inventory = root / 'package-inventory'
 expected = [] if mode in ('blocked', 'guard', 'check') else [target]
+if mode == 'installed':
+    versions = ['0.6.3-r1', '0.6.4-r1', '0.6.6-r1', '0.6.8-r1']
+    expected = versions[versions.index(installed) + 1:] + [target, target]
 if mode == 'mismatch-rollback':
     expected = ['0.6.5-r1', installed]
 elif mode == 'rollback':
@@ -18,9 +21,12 @@ assert len(calls) == len(expected), (calls, expected, result)
 if mode in ('blocked', 'guard'):
     assert not (root / 'init-calls').read_text(), result
     assert not (root / 'signals').read_text(), result
-for call, version in zip(calls, expected):
-    filename = (f'aether-proxy_{version}_aarch64_generic.ipk' if manager == 'opkg'
-                else f'aether-proxy-{version}_aarch64_generic.apk')
+names = ['aether-proxy'] * len(expected)
+if mode == 'installed':
+    names[-2:] = ['luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn']
+for call, version, name in zip(calls, expected, names):
+    filename = (f'{name}_{version}_aarch64_generic.ipk' if manager == 'opkg'
+                else f'{name}-{version}_aarch64_generic.apk')
     assert Path(call.split()[-1]).name == filename, calls
     assert ('install ' if manager == 'opkg' else 'add --allow-untrusted ') in call, call
 if mode in ('rollback', 'mismatch-rollback') and manager == 'opkg':
@@ -28,7 +34,7 @@ if mode in ('rollback', 'mismatch-rollback') and manager == 'opkg':
 assert (inventory / 'aether-proxy').read_text().strip() == (
     target if mode in ('installed', 'no-rollback') else installed), (calls, result)
 for name in ('luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
-    assert (inventory / name).read_text().strip() == '0.6.3-r1', name
+    assert (inventory / name).read_text().strip() == (target if mode == 'installed' else '0.6.3-r1'), name
 if mode == 'check':
     filename = (f'aether-proxy_{target}_aarch64_generic.ipk' if manager == 'opkg'
                 else f'aether-proxy-{target}_aarch64_generic.apk')
@@ -43,8 +49,8 @@ if mode == 'check':
 elif mode == 'installed':
     assert result['code'] == 'BRIDGE_INSTALLED', result
     assert result['to'] == target, result
-    remaining = {'0.6.4-r1': 2, '0.6.6-r1': 1, '0.6.8-r1': 0}[target]
-    assert result['steps_remaining'] == remaining, result
+    assert result['steps_remaining'] == 0, result
+    assert len((root / 'init-calls').read_text().splitlines()) == len(expected) - 2
     cache = json.loads((root / 'run/updates.json').read_text())['packages']
     assert cache['aether-proxy']['installed'] == target, cache
 elif mode in ('rollback', 'mismatch-rollback', 'no-rollback'):
