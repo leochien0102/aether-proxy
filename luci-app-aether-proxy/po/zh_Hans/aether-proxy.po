@@ -2807,10 +2807,6 @@ msgid "Common and extra ports"
 msgstr "常用与补充端口"
 
 msgctxt "aether-proxy"
-msgid "Save and apply port scope"
-msgstr "保存并应用端口范围"
-
-msgctxt "aether-proxy"
 msgid "Only affects TCP; UDP keeps its existing proxy policy."
 msgstr "只影响 TCP；UDP 始终按原策略代理。"
 
