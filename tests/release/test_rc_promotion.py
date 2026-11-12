@@ -118,7 +118,9 @@ class PromotionTest(unittest.TestCase):
 
     def run_step(self, workflow, index, cwd, success=True):
         job = 'candidate' if workflow is RC else 'promote'
-        steps = [s for s in workflow['jobs'][job]['steps'] if 'run' in s]
+        # These integration fixtures start with downloaded packages. Gate selection is
+        # tested independently in test_gate.py; keep stage/create indices stable here.
+        steps = [s for s in workflow['jobs'][job]['steps'] if 'run' in s and s.get('id') != 'gate']
         p = subprocess.run(['bash', '-c', steps[index]['run']], cwd=cwd, env=self.env,
                            text=True, capture_output=True)
         # Steps hand values forward exactly like Actions does through GITHUB_ENV.
