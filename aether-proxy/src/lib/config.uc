@@ -203,6 +203,9 @@ function default_of(f, proto) {
 // value is then only a placeholder). `proto` is the node protocol, or null.
 function normalize_field(f, raw, field, proto, errors) {
 	let v = raw[f.name];
+	// Retained inactive text must not block unrelated settings or old configurations.
+	if (field == 'main.extra_ports' && raw.port_scope != 'common_extra')
+		return v ?? '';
 
 	if (f.inactive_unchecked && !applies(f, proto))
 		return v ?? null;
@@ -319,6 +322,32 @@ function normalize_field(f, raw, field, proto, errors) {
 	}
 }
 
+// M4-09: validate bounded input before expanding ranges in the renderer.
+// Deduplicate canonical entries before counting; overlapping ranges are unioned on render.
+export function extra_port_entries(value) {
+	if (type(value) != 'string')
+		return null;
+	if (trim(value) == '')
+		return [];
+	let seen = {}, out = [];
+	for (let part in split(value, ',')) {
+		let m = match(trim(part), /^([0-9]{1,5})(-([0-9]{1,5}))?$/);
+		if (m == null)
+			return null;
+		let a = +m[1], b = m[3] == null ? a : +m[3];
+		if (a < 1 || b > 65535 || a > b)
+			return null;
+		let key = a == b ? '' + a : `${a}-${b}`;
+		if (!seen[key]) {
+			seen[key] = true;
+			push(out, key);
+		}
+		if (length(out) > 64)
+			return null;
+	}
+	return out;
+};
+
 // Normalizes one section. `fields` is a schema table, `raw` the section's options.
 function normalize_section(fields, raw, prefix, errors) {
 	let out = {};
@@ -336,6 +365,15 @@ function normalize_section(fields, raw, prefix, errors) {
 		let value = normalize_field(f, raw, `${prefix}.${f.name}`, proto, errors);
 		if (value != null || !f.omit_unset)
 			out[f.name] = value;
+	}
+
+	if (prefix == 'main' && out.port_scope == 'common_extra') {
+		let entries = extra_port_entries(out.extra_ports);
+		if (entries == null)
+			push(errors, { field: 'main.extra_ports', code: 'invalid_value',
+				detail: 'expected at most 64 unique ports or ascending ranges within 1..65535' });
+		else
+			out.extra_ports = join(', ', entries);
 	}
 
 	// Fields required because another field has a given value (reality needs pbk and sni).

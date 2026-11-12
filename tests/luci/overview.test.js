@@ -1423,7 +1423,8 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 		assert.match(row.attrs.style, rule);
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
-	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div' ]);
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div', 'span' ]);
+	assert.equal(findAll(left, 'select').length, 3, 'M4-09 adds the independent port scope selector');
 	assert.equal(findAll(left, 'button')[0].textContent, '应用');
 	assert.equal(left.children[1].children[0].children[0].text, '默认模式');
 	/* The mode label, select and Apply now wrap together (T10.48). */
@@ -4135,4 +4136,36 @@ test('M4-02b S2: legacy alias renders DNS engine and never a chinadns-ng compone
 test('M4-02b S4: absent DNS entry is missing rather than a failed inventory', () => {
 	assert.deepEqual(dashboardModel().component_rows(null, { ok: true, components: {} })[2],
 		{ name: 'DNS 引擎', version: null, path: '未找到' });
+});
+
+// M4-09: test translated controls and the UCI transaction for each frozen value.
+test('M4-09 P6 port scope three-way selection saves and applies independently of node RPC', async () => {
+	for (const scope of ['all', 'common', 'common_extra']) {
+		const calls = [];
+		const page = loadView({
+			uci: { get: () => 'all', changes: async () => ({}),
+				set: (...args) => calls.push(['set', ...args]), save: async () => calls.push(['save']) },
+			ui: { changes: { apply: checked => calls.push(['apply', checked]) } }
+		});
+		const root = page.portScopeControls();
+		const select = page.portScopeSelect;
+		assert.deepEqual(select.children.map(o => o.attrs.value), ['all', 'common', 'common_extra']);
+		assert.equal(select.attrs['aria-label'], '端口范围');
+		assert.match(root.textContent, /只影响 TCP/);
+		select.value = scope;
+		await page.portScopeButton.attrs.click();
+		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', scope], ['save'], ['apply', true]]);
+	}
+});
+
+test('M4-09 P6 switching disables the new scope selector and apply button', () => {
+	const page = loadView();
+	page.switching = {};
+	page.labels = {};
+	page.enableInput = {};
+	page.enableControl = {};
+	page.vm = {};
+	page.nodeControls({ node_options: [], current_mode: 'global', current_node: '' });
+	assert.equal(page.portScopeSelect.disabled, true);
+	assert.equal(page.portScopeButton.disabled, true);
 });

@@ -2777,3 +2777,39 @@ msgstr "已撤销本次新装的 DNS 引擎"
 msgctxt "aether-proxy"
 msgid "Cannot satisfy the DNS engine prerequisite automatically"
 msgstr "无法自动满足 DNS 引擎前置"
+
+msgctxt "aether-proxy"
+msgid "Extra ports"
+msgstr "补充端口"
+
+msgctxt "aether-proxy"
+msgid "Only used with common and extra ports. Comma-separated ports or ranges, up to 64 unique entries."
+msgstr "仅在常用与补充端口档生效。逗号分隔端口或区间，去重后最多 64 项。"
+
+msgctxt "aether-proxy"
+msgid "Use ports or ascending ranges within 1–65535 (at most 64 unique entries)."
+msgstr "请输入 1–65535 内的端口或递增区间（去重后最多 64 项）。"
+
+msgctxt "aether-proxy"
+msgid "Port scope"
+msgstr "端口范围"
+
+msgctxt "aether-proxy"
+msgid "All ports"
+msgstr "所有端口"
+
+msgctxt "aether-proxy"
+msgid "Common ports"
+msgstr "常用端口"
+
+msgctxt "aether-proxy"
+msgid "Common and extra ports"
+msgstr "常用与补充端口"
+
+msgctxt "aether-proxy"
+msgid "Save and apply port scope"
+msgstr "保存并应用端口范围"
+
+msgctxt "aether-proxy"
+msgid "Only affects TCP; UDP keeps its existing proxy policy."
+msgstr "只影响 TCP；UDP 始终按原策略代理。"

@@ -858,6 +858,35 @@ return view.extend({
 		]);
 	},
 
+	// This is a UCI setting, not part of the atomic node/mode CLI contract.
+	portScopeControls: function() {
+		const current = uci.get('aetherproxy', 'main', 'port_scope') || 'all';
+		const select = E('select', { style: 'width:auto', 'aria-label': _('Port scope', 'aether-proxy') }, [
+			E('option', { value: 'all' }, _('All ports', 'aether-proxy')),
+			E('option', { value: 'common' }, _('Common ports', 'aether-proxy')),
+			E('option', { value: 'common_extra' }, _('Common and extra ports', 'aether-proxy'))
+		]);
+		select.value = current;
+		const button = this.button(_('Save and apply port scope', 'aether-proxy'), async () => {
+			const changes = await uci.changes();
+			const staged = model.staged_confirmation(changes);
+			if (staged && !await ap.confirm(staged))
+				return;
+			uci.set('aetherproxy', 'main', 'port_scope', select.value);
+			await uci.save();
+			ui.changes.apply(true);
+		});
+		button.disabled = true;
+		select.addEventListener('change', () => { button.disabled = select.value === current || !!this.switching; });
+		this.portScopeSelect = select;
+		this.portScopeButton = button;
+		this.updateNodeButton?.();
+		return E('span', { style: 'display:inline-flex; gap:0.5em; align-items:center; flex-wrap:wrap' }, [
+			E('label', {}, [ _('Port scope', 'aether-proxy'), select ]), button,
+			E('small', {}, _('Only affects TCP; UDP keeps its existing proxy policy.', 'aether-proxy'))
+		]);
+	},
+
 	nodeControls: function(vm, selected = {}) {
 		const current = vm.current_node;
 		/* Themes size select at 100% (proton2025). Keep the 16em minimum for long
@@ -886,6 +915,11 @@ return view.extend({
 			const busy = !!this.switching || this.localSwitchBusy();
 			nodes.disabled = busy;
 			modes.disabled = busy || !vm.current_mode;
+			if (this.portScopeSelect) {
+				this.portScopeSelect.disabled = busy;
+				this.portScopeButton.disabled = busy || this.portScopeSelect.value ===
+					(uci.get('aetherproxy', 'main', 'port_scope') || 'all');
+			}
 			this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
 			this.enableControl.title = !this.currentNode
 				? _('Please select a node and apply first.', 'aether-proxy') : this.vm.enabled_note;
@@ -913,7 +947,8 @@ return view.extend({
 				E('label', { style: 'display:flex; align-items:center; gap:0.5em; min-width:0' }, [
 					_('Default mode', 'aether-proxy'), modes
 				]), button
-			])
+			]),
+			this.portScopeControls()
 		]);
 	},
 
