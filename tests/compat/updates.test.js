@@ -15,7 +15,7 @@ const { promisify } = require('node:util');
 const { loadModule, createRpc, element } = require('../luci/loader');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '../..');
-const FROZEN = path.join(__dirname, 'fixtures/0.7.0-r1');
+const FROZEN = path.join(__dirname, 'fixtures/1.0.0-r1');
 const RES = path.join(FROZEN, 'htdocs/luci-static/resources');
 const PLUGIN = path.join(FROZEN, 'root/usr/share/rpcd/ucode/aetherproxy.uc');
 const UCODE = path.join(ROOT, 'tests/host/ucode');
@@ -23,12 +23,13 @@ const ENTRY = path.join(ROOT, 'aether-proxy/src/aether-proxy');
 const USIGN = path.join(ROOT, 'tests/host/prefix/bin/usign');
 const NAMES = ['aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'];
 const MANAGED = ['aether-xray', ...NAMES.slice(1)];
-const CURRENT = { 'xray-core': '99.1-r9', 'aether-xray': '26.10.21-r1', 'aether-proxy': '0.7.1-r1',
-	'luci-app-aether-proxy': '0.7.1-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
+const ENGINE = { version: '1.0.0-r1', provides: 'dns-engine' };
+const CURRENT = { 'aether-dns': ENGINE.version, 'xray-core': '99.1-r9', 'aether-xray': '26.10.21-r1', 'aether-proxy': '1.1.0-r1',
+	'luci-app-aether-proxy': '1.1.0-r1', 'luci-i18n-aether-proxy-zh-cn': '26.300.00000~abcdef0' };
 // The backend is already new: the previous release's page must update itself.
-const INSTALLED = { 'xray-core': '99.1-r8', 'aether-xray': '26.9.30-r1',
+const INSTALLED = { 'aether-dns': ENGINE.version, 'xray-core': '99.1-r8', 'aether-xray': '26.9.30-r1',
 	'aether-proxy': CURRENT['aether-proxy'],
-	'luci-app-aether-proxy': '0.7.0-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
+	'luci-app-aether-proxy': '1.0.0-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
 
 globalThis._ = text => text;
 globalThis.E = element;
@@ -89,7 +90,15 @@ async function fixture() {
 		write(env.UPDATE_PACKAGE_CALLS, '');
 		fs.mkdirSync(path.join(dir, 'root/tmp'), { recursive: true });
 		fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
-		fs.copyFileSync(path.join(ROOT, 'tests/stubs/update-bin/opkg'), path.join(dir, 'bin/opkg'));
+		// Targets >= 1.0.0 check the real DNS prerequisite even when only the UI updates.
+		// Keep the released engine installed, verifiable and represented in the manifest.
+		write(path.join(dir, 'installed/aether-dns.provides'), ENGINE.provides + '\n');
+		write(path.join(dir, 'bin/aether-dns'), '#!/bin/sh\nprintf "aether-dns 1.0.0\\n"\n', true);
+		write(path.join(dir, 'bin/opkg'), '#!/bin/sh\n' +
+			'if [ "$1" = status ] && [ "$2" = aether-dns ]; then\n' +
+			' printf "Package: aether-dns\\nStatus: install ok installed\\nVersion: ' + ENGINE.version +
+			'\\nProvides: ' + ENGINE.provides + '\\n"\n exit 0\nfi\n' +
+			'exec ' + shell_quote(path.join(ROOT, 'tests/stubs/update-bin/opkg')) + ' "$@"\n', true);
 		fs.symlinkSync(USIGN, path.join(dir, 'bin/usign'));
 		// This wrapper redirects paths only. Every command, including job run and
 		// the worker's update subprocess, executes the real current entry point.
@@ -104,7 +113,7 @@ async function fixture() {
 		const fp = execFileSync(USIGN, ['-F', '-p', path.join(dir, 'pub')], { encoding: 'utf8' }).trim();
 		write(path.join(dir, 'root/etc/aether-proxy/keys', fp), fs.readFileSync(path.join(dir, 'pub')));
 		const manifest = { schema: 2, generated: '2026-10-25T00:00:00Z', packages: {}, data: {} };
-		for (const name of [...MANAGED, 'xray-core']) {
+		for (const name of [...MANAGED, 'xray-core', 'aether-dns']) {
 			const releases = [CURRENT[name], INSTALLED[name]].map(version => {
 				/* build.py publishes only [A-Za-z0-9._-] (docs/08); the LuCI
 				 * translation version carries '~', so the channel spelling used
@@ -170,7 +179,7 @@ function assert_inventory(model, status, installed) {
 	assert.equal(table.checked, '10 seconds ago');
 	assert.deepEqual(table.rows.map(row => row.name), NAMES);
 	for (const row of table.rows) {
-		// The 0.7.0 frozen page names aether-xray directly; exact NAMES above excludes xray-core.
+		// The 1.0.0 frozen page names aether-xray directly; exact NAMES above excludes xray-core.
 		assert.equal(row.installed, installed[row.name]);
 		assert.equal(row.available, CURRENT[row.name]);
 		assert.equal(row.previous, INSTALLED[row.name]);
@@ -191,7 +200,7 @@ function assert_package_text(model, job) {
 	assert.equal(r.to, CURRENT[r.package]);
 	assert.equal(r.rolled_back, false);
 	assert.equal(r.code, null);
-	// The 0.7.0-r1 page reads the grouped result (T9.38/T10.67): the backend was already
+	// The 1.0.0-r1 page reads the grouped result (T9.38/T10.67): the backend was already
 	// current, so it must not claim an aether-proxy update, only the two page packages.
 	assert.deepEqual(r.companions, { 'luci-app-aether-proxy': 'installed', 'luci-i18n-aether-proxy-zh-cn': 'installed' });
 	const text = model.job_result('update_package', 'luci-app-aether-proxy', job);
@@ -200,7 +209,7 @@ function assert_package_text(model, job) {
 	return text;
 }
 
-test('T9.39 frozen 0.7.0-r1 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
+test('T9.39 frozen 1.0.0-r1 clients can update themselves through current CLI', { timeout: 90000 }, async t => {
 	const f = await fixture();
 	t.after(() => f.close());
 	const replies = [];
@@ -261,6 +270,14 @@ test('T9.39 frozen 0.7.0-r1 clients can update themselves through current CLI', 
 		assert.ok(polls.every(r => ['running', 'ok'].includes(r.reply.state)));
 		completed = polls.at(-1).reply;
 		assert.equal(completed.state, 'ok');
+		// A skipped transaction proves the prerequisite ran; absence of failure alone would not.
+		assert.notEqual(completed.result.code, 'PREREQ_MANUAL_REQUIRED');
+		assert.deepEqual(completed.result.prerequisite,
+			{ package: 'aether-dns', version: ENGINE.version, action: 'skipped' });
+		const events = fs.readFileSync(path.join(f.dir, 'run/events.jsonl'), 'utf8').trim()
+			.split('\n').map(line => JSON.parse(line));
+		assert.equal(events.some(event => event.code === 'UPDATE_STARTED' &&
+			event.args.package === 'aether-dns'), false);
 		assert.equal(fs.readFileSync(path.join(f.dir, 'installed/luci-app-aether-proxy'), 'utf8').trim(),
 			CURRENT['luci-app-aether-proxy']);
 		const calls = fs.readFileSync(f.env.UPDATE_PACKAGE_CALLS, 'utf8').trim().split('\n');
