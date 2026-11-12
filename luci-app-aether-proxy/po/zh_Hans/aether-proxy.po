@@ -2783,8 +2783,8 @@ msgid "Extra ports"
 msgstr "补充端口"
 
 msgctxt "aether-proxy"
-msgid "Only used with common and extra ports. Comma-separated ports or ranges, up to 64 unique entries."
-msgstr "仅在常用与补充端口档生效。逗号分隔端口或区间，去重后最多 64 项。"
+msgid "Comma-separated ports or ranges within 1–65535, up to 64 unique entries."
+msgstr "逗号分隔端口或区间，范围 1–65535，去重后最多 64 项。"
 
 msgctxt "aether-proxy"
 msgid "Use ports or ascending ranges within 1–65535 (at most 64 unique entries)."
@@ -2804,12 +2804,16 @@ msgstr "常用端口"
 
 msgctxt "aether-proxy"
 msgid "Common and extra ports"
-msgstr "常用与补充端口"
+msgstr "常用 + 补充端口"
+
+msgctxt "aether-proxy"
+msgid "Port scope information"
+msgstr "端口范围说明"
 
 msgctxt "aether-proxy"
 msgid "Only affects TCP; UDP keeps its existing proxy policy."
 msgstr "只影响 TCP；UDP 始终按原策略代理。"
 
 msgctxt "aether-proxy"
-msgid "Only takes effect when Port range is set to “Common and extra ports”."
-msgstr "仅当端口范围为『常用 + 补充端口』时生效"
+msgid "Current port scope is “%s”; switch to “%s” to take effect."
+msgstr "当前端口范围为『%s』，切换到『%s』后生效。"

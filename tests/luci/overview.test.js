@@ -1322,7 +1322,8 @@ test('T10.5 scenario 2c / T10.6: node groups retain runtime selection, UCI fallb
 	assert.ok(findAll(second, 'small')[0].textContent.includes('前'), 'probe age stays in the right group');
 	assert.doesNotMatch(visibleText(second), /Alpha|Beta/);
 	assert.ok(!findAll(nodeBlock, 'span').some((s) => /font-size:\s*1\.2em/.test(s.attrs.style ?? '')));
-	assert.ok(!findAll(nodeBlock, 'span').some((s) => s.attrs.title));
+	assert.deepEqual(findAll(nodeBlock, 'span').filter(s => s.attrs.title).map(s => s.attrs.title),
+		['只影响 TCP；UDP 始终按原策略代理。'], 'only the scope icon has a tooltip, never the node address');
 	page.refresh({ ok: true, state: 'stopped', node_id: 'n_b', node_ip: 'stale' });
 	let updated = nodeRow(root);
 	assert.equal(findAll(updated, 'select')[0].value, 'n_a');
@@ -1423,17 +1424,17 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 		assert.match(row.attrs.style, rule);
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
-	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div', 'small' ]);
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div' ]);
 	assert.equal(findAll(left, 'select').length, 3, 'M4-14 keeps the port scope selector in the mode row');
 	assert.equal(findAll(left, 'button')[0].textContent, '应用');
 	assert.equal(left.children[1].children[0].children[0].text, '默认模式');
 	const controls = left.children[1];
 	assert.deepEqual(controls.children.map(c => c.tag), ['label', 'label', 'button']);
-	assert.equal(controls.children[1].children[0].text, '端口范围');
+	assert.equal(controls.children[1].children[0].children[0].text, '端口范围');
 	assert.equal(controls.children[0].attrs.style, controls.children[1].attrs.style);
 	assert.equal(findAll(controls, 'select')[0].attrs.style, findAll(controls, 'select')[1].attrs.style);
 	assert.equal(findAll(left, 'button').length, 1);
-	assert.match(left.children[2].textContent, /只影响 TCP/);
+	assert.equal(findAll(left, 'small').length, 0, 'M4-16 removes the permanent trailing hint');
 	/* Mode and scope share the same spacing, followed by the only Apply. */
 	assert.match(left.children[1].attrs.style, /flex-wrap:\s*nowrap/);
 	assert.match(findAll(left, 'select')[0].attrs.style ?? '', /width:\s*auto/);
@@ -4236,4 +4237,63 @@ test('M4-14 unchanged controls do not save or apply and save failure prevents sw
 	page.updateNodeButton();
 	await assert.rejects(button.attrs.click(), /save failed/);
 	assert.deepEqual(calls, ['set']);
+});
+
+
+test('M4-16: scope icon title, accessible label and non-flow bubble preserve selector spacing', () => {
+	const page = loadView();
+	const root = scopeControls(page);
+	const label = root.children[1].children[1];
+	const [caption, select] = label.children;
+	const [text, icon, bubble] = caption.children;
+	assert.equal(text.textContent, '端口范围');
+	assert.equal(select, page.portScopeSelect);
+	assert.equal(icon.textContent, 'ⓘ');
+	assert.equal(icon.attrs.tabindex, '0');
+	assert.equal(icon.attrs.role, 'button');
+	assert.equal(icon.attrs.title, '只影响 TCP；UDP 始终按原策略代理。');
+	assert.equal(icon.attrs['aria-label'], '端口范围说明');
+	assert.equal(bubble.textContent, icon.attrs.title);
+	assert.equal(bubble.hidden, true);
+	assert.equal(icon.attrs['aria-expanded'], 'false');
+	assert.match(bubble.attrs.style, /position:absolute/);
+	assert.match(caption.attrs.style, /flex-shrink:0/);
+	assert.match(icon.attrs.style, /font-size:1em/);
+	assert.equal(findAll(root, 'small').length, 0);
+	assert.equal(root.children.length, 2, 'no trailing permanent hint');
+});
+
+test('M4-16: click, touch focus ordering and keyboard focus reveal the same hint', () => {
+	const page = loadView();
+	const label = scopeControls(page).children[1].children[1];
+	const [, icon, bubble] = label.children[0].children;
+	let prevented = 0;
+	const event = { preventDefault: () => { prevented++; } };
+	const visible = expected => {
+		assert.equal(bubble.hidden, !expected);
+		assert.equal(icon.attrs['aria-expanded'], String(expected));
+	};
+	icon.attrs.click(event);
+	visible(true);
+	icon.attrs.click(event);
+	visible(false);
+	// A tap focuses before click. First tap must open, not immediately close.
+	icon.attrs.pointerdown();
+	icon.attrs.focus();
+	visible(true);
+	icon.attrs.click(event);
+	visible(true);
+	icon.attrs.pointerdown();
+	icon.attrs.click(event);
+	visible(false);
+	icon.attrs.blur();
+	icon.attrs.focus();
+	visible(true);
+	for (const key of ['Enter', ' ']) {
+		icon.attrs.keydown({ ...event, key });
+		visible(key === ' ');
+	}
+	icon.attrs.blur();
+	visible(false);
+	assert.equal(prevented, 6, 'prevent label activation and keyboard scrolling');
 });

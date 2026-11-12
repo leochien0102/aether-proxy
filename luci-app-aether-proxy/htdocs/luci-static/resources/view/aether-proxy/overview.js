@@ -869,8 +869,43 @@ return view.extend({
 		select.value = current;
 		this.portScopeSelect = select;
 		select.addEventListener('change', () => this.updateNodeButton?.());
+		const hint = _('Only affects TCP; UDP keeps its existing proxy policy.', 'aether-proxy');
+		const bubble = E('span', {
+			hidden: true, style: 'position:absolute; top:100%; left:0; z-index:10; '
+				+ 'white-space:normal; width:18em; max-width:70vw; padding:0.5em; '
+				+ 'background:var(--background-color, Canvas); color:var(--text-color, CanvasText); '
+				+ 'border:1px solid currentColor; border-radius:0.25em'
+		}, hint);
+		let open = false, pointerOpen = null;
+		const show = (visible) => {
+			open = visible;
+			bubble.hidden = !visible;
+			icon.setAttribute('aria-expanded', String(visible));
+		};
+		const icon = E('span', {
+			role: 'button', tabindex: '0', title: hint,
+			'aria-label': _('Port scope information', 'aether-proxy'), 'aria-expanded': 'false',
+			style: 'font-size:1em; cursor:help; margin-left:0.25em',
+			/* Pointer focus precedes click: toggle from the pre-focus state on touch too. */
+			pointerdown: () => { pointerOpen = open; },
+			focus: () => show(true),
+			blur: () => { pointerOpen = null; show(false); },
+			click: (ev) => {
+				ev.preventDefault(); // Do not forward label activation to the select.
+				show(!(pointerOpen ?? open));
+				pointerOpen = null;
+			},
+			keydown: (ev) => {
+				if (ev.key === 'Enter' || ev.key === ' ') {
+					ev.preventDefault();
+					show(!open);
+				}
+			}
+		}, 'ⓘ');
 		return E('label', { style: 'display:flex; align-items:center; gap:0.5em; min-width:0' }, [
-			_('Port scope', 'aether-proxy'), select
+			E('span', { style: 'position:relative; flex-shrink:0' }, [
+				_('Port scope', 'aether-proxy'), icon, bubble
+			]), select
 		]);
 	},
 
@@ -950,8 +985,7 @@ return view.extend({
 				E('label', { style: 'display:flex; align-items:center; gap:0.5em; min-width:0' }, [
 					_('Default mode', 'aether-proxy'), modes
 				]), scope, button
-			]),
-			E('small', {}, _('Only affects TCP; UDP keeps its existing proxy policy.', 'aether-proxy'))
+			])
 		]);
 	},
 

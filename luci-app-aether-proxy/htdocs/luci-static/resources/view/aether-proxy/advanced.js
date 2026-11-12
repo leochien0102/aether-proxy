@@ -66,10 +66,14 @@ return view.extend({
 
 		// Scope is edited on Overview; readonly disables the widget without hiding saved values.
 		o = s.taboption('intercept', form.Value, 'extra_ports', _('Extra ports', 'aether-proxy'),
-			_('Only used with common and extra ports. Comma-separated ports or ranges, up to 64 unique entries.', 'aether-proxy'));
-		o.readonly = uci.get('aetherproxy', 'main', 'port_scope') !== 'common_extra';
-		if (o.readonly)
-			o.description += ' ' + _('Only takes effect when Port range is set to “Common and extra ports”.', 'aether-proxy');
+			_('Comma-separated ports or ranges within 1–65535, up to 64 unique entries.', 'aether-proxy'));
+		const scope = uci.get('aetherproxy', 'main', 'port_scope') || 'all';
+		o.readonly = scope !== 'common_extra';
+		if (o.readonly) {
+			const current = scope === 'common' ? _('Common ports', 'aether-proxy') : _('All ports', 'aether-proxy');
+			o.description += ' ' + _('Current port scope is “%s”; switch to “%s” to take effect.', 'aether-proxy')
+				.format(current, _('Common and extra ports', 'aether-proxy'));
+		}
 		o.placeholder = o.readonly ? '' : '8080, 5000-5002';
 		o.validate = function(section_id, value) {
 			if (this.readonly || !value || !value.trim())
