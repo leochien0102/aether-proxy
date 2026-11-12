@@ -25,7 +25,7 @@ Makefile PROVIDES metadata, not by pretending old clients know aether-dns.
 Negative tests print the rejection for a deleted provides map, an unknown
 current-client aether-dns, and an unregistered provider target.
 0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files are now at
-1.0.0-r1, extracted after publication; rolling the version contract alone does
+1.1.0-r1, extracted after publication; rolling the version contract alone does
 not replace those snapshots.
 Do not add new package names to frozen known lists just
 to make a newly introduced hard dependency pass: provide a real bridge or an
@@ -85,8 +85,9 @@ A local HTTP server serves a generated manifest and package assets, signed
 with a throwaway usign key. The existing `tests/stubs/update-bin/opkg` substitute
 tracks per-package versions and installation calls; real downloading, signature
 verification and hash/size checks still run, as in `tests/update/run.sh`.
-The backend is already at the channel version, while the old page needs an
-upgrade. The fixture therefore also works with grouped forward updates (T9.38).
+The backend is already at the synthetic 1.2.0-r1 channel version, while the
+frozen 1.1.0-r1 page needs an upgrade. The fixture therefore also works with
+grouped forward updates (T9.38).
 Everything writable lives under `tests/compat/tmp.*` and is removed on completion.
 
 The assertions check actual old model values/messages, not just the presence of
@@ -122,14 +123,21 @@ docs/08 "更新接口（固定）" describes the wire shapes this suite pins: su
 `job status` returns the flat job record (settled in the T9.39 review).
 
 Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7;
-0.7.0-r1 (M4-03e); 1.0.0-r1 (M4-08, latest formal client, extracted unchanged
-from tag `v1.0.0-r1`, commit `59c3f3b`). The 1.0.0 release's log page includes
-M4-04's update-start/update-finished event wording; that log page is not one of
-the five frozen update integration files. All five frozen files are byte-identical
-to the previous 0.7.0-r1 snapshot, so no behavioral expectations change.
+0.7.0-r1 (M4-03e); 1.0.0-r1 (M4-08, tag `v1.0.0-r1`, commit `59c3f3b`);
+1.1.0-r1 (M4-11, latest formal client, extracted unchanged from tag
+`v1.1.0-r1`, commit `50e39f5`). All five frozen files are byte-identical to
+the previous 1.0.0-r1 snapshot: there is no frozen-client behavior change.
+The log model has updated wording outside these five files. The complete LuCI
+tag diff also includes advanced/overview port-range controls (M4-09), package
+version metadata and translations; it is not limited to log wording.
+The installed backend record still references CURRENT (the backend is already
+new); the installed page is 1.1.0-r1 and the synthetic target is 1.2.0-r1.
+All exact expectations remain unchanged, including the three available updates
+and the Interface/Translation-only grouped result. The M4-08 DNS engine fixture
+remains aether-dns 1.0.0-r1 with Provides: dns-engine.
 The update page lists aether-xray directly rather than a retired xray-core row
 and displays DNS components by logical id/engine. Its update model also supports
 prerequisite transaction results (M4-03c). The harness still keeps a legacy
 installed xray-core record and verifies that updates never install or alter it.
-The simulated 1.1.0-r1 channel is test metadata only, not a real release,
+The simulated 1.2.0-r1 channel is test metadata only, not a real release,
 migration bridge, or promise of future compatibility.
