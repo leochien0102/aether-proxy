@@ -27,6 +27,10 @@ const PO = parsePo(fs.readFileSync(path.join(APP, 'po/zh_Hans/aether-proxy.po'),
 /* The model is loaded with the real translations so wording assertions cover
    what the user actually sees. */
 globalThis._ = (s) => PO[s] ?? s;
+String.prototype.format = function(...args) {
+	let i = 0;
+	return this.replace(/%s/g, () => args[i++]);
+};
 
 function load_model() {
 	return loadModule(MODEL, { baseclass: { extend: (o) => o } }, { window: {}, document: {} });
@@ -566,10 +570,15 @@ test('M4-09 P6 extra ports visibility and field validation in all three scopes',
 		assert.ok(extra, scope + ': extra_ports always exists');
 		assert.equal(extra.readonly, scope !== 'common_extra', scope + ': widget readonly');
 		if (extra.readonly) {
-			assert.match(extra.description, /仅当端口范围为『常用 \+ 补充端口』时生效/);
+			const current = scope === 'all' ? '所有端口' : '常用端口';
+			assert.equal(extra.description, '逗号分隔端口或区间，范围 1–65535，去重后最多 64 项。 '
+				+ `当前端口范围为『${current}』，切换到『常用 + 补充端口』后生效。`);
+			assert.equal((extra.description.match(/生效/g) ?? []).length, 1);
 			assert.equal(extra.validate('main', 'bad'), true, 'ignored saved values do not block saving');
 			continue;
 		}
+		assert.equal(extra.description, '逗号分隔端口或区间，范围 1–65535，去重后最多 64 项。');
+		assert.doesNotMatch(extra.description, /生效|仅在|仅当/);
 		assert.equal(extra.title, '补充端口');
 		assert.equal(extra.placeholder, '8080, 5000-5002');
 		for (const value of ['', '1,65535', '8080, 5000-5002', Array(100).fill('0080').join(',')])
@@ -618,6 +627,6 @@ for (const scope of ['all', 'common', 'common_extra']) {
 		assert.equal(input.attrs.disabled, scope !== 'common_extra');
 		assert.equal(input.attrs.value, '8080,5000-5002', 'saved value remains displayed unchanged');
 		if (scope !== 'common_extra')
-			assert.match(extra.description, /仅当端口范围为『常用 \+ 补充端口』时生效/);
+			assert.match(extra.description, /当前端口范围为『.+』，切换到『常用 \+ 补充端口』后生效。/);
 	});
 }

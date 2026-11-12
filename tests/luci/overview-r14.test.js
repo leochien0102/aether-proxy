@@ -262,7 +262,7 @@ test('T10.48 scenario 5: mode label, dropdown and Apply form one nowrap group; n
 	assert.match(mode.attrs.style, /min-width:\s*0/);
 	assert.equal(modeGroup.children[0].children[0].text, '默认模式');
 	assert.equal(modeGroup.children[0].children[1], mode);
-	assert.equal(modeGroup.children[1].children[0].text, '端口范围');
+	assert.equal(modeGroup.children[1].children[0].children[0].text, '端口范围');
 	assert.equal(modeGroup.children[1].children[1], h.page.portScopeSelect);
 	assert.equal(modeGroup.children[1].attrs.style, modeGroup.children[0].attrs.style);
 	assert.equal(modeGroup.children[2], apply);
