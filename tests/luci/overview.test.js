@@ -1423,11 +1423,18 @@ test('T10.6 scenario 2b: single wrapping outer node row contains left controls a
 		assert.match(row.attrs.style, rule);
 	assert.equal(row.children.length, 2);
 	const [left, right] = row.children;
-	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div', 'span' ]);
-	assert.equal(findAll(left, 'select').length, 3, 'M4-09 adds the independent port scope selector');
+	assert.deepEqual(left.children.map((c) => c.tag), [ 'div', 'div', 'small' ]);
+	assert.equal(findAll(left, 'select').length, 3, 'M4-14 keeps the port scope selector in the mode row');
 	assert.equal(findAll(left, 'button')[0].textContent, '应用');
 	assert.equal(left.children[1].children[0].children[0].text, '默认模式');
-	/* The mode label, select and Apply now wrap together (T10.48). */
+	const controls = left.children[1];
+	assert.deepEqual(controls.children.map(c => c.tag), ['label', 'label', 'button']);
+	assert.equal(controls.children[1].children[0].text, '端口范围');
+	assert.equal(controls.children[0].attrs.style, controls.children[1].attrs.style);
+	assert.equal(findAll(controls, 'select')[0].attrs.style, findAll(controls, 'select')[1].attrs.style);
+	assert.equal(findAll(left, 'button').length, 1);
+	assert.match(left.children[2].textContent, /只影响 TCP/);
+	/* Mode and scope share the same spacing, followed by the only Apply. */
 	assert.match(left.children[1].attrs.style, /flex-wrap:\s*nowrap/);
 	assert.match(findAll(left, 'select')[0].attrs.style ?? '', /width:\s*auto/);
 	assert.equal(right.children.length, 4);
@@ -2768,8 +2775,11 @@ async function modePage(options = {}) {
 					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta']])
 						cb({ '.name': name, label });
 			},
-			set: () => assert.fail('node/mode apply must not stage session UCI'),
-			save: () => assert.fail('node/mode apply must not save session UCI'),
+			set: (...args) => {
+				assert.deepEqual(args, ['aetherproxy', 'main', 'port_scope', 'all']);
+				order.push('set-scope');
+			},
+			save: async () => { order.push('save'); },
 			changes: () => assert.fail('node/mode apply must not read staged session changes')
 		},
 		ui: {
@@ -2849,6 +2859,7 @@ for (const [kind, node, mode, expected] of [
 			assert.deepEqual(h.calls, []);
 			return;
 		}
+		await Promise.resolve(); // Apply awaits the scope save before entering handleNode.
 		assert.deepEqual(h.calls, [expected]);
 		assert.equal(controls.node.disabled, true);
 		assert.equal(controls.mode.disabled, true);
@@ -2857,7 +2868,7 @@ for (const [kind, node, mode, expected] of [
 		assert.equal(h.calls.length, 1, 'duplicate click does not write twice');
 		resolve({ ok: true, committed: true, previous: 'n_a', previous_mode: 'bypass_cn', reload: true });
 		await pending;
-		assert.deepEqual(h.order, [expected[0], 'unload', 'load', 'status']);
+		assert.deepEqual(h.order, ['set-scope', 'save', expected[0], 'unload', 'load', 'status']);
 		assert.equal(page.vm.switch_busy, true, 'RPC returns before the reload takes effect');
 		assert.deepEqual(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)), [expected]);
 		const banner = kind === 'both' ? '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…'
@@ -4138,34 +4149,91 @@ test('M4-02b S4: absent DNS entry is missing rather than a failed inventory', ()
 		{ name: 'DNS 引擎', version: null, path: '未找到' });
 });
 
-// M4-09: test translated controls and the UCI transaction for each frozen value.
+// M4-09 cases retained with the shared M4-14 Apply entry point.
+function scopeControls(page) {
+	page.labels = {};
+	page.enableInput = {};
+	page.enableControl = {};
+	page.vm = { current_node: 'n_a', current_mode: 'global' };
+	return page.nodeControls({ ...page.vm, node_options: [{ value: 'n_a', text: 'A' },
+		{ value: 'n_b', text: 'B' }] });
+}
+
 test('M4-09 P6 port scope three-way selection saves and applies independently of node RPC', async () => {
 	for (const scope of ['all', 'common', 'common_extra']) {
 		const calls = [];
 		const page = loadView({
-			uci: { get: () => 'all', changes: async () => ({}),
+			uci: { get: () => scope === 'all' ? 'common' : 'all', changes: async () => ({}),
 				set: (...args) => calls.push(['set', ...args]), save: async () => calls.push(['save']) },
 			ui: { changes: { apply: checked => calls.push(['apply', checked]) } }
 		});
-		const root = page.portScopeControls();
+		page.handleNode = () => assert.fail('scope-only must not switch');
+		const root = scopeControls(page);
 		const select = page.portScopeSelect;
 		assert.deepEqual(select.children.map(o => o.attrs.value), ['all', 'common', 'common_extra']);
 		assert.equal(select.attrs['aria-label'], '端口范围');
 		assert.match(root.textContent, /只影响 TCP/);
 		select.value = scope;
-		await page.portScopeButton.attrs.click();
+		select.attrs.change();
+		const button = findAll(root, 'button')[0];
+		assert.equal(button.disabled, false);
+		await button.attrs.click();
 		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', scope], ['save'], ['apply', true]]);
 	}
 });
 
 test('M4-09 P6 switching disables the new scope selector and apply button', () => {
-	const page = loadView();
-	page.switching = {};
-	page.labels = {};
-	page.enableInput = {};
-	page.enableControl = {};
-	page.vm = {};
-	page.nodeControls({ node_options: [], current_mode: 'global', current_node: '' });
-	assert.equal(page.portScopeSelect.disabled, true);
-	assert.equal(page.portScopeButton.disabled, true);
+	for (const state of ['switching', 'enabling', 'startup', 'external']) {
+		const page = loadView();
+		if (state !== 'external')
+			page[state] = {};
+		else
+			page.localSwitchBusy = () => true;
+		const root = scopeControls(page);
+		assert.equal(page.portScopeSelect.disabled, true, state);
+		assert.equal(findAll(root, 'button')[0].disabled, true, state);
+		page.portScopeSelect.value = 'common';
+		page.portScopeSelect.attrs.change();
+		assert.equal(findAll(root, 'button')[0].disabled, true, state + ' after scope edit');
+	}
+});
+
+test('M4-14 node or mode changes await scope save before switch without extra apply', async () => {
+	for (const change of ['node', 'mode', 'both']) {
+		const calls = [];
+		let finishSave;
+		const page = loadView({
+			uci: { get: () => 'all', set: (...args) => calls.push(['set', ...args]),
+				save: () => { calls.push(['save']); return new Promise(resolve => { finishSave = resolve; }); } },
+			ui: { changes: { apply: () => assert.fail('switch must not apply twice') } }
+		});
+		page.handleNode = async (...args) => calls.push(['switch', ...args]);
+		const root = scopeControls(page);
+		page.nodeSelect.value = change === 'mode' ? 'n_a' : 'n_b';
+		page.modeSelect.value = change === 'node' ? 'global' : 'gfw';
+		page.portScopeSelect.value = 'common_extra';
+		page.updateNodeButton();
+		const pending = findAll(root, 'button')[0].attrs.click();
+		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', 'common_extra'], ['save']]);
+		finishSave();
+		await pending;
+		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', 'common_extra'], ['save'],
+			['switch', page.nodeSelect.value, page.modeSelect.value]]);
+	}
+});
+
+test('M4-14 unchanged controls do not save or apply and save failure prevents switching', async () => {
+	const calls = [];
+	const page = loadView({ uci: { get: () => 'all',
+		set: () => calls.push('set'), save: async () => { throw new Error('save failed'); } } });
+	page.handleNode = () => assert.fail('failed save must not switch');
+	const root = scopeControls(page);
+	const button = findAll(root, 'button')[0];
+	assert.equal(button.disabled, true);
+	await button.attrs.click();
+	assert.deepEqual(calls, []);
+	page.nodeSelect.value = 'n_b';
+	page.updateNodeButton();
+	await assert.rejects(button.attrs.click(), /save failed/);
+	assert.deepEqual(calls, ['set']);
 });
