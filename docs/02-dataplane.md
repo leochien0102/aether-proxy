@@ -41,6 +41,14 @@
   否则如果 `quic_block=1` 且目的端口是 443 → `reject`（让浏览器立即回落到 TCP，不必等 QUIC 超时）；
   否则直连。
 
+## TCP 端口范围（B26）
+
+`main.port_scope=all`（缺省）保持原单条 `jump host_policy`，产物逐字节不变。
+`common` / `common_extra` 在目的地直连例外之后、主机策略之前使用
+`meta l4proto tcp tcp dport { … } jump host_policy` 与 `meta l4proto udp jump host_policy`。
+TCP 端口集合见 05；不在集合内的 TCP 直连，显式 `policy=proxy` 也不例外。
+UDP 不受端口范围限制，仍按原主机策略、游戏模式与 QUIC 规则处理；53 劫持不变。
+
 ## 主机策略模型（替代多张名单）
 
 每台主机在 UCI 里只有一个 `host` 段（[05](05-config.md)）：

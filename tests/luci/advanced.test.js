@@ -345,7 +345,7 @@ function build_form() {
 test('T10.47 scenario 3: advanced DynamicList and DeviceSelect validate items plus empty add box on render', async () => {
 	const { form, state, created } = build_form();
 	const view = loadModule(VIEW, {
-		view: { extend: object => object }, form, uci: {},
+		view: { extend: object => object }, form, uci: { get: () => 'all' },
 		'tools.widgets': { DeviceSelect: 'DeviceSelect' },
 		'aether-proxy.model.advanced': load_model()
 	}, { window: {}, document: {} });
@@ -371,7 +371,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 
 	const { form, state, created } = build_form();
 	const view = loadModule(VIEW, {
-		view: { extend: (o) => o }, form, uci: {},
+		view: { extend: (o) => o }, form, uci: { get: () => 'all' },
 		'tools.widgets': { DeviceSelect: 'DeviceSelect' },
 		'aether-proxy.model.advanced': spy, 'aether-proxy.common': {}
 	}, { window: {}, document: {} });
@@ -463,7 +463,7 @@ async () => {
 	const model = load_model();
 	const { form, created } = build_form();
 	const view = loadModule(VIEW, {
-		view: { extend: o => o }, form, uci: {},
+		view: { extend: o => o }, form, uci: { get: () => 'all' },
 		'tools.widgets': { DeviceSelect: 'DeviceSelect' }, 'aether-proxy.model.advanced': model
 	}, { window: {}, document: {} });
 	await view.render();
@@ -542,5 +542,30 @@ test('T9.50 timeout 31 already saved: field error and no UCI rewrite', async () 
 	}
 	finally {
 		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+// M4-09: exercise the actual option validator, not a separate model copy.
+test('M4-09 P6 extra ports visibility and field validation in all three scopes', async () => {
+	for (const scope of ['all', 'common', 'common_extra']) {
+		const { form, created } = build_form();
+		const view = loadModule(VIEW, {
+			view: { extend: o => o }, form, uci: { get: () => scope },
+			'tools.widgets': { DeviceSelect: 'DeviceSelect' },
+			'aether-proxy.model.advanced': load_model()
+		}, { window: {}, document: {} });
+		await view.render();
+		const extra = created.find(o => o.field === 'extra_ports');
+		assert.equal(!!extra, scope === 'common_extra');
+		if (!extra)
+			continue;
+		assert.equal(extra.title, '补充端口');
+		for (const value of ['', '1,65535', '8080, 5000-5002', Array(100).fill('0080').join(',')])
+			assert.equal(extra.validate('main', value), true, value);
+		for (const value of ['0', '65536', '5000-4999', 'bad', '80,',
+			Array.from({ length: 65 }, (_, i) => i + 1).join(',')]) {
+			assert.match(extra.validate('main', value), /1–65535/);
+			assert.notEqual(extra.validate('main', value), true, value);
+		}
 	}
 });

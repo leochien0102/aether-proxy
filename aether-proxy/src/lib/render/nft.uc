@@ -6,7 +6,8 @@
 
 import * as C from 'aetherproxy.const';
 import { ip_key, cidr_parts, range_parts } from 'aetherproxy.net';
-import { ifname_error } from 'aetherproxy.config';
+import { COMMON_TCP_PORTS } from 'aetherproxy.schema';
+import { extra_port_entries, ifname_error } from 'aetherproxy.config';
 
 const T = '\t';
 
@@ -137,6 +138,26 @@ function mode_chain(name, mode) {
 	return out;
 };
 
+// Expand once into a numeric set: overlap and spelling cannot change output order.
+function tcp_ports(main) {
+	let seen = {}, ports = [];
+	for (let p in COMMON_TCP_PORTS)
+		seen[p] = true;
+	if (main.port_scope == 'common_extra') {
+		let entries = extra_port_entries(main.extra_ports ?? '');
+		if (entries == null)
+			die('invalid main.extra_ports');
+		for (let entry in entries) {
+			let bounds = split(entry, '-');
+			for (let p = +bounds[0]; p <= +(bounds[1] ?? bounds[0]); p++)
+				seen[p] = true;
+		}
+	}
+	for (let p in seen)
+		push(ports, +p);
+	return join(', ', sort(ports, (a, b) => a - b));
+}
+
 export function render(snapshot, ctx) {
 	ctx = ctx ?? {};
 
@@ -230,7 +251,13 @@ export function render(snapshot, ctx) {
 	push(out, `${T}${T}ip daddr @node_ip4 return`);
 	push(out, `${T}${T}ip daddr @direct_ip4 return`);
 	push(out, `${T}${T}ip daddr @udirect4 return`);
-	push(out, `${T}${T}jump host_policy`);
+	// Gate before host_policy so explicit proxy hosts obey the same global scope.
+	if (main.port_scope == 'common' || main.port_scope == 'common_extra') {
+		push(out, `${T}${T}meta l4proto tcp tcp dport { ${tcp_ports(main)} } jump host_policy`);
+		push(out, `${T}${T}meta l4proto udp jump host_policy`);
+	}
+	else
+		push(out, `${T}${T}jump host_policy`);
 	push(out, `${T}}`);
 	push(out, '');
 

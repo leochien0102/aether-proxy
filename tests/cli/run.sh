@@ -646,5 +646,12 @@ python3 "$ROOT/tests/cli/new-uri.py" "$ROOT" "$T/new-uri" \
 	&& ok 'T11.11 new URI parse/import and credential safety' \
 	|| bad 'T11.11 new URI parse/import and credential safety'
 
+# M4-09: invalid active ports must be diagnosed at the public CLI boundary.
+if python3 "$ROOT/tests/cli/port-scope.py"; then
+	ok 'M4-09 port scope CLI field errors and inactive values'
+else
+	bad 'M4-09 port scope CLI field errors and inactive values'
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -11,6 +11,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 |---|---|---|---|
 | `enabled` | bool | `0` | |
 | `mode` | enum(`gfw`\|`bypass_cn`\|`global`) | `bypass_cn` | **默认模式**（页面用语，2026-10-22 定）：绕过大陆 / 仅代理被墙网站（GFW）/ 全局（所有流量走代理）。全局只有这一个，换节点不改变它；访问控制的设备覆盖可以另选模式（02「主机策略模型」） |
+| `port_scope` | enum(`all`\|`common`\|`common_extra`) | `all` | 全局 TCP 端口范围；含显式 proxy 主机。`all` 不加条件；`common` 为 22、53、80、143、443、465、587、853、993、995、9418（ssr-plus 口径）。UDP 仍按现有策略处理，DNS 劫持与 QUIC 不变 |
+| `extra_ports` | 字符串 | 空 | 仅 `common_extra` 校验并生效；逗号分隔端口或 `a-b`（1–65535，a ≤ b），去重后最多 64 项；区间展开后与常用端口取并集。其余两档保留但忽略，不报错 |
 | `node` | 节点段名 | — | 当前节点。为空则无法启用 |
 | `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名）。名称 1–15 字节，不含双引号和 C0/DEL 控制字节；反斜线按字面保留（2026-10-30，T9.45） |
 | `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略：跟随默认模式 / 直连（[02](02-dataplane.md)） |

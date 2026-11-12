@@ -58,9 +58,14 @@ export const XHTTP_MODES = [ 'auto', 'packet-up', 'stream-up', 'stream-one' ];
 export const SUBSCRIPTION_NAME_RE = /^s_[0-9a-f]{8}$/;
 export const NODE_NAME_RE = /^n_[0-9a-f]{32}$/;
 
+// M4-09: fixed configuration vocabulary, shared by the pure nft renderer.
+export const COMMON_TCP_PORTS = [ 22, 53, 80, 143, 443, 465, 587, 853, 993, 995, 9418 ];
+
 const main = [
 	{ name: 'enabled', type: 'bool', default: false },
 	{ name: 'mode', type: 'enum', enum: [ 'gfw', 'bypass_cn', 'global' ], default: 'bypass_cn' },
+	{ name: 'port_scope', type: 'enum', enum: [ 'all', 'common', 'common_extra' ], default: 'all' },
+	{ name: 'extra_ports', type: 'string', default: '' },
 	{ name: 'node', type: 'string', default: null },
 	{ name: 'lan_ifaces', type: 'list', item: 'ifname', min_items: 1, default: [ 'br-lan' ] },
 	{ name: 'unlisted_policy', type: 'enum', enum: [ 'follow', 'direct' ], default: 'follow' },

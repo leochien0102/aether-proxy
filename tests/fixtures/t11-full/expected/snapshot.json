@@ -2,6 +2,8 @@
   "main": {
     "enabled": true,
     "mode": "gfw",
+    "port_scope": "all",
+    "extra_ports": "",
     "node": "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "lan_ifaces": [
       "br-lan",
