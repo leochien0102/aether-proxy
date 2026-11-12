@@ -64,27 +64,28 @@ return view.extend({
 		o.multiple = true;
 		o.rmempty = false;
 
-		// Scope is edited on Overview; build this field only when it can take effect.
-		if (uci.get('aetherproxy', 'main', 'port_scope') === 'common_extra') {
-			o = s.taboption('intercept', form.Value, 'extra_ports', _('Extra ports', 'aether-proxy'),
-				_('Only used with common and extra ports. Comma-separated ports or ranges, up to 64 unique entries.', 'aether-proxy'));
-			o.placeholder = '8080, 5000-5002';
-			o.validate = function(section_id, value) {
-				if (!value || !value.trim())
-					return true;
-				const entries = new Set();
-				for (const part of value.split(',')) {
-					const m = part.trim().match(/^([0-9]{1,5})(?:-([0-9]{1,5}))?$/);
-					const a = m ? Number(m[1]) : 0;
-					const b = m ? Number(m[2] ?? m[1]) : 0;
-					if (a < 1 || b > 65535 || a > b)
-						return _('Use ports or ascending ranges within 1–65535 (at most 64 unique entries).', 'aether-proxy');
-					entries.add(a === b ? String(a) : a + '-' + b);
-				}
-				return entries.size <= 64 ? true
-					: _('Use ports or ascending ranges within 1–65535 (at most 64 unique entries).', 'aether-proxy');
-			};
-		}
+		// Scope is edited on Overview; readonly disables the widget without hiding saved values.
+		o = s.taboption('intercept', form.Value, 'extra_ports', _('Extra ports', 'aether-proxy'),
+			_('Only used with common and extra ports. Comma-separated ports or ranges, up to 64 unique entries.', 'aether-proxy'));
+		o.readonly = uci.get('aetherproxy', 'main', 'port_scope') !== 'common_extra';
+		if (o.readonly)
+			o.description += ' ' + _('Only takes effect when Port range is set to “Common and extra ports”.', 'aether-proxy');
+		o.placeholder = o.readonly ? '' : '8080, 5000-5002';
+		o.validate = function(section_id, value) {
+			if (this.readonly || !value || !value.trim())
+				return true;
+			const entries = new Set();
+			for (const part of value.split(',')) {
+				const m = part.trim().match(/^([0-9]{1,5})(?:-([0-9]{1,5}))?$/);
+				const a = m ? Number(m[1]) : 0;
+				const b = m ? Number(m[2] ?? m[1]) : 0;
+				if (a < 1 || b > 65535 || a > b)
+					return _('Use ports or ascending ranges within 1–65535 (at most 64 unique entries).', 'aether-proxy');
+				entries.add(a === b ? String(a) : a + '-' + b);
+			}
+			return entries.size <= 64 ? true
+				: _('Use ports or ascending ranges within 1–65535 (at most 64 unique entries).', 'aether-proxy');
+		};
 
 		option(s, 'intercept', form.Flag, 'quic_block', _('Block QUIC', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'dns_hijack', _('Hijack DNS', 'aether-proxy'));

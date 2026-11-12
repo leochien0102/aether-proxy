@@ -558,6 +558,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 
 - **拦截**（`main` 段）：`lan_ifaces`（LuCI `tools.widgets` 的 `DeviceSelect`，`multiple`，至少一个；说明「拦截哪些入接口，通常是 br-lan」）、
   `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`degrade_gfw`（2026-10-27 加，T10.68，见「B19」）、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
+  - `extra_ports`（补充端口）：高级页始终可见，仅 common_extra 可编辑；其余两档置灰，已有值保留，切换档位后刷新页面生效。
   - `fail_open`：「关闭后，Xray 不可用时被代理的流量会中断，而不是改为直连」；
   - `dns_hijack`：「关闭后，自己指定了 DNS 的设备会绕过分流」；
   - `ipv6_filter`：「所有 AAAA 查询返回空结果，让设备只用 IPv4 访问；LAN 侧的 IPv6 地址分配不受影响」（03「IPv6」）。
@@ -1382,5 +1383,5 @@ UI 规则：
 
 概览页默认模式旁新增「端口范围」三档：所有端口 / 常用端口 / 常用与补充端口，
 说明「只影响 TCP；UDP 始终按现有策略代理」。该设置独立保存并应用 UCI，不混入 node_use/mode_use。
-高级页拦截标签新增「补充端口」，仅 main.port_scope=common_extra 时显示并校验；
+高级页拦截标签新增「补充端口」；高级页始终可见，仅 common_extra 可编辑并校验，其余两档置灰并提示生效条件；
 端口与区间规则见 05，非法输入显示字段错误。

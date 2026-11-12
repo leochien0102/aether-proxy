@@ -2813,3 +2813,7 @@ msgstr "保存并应用端口范围"
 msgctxt "aether-proxy"
 msgid "Only affects TCP; UDP keeps its existing proxy policy."
 msgstr "只影响 TCP；UDP 始终按原策略代理。"
+
+msgctxt "aether-proxy"
+msgid "Only takes effect when Port range is set to “Common and extra ports”."
+msgstr "仅当端口范围为『常用 + 补充端口』时生效"
