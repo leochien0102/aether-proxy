@@ -126,7 +126,9 @@ class StagingTests(unittest.TestCase):
 				(dest / filename).write_bytes((directory + filename).encode())
 
 	def stage(self):
-		env = dict(os.environ, TAG='v1.2.3-r1-rc1', BUILD_SHA=SHA,
+		manifest = self.root / 'published.json'
+		manifest.write_text(json.dumps({'packages': {}}))
+		env = dict(os.environ, CHANNEL_MANIFEST=str(manifest), TAG='v1.2.3-r1-rc1', BUILD_SHA=SHA,
 			PATH=str(self.root / 'fake-bin') + os.pathsep + os.environ['PATH'])
 		return subprocess.run([sys.executable, str(ROOT / 'tools/release/stage.py')],
 			cwd=self.root, env=env, text=True, capture_output=True)
