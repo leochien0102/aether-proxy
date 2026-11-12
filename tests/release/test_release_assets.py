@@ -89,7 +89,7 @@ raise AssertionError(command)
 def fixture():
     packages = {}
     for name in ('aether-proxy', 'luci-app-aether-proxy',
-                 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng', 'xray-core'):
+                 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng', 'aether-dns', 'xray-core'):
         assets = {}
         for arch in ('all', 'aarch64_generic', 'x86_64', 'mips_24kc'):
             assets[arch] = {}
@@ -192,7 +192,7 @@ class ReleaseAssets(unittest.TestCase):
         self.assertEqual(len(self.calls('sleep')), 2)
         uploaded = self.root / 'uploaded'
         names = {path.name for path in uploaded.iterdir()}
-        self.assertEqual(len(names), 32)  # three app packages * four arches * two + two binaries * two * two
+        self.assertEqual(len(names), 36)  # three app packages * four arches * two + three binaries * two * two
         self.assertTrue(all(name.endswith(('.ipk', '.apk')) for name in names))
         self.assertFalse(any('xray-core' in name or 'old' in name for name in names))
         core = [name for name in names if name.startswith('aether-xray')]
@@ -249,7 +249,7 @@ class ReleaseAssets(unittest.TestCase):
     def test_channel_noarch_shape(self):
         # Real channel uses assets.all and architecture-free APK names for app/LuCI/i18n.
         for name, package in self.manifest['packages'].items():
-            if name in ('aether-xray', 'chinadns-ng', 'xray-core'):
+            if name in ('aether-xray', 'chinadns-ng', 'aether-dns', 'xray-core'):
                 continue
             assets = package['current']['assets']
             package['current']['assets'] = {'all': assets['all']}
@@ -257,15 +257,17 @@ class ReleaseAssets(unittest.TestCase):
             assets['all']['apk']['sha256'] = hashlib.sha256(CONTENT).hexdigest().upper()
         self.sequence([self.manifest])
         self.run_all()
-        self.assertEqual(len(list((self.root / 'uploaded').iterdir())), 14)
+        self.assertEqual(len(list((self.root / 'uploaded').iterdir())), 18)
 
     def test_chinadns_dependency_and_manual_updates(self):
         makefile = (ROOT / 'aether-proxy/Makefile').read_text()
-        self.assertIn('+chinadns-ng', makefile)
+        self.assertIn('+dns-engine', makefile)
+        self.assertNotIn('+chinadns-ng', makefile)
         dns = (ROOT / 'chinadns-ng/Makefile').read_text()
         self.assertIn('PKG_NAME:=chinadns-ng\n', dns)
         self.assertIn('PKG_VERSION:=2025.08.09\n', dns)
         self.assertIn('$(1)/usr/bin/chinadns-ng', dns)
+        self.assertIn('PROVIDES:=dns-engine', dns)
         const = (ROOT / 'aether-proxy/src/lib/const.uc').read_text()
         update_packages = const.split('export const UPDATE_PACKAGES =', 1)[1].split(';', 1)[0]
         self.assertNotIn('chinadns-ng', update_packages)

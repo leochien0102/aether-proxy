@@ -94,6 +94,8 @@ jobs:
           name: packages-${{ matrix.sdk }}-${{ matrix.package_arch }}
           path: bin/packages/${{ matrix.package_arch }}/aetherproxy/*
           if-no-files-found: error
+          # RC reuses these exact smoke-tested bytes; never shorten below 90 days.
+          retention-days: 90
 
   # T9.3 / docs/11: package installation and pure CLI rendering only, not a dataplane test.
   smoke:
