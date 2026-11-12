@@ -10,13 +10,14 @@ packages enter the closure check automatically, but system packages such as
 kmod/ip-full do not. When adding a managed dependency, register it in the
 publisher inventory too; do not hide channel packages as system packages.
 
-`update-contract.json` freezes known client packages, the 1.0.0-r1/0.7.0-r1
+`update-contract.json` freezes known client packages, the 1.1.0-r1/1.0.0-r1
 support window, explicit manual package exceptions and an ordered bridge example.
 Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the
 0.6.3 / 0.7.0 source; tests do not fetch tags. The migration rows in docs/08 are
-checked against this fixture. The 1.0.0 client knows UPDATE_PACKAGES plus aether-dns;
+checked against this fixture. The 1.1.0 and 1.0.0 clients share the same known
+packages (UPDATE_PACKAGES plus aether-dns) and direct route.
 0.7.0 retains its four-package snapshot and manual chinadns-ng prerequisite.
-0.6.3, 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
+0.7.0, 0.6.3, 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
 Virtual hard dependencies resolve through `provides: {"dns-engine": "aether-dns"}`
 BEFORE intersecting managed packages. Every mapped target must be managed.
 Manual chinadns-ng covers that virtual requirement only through its actual
