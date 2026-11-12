@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo } = require('./loader');
+const { loadModule, parsePo, element: E } = require('./loader');
 const { renderList, parseList } = require('./dynamic-list');
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -387,7 +387,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	assert.deepEqual(section.tabs, [ 'intercept', 'log', 'boot', 'components' ]);
 
 	const expected = {
-		intercept: [ 'lan_ifaces', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
+		intercept: [ 'lan_ifaces', 'extra_ports', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 			'fail_open', 'degrade_gfw', 'sniffing' ],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
@@ -420,6 +420,11 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	   absent, otherwise a checked-by-default switch would look disabled. */
 	assert.deepEqual(lan.default, [ 'br-lan' ]);
 	for (const o of created) {
+		if (o.field === 'extra_ports') {
+			assert.equal(o.placeholder, '');
+			assert.equal(o.default, undefined);
+			continue;
+		}
 		assert.deepEqual(o.default ?? o.placeholder ?? null, real.default(o.field) ?? null, o.field + ': fallback');
 		if (o.type == form.Value)
 			assert.equal(o.default, undefined, o.field + ': hint must not become saved input');
@@ -433,10 +438,12 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	assert.equal(created.find((o) => o.field == 'xray_log_level').default, 'warning');
 	assert.equal(created.find((o) => o.field == 'boot_wait_timeout').placeholder, '120');
 
-	/* Every option routes its validator through the model with its own field
+	/* Every model-backed option routes its validator through the model with its own field
 	   name — a wrong field name here would silently validate the wrong rule. */
 	for (const o of created) {
 		assert.equal(typeof o.validate, 'function', o.field + ': has a validator');
+		if (o.field === 'extra_ports')
+			continue; // This field retains its dedicated port/range validator.
 		calls.length = 0;
 		assert.equal(o.validate('main', 'SAMPLE'), true);
 		assert.deepEqual(calls, [ [ o.field, 'SAMPLE' ] ], o.field + ': validator calls the model');
@@ -556,10 +563,15 @@ test('M4-09 P6 extra ports visibility and field validation in all three scopes',
 		}, { window: {}, document: {} });
 		await view.render();
 		const extra = created.find(o => o.field === 'extra_ports');
-		assert.equal(!!extra, scope === 'common_extra');
-		if (!extra)
+		assert.ok(extra, scope + ': extra_ports always exists');
+		assert.equal(extra.readonly, scope !== 'common_extra', scope + ': widget readonly');
+		if (extra.readonly) {
+			assert.match(extra.description, /仅当端口范围为『常用 \+ 补充端口』时生效/);
+			assert.equal(extra.validate('main', 'bad'), true, 'ignored saved values do not block saving');
 			continue;
+		}
 		assert.equal(extra.title, '补充端口');
+		assert.equal(extra.placeholder, '8080, 5000-5002');
 		for (const value of ['', '1,65535', '8080, 5000-5002', Array(100).fill('0080').join(',')])
 			assert.equal(extra.validate('main', value), true, value);
 		for (const value of ['0', '65536', '5000-4999', 'bad', '80,',
@@ -569,3 +581,43 @@ test('M4-09 P6 extra ports visibility and field validation in all three scopes',
 		}
 	}
 });
+
+// Use the installed SDK's actual Value renderer, not a second implementation
+// of readonly -> disabled. Other hosts without this optional SDK still run
+// the form-tree and validator assertions above.
+const SDK_FORM = '/workspace/openwrt/sdk/openwrt-sdk-24.10.8-rockchip-armv8_gcc-13.3.0_musl.Linux-x86_64/'
+	+ 'feeds/luci/modules/luci-base/htdocs/luci-static/resources/form.js';
+for (const scope of ['all', 'common', 'common_extra']) {
+	test(`M4-12 DOM ${scope}: extra ports visible, disabled=${scope !== 'common_extra'}`, {
+		skip: !fs.existsSync(SDK_FORM) && 'optional local LuCI SDK not installed'
+	}, async () => {
+		const source = fs.readFileSync(SDK_FORM, 'utf8');
+		const start = source.indexOf('renderWidget(section_id, option_index, cfgvalue) {');
+		const end = source.indexOf('\n});', start);
+		assert.ok(start >= 0 && end > start, 'SDK Value renderer found');
+		const renderer = new Function('ui', 'E', '_', 'return ({' + source.slice(start, end) + '});')({
+			Textfield: class {
+				constructor(value, options) { this.value = value; this.options = options; }
+				render() { return E('input', { ...this.options, value: this.value }); }
+			}
+		}, E, globalThis._).renderWidget;
+		const { form, created } = build_form();
+		const view = loadModule(VIEW, {
+			view: { extend: o => o }, form, uci: { get: () => scope },
+			'tools.widgets': { DeviceSelect: 'DeviceSelect' },
+			'aether-proxy.model.advanced': load_model()
+		}, { window: {}, document: {} });
+		await view.render();
+		const extra = created.find(o => o.field === 'extra_ports');
+		assert.ok(extra);
+		const input = renderer.call(Object.assign(extra, {
+			map: { readonly: false }, transformChoices: () => null,
+			cbid: () => 'cbid.aetherproxy.main.extra_ports', getValidator: () => extra.validate
+		}), 'main', 0, '8080,5000-5002');
+		assert.equal(input.tag, 'input');
+		assert.equal(input.attrs.disabled, scope !== 'common_extra');
+		assert.equal(input.attrs.value, '8080,5000-5002', 'saved value remains displayed unchanged');
+		if (scope !== 'common_extra')
+			assert.match(extra.description, /仅当端口范围为『常用 \+ 补充端口』时生效/);
+	});
+}
