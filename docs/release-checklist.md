@@ -75,7 +75,7 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 
 - [ ] H28K 页面更新；核对版本、`UPDATE_STARTED/INSTALLED` 事件、无 `PREREQ_*`、配置哈希、`boot_id`。
 - [ ] 写 `docs/validation/<ver>-release-<date>.md`，更新 `docs/tasks/README.md`。
-- [ ] 发布后另出**兼容快照**卡（B17：冻结 nuova 版本，换 `tests/compat/fixtures/`）。
+- [ ] 发布后另出**兼容快照**卡（B17：冻结新发布的版本，换 `tests/compat/fixtures/`）。
 
 ## 失败处理
 
