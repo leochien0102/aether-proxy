@@ -1,5 +1,5 @@
-9eee7a04f8c123c90e909889b66083b32d01761c1ae783a1ba5529752d53f8e3  tests/compat/fixtures/1.1.0-r1/htdocs/luci-static/resources/aether-proxy/common.js
-bd4a35251279713c81ed5ff2ede074de9d6af60750c69df0ada7e1e12e397017  tests/compat/fixtures/1.1.0-r1/htdocs/luci-static/resources/aether-proxy/model/updates.js
-2867dc714c4fdd0a730e9b9fd85092902d5c3994a4b966d8b06bd4f5ffbef90b  tests/compat/fixtures/1.1.0-r1/htdocs/luci-static/resources/view/aether-proxy/updates.js
-379047888724763ce5c0beceec8338fde504d257366ef7b49ced9123d20d233c  tests/compat/fixtures/1.1.0-r1/root/usr/share/rpcd/acl.d/luci-app-aether-proxy.json
-6e91308af7d1fe89296153c52ac1a239447cb5b3723c9a7a82aee4be28a84397  tests/compat/fixtures/1.1.0-r1/root/usr/share/rpcd/ucode/aetherproxy.uc
+9eee7a04f8c123c90e909889b66083b32d01761c1ae783a1ba5529752d53f8e3  tests/compat/fixtures/1.1.2-r1/htdocs/luci-static/resources/aether-proxy/common.js
+bd4a35251279713c81ed5ff2ede074de9d6af60750c69df0ada7e1e12e397017  tests/compat/fixtures/1.1.2-r1/htdocs/luci-static/resources/aether-proxy/model/updates.js
+2867dc714c4fdd0a730e9b9fd85092902d5c3994a4b966d8b06bd4f5ffbef90b  tests/compat/fixtures/1.1.2-r1/htdocs/luci-static/resources/view/aether-proxy/updates.js
+379047888724763ce5c0beceec8338fde504d257366ef7b49ced9123d20d233c  tests/compat/fixtures/1.1.2-r1/root/usr/share/rpcd/acl.d/luci-app-aether-proxy.json
+6e91308af7d1fe89296153c52ac1a239447cb5b3723c9a7a82aee4be28a84397  tests/compat/fixtures/1.1.2-r1/root/usr/share/rpcd/ucode/aetherproxy.uc
