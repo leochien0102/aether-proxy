@@ -27,7 +27,13 @@
 - `openwrt-actions/configs/feeds.conf` 的 `aetherdns` → `efd77dc`（`82d7168`）；
 - 固件构建时会下载 1.0.1 的 ipk 并按新哈希校验；重建后固件内的 `aether-dns` 为 1.0.1。
 
-## 设备
+## 设备（H28K，2026-11-14 05:41）
 
-- H28K 仍为 `aether-dns 1.0.0-r1`；1.0.1 是诊断修复，**不会**被更新页的引擎前置事务自动安装
-  （已装 1.0.0 ≥ 下限、提供 `dns-engine`，事务按设计跳过）。需要真机验证时手动安装 1.0.1。
+- 已手动安装 `aether-dns 1.0.1-r1`（来自通道资产，sha256 校验一致），`/etc/init.d/aether-proxy restart` 后生效；
+- **日志级别修复已验证**：重启后 `listening TCP/UDP` 记为 `daemon.info`，不再出现在 `err` 里；
+- 服务 `running` / `T1`，`latency_ms=218`、`xray_down_count=0`、`dns_fail_count=0`；DNS 端到端正常；
+- 引擎进程只有一条（新二进制），临时安装包已删除。
+- **版本口径**：包为 `1.0.1-r1`，但二进制 `-V` 仍是 `1.0.0`（Cargo 版本未随包装版本升），
+  所以 `components --json` 的 `dns.version` 显示 `1.0.0`。代理的兼容闸门按二进制版本判断，不受影响；
+  需要 UI/诊断显示 1.0.1 时，应在 DNS 仓库升 Cargo 版本并另发一版。
+- 1.0.1 是诊断修复，**不会**被更新页的引擎前置事务自动安装（已装版本已满足条件），本次为手动安装。
