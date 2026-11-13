@@ -10,15 +10,15 @@ packages enter the closure check automatically, but system packages such as
 kmod/ip-full do not. When adding a managed dependency, register it in the
 publisher inventory too; do not hide channel packages as system packages.
 
-`update-contract.json` freezes known client packages, the 1.1.1-r1/1.1.0-r1
+`update-contract.json` freezes known client packages, the 1.1.2-r1/1.1.1-r1
 support window, explicit manual package exceptions and an ordered bridge example.
 Known package snapshots were checked against v0.3.1-r1 / v0.6.2-r1 and the
 0.6.3 / 0.7.0 source; tests do not fetch tags. The migration rows in docs/08 are
-checked against this fixture. The 1.1.1 and 1.1.0 clients share the same known
+checked against this fixture. The 1.1.2 and 1.1.1 clients share the same known
 packages (UPDATE_PACKAGES plus aether-dns) and direct route.
-1.0.0 retains the same known packages but is now manual-only.
+1.1.0 and 1.0.0 retain the same known packages but are now manual-only.
 0.7.0 retains its four-package snapshot and manual chinadns-ng prerequisite.
-1.0.0, 0.7.0, 0.6.3, 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
+1.1.0, 1.0.0, 0.7.0, 0.6.3, 0.6.2 and 0.3.1 are **manual-only**, outside the supported window.
 Virtual hard dependencies resolve through `provides: {"dns-engine": "aether-dns"}`
 BEFORE intersecting managed packages. Every mapped target must be managed.
 Manual chinadns-ng covers that virtual requirement only through its actual
@@ -26,7 +26,7 @@ Makefile PROVIDES metadata, not by pretending old clients know aether-dns.
 Negative tests print the rejection for a deleted provides map, an unknown
 current-client aether-dns, and an unregistered provider target.
 0.3.1 is not a direct updater to 0.6.3. The frozen page/RPC files are now at
-1.1.0-r1, extracted after publication; rolling the version contract alone does
+1.1.2-r1, extracted after publication; rolling the version contract alone does
 not replace those snapshots.
 Do not add new package names to frozen known lists just
 to make a newly introduced hard dependency pass: provide a real bridge or an
@@ -87,7 +87,7 @@ with a throwaway usign key. The existing `tests/stubs/update-bin/opkg` substitut
 tracks per-package versions and installation calls; real downloading, signature
 verification and hash/size checks still run, as in `tests/update/run.sh`.
 The backend is already at the synthetic 1.2.0-r1 channel version, while the
-frozen 1.1.0-r1 page needs an upgrade. The fixture therefore also works with
+frozen 1.1.2-r1 page needs an upgrade. The fixture therefore also works with
 grouped forward updates (T9.38).
 Everything writable lives under `tests/compat/tmp.*` and is removed on completion.
 
@@ -125,14 +125,13 @@ docs/08 "更新接口（固定）" describes the wire shapes this suite pins: su
 
 Snapshot history: 0.3.0-r1 (T9.39); 0.3.1-r1 (grouped results); 0.6.3-r7;
 0.7.0-r1 (M4-03e); 1.0.0-r1 (M4-08, tag `v1.0.0-r1`, commit `59c3f3b`);
-1.1.0-r1 (M4-11, latest formal client, extracted unchanged from tag
-`v1.1.0-r1`, commit `50e39f5`). All five frozen files are byte-identical to
-the previous 1.0.0-r1 snapshot: there is no frozen-client behavior change.
-The log model has updated wording outside these five files. The complete LuCI
-tag diff also includes advanced/overview port-range controls (M4-09), package
-version metadata and translations; it is not limited to log wording.
+1.1.0-r1 (M4-11, tag `v1.1.0-r1`, commit `50e39f5`);
+1.1.2-r1 (M4-18, latest formal client, extracted unchanged with `git show` from
+ tag `v1.1.2-r1`, commit `7234b4d`). All five frozen files are byte-identical to
+the previous 1.1.0-r1 snapshot: there is no frozen-client behavior change.
+The 1.1.x UI changes are outside these five files.
 The installed backend record still references CURRENT (the backend is already
-new); the installed page is 1.1.0-r1 and the synthetic target is 1.2.0-r1.
+new); the installed page is 1.1.2-r1 and the synthetic target is 1.2.0-r1.
 All exact expectations remain unchanged, including the three available updates
 and the Interface/Translation-only grouped result. The M4-08 DNS engine fixture
 remains aether-dns 1.0.0-r1 with Provides: dns-engine.
