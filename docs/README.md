@@ -28,6 +28,7 @@
 | [06-nodes-subscription.md](06-nodes-subscription.md) | URI 解析、节点身份匹配、订阅原子更新、Xray 出站映射 | M1、M5 |
 | [07-probe.md](07-probe.md) | 节点可达性检测、代理健康检测 | M3、M6 |
 | [08-updates.md](08-updates.md) | 签名清单、组件与数据更新、回滚、CI 发布通道 | M7 |
+| [release-checklist.md](release-checklist.md) | 发版清单：版本/契约、一次构建、RC→promote、发布与回退 | M7 |
 | [09-logging.md](09-logging.md) | 日志等级、事件码、展示 | 全部任务 |
 | [10-cli-luci.md](10-cli-luci.md) | `aether-proxy` 命令约定、rpcd/ubus 接口、LuCI 页面 | M8 |
 | [11-plan.md](11-plan.md) | 里程碑、任务拆分、验收标准、测试方法 | 全部任务 |
