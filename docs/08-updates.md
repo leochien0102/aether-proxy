@@ -238,14 +238,14 @@ rc-manifest 的 `target_tag` 单独绑定。release 后缀必须精确匹配（`
 1. 应用提交的 `PKG_VERSION` / `PKG_RELEASE` 就是目标正式包版本；RC 后缀只出现在 Git tag，不写入 Makefile。`vVERSION-rcN`（或 `vVERSION-rRELEASE-rcN`）绑定目标 `vVERSION-rRELEASE` 与完整 app commit。
 2. app `release-candidate.yml` **不编包**：从 tag（含 annotated tag）解析完整 commit SHA，分页检索该 SHA 的成功 `build.yml` 运行，仅接受 `push` / `workflow_dispatch`，选运行编号最新的成功记录（重跑按 attempt 排序）。整个运行 success 代表四格 packages 和六格 smoke 全部成功；失败、未完成、PR 或其他 workflow 均不能代替。
    按 run ID 查询产物，再以 `actions/download-artifact@v4` 按精确 artifact IDs 下载四组 `packages-*`；API 元数据必须绑定相同 run/SHA、非空、未过期、名称矩阵无缺失或重复。落地后再次检查五包 × 两架构 × 两格式，共 20 个包，校验文件名、架构与版本，再上传 **prerelease**。`rc-manifest.json` 保持 schema=1，记录 tag、commit、正式目标、原始文件名、矩阵槽位和每包 SHA-256；`SHA256SUMS` 覆盖全部包和清单。
-3. 两个架构的 noarch SDK 产物也分别保留：RC 资产加 `<arch>--` 前缀，并把 GitHub 不支持的字符转为 `.`；清单保留原名。人工必须验证将被 channel 选中的产物（noarch 按架构路径排序选择 `aarch64_generic`，与现有生成器一致）。
+3. **同一版本号的资产字节不可变，RC 负责对齐已发布字节**：`stage.py` 默认读取公开 `channel-stable/manifest.json`（调用方可用 `CHANNEL_MANIFEST` 指定清单路径或 URL，资产相对该清单解析）。与清单 `current` 版本一致的包，必须下载已发布资产并校验 sha256（有 size 时也校验），替换门禁构建字节；版本不同或清单尚无该包才使用新构建字节。清单不可读、网络错误、同版本资产缺失或哈希不符一律使 RC 失败，不回退到新构建字节。`rc-manifest.json` 每项标注 `source: published/built`，复用项另记 `published_url`。两个架构的 noarch 槽位仍分别保留，同版本时均对齐清单 `all` 资产；RC 资产加 `<arch>--` 前缀，并把 GitHub 不支持的字符转为 `.`；清单保留原名。人工必须验证将被 channel 选中的产物（noarch 按架构路径排序选择 `aarch64_generic`，与现有生成器一致）。
 4. 人工验收后，在 channel **main** 手动运行 `promote.yml`，输入 `rc_tag`。它只下载公开 prerelease、校验完整资产集合/版本/tag commit/hash、恢复包目录，并下载该 commit 的两个独立发布工具和四份 Makefile（仅作版本元数据），**不 checkout app、不运行 SDK、不编译**。
 5. 晋升前用 `tools/channel/build.py --packages` 生成预检清单；同版本清单不同或已有同名包不同字节一律失败。与 packages/data 共用 `channel-publish` 并发锁。随后现有 `scripts/publish.sh` 生成规则数据、签名、发布 stable；私钥仅在最后一步来自 channel Actions Secret。签名器通过系统包安装，不运行 `scripts/usign.sh` 编译。
 6. 正式 tag **必须指向 RC 的同一 commit**。promote 若发现正式 tag 已存在就校验其 commit；若正式 tag 尚未创建，维护者之后必须在清单记录的 commit 上创建并保护 tag，不得移动 RC/正式 tag。`release-assets.yml` 只增加了 `-rc` tag 跳过条件，避免 RC 触发正式流程；它仍使用原有成功 build 门禁和版本匹配的 channel manifest，仅复制资产，不重编。未来正式 tag 的 commit 约束仍需维护者按 RC 清单执行。
 
 **保留期与失败处理**：`build.yml` 固定上传名 `packages-<SDK>-<package_arch>`，`retention-days: 90`（不得低于 90 天），仓库/组织设置也必须允许该保留期；修改保留期不追溯延长旧产物。RC 仍检查 API 的实际 `expired` / `expires_at`，不存在、已删除、过期或矩阵不全一律失败，提示“先让门禁通过”，不静默重建、不自动选旧产物替补。API/权限/下载错误也阻止发布。
 
-常规顺序：main push 的一次构建与 smoke 成功 → 在同一 SHA 打 RC tag → RC 下载同一批字节 → 人工验收 → channel promote → 同一 SHA 的正式 tag → release-assets 复制通道资产。若只有文档变化导致 paths 过滤而无门禁运行，或旧产物已超期，维护者必须**显式**在该 SHA 手动 dispatch `build.yml`，确认解析出的 head SHA 一致且全绿，再重跑失败的 RC workflow；不可仅在最新 main 上编译冒充旧 tag。超期重建是例外恢复，不声称仍是原来那批被验收的字节，必须重新验收；已有 RC/通道同版本资产不准覆盖，不同字节按版本策略另定新版本。确需使用 channel packages 回退时也必须由维护者显式输入固定 ref，并重新核对版本/字节，RC 本身没有重建开关。
+常规顺序：main push 的一次构建与 smoke 成功 → 在同一 SHA 打 RC tag → RC 下载门禁产物并对齐同版本已发布字节 → 人工验收 → channel promote → 同一 SHA 的正式 tag → release-assets 复制通道资产。若只有文档变化导致 paths 过滤而无门禁运行，或旧产物已超期，维护者必须**显式**在该 SHA 手动 dispatch `build.yml`，确认解析出的 head SHA 一致且全绿，再重跑失败的 RC workflow；不可仅在最新 main 上编译冒充旧 tag。超期重建是例外恢复，不声称仍是原来那批被验收的字节，必须重新验收；已有 RC/通道同版本资产不准覆盖，不同字节按版本策略另定新版本。确需使用 channel packages 回退时也必须由维护者显式输入固定 ref，并重新核对版本/字节，RC 本身没有重建开关。
 
 RC 不主动触发 channel 发布；`release-assets.yml` 跳过 RC tag，正式 tag 才走既有成功 build 门禁与通道清单校验。已有 RC Release 不覆盖、不重试上传；失败残留需维护者人工检查，不自动删改远端。
 
