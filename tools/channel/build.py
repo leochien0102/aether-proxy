@@ -185,7 +185,7 @@ def collect_data(directory: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
 
 
 def package_manifest(
-    built: dict[str, Any], previous: dict[str, Any] | None,
+    built: dict[str, Any], previous: dict[str, Any] | None, keep_missing: bool = False,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     old_packages = previous.get("packages", {}) if previous else {}
@@ -193,6 +193,11 @@ def package_manifest(
     # never rebuild it or use its version/history for the newly named package.
     if "xray-core" in old_packages:
         result["xray-core"] = old_packages["xray-core"]
+    # Component-scoped builds compile one package only; every other entry stays published.
+    if keep_missing:
+        for name, old in old_packages.items():
+            if name != "xray-core" and name not in built:
+                result[name] = old
     for name, current in sorted(built.items()):
         old = old_packages.get(name, {})
         old_current = old.get("current") if isinstance(old, dict) else None
@@ -276,11 +281,11 @@ def compatibility_assets(compatibility: dict[str, Any]):
 
 def build_manifest(
     package_dir: Path | None, data_dir: Path | None, previous: dict[str, Any] | None,
-    compatibility: dict[str, Any] | None = None,
+    compatibility: dict[str, Any] | None = None, keep_missing: bool = False,
 ) -> tuple[dict[str, Any], dict[str, bytes], list[str]]:
     if package_dir is not None:
         built_packages, copied, ignored = collect_packages(package_dir)
-        packages = package_manifest(built_packages, previous)
+        packages = package_manifest(built_packages, previous, keep_missing)
     else:
         # Data-only release (the daily data job builds no packages): keep the package entries,
         # whose assets are already in the release.
@@ -318,7 +323,7 @@ def canonical_manifest(manifest: dict[str, Any]) -> bytes:
 
 def build_to_dir(
     out: Path, packages: Path | None, data: Path | None, previous_path: Path | None,
-    compatibility_path: Path | None = None,
+    compatibility_path: Path | None = None, keep_missing: bool = False,
 ) -> list[str]:
     previous = read_previous(previous_path)
     compatibility = None
@@ -326,7 +331,7 @@ def build_to_dir(
         compatibility = json.loads(compatibility_path.read_text(encoding="utf-8"))
         if compatibility is None:
             raise ValueError("compatibility input must be an object")
-    manifest, copied, ignored = build_manifest(packages, data, previous, compatibility)
+    manifest, copied, ignored = build_manifest(packages, data, previous, compatibility, keep_missing)
     if "compatibility" in manifest:
         # Published references need not be downloaded again. New historical assets live
         # beside --compatibility; verify their bytes before publishing any output.
@@ -382,13 +387,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--packages", type=Path)
     parser.add_argument("--data", type=Path)
     parser.add_argument("--previous", type=Path)
+    parser.add_argument("--keep-missing", action="store_true",
+                        help="carry previous entries for packages this build did not compile")
     parser.add_argument("--compatibility", type=Path,
                         help="compatibility object JSON; new bridge assets reside beside it; omitted: preserve previous")
     args = parser.parse_args(argv)
     if args.packages is None and args.data is None:
         parser.error("nothing to build: give --packages and/or --data")
     try:
-        ignored = build_to_dir(args.out, args.packages, args.data, args.previous, args.compatibility)
+        ignored = build_to_dir(args.out, args.packages, args.data, args.previous, args.compatibility,
+                               args.keep_missing)
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
         print(f"channel build failed: {exc}", file=sys.stderr)
         return 1
