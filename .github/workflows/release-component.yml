@@ -65,7 +65,7 @@ jobs:
           set -euo pipefail
           mkdir -p assets
           shopt -s nullglob
-          files=(artifacts/aetherproxy/${COMPONENT}_*.ipk artifacts/aetherproxy/${COMPONENT}-*.apk)
+          files=(artifacts/${COMPONENT}_*.ipk artifacts/${COMPONENT}-*.apk)
           [ ${#files[@]} -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
           cp "${files[@]}" assets/
           ( cd assets && sha256sum -- *.ipk *.apk > SHA256SUMS )
