@@ -87,7 +87,7 @@
 | 单元 | 组成 | 版本 | 发布方式 |
 |---|---|---|---|
 | **应用** | aether-proxy + luci-app-aether-proxy + luci-i18n-aether-proxy-zh-cn | `1.x.y-rN`（三者同步） | 一次推送 → 门禁 `build` → RC（复用产物）→ `promote` → 正式 tag → `release-assets` |
-| **xray 核心** | aether-xray | 上游版本 `26.x.y-rN` | 只改 `aether-xray/Makefile` → 门禁 `build` → 更新通道 `AETHER_PROXY_REF` → `packages` 直发。**不升应用版本、不打应用 tag** |
+| **xray 核心** | aether-xray | 上游版本 `26.x.y-rN` | 只改 `aether-xray/Makefile` → 更新通道 `AETHER_PROXY_REF` → `packages` 用 `components=aether-xray` 只构建该组件（`--keep-missing` 保留其它条目）。**不升应用版本、不打应用 tag** |
 | **DNS 引擎** | aether-dns | DNS 仓库版本 | DNS 仓库发布 → 通道构建（proxy 的 `aether-dns/Makefile`）→ 清单更新；固件 feed 同步 |
 
 要点：

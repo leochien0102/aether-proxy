@@ -96,7 +96,8 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 
 - [ ] 只改 `aether-xray/Makefile` 的 `PKG_VERSION` 与源码 `PKG_HASH`（必要时 `GO_TOOLCHAIN_VERSION`）；
 - [ ] 推送后等门禁 `build` 成功（含 smoke 的 `xray run -test`）；
-- [ ] 更新通道 `AETHER_PROXY_REF` 到该提交，推送 → `packages` 直发；
+- [ ] 更新通道 `AETHER_PROXY_REF` 到该提交，并 `workflow_dispatch` `packages`、`components` 填 `aether-xray`
+      （只构建该组件，其余条目由 `--keep-missing` 保留）；
 - [ ] 核对清单：`aether-xray` 版本/哈希已更新、`previous` 正确，**应用版本不变**；
 - [ ] 设备在更新页只会看到 `aether-xray` 有更新。
 
