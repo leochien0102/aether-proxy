@@ -1,7 +1,10 @@
 name: test
 
 on:
+  # Tag pushes point at a commit that was already tested on main; the release
+  # workflow reuses that commit, so re-running the suites there adds time for nothing.
   push:
+    branches: [main]
   pull_request:
 
 jobs:
