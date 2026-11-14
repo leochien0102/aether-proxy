@@ -100,6 +100,7 @@ jobs:
         env:
           PACKAGE_EXT: ${{ matrix.package_ext }}
           PACKAGE_ARCH: ${{ matrix.package_arch }}
+          PACKAGES: ${{ needs.detect.outputs.packages }}
         run: |
           set -eu
           package_dir="bin/packages/$PACKAGE_ARCH/aetherproxy"
