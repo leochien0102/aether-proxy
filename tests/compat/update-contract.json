@@ -2,10 +2,20 @@
   "contract_version": 1,
   "wire_schema": 2,
   "support_window": [
-    "1.1.2",
-    "1.1.1"
+    "1.1.3",
+    "1.1.2"
   ],
   "clients": {
+    "1.1.3": {
+      "known_packages": [
+        "aether-xray",
+        "aether-proxy",
+        "luci-app-aether-proxy",
+        "luci-i18n-aether-proxy-zh-cn",
+        "aether-dns"
+      ],
+      "route": "direct"
+    },
     "1.1.2": {
       "known_packages": [
         "aether-xray",
@@ -24,7 +34,7 @@
         "luci-i18n-aether-proxy-zh-cn",
         "aether-dns"
       ],
-      "route": "direct"
+      "route": "manual-only"
     },
     "1.1.0": {
       "known_packages": [
