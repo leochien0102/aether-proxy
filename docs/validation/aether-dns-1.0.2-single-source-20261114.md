@@ -19,6 +19,10 @@ DNS 仓库只发布裸二进制与 ipk/apk 供人工下载，通道不再 stagin
 与 DNS 仓库自己发布的 ipk（`1dbc307c…`）不同；设备只安装通道清单里的那一份，DNS Release 的包
 供人工下载。两者包含同一个 1.0.2 二进制。
 
-## 设备
+## 设备（H28K，2026-11-14 16:59）
 
-- H28K 当时是 `1.0.1-r1`；重装通道里的 1.0.2 后，组件页与 opkg 都应显示 1.0.2。
+- 安装通道里的 `aether-dns 1.0.2-r1`（sha256 `e32f0456…` 与清单一致），`/etc/init.d/aether-proxy restart`；
+- **版本口径已一致**：opkg `1.0.2-r1`，`aether-dns -V` = 1.0.2，`components` 的 `dns.version` = `1.0.2`；
+- 服务 `running` / `T1`，`latency_ms=199`、`xray_down_count=0`、`dns_fail_count=0`；DNS 端到端正常；
+- 日志级别仍是 `daemon.info`（1.0.1 起生效）；
+- 由此，组件页与包管理器不再有 aether-dns 的版本不一致。
