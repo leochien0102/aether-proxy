@@ -62,3 +62,21 @@
 - 不改变版本比较的语义（`-rN` 仍不参与排序，只用于展示与相等判断）；
 - 不为第三方二进制强求完整串（只校验核心）；
 - 不引入新的版本字段或数据库，全部从包管理器现读。
+
+## 6. 发布物分工（2026-11-14 明确）
+
+| 发布物 | 位置 | 用途 | 内容 |
+|---|---|---|---|
+| **通道 Release** | `aether-proxy-channel` 的 `channel-stable` | **页面在线更新**：清单 + 资产，设备按清单校验安装 | `manifest.json`（含各组件 current/previous 与哈希）+ ipk/apk + 数据包 |
+| **代码仓库 Release** | `aether-proxy`、`aether-dns` 各自的 tag | **人工按需下载** | ipk/apk（直接安装）+ **tarball**（供 OpenWrt 包/feeds 的 Makefile 指定版本下载、校验后构建） |
+
+规则：
+
+- **T1 通道只服务在线更新**：通道清单的版本与哈希必须与代码仓库 Release 的资产一致；通道不产生新的二进制。
+- **T2 代码仓库必须提供 tarball**：预编译二进制的组件（aether-dns）每架构一个
+  `<name>-<核心>-r<修订>-<arch>.tar.gz`，根目录含可执行文件；源构建的组件（aether-proxy、aether-xray）
+  至少提供源码 tarball，供 feeds 以 `PKG_SOURCE_URL` + `PKG_HASH` 固定版本构建。
+- **T3 feeds 侧只用代码仓库的 tarball**：`openwrt/Makefile` 通过 tarball 的 URL 与哈希取版本，
+  不再从 ipk 里抠二进制；通道资产不参与构建。
+- **T4 同一版本的三处字符串一致**：代码仓库 Release 资产名、feeds Makefile 里的版本、通道清单里的版本，
+  都是 `<核心>-r<修订>`。
