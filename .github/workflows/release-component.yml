@@ -1,0 +1,86 @@
+name: release-component
+run-name: release ${{ inputs.component }} ${{ inputs.version }}
+
+# Component releases are built and published here, in the code repository.
+# The channel repository only pulls the release assets for online updates.
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: '要发布的组件（例如 aether-xray）'
+        required: true
+        type: string
+      version:
+        description: '组件版本（例如 26.11.9-r1）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      components: ${{ inputs.component }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      COMPONENT: ${{ inputs.component }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate the component and version
+        run: |
+          set -euo pipefail
+          case "$COMPONENT" in
+            aether-xray) short=xray ;;
+            aether-dns) short=dns ;;
+            chinadns-ng) short=chinadns-ng ;;
+            *) echo "::error::unsupported component $COMPONENT"; exit 1 ;;
+          esac
+          echo "$VERSION" | grep -qxE '[0-9][0-9A-Za-z.+~-]*-r[0-9]+' || { echo '::error::version must be <ver>-rN'; exit 1; }
+          makefile="$COMPONENT/Makefile"
+          [ -f "$makefile" ] || { echo "::error::missing $makefile"; exit 1; }
+          want=$(sed -n 's/^PKG_VERSION:=//p' "$makefile")-r$(sed -n 's/^PKG_RELEASE:=//p' "$makefile")
+          [ "$want" = "$VERSION" ] || { echo "::error::$makefile says $want, input says $VERSION"; exit 1; }
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+        id: validate
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Collect the component assets and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          shopt -s nullglob
+          files=(artifacts/aetherproxy/${COMPONENT}_*.ipk artifacts/aetherproxy/${COMPONENT}-*.apk)
+          [ ${#files[@]} -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
+          cp "${files[@]}" assets/
+          ( cd assets && sha256sum * > SHA256SUMS )
+          cat assets/SHA256SUMS
+
+      - name: Create the component release
+        env:
+          SHORT: ${{ steps.validate.outputs.short }}
+        run: |
+          set -euo pipefail
+          tag="${SHORT}-v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::release $tag already exists"; exit 1
+          fi
+          gh release create "$tag" assets/* --target "$GITHUB_SHA" \
+            --title "${COMPONENT} ${VERSION}" \
+            --notes "${COMPONENT} ${VERSION}，由 aether-proxy 仓库构建；通道只拉取这里的产物做页面更新。"
+          echo "published $tag"
