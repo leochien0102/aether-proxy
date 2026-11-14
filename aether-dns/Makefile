@@ -27,6 +27,9 @@ PKG_SOURCE_URL:=https://github.com/leochien0102/aether-dns/releases/download/v$(
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_MAINTAINER:=leochien0102 <leochien0102@users.noreply.github.com>
 
+# The upstream binary is statically linked: no SDK-default libc dependency.
+PKG_DEFAULT_DEPENDS:=
+
 include $(INCLUDE_DIR)/package.mk
 
 # Upstream ships it stripped and statically linked.
