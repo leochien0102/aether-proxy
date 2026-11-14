@@ -63,7 +63,8 @@ def validate_directories(root):
 		if not directory.is_dir() or directory.is_symlink():
 			reject('Invalid artifact directory: ' + name)
 		files = [p for p in directory.rglob('*') if p.suffix in ('.ipk', '.apk')]
-		if len(files) != 5 or any(p.suffix != '.' + ext or not p.is_file() or p.is_symlink() for p in files):
+		# One artifact per built package: proxy, luci, i18n, xray, chinadns-ng, aether-dns.
+		if len(files) != 6 or any(p.suffix != '.' + ext or not p.is_file() or p.is_symlink() for p in files):
 			reject('Missing/extra package files: ' + name)
 
 

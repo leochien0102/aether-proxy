@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGES = ('aether-proxy', 'luci-app-aether-proxy',
-            'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng')
+            'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng', 'aether-dns')
 
 
 class BuildWorkflow(unittest.TestCase):

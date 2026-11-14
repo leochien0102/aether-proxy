@@ -82,7 +82,8 @@ def main():
 		raise SystemExit('RC tag/version mismatch')
 	if subprocess.check_output(['git', 'rev-parse', tag + '^{commit}'], text=True).strip() != commit:
 		raise SystemExit('RC tag/commit mismatch')
-	names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng']
+	names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng',
+		'aether-dns']
 	out = Path('rc-assets')
 	out.mkdir()
 	entries = []

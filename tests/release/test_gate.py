@@ -105,7 +105,7 @@ class StagingTests(unittest.TestCase):
 		self.addCleanup(self.temp.cleanup)
 		self.root = Path(self.temp.name)
 		self.names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn',
-			'aether-xray', 'chinadns-ng']
+			'aether-xray', 'chinadns-ng', 'aether-dns']
 		# Git is only used to resolve the tag in stage.py; no real repository or release is created.
 		(self.root / 'fake-bin').mkdir()
 		git = self.root / 'fake-bin/git'
@@ -139,14 +139,14 @@ class StagingTests(unittest.TestCase):
 		out = self.root / 'rc-assets'
 		manifest = json.loads((out / 'rc-manifest.json').read_text())
 		self.assertEqual(manifest['commit'], SHA)
-		self.assertEqual(len(manifest['assets']), 20)
+		self.assertEqual(len(manifest['assets']), 24)
 		for entry in manifest['assets']:
 			data = (out / entry['asset']).read_bytes()
 			self.assertEqual(entry['sha256'], hashlib.sha256(data).hexdigest())
 		for line in (out / 'SHA256SUMS').read_text().splitlines():
 			digest, filename = line.split('  ')
 			self.assertEqual(digest, hashlib.sha256((out / filename).read_bytes()).hexdigest())
-		self.assertEqual(len(list(out.iterdir())), 22)
+		self.assertEqual(len(list(out.iterdir())), 26)
 
 	def test_reviewed_bridge_is_preserved(self):
 		bridge = self.root / 'bridges/compatibility.json'
