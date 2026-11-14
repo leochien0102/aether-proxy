@@ -24,10 +24,42 @@ on:
       - 'tests/ci/smoke*'
       - 'tests/fixtures/sample/**'
   workflow_dispatch:
+    inputs:
+      components:
+        description: '只构建这些包（空格分隔）；留空构建全部'
+        required: false
+        default: ''
   workflow_call:
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.select.outputs.packages }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          INPUT: ${{ inputs.components }}
+          BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          if [ -n "${INPUT:-}" ]; then
+            packages="$INPUT"
+          elif [ "${GITHUB_EVENT_NAME}" = push ]; then
+            packages=$(sh tools/ci/changed-components.sh "$BEFORE" "$SHA")
+          else
+            packages="aether-proxy luci-app-aether-proxy aether-xray chinadns-ng aether-dns"
+          fi
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+          echo "selected packages: ${packages:-<none>}"
+
   packages:
+    needs: detect
+    if: needs.detect.outputs.packages != ''
     runs-on: ubuntu-latest
     # A normal build takes 10-15 minutes, but a slow OpenWrt mirror once took 21 minutes for the
     # SDK download alone; a hung step otherwise runs to GitHub's 6 h limit.
@@ -62,7 +94,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: aetherproxy
-          PACKAGES: aether-proxy luci-app-aether-proxy aether-xray chinadns-ng aether-dns
+          PACKAGES: ${{ needs.detect.outputs.packages }}
 
       - name: Verify package artifacts
         env:
@@ -71,7 +103,9 @@ jobs:
         run: |
           set -eu
           package_dir="bin/packages/$PACKAGE_ARCH/aetherproxy"
-          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray chinadns-ng aether-dns; do
+          names="$PACKAGES"
+          case " $PACKAGES " in *" luci-app-aether-proxy "*) names="$names luci-i18n-aether-proxy-zh-cn" ;; esac
+          for package in $names; do
             if [ "$PACKAGE_EXT" = ipk ]; then
               pattern="$package"_*.ipk
             else
@@ -101,7 +135,8 @@ jobs:
 
   # T9.3 / docs/11: package installation and pure CLI rendering only, not a dataplane test.
   smoke:
-    needs: packages
+    needs: [detect, packages]
+    if: contains(format(' {0} ', needs.detect.outputs.packages), ' aether-proxy ')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     name: smoke (${{ matrix.name }})
