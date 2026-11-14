@@ -69,8 +69,13 @@ jobs:
             arch=${dir##*-}
             for file in "$dir"/${COMPONENT}_*.ipk "$dir"/${COMPONENT}-*.apk; do
               [ -e "$file" ] || continue
-              # apk names carry no architecture; prefix every asset so names stay unique.
-              cp "$file" "assets/${arch}--${file##*/}"
+              base=${file##*/}
+              case "$base" in
+                # ipk already ends with _<arch>; apk carries no architecture, so add it once.
+                *.ipk) name=$base ;;
+                *.apk) name="${base%.apk}_${arch}.apk" ;;
+              esac
+              cp "$file" "assets/$name"
             done
           done
           [ "$(ls assets | wc -l)" -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
