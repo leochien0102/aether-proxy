@@ -2817,3 +2817,8 @@ msgstr "只影响 TCP；UDP 始终按原策略代理。"
 msgctxt "aether-proxy"
 msgid "Current port scope is “%s”; switch to “%s” to take effect."
 msgstr "当前端口范围为『%s』，切换到『%s』后生效。"
+
+msgctxt "aether-proxy"
+msgid "The binary reports a different version than the installed package."
+msgstr "二进制版本与已安装包不一致。"
+

@@ -9,6 +9,7 @@ import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as check from 'aetherproxy.cmd.check';
 import * as component_version from 'aetherproxy.component_version';
+import * as package_db from 'aetherproxy.package_db';
 import * as pipeline from 'aetherproxy.pipeline';
 
 function usage(args, detail) {
@@ -43,6 +44,24 @@ export function run(args) {
 		let version = found == null ? null : read_component_version(found.path,
 			name == C.XRAY_COMPONENT ? 'version' : '-V', C.COMPONENTS_TIMEOUT_SECS);
 		components[name] = { found: found != null, path: found?.path ?? null, version };
+	}
+	// M4-19: enrich before aliasing so the legacy DNS alias is a faithful copy.
+	let installed = package_db.read();
+	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+		let entry = components[name];
+		if (type(entry) != 'object')
+			continue;
+		let engine = component_id.engine(entry.path ?? null);
+		let pkg = name == C.XRAY_COMPONENT ? 'aether-xray'
+			: engine == 'aether-dns' ? 'aether-dns'
+			: engine == 'chinadns-ng' ? 'chinadns-ng' : null;
+		let package_version = pkg == null ? null : component_version.normalize_release(installed[pkg]);
+		let banner = entry.version ?? null;
+		entry.package = pkg;
+		entry.installed = package_version;
+		entry.banner = banner;
+		entry.version = package_version ?? component_version.normalize_release(banner);
+		entry.mismatch = component_version.version_mismatch(package_version, banner);
 	}
 	components = component_id.with_aliases(components);
 	// Render logical components only; the legacy alias is a JSON compatibility detail.

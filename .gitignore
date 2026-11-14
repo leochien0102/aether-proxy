@@ -3,3 +3,7 @@ tests/host/src/
 
 # Local offline cache for tools/data/build.py --cache
 .cache/
+
+# Python bytecode from the test scripts
+__pycache__/
+*.pyc

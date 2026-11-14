@@ -16,6 +16,15 @@ ENTRY = ROOT / 'aether-proxy/src/aether-proxy'
 PREFIX = ROOT / 'tests/host/prefix'
 
 
+CORE = ('found', 'path', 'version', 'engine')
+
+def core(entry):
+    return {key: entry[key] for key in CORE if key in entry}
+
+def project(reply):
+    return {'ok': reply['ok'],
+            'components': {name: core(value) for name, value in reply['components'].items()}}
+
 def check(name, condition):
     if not condition:
         raise AssertionError(name)
@@ -75,13 +84,18 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
     xray = binary('xray', '[ "$1" = version ] || exit 8\nprintf "Xray 26.9.30 extra\\nignored line\\n"')
     dns = binary('chinadns-ng', '[ "$1" = -V ] || exit 9\nprintf "chinadns-ng 2025.06.20 extra\\n"')
     both = invoke('--bin-dir', str(binaries))
-    check('both found with exact paths and parsed versions', both == {
+    check('both found with exact paths and parsed versions', project(both) == {
         'ok': True, 'components': {
             'xray': {'found': True, 'path': xray, 'version': '26.9.30'},
             'dns': {'found': True, 'path': dns, 'version': '2025.06.20', 'engine': 'chinadns-ng'},
             'chinadns-ng': {'found': True, 'path': dns, 'version': '2025.06.20', 'engine': 'chinadns-ng'}
         }
     })
+    check('M4-19 installed/banner/mismatch fields on host: installed unknown, banner kept',
+          both['components']['xray']['package'] == 'aether-xray'
+          and both['components']['xray']['installed'] is None
+          and both['components']['xray']['banner'] == '26.9.30'
+          and both['components']['xray']['mismatch'] is False)
     check('M4-02 S1 three keys and deep-equal DNS aliases',
           set(both['components']) == {'xray', 'dns', 'chinadns-ng'}
           and both['components']['dns'] == both['components']['chinadns-ng'])
@@ -119,40 +133,40 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
             identity.write_text(original)
 
     check('T10.73 xray alone remains a read-only fallback',
-          invoke()['components']['xray'] == both['components']['xray'])
+          core(invoke()['components']['xray']) == core(both['components']['xray']))
     check('missing configuration uses default component paths', invoke() == both)
     (config / 'aetherproxy').write_text('not a valid UCI file\n')
     check('unreadable configuration uses default component paths', invoke() == both)
     (config / 'aetherproxy').unlink()
     (binaries / 'chinadns-ng').unlink()
     missing = invoke('--bin-dir', str(binaries))['components']['chinadns-ng']
-    check('missing chinadns-ng has null path/version', missing == {
+    check('missing chinadns-ng has null path/version', core(missing) == {
         'found': False, 'path': None, 'version': None, 'engine': None
     })
     absent = invoke('--bin-dir', str(binaries))
     check('M4-02 S5 missing aliases equal with ok true and exit zero',
-          absent['ok'] is True and absent['components']['dns'] == missing)
+          absent['ok'] is True and core(absent['components']['dns']) == core(missing))
 
     configured = base / 'configured-xray'
     configured.write_text('#!/bin/sh\nprintf "Xray configured\\n"\n')
     configured.chmod(0o755)
     (config / 'aetherproxy').write_text(f"config main 'main'\n\toption xray_bin '{configured}'\n")
-    check('configured executable takes precedence over PATH', invoke()['components']['xray'] == {
+    check('configured executable takes precedence over PATH', core(invoke()['components']['xray']) == {
         'found': True, 'path': str(configured), 'version': 'configured'
     })
     configured.chmod(0o644)
-    check('configured non-executable is not found despite PATH binary', invoke()['components']['xray'] == {
+    check('configured non-executable is not found despite PATH binary', core(invoke()['components']['xray']) == {
         'found': False, 'path': None, 'version': None
     })
     (config / 'aetherproxy').unlink()
 
     preferred = binary('aether-xray', 'printf "Xray 26.10.21 extra\\n"')
     check('T10.73 both binaries prefer aether-xray path and base version',
-          invoke('--bin-dir', str(binaries))['components']['xray'] == {
+          core(invoke('--bin-dir', str(binaries))['components']['xray']) == {
               'found': True, 'path': preferred, 'version': '26.10.21'
           })
     check('T10.73 absolute owned path precedes a PATH fallback',
-          invoke()['components']['xray'] == {
+          core(invoke()['components']['xray']) == {
               'found': True, 'path': preferred, 'version': '26.10.21'
           })
     (config / 'aetherproxy').write_text(f"config main 'main'\n\toption xray_bin '{configured}'\n")
@@ -166,18 +180,18 @@ with tempfile.TemporaryDirectory(prefix='.components-', dir=ROOT / 'tests/cli') 
     binary('aether-xray', 'exec sleep 30')
     started = time.monotonic()
     timed = invoke('--bin-dir', str(binaries))['components']['xray']
-    check('T10.73 owned binary timeout preserves actual path and null version', timed == {
+    check('T10.73 owned binary timeout preserves actual path and null version', core(timed) == {
         'found': True, 'path': preferred, 'version': None
     } and 2.5 <= time.monotonic() - started < 5.5)
     (binaries / 'aether-xray').unlink()
     check('T10.73 neither binary has null path/version',
-          invoke('--bin-dir', str(binaries))['components']['xray'] == {
+          core(invoke('--bin-dir', str(binaries))['components']['xray']) == {
               'found': False, 'path': None, 'version': None
           })
 
     binary('xray', 'printf "Xray invalid\\n"\nprintf "failure\\n" >&2\nexit 7')
     failed = invoke('--bin-dir', str(binaries))['components']['xray']
-    check('nonzero version exit preserves found/path with null version', failed == {
+    check('nonzero version exit preserves found/path with null version', core(failed) == {
         'found': True, 'path': xray, 'version': None
     })
     for output in ('', 'unparseable'):

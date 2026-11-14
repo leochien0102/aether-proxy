@@ -26,7 +26,7 @@ init.d / hotplug / daemon ──────────────────
 | `check` | 校验配置并完成全部渲染，不改动系统状态。渲染到**自己独占的临时目录** `<run-dir>/check.<pid>`，结束时删除；`<run-dir>/staging` 只归 daemon 的重载使用（2026-10-19 真机发现：init 的 reload 与 daemon 并发写同一个 staging，互相删文件，backlog B10） | 否 |
 | `cleanup [--wait <秒>]` | 幂等清理。`--wait`：锁被占用时每秒重试、最多等这么久（0–120，默认 0 即不等，init 的 `service_stopped` 用 35，04「启停」） | 否 |
 | `status` | 人读格式与 `--json` 都包含 `mode`（2026-10-23，r13 窗口脚本按人读格式读不到）；输出 `state.json`（含 `wan_dns`：已应用的观测值，`status` 不重新查询 ubus，见 04「状态」），并附带 `probe`（`probe.json` 摘要：`{ "at", "total", "reachable" }`，没有就为 `null`）、`updates_available`（`updates.json` 内容；缓存过期时为 `null`，见 [08](08-updates.md)「检查」）和 `notices`（见「概览页」） | 否 |
-| `components` | 现场查找 Xray、DNS 引擎并读取版本（M4-02：JSON 双写 `dns` 与兼容别名 `chinadns-ng`）（不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
+| `components` | 现场查找 Xray、DNS 引擎并读取版本（M4-02：JSON 双写 `dns` 与兼容别名 `chinadns-ng`）。M4-19：`version` 改为**已安装包版本**（LEDE 的 `<ver>-<n>` 归一为 `<ver>-r<n>`），并给出 `installed`、`banner`（二进制自报核心）与 `mismatch`；概览页显示已装版本，核心不一致时显示告警。不依赖服务是否在运行；见下方「概览页真机修正」，2026-10-20，T10.4） | 否 |
 | `render <xray\|nft\|chinadns\|dnsmasq>` | 把渲染结果输出到 stdout（排障、测试用） | 否 |
 | `probe nodes [<id>...]` | 节点 TCP 可达性检测 | 是 |
 | `probe results` | 读取最近的节点检测结果（[07](07-probe.md)） | 否 |
