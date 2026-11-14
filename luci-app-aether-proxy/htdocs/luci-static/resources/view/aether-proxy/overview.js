@@ -1042,7 +1042,11 @@ return view.extend({
 		for (const c of components)
 			rows.push(E('tr', {}, [
 				E('td', {}, [ c.name ]),
-				E('td', {}, [ c.version ?? '–' ]),
+				E('td', {}, [ c.version ?? '–',
+					c.mismatch ? E('span', {
+						style: 'color:var(--error-color); margin-left:0.5em',
+						title: _('The binary reports a different version than the installed package.', 'aether-proxy')
+					}, '⚠') : '' ]),
 				E('td', {}, [ c.path ?? '–' ])
 			]));
 

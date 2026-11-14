@@ -47,3 +47,27 @@ export function parse_version(text) {
 	return length(fields) >= 2 ? fields[1] : null;
 };
 
+// M4-19: display the canonical "<core>-r<rev>". LEDE renders the package release as
+// "<core>-<rev>", the SDK as "<core>-r<rev>"; both are the same revision.
+export function normalize_release(version) {
+	if (type(version) != 'string' || version == '')
+		return null;
+	let matched = match(version, /^(.+?)-r?([0-9]+)$/);
+	return matched == null ? version : `${matched[1]}-r${matched[2]}`;
+};
+
+// The dotted core, without the packaging revision; used to compare banner and package.
+export function release_core(version) {
+	if (type(version) != 'string' || version == '')
+		return null;
+	return replace(version, /-r?[0-9]+$/, '');
+};
+
+// A mismatch means the installed package version and the binary banner disagree on the core.
+// Missing data on either side is never a mismatch: it is "unknown", not "consistent".
+export function version_mismatch(installed, banner) {
+	let a = release_core(installed);
+	let b = release_core(banner);
+	return a != null && b != null && a != b;
+};
+

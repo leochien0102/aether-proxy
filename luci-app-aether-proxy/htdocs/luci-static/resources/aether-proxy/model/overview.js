@@ -322,12 +322,17 @@ function component_rows(version, inventory) {
 		const entries = inventory.components;
 		const c = id == 'dns' && !Object.prototype.hasOwnProperty.call(entries ?? {}, 'dns')
 			? entries?.['chinadns-ng'] : entries?.[id];
-		components.push({
+		const row = {
 			name,
-			version: c?.found === true && c.version != null ? String(c.version) : null,
+			// M4-19: the installed package is authoritative; the banner is the cross-check.
+			version: c?.installed ?? (c?.found === true && c.version != null ? String(c.version) : null),
 			path: c?.found === false || (id == 'dns' && !c) ? _('Not found', 'aether-proxy')
 				: (c?.found === true && c.path != null ? String(c.path) : null)
-		});
+		};
+		// Only present on a real disagreement, so the ordinary row shape stays unchanged.
+		if (c?.mismatch === true)
+			row.mismatch = true;
+		components.push(row);
 	}
 	return components;
 }
