@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - 'aether-dns/**'
       - 'aether-xray/**'
       - 'chinadns-ng/**'
       - 'aether-proxy/**'
@@ -14,6 +15,7 @@ on:
       - 'tests/fixtures/sample/**'
   pull_request:
     paths:
+      - 'aether-dns/**'
       - 'aether-xray/**'
       - 'chinadns-ng/**'
       - 'aether-proxy/**'
@@ -60,7 +62,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}
           FEEDNAME: aetherproxy
-          PACKAGES: aether-proxy luci-app-aether-proxy aether-xray chinadns-ng
+          PACKAGES: aether-proxy luci-app-aether-proxy aether-xray chinadns-ng aether-dns
 
       - name: Verify package artifacts
         env:
@@ -69,7 +71,7 @@ jobs:
         run: |
           set -eu
           package_dir="bin/packages/$PACKAGE_ARCH/aetherproxy"
-          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray chinadns-ng; do
+          for package in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray chinadns-ng aether-dns; do
             if [ "$PACKAGE_EXT" = ipk ]; then
               pattern="$package"_*.ipk
             else

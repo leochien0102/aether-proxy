@@ -225,7 +225,7 @@ rc-manifest 的 `target_tag` 单独绑定。release 后缀必须精确匹配（`
 发布 CI 在**单独的发布仓库** `leochien0102/aether-proxy-channel`（见下方「发布仓库」）。生成发布目录与清单的代码在 aether-proxy 仓库的 `tools/channel/`，发布仓库的常规 workflow 负责复用应用门禁产物、运行它、签名、发布；编包仅在应用门禁发生：
 
 1. **软件包**：应用 `build.yml` 用 OpenWrt 官方 SDK 一次编译，矩阵为「SDK 版本 × 目标」——24.10.8（ipk）与 25.12.5（apk）各编 `aarch64_generic`、`x86_64`。
-   使用应用仓库的 Makefile，产出 `aether-xray`、`chinadns-ng`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。四组产物经六组 smoke 后供 RC 复用；channel 常规 promote 不重新编包。
+   使用应用仓库的 Makefile，产出 `aether-xray`、`chinadns-ng`、`aether-dns`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`。四组产物经六组 smoke 后供 RC 复用；channel 常规 promote 不重新编包。
 2. **Xray 版本闸门**：定时任务发现上游有新版本（含 prerelease）时，在发布仓库开一个改 Makefile 版本与 `PKG_HASH` 的 PR；PR 的检查用新版本对 aether-proxy 仓库全部 golden 配置跑 `xray run -test`（用官方 linux-64 二进制或本次编译出的 x86_64 包中的二进制）。
    **检查通过、仓库所有者合并后**才进入发布。PR 上的检查拿不到签名私钥，也不发布。
 3. **数据**：每天拉取上游 → 转换 → 合理性检查 → 与上一版比较，没有变化就不发布。
@@ -341,7 +341,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
   - `data`：每天 04:00（北京时间）只发布数据，不编译包；`build.py` 不带 `--packages` 时沿用已发布清单的软件包条目。
   - `xray-bump`：每天检查上游最新版本（含 prerelease），有更新就改 `PKG_VERSION`/`PKG_HASH`（`go.mod` 要求更高时同时改 Go 工具链）并开 PR。
     用 `GITHUB_TOKEN` 开的 PR 不会触发 workflow，所以接着在该分支上 `workflow_dispatch` 一次 `packages`（非 `main` 分支不发布）。
-- **`aether-dns` 由 DNS 仓库构建**（2026-11-11，A 方案）：`aether-dns` 的 ipk/apk 由
+- **`aether-dns` 包定义单源**（M4-20）：固件 feed 与通道构建统一从 proxy 仓库的 `aether-dns/Makefile` 取包定义，按架构校验并打包 DNS Release 的裸二进制；实际 feed 接入及通道 staging / `AETHER_DNS_*` pin 的切换由后续任务完成，本卡不改。
+- **既有通道 staging（切换前）**（2026-11-11，A 方案）：`aether-dns` 的 ipk/apk 由
   `leochien0102/aether-dns` 的 CI 在 tag 上产出并发布；channel 只在 publish 阶段按
   `AETHER_DNS_RELEASE` 与 `AETHER_DNS_SHA256SUMS` 下载、校验并 stage 到 `packages/<arch>/channel/`，
   再交给 `build.py` 生成清单。channel **不构建**它；sha256、`Provides: dns-engine` 或格式不符都会中止发布。
