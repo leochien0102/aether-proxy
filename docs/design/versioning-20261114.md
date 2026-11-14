@@ -79,3 +79,23 @@
   已发布的 ipk（按架构校验 sha256）后打包；同样不引入 tarball 资产。
 - **T4 同一版本的三处字符串一致**：代码仓库 Release 资产名、feeds Makefile 里的版本、通道清单里的版本，
   都是 `<核心>-r<修订>`。
+
+## 7. 发布单元（2026-11-14，解耦）
+
+版本列车按**单元**划分，一个单元的变更只发布该单元，不拉着其它单元一起升版：
+
+| 单元 | 组成 | 版本 | 发布方式 |
+|---|---|---|---|
+| **应用** | aether-proxy + luci-app-aether-proxy + luci-i18n-aether-proxy-zh-cn | `1.x.y-rN`（三者同步） | 一次推送 → 门禁 `build` → RC（复用产物）→ `promote` → 正式 tag → `release-assets` |
+| **xray 核心** | aether-xray | 上游版本 `26.x.y-rN` | 只改 `aether-xray/Makefile` → 门禁 `build` → 更新通道 `AETHER_PROXY_REF` → `packages` 直发。**不升应用版本、不打应用 tag** |
+| **DNS 引擎** | aether-dns | DNS 仓库版本 | DNS 仓库发布 → 通道构建（proxy 的 `aether-dns/Makefile`）→ 清单更新；固件 feed 同步 |
+
+要点：
+
+- **应用单元**的三件套必须同版本、同一次发布（页面与后端一起换）；
+- **xray** 只受上游版本驱动；bump 提交不改应用版本，通道直发只更新清单里的 `aether-xray` 条目
+  （其余包版本不变，`build.py` 沿用已发布字节）；
+- **DNS** 本来就独立发布（DNS 仓库），proxy 只负责打包与清单；
+- 清单是三个单元的**组合**，各自维护 `current`/`previous`；
+- 已知限制：RC/promote 的 tag 绑定应用版本，因此**组件直发暂不走 RC**；若将来要让组件也走 promote，
+  需要按单元设计 tag（如 `xray-v26.11.9-r1-rc1`），这是后续工作。

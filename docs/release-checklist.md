@@ -89,3 +89,16 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 
 **回退**：只允许显式决定——更新通道 `AETHER_PROXY_REF` 走直发 `packages`（会再构建一次），并在
 `docs/validation/` 里写明原因；不要静默回退。
+
+## 组件发布（与应用解耦）
+
+**xray 核心**（`aether-xray`）只受上游版本驱动，不升应用版本：
+
+- [ ] 只改 `aether-xray/Makefile` 的 `PKG_VERSION` 与源码 `PKG_HASH`（必要时 `GO_TOOLCHAIN_VERSION`）；
+- [ ] 推送后等门禁 `build` 成功（含 smoke 的 `xray run -test`）；
+- [ ] 更新通道 `AETHER_PROXY_REF` 到该提交，推送 → `packages` 直发；
+- [ ] 核对清单：`aether-xray` 版本/哈希已更新、`previous` 正确，**应用版本不变**；
+- [ ] 设备在更新页只会看到 `aether-xray` 有更新。
+
+**DNS 引擎**（`aether-dns`）：由 DNS 仓库发布；proxy 的 `aether-dns/Makefile` 按架构下载裸二进制，
+通道 `packages` 重新构建后清单更新，同样不升应用版本。
