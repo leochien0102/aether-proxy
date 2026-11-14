@@ -65,10 +65,16 @@ jobs:
           set -euo pipefail
           mkdir -p assets
           shopt -s nullglob
-          files=(artifacts/${COMPONENT}_*.ipk artifacts/${COMPONENT}-*.apk)
-          [ ${#files[@]} -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
-          cp "${files[@]}" assets/
-          ( cd assets && sha256sum -- *.ipk *.apk > SHA256SUMS )
+          for dir in artifacts/packages-*; do
+            arch=${dir##*-}
+            for file in "$dir"/${COMPONENT}_*.ipk "$dir"/${COMPONENT}-*.apk; do
+              [ -e "$file" ] || continue
+              # apk names carry no architecture; prefix every asset so names stay unique.
+              cp "$file" "assets/${arch}--${file##*/}"
+            done
+          done
+          [ "$(ls assets | wc -l)" -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
+          ( cd assets && sha256sum -- * > SHA256SUMS )
           cat assets/SHA256SUMS
 
       - name: Create the component release
