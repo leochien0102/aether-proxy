@@ -122,7 +122,12 @@ bad_subj=$(git log --format=%s "$BASE"..HEAD | grep -vE '^[^[:alnum:][:space:]]+
 
 reports=$(printf '%s\n' "$changed" | grep -E '^reports/[^/]+\.md$' || true)
 if [ -z "$reports" ]; then
-	fail "no reports/<card>.md in the branch (docs/tasks/README.md)"
+	# Reports belong to task branches; a merged main only carries the bookkeeping.
+	if [ "$(git branch --show-current)" = "main" ]; then
+		warn "on main: no task report is expected"
+	else
+		fail "no reports/<card>.md in the branch (docs/tasks/README.md)"
+	fi
 else
 	pass "report present: $reports"
 fi
