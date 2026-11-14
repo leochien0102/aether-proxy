@@ -15,7 +15,7 @@ const { promisify } = require('node:util');
 const { loadModule, createRpc, element } = require('../luci/loader');
 const exec = promisify(execFile);
 const ROOT = path.resolve(__dirname, '../..');
-const FROZEN = path.join(__dirname, 'fixtures/1.1.2-r1');
+const FROZEN = path.join(__dirname, 'fixtures/1.1.3-r1');
 const RES = path.join(FROZEN, 'htdocs/luci-static/resources');
 const PLUGIN = path.join(FROZEN, 'root/usr/share/rpcd/ucode/aetherproxy.uc');
 const UCODE = path.join(ROOT, 'tests/host/ucode');
@@ -29,7 +29,7 @@ const CURRENT = { 'aether-dns': ENGINE.version, 'xray-core': '99.1-r9', 'aether-
 // The backend is already new: the previous release's page must update itself.
 const INSTALLED = { 'aether-dns': ENGINE.version, 'xray-core': '99.1-r8', 'aether-xray': '26.9.30-r1',
 	'aether-proxy': CURRENT['aether-proxy'],
-	'luci-app-aether-proxy': '1.1.2-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
+	'luci-app-aether-proxy': '1.1.3-r1', 'luci-i18n-aether-proxy-zh-cn': '26.299.00000~abcdef0' };
 
 globalThis._ = text => text;
 globalThis.E = element;
