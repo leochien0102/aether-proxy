@@ -5,7 +5,25 @@ on:
   # workflow reuses that commit, so re-running the suites there adds time for nothing.
   push:
     branches: [main]
+    paths:
+      - 'aether-proxy/**'
+      - 'luci-app-aether-proxy/**'
+      - 'chinadns-ng/**'
+      - 'aether-xray/**'
+      - 'aether-dns/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/test.yml'
   pull_request:
+    paths:
+      - 'aether-proxy/**'
+      - 'luci-app-aether-proxy/**'
+      - 'chinadns-ng/**'
+      - 'aether-xray/**'
+      - 'aether-dns/**'
+      - 'tests/**'
+      - 'tools/**'
+      - '.github/workflows/test.yml'
 
 jobs:
   host-tests:
