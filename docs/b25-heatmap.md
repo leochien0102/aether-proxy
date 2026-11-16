@@ -138,26 +138,41 @@ T16.2 的 `stats_quota` 按复审决定移到 T16.3，与前端调用方一起�
 
 ## 7. UI
 
-（T12.7 返工后的最终口径；实现细节见 docs/10「B25：概览页使用热力图」。）
+额度版 UI（T16.3，实验集成分支 `experiment/b25-heatmap-v2`）以
+[额度版设计](design/b25-quota-heatmap-20261116.md) §4–§8 为准，不进 main。
 
-- 位置：概览页提示区（notice）之后、「运行状态」之前；关闭时完全不渲染、零 API。
-- 无卡片背景、无「使用热力图」标题、无星期表头；网格直接渲染在容器里。
-- CSS grid：**3 行 × 30 列 = 90 格**的连续日期网格，row-major——最近 90 个本地日期
-  （含今天），无前导空格，今天恒在右下角（index 89），与星期几无关。
-- 每格：日期、总代理流量（tx+rx）、健康比例 `healthy/observed`。
-- 容器 `.ap-heat-wrap` 宽 75%、水平居中（`margin-inline: auto`），与「运行状态」卡之间
-  保留 `margin-bottom: 1.25em` 间距；关闭时区域为空 div，`:empty { display: none }`
-  让它完全不占位。
-- 网格 30 列等宽铺满容器（`repeat(30, minmax(0, 1fr))`、`gap: 3px`、`width: 100%`）；
-  每格圆角正方形（`aspect-ratio: 1`、`border-radius: 20%`，桌面约 25px 一格），
-  3 行总高约 80–100px，不把页面顶出竖向滚动。
-- 颜色：对 `log1p(tx+rx)` 做 0–1 归一化，映射 5 档；0 流量为浅色。
-- 健康度：格子边框/角标表示 `healthy/observed`；`observed=0` 用中性色，不画成故障。
-- tooltip：日期、代理流量（自动单位）、健康占比、观测时长；空白格无 tooltip。
-- 无数据的日子空白中性色，不补 0、不回填、不缩短窗口；空历史也渲染完整 90 格中性网格；
-  读取失败保留最后网格并在上方显示一句错误。
-- 窄屏：格子随容器等比压缩，外层 `overflow-x: auto` 兜底横向滚动；不依赖外部图表库。
-- i18n：所有文案进入 `po/zh_Hans`；只显示日期/数字/流量，不显示节点或域名。
+- **位置与结构**：「流量与连接」块的 h3 之后为左右两列（flex，gap 1.5em，align-items:center，
+  两列各 flex:1 1 50%）。左列依次为 caption（近 90 天 + 月额度下拉）、写入错误/自定义输入、
+  网格、图例、读取错误；右列保留原有上传/下载表格及代理/总连接行。宽度 <720px 转单列，热力图在上。
+  删除 notice 之后的旧独立容器，其余概览页区域顺序不变。
+- **开关与读取**：只接受 UCI `stats.heatmap_enabled == '1'`。关闭时不挂载任何热力图元素，
+  不调用 `stats_history`；流量块仍为原有 h3 + table + 连接行。开启后随每次概览刷新在
+  status/stats/events 之后读取历史，取消旧 10 分钟 TTL；同一时刻只发一个历史请求。
+- **日期网格**：5 行 × 18 列 = 90 格，row-major，无前导空格，不按星期对齐；今天为 index 89。
+  `repeat(18, minmax(0, 1fr))`、gap 3px、width 100%；格子 aspect-ratio:1、border-radius:20%。
+  左列 overflow-x:auto 兜底；不写死像素宽。无记录为 void 色、无 title；记录为零为档 0、有 title。
+- **颜色**：有额度时 r=(tx+rx)/(quota.bytes/该格日期所在月天数)，以数值日期构造器
+  `new Date(y,m,0).getDate()` 得天数，不用 Date.parse。0 流量档 0；正数按
+  `<0.25 / <0.5 / <0.75 / <1 / ≥1` 分档 1–5（0.25→2、1→5）。
+  无额度按 `ceil(4*log1p(tx+rx)/log1p(窗口最大流量))` 回退四档绿阶，全零窗口为档 0。
+  配色使用设计 §4 的 CSS 变量，`prefers-color-scheme: dark` 覆盖；健康度不再改变边框或角标。
+- **额度交互**：不限 / 50 GB / 100 GB / 200 GB / 500 GB / 1 TB / 自定义…。
+  自定义为整数 GB（1–100000）+ 确定；1 GB=10^9 字节。不限调用 `stats_quota {action:'clear'}`，
+  其余调用 `{action:'set',bytes}`。初始额度匹配预设则选预设，否则填自定义；null 为不限。
+  成功只重着色，不刷新页面、不写 UCI、不重载服务；失败在 caption 下方显示
+  「保存额度失败（code）」，保留当前选择/输入与原配色，不弹通知。旧的在途历史回复不得覆盖刚保存的额度。
+- **持久 DOM**：5 秒轮询不重建 caption、下拉、自定义输入、图例、网格或实时表格；
+  更新表格数值文本及现有格子的 class/title。不会重设正在编辑的选择/输入。
+- **tooltip**：日期、代理流量（1024 进位自动单位）、健康占比（百分比及 healthy/observed 秒）、
+  观测时长、有额度时的占日均额度百分比，共四/五行。observed=0 显示「—」，仍按流量着色；
+  超额比例不裁剪。动态内容仅用文本节点和 title，不传 HTML。
+- **图例与失败**：一行六块，无记录 + 五档；额度模式标 0–25% / 25–50% / 50–75% /
+  75–100% / ≥100%，回退模式标「少…多」（记录零流量 + 四阶绿）。窄屏可换行。
+  历史读取失败保留最后网格，在图例下显示错误；连续失败只 console.warn 一次，空历史仍为完整中性网格。
+- **RPC**：`common.js` 声明 `stats_quota(action,bytes)`，ACL 属 write。rpcd 校验 action 为
+  show/set/clear；set 的 bytes 为整数 1 GB–100000 GB，以 int64 policy 接收大额度。
+  show → 裸 `stats quota`（没有 show 子命令），set/clear → 对应 CLI；JSON 包括错误原样返回。
+  参数业务逻辑仍只在 CLI；不新增测试白名单。
 
 ## 8. 失败/边界
 

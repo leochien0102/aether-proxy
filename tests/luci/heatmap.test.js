@@ -1,20 +1,8 @@
 'use strict';
 
-/* B25 usage heatmap tests (docs/tasks/m12.md T12.6/T12.7, docs/b25-heatmap.md §7,
- * docs/10 「B25：概览页使用热力图」).
- *
- * The model scenarios exercise aether-proxy/model/overview.js: the switch
- * interpretation, the stats_history reply mapping, the continuous 3×30 date
- * grid (90 row-major cells = the last 90 days ending today, no leading blank,
- * blank gaps, no future dates), the log1p colour levels, the health tiers and
- * the text-only tooltip. The view scenarios load
- * view/aether-proxy/overview.js with the shared doubles: the switch off never
- * calls stats_history and renders nothing, the switch on fetches through
- * fetchRefresh only (TTL-gated), the bare grid (no section box, no title, no
- * weekday header) sits between the notices and the runtime status region,
- * centered at 75% width with spacing below, a failed read keeps the last
- * successful grid and never spams the console, and every cell is a text node.
- */
+/* B25 quota heatmap, docs/tasks/m16.md T16.3 and quota design §4–8.
+ * Real model + view with shared LuCI DOM doubles; assert persistent controls,
+ * calendar arithmetic, request mappings and failure isolation. */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -70,10 +58,12 @@ function dashboardModel() {
    stats.heatmap_enabled and can be flipped between refreshes. */
 function loadView({ replies = {}, state = { heatmap: '0' } } = {}) {
 	const calls = [];
+	const requests = [];
 	const ap = {
 		confirm: async () => true,
 		call: (method, params) => {
 			calls.push(method);
+			requests.push({ method, params });
 			const reply = replies[method];
 			return Promise.resolve(typeof reply == 'function' ? reply(params) : (reply ?? {}));
 		},
@@ -93,7 +83,7 @@ function loadView({ replies = {}, state = { heatmap: '0' } } = {}) {
 		uci, ui: {
 			createHandlerFn: (ctx, fn) => (typeof fn == 'function' ? (...args) => fn.call(ctx, ...args) : null),
 			changes: { apply: () => {} },
-			addNotification: () => {}
+			addNotification: () => { throw new Error('heatmap must not notify'); }
 		},
 		dom: { content: (el, node) => contentChildren(el, node) },
 		'aether-proxy.common': ap,
@@ -103,7 +93,7 @@ function loadView({ replies = {}, state = { heatmap: '0' } } = {}) {
 		localStorage: { getItem: () => null, setItem: () => {} },
 		addEventListener() {}, removeEventListener() {}
 	}, document: { addEventListener() {}, removeEventListener() {} } });
-	return { view, calls, state };
+	return { view, calls, requests, state };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -174,7 +164,7 @@ test('heatmap: reply mapping — error and off', () => {
 	assert.deepEqual(vm, { state: 'off' }, 'the disabled reply hides the card');
 });
 
-test('heatmap: the grid is 3×30 = 90 cells — the last 90 days ending today, no leading blank', () => {
+test('heatmap: the grid is 5×18 = 90 cells — the last 90 days ending today, no leading blank', () => {
 	const model = dashboardModel();
 	const vm = model.heatmap_view({ ok: true, enabled: true, days: [
 		{ date: '2026-08-04', tx: 1, rx: 0, observed: 60, healthy: 60 },
@@ -187,10 +177,11 @@ test('heatmap: the grid is 3×30 = 90 cells — the last 90 days ending today, n
 	assert.equal(vm.cells[0].date, '2026-08-04',
 		'the window opens on the 89th day before today — no leading blank cell');
 	assert.equal(vm.cells[88], null, '2026-10-31 has no entry in this sample and stays blank');
-	/* Row-major layout: index 89 is row 2 (floor(89/30)), column 29 (89%30) —
+	/* Row-major layout: index 89 is row 4 (floor(89/18)), column 17 (89%18) —
 	   the bottom-right corner holds today. */
-	assert.equal(Math.floor(89 / 30), 2);
-	assert.equal(89 % 30, 29);
+	assert.equal(model.heatmap_columns, 18);
+	assert.equal(Math.floor(89 / model.heatmap_columns), 4);
+	assert.equal(89 % model.heatmap_columns, 17);
 	assert.equal(vm.cells[89].date, '2026-11-01', 'today is the bottom-right cell');
 });
 
@@ -272,323 +263,287 @@ test('heatmap: future dates never render, invalid entries are skipped', () => {
 		'only the past valid date is drawn');
 });
 
-test('heatmap: colour levels follow log1p(tx+rx) over the shown days', () => {
-	const model = dashboardModel();
-	const vm = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 0, rx: 0, observed: 60, healthy: 60 },
-		{ date: '2026-10-27', tx: 500, rx: 0, observed: 60, healthy: 60 },
-		{ date: '2026-10-28', tx: 999999, rx: 0, observed: 60, healthy: 60 }
-	] }, '2026-11-01');
 
-	/* The shown entries sit at cell indices 83..85 (2026-10-26..10-28). */
-	assert.deepEqual(vm.cells.slice(83, 86).map((cell) => cell.level), [ 0, 2, 4 ],
-		'0 traffic is level 0, log1p(500)/log1p(999999)≈0.45 is level 2, the max is level 4');
+function entry(date, total, observed = 86400, healthy = 70800) {
+	return { date, tx: total / 2, rx: total / 2, observed, healthy };
+}
 
-	/* A single day with traffic is the maximum: level 4. */
-	const one = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 42, rx: 0, observed: 60, healthy: 60 }
-	] }, '2026-11-01');
-	assert.equal(one.cells[83].level, 4);
+function history(days = [], bytes = null) {
+	return { ok: true, enabled: true, days, quota: { bytes, set_at: null } };
+}
 
-	/* All-zero traffic keeps every cell on the lightest level. */
-	const zero = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 0, rx: 0, observed: 60, healthy: 60 },
-		{ date: '2026-10-27', tx: 0, rx: 0, observed: 60, healthy: 60 }
-	] }, '2026-11-01');
-	assert.deepEqual(zero.cells.filter(Boolean).map((cell) => cell.level), [ 0, 0 ]);
+function cell(date, total, bytes) {
+	return dashboardModel().heatmap_view(history([ entry(date, total) ], bytes), date).cells[89];
+}
+
+test('T16.3 model: six quota levels use left-closed boundaries', () => {
+	const ratios = [ 0, 0.249, 0.25, 0.499, 0.5, 0.749, 0.75, 0.999, 1, 2.4 ];
+	assert.deepEqual(ratios.map((r) => cell('2026-11-16', r * 1e9, 30e9).level),
+		[ 0, 1, 2, 2, 3, 3, 4, 4, 5, 5 ]);
+	assert.equal(cell('2026-11-16', 2.4e9, 30e9).ratio, 2.4, 'over quota is not clipped');
 });
 
-test('heatmap: health tiers — ok, warn, bad and the neutral not-observed day', () => {
-	const model = dashboardModel();
-	const vm = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 0, rx: 0, observed: 86400, healthy: 86400 },
-		{ date: '2026-10-27', tx: 0, rx: 0, observed: 86400, healthy: 86300 },
-		{ date: '2026-10-28', tx: 0, rx: 0, observed: 86400, healthy: 0 },
-		{ date: '2026-10-29', tx: 0, rx: 0, observed: 0, healthy: 0 }
-	] }, '2026-11-01');
-
-	assert.deepEqual(vm.cells.slice(83, 87).map((cell) => cell.health),
-		[ 'ok', 'warn', 'bad', 'none' ]);
+test('T16.3 model: daily quota uses February 28, November 30, December 31 days', () => {
+	for (const [date, days] of [ [ '2026-02-16', 28 ], [ '2026-11-16', 30 ], [ '2026-12-16', 31 ],
+		[ '2028-02-16', 29 ] ]) {
+		const c = cell(date, 1e9, 100e9);
+		assert.equal(c.ratio, 1e9 / (100e9 / days));
+	}
+	const cross = dashboardModel().heatmap_view(history([
+		entry('2026-11-30', 1e9), entry('2026-12-01', 1e9)
+	], 100e9), '2026-12-01').cells.slice(-2);
+	assert.equal(cross[0].ratio, 1e9 / (100e9 / 30));
+	assert.equal(cross[1].ratio, 1e9 / (100e9 / 31));
 });
 
-test('heatmap: tooltip lines are date, traffic with an automatic unit, share and duration', () => {
-	const model = dashboardModel();
-	const vm = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 1048576, rx: 0, observed: 3600, healthy: 3528 },
-		{ date: '2026-10-27', tx: 512, rx: 0, observed: 0, healthy: 0 },
-		{ date: '2026-10-28', tx: 0, rx: 0, observed: 90000, healthy: 90000 }
-	] }, '2026-11-01');
-
-	const [ rich, unobserved, long ] = vm.cells.slice(83, 86);
-	assert.equal(rich.tip, [ '2026-10-26', tr('Proxy traffic %s', '1.0 MB'),
-		tr('Healthy share %s', '98%'), tr('Observed %s', tr('%s hours', 1)) ].join('\n'));
-	assert.equal(unobserved.tip, [ '2026-10-27', tr('Proxy traffic %s', '512 B'),
-		tr('Healthy share %s', '–'), tr('Observed %s', tr('%s seconds', 0)) ].join('\n'),
-		'an unobserved day shows a neutral share, never a percentage');
-	assert.equal(long.tip, [ '2026-10-28', tr('Proxy traffic %s', '0 B'),
-		tr('Healthy share %s', '100%'), tr('Observed %s', tr('%s days', 1)) ].join('\n'));
-
-	/* A corrupt entry with healthy above observed cannot claim more than 100%. */
-	const clamped = model.heatmap_view({ ok: true, enabled: true, days: [
-		{ date: '2026-10-26', tx: 0, rx: 0, observed: 100, healthy: 500 }
-	] }, '2026-11-01');
-	assert.ok(clamped.cells[83].tip.includes(tr('Healthy share %s', '100%')));
+test('T16.3 model: relative fallback uses ceil, handles absent quota and all-zero window', () => {
+	const days = [ entry('2026-11-14', 0), entry('2026-11-15', Math.expm1(1)),
+		entry('2026-11-16', Math.expm1(4)) ];
+	for (const quota of [ undefined, null, { bytes: null } ]) {
+		const vm = dashboardModel().heatmap_view({ ...history(days), quota }, '2026-11-16');
+		assert.deepEqual(vm.cells.slice(-3).map((c) => c.level), [ 0, 1, 4 ]);
+		assert.equal(vm.cells[89].tip.split('\n').length, 4);
+	}
+	const zero = dashboardModel().heatmap_view(history([entry('2026-11-16', 0)]), '2026-11-16');
+	assert.equal(zero.cells[89].level, 0);
+	assert.ok(zero.cells[89].tip, 'recorded zero has a tooltip');
+	assert.equal(zero.cells[88], null, 'absent record stays blank');
 });
 
-test('heatmap view: switch off — no region content, no stats_history, other cards still render', async () => {
-	const { view, calls } = loadView();
-	const root = view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 0,
-		'the disabled switch never calls the history API');
-	assert.deepEqual(view.heatmapContainer.children, [], 'the region is completely absent');
-	assert.equal(view.content.children[1], view.heatmapContainer,
-		'the empty region keeps its place between the notices and the runtime status');
-	assert.ok(findAll(root, 'h3').some((h) => h.textContent == tr('Runtime status')),
-		'the other overview cards are untouched');
-	assert.ok(findAll(root, 'h3').some((h) => h.textContent == tr('Traffic and connections')));
+test('T16.3 model: tooltip five lines and observed zero never changes traffic colour', () => {
+	const vm = dashboardModel().heatmap_view(history([
+		entry('2026-11-16', 2e9, 86400, 70800)
+	], 30e9), '2026-11-16');
+	assert.deepEqual(vm.cells[89].tip.split('\n'), [ '2026-11-16',
+		tr('Proxy traffic %s', '1.9 GB'), tr('Healthy share %s', '82% (70800/86400 ' + tr('seconds') + ')'),
+		tr('Observed %s', tr('%s days', 1)), tr('Daily quota share %s', '200%') ]);
+	const unobserved = dashboardModel().heatmap_view(history([
+		entry('2026-11-16', 2e9, 0, 0)
+	], 30e9), '2026-11-16').cells[89];
+	assert.equal(unobserved.level, 5);
+	assert.equal(unobserved.tip.split('\n')[2], tr('Healthy share %s', '—'));
+	assert.equal('health' in unobserved, false, 'health has no visual encoding');
 });
 
-test('heatmap view: switch on — placeholder first, then one stats_history per refresh window', async () => {
-	const { view, calls } = loadView({
-		replies: { stats_history: weekReply() },
-		state: { heatmap: '1' }
-	});
-	const root = view.render(await view.load());
-
-	assert.equal(findAll(view.heatmapContainer, 'p')[0].textContent, tr('Reading…'),
-		'the region shows the shared reading placeholder before the first reply');
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 0,
-		'load() itself does not call the history API');
-
-	await view.initialRequest;
+async function mounted(replies = {}, heatmap = '1') {
+	const h = loadView({ replies: { stats_history: history(), ...replies }, state: { heatmap } });
+	h.root = h.view.render(await h.view.load());
+	await h.view.initialRequest;
 	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 1,
-		'fetchRefresh issues the history call when the switch is on');
-	assert.equal(findAll(view.heatmapContainer, 'div')
-		.find((d) => d.attrs.class == 'ap-heat-grid').children.length, 90,
-		'the first reply renders the full 90-cell grid');
+	return h;
+}
 
-	/* A second refresh inside the TTL window does not re-read the history. */
-	calls.length = 0;
-	await view.fetchRefresh();
-	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 0);
-
-	/* After the TTL expires the next refresh reads it again. */
-	view.heatmapAt = Date.now() - 601000;
-	await view.fetchRefresh();
-	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 1);
-
-	/* A new local date forces a read even inside the TTL window. */
-	view.heatmapAt = Date.now();
-	view.heatmapDay = '2000-01-01';
-	await view.fetchRefresh();
-	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 2);
-});
-
-test('heatmap view: renders the bare 3×30 grid — no title, no weekday header, no section box', async (t) => {
-	/* The fixed reply occupies indices 83..86 only on this local date; the
-	   real host date would move those cells and eventually age them out. */
-	t.mock.method(Date, 'now', () => new Date(2026, 10, 1, 12).getTime());
-	const mark = htmlWriteMark();
-	const { view } = loadView({
-		replies: { stats_history: weekReply() },
-		state: { heatmap: '1' }
-	});
-	view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-
-	const grid = findAll(view.heatmapContainer, 'div').find((d) => d.attrs.class == 'ap-heat-grid');
-	assert.ok(grid, 'the region contains the heat grid');
-	assert.equal(grid.children.length, 90, 'the last 90 days, no weekday header, no leading blank');
-	assert.ok(findAll(view.heatmapContainer, 'h3').length === 0, 'no 「使用热力图」 title');
-	assert.ok(view.heatmapContainer.children.every((node) => !String(node.attrs?.class ?? '').includes('cbi-section')),
-		'no section box wraps the grid');
-
-	/* The grid opens with the oldest window day and ends with today's cell
-	   (bottom-right); the data sits at cell indices 83..86. */
-	assert.equal(grid.children[0].attrs.class, 'ap-heat-cell ap-heat-blank');
-	assert.equal(grid.children[0].attrs.title, undefined, 'a day without data carries no tooltip');
-	assert.equal(grid.children[89].attrs.class, 'ap-heat-cell ap-heat-blank');
-	assert.equal(grid.children[89].attrs.title, undefined, '2026-11-01 has no entry and stays blank');
-	const [ mon, tue, wed, thu ] = grid.children.slice(83, 87);
-	assert.equal(mon.attrs.class, 'ap-heat-cell ap-heat-l4 ap-heat-ok');
-	assert.equal(mon.attrs.title, [ '2026-10-26', tr('Proxy traffic %s', '976.6 KB'),
-		tr('Healthy share %s', '100%'), tr('Observed %s', tr('%s days', 1)) ].join('\n'));
-	assert.equal(tue.attrs.class, 'ap-heat-cell ap-heat-blank');
-	assert.equal(tue.attrs.title, undefined, 'blank cells carry no tooltip');
-	assert.equal(wed.attrs.class, 'ap-heat-cell ap-heat-l2 ap-heat-bad');
-	assert.equal(thu.attrs.class, 'ap-heat-cell ap-heat-l0 ap-heat-none');
-
-	/* Cell data reaches the DOM only through text nodes and attributes: no
-	   innerHTML write anywhere may carry a date, a byte amount or a tooltip
-	   (static labels take the scalar path, like every other section title). */
-	const writes = htmlWritesSince(mark);
-	assert.ok(writes.length > 0, 'the scan covers the whole rendering');
-	for (const needle of [ '2026-10-26', '2026-10-28', '2026-10-29', '976.6', '500', '100%' ])
-		assert.ok(writes.every((write) => !write.includes(needle)),
-			`no HTML write carries "${needle}"`);
-
-	/* The styles ship with the view: the wrap is 75% of the content width,
-	   centered, and keeps spacing before the runtime status card while hiding
-	   itself when empty; the thirty equal columns fill it, every cell is a
-	   rounded square (about 25px on a desktop column, about 80–100px tall
-	   across three rows), and the wrapper scrolls horizontally on very narrow
-	   screens instead of squeezing the cells to nothing. */
-	const style = findAll(view.heatmapStyle, '#text').map((node) => node.text).join('');
-	assert.match(style,
-		/\.ap-heat-wrap \{ width: 75%; max-width: 75%; margin-inline: auto; margin-bottom: 1\.25em \}/);
-	assert.match(style, /\.ap-heat-wrap:empty \{ display: none \}/);
-	assert.match(style, /repeat\(30,\s*minmax\(0,\s*1fr\)\)/);
-	assert.match(style, /gap:\s*3px/);
-	assert.match(style, /aspect-ratio:\s*1/);
-	assert.match(style, /border-radius:\s*20%/);
-	assert.match(style, /overflow-x:\s*auto/);
-	assert.ok(!style.includes('ap-heat-head'), 'the weekday header styles are gone');
-	assert.ok(!/repeat\((7|13),/.test(style), 'no seven- or thirteen-column rule remains');
-});
-
-test('heatmap view: the region sits between the notices and the runtime status card, centered and capped', async () => {
-	const { view } = loadView({
-		replies: { stats_history: weekReply() },
-		state: { heatmap: '1' }
-	});
-	view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-
+test('T16.3 view: disabled has original traffic structure, no heatmap and no history RPC', async () => {
+	const { view, calls, root } = await mounted({}, '0');
 	assert.deepEqual(view.content.children,
-		[ view.noticeContent, view.heatmapContainer, view.runtimeContent,
-			view.trafficContainer, view.componentSection ],
-		'T12.7 content order: notices, heatmap, runtime status, traffic, components');
-	assert.deepEqual(findAll(view.content, 'h3').map((h) => h.textContent),
-		[ tr('Runtime status'), tr('Traffic and connections'), tr('Component versions') ],
-		'the heatmap adds no heading of its own');
-
-	/* The region itself is the centered width cap (a bare wrap, not a card);
-	   the other cards keep their section boxes. */
-	assert.equal(view.heatmapContainer.attrs.class, 'ap-heat-wrap');
-	assert.equal(view.runtimeContent.children[0].attrs.class, 'cbi-section');
-	assert.equal(view.trafficContainer.children[0].attrs.class, 'cbi-section');
-	assert.equal(view.componentSection.attrs.class, 'cbi-section');
+		[ view.noticeContent, view.runtimeContent, view.trafficContainer, view.componentSection ]);
+	assert.equal(calls.includes('stats_history'), false);
+	assert.equal(calls.includes('stats_quota'), false);
+	assert.equal(findAll(root, 'div').some((n) => n.attrs.class === 'ap-heat-wrap'), false);
+	assert.equal(view.heatmapContainer.children.length, 0);
+	assert.deepEqual(view.trafficBody.children.map((n) => n.tag), [ 'h3', 'table', 'div' ]);
 });
 
-test('heatmap view: a failed history read shows a short error and keeps the last grid', async () => {
+test('T16.3 view: two columns, caption-grid-legend, 18-column responsive theme CSS', async () => {
+	const { view } = await mounted();
+	const [heading, columns] = view.trafficBody.children;
+	assert.equal(heading.textContent, tr('Traffic and connections'));
+	assert.equal(columns.attrs.class, 'ap-traffic-columns');
+	assert.deepEqual(columns.children, [ view.heatmapContainer, view.trafficLive ]);
+	assert.deepEqual(view.trafficLive.children.map((n) => n.tag), [ 'table', 'div' ]);
+	assert.equal(view.heatmapContainer.children[0].attrs.class, 'ap-heat-caption');
+	assert.equal(view.heatmapContainer.children[3], view.heatmapGridNode);
+	assert.equal(view.heatmapContainer.children[4], view.heatmapLegend);
+	assert.equal(view.heatmapGridNode.children.length, 90);
+	assert.ok(view.heatmapCells.every((n) => n.className === 'ap-heat-cell ap-heat-blank'));
+	assert.ok(view.heatmapCells.every((n) => n.attrs.title === undefined));
+	assert.equal(view.heatmapLegend.children.length, 6);
+	assert.equal(view.heatmapLegend.children[1].children[0].className, 'ap-heat-swatch ap-heat-l0');
+	assert.equal(view.heatmapLegend.children[5].children[0].className, 'ap-heat-swatch ap-heat-l4');
+	assert.equal(view.quotaSelect.children.length, 7);
+	const css = view.heatmapStyle.textContent;
+	for (const pattern of [ /repeat\(18, minmax\(0, 1fr\)\)/, /gap:3px; width:100%/,
+		/aspect-ratio:1; border-radius:20%/, /overflow-x:auto/, /flex:1 1 50%/,
+		/gap:1.5em; align-items:center; flex-wrap:nowrap/, /max-width:719px/,
+		/flex-direction:column/, /prefers-color-scheme: dark/ ])
+		assert.match(css, pattern);
+	for (const color of [ '#f4f6f8', '#181d23', '#ebedf0', '#21262d', '#9be9a8', '#1f6f3f',
+		'#40c463', '#2ea043', '#ffd33d', '#d29922', '#fb8500', '#db6d28', '#e5484d', '#f85149',
+		'#30a14e', '#216e39', '#0e4429', '#006d32', '#26a641', '#39d353' ])
+		assert.ok(css.includes(color), color);
+	assert.doesNotMatch(css, /box-shadow|::after|repeat\(30/);
+});
+
+test('T16.3 view: initial quota selects unlimited, every preset or filled custom GB', async () => {
+	for (const [bytes, selection, input] of [ [null, 'none', ''], [50e9, '50', '50'],
+		[100e9, '100', '100'], [200e9, '200', '200'], [500e9, '500', '500'],
+		[1e12, '1000', '1000'], [123e9, 'custom', '123'] ]) {
+		const { view } = await mounted({ stats_history: history([], bytes) });
+		assert.equal(view.quotaSelect.value, selection);
+		assert.equal(view.quotaInput.value, input);
+		assert.equal(view.quotaCustom.hidden, selection !== 'custom');
+	}
+});
+
+test('T16.3 view: polling preserves caption, dropdown, custom input, legend, grid and table identities', async (t) => {
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 16, 12).getTime());
+	let bytes = 30e9;
+	let total = 1e8;
+	const { view, calls } = await mounted({ stats_history: () => history([ entry('2026-11-16', total) ], bytes) });
+	const nodes = [ view.heatmapContainer.children[0], view.quotaSelect, view.quotaInput, view.heatmapLegend,
+		view.heatmapGridNode, view.heatmapCells[89], view.trafficTable, view.trafficValues.proxy.tx ];
+	view.quotaSelect.value = 'custom';
+	view.quotaSelect.attrs.change();
+	view.quotaInput.value = '321';
+	const oldTip = view.heatmapCells[89].attrs.title;
+	total = 2e9;
+	const mark = htmlWriteMark();
+	await view.fetchRefresh();
+	const after = [ view.heatmapContainer.children[0], view.quotaSelect, view.quotaInput, view.heatmapLegend,
+		view.heatmapGridNode, view.heatmapCells[89], view.trafficTable, view.trafficValues.proxy.tx ];
+	nodes.forEach((node, i) => assert.equal(after[i], node, 'strict node identity at index ' + i));
+	assert.equal(view.quotaSelect.value, 'custom');
+	assert.equal(view.quotaInput.value, '321', 'editing text is not overwritten');
+	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l5');
+	assert.notEqual(view.heatmapCells[89].attrs.title, oldTip);
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 2, 'each refresh reads history');
+	assert.ok(htmlWritesSince(mark).every((s) => !s.includes('2026-11-16') && !s.includes('200%')),
+		'dynamic tooltip never takes the HTML path');
+});
+
+test('T16.3 view: presets, custom endpoints and clear only write quota and recolour', async (t) => {
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 16, 12).getTime());
+	const { view, requests, calls } = await mounted({
+		stats_history: history([ entry('2026-11-16', 2e9) ]),
+		stats_quota: (p) => ({ ok: true, quota: { bytes: p.action === 'clear' ? null : p.bytes } })
+	});
+	const select = view.quotaSelect, legend = view.heatmapLegend;
+	calls.length = 0;
+	for (const gb of [ 50, 100, 200, 500, 1000 ]) {
+		select.value = String(gb);
+		await select.attrs.change();
+		assert.deepEqual(requests.at(-1), { method: 'stats_quota', params: { action: 'set', bytes: gb * 1e9 } });
+	}
+	select.value = 'custom';
+	const count = calls.length;
+	select.attrs.change();
+	assert.equal(calls.length, count, 'opening custom does not save');
+	assert.equal(view.quotaCustom.hidden, false);
+	for (const gb of [ 1, 123, 100000 ]) {
+		view.quotaInput.value = String(gb);
+		await view.quotaButton.attrs.click();
+		assert.deepEqual(requests.at(-1).params, { action: 'set', bytes: gb * 1e9 });
+	}
+	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l1');
+	select.value = 'none';
+	await select.attrs.change();
+	assert.deepEqual(requests.at(-1).params, { action: 'clear' });
+	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l4');
+	assert.ok(calls.every((m) => m === 'stats_quota'), 'no page refresh, service or UCI RPC');
+	assert.equal(view.quotaSelect, select);
+	assert.equal(view.heatmapLegend, legend);
+	assert.equal(view.heatmapLegend.children[1].children[1].textContent, tr('Less'));
+});
+
+test('T16.3 view: invalid custom and failed write keep selection, input and previous colours', async (t) => {
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 16, 12).getTime());
+	const { view, calls } = await mounted({ stats_history: history([entry('2026-11-16', 4e9)], 100e9),
+		stats_quota: { ok: false, code: 'FS_FAILED', detail: '<img src=x onerror=bad>' } });
+	view.quotaSelect.value = 'custom';
+	view.quotaSelect.attrs.change();
+	const before = view.heatmapCells.map((n) => n.className);
+	calls.length = 0;
+	for (const bad of [ '', '0', '1.5', '100001', 'oops' ]) {
+		view.quotaInput.value = bad;
+		await view.quotaButton.attrs.click();
+		assert.equal(view.quotaErrorNode.textContent, tr('Saving quota failed (%s)', 'USAGE'));
+	}
+	assert.deepEqual(calls, [], 'validation failure never writes');
+	view.quotaInput.value = '123';
+	await view.quotaButton.attrs.click();
+	assert.equal(view.quotaErrorNode.textContent, tr('Saving quota failed (%s)', 'FS_FAILED'));
+	assert.equal(view.quotaErrorNode.hidden, false);
+	assert.equal(view.quotaSelect.value, 'custom');
+	assert.equal(view.quotaInput.value, '123');
+	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l5', 'recorded over-quota colour survives');
+	assert.deepEqual(view.heatmapCells.map((n) => n.className), before);
+	assert.equal(view.heatmapGood.quota, 100e9);
+	assert.equal(view.quotaButton.disabled, false);
+});
+
+test('T16.3 view: history failure keeps last grid, shows error below legend and warns once', async (t) => {
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 1, 12).getTime());
 	let fail = false;
-	const { view, calls } = loadView({
-		replies: { stats_history: () => fail ? { ok: false, code: 'TIMEOUT' } : weekReply() },
-		state: { heatmap: '1' }
-	});
 	const warns = [];
-	const original = console.warn;
-	console.warn = (...args) => warns.push(args.join(' '));
-	try {
-		view.render(await view.load());
-		await view.initialRequest;
-		await tick();
-		assert.equal(findAll(view.heatmapContainer, 'div')
-			.some((d) => d.attrs.class == 'ap-heat-grid'), true, 'the first read renders the grid');
-
-		/* The next read fails: the grid stays, a short error joins it, and the
-		   other cards are untouched. */
-		fail = true;
-		view.heatmapAt = Date.now() - 601000;
-		await view.fetchRefresh();
-		await tick();
-		assert.equal(findAll(view.heatmapContainer, 'div')
-			.some((d) => d.attrs.class == 'ap-heat-grid'), true, 'the last successful grid is kept');
-		assert.ok(findAll(view.heatmapContainer, 'p')
-			.some((p) => p.textContent == tr('Reading the usage history failed (%s)', 'TIMEOUT')));
-		assert.equal(warns.length, 1, 'the console is warned once, not per failure');
-
-		/* A second failure keeps the grid and stays quiet. */
-		view.heatmapAt = Date.now() - 601000;
-		await view.fetchRefresh();
-		await tick();
-		assert.equal(warns.length, 1);
-		assert.equal(calls.filter((method) => method == 'stats_history').length, 3);
-
-		/* A first-ever failure (nothing to keep) shows only the error text. */
-		const fresh = loadView({
-			replies: { stats_history: { ok: false, code: 'RPC_FAILED' } },
-			state: { heatmap: '1' }
-		});
-		console.warn = (...args) => warns.push(args.join(' '));
-		fresh.view.render(await fresh.view.load());
-		await fresh.view.initialRequest;
-		await tick();
-		assert.deepEqual(fresh.view.heatmapContainer.children.length, 1);
-		assert.ok(findAll(fresh.view.heatmapContainer, 'p')
-			.some((p) => p.textContent == tr('Reading the usage history failed (%s)', 'RPC_FAILED')));
-		assert.equal(findAll(fresh.view.heatmapContainer, 'div')
-			.some((d) => d.attrs.class == 'ap-heat-grid'), false);
-	}
-	finally {
-		console.warn = original;
-	}
-});
-
-test('heatmap view: an enabled:false reply follows the applied configuration and hides the region', async () => {
-	const { view } = loadView({
-		replies: { stats_history: { ok: true, enabled: false, days: [] } },
-		state: { heatmap: '1' }
-	});
-	view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-
-	assert.deepEqual(view.heatmapContainer.children, [], 'the backend switch wins over the page copy');
-});
-
-test('heatmap view: an empty history renders the full neutral grid, not a notice', async () => {
-	const { view } = loadView({
-		replies: { stats_history: { ok: true, enabled: true, days: [] } },
-		state: { heatmap: '1' }
-	});
-	view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-
-	const grid = findAll(view.heatmapContainer, 'div').find((d) => d.attrs.class == 'ap-heat-grid');
-	assert.ok(grid, 'the region shows the 3×30 grid even without any data');
-	assert.equal(grid.children.length, 90, 'the last 90 days, all blank');
-	assert.ok(grid.children.every((cell) => cell.attrs.class == 'ap-heat-cell ap-heat-blank'),
-		'every cell is the neutral blank colour');
-	assert.ok(grid.children.every((cell) => cell.attrs.title === undefined), 'blank cells carry no tooltip');
-	assert.deepEqual(findAll(view.heatmapContainer, 'p'), [], 'no no-data notice replaces the grid');
-});
-
-test('heatmap view: flipping the switch re-evaluates the region without reloading the page', async () => {
-	const { view, calls, state } = loadView({
-		replies: { stats_history: weekReply() },
-		state: { heatmap: '0' }
-	});
-	view.render(await view.load());
-	await view.initialRequest;
-	await tick();
-	assert.deepEqual(view.heatmapContainer.children, []);
-
-	/* Turned on (saved and applied on the advanced page): the next refresh
-	   picks the new UCI value up and reads the history. */
-	state.heatmap = '1';
-	calls.length = 0;
+	t.mock.method(console, 'warn', (...args) => warns.push(args));
+	const { view } = await mounted({ stats_history: () => fail ? { ok: false, code: 'TIMEOUT' } : weekReply() });
+	const grid = view.heatmapGridNode;
+	const tips = view.heatmapCells.map((n) => n.attrs.title);
+	fail = true;
 	await view.fetchRefresh();
-	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 1);
-	assert.equal(findAll(view.heatmapContainer, 'div')
-		.find((d) => d.attrs.class == 'ap-heat-grid').children.length, 90);
-
-	/* Turned off again: the region disappears and the calls stop. */
-	state.heatmap = '0';
-	calls.length = 0;
 	await view.fetchRefresh();
+	assert.equal(view.heatmapGridNode, grid);
+	assert.deepEqual(view.heatmapCells.map((n) => n.attrs.title), tips);
+	assert.equal(view.heatmapContainer.children.at(-1), view.historyErrorNode);
+	assert.equal(view.heatmapContainer.children.at(-2), view.heatmapLegend);
+	assert.equal(view.historyErrorNode.textContent, tr('Reading the usage history failed (%s)', 'TIMEOUT'));
+	assert.equal(warns.length, 1);
+	const fresh = await mounted({ stats_history: { ok: false, code: 'RPC_FAILED' } });
+	assert.equal(fresh.view.heatmapCells.length, 90);
+	assert.equal(fresh.view.historyErrorNode.hidden, false);
+});
+
+test('T16.3 view: switch changes and backend disabled hide heatmap without replacing live values', async () => {
+	const h = await mounted({}, '0');
+	const table = h.view.trafficTable;
+	h.state.heatmap = '1';
+	await h.view.fetchRefresh();
+	assert.equal(h.view.heatmapCells.length, 90);
+	assert.equal(h.view.trafficTable, table);
+	h.state.heatmap = '0';
+	h.calls.length = 0;
+	await h.view.fetchRefresh();
+	assert.equal(h.calls.includes('stats_history'), false);
+	assert.equal(h.view.heatmapContainer.children.length, 0);
+	assert.equal(h.view.trafficBody.children[1], table);
+	const off = await mounted({ stats_history: { ok: true, enabled: false, days: [] } });
+	assert.equal(off.view.heatmapContainer.children.length, 0);
+	assert.deepEqual(off.view.trafficBody.children.map((n) => n.tag), ['h3', 'table', 'div']);
+});
+
+
+test('T16.3 view: older in-flight history cannot overwrite a successful quota write', async () => {
+	let resolve;
+	let pending = false;
+	const h = await mounted({
+		stats_history: () => pending ? new Promise((done) => { resolve = done; }) : history([], 100e9),
+		stats_quota: (p) => ({ ok: true, quota: { bytes: p.bytes } })
+	});
+	pending = true;
+	const reading = h.view.loadHeatmap();
+	h.view.quotaSelect.value = '50';
+	await h.view.quotaSelect.attrs.change();
+	assert.equal(h.view.heatmapGood.quota, 50e9);
+	resolve(history([], 100e9));
+	await reading;
+	assert.equal(h.view.heatmapGood.quota, 50e9);
+	assert.equal(h.view.quotaSelect.value, '50');
+});
+
+
+test('T16.3 view: first slow history reply preserves an already edited custom input', async () => {
+	let resolve;
+	const h = loadView({ replies: { stats_history: () => new Promise((done) => { resolve = done; }) },
+		state: { heatmap: '1' } });
+	h.view.render(await h.view.load());
 	await tick();
-	assert.equal(calls.filter((method) => method == 'stats_history').length, 0);
-	assert.deepEqual(view.heatmapContainer.children, []);
+	assert.equal(typeof resolve, 'function');
+	h.view.quotaSelect.value = 'custom';
+	h.view.quotaSelect.attrs.change();
+	h.view.quotaInput.value = '17';
+	resolve(history([], 100e9));
+	await h.view.initialRequest;
+	assert.equal(h.view.quotaSelect.value, 'custom');
+	assert.equal(h.view.quotaInput.value, '17');
+	assert.equal(h.calls.includes('stats_quota'), false);
 });

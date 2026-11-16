@@ -21,14 +21,9 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
- * T12.6 adds the B25 usage heatmap region: the switch is read from UCI at load,
- * only fetchRefresh may call stats_history (at most one read per 10 minutes or
- * after the local date rolls over) and a failed read keeps the last successful
- * grid; T12.7 moves the region up between the notices and the runtime status
- * card and reworks it into a bare 3×30 date grid (75% of the content width,
- * centered) — no section
- * background, no title, no weekday header. The region is completely absent
- * while disabled.
+ * T16.3 follows docs/design/b25-quota-heatmap-20261116 §4–6: a 5×18
+ * quota heatmap inside the traffic section, persistent quota controls and
+ * in-place value/cell updates. Disabled means original layout and zero RPC.
  *
  * The view only fetches data through ap, hands it to the pure model and renders
  * the view model the model returns: state wording, notice texts, button
@@ -51,43 +46,32 @@ function switchFormat(text, ...args) {
 	return text.replace(/%s/g, () => String(args.shift()));
 }
 
-/* B25 usage heatmap (docs/b25-heatmap.md §7): the history changes at most once
-   per day, so one read per 10 minutes — or after the local date rolls over —
-   is enough; stats_history never joins the 5-second stats poll. */
-const HEATMAP_TTL_MS = 10 * 60 * 1000;
-
-/* Styles ship with this view instead of a separate resource URL: LuCI versions
-   the view script, so a cached old script never pairs with newer CSS or the
-   other way round (docs/10 T10.12). Green steps use rgba so both dark and
-   light themes keep the ramp; theme variables only carry the health colours.
-   T12.7 rework: no section box — the wrap is 75% of the content width,
-   centered, and keeps a margin below it in front of the runtime status card;
-   while off, the region is an empty div and `:empty` removes it from layout
-   entirely. The thirty equal columns fill the wrap (minmax(0,1fr) never
-   overflows), so every cell is a rounded square via aspect-ratio — about
-   25px on a desktop content column, about 80–100px tall across three rows;
-   the scroll wrapper stays as a safety net for very narrow screens. */
+/* B25 quota heatmap, docs/design/b25-quota-heatmap-20261116 §4–6.
+   Inline CSS follows the view's LuCI cache version. Persistent controls must
+   survive every refresh; only cell classes/titles and value text are patched. */
+const QUOTA_PRESETS = [ 50, 100, 200, 500, 1000 ];
 const HEATMAP_CSS = [
-	'.ap-heat-wrap { width: 75%; max-width: 75%; margin-inline: auto; margin-bottom: 1.25em }',
-	'.ap-heat-wrap:empty { display: none }',
-	'.ap-heat-scroll { overflow-x: auto }',
-	'.ap-heat-grid { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); '
-		+ 'gap: 3px; width: 100% }',
-	'.ap-heat-cell { width: 100%; aspect-ratio: 1; border-radius: 20% }',
-	'.ap-heat-blank { background: rgba(127,127,127,0.12) }',
-	'.ap-heat-l0 { background: rgba(47,133,90,0.15) }',
-	'.ap-heat-l1 { background: rgba(47,133,90,0.35) }',
-	'.ap-heat-l2 { background: rgba(47,133,90,0.55) }',
-	'.ap-heat-l3 { background: rgba(47,133,90,0.75) }',
-	'.ap-heat-l4 { background: var(--success-color-high, #2f855a) }',
-	/* Not observed is neutral and dimmed, never a failure colour (b25 §7). */
-	'.ap-heat-none { background: rgba(127,127,127,0.3); opacity: 0.7 }',
-	'.ap-heat-warn { box-shadow: inset 0 0 0 2px var(--warning-color, #b7791f) }',
-	'.ap-heat-bad { box-shadow: inset 0 0 0 2px var(--error-color-high, #c53030); position: relative }',
-	'.ap-heat-bad::after { content: \'\'; position: absolute; top: 0; right: 0; '
-		+ 'border: 0.45em solid transparent; '
-		+ 'border-top-color: var(--error-color-high, #c53030); '
-		+ 'border-right-color: var(--error-color-high, #c53030) }'
+	'.ap-traffic-columns { display:flex; gap:1.5em; align-items:center; flex-wrap:nowrap }',
+	'.ap-heat-wrap, .ap-traffic-live { flex:1 1 50%; min-width:0 }',
+	'.ap-heat-wrap { overflow-x:auto; --ap-heat-void:#f4f6f8; --ap-heat-0:#ebedf0; '
+		+ '--ap-heat-1:#9be9a8; --ap-heat-2:#40c463; --ap-heat-3:#ffd33d; '
+		+ '--ap-heat-4:#fb8500; --ap-heat-5:#e5484d; --ap-rel-1:#9be9a8; '
+		+ '--ap-rel-2:#40c463; --ap-rel-3:#30a14e; --ap-rel-4:#216e39 }',
+	'@media (prefers-color-scheme: dark) { .ap-heat-wrap { --ap-heat-void:#181d23; '
+		+ '--ap-heat-0:#21262d; --ap-heat-1:#1f6f3f; --ap-heat-2:#2ea043; '
+		+ '--ap-heat-3:#d29922; --ap-heat-4:#db6d28; --ap-heat-5:#f85149; '
+		+ '--ap-rel-1:#0e4429; --ap-rel-2:#006d32; --ap-rel-3:#26a641; --ap-rel-4:#39d353 } }',
+	'.ap-heat-caption { display:flex; align-items:center; justify-content:space-between; gap:0.5em; '
+		+ 'flex-wrap:wrap; margin-bottom:0.5em }',
+	'.ap-heat-grid { display:grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap:3px; width:100% }',
+	'.ap-heat-cell { width:100%; aspect-ratio:1; border-radius:20% }',
+	'.ap-heat-blank { background:var(--ap-heat-void) }',
+	...[0, 1, 2, 3, 4, 5].map((n) => '.ap-heat-l' + n + ' { background:var(--ap-heat-' + n + ') }'),
+	...[1, 2, 3, 4].map((n) => '.ap-heat-relative .ap-heat-l' + n + ' { background:var(--ap-rel-' + n + ') }'),
+	'.ap-heat-legend { display:flex; align-items:center; gap:0.4em; flex-wrap:wrap; margin-top:0.5em }',
+	'.ap-heat-swatch { display:inline-block; width:0.8em; height:0.8em; border-radius:20% }',
+	'@media (max-width:719px) { .ap-traffic-columns { flex-direction:column; align-items:stretch } '
+		+ '.ap-heat-wrap, .ap-traffic-live { flex-basis:auto; width:100% } }'
 ].join('\n');
 
 return view.extend({
@@ -413,9 +397,9 @@ return view.extend({
 			const heatmapWas = this.heatmapCfg;
 			this.heatmapCfg = data.heatmap;
 			/* A changed heatmap switch re-evaluates the card immediately: off
-			   clears it, on forces a fresh read (the previous TTL is stale). */
+			   clears it, on forces a fresh read. */
 			if (this.heatmapCfg !== heatmapWas) {
-				this.heatmapAt = null;
+				this.heatmapReply = null;
 				this.heatmapFailed = false;
 				this.heatmapError = null;
 				this.heatmapOff = false;
@@ -476,91 +460,181 @@ return view.extend({
 		return this.refreshing;
 	},
 
-	/* B25 usage heatmap: stats_history is read only here — never in load(),
-	   never while the switch is off, and at most once per HEATMAP_TTL_MS (or
-	   right away when the local date has rolled over). The read runs after the
-	   status/stats/events chain so a slow or failing history call cannot delay
-	   the other cards; a failed read keeps the last successful grid and never
-	   spams the console (docs/10 「B25：概览页使用热力图」). */
+	/* Read after status/stats/events so history never blocks the other regions.
+	   No TTL: every enabled refresh sees quota changes from other sessions. */
 	loadHeatmap: function() {
-		if (!model.heatmap_enabled(this.heatmapCfg)) {
+		if (!model.heatmap_enabled(this.heatmapCfg) || this.heatmapOff) {
 			this.updateHeatmap();
 			return;
 		}
-		const now = Date.now();
-		const today = model.heatmap_today(now);
-		if (this.heatmapRequest || (this.heatmapAt != null
-			&& now - this.heatmapAt < this.heatmapTtl && this.heatmapDay === today))
-			return;
+		if (this.heatmapRequest)
+			return this.heatmapRequest;
+		// A quota save invalidates older in-flight reads, not newer history.
+		const revision = this.quotaRevision ?? 0;
 		const request = ap.call('stats_history').then((reply) => {
-			if (this.heatmapRequest !== request)
+			if (!model.heatmap_enabled(this.heatmapCfg))
 				return;
-			this.heatmapAt = Date.now();
-			this.heatmapDay = today;
-			const vm = model.heatmap_view(reply, today);
+			if (revision !== (this.quotaRevision ?? 0) && this.heatmapReply)
+				reply = { ...reply, quota: this.heatmapReply.quota };
+			const vm = model.heatmap_view(reply, model.heatmap_today(Date.now()));
 			if (vm.state === 'error') {
-				/* One warning per failure streak, not one per retry. */
-				if (!this.heatmapFailed) {
-					this.heatmapFailed = true;
-					console.warn('aether-proxy: reading the usage history failed:',
-						reply?.code ?? 'RPC_FAILED');
-				}
+				if (!this.heatmapFailed)
+					console.warn('aether-proxy: reading the usage history failed:', reply?.code ?? 'RPC_FAILED');
+				this.heatmapFailed = true;
 				this.heatmapError = vm.text;
 			}
 			else {
 				this.heatmapFailed = false;
 				this.heatmapError = null;
-				/* An `enabled:false` reply follows the applied configuration and
-				   hides the card; the UCI check re-evaluates on config changes. */
 				this.heatmapOff = vm.state === 'off';
+				this.heatmapReply = reply;
 				this.heatmapGood = vm.state === 'off' ? null : vm;
 			}
 			this.updateHeatmap();
-		}).finally(() => {
-			if (this.heatmapRequest === request)
-				this.heatmapRequest = null;
-		});
+		}).finally(() => { this.heatmapRequest = null; });
 		this.heatmapRequest = request;
+		return request;
 	},
 
-	/* Renders only the heatmap region; every other card stays untouched. Off
-	   switch or an `off` reply empties the region completely — and once empty,
-	   a disabled region is left alone, so a refresh writes no region at all.
-	   T12.7 rework: no section box and no title — the grid renders straight
-	   into the container; an empty history is a full neutral grid (the model
-	   returns the same 'ok' shape with every cell blank), a failed read keeps
-	   the last grid and adds one short error line above it. */
+	quotaSelection: function(bytes) {
+		this.quotaSelect.value = bytes == null ? 'none'
+			: QUOTA_PRESETS.includes(bytes / 1e9) ? String(bytes / 1e9) : 'custom';
+		this.quotaInput.value = bytes == null ? '' : String(bytes / 1e9);
+		this.quotaCustom.hidden = this.quotaSelect.value !== 'custom';
+	},
+
+	createHeatmap: function() {
+		this.quotaSelect = E('select', { style: 'width:auto', change: () => {
+			// Even the first slow history reply must not overwrite user edits.
+			this.quotaSynced = true;
+			this.quotaCustom.hidden = this.quotaSelect.value !== 'custom';
+			if (this.quotaSelect.value !== 'custom')
+				return this.saveQuota(this.quotaSelect.value === 'none' ? null : +this.quotaSelect.value * 1e9);
+		} }, [
+			E('option', { value: 'none' }, [ _('Unlimited', 'aether-proxy') ]),
+			...QUOTA_PRESETS.map((gb) => E('option', { value: String(gb) }, [
+				gb === 1000 ? '1 TB' : gb + ' ' + _('GB', 'aether-proxy') ])),
+			E('option', { value: 'custom' }, [ _('Custom…', 'aether-proxy') ])
+		]);
+		this.quotaInput = E('input', { type: 'number', min: 1, max: 100000, step: 1,
+			'aria-label': _('GB', 'aether-proxy'), style: 'width:7em' });
+		this.quotaButton = E('button', { 'class': 'cbi-button', click: () => {
+			const gb = Number(this.quotaInput.value);
+			return this.saveQuota(Number.isInteger(gb) && gb >= 1 && gb <= 100000 ? gb * 1e9 : NaN);
+		} }, [ _('Confirm', 'aether-proxy') ]);
+		this.quotaCustom = E('div', { hidden: true }, [ this.quotaInput,
+			' ', _('GB', 'aether-proxy'), ' ', this.quotaButton ]);
+		this.quotaErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
+		this.heatmapCells = Array.from({ length: 90 }, () => E('div', { 'class': 'ap-heat-cell ap-heat-blank' }));
+		this.heatmapGridNode = E('div', { 'class': 'ap-heat-grid' }, this.heatmapCells);
+		this.heatmapLegend = E('div', { 'class': 'ap-heat-legend' },
+			Array.from({ length: 6 }, (_, i) => E('span', {}, [
+				E('span', { 'class': 'ap-heat-swatch ' + (i ? 'ap-heat-l' + i : 'ap-heat-blank') }),
+				E('small', {})
+			])));
+		this.historyErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
+		dom.content(this.heatmapContainer, [
+			E('div', { 'class': 'ap-heat-caption' }, [
+				E('span', {}, [ _('Last 90 days', 'aether-proxy') ]),
+				E('label', {}, [ _('Monthly quota', 'aether-proxy'), ' ', this.quotaSelect ])
+			]), this.quotaCustom, this.quotaErrorNode, this.heatmapGridNode,
+			this.heatmapLegend, this.historyErrorNode
+		]);
+		this.quotaSynced = false;
+		this.legendQuota = undefined;
+	},
+
+	saveQuota: function(bytes) {
+		if (this.quotaSaving || this.switching)
+			return;
+		const error = (code) => {
+			this.quotaErrorNode.textContent = _('Saving quota failed (%s)', 'aether-proxy').replace('%s', code);
+			this.quotaErrorNode.hidden = false;
+		};
+		if (bytes !== null && (!Number.isSafeInteger(bytes) || bytes < 1e9 || bytes > 1e14)) {
+			error('USAGE');
+			return;
+		}
+		this.quotaSaving = true;
+		this.quotaSelect.disabled = this.quotaInput.disabled = this.quotaButton.disabled = true;
+		return ap.call('stats_quota', bytes == null ? { action: 'clear' } : { action: 'set', bytes })
+			.then((reply) => {
+				if (reply.ok !== true) {
+					error(reply.code ?? 'RPC_FAILED');
+					return;
+				}
+				this.quotaRevision = (this.quotaRevision ?? 0) + 1;
+				this.heatmapReply = {
+					...(this.heatmapReply ?? { ok: true, enabled: true, days: [] }), quota: reply.quota
+				};
+				this.heatmapGood = model.heatmap_view(this.heatmapReply, model.heatmap_today(Date.now()));
+				this.quotaErrorNode.hidden = true;
+				this.updateHeatmap();
+			}).finally(() => {
+				this.quotaSaving = false;
+				this.quotaSelect.disabled = this.quotaInput.disabled = this.quotaButton.disabled = false;
+			});
+	},
+
 	updateHeatmap: function() {
 		if (!this.heatmapContainer)
 			return;
-		if (!model.heatmap_enabled(this.heatmapCfg) || this.heatmapOff) {
-			if (this.heatmapContainer.children.length)
-				dom.content(this.heatmapContainer, []);
-			return;
+		const enabled = model.heatmap_enabled(this.heatmapCfg) && !this.heatmapOff;
+		if (enabled && !this.heatmapContainer.children.length)
+			this.createHeatmap();
+		if (!enabled && this.heatmapContainer.children.length) {
+			dom.content(this.heatmapContainer, []);
+			this.heatmapCells = null;
 		}
-		const children = [];
-		if (this.heatmapGood && this.heatmapError)
-			children.push(E('p', { style: this.colorStyle('warn') }, [ this.heatmapError ]));
-		if (this.heatmapGood)
-			children.push(this.heatmapGrid(this.heatmapGood.cells));
-		else if (this.heatmapError)
-			children.push(E('p', {}, [ this.heatmapError ]));
-		else
-			children.push(E('p', {}, [ _('Reading…', 'aether-proxy') ]));
-		dom.content(this.heatmapContainer, children);
+		this.mountTraffic();
+		if (!enabled)
+			return;
+		const vm = this.heatmapGood;
+		if (vm) {
+			if (!this.quotaSynced) {
+				this.quotaSelection(vm.quota);
+				this.quotaSynced = true;
+			}
+			this.heatmapContainer.className = 'ap-heat-wrap' + (vm.quota == null ? ' ap-heat-relative' : '');
+			vm.cells.forEach((cell, i) => {
+				const node = this.heatmapCells[i];
+				node.className = 'ap-heat-cell ' + (cell ? 'ap-heat-l' + cell.level : 'ap-heat-blank');
+				if (cell)
+					node.setAttribute('title', cell.tip);
+				else
+					node.removeAttribute('title');
+			});
+		}
+		const quota = vm?.quota != null;
+		if (this.legendQuota !== quota) {
+			const labels = quota ? [ _('No record', 'aether-proxy'), '0–25%', '25–50%', '50–75%', '75–100%', '≥100%' ]
+				: [ _('No record', 'aether-proxy'), _('Less', 'aether-proxy'), '', '', '', _('More', 'aether-proxy') ];
+			labels.forEach((label, i) => {
+				this.heatmapLegend.children[i].children[1].textContent = label;
+				// Relative mode's five levels are recorded zero plus four green steps.
+				this.heatmapLegend.children[i].children[0].className = 'ap-heat-swatch '
+					+ (i ? 'ap-heat-l' + (quota ? i : i - 1) : 'ap-heat-blank');
+			});
+			this.legendQuota = quota;
+		}
+		this.historyErrorNode.textContent = this.heatmapError ?? '';
+		this.historyErrorNode.hidden = !this.heatmapError;
 	},
 
-	/* 3 rows × 30 columns of consecutive dates in row-major order (the model's
-	   flat cells: the last 90 days, today bottom-right). Tooltips are plain
-	   title text; cells never take HTML (docs/b25-heatmap.md §7). */
-	heatmapGrid: function(cells) {
-		return E('div', { 'class': 'ap-heat-scroll' },
-			[ E('div', { 'class': 'ap-heat-grid' }, cells.map((cell) => cell
-				? E('div', {
-					'class': 'ap-heat-cell ap-heat-l' + cell.level + ' ap-heat-' + cell.health,
-					'title': cell.tip
-				})
-				: E('div', { 'class': 'ap-heat-cell ap-heat-blank' }))) ]);
+	/* Move the existing live column only on switch changes, never on a poll. */
+	mountTraffic: function() {
+		if (!this.trafficBody)
+			return;
+		const enabled = model.heatmap_enabled(this.heatmapCfg) && !this.heatmapOff;
+		if (this.trafficSplit === enabled)
+			return;
+		this.trafficSplit = enabled;
+		this.trafficLive.className = enabled ? 'ap-traffic-live' : '';
+		if (enabled)
+			dom.content(this.trafficLive, [ this.trafficTable, this.connectionLine ]);
+		dom.content(this.trafficBody, [ this.trafficHeading, ...(enabled
+			? [ E('div', { 'class': 'ap-traffic-columns' }, [ this.heatmapContainer, this.trafficLive ]) ]
+			: [ this.trafficTable, this.connectionLine ]) ]);
 	},
 
 	readInterval: function() {
@@ -1156,30 +1230,51 @@ return view.extend({
 	},
 
 	trafficSection: function(traffic, note) {
-		const rows = [ E('tr', {}, [
-			E('th', {}, ''), E('th', {}, _('Upload', 'aether-proxy')), E('th', {}, _('Download', 'aether-proxy'))
-		]) ];
-		for (const [key, title] of [
-			[ 'proxy', _('Proxy', 'aether-proxy') ],
-			[ 'direct', _('Direct', 'aether-proxy') ],
-			[ 'total', traffic.total_label ]
-		])
-			rows.push(E('tr', {}, [
-				/* The inactive note sits under the WAN label: it explains why only
-				   this row has rates (owner's choice, 2026-10-20). */
-				E('td', { title: key === 'total' ? traffic.total_title : null },
-					key === 'total' && note ? [ title, E('br'), E('small', {}, [ note ]) ] : [ title ]),
-				E('td', {}, [ traffic[key].tx ]), E('td', {}, [ traffic[key].rx ])
-			]));
-		return this.section(_('Traffic and connections', 'aether-proxy'), [
-			E('table', { 'class': 'table' }, rows),
-			E('div', { 'style': 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
-				E('span', {}, [ _('Proxy connections', 'aether-proxy'), ' ', traffic.connections.proxy ]),
-				E('span', {
-					title: _('Total connections in the system connection tracking table (conntrack).', 'aether-proxy')
-				}, [ _('Total connections', 'aether-proxy'), ' ', traffic.connections.total ])
-			])
-		]);
+		this.trafficValues = {};
+		this.trafficNote = E('small');
+		this.trafficTotal = E('td');
+		const rows = [ E('tr', {}, [ E('th'), E('th', {}, _('Upload', 'aether-proxy')),
+			E('th', {}, _('Download', 'aether-proxy')) ]) ];
+		for (const [key, title] of [ [ 'proxy', _('Proxy', 'aether-proxy') ],
+			[ 'direct', _('Direct', 'aether-proxy') ], [ 'total', '' ] ]) {
+			this.trafficValues[key] = { tx: E('td'), rx: E('td') };
+			rows.push(E('tr', {}, [ key === 'total' ? this.trafficTotal : E('td', {}, [ title ]),
+				this.trafficValues[key].tx, this.trafficValues[key].rx ]));
+		}
+		this.connectionProxy = E('span');
+		this.connectionTotal = E('span', {
+			title: _('Total connections in the system connection tracking table (conntrack).', 'aether-proxy')
+		});
+		this.trafficTable = E('table', { 'class': 'table' }, rows);
+		this.connectionLine = E('div', { style: 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
+				this.connectionProxy, this.connectionTotal
+			]);
+		this.trafficLive = E('div');
+		this.trafficBody = this.section(_('Traffic and connections', 'aether-proxy'), []);
+		this.trafficHeading = this.trafficBody.children[0];
+		this.mountTraffic();
+		return this.trafficBody;
+	},
+
+	paintTraffic: function() {
+		if (!this.trafficBody)
+			dom.content(this.trafficContainer, this.trafficSection(this.traffic, this.vm.traffic_note));
+		for (const key of [ 'proxy', 'direct', 'total' ])
+			for (const direction of [ 'tx', 'rx' ])
+				this.trafficValues[key][direction].textContent = this.traffic[key][direction];
+		this.trafficTotal.setAttribute('title', this.traffic.total_title ?? '');
+		this.trafficNote.textContent = this.vm.traffic_note ?? '';
+		const note = this.vm.traffic_note ?? '';
+		if (this.trafficLastNote !== note || this.trafficLastLabel !== this.traffic.total_label) {
+			dom.content(this.trafficTotal, [ this.traffic.total_label,
+				...(note ? [ E('br'), this.trafficNote ] : []) ]);
+			this.trafficLastNote = note;
+			this.trafficLastLabel = this.traffic.total_label;
+		}
+		this.connectionProxy.textContent = _('Proxy connections', 'aether-proxy')
+			+ ' ' + this.traffic.connections.proxy;
+		this.connectionTotal.textContent = _('Total connections', 'aether-proxy')
+			+ ' ' + this.traffic.connections.total;
 	},
 
 	componentTable: function(components) {
@@ -1276,18 +1371,19 @@ return view.extend({
 		this.enabled = data.enabled;
 		this.initialReading = true;
 
-		/* B25 heatmap state: cfg is the raw UCI value; the region is built only
-		   while the switch is on and starts with the shared reading placeholder.
-		   The wrap class caps and centers the bare grid (no section box). */
+		/* The raw UCI switch gates both the split layout and history reads.
+		   Controls and a neutral grid are mounted before asynchronous history. */
 		this.heatmapCfg = data.heatmap;
 		this.heatmapGood = null;
 		this.heatmapError = null;
 		this.heatmapOff = false;
 		this.heatmapFailed = false;
-		this.heatmapAt = null;
-		this.heatmapDay = null;
 		this.heatmapRequest = null;
-		this.heatmapTtl = HEATMAP_TTL_MS;
+		this.heatmapReply = null;
+		this.quotaRevision = 0;
+		this.trafficBody = null;
+		this.trafficLastNote = this.trafficLastLabel = undefined;
+		this.trafficSplit = undefined;
 		this.heatmapContainer = E('div', { 'class': 'ap-heat-wrap' });
 		this.heatmapStyle = E('style', {}, [ HEATMAP_CSS ]);
 		this.updateHeatmap();
@@ -1365,11 +1461,9 @@ return view.extend({
 			this.noticeContent = E('div', {});
 			this.runtimeContent = E('div', {});
 			this.trafficContainer = E('div', {});
-			/* T12.7 puts the heatmap region between the notices and the runtime
-			   status card, under the title/enable line. It fills itself via
-			   loadHeatmap and stays an empty region while off. */
+			/* The heatmap is nested in traffic; other page regions keep their order. */
 			dom.content(this.content, [
-				this.noticeContent, this.heatmapContainer, this.runtimeContent,
+				this.noticeContent, this.runtimeContent,
 				this.trafficContainer, this.componentSection
 			]);
 		}
@@ -1422,7 +1516,7 @@ return view.extend({
 		if (stats !== undefined || !this.traffic)
 			this.updateTraffic(stats);
 		else
-			dom.content(this.trafficContainer, this.trafficSection(this.traffic, vm.traffic_note));
+			this.paintTraffic();
 		this.updateNotices();
 
 		return vm;
@@ -1431,7 +1525,7 @@ return view.extend({
 	updateTraffic: function(stats) {
 		this.traffic = model.traffic(this.previousStats, stats);
 		this.previousStats = stats;
-		dom.content(this.trafficContainer, this.trafficSection(this.traffic, this.vm.traffic_note));
+		this.paintTraffic();
 	},
 
 	/* Each late reply writes only its own region; diagnostics cannot recreate

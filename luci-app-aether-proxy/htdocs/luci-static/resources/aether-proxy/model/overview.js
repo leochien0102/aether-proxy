@@ -24,11 +24,9 @@
  * T10.68 presents docs/10 B19 degradation without changing effective selections
  * or the configured-versus-applied mode comparison;
  * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
- * T12.6 adds the B25 usage heatmap: switch interpretation, the stats_history
- * reply mapping and the pure date grid with colour levels, health tiers and
- * text-only tooltips; T12.7 reworks it into a continuous 3-row × 30-column
- * grid (90 cells in row-major order: the last 90 days ending today, so today
- * sits in the bottom-right corner, full even without data);
+ * T16.3 follows docs/design/b25-quota-heatmap-20261116 §4–6: 90 dates in
+ * 5×18 row-major order, per-month daily quota colours (or relative greens),
+ * health only in text tooltips and blank-versus-recorded-zero distinction;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
  */
@@ -434,24 +432,19 @@ function duration_text(secs) {
 	return fmt(_('%s days', 'aether-proxy'), Math.floor(d / 86400));
 }
 
-function heatmap_tip(entry) {
-	return [
+function heatmap_tip(entry, ratio) {
+	const share = entry.observed > 0
+		? Math.round(100 * entry.healthy / entry.observed) + '% (' + entry.healthy + '/' + entry.observed
+			+ ' ' + _('seconds', 'aether-proxy') + ')' : '—';
+	const lines = [
 		entry.date,
 		fmt(_('Proxy traffic %s', 'aether-proxy'), byte_text(entry.tx + entry.rx)),
-		fmt(_('Healthy share %s', 'aether-proxy'),
-			entry.observed > 0 ? Math.round(100 * Math.min(1, entry.healthy / entry.observed)) + '%' : '–'),
+		fmt(_('Healthy share %s', 'aether-proxy'), share),
 		fmt(_('Observed %s', 'aether-proxy'), duration_text(entry.observed))
-	].join('\n');
-}
-
-/* ok = no unhealthy time; warn = some; bad = observed but never healthy;
-   none = not observed at all — neutral, never painted as a failure. */
-function health_tier(entry) {
-	if (!(entry.observed > 0))
-		return 'none';
-	if (entry.healthy >= entry.observed)
-		return 'ok';
-	return entry.healthy > 0 ? 'warn' : 'bad';
+	];
+	if (ratio != null)
+		lines.push(fmt(_('Daily quota share %s', 'aether-proxy'), Math.round(ratio * 100) + '%'));
+	return lines.join('\n');
 }
 
 /* Reload failures leave runtime status unchanged. Compare against UCI instead
@@ -755,14 +748,10 @@ return baseclass.extend({
 		return d.getFullYear() + '-' + part(d.getMonth() + 1) + '-' + part(d.getDate());
 	},
 
-	/* T12.7 rework: the grid is always 3 rows × 30 columns = 90 cells in
-	   row-major order — the 90 consecutive calendar days ending with today,
-	   with no leading blank, so today is always the bottom-right cell (index
-	   89) and the window covers the last 90 days without week alignment.
-	   Days without an entry stay blank (no zero-fill, no backfill); entries
-	   after today are dropped before the window is laid out; entries older
-	   than the window drop off. Colour level: log1p(tx+rx) normalized over
-	   the entries shown in the window, 0 traffic lightest (level 0..4). */
+	/* docs/design/b25-quota-heatmap-20261116 §4–6: 90 consecutive days,
+	   row-major in 18 columns; quota uses each date's own calendar month. */
+	heatmap_columns: 18,
+
 	heatmap_view: function(reply, today) {
 		if (!reply || reply.ok === false)
 			return { state: 'error',
@@ -791,6 +780,7 @@ return baseclass.extend({
 		const shown = entries.filter((entry) => entry.day >= first);
 		const max = Math.max(0, ...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
 		const by_date = new Map(shown.map((entry) => [ entry.date, entry ]));
+		const quota = reply.quota?.bytes ?? null;
 		const cells = [];
 		for (let i = 0; i < HEATMAP_DAYS; i++) {
 			const date = date_key(add_days(first, i));
@@ -799,15 +789,18 @@ return baseclass.extend({
 				cells.push(null);
 				continue;
 			}
-			const v = Math.log1p(entry.tx + entry.rx);
-			cells.push({
-				date,
-				level: (max > 0 && v > 0) ? Math.min(4, 1 + Math.floor((v / max) * 4)) : 0,
-				health: health_tier(entry),
-				tip: heatmap_tip(entry)
-			});
+			const total = entry.tx + entry.rx;
+			const [y, m] = date.split('-').map(Number);
+			// Numeric local constructor avoids Date.parse's UTC date-string semantics.
+			const month_days = new Date(y, m, 0).getDate();
+			const ratio = quota != null ? total / (quota / month_days) : null;
+			let level = 0;
+			if (total > 0)
+				level = ratio == null ? Math.min(4, Math.ceil(4 * Math.log1p(total) / max))
+					: ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : ratio < 1 ? 4 : 5;
+			cells.push({ date, level, ratio, tip: heatmap_tip(entry, ratio) });
 		}
-		return { state: 'ok', cells };
+		return { state: 'ok', cells, quota };
 	},
 
 	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */
