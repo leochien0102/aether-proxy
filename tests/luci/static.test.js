@@ -71,6 +71,7 @@ const PLUGIN_METHODS = {
 	data_status: [],
 	stats: [],
 	stats_history: [ 'days' ],
+	stats_quota: [ 'action', 'bytes' ],
 	log: [ 'source', 'lines' ],
 	log_clear: [],
 	node_import: [ 'uri' ],

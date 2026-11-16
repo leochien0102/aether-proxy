@@ -484,7 +484,7 @@ function scenario_10() {
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods match the write-only whitelist including log_clear',
 		show([ 'check', 'job_start', 'log_clear', 'mode_use', 'node_import', 'node_use',
-			'probe_now', 'probe_url', 'save_file', 'service' ]),
+			'probe_now', 'probe_url', 'save_file', 'service', 'stats_quota' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -495,7 +495,7 @@ function scenario_10() {
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log', 'log_clear', 'mode_use',
 			'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
-			'save_file', 'service', 'stats', 'stats_history', 'status', 'sub_status', 'version' ]),
+			'save_file', 'service', 'stats', 'stats_history', 'stats_quota', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('T10.4 components declares empty args', deep_eq(methods.components.args, {}), show(methods.components.args));
@@ -524,6 +524,9 @@ function scenario_10() {
 		deep_eq(rpcd_policy(methods.events.args), { since: 'int32', level: 'string' }), show(methods.events.args));
 	check('10. log policy: source string, lines int32',
 		deep_eq(rpcd_policy(methods.log.args), { source: 'string', lines: 'int32' }), show(methods.log.args));
+	check('T16.3 stats_quota policy: action string and bytes int64',
+		deep_eq(rpcd_policy(methods.stats_quota.args), { action: 'string', bytes: 'int64' }),
+		show(methods.stats_quota.args));
 	// T12.5: days is declared as int32 (rpcd derives the ubus type from the example value).
 	check('10. stats_history policy: days int32',
 		deep_eq(rpcd_policy(methods.stats_history.args), { days: 'int32' }), show(methods.stats_history.args));
@@ -538,7 +541,8 @@ function scenario_10() {
 		version: 'read', status: 'read', events: 'read', job_status: 'read',
 		log: 'read', list_file: 'read', probe_results: 'read', sub_status: 'read',
 		data_status: 'read', stats: 'read', stats_history: 'read', components: 'read', probe_sites: 'read', node_parse: 'read',
-		log_clear: 'write', service: 'write', check: 'write', job_start: 'write', mode_use: 'write',
+		stats_quota: 'write', log_clear: 'write', service: 'write', check: 'write',
+		job_start: 'write', mode_use: 'write',
 		node_import: 'write', save_file: 'write', probe_now: 'write', node_use: 'write', probe_url: 'write'
 	};
 
@@ -815,6 +819,7 @@ function scenario_sessions() {
 		events: { args: { since: 0, level: 'warn' }, argv: [ 'events', '--since', '0', '--level', 'warn' ] },
 		stats: { argv: [ 'stats' ] },
 		stats_history: { args: { days: 3 }, argv: [ 'stats', 'history', '--days', '3' ] },
+		stats_quota: { args: { action: 'show' }, argv: [ 'stats', 'quota' ] },
 		data_status: { argv: [ 'data', 'status' ] },
 		sub_status: { argv: [ 'sub', 'status' ] },
 		probe_now: { argv: [ 'probe', 'now' ] },
@@ -1058,6 +1063,42 @@ function scenario_stats_history() {
 
 // ---------------------------------------------------------------- scenarios
 
+// T16.3 quota RPC is a validated thin forward, with large integer byte values.
+function scenario_stats_quota() {
+	let data = { ok: true, quota: { bytes: 100000000000, set_at: 1790000000 } };
+	stub_ctrl({ exit: 0, stdout: show(data) });
+	let cases = [
+		{ action: 'show', argv: [ 'stats', 'quota' ] },
+		{ action: 'clear', argv: [ 'stats', 'quota', 'clear' ] },
+		{ action: 'set', bytes: 1000000000, argv: [ 'stats', 'quota', 'set', '1000000000' ] },
+		{ action: 'set', bytes: 100000000000, argv: [ 'stats', 'quota', 'set', '100000000000' ] },
+		{ action: 'set', bytes: 100000000000000, argv: [ 'stats', 'quota', 'set', '100000000000000' ] }
+	];
+	for (let c in cases) {
+		let argv_of = watch_cli();
+		let args = { action: c.action, ubus_rpc_session: 'token' };
+		if (c.bytes != null)
+			args.bytes = c.bytes;
+		let r = methods.stats_quota.call({ args });
+		check(`T16.3 stats_quota ${c.action} ${c.bytes}: exact argv and unchanged JSON`,
+			deep_eq(argv_of(), [ ...c.argv, '--json' ]) && deep_eq(r, data), show(r));
+	}
+	for (let args in [ {}, { action: 'reload' }, { action: 1 }, { action: 'set' },
+		{ action: 'show;reboot' }, { action: 'set', bytes: 999999999 },
+		{ action: 'set', bytes: 100000000000001 }, { action: 'set', bytes: 1000000000.5 },
+		{ action: 'set', bytes: '100G' }, { action: 'set', bytes: true },
+		{ action: 'set', bytes: [] }, { action: 'set', bytes: {} }, { action: 'set', bytes: null } ]) {
+		let argv_of = watch_cli();
+		let r = methods.stats_quota.call({ args: { ...args, ubus_rpc_session: 'token' } });
+		check(`T16.3 stats_quota rejects ${show(args)}: USAGE without execution`,
+			r.ok === false && r.code == 'USAGE' && argv_of() == null, show(r));
+	}
+	let failure = { ok: false, code: 'FS_FAILED', detail: 'read-only filesystem' };
+	stub_ctrl({ exit: 1, stdout: show(failure) });
+	check('T16.3 stats_quota CLI error JSON forwarded unchanged',
+		deep_eq(methods.stats_quota.call({ args: { action: 'clear' } }), failure));
+}
+
 scenario_1();
 scenario_2();
 scenario_3();
@@ -1077,6 +1118,7 @@ scenario_16();
 scenario_17();
 scenario_18();
 scenario_stats_history();
+scenario_stats_quota();
 scenario_components();
 scenario_sessions();
 scenario_node_probe();

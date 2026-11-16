@@ -1030,7 +1030,10 @@ test('T10.3 scenario 6d: polling preserves enable, node selection, probe button 
 test('T10.3 scenario 7: relative font sizes, theme-only colors and no theme-specific label modifiers', () => {
 	const src = fs.readFileSync(VIEW, 'utf8');
 	assert.doesNotMatch(src, /font-size:\s*\d+(?:\.\d+)?px/);
-	const withoutFallbacks = src.replace(/var\(--[\w-]+,\s*#[a-f\d]{3,8}\)/gi, '');
+	// B25 defines its reviewed palette as CSS variables (including dark mode).
+	// Other UI colours must still use theme variables with fallbacks.
+	const withoutFallbacks = src.replace(/var\(--[\w-]+,\s*#[a-f\d]{3,8}\)/gi, '')
+		.replace(/--ap-(?:heat|rel)-[\w-]+:#[a-f\d]{6}\b/gi, '');
 	assert.doesNotMatch(withoutFallbacks, /#[a-f\d]{3,8}\b/i);
 	assert.doesNotMatch(src, /label\s+(success|warning|danger|notice|important)\b/);
 	assert.doesNotMatch(src, /rpc\s*\.\s*declare|innerHTML|cbi-button-reset/);
@@ -2127,7 +2130,9 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	await page.initialRequest;
 	assert.equal(sections(root)[0], settledRuntime);
 	assert.equal(findAll(nodeRow(root), 'select')[0], nodes);
-	assert.ok(writes.includes(page.trafficContainer));
+	assert.ok(!writes.includes(page.trafficContainer), 'B25 patches values without replacing traffic controls');
+	assert.equal(page.trafficValues.proxy.tx.textContent, '–', 'first sample updates persistent value nodes');
+	assert.equal(page.connectionProxy.textContent, '代理连接 3');
 	assert.ok(!writes.includes(page.runtimeContent));
 	assert.ok(!writes.includes(page.componentContent));
 	assert.equal(visibleText(findAll(sections(root)[1], 'span')[0]), '代理连接 3');

@@ -2857,3 +2857,51 @@ msgstr "%s 分钟"
 msgctxt "aether-proxy"
 msgid "%s days"
 msgstr "%s 天"
+
+msgctxt "aether-proxy"
+msgid "seconds"
+msgstr "秒"
+
+msgctxt "aether-proxy"
+msgid "Confirm"
+msgstr "确定"
+
+msgctxt "aether-proxy"
+msgid "GB"
+msgstr "GB"
+
+msgctxt "aether-proxy"
+msgid "Unlimited"
+msgstr "不限"
+
+msgctxt "aether-proxy"
+msgid "Custom…"
+msgstr "自定义…"
+
+msgctxt "aether-proxy"
+msgid "Last 90 days"
+msgstr "近 90 天"
+
+msgctxt "aether-proxy"
+msgid "Monthly quota"
+msgstr "月额度"
+
+msgctxt "aether-proxy"
+msgid "No record"
+msgstr "无记录"
+
+msgctxt "aether-proxy"
+msgid "Less"
+msgstr "少"
+
+msgctxt "aether-proxy"
+msgid "More"
+msgstr "多"
+
+msgctxt "aether-proxy"
+msgid "Saving quota failed (%s)"
+msgstr "保存额度失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Daily quota share %s"
+msgstr "占日均额度 %s"

@@ -356,6 +356,27 @@ const methods = {
 		args: { days: 0 }
 	},
 
+	// T16.3: monthly quota is display-only; forward to CLI, never UCI/reload.
+	stats_quota: {
+		call: function(req) {
+			let a = req?.args ?? {};
+			if (type(a.action) != 'string' || index([ 'show', 'set', 'clear' ], a.action) < 0)
+				return usage('action must be one of show|set|clear');
+			let argv = [ 'stats', 'quota' ];
+			if (a.action == 'set') {
+				if (type(a.bytes) != 'int' || a.bytes < C.QUOTA_MIN_BYTES || a.bytes > C.QUOTA_MAX_BYTES)
+					return usage('bytes must be an integer between 1 GB and 100000 GB');
+				push(argv, 'set', `${a.bytes}`);
+			}
+			else if (a.action == 'clear')
+				push(argv, 'clear');
+			// show maps to the bare command: CLI has no "show" subcommand.
+			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
+		},
+		// rpcd's integer example 64 explicitly selects int64, not default int32.
+		args: { action: '', bytes: 64 }
+	},
+
 	data_status: {
 		call: function(req) {
 			return call_cli([ 'data', 'status' ], DEFAULT_TIMEOUT_SECS);
