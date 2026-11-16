@@ -85,6 +85,10 @@ with tempfile.TemporaryDirectory(prefix='.usage-persist-', dir=ROOT / 'tests/dae
 			dnsmasq = self.root / 'etc/init.d/dnsmasq'
 			dnsmasq.write_text('#!/bin/sh\nexit 0\n')
 			dnsmasq.chmod(0o755)
+			# Match main's explicit proc ABI fixture for the Xray readiness gate;
+			# the copied Xray stub supplies the owned sockets themselves.
+			subprocess.run(['python3', str(ROOT / 'tests/xray-ready/proc_fixture.py'),
+				str(self.root)], check=True)
 			(self.root / 'proc/net/tcp').write_text(
 				'  0: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n')
 			for file in ('ip-rules', 'ip-routes', 'conflicts'):

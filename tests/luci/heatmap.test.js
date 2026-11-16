@@ -391,7 +391,10 @@ test('heatmap view: switch on — placeholder first, then one stats_history per 
 	assert.equal(calls.filter((method) => method == 'stats_history').length, 2);
 });
 
-test('heatmap view: renders the bare 3×30 grid — no title, no weekday header, no section box', async () => {
+test('heatmap view: renders the bare 3×30 grid — no title, no weekday header, no section box', async (t) => {
+	/* The fixed reply occupies indices 83..86 only on this local date; the
+	   real host date would move those cells and eventually age them out. */
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 1, 12).getTime());
 	const mark = htmlWriteMark();
 	const { view } = loadView({
 		replies: { stats_history: weekReply() },

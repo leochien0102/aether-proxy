@@ -2,6 +2,8 @@
   "main": {
     "enabled": false,
     "mode": "bypass_cn",
+    "port_scope": "all",
+    "extra_ports": "",
     "node": null,
     "lan_ifaces": [
       "br-lan"
