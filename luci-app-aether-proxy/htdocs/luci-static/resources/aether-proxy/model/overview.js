@@ -778,7 +778,8 @@ return baseclass.extend({
 			?? parse_date('1970-01-01');
 		const first = add_days(anchor, -(HEATMAP_DAYS - 1));
 		const shown = entries.filter((entry) => entry.day >= first);
-		const max = Math.max(0, ...shown.map((entry) => Math.log1p(entry.tx + entry.rx)));
+		const totals = shown.map((entry) => entry.tx + entry.rx).filter((total) => total > 0)
+			.sort((a, b) => a - b);
 		const by_date = new Map(shown.map((entry) => [ entry.date, entry ]));
 		const quota = reply.quota?.bytes ?? null;
 		const cells = [];
@@ -795,8 +796,9 @@ return baseclass.extend({
 			const month_days = new Date(y, m, 0).getDate();
 			const ratio = quota != null ? total / (quota / month_days) : null;
 			let level = 0;
+			// First equal index counts strictly smaller positive days, so ties share a level (§4.3).
 			if (total > 0)
-				level = ratio == null ? Math.min(4, 1 + Math.floor(4 * Math.log1p(total) / max))
+				level = ratio == null ? Math.min(4, 1 + Math.floor(4 * totals.indexOf(total) / totals.length))
 					: ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : ratio < 1 ? 4 : 5;
 			cells.push({ date, level, ratio, tip: heatmap_tip(entry, ratio) });
 		}
