@@ -1,6 +1,6 @@
 'use strict';
 
-/* B25 quota heatmap, docs/tasks/m16.md T16.6 and quota design §4–8.
+/* B25 quota heatmap, docs/tasks/m16.md T16.7 and quota design §4–8.
  * Real model + view with shared LuCI DOM doubles; assert persistent controls,
  * calendar arithmetic, request mappings and failure isolation. */
 
@@ -296,18 +296,53 @@ test('T16.5 model: daily quota uses February 28, November 30, December 31 days',
 	assert.equal(cross[1].ratio, 1e9 / (100e9 / 31));
 });
 
-test('T16.5 model: relative fallback uses 1+floor capped at four, handles absent quota and all-zero window', () => {
-	const days = [ entry('2026-11-14', 0), entry('2026-11-15', Math.expm1(1)),
-		entry('2026-11-16', Math.expm1(4)) ];
+test('T16.7 model: eight equally spaced positive days split into four equal quantile levels', () => {
+	const days = Array.from({ length: 8 }, (_, i) => entry('2026-11-' + (i + 10), (i + 1) * 1e6));
 	for (const quota of [ undefined, null, { bytes: null } ]) {
-		const vm = dashboardModel().heatmap_view({ ...history(days), quota }, '2026-11-16');
-		assert.deepEqual(vm.cells.slice(-3).map((c) => c.level), [ 0, 2, 4 ]);
-		assert.equal(vm.cells[89].tip.split('\n').length, 4);
+		const vm = dashboardModel().heatmap_view({ ...history(days), quota }, '2026-11-17');
+		assert.deepEqual(vm.cells.slice(-8).map((c) => c.level), [ 1, 1, 2, 2, 3, 3, 4, 4 ]);
+		assert.equal(vm.cells[89].tip.split('\n').length, 4, 'relative tooltip still omits quota share');
 	}
-	const zero = dashboardModel().heatmap_view(history([entry('2026-11-16', 0)]), '2026-11-16');
-	assert.equal(zero.cells[89].level, 0);
-	assert.ok(zero.cells[89].tip, 'recorded zero has a tooltip');
-	assert.equal(zero.cells[88], null, 'absent record stays blank');
+});
+
+test('T16.7 model: n=0 keeps recorded zero at level zero and missing dates blank', () => {
+	const vm = dashboardModel().heatmap_view(history([
+		entry('2026-11-14', 0), entry('2026-11-16', 0)
+	]), '2026-11-16');
+	assert.deepEqual(vm.cells.filter(Boolean).map((c) => c.level), [ 0, 0 ]);
+	assert.ok(vm.cells[89].tip, 'recorded zero has a tooltip');
+	assert.equal(vm.cells[88], null, 'absent record stays blank');
+});
+
+test('T16.7 model: n=1 is level one; n=2 unequal days are levels one and three', () => {
+	assert.equal(cell('2026-11-16', 1e9, null).level, 1);
+	const vm = dashboardModel().heatmap_view(history([
+		entry('2026-11-13', 0), entry('2026-11-14', 1e6), entry('2026-11-16', 1e9)
+	]), '2026-11-16');
+	assert.deepEqual(vm.cells.slice(-4).map((c) => c && c.level), [ 0, 1, null, 3 ],
+		'zero and missing days do not count toward n or the strictly-lower rank');
+});
+
+test('T16.7 model: equal totals share the strictly-lower rank, all equal days stay level one', () => {
+	const totals = [ 7, 7, 7, 7, 7, 7, 7, 7 ];
+	const levels = (values) => dashboardModel().heatmap_view(history(values.map((total, i) =>
+		entry('2026-11-' + (i + 10), total))), '2026-11-17').cells.filter(Boolean).map((c) => c.level);
+	assert.deepEqual(levels(totals), [ 1, 1, 1, 1, 1, 1, 1, 1 ]);
+	assert.deepEqual(levels([ 1, 1, 2, 2, 2, 3, 3, 4 ]), [ 1, 1, 2, 2, 2, 3, 3, 4 ],
+		'ties use the first rank, not their index or the number of distinct lower totals');
+});
+
+test('T16.7 model: out-of-window entries affect neither n nor the strictly-lower rank', () => {
+	const days = [ entry('2026-08-19', 10), entry('2026-11-16', 20) ];
+	const model = dashboardModel();
+	const baseline = model.heatmap_view(history(days), '2026-11-16');
+	const vm = model.heatmap_view(history([
+		entry('2026-08-18', 1), entry('2026-08-17', 1e12), ...days,
+		entry('2026-11-17', 1)
+	]), '2026-11-16');
+	assert.deepEqual(vm, baseline, 'older and future entries must not change cells, levels or tooltips');
+	assert.equal(vm.cells[0].date, '2026-08-19', 'first window date still participates');
+	assert.deepEqual(vm.cells.filter(Boolean).map((c) => c.level), [ 1, 3 ]);
 });
 
 test('T16.5 model: tooltip five lines and observed zero never changes traffic colour', () => {
@@ -451,7 +486,7 @@ test('T16.5 view: presets, custom endpoints and clear only write quota and recol
 	select.value = 'none';
 	await select.attrs.change();
 	assert.deepEqual(requests.at(-1).params, { action: 'clear' });
-	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l4');
+	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l1');
 	assert.ok(calls.every((m) => m === 'stats_quota'), 'no page refresh, service or UCI RPC');
 	assert.equal(view.quotaSelect, select);
 	assert.equal(view.quotaControl, control);
@@ -599,14 +634,13 @@ test('T16.5 view: Escape restores preset or custom without RPC and blur commits 
 	}
 });
 
-test('T16.5 model: relative levels follow floor across the whole range, never red', () => {
-	for (const ratio of [0.01, 0.24, 0.26, 0.49, 0.51, 0.74, 0.76, 0.99, 1]) {
-		const total = Math.expm1(ratio * 10);
-		const vm = dashboardModel().heatmap_view(history([
-			entry('2026-11-15', total), entry('2026-11-16', Math.expm1(10))
-		]), '2026-11-16');
-		assert.equal(vm.cells[88].level, Math.min(4, 1 + Math.floor(4 * Math.log1p(total) / 10)));
-		assert.ok(vm.cells.filter(Boolean).every((c) => c.level <= 4));
+test('T16.7 model: relative levels stay in zero through four for every window population, never red', () => {
+	const start = parse_local('2026-08-19');
+	for (let n = 0; n <= 90; n++) {
+		const days = Array.from({ length: 90 }, (_, i) => entry(
+			new Date(start + i * 86400000).toISOString().slice(0, 10), i < n ? 2 ** (i % 40) : 0));
+		const vm = dashboardModel().heatmap_view(history(days), '2026-11-16');
+		assert.ok(vm.cells.every((c) => [ 0, 1, 2, 3, 4 ].includes(c.level)), 'n=' + n);
 	}
 });
 
