@@ -2,6 +2,7 @@
 import datetime
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
@@ -244,11 +245,11 @@ def history(base):
 	file.unlink()
 	value = json.loads(run().stdout)
 	check('6. history with a missing file is an enabled empty history with null updated_at',
-		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None})
+		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None, 'quota': {'bytes': None, 'set_at': None}})
 	file.write_text('{"days": { broken')
 	value = json.loads(run().stdout)
 	check('6. history with a corrupt file is the same empty history and keeps the bytes',
-		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None}
+		value == {'ok': True, 'enabled': True, 'days': [], 'updated_at': None, 'quota': {'bytes': None, 'set_at': None}}
 		and file.read_text() == '{"days": { broken')
 
 	# With the switch off the file must not even be read: a full history is on disk.
@@ -257,14 +258,14 @@ def history(base):
 	value = json.loads(subprocess.run(HIST + ['--json', '--sys-root', str(root),
 		'--confdir', str(conf_off)], cwd=ROOT, text=True, capture_output=True, timeout=12).stdout)
 	check('6. history with the switch off is exactly the disabled reply',
-		value == {'ok': True, 'enabled': False, 'days': []})
+		value == {'ok': True, 'enabled': False, 'days': [], 'quota': {'bytes': None, 'set_at': None}})
 	no_stats = root / 'conf-empty'
 	no_stats.mkdir(exist_ok=True)
 	(no_stats / 'aetherproxy').write_text("config main 'main'\n\toption enabled '0'\n")
 	value = json.loads(subprocess.run(HIST + ['--json', '--sys-root', str(root),
 		'--confdir', str(no_stats)], cwd=ROOT, text=True, capture_output=True, timeout=12).stdout)
 	check('6. history without a stats section is off like the switch says',
-		value == {'ok': True, 'enabled': False, 'days': []})
+		value == {'ok': True, 'enabled': False, 'days': [], 'quota': {'bytes': None, 'set_at': None}})
 
 	# An unrelated invalid configuration fails the call like status does (docs/10).
 	broken = root / 'conf-broken'
@@ -276,8 +277,107 @@ def history(base):
 		and json.loads(result.stdout)['code'] == 'CONFIG_INVALID')
 
 
+def quota_tests(base):
+	# T16.2: real CLI with isolated roots; no config or service is needed for quota.
+	root = base / 'quota-root'
+	file = root / 'etc/aether-proxy/usage.json'
+	file.parent.mkdir(parents=True)
+	(base / 'quota-run').mkdir()
+	argv = CLI + ['quota', '--sys-root', str(root), '--run-dir', str(base / 'quota-run')]
+
+	def run(*args, as_json=True):
+		return subprocess.run(argv + list(args) + (['--json'] if as_json else []),
+			cwd=ROOT, text=True, capture_output=True, timeout=12)
+
+	unset = {'ok': True, 'quota': {'bytes': None, 'set_at': None}}
+	check('T16.2 quota missing file show is unset without writing',
+		json.loads(run().stdout) == unset and not file.exists())
+	seed = {'schema': 1, 'updated_at': 17, 'days': {'2026-11-15':
+		{'tx': 123, 'rx': 456, 'observed': 30, 'healthy': 20}}, 'future': {'kept': True}}
+	file.write_text(json.dumps(seed))
+	for raw, expected in [('100G', 100000000000), ('1TB', 1000000000000),
+			('1GB', 1000000000), ('100T', 100000000000000),
+			('100000G', 100000000000000), ('1000000001', 1000000001),
+			('1T', 1000000000000), ('100000000000000', 100000000000000)]:
+		res = run('set', raw)
+		value = json.loads(res.stdout)
+		doc = json.loads(file.read_text())
+		check('T16.2 quota set ' + raw + ' decimal bytes and timestamp',
+			res.returncode == 0 and res.stderr == '' and value['ok'] is True
+			and value['quota']['bytes'] == expected
+			and abs(value['quota']['set_at'] - time.time()) < 5
+			and json.loads(run().stdout) == value)
+		check('T16.2 quota set ' + raw + ' preserves days and unknown fields with 0600',
+			all(doc[k] == v for k, v in seed.items()) and file.stat().st_mode & 0o777 == 0o600)
+	before = file.read_bytes()
+	for bad in [('set', '1.5G'), ('set', '0'), ('set', '100001G'), ('set', 'no'),
+			('set', '-1'), ('set', '999999999999999999999999999999999999999999'),
+			('set', '999999999999999T'), ('set', '1GiB'), ('set',), ('clear', 'extra'),
+			('show',), ('unknown',), ('set', '100G', '--days', '1')]:
+		res = run(*bad)
+		check('T16.2 quota rejects ' + ' '.join(bad) + ' without writing',
+			res.returncode == 2 and res.stderr == '' and json.loads(res.stdout)['code'] == 'USAGE'
+			and file.read_bytes() == before)
+	res = run('clear')
+	check('T16.2 quota clear round trip preserves days', res.returncode == 0
+		and json.loads(res.stdout) == unset and json.loads(run().stdout) == unset
+		and json.loads(file.read_text())['days'] == seed['days'])
+	check('T16.2 quota human output for show set clear', all(
+		run(*args, as_json=False).returncode == 0 and run(*args, as_json=False).stdout.strip()
+		for args in [(), ('set', '100G'), ('clear',)]))
+	for content in ['{"days": {}}', '{"days": {}, "quota": null}',
+			'{"days": {}, "quota": {"bytes": null, "set_at": 1}}', '{broken']:
+		file.write_text(content)
+		events = base / 'quota-run/events.jsonl'
+		before_events = events.read_text().splitlines() if events.exists() else []
+		check('T16.2 quota absent null or corrupt reads unset: ' + content,
+			json.loads(run().stdout) == unset and file.read_text() == content)
+		after_events = events.read_text().splitlines() if events.exists() else []
+		check('T16.2 quota read warning count: ' + content,
+			len(after_events) - len(before_events) == (1 if content == '{broken' else 0))
+	if os.geteuid() != 0:
+		file.write_text(json.dumps(seed))
+		file.chmod(0)
+		try:
+			check('T16.2 quota permission-denied read is unset', json.loads(run().stdout) == unset)
+		finally:
+			file.chmod(0o600)
+		before = file.read_bytes()
+		file.parent.chmod(0o500)
+		try:
+			for action in [('set', '100G'), ('clear',)]:
+				res = run(*action)
+				check('T16.2 quota permission-denied ' + action[0] + ' is FS_FAILED and preserves bytes',
+					res.returncode == 1 and json.loads(res.stdout)['code'] == 'FS_FAILED'
+					and file.read_bytes() == before)
+		finally:
+			file.parent.chmod(0o700)
+	file.unlink()
+	file.mkdir()
+	check('T16.2 quota unreadable path shows unset and preserves the path',
+		json.loads(run().stdout) == unset and file.is_dir())
+	res = run('set', '100G')
+	check('T16.2 quota write failure is FS_FAILED exit 1', res.returncode == 1
+		and res.stderr == '' and json.loads(res.stdout)['code'] == 'FS_FAILED' and file.is_dir())
+	res = run('clear')
+	check('T16.2 quota clear write failure is FS_FAILED exit 1', res.returncode == 1
+		and res.stderr == '' and json.loads(res.stdout)['code'] == 'FS_FAILED' and file.is_dir())
+	file.rmdir()
+	res = run('set', '100G')
+	check('T16.2 quota set creates a missing file with empty history', res.returncode == 0
+		and json.loads(file.read_text())['days'] == {} and file.stat().st_mode & 0o777 == 0o600)
+	file.write_text(json.dumps(seed))
+	run('set', '100G')
+	res = subprocess.run(HIST + ['--json', '--sys-root', str(root), '--confdir', str(confdir(base, True))],
+		cwd=ROOT, capture_output=True, text=True)
+	check('T16.2 history returns configured quota without changing history',
+		json.loads(res.stdout)['quota'] == json.loads(run().stdout)['quota']
+		and json.loads(file.read_text())['days'] == seed['days'])
+
+
 golden_tests()
 with tempfile.TemporaryDirectory(prefix='aether-stats-') as directory:
 	snapshots(pathlib.Path(directory))
 	history(pathlib.Path(directory))
+	quota_tests(pathlib.Path(directory))
 print('stats: all scenarios passed')
