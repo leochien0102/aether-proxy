@@ -55,6 +55,8 @@ config stats 'stats'
 - `observed`：服务处于应运行状态、且本轮能观测的秒数；用于健康比例分母。
 - `healthy`：`observed` 中服务健康（running 且 proxy_ok）的秒数；不超过 `observed`。
 - 只保留最近 90 个本地日期（含今天）；裁剪在每次落盘时做。
+- T16.2：顶层可带 `quota: { bytes: <整数>|null, set_at: <epoch 秒>|null }`，十进制字节；
+  字段缺失/为 null 或 bytes 为 null 均为未设置，兼容旧文件。额度不进 UCI，不触发 reload。
 - 未知字段保留；损坏/不可解析文件按空历史启动，记一次 warn 事件，不阻塞服务。
 
 ## 4. 采样
@@ -79,6 +81,8 @@ config stats 'stats'
 
 ## 5. 持久化与失败
 
+- T16.2：monitor 每次 flush 前重读文件，保留最新 quota 和未知顶层字段，只更新 days/updated_at。
+  CLI 额度写入采用读→改→原子写，保留 days、updated_at 和未知字段，两条路径均为 0600。
 - 跨天/daemon 干净停止时写；写入失败记 warn 事件，保留内存数据，下次再试。
 - 每天一次写，90 天文件约 10–20 KB；远低于 flash 寿命预算。
 - 不把 usage 写入 `/var/run`，避免重启丢失；不写 `/tmp`。
@@ -99,16 +103,35 @@ aether-proxy stats history [--days N] [--json] [--sys-root DIR] [--run-dir DIR]
   {
     "ok": true,
     "enabled": true,
+    "quota": { "bytes": 100000000000, "set_at": 1790000000 },
     "days": [
       {"date": "2026-11-01", "tx": 123, "rx": 456, "observed": 3600, "healthy": 3500}
     ],
     "updated_at": 1790000000
   }
   ```
-- 关闭：`enabled:false, days:[]`，不读文件。
+- 关闭：`enabled:false, days:[], quota:{bytes:null,set_at:null}`，不读文件。
 - 只读；不写配置、不写 usage、不触发 monitor。
 
+### 额度 CLI（T16.2）
+
+```text
+aether-proxy stats quota [--json] [--sys-root DIR] [--run-dir DIR]
+aether-proxy stats quota set <值> [--json] [--sys-root DIR] [--run-dir DIR]
+aether-proxy stats quota clear [--json] [--sys-root DIR] [--run-dir DIR]
+```
+
+- 值接受整数字节或整数 `G`/`GB`/`T`/`TB`，十进制 1 GB = 10^9、1 TB = 10^12；
+  允许 1 GB–100000 GB（含端点），不接受 `1.5G` 等小数。
+- 成功 `{ok:true, quota:{bytes:<整数>|null,set_at:<epoch 秒>|null}}`，退出 0。
+  set 记录当前 epoch 秒；clear 将两项设为 null；参数错误 `USAGE` 退出 2，写失败 `FS_FAILED` 退出 1。
+- 无字段/文件不存在/损坏/不可读，读取额度均按未设置；损坏/不可读记一次既有 warn，不增加事件码。
+- `stats history` 同样携带 quota；其余字段与语义不变。
+
 ### rpcd
+
+T16.2 的 `stats_quota` 按复审决定移到 T16.3，与前端调用方一起接入（write ACL、仅转发 CLI）。
+本卡不改插件、ACL 或任何 UI。
 
 新增 `stats_history`，参数 `{days?: number}`，返回同上；ACL 归 read。
 概览页只在需要热力图时调用；关闭时可直接使用 `enabled:false` 结果。

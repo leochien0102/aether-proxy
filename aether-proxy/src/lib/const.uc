@@ -384,3 +384,9 @@ export const PREREQ_ENGINE_FROM_VERSION = '1.0.0';
 export const UPDATE_CHAIN_CLI = '/usr/bin/aether-proxy';
 // M4-07 review: reserve time before starting a hop; never cancel an admitted flash write.
 export const UPDATE_CHAIN_MIN_BUDGET_SECS = 180;
+
+// T16.2: decimal monthly quota limits and unit conversion.
+export const QUOTA_GB = 1000000000;
+export const QUOTA_TB = 1000000000000;
+export const QUOTA_MIN_BYTES = QUOTA_GB;
+export const QUOTA_MAX_BYTES = 100000 * QUOTA_GB;

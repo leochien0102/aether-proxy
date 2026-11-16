@@ -1,7 +1,8 @@
 'use strict';
 
 // B25 usage heatmap (docs/b25-heatmap.md): per-day accounting (§4, T12.3) plus its file
-// persistence (§3/§5, T12.4). The aggregation half stays pure — no clock access: the
+// persistence (§3/§5, T12.4) and quota (docs/design/b25-quota-heatmap-20261116.md §2–§3).
+// The aggregation half stays pure — no clock access: the
 // monitor passes counters, wall time and the monotonic elapsed; a completed day moves
 // into `days` in memory. The persistence half owns the usage.json format, validation
 // and the atomic 0600 rewrite; the monitor decides when to call it (a crossed local
@@ -138,7 +139,33 @@ function valid_entry(entry) {
 		numeric(entry.observed) && numeric(entry.healthy);
 };
 
-// load(path) -> { days, error, op, updated_at }. A missing file is an empty history
+// T16.2: normalize absent or unusable quota without rejecting an older history file.
+export function quota_of(data) {
+	let quota = data?.quota;
+	if (type(quota) != 'object' || type(quota.bytes) != 'int' ||
+		quota.bytes < C.QUOTA_MIN_BYTES || quota.bytes > C.QUOTA_MAX_BYTES)
+		return { bytes: null, set_at: null };
+	return { bytes: quota.bytes, set_at: type(quota.set_at) == 'int' && quota.set_at >= 0 ? quota.set_at : null };
+};
+
+// Decimal units only; bound the digits before conversion to prevent integer overflow.
+export function parse_quota(raw) {
+	let parts = type(raw) == 'string' ? match(raw, /^([0-9]+)(G|GB|T|TB)?$/) : null;
+	if (parts == null)
+		return null;
+	let digits = replace(parts[1], /^0+/, '');
+	if (length(digits) > length(`${C.QUOTA_MAX_BYTES}`))
+		return null;
+	let value = +digits;
+	let scale = parts[2] == 'G' || parts[2] == 'GB' ? C.QUOTA_GB
+		: parts[2] == 'T' || parts[2] == 'TB' ? C.QUOTA_TB : 1;
+	if (value < C.QUOTA_MIN_BYTES / scale || value > C.QUOTA_MAX_BYTES / scale)
+		return null;
+	return value * scale;
+};
+
+// load(path) -> { days, error, op, updated_at, document? }. The raw valid document
+// is retained for quota/unknown-field-preserving writes (T16.2). A missing file is an empty history
 // without an error. A corrupt or unreadable file is an empty history plus the failure
 // detail — the caller warns once and leaves the file in place for the next successful
 // write to overwrite it (docs §5). Entries without four non-negative numbers, or under a
@@ -169,7 +196,8 @@ export function load(path) {
 	for (let date, entry in data.days)
 		if (match(date, DATE_PATTERN) && valid_entry(entry))
 			days[date] = { ...entry, healthy: min(entry.healthy, entry.observed) };
-	return { days, error: null, op: 'parse', updated_at: numeric(data.updated_at) ? data.updated_at : null };
+	return { document: data, days, error: null, op: 'parse',
+		updated_at: numeric(data.updated_at) ? data.updated_at : null };
 };
 
 // collect(state, previous) -> the day map to persist, or null while the sampler never
@@ -195,15 +223,31 @@ export function collect(state, previous) {
 	return days;
 };
 
-// write(path, days, now) -> { ok, error }. One JSON document renamed atomically into
+// One JSON document renamed atomically into
 // place with mode 0600 (sys.write_atomic), so a reader or a crash never sees a partial
 // file (docs §3). The success return is the write verification; on failure any previous
 // file is left untouched and the reason is reported to the caller.
-export function write(path, days, now) {
+function write_document(path, document) {
 	let parent = substr(path, 0, rindex(path, '/'));
 	if (parent != '' && !sys.mkdir_p(parent))
 		return { ok: false, error: `mkdir ${parent}: ${sys.error() ?? 'unknown error'}` };
-	if (!sys.write_atomic(path, sprintf('%.J', { schema: 1, updated_at: now, days }) + '\n'))
+	if (!sys.write_atomic(path, sprintf('%.J', document) + '\n'))
 		return { ok: false, error: sys.error() ?? 'unknown error' };
 	return { ok: true, error: null };
+};
+
+// The caller may pass its just-reloaded document so monitor can also warn once on read
+// errors. No cached document is used: CLI edits since the previous flush must survive.
+export function write(path, days, now, document) {
+	let previous = document ?? load(path).document ?? {};
+	return write_document(path, { schema: 1, ...previous, updated_at: now, days });
+};
+
+// Quota changes do not touch history or its update timestamp and never reload UCI.
+export function set_quota(path, bytes, now) {
+	let loaded = load(path);
+	let quota = { bytes, set_at: bytes == null ? null : now };
+	let document = { schema: 1, days: {}, ...(loaded.document ?? {}), quota };
+	let result = write_document(path, document);
+	return { ...result, quota, loaded };
 };

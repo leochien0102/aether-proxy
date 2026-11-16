@@ -608,14 +608,31 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 
 ```json
 { "ok": true, "enabled": true, "updated_at": 1790000000,
+  "quota": { "bytes": 100000000000, "set_at": 1790000000 },
   "days": [ { "date": "2026-11-01", "tx": 123, "rx": 456, "observed": 3600, "healthy": 3500 } ] }
 ```
 
-- 先读配置 `stats.heatmap_enabled`：关闭 → 恰好 `{ "ok": true, "enabled": false, "days": [] }`（无 `updated_at`），且**不打开** `usage.json`；配置缺 `stats` 段同关闭。配置本身无效 → `CONFIG_INVALID`（退出码 2，与 `status` 相同）。
+- 先读配置 `stats.heatmap_enabled`：关闭 → 恰好 `{ "ok": true, "enabled": false, "days": [], "quota": { "bytes": null, "set_at": null } }`（无 `updated_at`），且**不打开** `usage.json`；配置缺 `stats` 段同关闭。配置本身无效 → `CONFIG_INVALID`（退出码 2，与 `status` 相同）。
 - `days`：只返回最近 N 个**有数据的日期**，按日期升序；条目只含 `date/tx/rx/observed/healthy` 五个字段。`--days` 取 1–90（缺省 90）；0、91、负数、非正整数、重复给出 → `USAGE`（退出码 2）。
 - `updated_at`：`usage.json` 的写入时间（墙钟秒，来自 `usage.load`）。文件缺失、损坏或不可读 → `days: []`、`updated_at: null`，仍 `ok: true`（docs/b25-heatmap.md §5/§8：损坏按空历史处理，不报错、不阻塞；rpcd 不会因此失败）。
 - 只读：不修改 `usage.json`、不触发 monitor/采样；`--run-dir` 仅接受不使用（与其他只读命令的参数面一致）。
 - rpcd 方法 `stats_history`（参数 `{ days?: number }`，read，10 秒；`days` 非 1–90 的整数 → `USAGE`，缺省同 CLI 的 90；响应原样转发 CLI JSON）。
+- T16.2：顶层增加 `quota: { bytes: <整数>|null, set_at: <epoch 秒>|null }`。旧文件缺字段、
+  `quota:null`、`bytes:null` 或文件不可读时返回未设置；关闭时仍不读取文件，返回未设置的 quota。
+
+**`aether-proxy stats quota [set <值>|clear]`**（T16.2，额度不进 UCI、不触发 reload）：
+
+- 无动作参数显示当前额度；`set` 接受整数字节，或整数后缀 `G`/`GB`/`T`/`TB`。
+  十进制 1 GB = 10^9 字节，1 TB = 10^12 字节；范围 1 GB–100000 GB（含端点），
+  小数（如 `1.5G`）、非数字及越界值返回 `USAGE`，退出 2。
+- `clear` 写入 `{ bytes: null, set_at: null }`；`set` 的 `set_at` 为当前 epoch 秒。
+- 三类调用均支持 `--json`、`--sys-root`、`--run-dir`；成功输出
+  `{ "ok": true, "quota": { "bytes": <整数>|null, "set_at": <epoch 秒>|null } }`，退出 0；
+  写失败输出 `FS_FAILED`，退出 1。文件损坏/不可读按未设置返回并记录一次既有 `FS_FAILED` warn。
+- 写入只改 `usage.json` 的 quota，保留 days、updated_at 和未知字段，使用 `sys.write_atomic`、0600。
+  monitor 每次 flush 前重读文件，保留最新 quota 和其余顶层字段，只更新 days/updated_at。
+- rpcd `stats_quota` 按复审决定移到 T16.3，与实际前端调用方一并接入；T16.2 不增加 rpcd 或 ACL。
+
 
 **2. 立即检测与换节点后自动检测（T8.12b）**：
 - **`aether-proxy probe now`**：读 `state.json`，`state` 不是 `starting`、`running`、`degraded`、`failsafe` → `{ "ok": false, "code": "NOT_RUNNING", "detail": "…" }`，退出码 1，不记事件；

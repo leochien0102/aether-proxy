@@ -1,5 +1,6 @@
 'use strict';
 
+// Dashboard counters and quota commands (docs/design/b25-quota-heatmap-20261116.md §3).
 // Read-only Dashboard counters (docs/10 "Dashboard：概览页升级", part 1) and the B25
 // daily usage history (docs/10 "stats history", T12.5). Missing runtime sources are
 // independent nulls, never events: polling must not flood logd.
@@ -9,6 +10,7 @@ import * as C from 'aetherproxy.const';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as config from 'aetherproxy.config';
 import * as counters from 'aetherproxy.counters';
+import * as log from 'aetherproxy.log';
 import * as usage from 'aetherproxy.usage';
 
 function read_object(path) {
@@ -145,11 +147,41 @@ function history_cmd(opts, limit, args) {
 			res, 2, pipeline.describe_errors(res));
 	}
 	if (cfg.snapshot.stats.heatmap_enabled !== true)
-		return pipeline.finish(opts, { ok: true, enabled: false, days: [] }, 0,
-			sprintf('%.J', { ok: true, enabled: false, days: [] }));
+		return pipeline.finish(opts, { ok: true, enabled: false, days: [], quota: usage.quota_of(null) }, 0,
+			sprintf('%.J', { ok: true, enabled: false, days: [], quota: usage.quota_of(null) }));
 	let loaded = usage.load(root + C.USAGE_FILE);
 	let result = { ok: true, enabled: true,
-		days: history_entries(loaded.days, limit), updated_at: loaded.updated_at };
+		days: history_entries(loaded.days, limit), updated_at: loaded.updated_at,
+		quota: usage.quota_of(loaded.document) };
+	return pipeline.finish(opts, result, 0, sprintf('%.J', result));
+}
+
+function warn_load(loaded, path, opts) {
+	if (loaded.error != null) {
+		log.set_run_dir(pipeline.run_dir(opts));
+		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
+	}
+}
+
+function quota_cmd(parsed, args) {
+	let opts = parsed.opts;
+	let words = parsed.positional;
+	let action = words[1] ?? 'show';
+	let bytes = action == 'set' ? usage.parse_quota(words[2]) : null;
+	let count = action == 'set' ? 3 : action == 'show' ? 1 : 2;
+	if (index([ 'show', 'set', 'clear' ], action) < 0 || length(words) != count ||
+		(action == 'set' && bytes == null))
+		return usage_error(args, 'stats quota [set <integer bytes|G|GB|T|TB>|clear]');
+	let path = replace(opts.sys_root ?? '', /\/$/, '') + C.USAGE_FILE;
+	let loaded = action == 'show' ? usage.load(path) : null;
+	let written = action == 'show' ? null : usage.set_quota(path, bytes, time());
+	warn_load(loaded ?? written.loaded, path, opts);
+	if (written != null && !written.ok) {
+		log.set_run_dir(pipeline.run_dir(opts));
+		log.event('error', 'FS_FAILED', { op: 'write', path, detail: written.error });
+		return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: written.error }, 1, written.error);
+	}
+	let result = { ok: true, quota: written?.quota ?? usage.quota_of(loaded?.document) };
 	return pipeline.finish(opts, result, 0, sprintf('%.J', result));
 }
 
@@ -160,10 +192,12 @@ export function run(args) {
 	let parsed = pipeline.parse_args(lifted.args);
 	let error = parsed.error;
 	let history = !error && parsed.positional[0] == 'history';
-	if (!error && length(parsed.positional) > (history ? 1 : 0))
+	let quota = !error && parsed.positional[0] == 'quota';
+	if (!error && !quota && length(parsed.positional) > (history ? 1 : 0))
 		error = history ? 'stats history takes no arguments' : 'stats takes no arguments';
 	if (!error) {
-		let allowed = history ? [ 'json', 'confdir', 'run_dir', 'sys_root' ]
+		let allowed = quota ? [ 'json', 'run_dir', 'sys_root' ]
+			: history ? [ 'json', 'confdir', 'run_dir', 'sys_root' ]
 			: [ 'json', 'run_dir', 'sys_root', 'bin_dir' ];
 		for (let key in keys(parsed.opts ?? {}))
 			if (!(key in allowed))
@@ -175,6 +209,8 @@ export function run(args) {
 		error = `--days must be an integer between 1 and ${C.USAGE_DAYS_KEEP}`;
 	if (error)
 		return usage_error(args, error);
+	if (quota)
+		return quota_cmd(parsed, args);
 	if (history)
 		return history_cmd(parsed.opts, history_limit(lifted.days), args);
 	let opts = parsed.opts;

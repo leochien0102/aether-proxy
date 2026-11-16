@@ -452,24 +452,27 @@ function flush_usage(daemon) {
 	if (daemon?.snapshot?.stats?.heatmap_enabled !== true)
 		return;
 	let path = usage_path(daemon);
-	if (daemon.usage_days == null) {
-		let loaded = usage.load(path);
-		// A corrupt or unreadable file starts as an empty history with a single warn;
-		// the file itself stays until the next successful write overwrites it (docs §5).
-		if (loaded.error != null && !daemon.usage_warned) {
-			daemon.usage_warned = true;
-			log.set_run_dir(run_dir(daemon));
-			log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
-		}
-		daemon.usage_days = loaded.days;
+	// T16.2: reload before every flush; quota may have changed through the CLI.
+	let loaded = usage.load(path);
+	let warned_read = false;
+	// Preserve the existing once-only read warning and retry cache. Do not log the
+	// same failed flush twice when its read already reported the filesystem problem.
+	if (loaded.error != null && !daemon.usage_warned) {
+		daemon.usage_warned = true;
+		warned_read = true;
+		log.set_run_dir(run_dir(daemon));
+		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
 	}
+	if (daemon.usage_days == null)
+		daemon.usage_days = loaded.days;
 	let days = usage.collect(daemon.usage, daemon.usage_days);
 	if (days == null)
 		return;
-	let written = usage.write(path, days, time());
+	let written = usage.write(path, days, time(), loaded.document ?? {});
 	if (!written.ok) {
 		log.set_run_dir(run_dir(daemon));
-		log.event('warn', 'FS_FAILED', { op: 'write', path, detail: written.error });
+		if (!warned_read)
+			log.event('warn', 'FS_FAILED', { op: 'write', path, detail: written.error });
 		return;
 	}
 	daemon.usage_days = days;

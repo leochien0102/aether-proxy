@@ -321,7 +321,8 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		check(d.usage_days == null, 'heatmap-persist-off: a closed switch never loads the history');
 	}
 	else if (scenario == 'heatmap-persist') {
-		let seeded = { schema: 1, updated_at: 1790000000, days: {
+		let seeded = { schema: 1, updated_at: 1790000000,
+			quota: { bytes: 100000000000, set_at: 17 }, future: 'keep', days: {
 			'2026-01-01': { tx: 11, rx: 22, observed: 30, healthy: 20 } } };
 		sys.mkdir_p(usage_dir);
 		check(write(usage_file, sprintf('%.J', seeded) + '\n'), 'heatmap-persist: the seed history is in place');
@@ -334,6 +335,22 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		let text = fs.readfile(usage_file);
 		check(text != null, 'heatmap-persist: the crossing tick rewrites usage.json');
 		let data = json(text);
+		check(data.quota?.bytes == 100000000000 && data.quota?.set_at == 17 && data.future == 'keep',
+			'T16.2 monitor crossing flush preserves quota and unknown fields', text);
+		// Change quota after the first flush cached history, then cross another day.
+		check(usage.set_quota(usage_file, 1000000000000, 18).ok,
+			'T16.2 CLI-style quota edit succeeds between monitor flushes');
+		let live = d.usage.day;
+		usage.sample(d.usage, { tx: 1600, rx: 2700, now: noon_before(-1), elapsed: 30, cap: 60,
+			state: 'running', proxy_ok: true });
+		monitor.flush_usage(d);
+		let reloaded = json(fs.readfile(usage_file));
+		check(reloaded.quota?.bytes == 1000000000000 && reloaded.quota?.set_at == 18 &&
+			reloaded.future == 'keep' && reloaded.days[live]?.tx != null,
+			'T16.2 monitor second crossing rereads quota rather than overwriting the CLI edit', sprintf('%.J', reloaded));
+		// Restore the sampler to today so the existing retry assertions stay unchanged.
+		d.usage.day = live;
+		d.usage.tx = 0; d.usage.rx = 0; d.usage.observed = 0; d.usage.healthy = 0;
 		let yesterday = date_of(noon_before(1)), today = date_of(time());
 		check(data.schema == 1 && type(data.updated_at) == 'int',
 			'heatmap-persist: the document carries schema 1 and a wall-clock updated_at', text);
@@ -350,6 +367,12 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		check(length(fs.glob(`${usage_dir}/usage.json.tmp.*`) ?? []) == 0,
 			'heatmap-persist: no atomic-write residue');
 		check(count(events(), 'FS_FAILED') == 0, 'heatmap-persist: a successful flush is silent', events());
+		check(usage.set_quota(usage_file, null, 19).ok,
+			'T16.2 quota clear succeeds between monitor flushes');
+		monitor.flush_usage(d);
+		let cleared = json(fs.readfile(usage_file));
+		check(cleared.quota?.bytes == null && cleared.quota?.set_at == null && cleared.future == 'keep',
+			'T16.2 monitor flush preserves cleared quota without resurrecting the old value');
 		// A failed rewrite leaves the target alone and does not block; the next flush retries.
 		fs.unlink(usage_file);
 		fs.mkdir(usage_file);
