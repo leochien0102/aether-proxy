@@ -71,7 +71,7 @@ import * as nft from 'aetherproxy.render.nft';
 
 1. **纯函数与副作用分离。** `render/*`、`uri.uc`、`identity.uc`、`schema.uc` 以及 `config.uc` 中的校验部分**不准**调用 `fs`、`uci`、
    `system`、`sys.*`。它们的输入是普通对象，输出是字符串或普通对象。读写文件、执行命令只出现在 `cmd/*`、`daemon.uc`、`sys.uc`、
-   `state.uc`、`data.uc` 中。
+   `state.uc`、`data.uc`、`usage.uc`（B25 usage.json 的读写，T12.4）中。
 2. **外部命令只通过 `sys.run()` 执行**，不准在其他地方直接调用 `system()` 或 `fs.popen()`：
    ```js
    // 返回 { code, stdout, stderr }；code != 0 时自动记 CMD_FAILED（opts.quiet 为 true 时除外，调用方必须自己处理）

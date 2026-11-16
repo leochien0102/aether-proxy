@@ -35,6 +35,12 @@ case " $* " in
 		[ -e "$SYSROOT/nft-table" ] && { echo 'table inet aetherproxy'; exit 0; }
 		echo 'Error: No such file or directory' >&2; exit 1
 		;;
+	*" -j list counters "*)
+		# T12.3 B25 usage sampling: the driver plants counters.json with the proxy counters.
+		# Without the file, print nothing and succeed, like a table without counters.
+		[ -f "$SYSROOT/nft-counters.json" ] && cat "$SYSROOT/nft-counters.json"
+		exit 0
+		;;
 	*" list tables "*)
 		[ -s "$SYSROOT/conflicts" ] && cat "$SYSROOT/conflicts"
 		if [ -f "$SYSROOT/nft-tables-rc" ]; then read -r rc < "$SYSROOT/nft-tables-rc"; exit "$rc"; fi
