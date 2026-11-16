@@ -1154,10 +1154,15 @@ test('T10.4 scenario 6: every inline display:flex explicitly sets align-items; n
 	const source = fs.readFileSync(VIEW, 'utf8');
 	const styles = [ ...source.matchAll(/['"]([^'"\n]*display:\s*flex[^'"\n]*)['"]/g) ];
 	assert.ok(styles.length >= 8, 'all remaining flex declarations are examined');
-	for (const [, style] of styles)
-		/* docs/10 「样式」 requires an explicit value, usually center. */
-		assert.match(style, /flex-direction:\s*column/.test(style)
-			? /align-items:\s*stretch/ : /align-items:\s*(center|flex-end)/);
+	for (const [, style] of styles) {
+		/* T16.6 top-aligns only the heatmap/live columns; other controls keep
+		   docs/10's existing alignment guard against stretched buttons. */
+		if (style.startsWith('.ap-traffic-columns {') && !/flex-direction:\s*column/.test(style))
+			assert.match(style, /align-items:\s*flex-start/);
+		else
+			assert.match(style, /flex-direction:\s*column/.test(style)
+				? /align-items:\s*stretch/ : /align-items:\s*(center|flex-end)/);
+	}
 	assert.doesNotMatch(source, /\bstatus\s*\.\s*components/);
 });
 

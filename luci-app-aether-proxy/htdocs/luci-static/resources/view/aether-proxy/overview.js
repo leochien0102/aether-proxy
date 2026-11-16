@@ -21,7 +21,7 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
- * T16.5 follows docs/design/b25-quota-heatmap-20261116 §4–6: a 6×15
+ * T16.6 follows docs/design/b25-quota-heatmap-20261116 §4–6: a 5×18
  * quota heatmap inside the traffic section, persistent quota controls and
  * in-place value/cell updates. Disabled means original layout and zero RPC.
  *
@@ -51,11 +51,11 @@ function switchFormat(text, ...args) {
    survive every refresh; only cell classes/titles and value text are patched. */
 const QUOTA_PRESETS = [ 50, 100, 200, 500, 1000 ];
 const HEATMAP_CSS = [
-	'.ap-traffic-columns { display:flex; gap:1.5em; align-items:center; flex-wrap:nowrap }',
-	'.ap-heat-wrap { flex:0 0 35%; max-width:35%; min-width:0; overflow-x:auto; '
+	'.ap-traffic-columns { display:flex; gap:1.5em; align-items:flex-start; flex-wrap:nowrap }',
+	'.ap-heat-wrap { flex:0 0 auto; max-width:100%; min-width:0; overflow-x:auto; '
 		+ '--ap-heat-void:#eef1f4; --ap-heat-0:#dbe7f3; --ap-heat-1:#9ec9e8; '
 		+ '--ap-heat-2:#74b3d8; --ap-heat-3:#f2c14e; --ap-heat-4:#ef8c3c; --ap-heat-5:#d9463f }',
-	'.ap-traffic-live { flex:1 1 65%; min-width:0 }',
+	'.ap-traffic-live { flex:1 1 auto; min-width:0 }',
 	'@media (prefers-color-scheme: dark) { .ap-heat-wrap { --ap-heat-void:#1c2228; '
 		+ '--ap-heat-0:#1f2a33; --ap-heat-1:#2c4a63; --ap-heat-2:#4b8ab5; '
 		+ '--ap-heat-3:#b08a2e; --ap-heat-4:#c66a25; --ap-heat-5:#d0453b } }',
@@ -67,14 +67,15 @@ const HEATMAP_CSS = [
 		+ 'align-items:center; background:Field; color:FieldText }',
 	'.ap-quota-control input { width:calc(100% - 2em); min-width:0; box-sizing:border-box }',
 	'.ap-quota-control [hidden] { display:none }',
-	// 6 rows at 22.5px plus five 3px gaps = 150px; never stretch to a taller live column.
-	'.ap-heat-grid { display:grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap:3px; '
-		+ 'width:100%; max-width:400px; inline-size:min(100%, 379.5px) }',
+	// 18 × 26px + 17 × 3px fixes the column width; five rows stay 142px tall without stretching.
+	'.ap-heat-grid { display:grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap:3px; '
+		+ 'width:519px; max-width:100% }',
 	'.ap-heat-cell { width:100%; aspect-ratio:1; border-radius:20% }',
 	'.ap-heat-void { background:var(--ap-heat-void) }',
 	...[0, 1, 2, 3, 4, 5].map((n) => '.ap-heat-l' + n + ' { background:var(--ap-heat-' + n + ') }'),
 	'@media (max-width:719px) { .ap-traffic-columns { flex-direction:column; align-items:stretch } '
-		+ '.ap-heat-wrap, .ap-traffic-live { flex-basis:auto; width:100%; max-width:100% } }'
+		+ '.ap-heat-wrap, .ap-traffic-live { flex-basis:auto; width:100%; max-width:100% } '
+		+ '.ap-heat-grid { width:100% } }'
 ].join('\n');
 
 return view.extend({
@@ -571,8 +572,8 @@ return view.extend({
 		this.historyErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
 		dom.content(this.heatmapContainer, [
 			E('div', { 'class': 'ap-heat-caption' }, [
-				E('span', {}, [ _('Last 90 days · Redder = more usage', 'aether-proxy') ]),
-				E('label', {}, [ _('Monthly quota', 'aether-proxy'), ' ', this.quotaControl ])
+				E('label', {}, [ _('Monthly quota', 'aether-proxy'), ' ', this.quotaControl ]),
+				E('span', {}, [ _('Last 90 days · Redder = more usage', 'aether-proxy') ])
 			]), this.quotaErrorNode, this.heatmapGridNode, this.historyErrorNode
 		]);
 		this.quotaSynced = false;
