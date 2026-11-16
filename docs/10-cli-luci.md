@@ -554,7 +554,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 ### 高级页（2026-10-16 定，T8.11b）
 
 `form.Map('aetherproxy')`，模型 `model/advanced.js`。字段以 [05](05-config.md) 为准，校验规则以 `lib/schema.uc` 与 `lib/config.uc` 为准（页面做与命令行**相同规则**的预检，理由同访问控制页；
-测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分四个标签（`s.tab`）：
+测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分五个标签（`s.tab`）：
 
 - **拦截**（`main` 段）：`lan_ifaces`（LuCI `tools.widgets` 的 `DeviceSelect`，`multiple`，至少一个；说明「拦截哪些入接口，通常是 br-lan」）、
   `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`degrade_gfw`（2026-10-27 加，T10.68，见「B19」）、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
@@ -566,6 +566,8 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - **开机与检测**：`boot_wait_timeout`（0–600 秒，0 = 不等待）、`boot_check_targets`（`DynamicList`，`IPv4:端口`）；`probe` 段的 `url`（与更新页 `channel_urls` 相同的 URL 规则）、
   `expect_code`（100–599）、`timeout`、`fail_threshold`、`recover_threshold`、`node_timeout`、`node_concurrency`（都是不小于 1 的整数，与命令行一致，不另加上限）。
 - **组件与 DNS 实例**：`xray_bin`、`chinadns_bin`（绝对路径、不含空白，留空 = 按 01「组件二进制的查找顺序」自动查找）、`dns` 段的 `dnsmasq_instance`（非空字符串，留空 = 自动）。
+
+- **实验性功能**（T16.4，排在「组件与 DNS 实例」之后）：顶部说明功能仍在验证中、可能变化或移除，默认关闭；关闭时界面与正式版一致。清单来自纯函数 `model.advanced.experimental_features()`，当前只有「使用热力图」，写入原有 `stats.heatmap_enabled`，默认 `0`；不迁移旧值、不补写默认值。缺少 `stats` 节时保存先创建该节，切换开关只写该选项。
 
 数值与列表项的校验由模型给出（作为各选项的 `validate`）：整数按命令行的规则（`lib/config.uc`：`^-?[0-9]{1,9}$`，前导零允许，空白与小数不允许）与上下限；`hostport`、`url`、`path`、非空字符串同命令行。
 留空的可选字段（删掉选项 = 用默认值）不报错。

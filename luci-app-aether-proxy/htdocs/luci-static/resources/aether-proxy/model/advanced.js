@@ -86,7 +86,9 @@ const FIELD_TEXT = {
 	xray_bin: _('Absolute path to the Xray binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
 	chinadns_bin: _('Absolute path to the chinadns-ng binary without whitespace; leave empty to search the standard locations.', 'aether-proxy'),
 	dnsmasq_instance: _('Name of the dnsmasq instance to use; leave empty to detect it automatically.', 'aether-proxy'),
-	heatmap_enabled: _('Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept.', 'aether-proxy')
+	heatmap_enabled: _('Show daily proxy traffic and health for the last 90 days in “Traffic and connections” on Overview, '
+		+ 'colored by monthly quota. When disabled, nothing is sampled or written and Overview matches the stable version.',
+		'aether-proxy')
 };
 
 /* docs/09 「logd 容量」: only the debug choice carries this hint. */
@@ -188,6 +190,15 @@ function validate(field, value) {
 }
 
 return baseclass.extend({
+	/* Return fresh entries so callers cannot mutate the stable feature order (T16.4). */
+	experimental_features: function() {
+		return [{
+			option: 'heatmap_enabled', section: 'stats', default: '0',
+			title: _('Usage heatmap', 'aether-proxy'),
+			description: FIELD_TEXT.heatmap_enabled
+		}];
+	},
+
 	validate: validate,
 
 	default: function(field) {

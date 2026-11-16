@@ -257,9 +257,9 @@ test('T8.11b scenario 4: switch descriptions and the debug hint carry the requir
 	assert.match(model.description('xray_bin'), /留空/);
 	assert.match(model.description('dnsmasq_instance'), /留空/);
 	/* T12.2 B25: the heatmap switch carries the docs/05 closed-path clause. */
-	assert.match(model.description('heatmap_enabled'), /热力图/);
+	assert.match(model.experimental_features()[0].title, /热力图/);
 	assert.match(model.description('heatmap_enabled'), /不采样/);
-	assert.equal(model.description('heatmap_enabled'), PO['Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept.']);
+	assert.equal(model.description('heatmap_enabled'), '在概览页『流量与连接』里显示最近 90 天的每日代理流量与健康度（按月度额度着色）。关闭时不采样、不写历史，概览页与正式版一致。');
 
 	const levels = model.log_level_choices();
 	assert.deepEqual(levels.map((c) => c.value), [ 'error', 'warn', 'notice', 'info', 'debug' ]);
@@ -306,10 +306,12 @@ function build_form() {
 			this.type = type;
 			this.title = title;
 			this.tabs = [];
+			this.tabDetails = {};
 			this.children = [];
 		}
 
-		tab(name, title) {
+		tab(name, title, description) {
+			this.tabDetails[name] = { title, description };
 			this.tabs.push(name);
 			return this;
 		}
@@ -380,7 +382,8 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 		description: (field) => real.description(field),
 		default: (field) => real.default(field),
 		log_level_choices: () => real.log_level_choices(),
-		xray_log_level_choices: () => real.xray_log_level_choices()
+		xray_log_level_choices: () => real.xray_log_level_choices(),
+		experimental_features: () => real.experimental_features()
 	};
 
 	const { form, state, created } = build_form();
@@ -398,16 +401,16 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const section = state.map.sections[0];
 	assert.equal(section.kind, 'NamedSection');
 	assert.equal(section.section, 'main');
-	assert.deepEqual(section.tabs, [ 'intercept', 'log', 'boot', 'components' ]);
+	assert.deepEqual(section.tabs, [ 'intercept', 'log', 'boot', 'components', 'experimental' ]);
 
 	const expected = {
 		intercept: [ 'lan_ifaces', 'extra_ports', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 			'fail_open', 'degrade_gfw', 'sniffing' ],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
-			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency',
-			'heatmap_enabled' ],
-		components: [ 'xray_bin', 'chinadns_bin', 'dnsmasq_instance' ]
+			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],
+		components: [ 'xray_bin', 'chinadns_bin', 'dnsmasq_instance' ],
+		experimental: [ 'heatmap_enabled' ]
 	};
 
 	assert.deepEqual(created.map((o) => o.field).sort(),
@@ -419,7 +422,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	/* probe and dns fields render in this page's main section but must load
 	   and save their own UCI section. */
 	const target = (field) => created.find((o) => o.field == field).ucisection;
-	for (const field of expected.boot.slice(2, -1))
+	for (const field of expected.boot.slice(2))
 		assert.equal(target(field), 'probe', field);
 	assert.equal(target('dnsmasq_instance'), 'dns');
 	assert.equal(target('heatmap_enabled'), 'stats');
@@ -469,7 +472,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 
 	const source = fs.readFileSync(VIEW, 'utf8');
 	assert.match(source, /new form\.Map\('aetherproxy'/);
-	assert.equal((source.match(/s\.tab\(/g) ?? []).length, 4, 'four tabs');
+	assert.equal((source.match(/s\.tab\(/g) ?? []).length, 5, 'five tabs');
 	assert.doesNotMatch(source, /rpc\.declare|cbi-button-reset|innerHTML/);
 	assert.doesNotMatch(source, /\.depends\s*=/);
 
@@ -581,7 +584,23 @@ test('T12.2 heatmap flag with the section present: enabling writes only the opti
 	}
 });
 
-test('T12.2 heatmap flag: disabling removes the option so the backend default applies', async () => {
+test('T16.4 heatmap flag: existing enabled value is preserved without migration', async () => {
+	const { renderPage } = require('./form-defaults-harness');
+	try {
+		const h = await renderPage('advanced');
+		h.setSaved('stats', 'heatmap_enabled', '1');
+		const flag = h.options.find(o => o.option === 'heatmap_enabled');
+		flag.inputs.main = '1';
+		assert.equal(flag.formvalue('main'), '1');
+		await h.parse();
+		assert.deepEqual(h.calls, []);
+	}
+	finally {
+		globalThis._ = s => PO[s] ?? s;
+	}
+});
+
+test('T16.4 heatmap flag: disabling writes only an explicit 0', async () => {
 	const { renderPage } = require('./form-defaults-harness');
 	try {
 		const h = await renderPage('advanced');
@@ -592,7 +611,7 @@ test('T12.2 heatmap flag: disabling removes the option so the backend default ap
 		h.calls.length = 0;
 		flag.inputs.main = '0';
 		await h.parse();
-		assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'stats', 'heatmap_enabled']]);
+		assert.deepEqual(h.calls, [['set', 'aetherproxy', 'stats', 'heatmap_enabled', '0']]);
 	}
 	finally {
 		globalThis._ = s => PO[s] ?? s;
@@ -715,3 +734,63 @@ for (const scope of ['all', 'common', 'common_extra']) {
 			assert.match(extra.description, /当前端口范围为『.+』，切换到『常用 \+ 补充端口』后生效。/);
 	});
 }
+
+/* T16.4: list-driven declarations and translations, independent of runtime state. */
+test('T16.4 model: one stable pure feature entry with default off', () => {
+	const model = load_model();
+	const expected = [{
+		option: 'heatmap_enabled', section: 'stats', default: '0', title: '使用热力图',
+		description: '在概览页『流量与连接』里显示最近 90 天的每日代理流量与健康度（按月度额度着色）。关闭时不采样、不写历史，概览页与正式版一致。'
+	}];
+	assert.deepEqual(model.experimental_features(), expected);
+	const first = model.experimental_features();
+	first[0].default = '1';
+	first.push({ option: 'unexpected' });
+	assert.deepEqual(model.experimental_features(), expected, 'fresh list and entries on every call');
+	assert.doesNotMatch(fs.readFileSync(MODEL, 'utf8'), /uci\.|ap\.|document\.|window\./);
+});
+
+test('T16.4 view: experimental tab follows components, has notice and exactly one heatmap Flag', async () => {
+	const { form, state, created } = build_form();
+	const model = load_model();
+	const view = loadModule(VIEW, {
+		view: { extend: o => o }, form, uci: { get: () => 'all' },
+		'tools.widgets': { DeviceSelect: 'DeviceSelect' }, 'aether-proxy.model.advanced': model
+	}, { window: {}, document: {} });
+	await view.render();
+	const section = state.map.sections[0];
+	assert.deepEqual(section.tabs, ['intercept', 'log', 'boot', 'components', 'experimental']);
+	assert.deepEqual(section.tabDetails.experimental, {
+		title: '实验性功能',
+		description: '以下功能仍在验证中，可能随版本变化或移除；默认全部关闭，关闭时界面与正式版一致。'
+	});
+	const flags = created.filter(o => o.field === 'heatmap_enabled');
+	assert.equal(flags.length, 1, 'no duplicate in boot or elsewhere');
+	const flag = flags[0];
+	assert.equal(flag.tab, 'experimental');
+	assert.equal(flag.type, form.Flag);
+	assert.equal(flag.default, '0');
+	assert.equal(flag.title, model.experimental_features()[0].title);
+	assert.equal(flag.description, model.experimental_features()[0].description);
+	assert.equal(flag.ucisection, 'stats');
+});
+
+test('T16.4 view: feature metadata drives the Flag declaration', async () => {
+	const { form, created } = build_form();
+	const model = load_model();
+	const feature = { option: 'test_feature', section: 'test_section', default: '0',
+		title: 'Test title', description: 'Test description' };
+	model.experimental_features = () => [feature];
+	const view = loadModule(VIEW, {
+		view: { extend: o => o }, form, uci: { get: () => 'all' },
+		'tools.widgets': { DeviceSelect: 'DeviceSelect' }, 'aether-proxy.model.advanced': model
+	}, { window: {}, document: {} });
+	await view.render();
+	const flags = created.filter(o => o.tab === 'experimental');
+	assert.equal(flags.length, 1);
+	assert.equal(flags[0].field, feature.option);
+	assert.equal(flags[0].ucisection, feature.section);
+	assert.equal(flags[0].title, feature.title);
+	assert.equal(flags[0].description, feature.description);
+	assert.equal(flags[0].default, feature.default);
+});
