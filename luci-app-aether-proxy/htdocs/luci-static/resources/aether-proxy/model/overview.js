@@ -24,8 +24,8 @@
  * T10.68 presents docs/10 B19 degradation without changing effective selections
  * or the configured-versus-applied mode comparison;
  * T10.69 masks only the real-latency group's address text (docs/10 「地址脱敏」);
- * T16.3 follows docs/design/b25-quota-heatmap-20261116 §4–6: 90 dates in
- * 5×18 row-major order, per-month daily quota colours (or relative greens),
+ * T16.5 follows docs/design/b25-quota-heatmap-20261116 §4–6: 90 dates in
+ * 6×15 row-major order, per-month daily quota colours (or relative levels capped below red),
  * health only in text tooltips and blank-versus-recorded-zero distinction;
  * nothing here issues requests or touches the DOM. The view only renders the
  * returned object and never looks at the rpc results' business fields.
@@ -749,8 +749,8 @@ return baseclass.extend({
 	},
 
 	/* docs/design/b25-quota-heatmap-20261116 §4–6: 90 consecutive days,
-	   row-major in 18 columns; quota uses each date's own calendar month. */
-	heatmap_columns: 18,
+	   row-major in 15 columns; quota uses each date's own calendar month. */
+	heatmap_columns: 15,
 
 	heatmap_view: function(reply, today) {
 		if (!reply || reply.ok === false)
@@ -796,7 +796,7 @@ return baseclass.extend({
 			const ratio = quota != null ? total / (quota / month_days) : null;
 			let level = 0;
 			if (total > 0)
-				level = ratio == null ? Math.min(4, Math.ceil(4 * Math.log1p(total) / max))
+				level = ratio == null ? Math.min(4, 1 + Math.floor(4 * Math.log1p(total) / max))
 					: ratio < 0.25 ? 1 : ratio < 0.5 ? 2 : ratio < 0.75 ? 3 : ratio < 1 ? 4 : 5;
 			cells.push({ date, level, ratio, tip: heatmap_tip(entry, ratio) });
 		}

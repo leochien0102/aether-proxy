@@ -21,7 +21,7 @@
  * T10.65 follows docs/10 r19: gap-only runtime rows and a labeled empty latency.
  * T10.43 follows docs/10 「r13 修正：概览页启动反馈与节点下拉」: a bounded,
  * independent startup watcher, armed for Enable only after LuCI confirms apply.
- * T16.3 follows docs/design/b25-quota-heatmap-20261116 §4–6: a 5×18
+ * T16.5 follows docs/design/b25-quota-heatmap-20261116 §4–6: a 6×15
  * quota heatmap inside the traffic section, persistent quota controls and
  * in-place value/cell updates. Disabled means original layout and zero RPC.
  *
@@ -52,26 +52,29 @@ function switchFormat(text, ...args) {
 const QUOTA_PRESETS = [ 50, 100, 200, 500, 1000 ];
 const HEATMAP_CSS = [
 	'.ap-traffic-columns { display:flex; gap:1.5em; align-items:center; flex-wrap:nowrap }',
-	'.ap-heat-wrap, .ap-traffic-live { flex:1 1 50%; min-width:0 }',
-	'.ap-heat-wrap { overflow-x:auto; --ap-heat-void:#f4f6f8; --ap-heat-0:#ebedf0; '
-		+ '--ap-heat-1:#9be9a8; --ap-heat-2:#40c463; --ap-heat-3:#ffd33d; '
-		+ '--ap-heat-4:#fb8500; --ap-heat-5:#e5484d; --ap-rel-1:#9be9a8; '
-		+ '--ap-rel-2:#40c463; --ap-rel-3:#30a14e; --ap-rel-4:#216e39 }',
-	'@media (prefers-color-scheme: dark) { .ap-heat-wrap { --ap-heat-void:#181d23; '
-		+ '--ap-heat-0:#21262d; --ap-heat-1:#1f6f3f; --ap-heat-2:#2ea043; '
-		+ '--ap-heat-3:#d29922; --ap-heat-4:#db6d28; --ap-heat-5:#f85149; '
-		+ '--ap-rel-1:#0e4429; --ap-rel-2:#006d32; --ap-rel-3:#26a641; --ap-rel-4:#39d353 } }',
+	'.ap-heat-wrap { flex:0 0 35%; max-width:35%; min-width:0; overflow-x:auto; '
+		+ '--ap-heat-void:#eef1f4; --ap-heat-0:#dbe7f3; --ap-heat-1:#9ec9e8; '
+		+ '--ap-heat-2:#74b3d8; --ap-heat-3:#f2c14e; --ap-heat-4:#ef8c3c; --ap-heat-5:#d9463f }',
+	'.ap-traffic-live { flex:1 1 65%; min-width:0 }',
+	'@media (prefers-color-scheme: dark) { .ap-heat-wrap { --ap-heat-void:#1c2228; '
+		+ '--ap-heat-0:#1f2a33; --ap-heat-1:#2c4a63; --ap-heat-2:#4b8ab5; '
+		+ '--ap-heat-3:#b08a2e; --ap-heat-4:#c66a25; --ap-heat-5:#d0453b } }',
 	'.ap-heat-caption { display:flex; align-items:center; justify-content:space-between; gap:0.5em; '
-		+ 'flex-wrap:wrap; margin-bottom:0.5em }',
-	'.ap-heat-grid { display:grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap:3px; width:100% }',
+		+ 'flex-wrap:nowrap; margin-bottom:0.5em }',
+	'.ap-quota-control { display:inline-flex; position:relative; align-items:center; flex-shrink:0 }',
+	'.ap-quota-control select { width:8em }',
+	'.ap-quota-control > span { position:absolute; inset:0 1.5em 0 0; display:inline-flex; '
+		+ 'align-items:center; background:Field; color:FieldText }',
+	'.ap-quota-control input { width:calc(100% - 2em); min-width:0; box-sizing:border-box }',
+	'.ap-quota-control [hidden] { display:none }',
+	// 6 rows at 22.5px plus five 3px gaps = 150px; never stretch to a taller live column.
+	'.ap-heat-grid { display:grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap:3px; '
+		+ 'width:100%; max-width:400px; inline-size:min(100%, 379.5px) }',
 	'.ap-heat-cell { width:100%; aspect-ratio:1; border-radius:20% }',
-	'.ap-heat-blank { background:var(--ap-heat-void) }',
+	'.ap-heat-void { background:var(--ap-heat-void) }',
 	...[0, 1, 2, 3, 4, 5].map((n) => '.ap-heat-l' + n + ' { background:var(--ap-heat-' + n + ') }'),
-	...[1, 2, 3, 4].map((n) => '.ap-heat-relative .ap-heat-l' + n + ' { background:var(--ap-rel-' + n + ') }'),
-	'.ap-heat-legend { display:flex; align-items:center; gap:0.4em; flex-wrap:wrap; margin-top:0.5em }',
-	'.ap-heat-swatch { display:inline-block; width:0.8em; height:0.8em; border-radius:20% }',
 	'@media (max-width:719px) { .ap-traffic-columns { flex-direction:column; align-items:stretch } '
-		+ '.ap-heat-wrap, .ap-traffic-live { flex-basis:auto; width:100% } }'
+		+ '.ap-heat-wrap, .ap-traffic-live { flex-basis:auto; width:100%; max-width:100% } }'
 ].join('\n');
 
 return view.extend({
@@ -500,63 +503,92 @@ return view.extend({
 		this.quotaSelect.value = bytes == null ? 'none'
 			: QUOTA_PRESETS.includes(bytes / 1e9) ? String(bytes / 1e9) : 'custom';
 		this.quotaInput.value = bytes == null ? '' : String(bytes / 1e9);
-		this.quotaCustom.hidden = this.quotaSelect.value !== 'custom';
+		this.quotaEditing = this.quotaSelect.value === 'custom';
+		this.quotaSelect.hidden = false;
+		this.quotaCustom.hidden = !this.quotaEditing;
+	},
+
+	quotaError: function(code) {
+		this.quotaErrorNode.textContent = _('Saving quota failed (%s)', 'aether-proxy').replace('%s', code);
+		this.quotaErrorNode.hidden = false;
+	},
+
+	cancelQuota: function(code) {
+		this.quotaSelection(this.quotaCommitted ?? null);
+		this.quotaError(code);
+	},
+
+	commitQuotaInput: function() {
+		if (!this.quotaEditing || this.quotaSaving)
+			return;
+		const text = this.quotaInput.value.trim();
+		const gb = Number(text);
+		if (!/^\d+$/.test(text) || !Number.isInteger(gb) || gb < 1 || gb > 100000) {
+			this.cancelQuota('USAGE');
+			return;
+		}
+		// Enter can trigger blur as the input is disabled; never submit twice.
+		if (gb * 1e9 === this.quotaCommitted)
+			return;
+		return this.saveQuota(gb * 1e9);
 	},
 
 	createHeatmap: function() {
-		this.quotaSelect = E('select', { style: 'width:auto', change: () => {
+		this.quotaSelect = E('select', { change: () => {
 			// Even the first slow history reply must not overwrite user edits.
 			this.quotaSynced = true;
-			this.quotaCustom.hidden = this.quotaSelect.value !== 'custom';
-			if (this.quotaSelect.value !== 'custom')
+			this.quotaEditing = this.quotaSelect.value === 'custom';
+			this.quotaCustom.hidden = !this.quotaEditing;
+			this.quotaSelect.hidden = false;
+			if (!this.quotaEditing)
 				return this.saveQuota(this.quotaSelect.value === 'none' ? null : +this.quotaSelect.value * 1e9);
+			this.quotaInput.focus?.();
 		} }, [
 			E('option', { value: 'none' }, [ _('Unlimited', 'aether-proxy') ]),
-			...QUOTA_PRESETS.map((gb) => E('option', { value: String(gb) }, [
-				gb === 1000 ? '1 TB' : gb + ' ' + _('GB', 'aether-proxy') ])),
+			...QUOTA_PRESETS.map((gb) => E('option', { value: String(gb) },
+				[ gb === 1000 ? '1 TB' : gb + ' ' + _('GB', 'aether-proxy') ])),
 			E('option', { value: 'custom' }, [ _('Custom…', 'aether-proxy') ])
 		]);
-		this.quotaInput = E('input', { type: 'number', min: 1, max: 100000, step: 1,
-			'aria-label': _('GB', 'aether-proxy'), style: 'width:7em' });
-		this.quotaButton = E('button', { 'class': 'cbi-button', click: () => {
-			const gb = Number(this.quotaInput.value);
-			return this.saveQuota(Number.isInteger(gb) && gb >= 1 && gb <= 100000 ? gb * 1e9 : NaN);
-		} }, [ _('Confirm', 'aether-proxy') ]);
-		this.quotaCustom = E('div', { hidden: true }, [ this.quotaInput,
-			' ', _('GB', 'aether-proxy'), ' ', this.quotaButton ]);
+		this.quotaInput = E('input', { type: 'text', inputmode: 'numeric',
+			'aria-label': _('Monthly quota', 'aether-proxy'),
+			blur: () => this.commitQuotaInput(),
+			keydown: (ev) => {
+				if (ev.key === 'Enter') {
+					ev.preventDefault();
+					return this.commitQuotaInput();
+				}
+				if (ev.key === 'Escape') {
+					ev.preventDefault();
+					this.cancelQuota('CANCELLED');
+				}
+			} });
+		// Overlay only the select's text area: the native arrow stays usable in custom mode.
+		this.quotaCustom = E('span', { hidden: true }, [ this.quotaInput, ' ', _('GB', 'aether-proxy') ]);
+		this.quotaControl = E('span', { 'class': 'ap-quota-control' }, [ this.quotaSelect, this.quotaCustom ]);
 		this.quotaErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
-		this.heatmapCells = Array.from({ length: 90 }, () => E('div', { 'class': 'ap-heat-cell ap-heat-blank' }));
+		this.heatmapCells = Array.from({ length: 90 }, () => E('div', { 'class': 'ap-heat-cell ap-heat-void' }));
 		this.heatmapGridNode = E('div', { 'class': 'ap-heat-grid' }, this.heatmapCells);
-		this.heatmapLegend = E('div', { 'class': 'ap-heat-legend' },
-			Array.from({ length: 6 }, (_, i) => E('span', {}, [
-				E('span', { 'class': 'ap-heat-swatch ' + (i ? 'ap-heat-l' + i : 'ap-heat-blank') }),
-				E('small', {})
-			])));
 		this.historyErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
 		dom.content(this.heatmapContainer, [
 			E('div', { 'class': 'ap-heat-caption' }, [
-				E('span', {}, [ _('Last 90 days', 'aether-proxy') ]),
-				E('label', {}, [ _('Monthly quota', 'aether-proxy'), ' ', this.quotaSelect ])
-			]), this.quotaCustom, this.quotaErrorNode, this.heatmapGridNode,
-			this.heatmapLegend, this.historyErrorNode
+				E('span', {}, [ _('Last 90 days · Redder = more usage', 'aether-proxy') ]),
+				E('label', {}, [ _('Monthly quota', 'aether-proxy'), ' ', this.quotaControl ])
+			]), this.quotaErrorNode, this.heatmapGridNode, this.historyErrorNode
 		]);
 		this.quotaSynced = false;
-		this.legendQuota = undefined;
+		this.quotaCommitted = null;
 	},
 
 	saveQuota: function(bytes) {
 		if (this.quotaSaving || this.switching)
 			return;
-		const error = (code) => {
-			this.quotaErrorNode.textContent = _('Saving quota failed (%s)', 'aether-proxy').replace('%s', code);
-			this.quotaErrorNode.hidden = false;
-		};
+		const error = (code) => this.quotaError(code);
 		if (bytes !== null && (!Number.isSafeInteger(bytes) || bytes < 1e9 || bytes > 1e14)) {
 			error('USAGE');
 			return;
 		}
 		this.quotaSaving = true;
-		this.quotaSelect.disabled = this.quotaInput.disabled = this.quotaButton.disabled = true;
+		this.quotaSelect.disabled = this.quotaInput.disabled = true;
 		return ap.call('stats_quota', bytes == null ? { action: 'clear' } : { action: 'set', bytes })
 			.then((reply) => {
 				if (reply.ok !== true) {
@@ -568,11 +600,15 @@ return view.extend({
 					...(this.heatmapReply ?? { ok: true, enabled: true, days: [] }), quota: reply.quota
 				};
 				this.heatmapGood = model.heatmap_view(this.heatmapReply, model.heatmap_today(Date.now()));
+				this.quotaCommitted = reply.quota.bytes;
+				this.quotaSelection(reply.quota.bytes);
 				this.quotaErrorNode.hidden = true;
 				this.updateHeatmap();
+			}).catch((err) => {
+				error(err?.message ?? 'RPC_FAILED');
 			}).finally(() => {
 				this.quotaSaving = false;
-				this.quotaSelect.disabled = this.quotaInput.disabled = this.quotaButton.disabled = false;
+				this.quotaSelect.disabled = this.quotaInput.disabled = false;
 			});
 	},
 
@@ -592,30 +628,19 @@ return view.extend({
 		const vm = this.heatmapGood;
 		if (vm) {
 			if (!this.quotaSynced) {
+				this.quotaCommitted = vm.quota;
 				this.quotaSelection(vm.quota);
 				this.quotaSynced = true;
 			}
-			this.heatmapContainer.className = 'ap-heat-wrap' + (vm.quota == null ? ' ap-heat-relative' : '');
+			this.heatmapContainer.className = 'ap-heat-wrap';
 			vm.cells.forEach((cell, i) => {
 				const node = this.heatmapCells[i];
-				node.className = 'ap-heat-cell ' + (cell ? 'ap-heat-l' + cell.level : 'ap-heat-blank');
+				node.className = 'ap-heat-cell ' + (cell ? 'ap-heat-l' + cell.level : 'ap-heat-void');
 				if (cell)
 					node.setAttribute('title', cell.tip);
 				else
 					node.removeAttribute('title');
 			});
-		}
-		const quota = vm?.quota != null;
-		if (this.legendQuota !== quota) {
-			const labels = quota ? [ _('No record', 'aether-proxy'), '0–25%', '25–50%', '50–75%', '75–100%', '≥100%' ]
-				: [ _('No record', 'aether-proxy'), _('Less', 'aether-proxy'), '', '', '', _('More', 'aether-proxy') ];
-			labels.forEach((label, i) => {
-				this.heatmapLegend.children[i].children[1].textContent = label;
-				// Relative mode's five levels are recorded zero plus four green steps.
-				this.heatmapLegend.children[i].children[0].className = 'ap-heat-swatch '
-					+ (i ? 'ap-heat-l' + (quota ? i : i - 1) : 'ap-heat-blank');
-			});
-			this.legendQuota = quota;
 		}
 		this.historyErrorNode.textContent = this.heatmapError ?? '';
 		this.historyErrorNode.hidden = !this.heatmapError;
