@@ -104,7 +104,7 @@ function reader_test() {
 		}
 	};
 	let raw = config.read_raw(cursor, 'isolated_test');
-	if (join(',', names) != 'main,dns,update,probe,sub')
+	if (join(',', names) != 'main,dns,update,probe,sub,stats')
 		return false;
 	if (length(filter(packages, p => p != 'isolated_test')))
 		return false;
@@ -119,7 +119,7 @@ function inventory_test() {
 	if (config_source == null || sub_source == null)
 		die('cannot read raw reader sources');
 	// Guard the architectural requirement, not only equivalent runtime behavior.
-	return length(match(config_source, /\[ 'main', 'dns', 'update', 'probe', 'sub' \]/g) ?? []) == 1
+	return length(match(config_source, /\[ 'main', 'dns', 'update', 'probe', 'sub', 'stats' \]/g) ?? []) == 1
 		&& index(config_source, 'normalize(read_raw(cursor, C.UCI_PACKAGE))') >= 0
 		&& index(sub_source, 'config.normalize(config.read_raw(cursor, C.SUB_SNAPSHOT_PACKAGE))') >= 0
 		&& match(sub_source, /cursor\.foreach\(/) == null

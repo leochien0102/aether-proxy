@@ -604,6 +604,19 @@ chain traffic_in { type filter hook input priority filter - 2; policy accept; ip
 - 某一项读不到只让该项为 `null`，整个调用仍 `ok: true`；`--sys-root` 下的 `/proc/...` 路径按 sys-root 拼接（测试用）。
 - rpcd 方法 `stats`（无参数，read，10 秒）。
 
+**`aether-proxy stats history`**（B25 使用热力图的历史查询，T12.5；只读、不记事件、**不进入 5 秒轮询**，仅热力图卡片按需调用；接受 `--days N`、`--json`、`--confdir`、`--run-dir`、`--sys-root` 测试选项）：
+
+```json
+{ "ok": true, "enabled": true, "updated_at": 1790000000,
+  "days": [ { "date": "2026-11-01", "tx": 123, "rx": 456, "observed": 3600, "healthy": 3500 } ] }
+```
+
+- 先读配置 `stats.heatmap_enabled`：关闭 → 恰好 `{ "ok": true, "enabled": false, "days": [] }`（无 `updated_at`），且**不打开** `usage.json`；配置缺 `stats` 段同关闭。配置本身无效 → `CONFIG_INVALID`（退出码 2，与 `status` 相同）。
+- `days`：只返回最近 N 个**有数据的日期**，按日期升序；条目只含 `date/tx/rx/observed/healthy` 五个字段。`--days` 取 1–90（缺省 90）；0、91、负数、非正整数、重复给出 → `USAGE`（退出码 2）。
+- `updated_at`：`usage.json` 的写入时间（墙钟秒，来自 `usage.load`）。文件缺失、损坏或不可读 → `days: []`、`updated_at: null`，仍 `ok: true`（docs/b25-heatmap.md §5/§8：损坏按空历史处理，不报错、不阻塞；rpcd 不会因此失败）。
+- 只读：不修改 `usage.json`、不触发 monitor/采样；`--run-dir` 仅接受不使用（与其他只读命令的参数面一致）。
+- rpcd 方法 `stats_history`（参数 `{ days?: number }`，read，10 秒；`days` 非 1–90 的整数 → `USAGE`，缺省同 CLI 的 90；响应原样转发 CLI JSON）。
+
 **2. 立即检测与换节点后自动检测（T8.12b）**：
 - **`aether-proxy probe now`**：读 `state.json`，`state` 不是 `starting`、`running`、`degraded`、`failsafe` → `{ "ok": false, "code": "NOT_RUNNING", "detail": "…" }`，退出码 1，不记事件；
   否则经 procd 向 daemon 发 SIGUSR1（`ubus call service signal '{"name":"aether-proxy","signal":10}'`，与 08 的 SIGUSR2 写法相同），失败 → `CMD_FAILED`（记事件），退出码 1；
@@ -1315,6 +1328,18 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 4. 09 的目录行与页面模板必须在同一个提交里加（logs 测试要求目录里每个码都有模板，先加目录会让 main 的测试失败）。所以 T10.68 破例允许实现者改 docs/09，只限「事件码目录」里这一行。
 
 **复审结论（2026-10-27，T10.68 已合并）**：事件参数与 `reload.uc` 一致；09 目录行按例外与模板在同一提交里加。复审改了一处：提示和持续时间原来按两句拼接，中文译文末尾没有句号，读成「…分流已持续 5 分钟」，改为一句、持续时间放进括号（见第 1 条）。补了两项测试：`degraded_mode` 是别的值时不显示提示；09 目录里有这两个码的一行（原有测试只查「目录里的码都有模板」，不查反方向）。
+
+### B25：概览页使用热力图（2026-11-01 定，T12.6；T12.7 连续日期网格返工；实验分支 `experiment/b25-heatmap`，依赖后端 T12.5）
+
+概览页在提示区（notice）之后、「运行状态」之前渲染热力图网格，整体居中、比其它概览卡片窄。**没有卡片背景、没有「使用热力图」标题、没有星期表头**（T12.7 返工；设计见 [b25-heatmap](b25-heatmap.md) §7）：网格直接渲染在容器里。整个区域受 `stats.heatmap_enabled` 开关控制，**默认关闭**，关闭时页面完全没有这个区域。
+
+1. **开关与调用**：`load()` 读 UCI `stats.heatmap_enabled`（缺省、空、非 `'1'` 都是关，`model.heatmap_enabled`）；关闭时**不发 `stats_history` 请求、不渲染任何内容**。开启时只在 `fetchRefresh` 末尾（status/stats/events 之后）经 `ap.call('stats_history')` 读取（不传 `days`，用后端默认 90）：同一次刷新最多读一次，且两次读取至少间隔 10 分钟，本地日期变化后下一次刷新立即重读；读历史不进入 5 秒轮询，也不延迟其他卡片的更新。
+2. **失败与空态**：`ap.call` 永不 reject，失败（`ok:false`，含 `TIMEOUT`/`RPC_FAILED`）不阻塞其他卡片：网格上方显示一句「读取使用历史失败（<code>）」，**保留最近一次成功的数据**；`console.warn` 只在失败开始时记一次，不随重试刷日志，也不弹全局横幅。开启但没有任何数据（`days` 为空）→ **仍渲染完整的 3×30 中性网格**，不再显示「暂无数据」替代文案（T12.7）。应答 `enabled:false`（后端读的是已应用的配置，可能与页面 UCI 快照不一致）→ 隐藏整个区域，之后不再调用；页面刷新配置发现 UCI 开关变化时立即重新评估（关→清空区域，开→立刻重读一次）。
+3. **网格**（T12.7 返工定稿）：**3 行 × 30 列 = 90 格**的连续日期网格，row-major 排列——最近 90 个本地日期（含今天），**无前导空格**，今天恒在右下角（index 89），与星期几无关。**只画已有日期**：无数据的日子是空白中性格（浅灰、无悬停提示），不补零、不回填、不缩短窗口——历史只有 3 天也是完整 90 格；早于窗口的旧条目与今天之后的未来日期丢弃。
+4. **颜色与健康度**：对 `log1p(tx+rx)` 在窗口内有数据的天里做 0–1 归一化，映射 5 档（0 流量为最浅一档；单日只有自己时是第 5 档）。健康度（`healthy/observed`）用边框与角标：`healthy == observed` 无标记；`0 < ratio < 1` 黄色内边框；`ratio == 0` 红色内边框加右上角标；`observed == 0` 用中性灰并降低不透明度，不画成故障。
+5. **悬停提示**：每个有数据的格子 `title` 四行——日期（`YYYY-MM-DD`）、代理流量（`tx+rx` 自动单位，1024 进位 B/KB/MB/GB/TB）、健康占比（百分比；`observed` 为 0 显示「–」）、观测时长（秒/分钟/小时/天进位）。空白格没有 tooltip。只用文本节点与 `title` 属性，不注入 HTML（测试断言任何 innerHTML 写入都不含日期、流量或占比）。
+6. **样式**（T12.7 返工定稿）：CSS 写在视图文件内的 `<style>` 元素里（随 `overview.js` 走 LuCI 的脚本版本参数，不会出现新旧脚本配旧新 CSS 的组合，T10.12）。没有 `.cbi-section` 背景；容器 `.ap-heat-wrap { width: 75%; max-width: 75%; margin-inline: auto; margin-bottom: 1.25em }`——内容宽度的 75%、水平居中，并与下方「运行状态」卡保持 1.25em 间距；关闭时区域是空 div，`.ap-heat-wrap:empty { display: none }` 让它完全不占位。网格 30 列等宽 `repeat(30, minmax(0, 1fr))` 铺满容器（`gap: 3px`、`width: 100%`），每格 `aspect-ratio: 1` 的圆角正方形——桌面内容列上约 25px 一格，3 行总高约 80–100px，不把页面顶出竖向滚动；外层 `overflow-x: auto` 在极窄屏幕兜底横向滚动；不依赖外部图表库。
+7. **`common.js` 方法表**加入 `stats_history`（参数 `days` 可省略，概览热力图是唯一调用方）；`tests/luci/static.test.js` 的方法清单同步。T12.5 只加了插件与 ACL，本卡把前端声明补齐（并因此修复了 T12.5 之后 `static.test.js`「ACL 与前端方法一致」的既有失败）。
 
 UI 规则：
 

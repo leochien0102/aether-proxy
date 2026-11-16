@@ -2822,3 +2822,38 @@ msgctxt "aether-proxy"
 msgid "The binary reports a different version than the installed package."
 msgstr "二进制版本与已安装包不一致。"
 
+msgctxt "aether-proxy"
+msgid "Enable usage heatmap (record daily traffic and health)"
+msgstr "启用使用热力图（记录每日流量与健康度）"
+
+msgctxt "aether-proxy"
+msgid "Record daily proxy traffic and service health for the overview heatmap; when disabled, nothing is sampled or written and existing records are kept."
+msgstr "记录每日代理流量与服务健康度，供概览页热力图使用；关闭时不采样、不写文件，已记录的历史保留。"
+
+msgctxt "aether-proxy"
+msgid "Reading the usage history failed (%s)"
+msgstr "读取使用历史失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Proxy traffic %s"
+msgstr "代理流量 %s"
+
+msgctxt "aether-proxy"
+msgid "Healthy share %s"
+msgstr "健康占比 %s"
+
+msgctxt "aether-proxy"
+msgid "Observed %s"
+msgstr "观测时长 %s"
+
+msgctxt "aether-proxy"
+msgid "%s seconds"
+msgstr "%s 秒"
+
+msgctxt "aether-proxy"
+msgid "%s minutes"
+msgstr "%s 分钟"
+
+msgctxt "aether-proxy"
+msgid "%s days"
+msgstr "%s 天"
