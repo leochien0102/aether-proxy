@@ -362,6 +362,10 @@ def quota_tests(base):
 	res = run('clear')
 	check('T16.2 quota clear write failure is FS_FAILED exit 1', res.returncode == 1
 		and res.stderr == '' and json.loads(res.stdout)['code'] == 'FS_FAILED' and file.is_dir())
+	events = [json.loads(line) for line in (base / 'quota-run/events.jsonl').read_text().splitlines()]
+	check('T16.2 quota write failure records existing FS_FAILED event',
+		events[-1]['code'] == 'FS_FAILED' and events[-1]['level'] == 'error'
+		and events[-1]['args']['op'] == 'write')
 	file.rmdir()
 	res = run('set', '100G')
 	check('T16.2 quota set creates a missing file with empty history', res.returncode == 0

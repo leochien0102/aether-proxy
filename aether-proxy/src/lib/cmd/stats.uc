@@ -176,8 +176,11 @@ function quota_cmd(parsed, args) {
 	let loaded = action == 'show' ? usage.load(path) : null;
 	let written = action == 'show' ? null : usage.set_quota(path, bytes, time());
 	warn_load(loaded ?? written.loaded, path, opts);
-	if (written != null && !written.ok)
+	if (written != null && !written.ok) {
+		log.set_run_dir(pipeline.run_dir(opts));
+		log.event('error', 'FS_FAILED', { op: 'write', path, detail: written.error });
 		return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: written.error }, 1, written.error);
+	}
 	let result = { ok: true, quota: written?.quota ?? usage.quota_of(loaded?.document) };
 	return pipeline.finish(opts, result, 0, sprintf('%.J', result));
 }
