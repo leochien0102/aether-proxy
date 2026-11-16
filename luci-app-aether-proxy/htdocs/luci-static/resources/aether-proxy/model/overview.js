@@ -749,8 +749,8 @@ return baseclass.extend({
 	},
 
 	/* docs/design/b25-quota-heatmap-20261116 §4–6: 90 consecutive days,
-	   row-major in 15 columns; quota uses each date's own calendar month. */
-	heatmap_columns: 15,
+	   row-major in 18 columns; quota uses each date's own calendar month. */
+	heatmap_columns: 18,
 
 	heatmap_view: function(reply, today) {
 		if (!reply || reply.ok === false)

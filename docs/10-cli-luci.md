@@ -1348,23 +1348,24 @@ LuCI 的「应用」会把会话里**所有**暂存的改动一起提交。概�
 
 **复审结论（2026-10-27，T10.68 已合并）**：事件参数与 `reload.uc` 一致；09 目录行按例外与模板在同一提交里加。复审改了一处：提示和持续时间原来按两句拼接，中文译文末尾没有句号，读成「…分流已持续 5 分钟」，改为一句、持续时间放进括号（见第 1 条）。补了两项测试：`degraded_mode` 是别的值时不显示提示；09 目录里有这两个码的一行（原有测试只查「目录里的码都有模板」，不查反方向）。
 
-### B25：概览页使用热力图（T16.5 额度版，实验）
+### B25：概览页使用热力图（T16.6 额度版，实验）
 
-额度版 UI（T16.5 首轮试用调整，实验集成分支 `experiment/b25-heatmap-v2`）以
+额度版 UI（T16.6 第二轮试用调整，实验集成分支 `experiment/b25-heatmap-v2`）以
 [额度版设计](design/b25-quota-heatmap-20261116.md) §4、§5、§6.1 为准，不进 main。
 
-- **位置与结构**：「流量与连接」块的 h3 之后为左右两列（flex，gap 1.5em，align-items:center，
-  左列 flex:0 0 35%、max-width:35%，右列 flex:1 1 65%）。左列依次为 caption
-  （「近 90 天 · 越红 = 用量越大」+ 月额度单槽位控件）、写入错误、网格、读取错误；无图例。
-  右列保留原有上传/下载表格及代理/总连接行。网格约 150px 高，右列更高时只让左列居中，
-  不拉伸格子；宽度 <720px 转单列且两列占满宽度，热力图在上。
+- **位置与结构**：「流量与连接」块的 h3 之后为左右两列（flex，gap 1.5em，align-items:flex-start，
+  左列 flex:0 0 auto、max-width:100%，宽度由 519px 网格决定；右列 flex:1 1 auto）。左列依次为 caption
+  （左月额度单槽位控件、右「近 90 天 · 越红 = 用量越大」，justify-content:space-between）、写入错误、网格、读取错误；无图例。
+  caption 与网格同列同宽，说明右端与网格右端自然对齐；caption 顶部与右侧表头顶部对齐。
+  右列保留原有上传/下载表格及代理/总连接行。网格约 142px 高，右列更高时左列仍停在顶部，
+  不拉伸格子；宽度 <720px 转单列且两列占满宽度，热力图在上，网格 width:100%、格子等比缩小。
   删除 notice 之后的旧独立容器，其余概览页区域顺序不变。
 - **开关与读取**：只接受 UCI `stats.heatmap_enabled == '1'`。关闭时不挂载任何热力图元素，
   不调用 `stats_history`；流量块仍为原有 h3 + table + 连接行。开启后随每次概览刷新在
   status/stats/events 之后读取历史，取消旧 10 分钟 TTL；同一时刻只发一个历史请求。
-- **日期网格**：6 行 × 15 列 = 90 格，row-major，无前导空格，不按星期对齐；今天为 index 89。
-  `repeat(15, minmax(0, 1fr))`、gap 3px、width 100%、max-width:400px；格子 aspect-ratio:1、border-radius:20%。
-  按右列 150px 反推格子 22.5px，以 inline-size:min(100%,379.5px) 限制整网格宽度；
+- **日期网格**：5 行 × 18 列 = 90 格，row-major，无前导空格，不按星期对齐；今天为 index 89（第 5 行最后一格）。
+  `repeat(18, minmax(0, 1fr))`、gap 3px、width:519px、max-width:100%；格子 aspect-ratio:1、border-radius:20%。
+  格子约 26px，`18×26+17×3=519px`、`5×26+4×3=142px`；不再保留 400px 或 inline-size 限制。
   宽屏不放大，左列 overflow-x:auto 兜底。无记录为 void 色、无 title；记录为零为档 0、有 title。
 - **颜色**：有额度时 r=(tx+rx)/(quota.bytes/该格日期所在月天数)，以数值日期构造器
   `new Date(y,m,0).getDate()` 得天数，不用 Date.parse。0 流量档 0；正数按

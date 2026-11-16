@@ -1,6 +1,6 @@
 'use strict';
 
-/* B25 quota heatmap, docs/tasks/m16.md T16.5 and quota design §4–8.
+/* B25 quota heatmap, docs/tasks/m16.md T16.6 and quota design §4–8.
  * Real model + view with shared LuCI DOM doubles; assert persistent controls,
  * calendar arithmetic, request mappings and failure isolation. */
 
@@ -164,7 +164,7 @@ test('heatmap: reply mapping — error and off', () => {
 	assert.deepEqual(vm, { state: 'off' }, 'the disabled reply hides the card');
 });
 
-test('heatmap: the grid is 6×15 = 90 cells — the last 90 days ending today, no leading blank', () => {
+test('T16.6 model: the grid is 5×18 = 90 cells — the last 90 days ending today, no leading blank', () => {
 	const model = dashboardModel();
 	const vm = model.heatmap_view({ ok: true, enabled: true, days: [
 		{ date: '2026-08-04', tx: 1, rx: 0, observed: 60, healthy: 60 },
@@ -173,15 +173,15 @@ test('heatmap: the grid is 6×15 = 90 cells — the last 90 days ending today, n
 	] }, '2026-11-01');
 
 	assert.equal(vm.state, 'ok');
-	assert.equal(vm.cells.length, 90, '6 rows × 15 columns of cells');
+	assert.equal(vm.cells.length, 90, '5 rows × 18 columns of cells');
 	assert.equal(vm.cells[0].date, '2026-08-04',
 		'the window opens on the 89th day before today — no leading blank cell');
 	assert.equal(vm.cells[88], null, '2026-10-31 has no entry in this sample and stays blank');
-	/* Row-major layout: index 89 is row 5 (floor(89/15)), column 14 (89%15) —
-	   the bottom-right corner holds today. */
-	assert.equal(model.heatmap_columns, 15);
-	assert.equal(Math.floor(89 / model.heatmap_columns), 5);
-	assert.equal(89 % model.heatmap_columns, 14);
+	/* Zero-based row-major layout: index 89 is row 4, column 17 —
+	   the fifth row's bottom-right corner holds today. */
+	assert.equal(model.heatmap_columns, 18);
+	assert.equal(Math.floor(89 / model.heatmap_columns), 4);
+	assert.equal(89 % model.heatmap_columns, 17);
 	assert.equal(vm.cells[89].date, '2026-11-01', 'today is the bottom-right cell');
 });
 
@@ -344,7 +344,7 @@ test('T16.5 view: disabled has original traffic structure, no heatmap and no his
 	assert.deepEqual(view.trafficBody.children.map((n) => n.tag), [ 'h3', 'table', 'div' ]);
 });
 
-test('T16.5 view: two columns, caption-grid without legend, 15-column responsive theme CSS', async () => {
+test('T16.6 view: fitted top-aligned columns, quota-first caption and 18-column responsive CSS', async () => {
 	const { view } = await mounted();
 	const [heading, columns] = view.trafficBody.children;
 	assert.equal(heading.textContent, tr('Traffic and connections'));
@@ -354,22 +354,33 @@ test('T16.5 view: two columns, caption-grid without legend, 15-column responsive
 	assert.equal(view.heatmapContainer.children[0].attrs.class, 'ap-heat-caption');
 	assert.equal(view.heatmapContainer.children[2], view.heatmapGridNode);
 	assert.equal(view.heatmapContainer.children.length, 4);
-	assert.equal(view.heatmapContainer.children[0].children[0].textContent, tr('Last 90 days · Redder = more usage'));
+	const caption = view.heatmapContainer.children[0];
+	assert.deepEqual(caption.children.map((n) => n.tag), [ 'label', 'span' ]);
+	assert.equal(caption.children[0].children.at(-1), view.quotaControl);
+	assert.equal(caption.children[0].textContent.startsWith(tr('Monthly quota')), true);
+	assert.equal(caption.children[1].textContent, tr('Last 90 days · Redder = more usage'));
 	assert.equal(findAll(view.heatmapContainer, 'button').length, 0);
 	assert.equal(view.heatmapGridNode.children.length, 90);
 	assert.ok(view.heatmapCells.every((n) => n.className === 'ap-heat-cell ap-heat-void'));
 	assert.ok(view.heatmapCells.every((n) => n.attrs.title === undefined));
 	assert.equal(view.quotaSelect.children.length, 7);
 	const css = view.heatmapStyle.textContent;
-	for (const pattern of [ /repeat\(15, minmax\(0, 1fr\)\)/, /gap:3px; width:100%/,
-		/aspect-ratio:1; border-radius:20%/, /overflow-x:auto/, /flex:0 0 35%; max-width:35%/, /flex:1 1 65%/, /max-width:400px/, /379\.5px/,
-		/gap:1.5em; align-items:center; flex-wrap:nowrap/, /max-width:719px/,
-		/flex-direction:column/, /prefers-color-scheme: dark/ ])
+	for (const pattern of [ /repeat\(18, minmax\(0, 1fr\)\)/, /gap:3px; width:519px; max-width:100%/,
+		/aspect-ratio:1; border-radius:20%/, /overflow-x:auto/,
+		/\.ap-heat-wrap \{ flex:0 0 auto; max-width:100%; min-width:0/,
+		/\.ap-traffic-live \{ flex:1 1 auto; min-width:0/,
+		/gap:1.5em; align-items:flex-start; flex-wrap:nowrap/,
+		/\.ap-heat-caption \{ display:flex; align-items:center; justify-content:space-between/,
+		/@media \(max-width:719px\) \{ \.ap-traffic-columns \{ flex-direction:column; align-items:stretch \} /,
+		/\.ap-heat-wrap, \.ap-traffic-live \{ flex-basis:auto; width:100%; max-width:100% \} /,
+		/\.ap-heat-grid \{ width:100% \} \}/, /prefers-color-scheme: dark/ ])
 		assert.match(css, pattern);
 	for (const color of [ '#eef1f4', '#1c2228', '#dbe7f3', '#1f2a33', '#9ec9e8', '#2c4a63',
 		'#74b3d8', '#4b8ab5', '#f2c14e', '#b08a2e', '#ef8c3c', '#c66a25', '#d9463f', '#d0453b' ])
 		assert.ok(css.includes(color), color);
-	assert.doesNotMatch(css, /legend|swatch|ap-rel-|box-shadow|::after|repeat\(30/);
+	assert.doesNotMatch(css, /legend|swatch|ap-rel-|box-shadow|::after|repeat\((15|30)/);
+	assert.doesNotMatch(css, /max-width:400px|inline-size|379\.5px|35%|65%/);
+	assert.doesNotMatch(css, /\.ap-traffic-columns \{[^}]*align-items:center/);
 });
 
 test('T16.5 view: initial quota selects unlimited, every preset or filled custom GB', async () => {
