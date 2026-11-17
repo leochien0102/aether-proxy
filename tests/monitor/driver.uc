@@ -258,6 +258,116 @@ else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
 		`${scenario}: NODE_IP_UNREACHABLE carries warn and all four fields`);
 	check(count(events, 'NODE_IP_CHANGED') == 0 && count(events, 'START_FAILED') == 0,
 		`${scenario}: rejection completes normally without NODE_IP_CHANGED or action error`);
+	if (scenario == 'node-unreachable') {
+		let probe_path = `${opts.ctx.root}${C.RUN_DIR}/${C.NODE_PROBE_LOG}`;
+		let records = map(filter(split(trim(fs.readfile(probe_path)), '\n'), line => line != ''), line => json(line));
+		let record = records[0];
+		let fields = [ 'ts', 'address', 'attempts', 'raw', 'ip', 'source', 'elapsed_ms',
+			'tier', 'node_ip_before', 'reachable', 'action' ];
+		check(length(records) == 1 && join(',', sort(keys(record))) == join(',', sort(fields)) &&
+			record.address == d.snapshot.nodes[d.snapshot.main.node].address &&
+			record.attempts == 1 && record.raw == '127.0.0.1\n' && record.ip == '127.0.0.1' &&
+			record.source == 'dns' && record.elapsed_ms >= 0 && record.ts >= time() - 10 &&
+			record.tier == 'T1' && record.node_ip_before == '203.0.113.20' &&
+			record.reachable === false && record.action == 'unreachable',
+			'forensics: exactly one complete JSON record matches refused candidate and raw stdout');
+		check(rejected[0].args.source == 'dns' && rejected[0].args.raw == record.raw,
+			'forensics: unreachable event carries source and exact raw stdout');
+
+		for (let gap in [ 60, 120, 240, 600 ]) {
+			let attempted = d.machine.last_node_refresh_attempt;
+			check(d.machine.node_probe_retry_at == attempted + gap,
+				`retry: rejected candidate schedules ${gap} seconds`);
+			let obs = { now: attempted + gap - 1, proxy_ok: true };
+			check(index(monitor.next(d.machine, obs, d.snapshot).actions, 'refresh_node_ip') < 0,
+				`retry: no refresh before ${gap}-second deadline`);
+			obs.now++;
+			check(index(monitor.next(d.machine, obs, d.snapshot).actions, 'refresh_node_ip') >= 0,
+				`retry: refresh at ${gap}-second deadline`);
+			// Advance only the fixture's clock fields, not wall time or the production tick.
+			d.machine.last_node_refresh = time() - gap;
+			d.machine.last_node_refresh_attempt = time() - gap;
+			d.machine.node_probe_retry_at = time();
+			monitor.tick(d);
+			while (d.busy) uloop.run(100);
+		}
+		check(d.machine.node_probe_failures == 1,
+			'retry: normal 600-second cadence resets failure series');
+		let edge = { ...d.machine, state: 'running', node_probe_failures: 4,
+			node_probe_retry_at: d.machine.last_node_refresh_attempt + 600 };
+		let edge_obs = { now: d.machine.last_node_refresh_attempt + 60, proxy_ok: false };
+		check(index(monitor.next(edge, edge_obs, d.snapshot).actions, 'refresh_node_ip') >= 0,
+			'retry: unhealthy edge overrides long backoff after 60-second debounce');
+		check(length(filter(split(trim(fs.readfile(probe_path)), '\n'), line => line != '')) == 5,
+			'forensics: every fast retry adds exactly one JSON line');
+
+		// Same-IP success resets backoff without introducing a new TCP probe.
+		write(`${opts.ctx.root}/resolve-ip`, '203.0.113.20\n');
+		d.machine.last_node_refresh_attempt = time() - 60;
+		d.machine.node_probe_retry_at = time();
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(d.machine.node_probe_failures == 0 && d.machine.node_probe_retry_at == null,
+			'retry: same-IP resolution resets backoff');
+		let healthy = { now: d.machine.last_node_refresh_attempt + 599, proxy_ok: true };
+		check(index(monitor.next(d.machine, healthy, d.snapshot).actions, 'refresh_node_ip') < 0,
+			'retry: success waits through 599 seconds');
+		healthy.now++;
+		check(index(monitor.next(d.machine, healthy, d.snapshot).actions, 'refresh_node_ip') >= 0,
+			'retry: success returns to 600-second cadence');
+		write(`${opts.ctx.root}/resolve-always-fail`, '1\n');
+		d.machine.last_node_refresh = time() - 600;
+		d.machine.last_node_refresh_attempt = time() - 600;
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		records = map(filter(split(trim(fs.readfile(probe_path)), '\n'), line => line != ''), line => json(line));
+		record = records[length(records) - 1];
+		check(record.source == 'lkg' && record.raw == '' && record.attempts == 3 &&
+			record.action == 'keep' && record.reachable == null,
+			'forensics: fallback retains empty stdout and three attempts');
+		print('probe samples:\n' + join('\n', [
+			sprintf('%J', records[5]), sprintf('%J', records[0]), sprintf('%J', record)
+		]) + '\n');
+		check(fs.unlink(`${opts.ctx.root}/resolve-always-fail`), 'forensics: clears controlled DNS failure');
+
+		let oversized = '';
+		for (let i = 0; i < 6554; i++)
+			oversized += '1234567890';
+		write(probe_path, oversized);
+		let long_raw = '127.0.0.1\n';
+		for (let i = 0; i < 600; i++)
+			long_raw += 'x';
+		write(`${opts.ctx.root}/resolve-ip`, long_raw);
+		d.machine.last_node_refresh = time() - 600;
+		d.machine.last_node_refresh_attempt = time() - 600;
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		record = json(trim(fs.readfile(probe_path)));
+		check(fs.readfile(probe_path + '.1') == oversized &&
+			fs.stat(probe_path).size <= C.NODE_PROBE_LOG_MAX,
+			'forensics: oversized log rotates to .1 and active log stays bounded');
+		check(length(record.raw) == 512 && record.raw == substr(long_raw, 0, 512),
+			'forensics: raw stdout is truncated to 512 bytes');
+		let last_event = json(filter(split(trim(fs.readfile(events_path)), '\n'),
+			line => index(line, 'NODE_IP_UNREACHABLE') >= 0)[-1]);
+		check(last_event.args.raw == record.raw && last_event.args.source == 'dns',
+			'forensics: event uses identical 512-byte truncation');
+
+		// A failed rotation must not block subsequent refreshes, and warns only once.
+		check(fs.unlink(probe_path + '.1') && sys.mkdir_p(probe_path + '.1'),
+			'forensics: makes rotation destination unwritable as a file');
+		for (let i = 0; i < 2; i++) {
+			write(probe_path, oversized);
+			d.machine.last_node_refresh = time() - 600;
+			d.machine.last_node_refresh_attempt = time() - 600;
+			monitor.tick(d);
+			while (d.busy) uloop.run(100);
+		}
+		let warnings = filter(split(trim(fs.readfile(events_path)), '\n'),
+			line => index(line, 'node-probe') >= 0 && index(line, 'FS_FAILED') >= 0);
+		check(length(warnings) == 1 && d.machine.node_probe_retry_at != null,
+			'forensics: log failures warn once without blocking candidate handling');
+	}
 	if (scenario == 'unhealthy-refresh') {
 		check(count(calls, 'resolveip ') == 1 && count(events, 'PROXY_UNHEALTHY') == 1,
 			'unhealthy-refresh: unhealthy transition tick immediately resolves before 600 seconds');
@@ -302,6 +412,8 @@ else if (scenario == 'node-refresh') {
 	d.children.xray.start();
 	check(monitor.wait_xray_port(opts.ctx), 'node refresh starts with a real supervised Xray substitute');
 	check(write(`${opts.ctx.root}/xray-listen-delay`, '1\n'), 'node refresh enables delayed replacement');
+	d.machine.node_probe_failures = 3;
+	d.machine.node_probe_retry_at = time() + 240;
 	d.machine.node_ip = '203.0.113.19';
 	d.machine.last_node_refresh = time() - C.MONITOR_NODE_REFRESH_SECS - 1;
 	monitor.tick(d);
@@ -311,6 +423,15 @@ else if (scenario == 'node-refresh') {
 	let events = fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`) ?? '';
 	check(count(events, 'NODE_IP_CHANGED') == 1 && count(events, 'NODE_IP_UNREACHABLE') == 0,
 		'node refresh: successful TCP probe emits NODE_IP_CHANGED without unreachable event');
+	let probe = json(trim(fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.NODE_PROBE_LOG}`)));
+	check(probe.action == 'switch' && probe.reachable === true && probe.raw == '127.0.0.1\n' &&
+		probe.source == 'dns' && probe.node_ip_before == '203.0.113.19',
+		'forensics: successful switch records the pre-switch IP and TCP verdict');
+	check(d.machine.node_probe_failures == 0 && d.machine.node_probe_retry_at == null,
+		'retry: successful switch clears pending backoff');
+	let changed = json(filter(split(trim(events), '\n'), line => index(line, 'NODE_IP_CHANGED') >= 0)[0]);
+	check(changed.args.raw == probe.raw && changed.args.source == probe.source,
+		'forensics: changed event matches probe source and raw');
 	listener.close();
 	check(index(fs.readfile(`${opts.ctx.root}/proc/net/tcp6`) ?? '', ':7968 ') >= 0,
 		'node refresh finishes only after the delayed Xray listener is ready');

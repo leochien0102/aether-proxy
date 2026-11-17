@@ -31,10 +31,11 @@ const CASES = [
 	['NODE_RESOLVE_FALLBACK', { node: 'n_a', domain: 'node.example', lkg_ip: '203.0.113.1' },
 		'节点 $node：为 node.example 使用最近可用地址 203.0.113.1'],
 	['NODE_RESOLVE_FAILED', { node: 'n_a', domain: 'node.example' }, '节点 $node：无法解析 node.example'],
-	['NODE_IP_CHANGED', { node: 'n_a', old: '203.0.113.1', new: '203.0.113.2' },
-		'节点 $node 的 IP 已从 203.0.113.1 变为 203.0.113.2'],
-	['NODE_IP_UNREACHABLE', { node: 'n_a', address: 'node.example', ip: '203.0.113.2', port: 443 },
-		'节点 $node：node.example 的候选地址 203.0.113.2:443 不可达，保留当前 IP'],
+	['NODE_IP_CHANGED', { node: 'n_a', old: '203.0.113.1', new: '203.0.113.2', source: 'dns', raw: 'answer' },
+		'节点 $node 的 IP 已从 203.0.113.1 变为 203.0.113.2（来源：dns，原始输出：answer）'],
+	['NODE_IP_UNREACHABLE', {
+		node: 'n_a', address: 'node.example', ip: '203.0.113.2', port: 443, source: 'lkg', raw: ''
+	}, '节点 $node：node.example 的候选地址 203.0.113.2:443 不可达，保留当前 IP（来源：lkg，原始输出：）'],
 	['NODE_STALE', { node: 'n_a' }, '节点 $node 已失效'],
 	['NODE_STALE_IN_USE', { node: 'n_a' }, '当前节点 $node 已失效'],
 	['NODE_INSECURE_IGNORED', { node: 'n_a' }, '已忽略节点 $node 的不安全设置'],

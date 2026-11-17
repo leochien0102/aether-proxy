@@ -266,70 +266,129 @@ function node_reachable(ip, port) {
 	return connected;
 };
 
+// Atomic bounded rewrites avoid partial JSON lines; both files live only under run_dir.
+function write_node_probe(daemon, record) {
+	let path = `${run_dir(daemon)}/${C.NODE_PROBE_LOG}`;
+	let previous = '', detail = null;
+	if (fs.stat(path) != null) {
+		previous = fs.readfile(path);
+		if (previous == null)
+			detail = fs.error() ?? 'cannot read probe log';
+	}
+	else {
+		let error = fs.error();
+		if (error != null && error != 'No such file or directory')
+			detail = error;
+	}
+	let line = sprintf('%J\n', record);
+	if (detail == null && length(previous) + length(line) > C.NODE_PROBE_LOG_MAX) {
+		if (!fs.rename(path, path + '.1'))
+			detail = fs.error() ?? 'cannot rotate probe log';
+		else
+			previous = '';
+	}
+	if (detail == null && !sys.write_atomic(path, previous + line))
+		detail = sys.error();
+	if (detail != null && !daemon.node_probe_warned) {
+		daemon.node_probe_warned = true;
+		log.set_run_dir(run_dir(daemon));
+		log.event('warn', 'FS_FAILED', { op: 'node-probe', path, detail });
+	}
+};
+
 function update_node_ip(daemon, machine, done) {
 	let node_id = daemon.snapshot.main.node;
 	let address = daemon.snapshot.nodes?.[node_id]?.address;
+	let before = machine.node_ip, ts = time();
 	let resolved = apply.resolve_node(daemon.ctx, address);
+	let raw = substr(resolved.raw ?? '', 0, C.NODE_PROBE_RAW_MAX);
+	// Same-IP and resolution failures do not probe TCP; null must not imply reachability.
+	let reachable = null, action = 'keep';
+	// All exits, including staging/restart errors, record exactly one refresh outcome.
+	function finish(error) {
+		write_node_probe(daemon, {
+			ts, address, attempts: resolved.attempts, raw, ip: resolved.ip ?? null,
+			source: resolved.source ?? null, elapsed_ms: resolved.elapsed_ms,
+			tier: machine.dns_tier, node_ip_before: before, reachable, action
+		});
+		done(error);
+	};
 	if (!resolved.ok || resolved.ip == machine.node_ip) {
-		done(null);
+		if (resolved.ok) {
+			machine.node_probe_failures = 0;
+			machine.node_probe_retry_at = null;
+		}
+		finish(null);
 		return;
 	}
 	let port = daemon.snapshot.nodes[node_id].port;
 	// Reject stale DNS answers before exporting sets or touching active artifacts.
-	if (!node_reachable(resolved.ip, port)) {
+	reachable = node_reachable(resolved.ip, port);
+	if (!reachable) {
+		action = 'unreachable';
+		machine.node_probe_failures = min(machine.node_probe_failures + 1, length(C.NODE_PROBE_RETRY_SECS));
+		machine.node_probe_retry_at = machine.last_node_refresh_attempt +
+			C.NODE_PROBE_RETRY_SECS[machine.node_probe_failures - 1];
 		log.set_run_dir(run_dir(daemon));
-		log.event('warn', 'NODE_IP_UNREACHABLE', { node: node_id, address, ip: resolved.ip, port });
-		done(null);
+		log.event('warn', 'NODE_IP_UNREACHABLE', {
+			node: node_id, address, ip: resolved.ip, port, source: resolved.source, raw
+		});
+		finish(null);
 		return;
 	}
 	let restored = load_restored_sets(daemon);
 	if (!restored.ok) {
-		done(restored.detail);
+		finish(restored.detail);
 		return;
 	}
 	let runtime = runtime_for(daemon, machine.dns_tier, resolved.ip, restored.sets);
 	let built = render(daemon, runtime);
 	if (!built.ok) {
-		done(built.detail);
+		finish(built.detail);
 		return;
 	}
 	let nft_path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.nft}`;
 	let xray_path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.xray}`;
 	if (!sys.write_atomic(nft_path, built.artifacts.nft) || !sys.write_atomic(xray_path, built.artifacts.xray)) {
-		done(`cannot stage node IP update: ${sys.error()}`);
+		finish(`cannot stage node IP update: ${sys.error()}`);
 		return;
 	}
 	let binary = daemon.state.components?.[C.XRAY_COMPONENT]?.path ??
 		(daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
 	let test = sys.run([ binary, 'run', '-test', '-c', xray_path ], { timeout: 10, quiet: true });
 	if (test.code != 0) {
-		done(`xray run -test failed (${test.code}): ${test.stderr}`);
+		finish(`xray run -test failed (${test.code}): ${test.stderr}`);
 		return;
 	}
 	let loaded = load_nft(daemon, nft_path, restored);
 	if (!loaded.ok) {
-		done(loaded.detail);
+		finish(loaded.detail);
 		return;
 	}
 	let old_ip = machine.node_ip;
 	restart_child(daemon, 'xray', C.XRAY_COMPONENT,
 		[ binary, 'run', '-c', xray_path ], error => {
 			if (error != null) {
-				done(error);
+				finish(error);
 				return;
 			}
 			// This action already owns busy and the monitor lock, so pumping uloop while
 			// waiting cannot observe our own restart as an unrelated Xray outage.
 			let ready = xray_ready.published(daemon.ctx, daemon.children.xray);
 			if (!ready.ok) {
-				done(ready.detail);
+				finish(ready.detail);
 				return;
 			}
+			action = 'switch';
+			machine.node_probe_failures = 0;
+			machine.node_probe_retry_at = null;
 			machine.node_ip = resolved.ip;
 			daemon.state.node_ip = resolved.ip;
 			log.set_run_dir(run_dir(daemon));
-			log.event('notice', 'NODE_IP_CHANGED', { node: node_id, old: old_ip ?? '', new: resolved.ip });
-			done(null);
+			log.event('notice', 'NODE_IP_CHANGED', {
+				node: node_id, old: old_ip ?? '', new: resolved.ip, source: resolved.source, raw
+			});
+			finish(null);
 		});
 };
 
@@ -613,6 +672,8 @@ initial_state = (service, now) => {
 		t2_retry_pending: false,
 		last_node_refresh: now,
 		last_node_refresh_attempt: null,
+		node_probe_failures: 0,
+		node_probe_retry_at: null,
 		node_ip: service?.node_ip ?? null,
 		degraded_mode: service?.degraded_mode ?? null,
 		degraded_since: service?.degraded_since ?? null,
@@ -647,6 +708,8 @@ next = (state, obs, cfg) => {
 		t2_retry_pending: old.t2_retry_pending == true,
 		last_node_refresh: old.last_node_refresh ?? now,
 		last_node_refresh_attempt: old.last_node_refresh_attempt ?? null,
+		node_probe_failures: old.node_probe_failures ?? 0,
+		node_probe_retry_at: old.node_probe_retry_at ?? null,
 		node_ip: old.node_ip ?? null,
 		degraded_mode: old.degraded_mode ?? null,
 		degraded_since: old.degraded_since ?? null,
@@ -816,7 +879,16 @@ next = (state, obs, cfg) => {
 	let refresh_due = now - out.last_node_refresh >= C.MONITOR_NODE_REFRESH_SECS;
 	let refresh_allowed = out.last_node_refresh_attempt == null ||
 		now - out.last_node_refresh_attempt >= C.NODE_REFRESH_MIN_GAP_SECS;
-	if ((unhealthy || refresh_due) && refresh_allowed) {
+	let retry_due = out.node_probe_retry_at != null && now >= out.node_probe_retry_at;
+	// Health edges retain T16.12 priority (60s debounce), even during longer backoff.
+	// Periodic cadence starts a fresh failure series; fast retries alone retain it.
+	if ((unhealthy || refresh_due || retry_due) && refresh_allowed) {
+		if (refresh_due) {
+			out.node_probe_failures = 0;
+			out.node_probe_retry_at = null;
+		}
+		else if (retry_due)
+			out.node_probe_retry_at = null;
 		out.last_node_refresh = now;
 		out.last_node_refresh_attempt = now;
 		action('refresh_node_ip');

@@ -284,12 +284,18 @@ function run_resolve() {
 	write(out, '198.51.100.4\n198.51.100.5\n');
 	let literal = apply.resolve_node(c, '203.0.113.8');
 	let dns = apply.resolve_node(c, 'node.example');
+	if (literal.attempts != 0 || literal.raw != '' || literal.elapsed_ms < 0 ||
+		dns.attempts != 1 || dns.raw != '198.51.100.4\n198.51.100.5\n' || dns.elapsed_ms < 0)
+		return fail('literal/DNS evidence fields mismatch');
 	let lkg_text = read(`${t.base}/etc/aether-proxy/state/${C.NODE_IP_FILE}`);
 	if (!literal.ok || literal.source != 'literal' || !dns.ok || dns.ip != '198.51.100.4' || dns.source != 'dns')
 		return fail(`literal/DNS result: ${sprintf('%.J', [ literal, dns ])}`);
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_RESOLVEIP_RC=1\n');
 	let lkg = apply.resolve_node(c, 'node.example');
 	let missing = apply.resolve_node(c, 'other.example');
+	for (let value in [ lkg, missing ])
+		if (value.attempts != 3 || value.raw != '198.51.100.4\n198.51.100.5\n' || value.elapsed_ms < 0)
+			return fail('failed command stdout must remain unmodified on fallback and failure');
 	return lkg.ok && lkg.source == 'lkg' && lkg.ip == '198.51.100.4' && !missing.ok && lkg_text ? 'PASS' : fail(`LKG result ${sprintf('%.J', [ lkg, missing ])}`);
 };
 
@@ -325,6 +331,9 @@ function run_retry() {
 	let r = apply.resolve_node(t.ctx, 'retry.example');
 	if (!r.ok || r.source != 'dns' || r.ip != '198.51.100.3')
 		return fail(`third response: ${sprintf('%.J', r)}`);
+	if (r.attempts != 3 || r.raw != 'invalid\n198.51.100.3\n198.51.100.4\n' ||
+		type(r.elapsed_ms) != 'int' || r.elapsed_ms < 0)
+		return fail('third attempt must retain exact last stdout and elapsed milliseconds');
 	let calls = resolve_calls(t);
 	if (length(calls) != 3 || length(filter(calls, l => l == 'resolveip -4 -t 3 retry.example')) != 3)
 		return fail(`retry count/timeout: ${sprintf('%.J', calls)}`);
@@ -344,6 +353,9 @@ function run_retry_end() {
 	let fallback = apply.resolve_node(t.ctx, 'first.example');
 	let missing = apply.resolve_node(t.ctx, 'missing.example');
 	let events = resolve_events(t);
+	for (let value in [ fallback, missing ])
+		if (value.attempts != 3 || value.raw != '' || type(value.elapsed_ms) != 'int' || value.elapsed_ms < 0)
+			return fail('fallback/failure evidence must include three attempts and empty last stdout');
 	if (!fallback.ok || fallback.source != 'lkg' || fallback.ip != '203.0.113.1' || missing.ok)
 		return fail('fallback reused wrong address or ignored matching LKG');
 	if (length(resolve_calls(t)) != 7 || length(events) != 2)

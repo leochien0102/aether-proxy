@@ -5,8 +5,8 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
-msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP"
-msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP"
+msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP (source: {source}, raw: {raw})"
+msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）"
 
 msgctxt "aether-proxy"
 msgid "Clear logs"
@@ -337,8 +337,8 @@ msgid "Node {node}: could not resolve {domain}"
 msgstr "节点 {node}：无法解析 {domain}"
 
 msgctxt "aether-proxy"
-msgid "Node {node} IP changed from {old} to {new}"
-msgstr "节点 {node} 的 IP 已从 {old} 变为 {new}"
+msgid "Node {node} IP changed from {old} to {new} (source: {source}, raw: {raw})"
+msgstr "节点 {node} 的 IP 已从 {old} 变为 {new}（来源：{source}，原始输出：{raw}）"
 
 msgctxt "aether-proxy"
 msgid "Node {node} ({label}) is stale"

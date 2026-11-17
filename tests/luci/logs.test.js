@@ -55,13 +55,15 @@ test('T8.10 scenario 1: every catalog event has a template using only documented
 });
 
 test('T16.12: unreachable candidate shows warning, node name and all original fields', () => {
-	const args = { node: 'n_guard', address: 'node.example.com', ip: '127.0.0.1', port: 443 };
+	const args = {
+		node: 'n_guard', address: 'node.example.com', ip: '127.0.0.1', port: 443, source: 'dns', raw: '127.0.0.1\n'
+	};
 	const result = model.events(payload([event('NODE_IP_UNREACHABLE', 'warn', 1, args)]), null, '', '',
 		{ nodes: { n_guard: '测试节点' } });
 	assert.deepEqual(result.codes, ['NODE_IP_UNREACHABLE']);
 	assert.equal(result.rows[0].level, '警告');
 	assert.equal(result.rows[0].text,
-		'节点 测试节点：node.example.com 的候选地址 127.0.0.1:443 不可达，保留当前 IP');
+		'节点 测试节点：node.example.com 的候选地址 127.0.0.1:443 不可达，保留当前 IP（来源：dns，原始输出：127.0.0.1\n）');
 	assert.deepEqual(JSON.parse(result.rows[0].title), args);
 });
 
