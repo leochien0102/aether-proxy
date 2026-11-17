@@ -629,14 +629,22 @@ function update_lkg(ctx, updates) {
 
 function resolve_node(ctx, address) {
 	setup_log(ctx);
+	let started = clock(true), attempts = 0, raw = '';
+	function evidence(value) {
+		let ended = clock(true);
+		return { ...value, attempts, raw,
+			elapsed_ms: int((ended[0] - started[0]) * 1000 + (ended[1] - started[1]) / 1000000) };
+	};
 	if (type(address) != 'string' || address == '')
-		return failed(ctx, 'resolve_node', 'address must be a non-empty string');
+		return evidence(failed(ctx, 'resolve_node', 'address must be a non-empty string'));
 	if (net.ipv4(address) != null)
-		return result('literal IPv4 address', { ip: address, source: 'literal' });
+		return evidence(result('literal IPv4 address', { ip: address, source: 'literal' }));
 	for (let attempt = 0; attempt < C.NODE_RESOLVE_ATTEMPTS; attempt++) {
 		// Transient boot-group DNS failures are expected; only the final outcome emits an event.
 		let resolved = sys.run([ command(ctx, 'resolveip'), '-4', '-t',
 			`${C.NODE_RESOLVE_TIMEOUT_SECS}`, address ], { timeout: C.NODE_RESOLVE_TIMEOUT_SECS, quiet: true });
+		attempts++;
+		raw = resolved.stdout ?? '';
 		if (resolved.code != 0)
 			continue;
 		for (let ip in split(trim(resolved.stdout ?? ''), /[[:space:]]+/)) {
@@ -645,17 +653,17 @@ function resolve_node(ctx, address) {
 			// Several A records: take the first valid one (03-dns.md, bootstrap resolution).
 			let saved = update_lkg(ctx, { [address]: ip });
 			if (!saved.ok)
-				return failed(ctx, 'resolve_node', saved.detail);
-			return result('node address resolved', { ip, source: 'dns' });
+				return evidence(failed(ctx, 'resolve_node', saved.detail));
+			return evidence(result('node address resolved', { ip, source: 'dns' }));
 		}
 	}
 	let lkg = read_lkg(ctx)[address];
 	if (lkg != null) {
 		log.event('warn', 'NODE_RESOLVE_FALLBACK', { node: address, domain: address, lkg_ip: lkg });
-		return result('last-known-good address used', { ip: lkg, source: 'lkg' });
+		return evidence(result('last-known-good address used', { ip: lkg, source: 'lkg' }));
 	}
 	log.event('error', 'NODE_RESOLVE_FAILED', { node: address, domain: address, lkg_ip: '' });
-	return { ok: false, detail: `cannot resolve ${address}` };
+	return evidence({ ok: false, detail: `cannot resolve ${address}` });
 };
 
 // T15.6 reuses B1's final failure outcome after a safely stopped runtime bootstrap.

@@ -398,3 +398,9 @@ export const USAGE_TODAY_MAX_AGE = 600;
 // T16.12: validate candidate node IPs and debounce health-edge refreshes.
 export const NODE_PROBE_TIMEOUT_SECS = 3;
 export const NODE_REFRESH_MIN_GAP_SECS = 60;
+
+// T16.14: bounded tmpfs evidence and tick-driven rejected-candidate retries.
+export const NODE_PROBE_LOG = 'node-probe.log';
+export const NODE_PROBE_LOG_MAX = 64 * 1024;
+export const NODE_PROBE_RAW_MAX = 512;
+export const NODE_PROBE_RETRY_SECS = [ 60, 120, 240, 600 ];
