@@ -511,9 +511,16 @@ def run(directory):
                       all(token not in current for token in
                           (b'resolve_node_explicit', b'bootstrap_dns', b'bootstrap_begin')))
         source = (ROOT / 'aether-proxy/src/lib/apply.uc').read_text()
-        old = subprocess.check_output(['git', 'show', 'a30d796:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
+        # T16.14 added evidence fields; freeze that baseline and allow only T16.15's
+        # LKG promotion removal, not a resolver/retry/evidence behavior change.
+        old = subprocess.check_output(['git', 'show', '97c3084:aether-proxy/src/lib/apply.uc'], cwd=ROOT, text=True)
+        promotion = ("\t\t\tlet saved = update_lkg(ctx, { [address]: ip });\n"
+                     "\t\t\tif (!saved.ok)\n"
+                     "\t\t\t\treturn evidence(failed(ctx, 'resolve_node', saved.detail));\n")
+        assert old.count(promotion) == 1
+        old = old.replace(promotion, '')
         start, end = 'function resolve_node(ctx, address) {', '\n};'
-        check('Q11 original resolve_node unchanged', source.split(start)[1].split(end)[0].strip() ==
+        check('Q11 runtime resolver unchanged except read-only LKG', source.split(start)[1].split(end)[0].strip() ==
               old.split(start)[1].split(end)[0].strip())
 
 
