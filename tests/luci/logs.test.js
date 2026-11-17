@@ -318,9 +318,9 @@ test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with o
 	assert.equal(root.tag, 'div');
 	assert.equal(root.attrs.class, 'cbi-map');
 	assert.equal(text(root.children[0]), '日志');
-	assert.deepEqual(root.children[1].children.map(text), [ '事件', '原始日志' ]);
-	assert.equal(root.children[2], v.eventPanel);
-	assert.equal(root.children[3], v.rawPanel);
+	assert.deepEqual(root.children[2].children.map(text), [ '事件', '原始日志' ]);
+	assert.equal(root.children[3], v.eventPanel);
+	assert.equal(root.children[4], v.rawPanel);
 	assert.equal(v.eventPanel.hidden, false);
 	assert.equal(v.rawPanel.hidden, true);
 	assert.equal(text(v.eventContent), '读取中…');
@@ -470,21 +470,6 @@ test('T10.16 logs: late initial replies cannot overwrite newer tab or poll resul
 	}
 });
 
-test('T13.4 rework: toolbar then clearError then rawContent, with no bottom actions', async () => {
-	const h = load_view(), v = h.page;
-	v.render(await v.load());
-	const [toolbar, error, content] = v.rawPanel.children;
-	assert.deepEqual(v.rawPanel.children, [toolbar, v.clearError, v.rawContent]);
-	assert.equal(error, v.clearError);
-	assert.equal(content, v.rawContent);
-	const buttons = descendants(v.rawPanel).filter(n => n.tag === 'button');
-	assert.deepEqual(buttons.map(text), ['刷新', '清空日志']);
-	assert.deepEqual(toolbar.children[1].children, buttons, 'both actions belong to the top right group');
-	assert.equal(buttons[1], v.clearButton);
-	assert.equal(v.rawPanel.children.at(-1), v.rawContent, 'log content is last, not an action row');
-	assert.ok(!descendants(error).concat(descendants(content)).some(n => n.tag === 'button'));
-});
-
 test('T13.3: raw DOM is newest first without mutating RPC lines, including repeated reads and refresh', async () => {
 	const h = load_view(), v = h.page;
 	v.render();
@@ -525,13 +510,12 @@ function styles(node) {
 test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with bounded select groups', () => {
 	const h = load_view(), v = h.page;
 	const root = v.render();
-	const tabs = root.children[1];
-	const [toolbar, error, content] = v.rawPanel.children;
+	const tabs = root.children[2];
+	const [toolbar, content] = v.rawPanel.children;
 	const [filters, actions] = toolbar.children;
 	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
-	assert.equal(error, v.clearError);
 	assert.equal(content, v.rawContent);
-	assert.deepEqual(actions.children.map(text), ['刷新', '清空日志']);
+	assert.deepEqual(actions.children.map(text), ['刷新']);
 	assert.equal(styles(toolbar)['justify-content'], 'space-between');
 	assert.equal(styles(actions)['justify-content'], 'flex-end');
 	for (const row of [tabs, toolbar, filters, actions]) {
@@ -560,65 +544,139 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 	}
 });
 
-test('T13.4: destructive confirmation, cancel, disabled lifecycle, success refresh and lazy events', async () => {
-	let answer, options;
-	const h = load_view(o => { options = o; return new Promise(resolve => { answer = resolve; }); });
-	const v = h.page;
-	v.render();
-	assert.equal(v.clearButton.attrs.class, 'cbi-button cbi-button-remove');
-	assert.equal(v.rawPanel.children[0].children[1].children[1], v.clearButton);
-	let pending = v.clearButton.attrs.click();
-	assert.equal(v.clearButton.disabled, true);
-	assert.equal(options.destructive, true);
-	assert.match(options.text, /aether-proxy 原始日志和事件历史/);
-	assert.match(options.text, /系统日志不受影响/);
-	assert.match(options.text, /不能撤销/);
-	await v.clearLog();
-	assert.equal(h.calls.length, 0, 'duplicate clicks and pending confirmation cannot call RPC');
-	answer(false);
-	await pending;
-	assert.equal(v.clearButton.disabled, false);
-	assert.equal(h.calls.length, 0);
-	setContent(v.rawContent, ['old raw logs']);
-	const stale = v.fetchLog();
-	pending = v.clearLog();
-	answer(true);
-	await settle();
-	assert.equal(h.calls[1].method, 'log_clear');
-	assert.deepEqual(h.calls[1].params, {});
-	h.calls[1].resolve({ ok: true });
-	await settle();
-	assert.equal(text(v.rawContent), '');
-	assert.equal(h.calls[2].method, 'log');
-	assert.equal(v.clearButton.disabled, true, 'disabled until refresh completes');
-	h.calls[0].resolve({ ok: true, lines: [{ text: 'stale' }] });
-	await stale;
-	assert.equal(text(v.rawContent), '', 'late pre-clear reply cannot restore old data');
-	h.calls[2].resolve({ ok: true, lines: [] });
-	await pending;
-	assert.equal(v.clearButton.disabled, false);
-	assert.ok(!h.calls.some(c => c.method === 'events'), 'clear never forces event fetch');
-	const events = v.switchTab('events');
-	assert.equal(h.calls[3].method, 'events');
-	h.calls[3].resolve({ ok: true, events: [] });
-	await events;
-});
+// T16.10 replaces T13.4's raw-only action contract, keeping the real controller harness.
+for (const truncate of [false, true]) {
+	const method = truncate ? 'log_truncate' : 'log_clear';
+	test('T16.10 ' + method + ': destructive confirmation, cancellation and mutual exclusion', async () => {
+		let answer, options;
+		const h = load_view(o => { options = o; return new Promise(resolve => { answer = resolve; }); });
+		const v = h.page;
+		v.render();
+		const button = truncate ? v.truncateButton : v.clearButton;
+		const pending = button.attrs.click();
+		assert.equal(options.destructive, true);
+		assert.equal(options.title, text(button));
+		assert.match(options.text, truncate ? /最近一次服务启动之后/ : /系统日志不受影响/);
+		assert.match(options.text, truncate ? /不可撤销/ : /不能撤销/);
+		assert.equal(v.clearButton.disabled, true);
+		assert.equal(v.truncateButton.disabled, true);
+		await v.clearButton.attrs.click();
+		await v.truncateButton.attrs.click();
+		assert.equal(h.calls.length, 0);
+		answer(false);
+		await pending;
+		assert.equal(h.calls.length, 0, 'cancel must not call RPC');
+		assert.equal(v.clearButton.disabled, false);
+		assert.equal(v.truncateButton.disabled, false);
+	});
 
-test('T13.4: failed clear keeps raw logs, reports inline text and permits retry', async () => {
+	for (const tab of ['events', 'raw']) {
+		test('T16.10 ' + method + ': success refreshes current ' + tab + ' and rejects stale reads', async () => {
+			const h = load_view(), v = h.page;
+			v.render();
+			v.tab = tab;
+			v.source.value = 'dns';
+			v.lines.value = '1000';
+			const staleEvents = v.fetchEvents(), staleRaw = v.fetchLog();
+			const pending = (truncate ? v.truncateButton : v.clearButton).attrs.click();
+			await settle();
+			assert.deepEqual(h.calls.slice(2).map(c => [c.method, c.params]), [[method, {}]]);
+			await v.changeLogs(!truncate);
+			assert.equal(h.calls.length, 3, 'duplicate cannot issue another action');
+			h.calls[2].resolve({ ok: true, since: 123, kept: {}, dropped: {} });
+			await settle();
+			assert.deepEqual([h.calls[3].method, h.calls[3].params],
+				tab == 'events' ? ['events', {}] : ['log', { source: 'dns', lines: 1000 }]);
+			assert.equal(v.clearButton.disabled, true, 'locked through refresh');
+			assert.equal(v.truncateButton.disabled, true);
+			h.calls[3].resolve(tab == 'events' ? payload([]) : { ok: true, lines: [] });
+			await pending;
+			h.calls[0].resolve(payload([event('STALE')]));
+			h.calls[1].resolve({ ok: true, lines: [{ text: 'STALE' }] });
+			await Promise.all([staleEvents, staleRaw]);
+			assert.ok(!text(v.eventContent).includes('STALE'));
+			assert.ok(!text(v.rawContent).includes('STALE'));
+			assert.equal(v.clearButton.disabled, false);
+			assert.equal(v.truncateButton.disabled, false);
+		});
+	}
+
+	for (const code of ['FS_FAILED', 'NOT_RUNNING', 'TIMEOUT']) {
+		test('T16.10 ' + method + ': ' + code + ' is one safe shared error and permits retry', async () => {
+			const h = load_view(), v = h.page;
+			v.render();
+			setContent(v.rawContent, ['keep me']);
+			const pending = v.changeLogs(truncate);
+			await settle();
+			h.calls[0].resolve({ ok: false, code, detail: '<img src=x>' });
+			await pending;
+			assert.equal(text(v.rawContent), 'keep me');
+			assert.equal(v.toolbarError.children.length, 1);
+			assert.equal(text(v.toolbarError), (truncate ? '无法截断日志： ' : '无法清空日志： ') + code + ': <img src=x>');
+			assert.ok(!descendants(v.toolbarError).some(n => n.tag === 'img'));
+			assert.equal(v.clearButton.disabled, false);
+			assert.equal(v.truncateButton.disabled, false);
+			assert.equal(h.calls.length, 1, 'failure does not refresh');
+			const retry = v.changeLogs(truncate);
+			await settle();
+			assert.equal(text(v.toolbarError), '');
+			h.calls[1].resolve({ ok: false, code });
+			await retry;
+		});
+	}
+}
+
+test('T16.10: tab switch during action refreshes the tab selected at completion', async () => {
 	const h = load_view(), v = h.page;
 	v.render();
-	setContent(v.rawContent, ['keep me']);
-	const pending = v.clearLog();
+	const toolbar = v.toolbar;
+	const pending = v.truncateButton.attrs.click();
 	await settle();
-	h.calls[0].resolve({ ok: false, code: 'FS_FAILED', detail: '<img src=x>' });
+	const switched = v.switchTab('raw');
+	h.calls[1].resolve({ ok: true, lines: [] });
+	await switched;
+	v.source.value = 'xray';
+	v.lines.value = '500';
+	assert.equal(v.toolbar, toolbar);
+	assert.equal(v.truncateButton.disabled, true);
+	h.calls[0].resolve({ ok: true });
+	await settle();
+	assert.deepEqual(h.calls.map(c => [c.method, c.params]), [
+		['log_truncate', {}], ['log', { source: 'all', lines: 200 }],
+		['log', { source: 'xray', lines: 500 }]
+	]);
+	h.calls[2].resolve({ ok: true, lines: [] });
 	await pending;
-	assert.equal(text(v.rawContent), 'keep me');
-	assert.equal(text(v.clearError), 'FS_FAILED: <img src=x>');
-	assert.equal(v.rawPanel.children[1], v.clearError, 'failure remains below toolbar and above logs');
-	assert.equal(v.rawPanel.children[2], v.rawContent);
-	assert.ok(!descendants(v.clearError).some(n => n.tag === 'img'));
+	assert.equal(v.toolbar, toolbar);
 	assert.equal(v.clearButton.disabled, false);
-	assert.equal(h.calls.length, 1, 'failure does not refresh');
+	assert.equal(v.truncateButton.disabled, false);
+});
+
+test('T16.10: unique page toolbar remains visible and identical across tabs', async () => {
+	const h = load_view(), v = h.page;
+	const root = v.render();
+	const toolbar = v.toolbar, error = v.toolbarError;
+	assert.equal(root.children[0].tag, 'h2');
+	assert.equal(root.children[1], toolbar);
+	assert.deepEqual(toolbar.children[0].children, [v.clearButton, v.truncateButton]);
+	assert.equal(toolbar.children[1], error);
+	for (const tab of ['raw', 'events', 'raw']) {
+		const pending = v.switchTab(tab);
+		h.calls.at(-1).resolve(tab == 'events' ? payload([]) : { ok: true, lines: [] });
+		await pending;
+		assert.equal(root.children[1], toolbar);
+		assert.equal(toolbar.children[1], error);
+		assert.equal(toolbar.hidden, false);
+		for (const button of [v.clearButton, v.truncateButton]) {
+			assert.equal(descendants(root).filter(n => n === button).length, 1);
+			assert.equal(descendants(root).filter(n => n.tag == 'button' && text(n) == text(button)).length, 1);
+			assert.ok(!descendants(v.rawPanel).includes(button));
+			assert.match(button.attrs.class, /cbi-button-remove/);
+		}
+		assert.ok(!descendants(v.rawPanel).includes(error));
+		assert.deepEqual(descendants(v.rawPanel).filter(n => n.tag == 'button').map(text), ['刷新']);
+	}
+	v.stopPolling();
 });
 
 test('T8.10 scenario 7: common RPC/poll wiring, no unsafe APIs, and complete translations', () => {

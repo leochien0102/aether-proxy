@@ -7,6 +7,7 @@
 
 /* Log-page controller (docs/10 「日志页」). Only events are polled; raw logs
  * can be large and are fetched on demand. All untrusted content is text.
+ * T16.10 keeps destructive actions in a persistent page-level toolbar shared by both tabs.
  * T10.39 reads name maps from the already loaded UCI; hover keeps original IDs.
  * Block action rows follow docs/10 "UI 规则" (T10.27); the wrapping filter row
  * follows "r16 修正：日志页筛选行与事件文字" (T10.56).
@@ -84,33 +85,39 @@ return view.extend({
 		});
 	},
 
-	clearLog: async function() {
+	changeLogs: async function(truncate) {
 		if (this.clearButton.disabled)
 			return;
-		this.clearButton.disabled = true;
+		this.clearButton.disabled = this.truncateButton.disabled = true;
+		const title = truncate ? _('Truncate to last startup', 'aether-proxy') : _('Clear logs', 'aether-proxy');
 		try {
 			if (!await ap.confirm({
-				title: _('Clear logs', 'aether-proxy'),
-				text: _('Only %s raw logs and event history will be cleared. System logs are not affected. This cannot be undone.',
-					'aether-proxy').replace('%s', 'aether-proxy'),
-				ok: _('Clear logs', 'aether-proxy'), destructive: true
+				title,
+				text: truncate
+					? _('Only logs (events and raw logs) since the most recent service startup will be kept. Earlier records will be deleted. This cannot be undone.', 'aether-proxy')
+					: _('Only %s raw logs and event history will be cleared. System logs are not affected. This cannot be undone.',
+						'aether-proxy').replace('%s', 'aether-proxy'),
+				ok: title, destructive: true
 			}))
 				return;
-			dom.content(this.clearError, []);
-			const res = await ap.call('log_clear', {});
+			dom.content(this.toolbarError, []);
+			const res = await ap.call(truncate ? 'log_truncate' : 'log_clear', {});
 			if (!res?.ok)
 				throw new Error([ res?.code, res?.detail ].filter(Boolean).join(': ')
-					|| _('Unable to clear logs.', 'aether-proxy'));
-			// Invalidate pre-clear reads; switching back to events fetches fresh history.
+					|| _('Unable to modify logs.', 'aether-proxy'));
+			// Invalidate both tabs' pre-action reads so late replies cannot restore deleted records.
 			this.rawRequest = (this.rawRequest ?? 0) + 1;
-			dom.content(this.rawContent, []);
-			await this.fetchLog();
+			this.eventsRequest = (this.eventsRequest ?? 0) + 1;
+			this.lastEvents = null;
+			await (this.tab == 'events' ? this.fetchEvents() : this.fetchLog());
 		}
 		catch (err) {
-			dom.content(this.clearError, E('p', { 'class': 'alert-message error' }, [ err.message ]));
+			const prefix = truncate
+				? _('Unable to truncate logs:', 'aether-proxy') : _('Unable to clear logs:', 'aether-proxy');
+			dom.content(this.toolbarError, E('p', { 'class': 'alert-message error' }, [ prefix + ' ' + err.message ]));
 		}
 		finally {
-			this.clearButton.disabled = false;
+			this.clearButton.disabled = this.truncateButton.disabled = false;
 		}
 	},
 
@@ -168,10 +175,17 @@ return view.extend({
 		this.lines = E('select', { style: selectStyle }, model.line_counts().map(n => E('option', { value: String(n) }, String(n))));
 		this.lines.value = '200';
 		this.rawContent = E('div', {});
-		this.clearError = E('div', {});
+		this.toolbarError = E('div', {});
 		this.clearButton = E('button', {
-			'class': 'cbi-button cbi-button-remove', click: () => this.clearLog()
+			'class': 'cbi-button cbi-button-remove', click: () => this.changeLogs(false)
 		}, _('Clear logs', 'aether-proxy'));
+		this.truncateButton = E('button', {
+			'class': 'cbi-button cbi-button-remove', click: () => this.changeLogs(true)
+		}, _('Truncate to last startup', 'aether-proxy'));
+		// Page-level controls stay mounted when either tab's data is refreshed.
+		this.toolbar = E('div', {}, [
+			E('div', { style: rowStyle }, [ this.clearButton, this.truncateButton ]), this.toolbarError
+		]);
 		this.rawPanel = E('div', { hidden: true }, [
 			E('div', { style: rowStyle + '; justify-content:space-between' }, [
 				E('div', { style: groupStyle }, [
@@ -179,16 +193,15 @@ return view.extend({
 					E('label', { style: groupStyle }, [ E('span', {}, _('Lines', 'aether-proxy')), this.lines ])
 				]),
 				E('div', { style: groupStyle + '; justify-content:flex-end' }, [
-					E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy')),
-					this.clearButton
+					E('button', { 'class': 'cbi-button', click: () => this.fetchLog() }, _('Refresh', 'aether-proxy'))
 				])
 			]),
-			this.clearError,
 			this.rawContent
 		]);
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
+			this.toolbar,
 			E('div', { style: rowStyle }, [
 				E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
 				E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
