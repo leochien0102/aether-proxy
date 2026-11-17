@@ -235,10 +235,12 @@ function truncate_logs(args) {
 			try { state = json(text); }
 			catch (e) { state = null; } // A corrupt marker is not an authoritative startup time.
 		}
-		if (!logtrim.valid_epoch(state?.since))
+		// Older daemons only published since; new snapshots keep startup independent of transitions.
+		let marker = state?.started_at ?? state?.since;
+		if (!logtrim.valid_epoch(marker))
 			return pipeline.finish(opts, { ok: false, code: 'NOT_RUNNING', detail: 'no valid startup marker' },
 				2, 'no valid startup marker');
-		opts.since = state.since;
+		opts.since = marker;
 	}
 	let result = { ok: true, since: opts.since, kept: {}, dropped: {} };
 	let names = { events: C.EVENTS_FILE, raw: C.RAW_LOG_FILE, raw1: `${C.RAW_LOG_FILE}.1` };

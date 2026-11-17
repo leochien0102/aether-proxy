@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix='.log-truncate-', dir=ROOT / 'tests/cli'
     before = {name: (directory / name).stat().st_ino for name in contents}
     with (directory / 'raw.log').open('a') as collector:
         value = call(directory)
-        check('default since comes from state.json', value['since'] == since)
+        check('old state without started_at falls back to since', value['since'] == since)
         check('JSON kept and dropped counts independently cover three files', value == {
             'ok': True, 'since': since,
             'kept': {'events': 1, 'raw': 1, 'raw1': 0},
@@ -69,8 +69,35 @@ with tempfile.TemporaryDirectory(prefix='.log-truncate-', dir=ROOT / 'tests/cli'
         collector.flush()
         check('held collector descriptor still appends to visible file',
               (directory / 'raw.log').read_text() == current * 2)
-    value = call(directory, '--since', '0')
-    check('explicit since overrides startup marker', value['since'] == 0)
+    # T16.16: all valid lines predate the most recent transition, but not startup.
+    startup = since - 60
+    marker = {'started_at': startup, 'since': since + 3600}
+    (directory / 'state.json').write_text(json.dumps(marker))
+    startup_contents = {
+        'events.jsonl': json.dumps({'ts': startup}) + '\n' + json.dumps({'ts': since}) + '\n',
+        'raw.log': current * 2,
+        'raw.log.1': current,
+    }
+    for name, text in startup_contents.items():
+        (directory / name).write_text(text)
+    value = call(directory)
+    check('started_at wins over newer since and retains all startup logs', value == {
+        'ok': True, 'since': startup,
+        'kept': {'events': 2, 'raw': 2, 'raw1': 1},
+        'dropped': {'events': 0, 'raw': 0, 'raw1': 0},
+    })
+    print('EVIDENCE T16.16 state=' + json.dumps(marker) + ' result=' + json.dumps(value))
+    for name, text in startup_contents.items():
+        file = directory / name
+        check('startup bytes retained exactly for ' + name, file.read_text() == text)
+        print(f'EVIDENCE T16.16 {name}: before={len(text.splitlines())} lines/{len(text.encode())} bytes; '
+              f'after={len(file.read_text().splitlines())} lines/{file.stat().st_size} bytes')
+    value = call(directory, '--since', str(since + 7200))
+    check('explicit since overrides both started_at and since', value['since'] == since + 7200
+          and value['kept'] == {'events': 0, 'raw': 0, 'raw1': 0}
+          and value['dropped'] == {'events': 2, 'raw': 2, 'raw1': 1})
+    (directory / 'state.json').write_text(json.dumps({'started_at': 0, 'since': since + 3600}))
+    check('zero started_at is a valid startup marker', call(directory)['since'] == 0)
     # Human mode also exposes an observable successful result.
     human = subprocess.run(CMD + ['--run-dir', str(directory), '--since', '0'], capture_output=True, text=True)
     check('human success output', human.returncode == 0 and 'logs truncated since' in human.stdout)
