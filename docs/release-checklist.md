@@ -71,7 +71,18 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 - [ ] `release-assets` 成功；Release 为 **18 个资产**、非 draft、Latest；说明来自 `docs/releases/<ver>-r1.md`。
 - [ ] 抽查一个未变版包（如 `aether-xray`）与上一版 Release 的哈希相同。
 
-## 6. 设备与记录
+## 6. 固件 feed 钉版（**每次发版必做**，2026-11-17 起固化）
+
+固件构建从 `openwrt-actions` 的 `configs/feeds.conf` 取 `aetherproxy` 提交，**与通道无关**；
+不同步就会出现"在线更新已是新版、刷固件还是旧版"。
+
+- [ ] 把 `openwrt-actions/configs/feeds.conf` 里 `src-git aetherproxy ...^<提交号>` 改成
+      本次正式 tag 的**完整提交号**（`git -C <aether-proxy> rev-parse v<ver>-r<n>^{commit}`），
+      并把上一行的「当前 v<版本>」注释同步。
+- [ ] 提交并推送 `openwrt-actions` main（`📌 feeds: pin aether-proxy <版本>`）。
+- [ ] 固件构建只跑每周日定时 + 手动 dispatch，推送本身不触发；需要立即验证时手动 dispatch。
+
+## 7. 设备与记录
 
 - [ ] H28K 页面更新；核对版本、`UPDATE_STARTED/INSTALLED` 事件、无 `PREREQ_*`、配置哈希、`boot_id`。
 - [ ] 写 `docs/validation/<ver>-release-<date>.md`，更新 `docs/tasks/README.md`。
