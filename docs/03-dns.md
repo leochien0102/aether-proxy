@@ -190,17 +190,21 @@ verdict-cache 4096
    返回多个 IPv4 时取第一个合法地址，不做轮换或测速；需要固定 IP 的用户直接把节点地址写成 IP。
    （2026-10-20 改，backlog B13：原来只试一次、`-t 5`。`boot` 组走 `direct_dns`，这个网络里直连境外 DNS 时好时坏，一次 TCP 重置就让切换节点失败。）
    reload 切换节点、monitor 定时重新解析都用同一个函数，同样重试。
-3. 成功：把 IP 写进 Xray 出站的 `address`（域名保留在 `serverName` / `host` 中），并更新 LKG 文件
-   `/etc/aether-proxy/state/node-ip.json`（值变化时才写）。
+3. 解析成功：把 IP 写进 Xray 出站的 `address`（域名保留在 `serverName` / `host` 中），**解析本身只读 LKG**。
+   LKG 文件 `/etc/aether-proxy/state/node-ip.json` 只在验证且生效后更新（值变化时才写）：
+   bootstrap 启动应用全部成功且 Xray ready 后；reload 事务成功、运行态提交后；
+   monitor 的不同 IP 候选 TCP 探测通过、切换完成且 Xray ready 后。
+   被拒候选与失败应用不写；解析失败使用 LKG 回退也不写（保持文件内容、顺序与时间不变）。
+   已生效后保存失败仅记 `FS_FAILED {op:update_lkg, path, detail}`，不反转成功应用。
    **LKG 按节点地址分别保存**（2026-10-20 改，backlog B13：原来只存最后一个节点的 `{address, ip}`，从没用过的节点没有兜底，切过去后原节点的也被覆盖）：
    `{ "nodes": { "<地址>": "<IPv4>", … } }`，最多 64 条；写入时把该地址移到最后，超过 64 条删最前面的（最久没更新的）。
    读到旧格式 `{ "address": …, "ip": … }` 时当作只有一条的表，下一次写入时换成新格式。
-   **节点检测（07）解析成功的地址也写入 LKG**（同样只在值变化时写；一次检测作业最多写一次文件）：用户检测过的节点，切换时即使直连 DNS 正好失败也有兜底。
+   **独立节点检测作业（07，保留既有契约，不属本次启动/reload/monitor 迁移范围）解析成功的地址也写入 LKG**（同样只在值变化时写；一次检测作业最多写一次文件）：用户检测过的节点，切换时即使直连 DNS 正好失败也有兜底。
    作业进程与 daemon 可能同时写，`write_atomic` 保证文件完整，后写的覆盖先写的——它是缓存，丢一条只等于少一次兜底。
    同理，检测作业写 LKG 失败**不让作业失败**：测得的结果照常保存和返回，只记一次 `FS_FAILED`（`op: update_lkg`）（2026-10-20 定，T9.5 复核）。
 4. 失败：使用 LKG 中该地址的 IP，记 WARN `NODE_RESOLVE_FALLBACK`。LKG 也没有：节点不可用，进入降级状态（`NODE_RESOLVE_FAILED`）。
-   LKG 文件损坏（JSON 解析失败、结构不对）**等同没有 LKG，不记事件**；单条的 IP 不合法只忽略那一条：它是可以重新生成的缓存，下一次成功解析就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
-5. monitor 每 10 分钟重新解析一次当前节点的域名；转入 `PROXY_UNHEALTHY` 时立即重解析，刷新尝试之间至少间隔 60 秒（机器状态中的防抖时间在 daemon 重启后重置）。解析得到不同 IP 后，先对该 IP 的节点端口做最多 3 秒 TCP 连接探测；失败记 warn `NODE_IP_UNREACHABLE {node, address, ip, port}`，保留当前 IP，不写配置、不重启 Xray，也不记 `NODE_IP_CHANGED`。成功才更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。运行期解析器选择与 LKG 的「最后解析到的 IP」语义不变。
+   LKG 文件损坏（JSON 解析失败、结构不对）**等同没有 LKG，不记事件**；单条的 IP 不合法只忽略那一条：它是可以重新生成的缓存，下一次验证成功并生效就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
+5. monitor 每 10 分钟重新解析一次当前节点的域名；转入 `PROXY_UNHEALTHY` 时立即重解析，刷新尝试之间至少间隔 60 秒（机器状态中的防抖时间在 daemon 重启后重置）。解析得到不同 IP 后，先对该 IP 的节点端口做最多 3 秒 TCP 连接探测；失败记 warn `NODE_IP_UNREACHABLE {node, address, ip, port}`，保留当前 IP，不写配置、不重启 Xray，也不记 `NODE_IP_CHANGED`。成功才更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。运行期解析器选择不变；LKG 只保存验证并生效的候选（T16.15）。
 
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
 T1 又依赖这个节点本身，形成死锁。
@@ -227,8 +231,8 @@ B1 的协议、重试、LKG 与取消契约不变。daemon startup 经 `bootstra
   同包链可乱序；CNAME-only 在同一端点追问；一个 lookup 累计最多 16 跳、16 个 question（TCP TC 重试不计），
   循环/超限/NODATA 失败，不刷新 deadline、不做 AAAA/缓存/DNSSEC/通用递归。
 - `apply.resolve_node_explicit(ctx, address, endpoint, on_signal)` 对 IPv4 字面量不要求 endpoint，零 DNS，
-  返回 `source:'literal'`。域名先校验参数；最多三次默认 lookup，首次成功调用现有 `update_lkg()`，返回
-  `source:'dns'`；保存失败仍失败。三次 DNS 均失败才按原地址键读取既有 LKG，保留
+  返回 `source:'literal'`。域名先校验参数；最多三次默认 lookup，首次成功返回
+  `source:'dns'`，不写 LKG（T16.15：保存由启动应用成功路径负责）。三次 DNS 均失败才按原地址键读取既有 LKG，保留
   `NODE_RESOLVE_FALLBACK`/`NODE_RESOLVE_FAILED` 事件及 `source:'lkg'` 语义，不改 ctx 的生效状态。
 - 调用方负责注册既有 uloop 信号回调；查询器按最长 100ms poll 等待并周期派发 uloop、检查 `on_signal()`，
   报文解析也检查取消和 deadline。取消返回 `cancelled:true`，立即结束，不重试、不读回退 LKG、不写 LKG，

@@ -578,7 +578,7 @@ function dnsmasq_extra_servers(ctx) {
 };
 
 // docs/03「引导解析（节点域名）」 step 4: corrupt LKG is an absent, regenerable cache.
-// Do not emit an event on every lookup; a successful resolution will replace it.
+// Do not emit an event on every lookup; a verified apply will replace it.
 function read_lkg(ctx) {
 	let text = fs.readfile(`${state_dir(ctx)}/${C.NODE_IP_FILE}`);
 	if (text == null)
@@ -651,9 +651,6 @@ function resolve_node(ctx, address) {
 			if (net.ipv4(ip) == null)
 				continue;
 			// Several A records: take the first valid one (03-dns.md, bootstrap resolution).
-			let saved = update_lkg(ctx, { [address]: ip });
-			if (!saved.ok)
-				return evidence(failed(ctx, 'resolve_node', saved.detail));
 			return evidence(result('node address resolved', { ip, source: 'dns' }));
 		}
 	}
@@ -695,9 +692,6 @@ function resolve_node_explicit(ctx, address, endpoint, on_signal) {
 			return resolved;
 		if (!resolved.ok)
 			continue;
-		let saved = update_lkg(ctx, { [address]: resolved.ip });
-		if (!saved.ok)
-			return failed(ctx, 'resolve_node_explicit', saved.detail);
 		return result('node address resolved', { ip: resolved.ip, source: 'dns' });
 	}
 	return resolve_node_failed(ctx, address);

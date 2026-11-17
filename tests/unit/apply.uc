@@ -25,7 +25,7 @@ export const cases = [
 	{ name: 'LKG reads legacy format and ignores only invalid IP entries', expect: 'PASS', kind: 'lkg_read' },
 	{ name: 'LKG preserves A and B and unchanged A does not rewrite or reorder', expect: 'PASS', kind: 'lkg_keep' },
 	{ name: 'LKG evicts oldest of 65 addresses and moves changed addresses last', expect: 'PASS', kind: 'lkg_limit' },
-	{ name: 'corrupt LKG is silent and successful resolution regenerates new format',
+	{ name: 'corrupt LKG is silent and only explicit update regenerates new format',
 	  expect: 'PASS', kind: 'lkg_corrupt' },
 	{ name: 'boot list and conflicts', expect: 'PASS', kind: 'misc' }
 ];
@@ -287,7 +287,12 @@ function run_resolve() {
 	if (literal.attempts != 0 || literal.raw != '' || literal.elapsed_ms < 0 ||
 		dns.attempts != 1 || dns.raw != '198.51.100.4\n198.51.100.5\n' || dns.elapsed_ms < 0)
 		return fail('literal/DNS evidence fields mismatch');
-	let lkg_text = read(`${t.base}/etc/aether-proxy/state/${C.NODE_IP_FILE}`);
+	let path = `${t.base}/etc/aether-proxy/state/${C.NODE_IP_FILE}`;
+	if (fs.stat(path) != null)
+		return fail('literal/DNS resolution wrote LKG');
+	if (!apply.update_lkg(c, { 'node.example': dns.ip }).ok)
+		return fail('explicit LKG update failed');
+	let lkg_text = read(path), inode = fs.stat(path).inode;
 	if (!literal.ok || literal.source != 'literal' || !dns.ok || dns.ip != '198.51.100.4' || dns.source != 'dns')
 		return fail(`literal/DNS result: ${sprintf('%.J', [ literal, dns ])}`);
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) + 'STUB_RESOLVEIP_RC=1\n');
@@ -296,7 +301,9 @@ function run_resolve() {
 	for (let value in [ lkg, missing ])
 		if (value.attempts != 3 || value.raw != '198.51.100.4\n198.51.100.5\n' || value.elapsed_ms < 0)
 			return fail('failed command stdout must remain unmodified on fallback and failure');
-	return lkg.ok && lkg.source == 'lkg' && lkg.ip == '198.51.100.4' && !missing.ok && lkg_text ? 'PASS' : fail(`LKG result ${sprintf('%.J', [ lkg, missing ])}`);
+	let unchanged = read(path) == lkg_text && fs.stat(path).inode == inode;
+	return lkg.ok && lkg.source == 'lkg' && lkg.ip == '198.51.100.4' && !missing.ok && unchanged
+		? 'PASS' : fail(`LKG result ${sprintf('%.J', [ lkg, missing ])}`);
 };
 
 function lkg_path(t) {
@@ -350,6 +357,7 @@ function run_retry_end() {
 		return fail('first success did not stop immediately');
 	write(`${t.base}/stubs/stub.env`, read(`${t.base}/stubs/stub.env`) +
 		'STUB_RESOLVEIP_SEQUENCE=\nSTUB_RESOLVEIP_RC=1\n');
+	apply.update_lkg(t.ctx, { 'first.example': first.ip });
 	let fallback = apply.resolve_node(t.ctx, 'first.example');
 	let missing = apply.resolve_node(t.ctx, 'missing.example');
 	let events = resolve_events(t);
@@ -386,8 +394,8 @@ function run_lkg_keep() {
 	let t = prepare();
 	if (t.error) return fail(t.error);
 	configure_sequence(t, [ 0, 0, 0 ], [ '203.0.113.1\n', '203.0.113.2\n', '203.0.113.1\n' ]);
-	if (!apply.resolve_node(t.ctx, 'a.example').ok || !apply.resolve_node(t.ctx, 'b.example').ok)
-		return fail('sequential resolutions failed');
+	if (!apply.update_lkg(t.ctx, { 'a.example': '203.0.113.1', 'b.example': '203.0.113.2' }).ok)
+		return fail('explicit update failed');
 	// Atomic replacement changes the inode; a hard link keeps the old inode allocated.
 	let path = lkg_path(t), link = `${t.base}/lkg-link`;
 	if (sys.run([ 'ln', path, link ], { timeout: 10 }).code != 0)
@@ -395,6 +403,9 @@ function run_lkg_keep() {
 	let before = fs.stat(path).inode;
 	if (!apply.resolve_node(t.ctx, 'a.example').ok || fs.stat(path).inode != before)
 		return fail('unchanged A rewrote LKG');
+	let unchanged = apply.update_lkg(t.ctx, { 'a.example': '203.0.113.1' });
+	if (!unchanged.ok || unchanged.written || fs.stat(path).inode != before)
+		return fail('unchanged explicit update rewrote LKG');
 	let nodes = apply.read_lkg(t.ctx);
 	return join(',', keys(nodes)) == 'a.example,b.example' && nodes['a.example'] == '203.0.113.1' &&
 		nodes['b.example'] == '203.0.113.2' ? 'PASS' : fail('A/B retention or order mismatch');
@@ -427,6 +438,9 @@ function run_lkg_corrupt() {
 		return fail('reading corrupt cache emitted events');
 	configure_sequence(t, [ 0 ], [ '203.0.113.4\n' ]);
 	let r = apply.resolve_node(t.ctx, 'fresh.example');
+	if (!r.ok || read(lkg_path(t)) != '{"nodes":"wrong"}')
+		return fail('DNS resolution rewrote corrupt LKG');
+	apply.update_lkg(t.ctx, { 'fresh.example': r.ip });
 	let obj = json(read(lkg_path(t)));
 	return r.ok && obj.nodes?.['fresh.example'] == '203.0.113.4' && !length(resolve_events(t))
 		? 'PASS' : fail('successful DNS did not silently regenerate cache');

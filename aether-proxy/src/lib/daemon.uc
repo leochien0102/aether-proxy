@@ -875,6 +875,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'lock_release', detail, children };
 	}
 	locked.close();
+	bootstrap.applied(ctx, snapshot.nodes[node_id].address, resolution);
 	return { ok: true, children, state: initial_state, snapshot, applied_context };
 };
 
