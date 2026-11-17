@@ -1,6 +1,7 @@
 'use strict';
 // Observe service health, compute transitions and execute ordered recovery actions.
 // Design: docs/04「monitor 循环」 and docs/03「DNS 级别（trust 组上游）」.
+// Live usage publication: docs/design/b25-quota-heatmap-20261116.md §2.1 (T16.8).
 
 import * as fs from 'fs';
 import * as uloop from 'uloop';
@@ -394,6 +395,16 @@ function persist_state(daemon, machine) {
 		last_probe: machine.last_probe,
 		monitor: machine
 	};
+	// T16.8 (§2.1): reuse this tick's tmpfs publication, not a flash checkpoint.
+	// Delete a previously enabled snapshot too when the switch has been closed.
+	delete updated[C.USAGE_TODAY_FIELD];
+	if (daemon.snapshot?.stats?.heatmap_enabled === true && daemon.usage?.day != null) {
+		let live = daemon.usage;
+		updated[C.USAGE_TODAY_FIELD] = {
+			date: live.day, tx: live.tx, rx: live.rx,
+			observed: live.observed, healthy: live.healthy, at: time()
+		};
+	}
 	if (!state_file.write(run_dir(daemon), updated)) {
 		log_failure(daemon, 'state_write', state_file.error());
 		return false;

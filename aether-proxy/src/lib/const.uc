@@ -390,3 +390,7 @@ export const QUOTA_GB = 1000000000;
 export const QUOTA_TB = 1000000000000;
 export const QUOTA_MIN_BYTES = QUOTA_GB;
 export const QUOTA_MAX_BYTES = 100000 * QUOTA_GB;
+
+// T16.8: volatile live-day overlay, never a usage.json checkpoint.
+export const USAGE_TODAY_FIELD = 'usage_today';
+export const USAGE_TODAY_MAX_AGE = 600;

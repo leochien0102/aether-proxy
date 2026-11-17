@@ -441,6 +441,7 @@ test('T16.5 view: polling preserves caption, dropdown, custom input, grid and ta
 	view.quotaInput.value = '321';
 	const oldTip = view.heatmapCells[89].attrs.title;
 	total = 2e9;
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 16, 12, 1).getTime());
 	const mark = htmlWriteMark();
 	await view.fetchRefresh();
 	const after = [ view.heatmapContainer.children[0], view.quotaSelect, view.quotaInput, view.quotaControl,
@@ -450,7 +451,7 @@ test('T16.5 view: polling preserves caption, dropdown, custom input, grid and ta
 	assert.equal(view.quotaInput.value, '321', 'editing text is not overwritten');
 	assert.equal(view.heatmapCells[89].className, 'ap-heat-cell ap-heat-l5');
 	assert.notEqual(view.heatmapCells[89].attrs.title, oldTip);
-	assert.equal(calls.filter((m) => m === 'stats_history').length, 2, 'each refresh reads history');
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 2, 'TTL expiry reads fresh history');
 	assert.ok(htmlWritesSince(mark).every((s) => !s.includes('2026-11-16') && !s.includes('200%')),
 		'dynamic tooltip never takes the HTML path');
 });
@@ -539,7 +540,9 @@ test('T16.5 view: history failure keeps last grid, shows error below grid and wa
 	const grid = view.heatmapGridNode;
 	const tips = view.heatmapCells.map((n) => n.attrs.title);
 	fail = true;
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 1, 12, 1).getTime());
 	await view.fetchRefresh();
+	t.mock.method(Date, 'now', () => new Date(2026, 10, 1, 12, 2).getTime());
 	await view.fetchRefresh();
 	assert.equal(view.heatmapGridNode, grid);
 	assert.deepEqual(view.heatmapCells.map((n) => n.attrs.title), tips);
@@ -579,6 +582,7 @@ test('T16.5 view: older in-flight history cannot overwrite a successful quota wr
 		stats_quota: (p) => ({ ok: true, quota: { bytes: p.bytes } })
 	});
 	pending = true;
+	h.view.heatmapReadAt = null; // Start a read after the cache has expired.
 	const reading = h.view.loadHeatmap();
 	h.view.quotaSelect.value = '50';
 	await h.view.quotaSelect.attrs.change();
@@ -655,4 +659,51 @@ test('T16.5 view: rejected quota RPC preserves input, colours and enabled contro
 	assert.equal(view.heatmapGood.quota, 100e9);
 	assert.equal(view.quotaInput.disabled, false);
 	assert.equal(view.quotaErrorNode.textContent, tr('Saving quota failed (%s)', 'offline'));
+});
+
+
+test('T16.8 view: 60000ms TTL skips five-second polls and refreshes today colour and tooltip', async (t) => {
+	let now = new Date(2026, 10, 16, 12).getTime();
+	t.mock.method(Date, 'now', () => now);
+	let total = 1e8;
+	const { view, calls } = await mounted({
+		stats_history: () => history([entry('2026-11-16', total)], 30e9)
+	});
+	const cell = view.heatmapCells[89], oldTip = cell.attrs.title;
+	assert.equal(cell.className, 'ap-heat-cell ap-heat-l1');
+	total = 2e9;
+	for (let elapsed = 5000; elapsed < 60000; elapsed += 5000) {
+		now += 5000;
+		await view.fetchRefresh();
+		assert.equal(calls.filter((m) => m === 'stats_history').length, 1);
+	}
+	now += 4999;
+	await view.fetchRefresh();
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 1, '59999ms is cached');
+	now += 1;
+	await view.fetchRefresh();
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 2, '60000ms expires');
+	assert.equal(view.heatmapCells[89], cell);
+	assert.equal(cell.className, 'ap-heat-cell ap-heat-l5');
+	assert.notEqual(cell.attrs.title, oldTip);
+});
+
+test('T16.8 view: local midnight bypasses TTL and only one history request stays in flight', async (t) => {
+	let now = new Date(2026, 10, 16, 23, 59, 50).getTime();
+	t.mock.method(Date, 'now', () => now);
+	let resolve, pending = false;
+	const { view, calls } = await mounted({ stats_history: () => pending
+		? new Promise((done) => { resolve = done; }) : history() });
+	now += 10000;
+	pending = true;
+	const reading = view.loadHeatmap();
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 2);
+	assert.equal(view.loadHeatmap(), reading);
+	now += 120000;
+	assert.equal(view.loadHeatmap(), reading, 'even an expired cache cannot overlap a slow read');
+	assert.equal(calls.filter((m) => m === 'stats_history').length, 2);
+	resolve(history([entry('2026-11-17', 123)]));
+	await reading;
+	assert.equal(view.heatmapGood.cells[89].date, '2026-11-17');
+	assert.equal(view.heatmapRequest, null);
 });

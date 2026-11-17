@@ -1,6 +1,7 @@
 'use strict';
 
 // Runtime state is volatile and preserves fields added by newer daemon versions.
+// Live-day validation follows docs/design/b25-quota-heatmap-20261116.md §2.1.
 
 import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
@@ -83,5 +84,24 @@ function hold_stopping(run_dir, obj) {
 function error() {
 	return last_error;
 }
+
+// Old daemons omit this optional field; malformed data is equally unavailable.
+// Keep read/write transparent so unrelated state consumers remain compatible.
+export function usage_today_of(obj, now) {
+	let entry = obj?.[C.USAGE_TODAY_FIELD];
+	if (type(entry) != 'object' || type(entry.date) != 'string')
+		return null;
+	if (!match(entry.date, /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) ||
+		type(entry.at) != 'int' || entry.at < 0)
+		return null;
+	for (let key in [ 'tx', 'rx', 'observed', 'healthy' ]) {
+		let value = entry[key];
+		if ((type(value) != 'int' && type(value) != 'double') || !(value >= 0))
+			return null;
+	}
+	if (max(now, entry.at) - min(now, entry.at) > C.USAGE_TODAY_MAX_AGE)
+		return null;
+	return entry.healthy <= entry.observed ? entry : null;
+};
 
 export { read, write, hold_stopping, error };

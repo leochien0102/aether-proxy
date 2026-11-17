@@ -1,6 +1,6 @@
 'use strict';
 
-// Dashboard counters and quota commands (docs/design/b25-quota-heatmap-20261116.md §3).
+// Dashboard counters, live history and quota (docs/design/b25-quota-heatmap-20261116.md §2.1/§3).
 // Read-only Dashboard counters (docs/10 "Dashboard：概览页升级", part 1) and the B25
 // daily usage history (docs/10 "stats history", T12.5). Missing runtime sources are
 // independent nulls, never events: polling must not flood logd.
@@ -12,6 +12,7 @@ import * as config from 'aetherproxy.config';
 import * as counters from 'aetherproxy.counters';
 import * as log from 'aetherproxy.log';
 import * as usage from 'aetherproxy.usage';
+import * as state_file from 'aetherproxy.state';
 
 function read_object(path) {
 	let text = fs.readfile(path);
@@ -150,6 +151,13 @@ function history_cmd(opts, limit, args) {
 		return pipeline.finish(opts, { ok: true, enabled: false, days: [], quota: usage.quota_of(null) }, 0,
 			sprintf('%.J', { ok: true, enabled: false, days: [], quota: usage.quota_of(null) }));
 	let loaded = usage.load(root + C.USAGE_FILE);
+	// T16.8, design §2.1: overlay only today's fresh tmpfs accumulators.
+	// Filtering happens afterwards so a newly added date participates in --days.
+	let now = time(), tm = localtime(now);
+	let live = state_file.usage_today_of(read_object(pipeline.run_dir(opts) + '/' + C.STATE_FILE), now);
+	let today = sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
+	if (live != null && live.date == today)
+		loaded.days[today] = { tx: live.tx, rx: live.rx, observed: live.observed, healthy: live.healthy };
 	let result = { ok: true, enabled: true,
 		days: history_entries(loaded.days, limit), updated_at: loaded.updated_at,
 		quota: usage.quota_of(loaded.document) };

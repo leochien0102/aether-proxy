@@ -246,6 +246,8 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 	// T12.3 B25: the sampling entry point only. Day-level accounting is unit-tested with
 	// a fake clock; here the fixture counters prove who runs the nft counter query.
 	let d = opts.daemon;
+	// A closed switch must also remove a field left by an earlier enabled run.
+	d.state.usage_today = { date: '2026-01-01', tx: 1 };
 	let counters_path = `${opts.ctx.root}/nft-counters.json`;
 	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
 	let payload = (tx, rx) => sprintf('%.J', { nftables: [
@@ -266,12 +268,20 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 		check(count(fs.readfile(log_path), 'list counters') == 0,
 			'heatmap-off: still no counter query after counters changed');
 		check(d.usage.day == null, 'heatmap-off: still nothing aggregated');
+		check(!('usage_today' in json(fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.STATE_FILE}`))),
+			'T16.8 monitor disabled snapshot omits usage_today');
 	}
 	else {
 		check(count(fs.readfile(log_path), 'list counters') == 1,
 			'heatmap-on: an open switch samples once per tick');
 		check(d.usage.day != null && d.usage.tx == 0 && d.usage.last_tx == 1000 && d.usage.last_rx == 2000,
 			'heatmap-on: the first sample only records the baseline', sprintf('%.J', d.usage));
+		let first = json(fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.STATE_FILE}`)).usage_today;
+		check(first?.date == d.usage.day && first?.tx == 0 && first?.rx == 0 &&
+			first?.observed == 0 && first?.healthy == 0 && first.at >= time() - 1 && first.at <= time(),
+			'T16.8 monitor first snapshot has all live-day fields', sprintf('%.J', first));
+		d.machine.state = 'degraded'; // Exercise the existing degraded-health assertion with nonzero elapsed.
+		d.usage_mono_ms -= 1000; // Advance the sample window without a wall-clock sleep.
 		write(counters_path, payload(3500, 4000));
 		monitor.tick(d);
 		while (d.busy) uloop.run(100);
@@ -280,6 +290,13 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 		check(d.usage.tx == 2500 && d.usage.rx == 2000, 'heatmap-on: deltas accumulate',
 			sprintf('%.J', d.usage));
 		check(d.usage.healthy == 0, 'heatmap-on: degraded rounds never count healthy');
+		let second = json(fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.STATE_FILE}`)).usage_today;
+		check(second.tx == 2500 && second.rx == 2000 && second.observed > first.observed &&
+			second.healthy == 0 && second.at >= first.at,
+			'T16.8 monitor live snapshot grows with samples', sprintf('%.J', second));
+		print('T16.8 evidence monitor state.json: ' + sprintf('%.J', { usage_today: second }) + '\n');
+		check(fs.stat(`${opts.ctx.root}/etc/aether-proxy/usage.json`) == null,
+			'T16.8 monitor same-day ticks do not create usage.json');
 		write(counters_path, 'not json');
 		monitor.tick(d);
 		while (d.busy) uloop.run(100);
@@ -335,6 +352,9 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		let text = fs.readfile(usage_file);
 		check(text != null, 'heatmap-persist: the crossing tick rewrites usage.json');
 		let data = json(text);
+		let published = json(fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.STATE_FILE}`)).usage_today;
+		check(published?.date == date_of(time()) && published.tx == 0 && published.observed == 0,
+			'T16.8 monitor crossing publishes the new local day', sprintf('%.J', published));
 		check(data.quota?.bytes == 100000000000 && data.quota?.set_at == 17 && data.future == 'keep',
 			'T16.2 monitor crossing flush preserves quota and unknown fields', text);
 		// Change quota after the first flush cached history, then cross another day.

@@ -277,6 +277,77 @@ def history(base):
 		and json.loads(result.stdout)['code'] == 'CONFIG_INVALID')
 
 
+def live_history(base):
+	# T16.8 §2.1: exercise the real CLI, with both files in isolated directories.
+	root = base / 'live-root'
+	file = root / 'etc/aether-proxy/usage.json'
+	file.parent.mkdir(parents=True)
+	run_dir = root / 'runtime'
+	run_dir.mkdir()
+	state = run_dir / 'state.json'
+	today = datetime.date.today().isoformat()
+	yesterday = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+	entry = {'tx': 1, 'rx': 2, 'observed': 3, 'healthy': 2}
+	live = {'date': today, 'tx': 123, 'rx': 456, 'observed': 60.5, 'healthy': 55,
+		'at': int(time.time())}
+	quota = {'bytes': 100000000000, 'set_at': 17}
+	seed = {'schema': 1, 'updated_at': 17, 'quota': quota,
+		'days': {yesterday: entry, today: entry}}
+	file.write_text(json.dumps(seed))
+	conf_on, conf_off = confdir(base, True), confdir(base, False)
+
+	def read(enabled=True, days=90):
+		result = subprocess.run(HIST + ['--json', '--sys-root', str(root), '--run-dir', str(run_dir),
+			'--confdir', str(conf_on if enabled else conf_off), '--days', str(days)],
+			cwd=ROOT, text=True, capture_output=True, timeout=12)
+		assert result.returncode == 0 and result.stderr == '', result
+		return json.loads(result.stdout)
+
+	def publish(value):
+		state.write_text(json.dumps({'state': 'running', 'usage_today': value}))
+
+	before = read()
+	publish(live)
+	after = read()
+	expected = {k: v for k, v in live.items() if k != 'at'}
+	check('T16.8 history live snapshot overwrites today, not adds to it',
+		after['days'] == [dict(date=yesterday, **entry), expected])
+	check('T16.8 history overlay preserves quota and file updated_at',
+		after['quota'] == quota and after['updated_at'] == 17)
+	check('T16.8 history --days filters after live merge', read(days=1)['days'] == [expected])
+	print('T16.8 evidence state.json: ' + state.read_text())
+	print('T16.8 evidence before: ' + json.dumps(before))
+	print('T16.8 evidence after: ' + json.dumps(after))
+	check('T16.8 history disabled ignores fresh snapshot',
+		read(False) == {'ok': True, 'enabled': False, 'days': [], 'quota': {'bytes': None, 'set_at': None}})
+	for name, value in [('stale', dict(live, at=int(time.time()) - 601)),
+			('wrong date', dict(live, date=yesterday)), ('scalar', 7), ('array', []),
+			('missing counter', {k: v for k, v in live.items() if k != 'rx'}),
+			('negative', dict(live, tx=-1)), ('bad timestamp', dict(live, at='now'))]:
+		publish(value)
+		check('T16.8 history ignores ' + name, read() == before)
+	state.write_text('{broken')
+	check('T16.8 history tolerates corrupt state JSON', read() == before)
+	state.write_text('{"state":"running"}')
+	check('T16.8 history tolerates old snapshot', read() == before)
+	publish(live)
+	check('T16.8 history never writes either input file',
+		file.read_text() == json.dumps(seed) and json.loads(state.read_text())['usage_today'] == live)
+	del seed['days'][today]
+	file.write_text(json.dumps(seed))
+	check('T16.8 history fills absent today from live snapshot', read(days=1)['days'] == [expected])
+	file.unlink()
+	check('T16.8 history missing usage file still exposes live day',
+		read()['days'] == [expected] and not file.exists())
+	# FIFOs would hang if either disabled path tried to open a source.
+	state.unlink()
+	os.mkfifo(state)
+	os.mkfifo(file)
+	check('T16.8 history disabled opens neither usage nor state', read(False)['enabled'] is False)
+	state.unlink()
+	file.unlink()
+
+
 def quota_tests(base):
 	# T16.2: real CLI with isolated roots; no config or service is needed for quota.
 	root = base / 'quota-root'
@@ -383,5 +454,6 @@ golden_tests()
 with tempfile.TemporaryDirectory(prefix='aether-stats-') as directory:
 	snapshots(pathlib.Path(directory))
 	history(pathlib.Path(directory))
+	live_history(pathlib.Path(directory))
 	quota_tests(pathlib.Path(directory))
 print('stats: all scenarios passed')

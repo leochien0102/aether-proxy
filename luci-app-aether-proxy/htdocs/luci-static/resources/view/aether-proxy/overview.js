@@ -404,6 +404,7 @@ return view.extend({
 			   clears it, on forces a fresh read. */
 			if (this.heatmapCfg !== heatmapWas) {
 				this.heatmapReply = null;
+				this.heatmapReadAt = null;
 				this.heatmapFailed = false;
 				this.heatmapError = null;
 				this.heatmapOff = false;
@@ -464,8 +465,8 @@ return view.extend({
 		return this.refreshing;
 	},
 
-	/* Read after status/stats/events so history never blocks the other regions.
-	   No TTL: every enabled refresh sees quota changes from other sessions. */
+	/* T16.8, design §2.1: reuse the existing refresh path with a 60s TTL.
+	   A local date change bypasses the TTL; never add a separate history poller. */
 	loadHeatmap: function() {
 		if (!model.heatmap_enabled(this.heatmapCfg) || this.heatmapOff) {
 			this.updateHeatmap();
@@ -473,6 +474,13 @@ return view.extend({
 		}
 		if (this.heatmapRequest)
 			return this.heatmapRequest;
+		const now = Date.now(), today = model.heatmap_today(now);
+		if (this.heatmapReadAt != null && now >= this.heatmapReadAt &&
+			now - this.heatmapReadAt < 60000 && today === this.heatmapReadDay)
+			return;
+		// Throttle failed reads too, without discarding the last good grid.
+		this.heatmapReadAt = now;
+		this.heatmapReadDay = today;
 		// A quota save invalidates older in-flight reads, not newer history.
 		const revision = this.quotaRevision ?? 0;
 		const request = ap.call('stats_history').then((reply) => {
