@@ -326,7 +326,7 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
    置 `dns_failsafe=true`，记 ERR `DNS_DOWN_FAILSAFE`。端口恢复后重新写入片段，清除标志。
 4. **代理健康检测**（[07](07-probe.md)）：根据连续成功/失败的次数在 `running` ↔ `degraded` 之间切换，并驱动 DNS 级别（[03](03-dns.md)）与分流降级（[02](02-dataplane.md)「节点不健康时的分流降级」：判为不健康且 `degrade_gfw=1` → 临时按仅被墙分流；恢复健康 → 还原）。
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
-6. **节点 IP 刷新**：距上次超过 10 分钟就重新解析（[03](03-dns.md)）。
+6. **节点 IP 刷新**：距上次超过 10 分钟，或本轮转入 `PROXY_UNHEALTHY`，就重新解析（[03](03-dns.md)）；两次刷新尝试至少间隔 60 秒，防抖字段仅保存在机器状态，daemon 重启时重置。新 IP 须先通过节点端口的 3 秒 TCP 探测，才进入集合导出、渲染写入与 Xray 重启；失败记 warn `NODE_IP_UNREACHABLE` 并正常结束刷新，不切 IP、不触发动作错误重试。
 
 daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 10 秒的超时；一轮检测累计超过 30 秒时跳过下一轮。信号只在回到事件循环时处理，所以 SIGTERM 要等当前一轮检测的同步部分做完，最坏约 20 秒（curl 加两次 resolveip）；procd 的 `term_timeout` 因此设为 30 秒，仍超时则由 `cleanup` 兜底。
 

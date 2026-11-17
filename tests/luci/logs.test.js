@@ -54,6 +54,17 @@ test('T8.10 scenario 1: every catalog event has a template using only documented
 	assert.equal(model.templates.CMD_RUN, undefined);
 });
 
+test('T16.12: unreachable candidate shows warning, node name and all original fields', () => {
+	const args = { node: 'n_guard', address: 'node.example.com', ip: '127.0.0.1', port: 443 };
+	const result = model.events(payload([event('NODE_IP_UNREACHABLE', 'warn', 1, args)]), null, '', '',
+		{ nodes: { n_guard: '测试节点' } });
+	assert.deepEqual(result.codes, ['NODE_IP_UNREACHABLE']);
+	assert.equal(result.rows[0].level, '警告');
+	assert.equal(result.rows[0].text,
+		'节点 测试节点：node.example.com 的候选地址 127.0.0.1:443 不可达，保留当前 IP');
+	assert.deepEqual(JSON.parse(result.rows[0].title), args);
+});
+
 test('T10.70: recovery catalog, WARN, template and translation agree', () => {
 	const doc = fs.readFileSync(path.join(ROOT, 'docs/09-logging.md'), 'utf8');
 	assert.match(doc, /\| `CONFIG_RECOVERED` \| warn \| `path`/);

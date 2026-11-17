@@ -2,6 +2,7 @@
 // Exercise monitor side effects against isolated fixtures (docs/04 recovery and docs/07 probes).
 
 import * as fs from 'fs';
+import * as socket from 'socket';
 import * as uloop from 'uloop';
 import * as sys from 'aetherproxy.sys';
 import * as uci from 'uci';
@@ -130,7 +131,7 @@ if (match(scenario, /^disabled-/)) {
 	while (d.busy) uloop.run(100);
 	let expected = scenario == 'disabled-no-fallback' || scenario == 'disabled-recover' ? 'T1' : 'T3';
 	check(d.machine.dns_tier == expected, `${scenario}: applies ${expected} without T2`, sprintf('%.J', d.machine));
-	check(count(fs.readfile(log_path), 'resolveip ') == 0,
+	check(count(fs.readfile(log_path), `-t 5 ${d.snapshot.dns.dns_probe_domain}`) == 0,
 		`${scenario}: no direct-tier DNS probe is executed`);
 	if (scenario == 'disabled-t3')
 		check(d.machine.last_t2_retry == retry_before && !d.machine.t2_retry_pending,
@@ -216,8 +217,79 @@ else if (scenario == 'xray-failsafe') {
 	check(fs.stat(`${replace(opts.ctx.root, /\/$/, '')}${C.RUN_DIR}/${C.SETS_SAVE_FILE}`) == null, 'sets.save is consumed');
 	no_external_children(d);
 }
+else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
+	let d = opts.daemon;
+	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
+	let events_path = `${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`;
+	// Bind without listening: the failure case is a real, deterministic refused TCP port.
+	let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+	check(listener != null && listener.bind({ address: '127.0.0.1', port: 0 }),
+		`${scenario}: reserves a loopback probe endpoint`);
+	d.snapshot.nodes[d.snapshot.main.node].port = listener.sockname().port;
+	write(`${opts.ctx.root}/resolve-ip`, '127.0.0.1\n');
+	d.snapshot.dns.direct_dns_enabled = false;
+	d.snapshot.dns.allow_china_fallback = false;
+	d.snapshot.probe.fail_threshold = 1;
+	d.machine = { ...d.machine, state: 'running', dns_tier: 'T1', ever_healthy: true };
+	let before = {};
+	for (let name, file in C.ARTIFACT_FILES)
+		before[file] = fs.readfile(`${opts.current}/${file}`);
+	if (scenario == 'node-unreachable')
+		d.machine.last_node_refresh = time() - C.MONITOR_NODE_REFRESH_SECS;
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	let calls = fs.readfile(log_path) ?? '';
+	let events = fs.readfile(events_path) ?? '';
+	check(d.machine.node_ip == '203.0.113.20' && d.state.node_ip == '203.0.113.20',
+		`${scenario}: rejected IP leaves machine and published node_ip unchanged`);
+	check(count(fs.readfile(`${opts.ctx.root}/calls.log`), 'xray ') == 0 && count(calls, 'run -test') == 0,
+		`${scenario}: rejected IP neither tests nor restarts Xray`);
+	let unchanged = true;
+	for (let file, content in before)
+		unchanged = unchanged && fs.readfile(`${opts.current}/${file}`) == content;
+	check(unchanged && count(calls, 'nft -j list set') == 0 && count(calls, 'nft -f ') == 0,
+		`${scenario}: rejected IP leaves all artifacts unchanged and skips sets export/load`);
+	let decoded = map(filter(split(trim(events), '\n'), line => length(line)), line => json(line));
+	let rejected = filter(decoded, e => e.code == 'NODE_IP_UNREACHABLE');
+	check(length(rejected) == 1 && rejected[0].level == 'warn' &&
+		rejected[0].args.node == d.snapshot.main.node && rejected[0].args.ip == '127.0.0.1' &&
+		rejected[0].args.address == d.snapshot.nodes[d.snapshot.main.node].address &&
+		rejected[0].args.port == listener.sockname().port,
+		`${scenario}: NODE_IP_UNREACHABLE carries warn and all four fields`);
+	check(count(events, 'NODE_IP_CHANGED') == 0 && count(events, 'START_FAILED') == 0,
+		`${scenario}: rejection completes normally without NODE_IP_CHANGED or action error`);
+	if (scenario == 'unhealthy-refresh') {
+		check(count(calls, 'resolveip ') == 1 && count(events, 'PROXY_UNHEALTHY') == 1,
+			'unhealthy-refresh: unhealthy transition tick immediately resolves before 600 seconds');
+		let attempted = d.machine.last_node_refresh_attempt;
+		d.machine.state = 'running';
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		check(count(fs.readfile(log_path), 'resolveip ') == 1 &&
+			count(fs.readfile(events_path), 'PROXY_UNHEALTHY') == 2,
+			'unhealthy-refresh: second unhealthy edge inside 60 seconds does not resolve');
+		let edge = { ...d.machine, state: 'running' };
+		let observation = { now: attempted + C.NODE_REFRESH_MIN_GAP_SECS - 1, proxy_ok: false };
+		check(index(monitor.next(edge, observation, d.snapshot).actions, 'refresh_node_ip') < 0,
+			'unhealthy-refresh: 59-second edge is debounced');
+		observation.now++;
+		check(count(join('\n', monitor.next(edge, observation, d.snapshot).actions), 'refresh_node_ip') == 1,
+			'unhealthy-refresh: 60-second edge refreshes exactly once');
+		let restarted = monitor.create_daemon(d);
+		check(restarted.machine.last_node_refresh_attempt == null,
+			'unhealthy-refresh: daemon recreation resets debounce state');
+	}
+	print(`${scenario} calls:\n${fs.readfile(log_path)}events:\n${fs.readfile(events_path)}`);
+	listener.close();
+	no_external_children(d);
+}
 else if (scenario == 'node-refresh') {
 	let d = opts.daemon;
+	let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+	check(listener != null && listener.bind({ address: '127.0.0.1', port: 0 }) && listener.listen(8),
+		'node refresh listens on a real loopback TCP endpoint');
+	d.snapshot.nodes[d.snapshot.main.node].port = listener.sockname().port;
+	write(`${opts.ctx.root}/resolve-ip`, '127.0.0.1\n');
 	let tcp_path = `${opts.ctx.root}/proc/net/tcp`;
 	let lines = split(fs.readfile(tcp_path), '\n');
 	check(write(tcp_path, join('\n', filter(lines, line => index(line, '7968') < 0))),
@@ -235,7 +307,11 @@ else if (scenario == 'node-refresh') {
 	monitor.tick(d);
 	while (d.busy)
 		uloop.run(100);
-	check(d.machine.node_ip == '203.0.113.20', 'node refresh publishes the resolved IP');
+	check(d.machine.node_ip == '127.0.0.1', 'node refresh publishes the resolved IP');
+	let events = fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`) ?? '';
+	check(count(events, 'NODE_IP_CHANGED') == 1 && count(events, 'NODE_IP_UNREACHABLE') == 0,
+		'node refresh: successful TCP probe emits NODE_IP_CHANGED without unreachable event');
+	listener.close();
 	check(index(fs.readfile(`${opts.ctx.root}/proc/net/tcp6`) ?? '', ':7968 ') >= 0,
 		'node refresh finishes only after the delayed Xray listener is ready');
 	check(d.machine.xray_down_count == 0 && !d.machine.xray_down_reported,
@@ -462,14 +538,16 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 	monitor.tick(d);
 	// Five seconds is shorter than the normal 10 s degraded/failsafe cadence. The extra round
 	// comes from a one-shot timer: the 10 s period itself must never be shortened.
-	let expected_dns = scenario == 'immediate-retry' ? 2 : 1;
 	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
-	for (let i = 0; i < 50 && (count(fs.readfile(log_path), 'resolveip ') < expected_dns || d.busy || d.immediate != null); i++)
+	// Count DNS-tier probes separately from T16.12's immediate node resolution.
+	let dns_calls = () => count(fs.readfile(log_path), `-t 5 ${d.snapshot.dns.dns_probe_domain}`);
+	let expected_dns = scenario == 'immediate-retry' ? 2 : 1;
+	for (let i = 0; i < 50 && (dns_calls() < expected_dns || d.busy || d.immediate != null); i++)
 		uloop.run(100);
 	let ended = clock(true);
 	let elapsed = ended[0] - started[0] + (ended[1] - started[1]) / 1000000000;
 	let calls = fs.readfile(log_path) ?? '';
-	check(automatic_rounds == 0 && elapsed < 5 && count(calls, 'resolveip ') == expected_dns,
+	check(automatic_rounds == 0 && elapsed < 5 && dns_calls() == expected_dns,
 		`${scenario}: T2 transition probes DNS within 5 seconds`,
 		sprintf('automatic=%d DNS=%d elapsed=%.3f', automatic_rounds, count(calls, 'resolveip '), elapsed));
 	if (scenario != 'immediate-retry') {
@@ -482,7 +560,7 @@ else if (index([ 'immediate-proxy', 'immediate-xray', 'immediate-retry' ], scena
 		monitor.tick(d);
 		while (d.busy)
 			uloop.run(100);
-		check(d.machine.dns_tier == 'T3' && count(fs.readfile(log_path), 'resolveip ') == 2,
+		check(d.machine.dns_tier == 'T3' && dns_calls() == 2,
 			`${scenario}: two consecutive DNS failures enter T3`, sprintf('%.J', d.machine));
 	}
 	else {

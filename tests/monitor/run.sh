@@ -97,6 +97,8 @@ done
 run_case disabled-recover
 run_case proxy-tier 2
 run_case node-refresh
+run_case node-unreachable
+run_case unhealthy-refresh 1
 run_case heatmap-off
 run_case heatmap-on
 run_case heatmap-persist

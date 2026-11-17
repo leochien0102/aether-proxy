@@ -200,7 +200,7 @@ verdict-cache 4096
    同理，检测作业写 LKG 失败**不让作业失败**：测得的结果照常保存和返回，只记一次 `FS_FAILED`（`op: update_lkg`）（2026-10-20 定，T9.5 复核）。
 4. 失败：使用 LKG 中该地址的 IP，记 WARN `NODE_RESOLVE_FALLBACK`。LKG 也没有：节点不可用，进入降级状态（`NODE_RESOLVE_FAILED`）。
    LKG 文件损坏（JSON 解析失败、结构不对）**等同没有 LKG，不记事件**；单条的 IP 不合法只忽略那一条：它是可以重新生成的缓存，下一次成功解析就会覆盖；而每次解析都会读它，记事件会反复刷屏（2026-10-17 补理由，backlog B9）。
-5. monitor 每 10 分钟重新解析一次当前节点的域名。IP 变了就更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。
+5. monitor 每 10 分钟重新解析一次当前节点的域名；转入 `PROXY_UNHEALTHY` 时立即重解析，刷新尝试之间至少间隔 60 秒（机器状态中的防抖时间在 daemon 重启后重置）。解析得到不同 IP 后，先对该 IP 的节点端口做最多 3 秒 TCP 连接探测；失败记 warn `NODE_IP_UNREACHABLE {node, address, ip, port}`，保留当前 IP，不写配置、不重启 Xray，也不记 `NODE_IP_CHANGED`。成功才更新 `node_ip4` 集合、重新渲染并重启 Xray（`NODE_IP_CHANGED`）。运行期解析器选择与 LKG 的「最后解析到的 IP」语义不变。
 
 为什么把 IP 写进配置、而不是让 Xray 自己解析：Xray 自己解析会走系统解析器 → dnsmasq → chinadns-ng → T1，
 T1 又依赖这个节点本身，形成死锁。

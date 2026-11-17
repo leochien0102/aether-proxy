@@ -5,6 +5,10 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP"
+msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP"
+
+msgctxt "aether-proxy"
 msgid "Clear logs"
 msgstr "清空日志"
 
