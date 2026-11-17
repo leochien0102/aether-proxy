@@ -230,8 +230,8 @@ def real_engines(base):
         with Authority() as authority:
             value = run_driver(dict(action='resolve', dir=str(run), engine=str(engine),
                 upstream=f'127.0.0.1#{authority.port}'))[-1]
-            check(not value['ok'] and len(authority.requests) == 1 and empty_generations(run),
-                  f'C3 real {engine.name} LKG save failure not reported as DNS success')
+            check(value['ok'] and len(authority.requests) == 1 and empty_generations(run),
+                  f'T16.15 real {engine.name} resolution ignores unwritable LKG')
         for negative, cached in ((False, True), (True, True), (True, False)):
             run = base / f'lkg-{ordinal}-{negative}-{cached}'
             state = run / 'state'
@@ -617,6 +617,24 @@ def c1(base):
         check(f.state()['node_ip'] == '203.0.113.20' and 'resolveip ' not in calls(f) and
               calls(f).index('bootstrap-query ') < calls(f).index('chinadns-ng -C '),
               'C1 domain without LKG resolves through private endpoint before formal DNS exists')
+        cache = f.root / 'etc/aether-proxy/state/node-ip.json'
+        check(json.loads(cache.read_text())['nodes']['node.example.com'] == '203.0.113.20',
+              'T16.15 startup application success saves LKG')
+
+
+def lkg_fallback(base):
+    f = Fixture(base, 'lkg-fallback', degraded=True)
+    cache = f.root / 'etc/aether-proxy/state/node-ip.json'
+    original = '{"address":"node.example.com","ip":"203.0.113.20"}\n'
+    cache.write_text(original)
+    inode = cache.stat().st_ino
+    with f.daemon():
+        f.running()
+        check(f.state()['node_ip'] == '203.0.113.20' and cache.read_text() == original and
+              cache.stat().st_ino == inode,
+              'T16.15 startup fallback preserves legacy LKG bytes and inode')
+        check(f.events('NODE_RESOLVE_FALLBACK')[0]['args']['lkg_ip'] == '203.0.113.20',
+              'T16.15 startup fallback retains lkg_ip event field')
 
 
 def stop_blocks_daemon(base):
@@ -657,6 +675,8 @@ def c10(base):
         check((f.run / 'restart-intent').exists() and fragment(f).read_text() == 'retained-failure' and
               'dnsmasq restart' not in calls(f),
               'C10 failed Xray startup keeps intent fragment and zero handoff installs')
+        check(not (f.root / 'etc/aether-proxy/state/node-ip.json').exists(),
+              'T16.15 failed Xray startup never saves resolved candidate')
         (f.root / 'xray-dns-missing-port').unlink()
         child.send_signal(signal.SIGHUP)
         f.running()
@@ -683,8 +703,7 @@ def cancellation(base):
             forbidden = ('bootstrap-start ', 'xray run -c ', 'chinadns-ng -C ', 'curl ')
             check(not any(name in after for name in forbidden) and
                   not fragment(f).exists() and not f.events('SERVICE_STARTED') and empty_generations(f.run) and
-                  (phase not in ('private-ready', 'udp-query', 'tcp-query', 'cname-query') or
-                   not (f.root / 'etc/aether-proxy/state/node-ip.json').exists()),
+                  not (f.root / 'etc/aether-proxy/state/node-ip.json').exists(),
                   f'C7 actual daemon SIGTERM at {phase} no later fork handoff success probe')
 
 
@@ -791,7 +810,7 @@ def orphan(base):
 
 
 def main(base):
-    groups = dict(c1=c1, c4=c4, c10=c10, c6=unconfirmed, c7=cancellation, c9=degraded, c8=orphan,
+    groups = dict(c1=c1, lkg=lkg_fallback, c4=c4, c10=c10, c6=unconfirmed, c7=cancellation, c9=degraded, c8=orphan,
                   c11=frozen, parallel=parallel_crash, stop_block=stop_blocks_daemon, query_loss=loss_during_query,
                   minimal_bootstrap=minimal_bootstrap, real_cancel=real_cancellation, interval_stop=interval_stop,
                   ignored_term=ignored_term,

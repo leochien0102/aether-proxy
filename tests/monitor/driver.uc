@@ -221,6 +221,11 @@ else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
 	let d = opts.daemon;
 	let log_path = `${opts.ctx.root}${C.RUN_DIR}/calls.log`;
 	let events_path = `${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`;
+	let lkg_path = `${opts.ctx.root}/etc/aether-proxy/state/${C.NODE_IP_FILE}`;
+	let address = d.snapshot.nodes[d.snapshot.main.node].address;
+	let original_lkg = sprintf('%.J\n', { nodes: { [address]: '203.0.113.20' } });
+	check(write(lkg_path, original_lkg), 'T16.15 seeds verified monitor LKG');
+	let lkg_inode = fs.stat(lkg_path).inode;
 	// Bind without listening: the failure case is a real, deterministic refused TCP port.
 	let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
 	check(listener != null && listener.bind({ address: '127.0.0.1', port: 0 }),
@@ -240,6 +245,8 @@ else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
 	while (d.busy) uloop.run(100);
 	let calls = fs.readfile(log_path) ?? '';
 	let events = fs.readfile(events_path) ?? '';
+	check(fs.readfile(lkg_path) == original_lkg && fs.stat(lkg_path).inode == lkg_inode,
+		'T16.15 rejected candidate does not write LKG');
 	check(d.machine.node_ip == '203.0.113.20' && d.state.node_ip == '203.0.113.20',
 		`${scenario}: rejected IP leaves machine and published node_ip unchanged`);
 	check(count(fs.readfile(`${opts.ctx.root}/calls.log`), 'xray ') == 0 && count(calls, 'run -test') == 0,
@@ -325,6 +332,8 @@ else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
 		check(record.source == 'lkg' && record.raw == '' && record.attempts == 3 &&
 			record.action == 'keep' && record.reachable == null,
 			'forensics: fallback retains empty stdout and three attempts');
+		check(fs.readfile(lkg_path) == original_lkg && fs.stat(lkg_path).inode == lkg_inode,
+			'T16.15 fallback preserves LKG bytes and inode');
 		print('probe samples:\n' + join('\n', [
 			sprintf('%J', records[5]), sprintf('%J', records[0]), sprintf('%J', record)
 		]) + '\n');
@@ -395,6 +404,10 @@ else if (scenario == 'node-unreachable' || scenario == 'unhealthy-refresh') {
 }
 else if (scenario == 'node-refresh') {
 	let d = opts.daemon;
+	let lkg_path = `${opts.ctx.root}/etc/aether-proxy/state/${C.NODE_IP_FILE}`;
+	let address = d.snapshot.nodes[d.snapshot.main.node].address;
+	let original_lkg = sprintf('%.J\n', { nodes: { [address]: '203.0.113.19' } });
+	check(write(lkg_path, original_lkg), 'T16.15 seeds LKG before successful switch');
 	let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
 	check(listener != null && listener.bind({ address: '127.0.0.1', port: 0 }) && listener.listen(8),
 		'node refresh listens on a real loopback TCP endpoint');
@@ -416,10 +429,20 @@ else if (scenario == 'node-refresh') {
 	d.machine.node_probe_retry_at = time() + 240;
 	d.machine.node_ip = '203.0.113.19';
 	d.machine.last_node_refresh = time() - C.MONITOR_NODE_REFRESH_SECS - 1;
+	let observed_pending = false;
+	let pending = uloop.timer(200, () => {
+		observed_pending = true;
+		check(d.busy && fs.readfile(lkg_path) == original_lkg,
+			'T16.15 TCP acceptance does not save LKG before delayed Xray ready');
+	});
 	monitor.tick(d);
 	while (d.busy)
 		uloop.run(100);
+	check(observed_pending, 'T16.15 observes pending Xray readiness');
 	check(d.machine.node_ip == '127.0.0.1', 'node refresh publishes the resolved IP');
+	let lkg = json(fs.readfile(`${opts.ctx.root}/etc/aether-proxy/state/${C.NODE_IP_FILE}`));
+	check(lkg.nodes[d.snapshot.nodes[d.snapshot.main.node].address] == '127.0.0.1',
+		'T16.15 accepted switch saves LKG after Xray ready');
 	let events = fs.readfile(`${opts.ctx.root}${C.RUN_DIR}/${C.EVENTS_FILE}`) ?? '';
 	check(count(events, 'NODE_IP_CHANGED') == 1 && count(events, 'NODE_IP_UNREACHABLE') == 0,
 		'node refresh: successful TCP probe emits NODE_IP_CHANGED without unreachable event');

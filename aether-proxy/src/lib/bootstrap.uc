@@ -406,6 +406,16 @@ export function start(ctx, snapshot, engine, on_signal) {
 	return failure('private candidate/start budget exhausted');
 };
 
+// Only the completed startup may promote a DNS/literal candidate. Cache failures
+// cannot undo an already applied runtime; fallback must preserve the original cache.
+export function applied(ctx, address, resolution) {
+	if (!resolution.ok || resolution.source == 'lkg')
+		return;
+	let saved = apply.update_lkg(ctx, { [address]: resolution.ip });
+	if (!saved.ok)
+		log.event('error', 'FS_FAILED', { op: 'update_lkg', path: saved.path, detail: saved.detail });
+};
+
 export function resolve(ctx, snapshot, engine, on_signal) {
 	let address = snapshot.nodes?.[snapshot.main.node]?.address;
 	if (cancelled(ctx, on_signal))

@@ -392,11 +392,18 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 
 // The no-op plans are successful applies too: warnings, paths and WAN observations
 // may have changed without changing bytes. Never publish a candidate on a failure path.
-function applied_result(daemon, loaded, actions) {
+function applied_result(daemon, loaded, actions, resolution) {
 	daemon.snapshot = loaded.snapshot;
 	daemon.applied_context = loaded;
 	daemon.ctx.lan_ifaces = loaded.snapshot.main.lan_ifaces ?? [];
 	daemon.ctx.dnsmasq_instance = loaded.snapshot.dns?.dnsmasq_instance ?? null;
+	// Both changed and no-op plans have committed their validated runtime here.
+	if (resolution != null && resolution.source != 'lkg') {
+		let address = loaded.snapshot.nodes[loaded.snapshot.main.node].address;
+		let saved = apply.update_lkg(daemon.ctx, { [address]: resolution.ip });
+		if (!saved.ok)
+			log.event('error', 'FS_FAILED', { op: 'update_lkg', path: saved.path, detail: saved.detail });
+	}
 	return { ok: true, actions, snapshot: daemon.snapshot, applied_context: loaded, state: daemon.state };
 };
 
@@ -427,6 +434,7 @@ function run_candidate(daemon, started_ms, transaction) {
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
 	// running one belongs to the old node and also feeds node_ip4 in the nft table.
 	let node_ip = daemon.state.node_ip ?? null;
+	let node_resolution = null;
 	let old_node = daemon.snapshot.nodes?.[daemon.snapshot.main.node];
 	let new_node = snapshot.nodes?.[snapshot.main.node];
 	if (snapshot.main.enabled == true && new_node != null &&
@@ -437,6 +445,7 @@ function run_candidate(daemon, started_ms, transaction) {
 		if (!resolved.ok)
 			return failure(daemon, 'resolve_node', resolved.detail);
 		node_ip = resolved.ip;
+		node_resolution = resolved;
 	}
 	step_started = monotonic_ms();
 	// Resolve first, then render once from the same snapshot/data. Rereading here could
@@ -582,7 +591,7 @@ function run_candidate(daemon, started_ms, transaction) {
 		if (!retained.ok)
 			return failure(daemon, 'components', retained.detail);
 		daemon.ctx.dns_binary_signature = resolved.signature;
-		return applied_result(daemon, loaded, []);
+		return applied_result(daemon, loaded, [], node_resolution);
 	}
 	let old_state = daemon.state;
 	let old_instance = daemon.ctx.dnsmasq_instance;
@@ -605,7 +614,7 @@ function run_candidate(daemon, started_ms, transaction) {
 		elapsed_ms: elapsed_ms(started_ms),
 		steps
 	});
-	return applied_result(daemon, loaded, actions);
+	return applied_result(daemon, loaded, actions, node_resolution);
 };
 
 // T10.71 / handoff §2.2: publish completion separately from applied runtime metadata.

@@ -415,7 +415,7 @@ def run(directory):
                 r = value['results'][0]
                 if mode == 'answer':
                     check('Q8 DNS precedes warm LKG', r.get('source') == 'dns' and r.get('ip') == IP and
-                          len(server.requests) == 1 and json.loads(cache.read_text())['nodes']['node.test'] == IP)
+                          len(server.requests) == 1 and cache.read_bytes() == before)
                 else:
                     check('Q8 three DNS attempts before ' + mode + ' LKG', r.get('source') == 'lkg' and
                           r.get('ip') == OLD and len(server.requests) == 3 and cache.read_bytes() == before)
@@ -434,7 +434,7 @@ def run(directory):
         try:
             with authority() as server:
                 value, _ = invoke(directory, server, apply=True)
-                check('Q8 LKG write failure is not success or fallback', not value['results'][0]['ok'] and
+                check('Q8 read-only resolution ignores LKG write failure', value['results'][0]['ok'] and
                       len(server.requests) == 1)
         finally:
             state.unlink()

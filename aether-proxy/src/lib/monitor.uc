@@ -384,6 +384,12 @@ function update_node_ip(daemon, machine, done) {
 			machine.node_probe_retry_at = null;
 			machine.node_ip = resolved.ip;
 			daemon.state.node_ip = resolved.ip;
+			// TCP acceptance alone is insufficient: publish only after Xray is ready.
+			if (resolved.source != 'lkg') {
+				let saved = apply.update_lkg(daemon.ctx, { [address]: resolved.ip });
+				if (!saved.ok)
+					log.event('error', 'FS_FAILED', { op: 'update_lkg', path: saved.path, detail: saved.detail });
+			}
 			log.set_run_dir(run_dir(daemon));
 			log.event('notice', 'NODE_IP_CHANGED', {
 				node: node_id, old: old_ip ?? '', new: resolved.ip, source: resolved.source, raw

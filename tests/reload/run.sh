@@ -349,7 +349,7 @@ grep -q '203.0.113.20' "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" 
 [ "$xray_after" != "$xray_before" ] && ok "address reload restarts xray" || bad "address reload restarts xray"
 
 # T9.5: switch to an unseen domain with a transient failure, then back with DNS fully down.
-# Startup already seeded the original domain; resolving B must not overwrite A's cache entry.
+# Startup already seeded the original domain; applying B must not overwrite A's cache entry.
 wait_field node_ip 198.51.100.7 \
 	&& ok 'T9.5 previous address reload committed' || bad 'T9.5 previous address reload committed'
 expect 'T9.5 reload preserves both component versions at unchanged paths' "$versions_before" \
@@ -385,6 +385,10 @@ expect 'T9.5 unseen node persists its resolved IP' 198.51.100.8 \
 expect 'T9.5 transient DNS failure emits no resolve events' 0 \
 	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_')"
 
+expect 'T16.15 successful reload saves verified LKG' 198.51.100.8 \
+	"$(python3 -c 'import json,sys; print(json.load(sys.stdin)["nodes"]["new-node.example"])' \
+		< "$SYSROOT/etc/aether-proxy/state/node-ip.json")"
+
 assert_applied node "$NODE_A" "$NODE_B" nft_replace,restart_xray
 assert_completion node "$NODE_B" bypass_cn true
 assert_budget node 1
@@ -395,6 +399,8 @@ expect 'T9.8 node switch tests Xray exactly once' "$((tests_before + 1))" "$(cou
 expect 'T9.8 node switch prechecks exactly once' "$((pre_before + 1))" "$(count_calls "$LOG" 'ip rule help')"
 expect 'T9.8 node switch validates nft exactly twice' "$((checks_before + 2))" "$(artifact_checks)"
 
+cp "$SYSROOT/etc/aether-proxy/state/node-ip.json" "$T/lkg-before-fallback"
+lkg_inode=$(stat -c %i "$SYSROOT/etc/aether-proxy/state/node-ip.json")
 touch "$SYSROOT/resolve-always-fail"
 sed -i "s/option node 'n_00000000000000000000000000000002'/option node 'n_00000000000000000000000000000001'/" \
 	"$T/conf/aetherproxy"
@@ -411,6 +417,10 @@ expect 'T9.5 switch back exhausts three DNS attempts before LKG' "$((old_calls +
 	"$(count_calls "$LOG" 'resolveip -4 -t 3 node.example.com')"
 expect 'T9.5 switch back persists original IP' 203.0.113.20 \
 	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_ip < "$SYSROOT/var/run/aether-proxy/state.json")"
+cmp -s "$T/lkg-before-fallback" "$SYSROOT/etc/aether-proxy/state/node-ip.json" \
+	&& ok 'T16.15 reload fallback preserves LKG bytes' || bad 'T16.15 reload fallback preserves LKG bytes'
+expect 'T16.15 reload fallback does not rewrite LKG' "$lkg_inode" \
+	"$(stat -c %i "$SYSROOT/etc/aether-proxy/state/node-ip.json")"
 expect 'T9.5 switch back records exactly one fallback' 1 \
 	"$(count_calls "$SYSROOT/var/run/aether-proxy/events.jsonl" 'NODE_RESOLVE_FALLBACK')"
 expect 'T9.5 switch back never records resolve failure' 0 \
@@ -492,6 +502,8 @@ expect 'T9.8 live-set no-op skips Xray test' "$tests_before" "$(count_calls "$LO
 # Compare installed artifacts and child pids as well as node_id to detect partial application.
 cp "$T/conf/aetherproxy" "$T/good-config"
 failure_checkpoint() {
+	cp "$SYSROOT/etc/aether-proxy/state/node-ip.json" "$T/lkg-before-failure"
+	lkg_failure_inode=$(stat -c %i "$SYSROOT/etc/aether-proxy/state/node-ip.json")
 	reload_checkpoint
 	failure_events_before=$(count_calls "$EVENTS" "$1")
 	nft_loads_before=$(count_calls "$LOG" 'nft -f ')
@@ -545,6 +557,10 @@ assert_failed() {
 	sleep 0.2
 	expect "T10.71 $label monitor preserves last_reload" "$completion_before" \
 		"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload < "$SYSROOT/var/run/aether-proxy/state.json")"
+	cmp -s "$T/lkg-before-failure" "$SYSROOT/etc/aether-proxy/state/node-ip.json" \
+		&& ok "T16.15 $label preserves LKG bytes" || bad "T16.15 $label preserves LKG bytes"
+	expect "T16.15 $label does not rewrite LKG" "$lkg_failure_inode" \
+		"$(stat -c %i "$SYSROOT/etc/aether-proxy/state/node-ip.json")"
 	cp "$T/good-config" "$T/conf/aetherproxy"
 }
 
@@ -561,11 +577,14 @@ chmod +x "$T/bin/xray-alt"
 
 failure_checkpoint RENDER_INVALID
 printf '1\n' > "$SYSROOT/xray-test-rc"
-sed -i "s/option port '445'/option port '446'/" "$T/conf/aetherproxy"
+rm "$SYSROOT/resolve-always-fail"
+sed -i -e "s/option port '445'/option port '446'/" \
+	-e "s/option address 'node.example.com'/option address 'unverified.example'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"
 assert_failed RENDER_INVALID invalid-xray
 expect 'T9.8 failed Xray validation was attempted once' "$((tests_before + 1))" "$(count_calls "$LOG" 'xray run -test')"
 rm "$SYSROOT/xray-test-rc"
+touch "$SYSROOT/resolve-always-fail"
 
 failure_checkpoint NODE_RESOLVE_FAILED
 sed -i "s/option address 'node.example.com'/option address 'uncached-failure.example'/" "$T/conf/aetherproxy"
@@ -585,12 +604,15 @@ rm "$SYSROOT/nft-check-fail-after"
 
 failure_checkpoint START_FAILED
 touch "$SYSROOT/nft-load-fail"
-sed -i "s/option mode 'gfw'/option mode 'bypass_cn'/" "$T/conf/aetherproxy"
+rm "$SYSROOT/resolve-always-fail"
+sed -i -e "s/option mode 'gfw'/option mode 'bypass_cn'/" \
+	-e "s/option address 'node.example.com'/option address 'unverified-action.example'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"
 assert_failed START_FAILED action-failure
 grep 'START_FAILED' "$EVENTS" | grep -Fq '"step": "reload:actions"' \
 	&& ok 'T9.8 action failure retains reload step prefix' || bad 'T9.8 action failure retains reload step prefix'
 rm "$SYSROOT/nft-load-fail"
+touch "$SYSROOT/resolve-always-fail"
 
 # T9.26: change node and mode in one reload, then return to the original pair.
 # B already has an LKG entry, so the active DNS-outage substitute remains unchanged.
