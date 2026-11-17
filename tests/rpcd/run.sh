@@ -57,6 +57,57 @@ else
 	ok "11. overview.js does not declare rpc itself"
 fi
 
+# T16.11: inspect the shipped hooks, then run them with a private rpcd stub.
+# Replacing the absolute init path keeps these tests away from the host service.
+for hook in postinst postrm; do
+	body="$(awk -v hook="$hook" '
+		$0 == "define Package/luci-app-aether-proxy/" hook { inside = 1; next }
+		inside && /^endef$/ { exit }
+		inside { print }
+	' "$ROOT/luci-app-aether-proxy/Makefile")"
+	if [[ "$body" == *'[ -n "$${IPKG_INSTROOT}" ] && exit 0'* ]] &&
+		[[ "$body" == *'/etc/init.d/rpcd reload'* ]] &&
+		[[ "$body" != *restart* ]]; then
+		ok "T16.11 $hook guards IPKG_INSTROOT, calls rpcd reload, and contains no restart"
+	else
+		bad "T16.11 $hook guards IPKG_INSTROOT, calls rpcd reload, and contains no restart"
+	fi
+	# OpenWrt make expands doubled dollars before installing the shell script.
+	body="${body//\$\$/\$}"
+	printf '%s\n' "${body//\/etc\/init.d\/rpcd/$T/rpcd}" >"$T/$hook"
+	printf '#!/bin/sh\nprintf "%%s\\n" "$*" >"%s"\nexit 7\n' "$T/reload.log" >"$T/rpcd"
+	chmod +x "$T/rpcd"
+	rm -f "$T/reload.log"
+	if IPKG_INSTROOT="$T/image" sh "$T/$hook" >"$T/hook.out" 2>"$T/hook.err" &&
+		[ ! -e "$T/reload.log" ] && [ ! -s "$T/hook.out" ] && [ ! -s "$T/hook.err" ]; then
+		ok "T16.11 $hook skips rpcd silently during image builds"
+	else
+		bad "T16.11 $hook skips rpcd silently during image builds"
+	fi
+	if IPKG_INSTROOT= sh "$T/$hook" >"$T/hook.out" 2>"$T/hook.err" &&
+		[ "$(<"$T/reload.log")" = reload ] && [ ! -s "$T/hook.out" ] &&
+		[ "$(<"$T/hook.err")" = 'luci-app-aether-proxy: rpcd reload failed (rc=7)' ]; then
+		ok "T16.11 $hook reports reload failure once and exits successfully"
+	else
+		bad "T16.11 $hook reports reload failure once and exits successfully"
+	fi
+	printf '#!/bin/sh\nprintf "%%s\\n" "$*" >"%s"\n' "$T/reload.log" >"$T/rpcd"
+	rm -f "$T/reload.log"
+	if IPKG_INSTROOT= sh "$T/$hook" >"$T/hook.out" 2>"$T/hook.err" &&
+		[ "$(<"$T/reload.log")" = reload ] && [ ! -s "$T/hook.out" ] && [ ! -s "$T/hook.err" ]; then
+		ok "T16.11 $hook reloads rpcd silently on success"
+	else
+		bad "T16.11 $hook reloads rpcd silently on success"
+	fi
+	rm -f "$T/rpcd" "$T/reload.log"
+	if IPKG_INSTROOT= sh "$T/$hook" >"$T/hook.out" 2>"$T/hook.err" &&
+		[ ! -s "$T/hook.out" ] && [ ! -s "$T/hook.err" ]; then
+		ok "T16.11 $hook skips missing rpcd silently"
+	else
+		bad "T16.11 $hook skips missing rpcd silently"
+	fi
+done
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

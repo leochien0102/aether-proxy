@@ -183,6 +183,8 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 
 ## rpcd 插件
 
+升级后 rpcd 会自动 reload 插件方法，无需重启设备。
+
 形式：`/usr/share/rpcd/ucode/aetherproxy.uc`（rpcd 的 ucode 插件机制，与后端语言选择无关，24.10 起可用）。
 插件只做两件事：校验参数（白名单 + 正则），然后执行 `aether-proxy … --json` 并原样返回。
 **判断参数时一律忽略 `ubus_rpc_session`**：经 uhttpd 从 LuCI 发来的调用，uhttpd 会在参数里自动加上这个键（2026-10-21 r9 窗口发现：`components` 因「参数不为空」拒绝了页面的每一次调用，
