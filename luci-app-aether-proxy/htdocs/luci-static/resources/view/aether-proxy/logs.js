@@ -7,7 +7,7 @@
 
 /* Log-page controller (docs/10 「日志页」). Only events are polled; raw logs
  * can be large and are fetched on demand. All untrusted content is text.
- * T16.10 keeps destructive actions in a persistent page-level toolbar shared by both tabs.
+ * T16.13 keeps destructive actions persistent at the right of the shared tab row.
  * T10.39 reads name maps from the already loaded UCI; hover keeps original IDs.
  * Block action rows follow docs/10 "UI 规则" (T10.27); the wrapping filter row
  * follows "r16 修正：日志页筛选行与事件文字" (T10.56).
@@ -183,8 +183,12 @@ return view.extend({
 			'class': 'cbi-button cbi-button-remove', click: () => this.changeLogs(true)
 		}, _('Truncate to last startup', 'aether-proxy'));
 		// Page-level controls stay mounted when either tab's data is refreshed.
-		this.toolbar = E('div', {}, [
-			E('div', { style: rowStyle }, [ this.clearButton, this.truncateButton ]), this.toolbarError
+		this.toolbar = E('div', { style: rowStyle + '; justify-content:space-between' }, [
+			E('div', { style: groupStyle }, [
+				E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
+				E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
+			]),
+			E('div', { style: groupStyle }, [ this.clearButton, this.truncateButton ])
 		]);
 		this.rawPanel = E('div', { hidden: true }, [
 			E('div', { style: rowStyle + '; justify-content:space-between' }, [
@@ -202,10 +206,7 @@ return view.extend({
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
 			this.toolbar,
-			E('div', { style: rowStyle }, [
-				E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
-				E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
-			]),
+			this.toolbarError,
 			this.eventPanel, this.rawPanel
 		]);
 		/* Give LuCI a turn to display the complete page before fetching events. */

@@ -318,7 +318,7 @@ test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with o
 	assert.equal(root.tag, 'div');
 	assert.equal(root.attrs.class, 'cbi-map');
 	assert.equal(text(root.children[0]), '日志');
-	assert.deepEqual(root.children[2].children.map(text), [ '事件', '原始日志' ]);
+	assert.deepEqual(root.children[1].children[0].children.map(text), [ '事件', '原始日志' ]);
 	assert.equal(root.children[3], v.eventPanel);
 	assert.equal(root.children[4], v.rawPanel);
 	assert.equal(v.eventPanel.hidden, false);
@@ -510,7 +510,8 @@ function styles(node) {
 test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with bounded select groups', () => {
 	const h = load_view(), v = h.page;
 	const root = v.render();
-	const tabs = root.children[2];
+	const tabRow = root.children[1];
+	const tabs = tabRow.children[0];
 	const [toolbar, content] = v.rawPanel.children;
 	const [filters, actions] = toolbar.children;
 	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
@@ -518,13 +519,13 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 	assert.deepEqual(actions.children.map(text), ['刷新']);
 	assert.equal(styles(toolbar)['justify-content'], 'space-between');
 	assert.equal(styles(actions)['justify-content'], 'flex-end');
-	for (const row of [tabs, toolbar, filters, actions]) {
+	for (const row of [tabRow, tabs, toolbar, filters, actions]) {
 		assert.equal(styles(row).display, 'flex');
 		assert.equal(styles(row)['align-items'], 'center');
 		assert.equal(styles(row).gap, '0.5em');
 		assert.equal(styles(row)['flex-wrap'], 'wrap');
 	}
-	for (const row of [tabs, toolbar])
+	for (const row of [tabRow, toolbar])
 		assert.equal(styles(row).margin, '0.5em 0 1em');
 	for (const group of [filters, actions])
 		assert.equal(styles(group)['max-width'], '100%');
@@ -652,29 +653,57 @@ test('T16.10: tab switch during action refreshes the tab selected at completion'
 	assert.equal(v.truncateButton.disabled, false);
 });
 
-test('T16.10: unique page toolbar remains visible and identical across tabs', async () => {
+test('T16.13: tab row orders left tabs, right actions, shared error and panels persistently', async () => {
 	const h = load_view(), v = h.page;
 	const root = v.render();
 	const toolbar = v.toolbar, error = v.toolbarError;
 	assert.equal(root.children[0].tag, 'h2');
 	assert.equal(root.children[1], toolbar);
-	assert.deepEqual(toolbar.children[0].children, [v.clearButton, v.truncateButton]);
-	assert.equal(toolbar.children[1], error);
+	const [tabs, actions] = toolbar.children;
+	assert.equal(root.children.length, 5, 'no separate action row remains below the title');
+	assert.deepEqual(root.children.slice(1), [toolbar, error, v.eventPanel, v.rawPanel]);
+	assert.equal(toolbar.children.length, 2);
+	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
+	assert.deepEqual(actions.children, [v.clearButton, v.truncateButton]);
+	assert.equal(styles(toolbar)['justify-content'], 'space-between');
+	for (const group of [toolbar, tabs, actions]) {
+		assert.equal(styles(group).display, 'flex');
+		assert.equal(styles(group)['align-items'], 'center');
+		assert.equal(styles(group).gap, '0.5em');
+	}
+	setContent(error, ['persistent action error']);
 	for (const tab of ['raw', 'events', 'raw']) {
 		const pending = v.switchTab(tab);
 		h.calls.at(-1).resolve(tab == 'events' ? payload([]) : { ok: true, lines: [] });
 		await pending;
 		assert.equal(root.children[1], toolbar);
-		assert.equal(toolbar.children[1], error);
+		assert.equal(root.children[2], error);
+		assert.deepEqual(toolbar.children, [tabs, actions]);
+		assert.equal(text(error), 'persistent action error');
+		assert.equal(error.hidden, false);
+		assert.equal(tabs.hidden, false);
+		assert.equal(actions.hidden, false);
 		assert.equal(toolbar.hidden, false);
 		for (const button of [v.clearButton, v.truncateButton]) {
 			assert.equal(descendants(root).filter(n => n === button).length, 1);
 			assert.equal(descendants(root).filter(n => n.tag == 'button' && text(n) == text(button)).length, 1);
 			assert.ok(!descendants(v.rawPanel).includes(button));
-			assert.match(button.attrs.class, /cbi-button-remove/);
+			assert.equal(button.attrs.class, 'cbi-button cbi-button-remove');
+			assert.equal(button.hidden, false);
+			assert.ok(!descendants(v.eventPanel).includes(button));
 		}
 		assert.ok(!descendants(v.rawPanel).includes(error));
 		assert.deepEqual(descendants(v.rawPanel).filter(n => n.tag == 'button').map(text), ['刷新']);
+		if (tab == 'events') {
+			const poll = h.polls.at(-1).fn();
+			h.calls.at(-1).resolve(payload([]));
+			await poll;
+			assert.equal(root.children[1], toolbar);
+			assert.deepEqual(toolbar.children, [tabs, actions]);
+			assert.deepEqual(actions.children, [v.clearButton, v.truncateButton]);
+			assert.equal(root.children[2], error);
+			assert.equal(text(error), 'persistent action error');
+		}
 	}
 	v.stopPolling();
 });
