@@ -440,6 +440,17 @@ const methods = {
 		args: {}
 	},
 
+	// T16.9: truncation uses the CLI startup marker; no runtime paths cross RPC.
+	log_truncate: {
+		call: function(req) {
+			for (let key in keys(req?.args ?? {}))
+				if (key != 'ubus_rpc_session')
+					return usage('log_truncate takes no parameters');
+			return call_cli([ 'log', 'truncate' ], DEFAULT_TIMEOUT_SECS);
+		},
+		args: {}
+	},
+
 	// T9.13 (docs/10 "node parse"): read-only, with the same URI gate as import.
 	node_parse: {
 		call: function(req) {

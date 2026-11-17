@@ -10,6 +10,7 @@
 // The on-device log check recorded in docs/10 also found C source locations and ANSI colors.
 
 import * as C from 'aetherproxy.const';
+import * as logtrim from 'aetherproxy.logtrim';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as fs from 'fs';
 
@@ -168,7 +169,94 @@ function clear_logs(args) {
 	return pipeline.finish(opts, { ok: true }, 0);
 }
 
+// The open handle is retained from read through rewrite: never replace the collector's inode.
+function trim_file(path, kind, since, now) {
+	if (fs.stat(path) == null) {
+		let error = fs.error() ?? 'unknown error';
+		return error == 'No such file or directory' ? { kept: 0, dropped: 0 }
+			: { error: `stat ${path}: ${error}` };
+	}
+	let file = fs.open(path, 'r+');
+	if (file == null)
+		return { error: `open ${path}: ${fs.error() ?? 'unknown error'}` };
+	let text = file.read('all');
+	let error = file.error();
+	let result;
+	if (text == null || error != null) {
+		error ??= 'read failed';
+	}
+	else {
+		result = logtrim.filter_text(text, kind, since, now);
+		if (!file.seek(0) || file.write(result.text) != length(result.text))
+			error = file.error() ?? 'rewrite failed';
+		// seek flushes stdio output before ftruncate, including the empty-file case.
+		else if (!file.seek(length(result.text)) || !file.truncate(length(result.text)))
+			error = file.error() ?? 'truncate failed';
+	}
+	if (!file.close())
+		error ??= fs.error() ?? 'close failed';
+	return error != null ? { error: `truncate ${path}: ${error}` } : result;
+}
+
+function truncate_logs(args) {
+	let opts = { json: index(args, '--json') >= 0, run_dir: C.RUN_DIR };
+	let seen = {};
+	for (let i = 0; i < length(args); i++) {
+		let arg = args[i];
+		if (arg == '--json')
+			continue;
+		if ((arg != '--since' && arg != '--run-dir') || seen[arg] || i + 1 >= length(args))
+			return pipeline.finish(opts, { ok: false, code: 'USAGE', detail: `invalid option ${arg}` },
+				2, `invalid option ${arg}`);
+		seen[arg] = true;
+		let value = args[++i];
+		if (arg == '--run-dir' && length(value) && substr(value, 0, 2) != '--') {
+			opts.run_dir = value;
+			continue;
+		}
+		if (arg != '--since' || match(value, /^[0-9]+$/) == null || !logtrim.valid_epoch(+value))
+			return pipeline.finish(opts, { ok: false, code: 'USAGE', detail: `invalid ${arg} value` },
+				2, `invalid ${arg} value`);
+		opts.since = +value;
+	}
+	if (opts.since == null) {
+		let path = `${opts.run_dir}/${C.STATE_FILE}`;
+		let present = fs.stat(path);
+		let stat_error = present == null ? fs.error() : null;
+		if (present == null && stat_error != 'No such file or directory')
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: `stat ${path}: ${stat_error}` },
+				1, `stat ${path}: ${stat_error}`);
+		let text = present != null ? fs.readfile(path) : null;
+		if (present != null && text == null)
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: `read ${path} failed` },
+				1, `read ${path} failed`);
+		let state;
+		if (text != null) {
+			try { state = json(text); }
+			catch (e) { state = null; } // A corrupt marker is not an authoritative startup time.
+		}
+		if (!logtrim.valid_epoch(state?.since))
+			return pipeline.finish(opts, { ok: false, code: 'NOT_RUNNING', detail: 'no valid startup marker' },
+				2, 'no valid startup marker');
+		opts.since = state.since;
+	}
+	let result = { ok: true, since: opts.since, kept: {}, dropped: {} };
+	let names = { events: C.EVENTS_FILE, raw: C.RAW_LOG_FILE, raw1: `${C.RAW_LOG_FILE}.1` };
+	let now = time();
+	for (let kind, name in names) {
+		let filtered = trim_file(`${opts.run_dir}/${name}`, kind, opts.since, now);
+		if (filtered.error)
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: filtered.error },
+				1, filtered.error);
+		result.kept[kind] = filtered.kept;
+		result.dropped[kind] = filtered.dropped;
+	}
+	return pipeline.finish(opts, result, 0, sprintf('logs truncated since %s: %.J', opts.since, result.kept));
+}
+
 export function run(args) {
+	if (args[0] == 'truncate')
+		return truncate_logs(slice(args, 1));
 	if (args[0] == 'clear')
 		return clear_logs(slice(args, 1));
 	let parsed = parse_args(args);

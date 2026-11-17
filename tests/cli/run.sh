@@ -653,5 +653,11 @@ else
 	bad 'M4-09 port scope CLI field errors and inactive values'
 fi
 
+if python3 "$ROOT/tests/cli/log-truncate.py"; then
+	ok 'T16.9 log truncate CLI scenarios'
+else
+	bad 'T16.9 log truncate CLI scenarios'
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

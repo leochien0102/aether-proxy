@@ -74,6 +74,7 @@ const PLUGIN_METHODS = {
 	stats_quota: [ 'action', 'bytes' ],
 	log: [ 'source', 'lines' ],
 	log_clear: [],
+	log_truncate: [],
 	node_import: [ 'uri' ],
 	node_parse: [ 'uri' ],
 	list_file: [ 'name' ],
