@@ -486,6 +486,7 @@ function persist_state(daemon, machine) {
 		degraded_mode: machine.degraded_mode,
 		degraded_since: machine.degraded_since,
 		since: machine.since,
+		started_at: machine.started_at,
 		last_probe: machine.last_probe,
 		monitor: machine
 	};
@@ -684,6 +685,8 @@ initial_state = (service, now) => {
 		degraded_mode: service?.degraded_mode ?? null,
 		degraded_since: service?.degraded_since ?? null,
 		last_probe: service?.last_probe ?? null,
+		// Unlike since, this identifies the daemon lifetime, not the latest transition.
+		started_at: now,
 		since: service?.since ?? now
 	};
 };
@@ -720,6 +723,7 @@ next = (state, obs, cfg) => {
 		degraded_mode: old.degraded_mode ?? null,
 		degraded_since: old.degraded_since ?? null,
 		last_probe: old.last_probe ?? null,
+		started_at: old.started_at,
 		since: old.since ?? now
 	};
 	let actions = [], events = [];

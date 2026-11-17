@@ -9,7 +9,7 @@ const BASE = {
 	chinadns_down_count: 0, chinadns_down_reported: false,
 	ever_healthy: true, proxy_fail_count: 0, proxy_ok_count: 0, dns_fail_count: 0,
 	t3_since: null, last_t2_retry: null, t2_retry_pending: false,
-	last_node_refresh: 1000, node_ip: '203.0.113.9', last_probe: null, since: 900
+	last_node_refresh: 1000, node_ip: '203.0.113.9', last_probe: null, since: 900, started_at: 800
 };
 const CFG = {
 	main: { fail_open: true },
@@ -22,6 +22,8 @@ function test(name, state, obs, cfg, actions, codes, fields) {
 };
 
 export const cases = [
+	{ name: 'started_at initializes at startup and survives degraded to running while since changes',
+		expect: 'PASS', kind: 'started-at' },
 	{ name: 'monitor cadence follows running state', expect: 'PASS', kind: 'interval' },
 	test('direct DNS default off sends unhealthy proxy directly to T3', { proxy_fail_count: 2 },
 		{ now: 1020, proxy_ok: false },
@@ -142,6 +144,15 @@ export const cases = [
 ];
 
 export function run(c) {
+	if (c.kind == 'started-at') {
+		let state = mon.initial_state({ state: 'degraded', since: 950, started_at: 100 }, 1000);
+		if (state.started_at != 1000 || state.since != 950)
+			return 'FAIL: startup must replace old started_at without changing since';
+		state = mon.next(state, { now: 1010, proxy_ok: true }, CFG).state;
+		if (state.state != 'running' || state.started_at != 1000 || state.since != 1010)
+			return 'FAIL: recovery must update since but retain started_at';
+		return 'PASS';
+	}
 	if (c.kind == 'startup-recovery') {
 		let cfg = { ...CFG, probe: { fail_threshold: 1, recover_threshold: 2 } };
 		let state = mon.initial_state({ state: 'starting', dns_tier: 'T2' }, 1000);
@@ -160,6 +171,8 @@ export function run(c) {
 	let result = mon.next({ ...BASE, ...(c.state ?? {}) }, c.obs, c.cfg);
 	if (sprintf('%.J', result.actions) != sprintf('%.J', c.actions))
 		return `FAIL: ${c.name} actions ${sprintf('%.J', result.actions)}`;
+	if (result.state.started_at != BASE.started_at)
+		return `FAIL: ${c.name} changed started_at`;
 	let codes = map(result.events, e => e.code);
 	if (sprintf('%.J', codes) != sprintf('%.J', c.codes))
 		return `FAIL: ${c.name} events ${sprintf('%.J', codes)}`;

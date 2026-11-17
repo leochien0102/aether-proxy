@@ -200,8 +200,14 @@ exec "$(dirname "$0")/nft-original" "$@"
 
 	for case in ('absent-table', 'export-failure', 'invalid-export', 'live-table'):
 		fixture = Fixture(case)
+		launched_at = int(time.time())
 		with fixture.daemon() as child:
 			wait_for(lambda: fixture.state().get('state') == 'running', child)
+			first_started_at = fixture.state().get('started_at')
+			check('T16.16 startup publishes started_at within launch bounds: ' + case,
+				isinstance(first_started_at, int) and launched_at <= first_started_at <= int(time.time()))
+			check('T16.16 persisted startup marker matches monitor machine: ' + case,
+				fixture.state()['monitor']['started_at'] == first_started_at)
 			check('running daemon publishes its own pid: ' + case,
 				(fixture.run / 'daemon.pid').read_text().strip() == str(child.pid))
 			fixture.calls.write_text('')
@@ -243,8 +249,15 @@ exec "$(dirname "$0")/nft-original" "$@"
 					and calls.index('nft -j list set') < calls.index('nft delete table')
 					and json.loads(save.read_text()) == {'gfw4': ['1.2.3.4'], 'udirect4': [], 'uproxy4': []})
 		if case == 'live-table':
+			wait_for(lambda: int(time.time()) > first_started_at)
+			restarted_at = int(time.time())
 			with fixture.daemon() as child:
 				wait_for(lambda: fixture.state().get('state') == 'running', child)
+				new_started_at = fixture.state().get('started_at')
+				check('T16.16 daemon restart publishes a new startup time',
+					isinstance(new_started_at, int) and first_started_at < new_started_at
+					and restarted_at <= new_started_at <= int(time.time()))
+				print(f'EVIDENCE T16.16 restart started_at: {first_started_at} -> {new_started_at}', flush=True)
 				check('restart restores saved dynamic set elements into the new table',
 					'elements = { 1.2.3.4 }' in (fixture.run / 'current/aether-proxy.nft').read_text()
 					and not save.exists())
