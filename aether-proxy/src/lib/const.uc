@@ -394,3 +394,7 @@ export const QUOTA_MAX_BYTES = 100000 * QUOTA_GB;
 // T16.8: volatile live-day overlay, never a usage.json checkpoint.
 export const USAGE_TODAY_FIELD = 'usage_today';
 export const USAGE_TODAY_MAX_AGE = 600;
+
+// T16.12: validate candidate node IPs and debounce health-edge refreshes.
+export const NODE_PROBE_TIMEOUT_SECS = 3;
+export const NODE_REFRESH_MIN_GAP_SECS = 60;

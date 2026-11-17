@@ -134,6 +134,7 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `COMPONENT_TOO_OLD` | error | `component`、`version`、`min` |
 | `NODE_RESOLVE_FALLBACK` / `NODE_RESOLVE_FAILED` | warn / error | `node`、`domain`、`lkg_ip` |
 | `NODE_IP_CHANGED` | notice | `node`、`old`、`new` |
+| `NODE_IP_UNREACHABLE` | warn | `node`（节点 ID）、`address`（配置的节点地址）、`ip`（候选新 IPv4）、`port`（节点端口）；新 IP 的 3 秒 TCP 探测失败，保留当前 IP，不产生 `NODE_IP_CHANGED` |
 | `NODE_STALE` / `NODE_STALE_IN_USE` | warn | `node`、`label` |
 | `NODE_INSECURE_IGNORED` | warn | `node`、`label` |
 | `PROXY_HEALTHY` / `PROXY_UNHEALTHY` | notice / warn | `latency_ms`、`fails` |

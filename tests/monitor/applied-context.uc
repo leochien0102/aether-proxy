@@ -2,6 +2,7 @@
 // T9.43: real monitor actions and atomic reloads must retain one applied generation (docs/04).
 
 import * as fs from 'fs';
+import * as socket from 'socket';
 import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
 import * as sys from 'aetherproxy.sys';
@@ -58,6 +59,14 @@ function expected(d, loaded, label, names) {
 };
 
 if (!uloop.init()) die('uloop init failed');
+// T16.12: generation recovery now requires a reachable candidate, not a fake public IP.
+let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+if (listener == null || !listener.bind({ address: '127.0.0.1', port: 0 }) || !listener.listen(128))
+	die('cannot listen for node IP guard');
+let port = listener.sockname().port;
+for (let path in [ `${root}/etc/config/aetherproxy`, `${base}/A/aetherproxy`, `${base}/B/aetherproxy` ])
+	write(path, replace(fs.readfile(path), "option port '443'", `option port '${port}'`));
+write(`${root}/resolve-ip`, '127.0.0.1\n');
 if (!sys.mkdir_p(current)) die(sys.error());
 let opts = { confdir: `${root}/etc/config`, sys_root: root, bin_dir: `${base}/bin`,
 	data_dir: `${base}/A/data`, baseline_dir: `${base}/A/baseline`, custom_dir: `${base}/A/custom` };
@@ -65,9 +74,9 @@ let ctx = { root, bin_dir: opts.bin_dir, run_dir: C.RUN_DIR, state_dir: C.STATE_
 	lan_ifaces: [ 'br-lan' ] };
 let a = pipeline.read(opts);
 if (!a.ok) die(sprintf('%.J', a));
-let built = install(a, { node_ip: '203.0.113.20', dns_tier: 'T1' });
+let built = install(a, { node_ip: '127.0.0.1', dns_tier: 'T1' });
 let hashes = apply.artifact_hashes(ctx, current);
-let state = { state: 'running', dns_tier: 'T1', node_ip: '203.0.113.20',
+let state = { state: 'running', dns_tier: 'T1', node_ip: '127.0.0.1',
 	node_id: a.snapshot.main.node, mode: a.snapshot.main.mode, wan_dns: a.wan_dns,
 	degraded_mode: null, render_hash: hashes.hashes,
 	components: { xray: { path: `${base}/bin/xray` }, 'chinadns-ng': { path: `${base}/bin/chinadns-ng` } } };
@@ -127,8 +136,9 @@ function recover(loaded, label) {
 	expected(d, loaded, `${label} T3 to T1`, [ 'chinadns' ]);
 	d.machine.node_ip = '203.0.113.19';
 	d.machine.last_node_refresh = time() - C.MONITOR_NODE_REFRESH_SECS - 1;
+	d.machine.last_node_refresh_attempt = d.machine.last_node_refresh;
 	tick(d);
-	check(d.machine.node_ip == '203.0.113.20', `${label} node IP refresh succeeds`);
+	check(d.machine.node_ip == '127.0.0.1', `${label} node IP refresh succeeds`);
 	expected(d, loaded, `${label} node IP refresh`, [ 'nft', 'xray' ]);
 	check(d.applied_context == applied_before && d.applied_context?.snapshot == d.snapshot,
 		`${label} recovery preserves paired snapshot and complete context`);
@@ -140,7 +150,7 @@ check(fs.readfile(`${base}/wan-calls`) == wan_calls, 'monitor never reobserves W
 
 for (let kind in [ 'read', 'render', 'validation', 'action' ]) {
 	// Restore exact A outputs and hashes before each independent failed transaction.
-	install(a, { node_ip: '203.0.113.20', dns_tier: 'T1' });
+	install(a, { node_ip: '127.0.0.1', dns_tier: 'T1' });
 	d.state.render_hash = apply.artifact_hashes(ctx, current).hashes;
 	let previous = d.applied_context, snapshot = d.snapshot;
 	if (kind == 'read') write(`${root}/etc/config/aetherproxy`, "config main 'main'\n option mode 'invalid'\n");
@@ -207,7 +217,7 @@ let degraded_context = { ...a, snapshot: { ...a.snapshot,
 	main: { ...a.snapshot.main, mode: 'bypass_cn' } }, warnings: [ { code: 'test-warning' } ] };
 d.applied_context = degraded_context;
 d.snapshot = degraded_context.snapshot;
-install(degraded_context, { node_ip: '203.0.113.20', dns_tier: 'T1' });
+install(degraded_context, { node_ip: '127.0.0.1', dns_tier: 'T1' });
 d.state = { ...d.state, state: 'running', mode: 'bypass_cn', dns_tier: 'T1', degraded_mode: null };
 d.machine = monitor.initial_state(d.state, time());
 flag('health-fail', true);

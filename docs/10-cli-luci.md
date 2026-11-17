@@ -544,6 +544,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - `skipped` 大于 0 时在列表上方提示「有 <n> 行记录损坏，已跳过」。返回 `ok: false` 时显示 `code` 与 `detail`，列表保持上一次的内容。
 - **中文说明**：每个事件码一个模板，`{参数名}` 换成 `args` 中的值。模板覆盖 [09](09-logging.md)「事件码目录」中等级为 notice、warn、error 的**全部**事件码（`CHILD_STARTED`、`CMD_RUN` 只在 syslog 出现，不需要）。
   参数值的显示：缺失 → `?`；数组 → 用「、」连接；对象 → `键 值` 用「、」连接（例如 `skipped` 的按原因计数、`steps`）；其他 → 原样。
+  T16.12：`NODE_IP_UNREACHABLE`（warn）显示「节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP」；节点 ID 按现有名称映射显示，原始四个参数保留在悬停内容中。
   模板只用参数，不另外翻译参数的值（例如 `reason`、`mode` 原样显示）。未知事件码 → 「<事件码> <args 的 JSON>」。
   `SERVICE_STARTED` 只显示耗时，不展开 `steps`（`steps` 仍在悬停的 `args` 里）。
 

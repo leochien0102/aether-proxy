@@ -31,6 +31,8 @@ const TEMPLATES = {
 	NODE_RESOLVE_FALLBACK: _('Node {node}: using {lkg_ip} for {domain}', 'aether-proxy'),
 	NODE_RESOLVE_FAILED: _('Node {node}: could not resolve {domain}', 'aether-proxy'),
 	NODE_IP_CHANGED: _('Node {node} IP changed from {old} to {new}', 'aether-proxy'),
+	NODE_IP_UNREACHABLE: _('Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP',
+		'aether-proxy'),
 	NODE_STALE: _('Node {node} is stale', 'aether-proxy'),
 	NODE_STALE_IN_USE: _('Current node {node} is stale', 'aether-proxy'),
 	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node}', 'aether-proxy'),

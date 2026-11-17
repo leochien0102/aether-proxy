@@ -4,6 +4,7 @@
 // Live usage publication: docs/design/b25-quota-heatmap-20261116.md §2.1 (T16.8).
 
 import * as fs from 'fs';
+import * as socket from 'socket';
 import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
 import * as sys from 'aetherproxy.sys';
@@ -245,11 +246,39 @@ function action_set_tier(daemon, tier, done) {
 		});
 };
 
+// A nonblocking connect tests only TCP reachability, not the proxy protocol. Waiting
+// for nc's stdin/peer EOF can misclassify a connected but silent node as unreachable.
+function node_reachable(ip, port) {
+	let sock = socket.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
+	if (sock == null)
+		return false;
+	let connected = sock.connect(ip, port);
+	if (!connected) {
+		let code = socket.error(true);
+		if (code == 115 || code == 114) {
+			let polled = socket.poll(C.NODE_PROBE_TIMEOUT_SECS * 1000,
+				[ sock, socket.POLLOUT | socket.POLLERR | socket.POLLHUP | socket.POLLNVAL, 1 ]);
+			connected = polled != null && length(polled) > 0 &&
+				sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0;
+		}
+	}
+	sock.close();
+	return connected;
+};
+
 function update_node_ip(daemon, machine, done) {
 	let node_id = daemon.snapshot.main.node;
 	let address = daemon.snapshot.nodes?.[node_id]?.address;
 	let resolved = apply.resolve_node(daemon.ctx, address);
 	if (!resolved.ok || resolved.ip == machine.node_ip) {
+		done(null);
+		return;
+	}
+	let port = daemon.snapshot.nodes[node_id].port;
+	// Reject stale DNS answers before exporting sets or touching active artifacts.
+	if (!node_reachable(resolved.ip, port)) {
+		log.set_run_dir(run_dir(daemon));
+		log.event('warn', 'NODE_IP_UNREACHABLE', { node: node_id, address, ip: resolved.ip, port });
 		done(null);
 		return;
 	}
@@ -583,6 +612,7 @@ initial_state = (service, now) => {
 		last_t2_retry: null,
 		t2_retry_pending: false,
 		last_node_refresh: now,
+		last_node_refresh_attempt: null,
 		node_ip: service?.node_ip ?? null,
 		degraded_mode: service?.degraded_mode ?? null,
 		degraded_since: service?.degraded_since ?? null,
@@ -616,6 +646,7 @@ next = (state, obs, cfg) => {
 		last_t2_retry: old.last_t2_retry ?? null,
 		t2_retry_pending: old.t2_retry_pending == true,
 		last_node_refresh: old.last_node_refresh ?? now,
+		last_node_refresh_attempt: old.last_node_refresh_attempt ?? null,
 		node_ip: old.node_ip ?? null,
 		degraded_mode: old.degraded_mode ?? null,
 		degraded_since: old.degraded_since ?? null,
@@ -779,11 +810,15 @@ next = (state, obs, cfg) => {
 		}
 	}
 
-	// 6. Domain-based nodes are refreshed at most once every ten minutes.
-	if (out.last_node_refresh == null)
+	// 6. Refresh on the unhealthy edge as well as periodically. Share the attempt
+	// timestamp so a periodic refresh and a flapping health edge cannot double-run.
+	let unhealthy = length(filter(events, e => e.code == 'PROXY_UNHEALTHY')) > 0;
+	let refresh_due = now - out.last_node_refresh >= C.MONITOR_NODE_REFRESH_SECS;
+	let refresh_allowed = out.last_node_refresh_attempt == null ||
+		now - out.last_node_refresh_attempt >= C.NODE_REFRESH_MIN_GAP_SECS;
+	if ((unhealthy || refresh_due) && refresh_allowed) {
 		out.last_node_refresh = now;
-	else if (obs.now - out.last_node_refresh >= C.MONITOR_NODE_REFRESH_SECS) {
-		out.last_node_refresh = now;
+		out.last_node_refresh_attempt = now;
 		action('refresh_node_ip');
 	}
 	if (out.state != previous_service_state)
