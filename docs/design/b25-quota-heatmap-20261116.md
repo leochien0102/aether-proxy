@@ -40,6 +40,21 @@
 - 日平均额度按**该格日期所在月**的实际天数计算：`daily = quota.bytes / daysInMonth(日期)`。
   2026-02 用 28 天、2026-11 用 30 天、2026-12 用 31 天；跨月不重置、不累积。
 
+### 2.1 当天数据的读路径（实时快照，2026-11-17）
+
+问题：当天数据只在内存，`usage.json` 仅跨天/干净停止才写，页面只读文件 → 当天那格一直不更新，
+用户必须重启才看得见。修法**不是多写闪存**，而是复用已有的内存快照通道：
+
+- monitor 每个 tick 把当天累计写进 **`state.json`**（`/var/run/aether-proxy/`，tmpfs，本来每 tick 就写）：
+  `usage_today: { date: "YYYY-MM-DD", tx, rx, observed, healthy, at: <epoch 秒> }`；
+  热力图关闭时**不写**该字段。
+- `stats history` 读完 `usage.json` 后合并快照：`date` 等于本地今天、且 `at` 距今 **≤ 600 秒**时，
+  用快照值覆盖该日条目；过期或日期不符则忽略（daemon 未运行时自然只用文件）。
+- 概览页热力图的 history TTL 由 600 秒降到 **60 秒**；仍是"最多一个请求在飞"，不新增 5 秒轮询。
+
+效果：新鲜度 ≈ monitor tick（30 秒）+ 页面 60 秒 → 通常 30–60 秒可见；闪存写入次数**不变**；
+掉电仍最多丢当天（与现状一致）。不做定时 checkpoint（2026-11-17 决定）。
+
 ## 3. 额度设置
 
 - 存放：`usage.json` 的 `quota`。**不放 UCI**：`aether-proxy.init` 注册了 `aetherproxy` 的
