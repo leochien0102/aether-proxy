@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -72,7 +73,11 @@ def objects(text):
 		found.append(value)
 
 
-with tempfile.TemporaryDirectory(prefix='.stop-state-', dir=ROOT / 'tests/daemon') as temp:
+with tempfile.TemporaryDirectory(prefix='.stop-state-', dir=ROOT / 'tests/daemon') as temp, \
+		socket.socket(socket.AF_INET, socket.SOCK_STREAM) as refresh_target:
+	# The refresh scenarios must reach the restart callback, not a TCP timeout.
+	refresh_target.bind(('127.0.0.1', 0))
+	refresh_target.listen()
 	base = Path(temp)
 	binaries = base / 'bin'
 	shutil.copytree(ROOT / 'tests/stubs/daemon-bin', binaries)
@@ -349,12 +354,17 @@ config subscription 's_00000001'
 		sub_status = fixture.root / 'etc/aether-proxy/state/sub.json'
 		sub_status.write_text(json.dumps({'s_00000001': {'last_attempt': int(time.time()) + 3600}}))
 		fixture.env['AETHER_PROXY_TEST_SCHEDULE_INTERVAL_MS'] = '10'
+		if phase != 'probe':
+			config = fixture.conf / 'aetherproxy'
+			config.write_text(config.read_text().replace("option port '443'",
+				f"option port '{refresh_target.getsockname()[1]}'", 1))
 		with fixture.daemon() as child:
 			wait_for(lambda: fixture.state().get('state') == 'running', child)
 			before = fixture.state()
 			hold = fixture.root / ('hold-' + phase)
 			hold.touch()
 			if phase != 'probe':
+				(fixture.root / 'resolve-ip').write_text('127.0.0.1\n')
 				(fixture.root / 'refresh-now').touch()
 			child.send_signal(signal.SIGUSR1)
 			wait_for(lambda: (fixture.root / (phase + '-held')).exists(), child)
