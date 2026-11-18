@@ -6,6 +6,7 @@ import os
 import pathlib
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -34,7 +35,7 @@ def wait_for(predicate, timeout=10):
 
 
 class Fixture:
-    def __init__(self, base, name, trust=('tcp://8.8.8.8',), degraded=False):
+    def __init__(self, base, name, trust=('tcp://8.8.8.8',), degraded=False, node_port=None):
         self.degraded = degraded
         self.base = base / name
         self.root = self.base / 'root'
@@ -63,6 +64,8 @@ class Fixture:
             (self.root / file).touch()
         self.conf = self.root / 'etc/config/aetherproxy'
         self.sample = (ROOT / 'tests/fixtures/sample/aetherproxy').read_text()
+        if node_port is not None:
+            self.sample = self.sample.replace("option port '443'", f"option port '{node_port}'", 1)
         self.configure(trust)
         if degraded:
             (self.root / 'resolve-always-fail').touch()
@@ -178,7 +181,8 @@ class Fixture:
                  (self.degraded or self.state().get('last_probe', {}).get('ok') is True))
 
 
-def main(base):
+def main(base, refresh_target):
+    refresh_ip, refresh_port = refresh_target
     for trust in [('tcp://8.8.8.8',), ('udp://8.8.8.8',), ('udp://8.8.8.8', 'tcp://1.1.1.1')]:
         f = Fixture(base, 'start-' + str(len(list(base.iterdir()))), trust)
         f.delay()
@@ -252,7 +256,7 @@ def main(base):
               'rollback_xray' in last['error'],
               'W8 state-write failure preserves original cause and returns rollback gate failure')
 
-    f = Fixture(base, 'planned-restarts')
+    f = Fixture(base, 'planned-restarts', node_port=refresh_port)
     with f.daemon() as child:
         f.running()
         # Periodic observation deliberately remains TPROXY-only and nonblocking.
@@ -274,7 +278,7 @@ def main(base):
         wait_for(lambda: f.probes() > probes)
         check(f.count('xray-dns-published') > pending, 'W9 SIGUSR2 probes only after replacement DNS ready')
         # Force the real monitor IP refresh path using a different resolved IP.
-        (f.root / 'resolve-ip').write_text('198.51.100.44\n')
+        (f.root / 'resolve-ip').write_text(f'{refresh_ip}\n')
         (f.root / 'refresh-now').touch()
         pending = f.count('xray-dns-pending')
         child.send_signal(signal.SIGUSR1)
@@ -282,8 +286,8 @@ def main(base):
         check(not f.events('NODE_IP_CHANGED'), 'W9 monitor cannot publish IP change before replacement DNS ready')
         # The event is emitted before the monitor's atomic state write. Observe
         # both completion records rather than racing that legitimate ordering.
-        wait_for(lambda: bool(f.events('NODE_IP_CHANGED')) and f.state()['node_ip'] == '198.51.100.44')
-        check(f.state()['node_ip'] == '198.51.100.44', 'W9 monitor publishes resolved IP after DNS ready')
+        wait_for(lambda: bool(f.events('NODE_IP_CHANGED')) and f.state()['node_ip'] == refresh_ip)
+        check(f.state()['node_ip'] == refresh_ip, 'W9 monitor publishes resolved IP after DNS ready')
         f.missing(31082)
         probes = f.probes()
         pending = f.count('xray-dns-pending')
@@ -296,12 +300,12 @@ def main(base):
               'W9 SIGUSR2 missing DNS real TERM cancels without success probe/state')
 
     for operation in ('monitor', 'reload'):
-        f = Fixture(base, 'cancel-' + operation)
+        f = Fixture(base, 'cancel-' + operation, node_port=refresh_port if operation == 'monitor' else None)
         with f.daemon() as child:
             f.running()
             f.missing(31082)
             if operation == 'monitor':
-                (f.root / 'resolve-ip').write_text('198.51.100.45\n')
+                (f.root / 'resolve-ip').write_text(f'{refresh_ip}\n')
                 (f.root / 'refresh-now').touch()
                 child.send_signal(signal.SIGUSR1)
             else:
@@ -318,6 +322,9 @@ def main(base):
 
 
 if __name__ == '__main__':
-    with tempfile.TemporaryDirectory(prefix='.lifecycle-', dir=HERE) as directory:
-        main(pathlib.Path(directory))
+    with tempfile.TemporaryDirectory(prefix='.lifecycle-', dir=HERE) as directory, socket.socket() as listener:
+        # Keep both refresh candidates reachable for the real TCP preflight.
+        listener.bind(('127.0.0.1', 0))
+        listener.listen()
+        main(pathlib.Path(directory), listener.getsockname())
     print(f'xray-ready lifecycle proc fixtures: {passed} passed, 0 failed')
