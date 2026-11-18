@@ -96,7 +96,7 @@ function harness() {
 		{ baseclass: { extend: o => o } }, {});
 	const page = loadModule(path.join(RES, 'view/aether-proxy/nodes.js'), {
 		view: { extend: o => o }, form,
-		uci: { get: (config, id, field) => stored[field] }, ui: {}, dom: {},
+		uci: { get: (config, id, field) => stored[field], sections: () => [] }, ui: {}, dom: {},
 		'aether-proxy.common': {}, 'aether-proxy.model.nodes': model,
 		'aether-proxy.subscriptions-block': {}
 	}, {});
@@ -195,7 +195,7 @@ test('T10.30 scenario 5: parse cleanup includes protocol fields', () => {
 		assert.ok(model.node_fields.includes(field), field + ' is cleared before parsing');
 	assert.equal(new Set(model.node_fields).size, model.node_fields.length, 'no duplicate cleanup fields');
 	assert.deepEqual([...options.values()].filter(o => o.modalonly === false).map(o => o.field),
-		['_select', '_enabled', '_label', '_protocol', '_transport_security', '_source', '_failover', '_probe']);
+		['_select', '_label', '_protocol', '_transport_security', '_source', '_failover', '_probe']);
 });
 
 for (const field of ['reality_pqv', 'ech_config_list']) {

@@ -129,7 +129,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 			})
 		]);
 	}
-	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag',
+	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag', DummyValue: 'DummyValue',
 		ListValue: 'ListValue', Value: 'Value', Map: class {
 		constructor() { this.sections = []; maps.push(this); }
 		section(kind, type, sectionType, title) {
@@ -769,7 +769,8 @@ async () => {
 		const result = h.page.resultCells.s_a;
 		assert.equal(result.tag, 'span');
 		assert.equal(result.style, 'display:inline-block; vertical-align:top');
-		assert.equal(find(result, node => node.tag === 'br').length, 2, 'all three lines share the value wrapper');
+		assert.ok(result.children.every(node => node.tag === 'br' || node.tag === 'span'),
+			'all result lines share the value wrapper');
 		return result;
 	};
 	const result = check();
@@ -779,6 +780,7 @@ async () => {
 	assert.match(text(result), /成功，7 个节点/);
 	assert.match(text(result), /秒前/);
 	assert.match(text(result), /跳过 2/);
+	assert.equal(find(result, node => node.tag === 'br').length, 2, 'recorded results retain their three lines');
 	await h.maps[0].render();
 	await flush();
 	check();
@@ -1436,7 +1438,10 @@ async () => {
 	await render(h);
 	h.reads[0].resolve({ ok: true, subs: {} });
 	await flush();
-	assert.match(text(h.page.resultCells.s_a), /尚未更新/);
+	const placeholder = h.page.resultCells.s_a;
+	assert.equal(text(placeholder), '尚未更新');
+	assert.equal(placeholder.children.length, 1, 'no line break or missing-timestamp dash');
+	assert.equal(placeholder.firstChild.style, 'white-space:nowrap');
 	h.ap.run_job = async (kind, ids) => {
 		assert.equal(kind, 'sub_update');
 		assert.deepEqual(ids, ['s_a']);
@@ -1495,7 +1500,7 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 	await render(h);
 	const section = h.maps[0].sections[0];
 	const headers = find(h.root, node => node.tag === 'th').map(text);
-	assert.deepEqual(headers, ['', '启用', '名称', '协议', '传输 / 安全层', '来源', '自动切换', 'TCP 可达／延迟']);
+	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '自动切换', 'TCP 可达／延迟']);
 	assert.ok(!section.options.some(option => option.field === '_address'));
 	for (const id of ['n_a', 'n_b']) {
 		const edit = buttons(actions(h, id)).find(node => text(node) === '编辑');
@@ -1532,10 +1537,7 @@ test('T16.23: only the current name starts with a labelled green dot; stale name
 	assert.equal(styles().length, 1);
 	assert.match(text(styles()[0]), /@keyframes aether-node-pulse/);
 	assert.match(text(styles()[0]), /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/);
-	assert.equal(text(cell('n_a', '_enabled')), '启用');
-	h.nodes[1].disabled = '1';
 	await h.view.redrawNodes();
-	assert.equal(text(cell('n_b', '_enabled')), '禁用');
 	assert.equal(styles().length, 1);
 	assert.equal(text(cell('n_b', '_label')), 'Node B（已失效）');
 	assert.equal(cell('n_b', '_label').firstChild.class, 'aether-node-name');
@@ -1544,6 +1546,30 @@ test('T16.23: only the current name starts with a labelled green dot; stale name
 	assert.ok(text(h.root).includes('切换节点请到概览页选择后点「应用」。'));
 	assert.ok(!buttons(h.root).some(button => text(button) === '设为当前'));
 	assert.equal(h.page.handleSetCurrent, undefined);
+});
+
+test('T16.23: only disabled nodes cause a read-only Enabled column to render', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const headers = () => find(h.root, node => node.tag === 'th').map(text);
+	const cells = () => find(h.root, node => node.field === '_enabled');
+	const option = () => h.view.nodeGrid.children.find(child => child.option === '_enabled');
+	assert.ok(!headers().includes('启用'));
+	assert.equal(cells().length, 0);
+	assert.equal(option(), undefined);
+
+	h.nodes[1].disabled = '1';
+	await h.view.nodeMap.reset();
+	assert.deepEqual(headers().slice(0, 3), ['', '启用', '名称']);
+	assert.deepEqual(cells().map(text), ['启用', '已停用']);
+	assert.equal(option().kind, 'DummyValue');
+	assert.notEqual(option().editable, true);
+
+	h.nodes.splice(1, 1);
+	await h.view.nodeMap.reset();
+	assert.ok(!headers().includes('启用'));
+	assert.equal(cells().length, 0);
+	assert.equal(option(), undefined);
 });
 
 function selectAll(h) {

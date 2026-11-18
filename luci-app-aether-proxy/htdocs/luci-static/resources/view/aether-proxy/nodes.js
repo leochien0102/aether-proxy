@@ -114,6 +114,19 @@ const pageStyle = `
 .cbi-value-field[data-name="_failover"] > input:indeterminate {
 	appearance: auto !important; /* Preserve the mixed mark even when a theme forces appearance:none. */
 }
+/* Use a scrollable table, not the theme's stacked mobile cards, for subscriptions. */
+.aether-subscription-scroll > .cbi-tblsection { overflow: visible; }
+.aether-subscription-scroll .cbi-section-table {
+	display: table;
+	width: 100%;
+	min-width: min-content;
+	max-width: none;
+	table-layout: auto;
+}
+.aether-subscription-scroll .cbi-section-table .tr { display: table-row; }
+.aether-subscription-scroll .cbi-section-table :is(.th, .td) { display: table-cell !important; }
+.aether-subscription-scroll .cbi-section-table .td[data-title]::before,
+.aether-subscription-scroll .cbi-section-table .td[data-description]::after { content: none; }
 `;
 
 return view.extend({
@@ -270,7 +283,7 @@ return view.extend({
 	buildMap: function() {
 		const self = this;
 		const rowMap = this.rowMap;
-		let m, s, o;
+		let m, s, o, enabledColumn;
 
 		m = new form.Map('aetherproxy');
 		this.nodeMap = m;
@@ -283,6 +296,8 @@ return view.extend({
 		// Keep the named UCI IDs, but do not expose a redundant section-name column.
 		s.anonymous = true;
 		s.render = function(...args) {
+			// A GridSection reset can follow deletion of the last disabled node.
+			updateEnabledColumn();
 			return this.super('render', args).then(content => {
 				content.classList?.remove('cbi-section');
 				return content;
@@ -449,12 +464,23 @@ return view.extend({
 			return box;
 		};
 
-		/* Show the stored enabled state without exposing a node disable editor. */
-		o = s.option(form.DummyValue, '_enabled', _('Enabled', 'aether-proxy'));
-		o.modalonly = false;
-		o.textvalue = id => E('span', {}, [
-			rowMap[id]?.enabled ? _('Enabled', 'aether-proxy') : _('Disabled', 'aether-proxy')
-		]);
+		function updateEnabledColumn() {
+			const hasDisabled = uci.sections('aetherproxy', 'node').some(node => node.disabled === '1');
+			if (hasDisabled && !enabledColumn) {
+				enabledColumn = s.option(form.DummyValue, '_enabled', _('Enabled', 'aether-proxy'));
+				enabledColumn.modalonly = false;
+				enabledColumn.textvalue = id => E('span', {}, [
+					uci.get('aetherproxy', id, 'disabled') === '1'
+						? _('Node is disabled', 'aether-proxy') : _('Enabled', 'aether-proxy')
+				]);
+				s.children.splice(1, 0, s.children.pop()); // Keep the selection column first.
+			}
+			else if (!hasDisabled && enabledColumn) {
+				s.children.splice(s.children.indexOf(enabledColumn), 1);
+				enabledColumn = null;
+			}
+		}
+		updateEnabledColumn();
 
 		o = s.option(form.DummyValue, '_label',
 			E('span', { 'class': 'aether-node-name-title' }, _('Name', 'aether-proxy')));

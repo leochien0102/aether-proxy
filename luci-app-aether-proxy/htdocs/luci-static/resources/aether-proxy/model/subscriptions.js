@@ -44,7 +44,7 @@ function mask(url) {
 	return match[1].toLowerCase() + '://' + host + '/…';
 }
 function result(record, now) {
-	if (!record) return { text: _('Not updated yet', 'aether-proxy'), time: '–', skipped: '' };
+	if (!record) return { text: _('Not updated yet', 'aether-proxy'), time: '', skipped: '' };
 	const counts = record.skipped || {};
 	const entries = Object.keys(counts).map(key => (reasons[key] || key) + ' ' + counts[key]);
 	return {

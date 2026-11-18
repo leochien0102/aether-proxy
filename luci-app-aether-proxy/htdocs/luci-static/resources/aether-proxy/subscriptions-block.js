@@ -438,10 +438,11 @@ return baseclass.extend({
 		/* Subscription names and backend detail text are user input, so each line
 		 * is appended as a text child (a bare string would be innerHTML; a nested
 		 * array would be stringified by luci-base's append). */
-		return [ 'text', 'time', 'skipped' ].map((field, index) => [
-			...(index ? [ E('br') ] : []),
-			E('span', {}, [ result[field] ])
-		]).flat();
+		const lines = [result.text, result.time, result.skipped].filter(Boolean);
+		return lines.flatMap((line, index) => [
+			...(index ? [E('br')] : []),
+			E('span', { style: lines.length === 1 ? 'white-space:nowrap' : null }, [line])
+		]);
 	},
 	show_results: function() {
 		const vm = model.build(uci.sections('aetherproxy', 'subscription'),
@@ -534,7 +535,7 @@ return baseclass.extend({
 					return E('span', {}, [ '–' ]);
 				if (field === '_result') {
 					// An edit can make GridSection render cells again on the same map.
-					// One inline block keeps all result lines in the card's value column.
+					// Keep the value wrapper mounted when fetched status changes.
 					const span = E('span', { style: 'display:inline-block; vertical-align:top' },
 						self.result_content(row.result));
 					self.resultCells[id] = span;
@@ -576,9 +577,14 @@ return baseclass.extend({
 				// Collapse only the list; keep the heading and tools available.
 				content.classList?.remove('cbi-section');
 				const open = self.details?.open ?? true;
+				const listTitle = _('Subscription list', 'aether-proxy');
 				self.details = E('details', { 'class': 'aether-subscription-list', open: open || null }, [
-					E('summary', { style: 'margin-bottom:0.5em' }, _('Subscription list', 'aether-proxy')),
-					content
+					E('summary', { style: 'margin-bottom:0.5em' }, listTitle),
+					E('div', {
+						'class': 'aether-subscription-scroll',
+						style: 'max-width:100%; overflow-x:auto',
+						tabindex: 0, role: 'region', 'aria-label': listTitle
+					}, [content])
 				]);
 				const block = ap.section({
 					title: _('Subscriptions', 'aether-proxy'),

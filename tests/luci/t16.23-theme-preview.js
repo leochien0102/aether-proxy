@@ -40,7 +40,9 @@ const values = Object.fromEntries(entries.map(([id, type, options], index) =>
 				if (url.pathname === '/')
 					return route.fulfill({ contentType: 'text/html', body: `<!doctype html>
 <html lang="zh-Hans" data-darkmode="${dark}"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/luci-static/${stylesheet}">
+${dark ? '<link rel="stylesheet" href="/luci-static/bootstrap/mobile.css">' : ''}
 <script src="/luci-static/resources/cbi.js"></script><script src="/luci-static/resources/luci.js"></script>
 <body class="lang_zh-cn" data-page="admin-services-aether-proxy-nodes"><main class="main">
 <div class="main-right"><div id="maincontent" class="container"><div class="container" id="view"></div></div></div>
@@ -125,6 +127,14 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 				assert.ok(Math.abs(descr.y + descr.height / 2 - firstButton.y - firstButton.height / 2) < 2,
 					'the description and action buttons are centered on the same line');
 			}
+			const nodeTable = tables[1];
+			assert.equal(await nodeTable.getByText('启用', { exact: true }).count(), 0);
+			assert.equal(await nodeTable.locator('[data-name="_enabled"]').count(), 0);
+			const result = subscription.locator('[data-name="_result"]').first();
+			assert.equal(await result.textContent(), '尚未更新');
+			assert.equal(await result.locator('br').count(), 0);
+			assert.equal(await result.getByText('尚未更新', { exact: true })
+				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
 			await page.screenshot({ path: path.join(out, `${theme}.png`), fullPage: true });
 			await flagInput.click();
 			assert.doesNotMatch(await box.getAttribute('title'), /总开关未开启/);
@@ -138,7 +148,28 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await page.getByRole('button', { name: '全部更新', exact: true }).isVisible(), true);
 			await page.evaluate(async () => { await (await L.require('aether-proxy.subscriptions-block')).map.reset(); });
 			assert.equal(await subscription.evaluate(el => el.open), false);
-			console.log(`PASS ${theme}: aligned node names, inline Flag explanation, shared toolbar line, collapsible list, native mixed → checked`);
+			await page.evaluate(async () => {
+				const [uci, view] = await Promise.all([L.require('uci'), window.ready]);
+				uci.set('aetherproxy', 'n_c', 'disabled', '1');
+				await view.nodeMap.reset();
+			});
+			assert.equal(await nodeTable.locator('th').getByText('启用', { exact: true }).count(), 1);
+			assert.deepEqual(await nodeTable.locator('[data-name="_enabled"]').allTextContents(), ['启用', '启用', '已停用']);
+			await page.setViewportSize({ width: 360, height: 800 });
+			if (dark)
+				assert.equal(await page.evaluate(() => matchMedia('(max-device-width: 600px)').matches), true);
+			await subscription.locator('summary').click();
+			const scroll = subscription.locator('.aether-subscription-scroll');
+			const scrollMetrics = await scroll.evaluate(el => {
+				el.scrollLeft = el.scrollWidth;
+				return { client: el.clientWidth, width: el.scrollWidth, left: el.scrollLeft, viewport: window.innerWidth };
+			});
+			assert.ok(scrollMetrics.client <= scrollMetrics.viewport && scrollMetrics.width > scrollMetrics.client
+				&& scrollMetrics.left > 0, `${theme}: subscription table overflow is local (${JSON.stringify(scrollMetrics)})`);
+			assert.equal(await result.evaluate(el => getComputedStyle(el.parentElement).display), 'table-row');
+			assert.equal(await result.getByText('尚未更新', { exact: true })
+				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
+			console.log(`PASS ${theme}: conditional column, single-line placeholder, narrow table scroll, existing alignment and failover`);
 			await page.close();
 		}
 	}

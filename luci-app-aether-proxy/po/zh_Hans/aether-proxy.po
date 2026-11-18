@@ -1395,6 +1395,10 @@ msgid "Disabled"
 msgstr "禁用"
 
 msgctxt "aether-proxy"
+msgid "Node is disabled"
+msgstr "已停用"
+
+msgctxt "aether-proxy"
 msgid "Enabled"
 msgstr "启用"
 
