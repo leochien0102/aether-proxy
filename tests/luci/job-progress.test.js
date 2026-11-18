@@ -69,11 +69,14 @@ const status = () => ({ ok: true, updates_available: {
 /* Render real GridSection action hooks, not just the top-level toolbar. */
 function formDouble(uci) {
 	async function renderSection(name, section) {
-		return E('div', {}, section.renderRowActions ? uci.sections('aetherproxy', name).map(s =>
+		// This double omits NamedSection labels; production must accept a missing label.
+		if (!section.renderRowActions)
+			return Object.assign(E('div'), { querySelector: () => null });
+		return E('div', {}, uci.sections('aetherproxy', name).map(s =>
 			E('div', {}, [
 				...section.options.filter(o => o.textvalue).map(o => o.textvalue(s['.name'])),
 				section.renderRowActions(s['.name'])
-			])) : []);
+			])));
 	}
 	return { Map: class {
 		constructor() { this.sections = []; }
