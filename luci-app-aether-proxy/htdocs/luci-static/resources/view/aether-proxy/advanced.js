@@ -1,6 +1,7 @@
 'use strict';
 'require view';
 'require form';
+'require aether-proxy.common as ap';
 'require aether-proxy.form-defaults as form_defaults';
 'require uci';
 'require tools.widgets as widgets';
@@ -51,8 +52,11 @@ function option(section, tab, type, field, title, target) {
 return view.extend({
 	load: function() { return uci.load('aetherproxy'); },
 	render: function() {
-		const m = new form.Map('aetherproxy', _('Advanced', 'aether-proxy'), _('Interception, logging, boot and health-check settings.', 'aether-proxy'));
+		const m = new form.Map('aetherproxy', _('Advanced', 'aether-proxy'));
 		const s = m.section(form.NamedSection, 'main', 'global', _('Advanced', 'aether-proxy'));
+		ap.form_section(s, {
+			description: _('Interception, logging, boot and health-check settings.', 'aether-proxy')
+		});
 
 		s.tab('intercept', _('Interception', 'aether-proxy'));
 		s.tab('log', _('Logging', 'aether-proxy'));

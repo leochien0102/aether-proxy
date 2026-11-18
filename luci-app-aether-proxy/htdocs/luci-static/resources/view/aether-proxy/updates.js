@@ -89,7 +89,7 @@ return view.extend({
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
 		}, _('Check for updates', 'aether-proxy'));
 		const jobButtons = [check];
-		this.inventory.replaceChildren(E('p', {}, [ vm.error ?? '' ]), E('table', { class: 'table' }, [
+		const table = E('table', { class: 'table' }, [
 			E('tr', { class: 'tr table-titles' },
 				[ _('Name', 'aether-proxy'), _('Installed', 'aether-proxy'), _('Version', 'aether-proxy'),
 					_('Previous', 'aether-proxy'), _('Status', 'aether-proxy'), _('Actions', 'aether-proxy') ]
@@ -109,16 +109,22 @@ return view.extend({
 						.map(text => E('td', { class: 'td' }, [ text ])), E('td', { class: 'td' }, actions)
 				]);
 			})
-		]), E('p', {}, model.manual_install_note()), E('p', {}, model.migration_note()),
-		E('div', {
-			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-		}, [ E('span', { style: 'margin:0' },
-			[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
-			this.summary, this.progress, check ]),
-		E('h3', {}, _('Running components', 'aether-proxy')),
-		...model.components(this.status).map(row => E('p', {},
-			[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])));
+		]);
+		this.inventory.replaceChildren(ap.section({
+			title: _('Updates', 'aether-proxy'),
+			description: E('span', { title: model.manual_install_note() }, _('To install another version:', 'aether-proxy')),
+			actions: [ E('span', { style: 'margin:0' },
+				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
+				this.summary, this.progress, check ],
+			body: vm.error ? [E('p', {}, [vm.error]), table] : table, stacked: true
+		}), ap.section({
+			title: _('Running components', 'aether-proxy'),
+			description: E('span', { title: model.migration_note() },
+				_('This application updates only aether-xray.', 'aether-proxy')),
+			body: model.components(this.status).map(row => E('p', {},
+				[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])),
+			stacked: true
+		}));
 		this.jobButtons = jobButtons;
 	},
 	render: function() {
@@ -131,6 +137,7 @@ return view.extend({
 		this.show_inventory();
 		const map = new form.Map('aetherproxy', _('Updates', 'aether-proxy'));
 		const section = map.section(form.NamedSection, 'update', 'update', _('Update policy', 'aether-proxy'));
+		ap.form_section(section);
 		let option = section.option(form.ListValue, 'xray_auto', _('Xray update policy', 'aether-proxy'));
 		option.value('off', _('Off — do not notify', 'aether-proxy'));
 		option.value('notify', _('Notify — do not install automatically', 'aether-proxy'));

@@ -1795,6 +1795,10 @@ msgid "Running components"
 msgstr "运行中的组件"
 
 msgctxt "aether-proxy"
+msgid "This application updates only aether-xray."
+msgstr "本应用只更新 aether-xray。"
+
+msgctxt "aether-proxy"
 msgid "This application updates only aether-xray. Existing xray-core packages are not removed and are no longer updated by this application. Without aether-xray, /usr/bin/xray is used as a fallback; an explicit Xray binary path takes precedence."
 msgstr "本应用只更新 aether-xray。已有的 xray-core 不会被卸载，也不再由本应用更新。没有 aether-xray 时回退使用 /usr/bin/xray；显式指定的 Xray 二进制路径优先。"
 
@@ -2415,6 +2419,10 @@ msgstr "订阅尚未应用，请先保存并应用"
 msgctxt "aether-proxy"
 msgid "Update failed: %s"
 msgstr "更新失败：%s"
+
+msgctxt "aether-proxy"
+msgid "To install another version:"
+msgstr "如需安装其他版本："
 
 msgctxt "aether-proxy"
 msgid "To install another version: download the three packages for that version from the release page, then upload and install them on the system Software page, or use opkg install. Before downgrading, note that older versions may not recognize newer settings; restore the default configuration first if necessary."

@@ -74,6 +74,7 @@ function fixture(hosts = [], main = {}) {
 		getUIElement() { return { node: this.widget }; }
 	}
 	class Section {
+		render() { return E('div'); }
 		constructor(map, type) { Object.assign(this, { map, type, children: [] }); }
 		option(Type, key, title) {
 			const option = new Type(this, key, title);
@@ -114,6 +115,7 @@ function fixture(hosts = [], main = {}) {
 		renderSectionAdd() {
 			return E('div', {}, E('button', { class: 'cbi-button cbi-button-add' }, 'Add'));
 		}
+		render() { return this.renderContents(this.cfgsections(), []); }
 		renderContents(ids) {
 			const rows = ids.map((sid) => {
 				const cell = E('td');
@@ -142,7 +144,7 @@ function fixture(hosts = [], main = {}) {
 		}
 	}
 	class Map {
-		constructor() { this.children = []; }
+		constructor(config, title) { this.children = []; this.title = title; }
 		section(Type, type) {
 			const section = new Type(this, type);
 			this.children.push(section);
@@ -155,16 +157,16 @@ function fixture(hosts = [], main = {}) {
 		load() { return Promise.resolve(); }
 		reset() { calls.reset++; return this.renderContents(); }
 		render() { return this.load().then(() => this.renderContents()); }
-		renderContents() {
+		async renderContents() {
 			/* New widgets use loaded UCI; old widgets remain searchable until
 			   section rendering finishes and Map installs its new contents. */
 			const next = Object.fromEntries(data.map((h) => [ h['.name'], { ...h } ]));
-			const section = this.children[1];
-			section.renderContents(section.cfgsections(), []);
+			const nodes = await Promise.all(this.children.map(section => section.render()));
+			this.root = E('div', { class: 'cbi-map' }, [E('h2', {}, this.title), ...nodes]);
 			for (const sid of Object.keys(inputs))
 				delete inputs[sid];
 			Object.assign(inputs, next);
-			return Promise.resolve(this);
+			return this.root;
 		}
 	}
 	const form = { Map, NamedSection: Section, GridSection, Flag: Option, Value: Option,
@@ -429,7 +431,7 @@ test('T10.51 scenario 4: unlisted notice keeps only first sentence and top instr
 	const f = fixture();
 	await f.start();
 	assert.equal(f.option('_notice').renderWidget().textContent, '所有未列出的设备（包括物联网设备）都会走代理。');
-	assert.equal(f.page.map.children[0].description, [
+	assert.equal(f.page.map.root.children[1].children[1].children[0].title, [
 		'想让所有设备走代理：未列出的设备选『跟随默认模式』，个别不需要代理的设备在下面设为『直连』。',
 		'只想让部分设备走代理：未列出的设备选『直连』，再在下面列出要走代理的设备。'
 	].join(' '));
@@ -467,8 +469,8 @@ async () => {
 test('T10.36 scenario 1: default-mode and five-policy wording reserve global for all traffic', async () => {
 	const f = fixture();
 	await f.start();
-	assert.equal(typeof f.page.map.children[0].description, 'string', 'NamedSection only renders string descriptions');
-	assert.doesNotMatch(f.page.map.children[0].description, /helloworld|unlisted_policy|policy=|host/);
+	assert.equal(typeof f.page.map.root.children[1].children[1].children[0].title, 'string', 'the original instructions are available in the tooltip');
+	assert.doesNotMatch(f.page.map.root.children[1].children[1].children[0].title, /helloworld|unlisted_policy|policy=|host/);
 	assert.equal(f.option('_mode').title, '默认模式');
 	assert.equal(f.option('_mode').cfgvalue(), '绕过大陆');
 	assert.equal(f.option('unlisted_policy').title, '未列出的设备');
@@ -677,11 +679,11 @@ test('T10.42 scenario 1: modal fields are enabled, name, device, IP, policy and 
 test('T10.42 scenario 2: page descriptions use plain language without application or UCI names', async () => {
 	const f = fixture();
 	await f.start();
-	assert.equal(f.page.map.children[0].description, [
+	assert.equal(f.page.map.root.children[1].children[1].children[0].title, [
 		'想让所有设备走代理：未列出的设备选『跟随默认模式』，个别不需要代理的设备在下面设为『直连』。',
 		'只想让部分设备走代理：未列出的设备选『直连』，再在下面列出要走代理的设备。'
 	].join(' '));
-	const visibleText = [ f.page.map.children[0].description,
+	const visibleText = [ f.page.map.root.children[1].children[1].children[0].title,
 		...f.page.map.children.flatMap((s) => s.children.map((o) => o.title || '')) ].join(' ');
 	assert.doesNotMatch(visibleText, /helloworld|unlisted_policy|policy=|config host/);
 });
@@ -691,9 +693,16 @@ async () => {
 	const f = fixture();
 	await f.start();
 	const node = f.table();
-	const toolbar = node.children[0];
-	assert.equal(toolbar.tag, 'div');
-	assert.equal(node.children[1].tag, 'table', 'toolbar immediately precedes the table');
+	const {root} = f.page.map;
+	const section = root.children[2];
+	const toolbar = section.children[1];
+	assert.equal(root.children[0].tag, 'h2');
+	assert.ok(!root.children.some(node => node.class === 'cbi-map-descr'));
+	assert.equal(section.class, 'cbi-section');
+	assert.equal(section.children[0].tag, 'h3');
+	assert.equal(toolbar.class, 'aether-section-actions');
+	assert.equal(section.children[2], node);
+	assert.equal(node.children[0].tag, 'table', 'toolbar precedes the table');
 	for (const rule of [ 'display:flex', 'justify-content:flex-end', 'align-items:center',
 		'gap:0.5em', 'flex-wrap:wrap', 'margin:0.5em 0 1em' ])
 		assert.ok(toolbar.style.includes(rule), rule);
@@ -704,12 +713,12 @@ async () => {
 	assert.deepEqual(f.page.hostSection.renderSectionAdd().children, [], 'stock lower-left Add is empty');
 	/* renderSectionAdd() returns an empty fragment: appending a fragment moves
 	 * its (zero) children, so after the table there is no stock Add node. */
-	assert.deepEqual(node.children.slice(2), [], 'no stock button appears after the table');
+	assert.deepEqual(node.children.slice(1), [], 'no stock button appears after the table');
 	assert.deepEqual(await button.click({}), { modal: 'cfgnew' });
 	assert.equal(f.data.at(-1)['.anonymous'], true, 'anonymous Add opens the editor without a name prompt');
 	f.page.map.readonly = true;
 	await f.page.map.reset();
-	assert.equal(f.table().children[0].children[0].disabled, true, 'read-only maps cannot add hosts');
+	assert.equal(f.page.map.root.children[2].children[1].children[0].disabled, true, 'read-only maps cannot add hosts');
 });
 
 test('T10.42 scenario 4: unsaved inline policy and game-mode changes immediately toggle no-effect marks', async () => {

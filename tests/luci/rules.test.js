@@ -395,23 +395,22 @@ function load_view(dns_config = {}, ap_overrides = {}) {
 				section.options.push(option);
 				return option;
 			};
+			section.render = () => E('fieldset', { name: section.name }, section.options.map((option, i) => {
+				const cfgvalue = dns_config[option.key];
+				const value = cfgvalue ?? option.default;
+				const widget = option.renderWidget ? option.renderWidget(section.name, i, cfgvalue) :
+					option.kind == form.DynamicList ?
+						form.DynamicList.prototype.renderWidget.call(option, section.name, i, cfgvalue) :
+						E(option.kind, { name: option.key, value, placeholder: option.placeholder,
+							checked: option.kind == form.Flag && value == '1' || null }, option.label);
+				option.input = widget;
+				return E('div', { name: option.key }, [widget, option.description ?? '']);
+			}));
 			this.sections.push(section);
 			return section;
 		}
-		render() {
-			return Promise.resolve(E('form', {}, this.sections.map(section =>
-				E('fieldset', { name: section.name }, section.options.map((option, i) => {
-					const cfgvalue = dns_config[option.key];
-					const value = cfgvalue ?? option.default;
-					const widget = option.renderWidget ? option.renderWidget(section.name, i, cfgvalue) :
-						option.kind == form.DynamicList ?
-							form.DynamicList.prototype.renderWidget.call(option, section.name, i, cfgvalue) :
-						E(option.kind,
-							{ name: option.key, value, placeholder: option.placeholder,
-								checked: option.kind == form.Flag && value == '1' || null }, option.label);
-					option.input = widget;
-					return E('div', { name: option.key }, [widget, option.description ?? '']);
-				})))));
+		async render() {
+			return this.node = E('form', {}, [E('h2', {}, this.title), ...await Promise.all(this.sections.map(s => s.render()))]);
 		}
 		/* Scalar parse compares raw loaded configuration, not display defaults.
 		 * Flags have a separate write path; optional blank Values remove keys.
@@ -468,11 +467,11 @@ function regions(root) {
 		form: root.children[0],
 		group: root.children[1],
 		lists: root.children[1].children.map(node => ({
-			node, input: node.children[1], button: node.children[2].children[1],
-			message: node.children[2].children[0]
+			node, input: node.children[2], button: node.children[1].children[1],
+			message: node.children[1].children[0]
 		})),
-		inventory: root.children[3], update: root.children[4].children[2],
-		summary: root.children[4].children[0], progress: root.children[4].children[1]
+		inventory: root.children[2].children[2], update: root.children[2].children[1].children[2],
+		summary: root.children[2].children[1].children[0], progress: root.children[2].children[1].children[1]
 	};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -490,11 +489,14 @@ test('T10.10 scenario 2: pending RPC cannot block the complete form, safe editor
 	const root = await h.page.render();
 	assert.equal(h.calls.length, 0, 'RPC must start after render resolves');
 	const r = regions(root);
-	assert.equal(root.children.length, 5);
+	assert.equal(root.children.length, 3);
+	assert.ok(!root.children.some(node => node.class === 'cbi-map-descr'));
+	assert.equal(root.children[2].class, 'cbi-section');
+	assert.equal(root.children[2].children[1].class, 'aether-section-actions');
 	assert.equal(r.form.tag, 'form');
 	assert.equal(h.maps[0].config, 'aetherproxy');
 	assert.deepEqual(h.maps[0].sections.map(s => s.name), ['main', 'dns']);
-	assert.deepEqual(r.form.children.flatMap(s => s.children.map(o => o.name)),
+	assert.deepEqual(descendants(r.form).filter(n => n.tag === 'fieldset').flatMap(s => s.children.map(o => o.name)),
 		['mode', 'china_dns', 'trust_dns', 'direct_dns_enabled', 'direct_dns',
 			'allow_china_fallback', 'dns_probe_domain']);
 	const mode = h.maps[0].sections[0].options[0];
@@ -732,14 +734,13 @@ test('T10.27 scenario 1: four list saves and rule update have spaced right-align
 	for (const list of r.lists) {
 		const row = actionRow(list.node, ['保存名单'], [list.message]);
 		list.message.textContent = 'save result';
-		assert.equal(list.node.children.at(-1), row, 'save row is below the textarea');
-		assert.equal(list.node.children.at(-2), list.input);
+		assert.deepEqual(list.node.children.slice(1), [row, list.input], 'save row precedes its textarea');
 	}
 	r.summary.textContent = 'update result';
 	r.progress.textContent = 'elapsed';
 	const row = actionRow(root, ['立即更新'], [r.summary, r.progress]);
-	assert.equal(root.children.at(-1), row, 'update row is at the bottom of the rule-data block');
-	assert.equal(root.children.at(-2), r.inventory);
+	assert.deepEqual(root.children.at(-1).children.slice(1), [row, r.inventory],
+		'update row is before the rule table inside its block');
 });
 
 test('T10.21 scenario 1: initialize exactly the four ordered list tabs after attachment', async () => {
@@ -1101,11 +1102,10 @@ test('T10.35 review: Map.checkDepends can validate the trust rows without recurs
 });
 
 function direct_controls(h) {
-	const widget = dns_option(h, 'direct_dns').input;
-	const controls = widget.children[1];
-	return { widget, list: widget.children[0], controls, row: controls.children[0],
-		summary: controls.children[0].children[0], progress: controls.children[0].children[1],
-		button: controls.children[0].children[2], hint: controls.children[1] };
+	const controls = h.maps[0].node.children[2];
+	const row = controls.children[1];
+	const [summary, progress, button] = row.children;
+	return { list: dns_option(h, 'direct_dns').input, controls, row, summary, progress, button };
 }
 function direct_progress(t) {
 	t.mock.timers.enable({ apis: ['Date', 'setInterval'] });
@@ -1151,9 +1151,10 @@ async t => {
 	const h = load_view({}, { job_progress: direct_progress(t) });
 	const root = await h.page.render(), c = direct_controls(h);
 	const row = actionRow(c.controls, ['检测'], [c.summary, c.progress]);
-	assert.equal(row, c.row, 'results and progress precede the button below the list');
-	assert.equal(c.widget.children[0], c.list);
-	assert.equal(text(c.hint), '路由器自己的流量若经过其他代理插件（例如 ssr-plus 开着），结果反映的是那条路径。');
+	assert.equal(row, c.row, 'results and progress precede the button in the DNS section');
+	assert.equal(c.controls.class, 'cbi-section');
+	assert.ok(descendants(c.controls).includes(c.list));
+	assert.equal(c.button.title, '路由器自己的流量若经过其他代理插件（例如 ssr-plus 开着），结果反映的是那条路径。');
 	const items = [
 		direct_item('tcp://9.9.9.9', 2, 120),
 		direct_item('198.51.100.53#5353', 0, null),
@@ -1175,7 +1176,7 @@ async t => {
 		'tcp://203.0.113.53：node.example 3 次成功 3 次，约 10.5 毫秒；www.google.com 被墙域名 3 次成功 1 次，约 24 毫秒',
 		'tls://dns.example@192.0.2.53#853：这种写法不支持检测'
 	]);
-	assert.ok(descendants(c.controls).indexOf(c.summary) < descendants(c.controls).indexOf(c.hint));
+	assert.ok(descendants(c.controls).indexOf(c.summary) < descendants(c.controls).indexOf(c.list));
 	assert.equal(c.button.disabled, false);
 	assert.equal(text(c.progress), '');
 	const result_text = text(c.summary);

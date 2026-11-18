@@ -171,14 +171,15 @@ function loadModule(file, modules, env) {
 			return {};
 		/* Page harnesses keep their RPC/UI doubles, but exercise the shipped
 		 * config helper against their own UCI double (not a success-only stub). */
-		if (r.name == 'aether-proxy.common' && (!modules[r.name]?.load_config || !modules[r.name]?.section)) {
+		const shared = ['load_config', 'section', 'section_actions', 'form_section'];
+		if (r.name == 'aether-proxy.common' && shared.some(method => !modules[r.name]?.[method])) {
 			modules[r.name] ??= {};
 			const common = loadModule(require('node:path').resolve(__dirname,
 				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js'),
 			{ baseclass: { extend: object => object }, rpc: { declare: () => () => {} },
 				ui: {}, uci: modules.uci }, env);
-			modules[r.name].load_config ??= common.load_config;
-			modules[r.name].section ??= common.section;
+			for (const method of shared)
+				modules[r.name][method] ??= common[method];
 		}
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');

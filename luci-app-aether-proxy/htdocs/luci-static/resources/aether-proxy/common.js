@@ -228,7 +228,16 @@ var ap = baseclass.extend({
 
 	/* Pass the previous details (or { open: false }) as collapsible to retain
 	   local disclosure state without coupling separate sections by title. */
-	section: function({ title, description, actions, body, collapsible }) {
+	section_actions: function(actions, leading, inline = false) {
+		return E('div', {
+			'class': 'aether-section-actions',
+			style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap; min-width:0; '
+				+ (leading ? 'justify-content:space-between; ' : 'justify-content:flex-end; ')
+				+ (inline ? 'margin-inline-start:auto' : 'margin:0.5em 0 1em; padding-inline:1.25rem')
+		}, leading ? [leading, ...actions] : actions);
+	},
+
+	section: function({ title, description, actions, body, collapsible, stacked = false }) {
 		const attrs = { 'class': 'cbi-section', style: 'margin:0 0 1em' };
 		if (collapsible)
 			attrs.open = (collapsible.open ?? true) || null;
@@ -236,18 +245,53 @@ var ap = baseclass.extend({
 		const toolbar = [];
 		if (description)
 			toolbar.push(E('div', { 'class': 'cbi-map-descr', style: 'margin:0' }, [description]));
-		if (actions?.length)
-			toolbar.push(E('div', {
-				'class': 'aether-section-actions',
-				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-					+ 'flex-wrap:wrap; margin-inline-start:auto; min-width:0'
-			}, actions));
-		if (toolbar.length)
+		if (Array.isArray(actions) && actions.length)
+			toolbar.push(this.section_actions(actions, null, !stacked));
+		else if (actions && !Array.isArray(actions))
+			toolbar.push(actions);
+		// The Nodes & Subscriptions blocks retain their compact two-column header.
+		if (stacked)
+			children.push(...toolbar);
+		else if (toolbar.length)
 			children.push(E('div', {
 				'class': 'aether-section-toolbar',
 				style: 'display:flex; flex-wrap:wrap; align-items:center; gap:0.5em 1em; margin:0.5em 0 1em'
 			}, toolbar));
-		return E(collapsible ? 'details' : 'div', attrs, children.concat(body));
+
+		// The existing subscription wrapper already scrolls. Give the node GridSection
+		// the same local scroll behavior without touching its columns or map lifecycle.
+		const grid = Array.isArray(body) && body[0]?.querySelector?.('#cbi-aetherproxy-node.cbi-tblsection');
+		if (grid) {
+			const scroll = E('div', {
+				'class': 'aether-node-scroll', style: 'max-width:100%; overflow-x:auto',
+				tabindex: 0, role: 'region', 'aria-label': title
+			}, body[0]);
+			return E(collapsible ? 'details' : 'div', attrs, children.concat(scroll, body.slice(1), E('style', {}, [`
+#cbi-aetherproxy-node.cbi-tblsection { overflow:visible; }
+#cbi-aetherproxy-node > .cbi-section-table {
+	display:table; width:100%; min-width:min-content; max-width:none; table-layout:auto;
+}
+#cbi-aetherproxy-node > .cbi-section-table .tr { display:table-row; }
+#cbi-aetherproxy-node > .cbi-section-table :is(.th, .td) { display:table-cell !important; }
+#cbi-aetherproxy-node > .cbi-section-table .td[data-title]::before,
+#cbi-aetherproxy-node > .cbi-section-table .td[data-description]::after { content:none; }
+`])));
+		}
+		return E(collapsible ? 'details' : 'div', attrs, children.concat(body ?? []));
+	},
+
+	/* Keep the SDK section DOM, bindings and tab panes; only replace its outer
+	   presentation. This runs on each Map render/reset, not on modal clones. */
+	form_section: function(section, { title = section.title, description, actions } = {}) {
+		const render = section.render;
+		section.hidetitle = true;
+		section.render = (...args) => Promise.resolve(render.apply(section, args)).then(content => {
+			content.classList?.remove('cbi-section');
+			return this.section({
+				title, description, actions: typeof actions == 'function' ? actions() : actions,
+				body: content, stacked: true
+			});
+		});
 	},
 
 	/* Use elapsed wall time, not tick counts: background tabs can delay timers. */

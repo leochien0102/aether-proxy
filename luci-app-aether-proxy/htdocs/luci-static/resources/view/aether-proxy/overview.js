@@ -666,9 +666,9 @@ return view.extend({
 		this.trafficLive.className = enabled ? 'ap-traffic-live' : '';
 		if (enabled)
 			dom.content(this.trafficLive, [ this.trafficTable, this.connectionLine ]);
-		dom.content(this.trafficBody, [ this.trafficHeading, ...(enabled
+		dom.content(this.trafficBody, enabled
 			? [ E('div', { 'class': 'ap-traffic-columns' }, [ this.heatmapContainer, this.trafficLive ]) ]
-			: [ this.trafficTable, this.connectionLine ]) ]);
+			: [ this.trafficTable, this.connectionLine ]);
 	},
 
 	readInterval: function() {
@@ -1080,24 +1080,16 @@ return view.extend({
 		}, text);
 	},
 
-	titleLine: function(interval) {
+	refreshControls: function(interval) {
 		const select = E('select', { change: (ev) => this.setInterval(ev.target.value) },
 			model.refresh_options().map((option) => E('option', {
 				value: option.value, selected: Number(option.value) * 1000 === interval ? 'selected' : null
 			}, [ option.text ])));
-		return E('div', {
-			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; '
-				+ 'flex-wrap:wrap; margin-bottom:1em'
-		}, [
-			E('div', { style: 'display:flex; align-items:center; gap:1em; flex-wrap:wrap' }, [
-				E('h2', {}, _('Aether Proxy', 'aether-proxy')), this.enableControl
+		return E('div', { style: 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
+			E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
+				E('span', { style: 'white-space: nowrap' }, _('Automatic refresh', 'aether-proxy')), select
 			]),
-			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-				E('label', { style: 'display:flex; align-items:center; gap:0.5em' }, [
-					E('span', { style: 'white-space: nowrap' }, _('Automatic refresh', 'aether-proxy')), select
-				]),
-				this.button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh())
-			])
+			this.button(_('Refresh', 'aether-proxy'), () => this.fetchRefresh())
 		]);
 	},
 
@@ -1258,12 +1250,7 @@ return view.extend({
 		return colors[level] ? 'color:' + colors[level] : '';
 	},
 
-	section: function(title, children) {
-		return E('div', { 'class': 'cbi-section' },
-			[ E('h3', {}, title), ...children ]);
-	},
-
-	trafficSection: function(traffic, note) {
+	trafficSection: function() {
 		this.trafficValues = {};
 		this.trafficNote = E('small');
 		this.trafficTotal = E('td');
@@ -1284,15 +1271,14 @@ return view.extend({
 				this.connectionProxy, this.connectionTotal
 			]);
 		this.trafficLive = E('div');
-		this.trafficBody = this.section(_('Traffic and connections', 'aether-proxy'), []);
-		this.trafficHeading = this.trafficBody.children[0];
+		this.trafficBody = E('div');
 		this.mountTraffic();
-		return this.trafficBody;
+		return ap.section({ title: _('Traffic and connections', 'aether-proxy'), body: [ this.trafficBody ] });
 	},
 
 	paintTraffic: function() {
 		if (!this.trafficBody)
-			dom.content(this.trafficContainer, this.trafficSection(this.traffic, this.vm.traffic_note));
+			dom.content(this.trafficContainer, this.trafficSection());
 		for (const key of [ 'proxy', 'direct', 'total' ])
 			for (const direction of [ 'tx', 'rx' ])
 				this.trafficValues[key][direction].textContent = this.traffic[key][direction];
@@ -1424,13 +1410,14 @@ return view.extend({
 
 		this.content = E('div', {});
 
+		this.interval = this.readInterval();
+		this.refreshControl = this.refreshControls(this.interval);
 		this.refresh(undefined);
-		const interval = this.readInterval();
 
 		/* Native fieldset disabling also covers late-created retry buttons and selects.
 		   The overlay is a sibling so its Close button remains usable on failure. */
 		this.actionFields = E('fieldset', { style: 'border:0; padding:0; margin:0; min-width:0' }, [
-			this.titleLine(interval), this.content
+			E('h2', {}, _('Aether Proxy', 'aether-proxy')), this.content
 		]);
 		this.switchOverlay = E('div', {});
 		/* The style element trails the interactive structure; tests and themes
@@ -1438,7 +1425,6 @@ return view.extend({
 		const root = E('div', { 'class': 'cbi-map' },
 			[this.actionFields, this.switchOverlay, this.heatmapStyle]);
 
-		this.interval = interval;
 		/* Microtasks run after render returns its complete, UCI-backed skeleton.
 		   Sites go first so slow inventory cannot block the small dropdown read;
 		   common.js still owns the shared concurrency limit (docs/10 r18). */
@@ -1490,33 +1476,41 @@ return view.extend({
 		}
 		this.updateNodeButton?.();
 		this.componentContent ??= E('div', {}, [ this.componentTable(vm.components) ]);
-		this.componentSection ??= this.section(_('Component versions', 'aether-proxy'), [ this.componentContent ]);
+		this.componentSection ??= ap.section({ title: _('Component versions', 'aether-proxy'),
+			body: [ this.componentContent ] });
 		if (!this.noticeContent) {
 			this.noticeContent = E('div', {});
-			this.runtimeContent = E('div', {});
+			this.serviceActions = E('div');
+			this.nodeActions = E('div');
+			this.runtimeBody = E('div', {
+				style: 'display:flex; flex-direction:column; align-items:stretch; gap:0.75em'
+			});
+			// Polling repaints status and its dependent actions without remounting
+			// the enable switch or refresh selector while the user is using them.
+			this.runtimeContent = E('div', {}, [ap.section({
+				title: _('Runtime status', 'aether-proxy'),
+				actions: [this.enableControl, ...(this.refreshControl ? [this.refreshControl] : []),
+					this.serviceActions, this.nodeActions],
+				body: [this.noticeContent, this.runtimeBody],
+				stacked: true
+			})]);
 			this.trafficContainer = E('div', {});
 			/* The heatmap is nested in traffic; other page regions keep their order. */
 			dom.content(this.content, [
-				this.noticeContent, this.runtimeContent,
-				this.trafficContainer, this.componentSection
+				this.runtimeContent, this.trafficContainer, this.componentSection
 			]);
 		}
 
-		const stateRows = [ E('div', {
-			style: 'display:flex; align-items:center; justify-content:space-between; gap:1em; flex-wrap:wrap'
-		}, [
-			E('div', {}, [
-				E('strong', {
-					style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level)
-						+ (vm.state_dimmed ? ';opacity:0.7' : '')
-				}, [ vm.state_text ?? '–' ]),
-				' ', E('span', {}, [ vm.state_duration_text ?? '' ]), ' ',
-				...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
-					_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : []),
-				...(vm.degradation_notice ? [ ' ', E('span', { style: this.colorStyle('warn') },
-					[ vm.degradation_notice ]) ] : [])
-			]),
-			this.buttonBar(vm.buttons)
+		const stateRows = [ E('div', {}, [
+			E('strong', {
+				style: 'font-size: 1.6em;' + this.colorStyle(vm.state_level)
+					+ (vm.state_dimmed ? ';opacity:0.7' : '')
+			}, [ vm.state_text ?? '–' ]),
+			' ', E('span', {}, [ vm.state_duration_text ?? '' ]), ' ',
+			...(vm.dns_failsafe ? [ E('span', { style: this.colorStyle('warn') },
+				_('DNS has fallen back to the original upstream configuration.', 'aether-proxy')) ] : []),
+			...(vm.degradation_notice ? [ ' ', E('span', { style: this.colorStyle('warn') },
+				[ vm.degradation_notice ]) ] : [])
 		]) ];
 		const details = [];
 		/* Label and value go through one msgid: concatenating ': ' here gave the
@@ -1530,7 +1524,7 @@ return view.extend({
 		if (details.length)
 			stateRows.push(E('div', {}, details));
 
-		stateRows.push(E('div', {
+		const nodeRow = E('div', {
 			style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5em 1em'
 		}, [
 			this.nodeControl ?? E('p', { style: 'margin:0' }, [ vm.node_text ]),
@@ -1540,11 +1534,11 @@ return view.extend({
 					[ vm.probe_text ?? _('Latency: –', 'aether-proxy') ]),
 				E('small', {}, [ vm.probe_since_text ?? '' ]), this.probeControl
 			])
-		]));
+		]);
 		/* Only present rows take a gap; div details avoid theme-specific paragraph margins. */
-		dom.content(this.runtimeContent, this.section(_('Runtime status', 'aether-proxy'), [ E('div', {
-			style: 'display:flex; flex-direction:column; align-items:stretch; gap:0.75em'
-		}, stateRows) ]));
+		dom.content(this.serviceActions, this.buttonBar(vm.buttons));
+		dom.content(this.nodeActions, nodeRow);
+		dom.content(this.runtimeBody, stateRows);
 		/* Status may change the WAN explanation, but it must not consume a
 			second counter sample or replace the independent component table. */
 		if (stats !== undefined || !this.traffic)

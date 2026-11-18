@@ -24,8 +24,8 @@ function actionRow(root, labels, messages = []) {
 	for (const rule of [ /display:\s*flex/, /justify-content:\s*flex-end/, /align-items:\s*center/,
 		/gap:\s*0\.5em/, /flex-wrap:\s*wrap/ ])
 		assert.match(row.attrs.style, rule, labels.join(', '));
-	const toolbar = row.class === 'aether-section-actions'
-		? nodes.find(node => node.children?.includes(row)) : row;
+	const parent = nodes.find(node => node.children?.includes(row));
+	const toolbar = parent?.class === 'aether-section-toolbar' ? parent : row;
 	assert.match(toolbar.attrs.style, /margin:\s*0\.5em\s+0\s+1em/, labels.join(', '));
 	assert.deepEqual(row.children.filter(node => node?.tag === 'button'), buttons, 'button order is unchanged');
 	for (const message of messages) {

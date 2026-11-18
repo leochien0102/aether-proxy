@@ -86,6 +86,8 @@ function trust_option(section) {
 function direct_test_controls() {
 	const summary = E('div'), progress = E('div');
 	const button = E('button', { type: 'button', class: 'cbi-button cbi-button-action',
+		title: _('If the router’s own traffic goes through another proxy plugin (for example, ssr-plus is enabled), '
+			+ 'the results reflect that path.', 'aether-proxy'),
 		click: async function() {
 			button.disabled = true;
 			let timer;
@@ -106,12 +108,7 @@ function direct_test_controls() {
 				button.disabled = false;
 			}
 		} }, _('Test', 'aether-proxy'));
-	return E('div', {}, [ E('div', {
-		style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-			+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-	}, [ summary, progress, button ]), E('div', { class: 'cbi-value-description' },
-		_('If the router’s own traffic goes through another proxy plugin (for example, ssr-plus is enabled), '
-			+ 'the results reflect that path.', 'aether-proxy')) ]);
+	return [ summary, progress, button ];
 }
 return view.extend({
 	load: function() {
@@ -131,13 +128,11 @@ return view.extend({
 					button.disabled = false;
 				});
 			}) }, _('Save list', 'aether-proxy'));
+		const node = ap.section({ title: item[1], actions: [message, button], body: input, stacked: true });
+		node.setAttribute('data-tab', item[0]);
+		node.setAttribute('data-tab-title', item[1]);
 		return {
-			node: E('div', { class: 'cbi-section', 'data-tab': item[0], 'data-tab-title': item[1] },
-				[ E('h3', {}, item[1]), input,
-					E('div', {
-						style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-							+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-					}, [ message, button ]) ]),
+			node,
 			load: () => ap.call('list_file', { name: item[0] }).then(result => {
 				const vm = model.list_state(result);
 				input.value = vm.content;
@@ -169,11 +164,13 @@ return view.extend({
 	render: function() {
 		const map = new form.Map('aetherproxy', _('Rules and DNS', 'aether-proxy'));
 		let section = map.section(form.NamedSection, 'main', 'global');
+		ap.form_section(section, { title: _('Mode', 'aether-proxy') });
 		let option = section.option(form.ListValue, 'mode', _('Mode', 'aether-proxy'));
 		option.default = 'bypass_cn';
 		model.modes().forEach(item => option.value(item[0], item[1]));
 		form_defaults.section(section);
 		section = map.section(form.NamedSection, 'dns', 'dns', _('DNS settings', 'aether-proxy'));
+		ap.form_section(section, { actions: direct_test_controls });
 		const wan_hint = E('div');
 		const china = section.option(form.DynamicList, 'china_dns', _('China DNS', 'aether-proxy'));
 		china.rmempty = false;
@@ -211,10 +208,6 @@ return view.extend({
 		};
 		direct.description = _('TCP queries to 8.8.8.8 and 1.1.1.1 may be reset on some networks; '
 			+ 'try tcp://9.9.9.9 first.', 'aether-proxy');
-		direct.renderWidget = function(section_id, option_index, cfgvalue) {
-			return E('div', {}, [ form.DynamicList.prototype.renderWidget.call(this,
-				section_id, option_index, cfgvalue), direct_test_controls() ]);
-		};
 		const fields = [
 			[ 'allow_china_fallback', _('Allow China fallback', 'aether-proxy'), form.Flag ],
 			[ 'dns_probe_domain', _('DNS probe domain', 'aether-proxy'), form.Value ] ];
@@ -262,12 +255,10 @@ return view.extend({
 		return map.render().then(node => {
 			const editors = LISTS.map(item => this.list_editor(item));
 			const panes = editors.map(editor => editor.node);
-			const root = E('div', {}, [ node, E('div', {}, panes),
-				E('h3', {}, _('Rule data', 'aether-proxy')), inventory,
-				E('div', {
-					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-				}, [ summary, progress, update ]) ]);
+			const root = E('div', {}, [ node, E('div', {}, panes), ap.section({
+				title: _('Rule data', 'aether-proxy'), actions: [summary, progress, update],
+				body: inventory, stacked: true
+			}) ]);
 			/* A new turn lets LuCI attach the panes before tab initialization and
 			 * display the page before RPC starts. Enqueue in page order; ap.call
 			 * owns the shared two-request concurrency limit. */

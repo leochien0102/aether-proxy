@@ -331,9 +331,9 @@ test('T10.16 logs scenario 3: pending RPC leaves the complete page usable with o
 	assert.equal(root.tag, 'div');
 	assert.equal(root.attrs.class, 'cbi-map');
 	assert.equal(text(root.children[0]), '日志');
-	assert.deepEqual(root.children[1].children[0].children.map(text), [ '事件', '原始日志' ]);
-	assert.equal(root.children[3], v.eventPanel);
-	assert.equal(root.children[4], v.rawPanel);
+	assert.deepEqual(v.toolbar.children[0].children.map(text), [ '事件', '原始日志' ]);
+	assert.equal(root.children[1].children[3], v.eventPanel);
+	assert.equal(root.children[1].children[4], v.rawPanel);
 	assert.equal(v.eventPanel.hidden, false);
 	assert.equal(v.rawPanel.hidden, true);
 	assert.equal(text(v.eventContent), '读取中…');
@@ -523,7 +523,7 @@ function styles(node) {
 test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with bounded select groups', () => {
 	const h = load_view(), v = h.page;
 	const root = v.render();
-	const tabRow = root.children[1];
+	const tabRow = root.children[1].children[1];
 	const tabs = tabRow.children[0];
 	const [toolbar, content] = v.rawPanel.children;
 	const [filters, actions] = toolbar.children;
@@ -670,11 +670,16 @@ test('T16.13: tab row orders left tabs, right actions, shared error and panels p
 	const h = load_view(), v = h.page;
 	const root = v.render();
 	const toolbar = v.toolbar, error = v.toolbarError;
+	const section = root.children[1];
 	assert.equal(root.children[0].tag, 'h2');
-	assert.equal(root.children[1], toolbar);
+	assert.equal(section.class, 'cbi-section');
+	assert.equal(toolbar.class, 'aether-section-actions');
+	assert.ok(!root.children.some(node => node.class === 'cbi-map-descr'));
+	assert.equal(section.children[0].tag, 'h3');
+	assert.equal(section.children[1], toolbar);
 	const [tabs, actions] = toolbar.children;
-	assert.equal(root.children.length, 5, 'no separate action row remains below the title');
-	assert.deepEqual(root.children.slice(1), [toolbar, error, v.eventPanel, v.rawPanel]);
+	assert.equal(root.children.length, 2, 'no action row or state sits outside the block');
+	assert.deepEqual(section.children.slice(1), [toolbar, error, v.eventPanel, v.rawPanel]);
 	assert.equal(toolbar.children.length, 2);
 	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
 	assert.deepEqual(actions.children, [v.clearButton, v.truncateButton]);
@@ -689,8 +694,8 @@ test('T16.13: tab row orders left tabs, right actions, shared error and panels p
 		const pending = v.switchTab(tab);
 		h.calls.at(-1).resolve(tab == 'events' ? payload([]) : { ok: true, lines: [] });
 		await pending;
-		assert.equal(root.children[1], toolbar);
-		assert.equal(root.children[2], error);
+		assert.equal(section.children[1], toolbar);
+		assert.equal(section.children[2], error);
 		assert.deepEqual(toolbar.children, [tabs, actions]);
 		assert.equal(text(error), 'persistent action error');
 		assert.equal(error.hidden, false);
@@ -711,10 +716,10 @@ test('T16.13: tab row orders left tabs, right actions, shared error and panels p
 			const poll = h.polls.at(-1).fn();
 			h.calls.at(-1).resolve(payload([]));
 			await poll;
-			assert.equal(root.children[1], toolbar);
+			assert.equal(section.children[1], toolbar);
 			assert.deepEqual(toolbar.children, [tabs, actions]);
 			assert.deepEqual(actions.children, [v.clearButton, v.truncateButton]);
-			assert.equal(root.children[2], error);
+			assert.equal(section.children[2], error);
 			assert.equal(text(error), 'persistent action error');
 		}
 	}

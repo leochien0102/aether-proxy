@@ -56,7 +56,7 @@ test('T10.73 translated migration guidance is rendered and running paths remain 
 	assert.match(note, /只更新 aether-xray/);
 	assert.match(note, /xray-core 不会被卸载，也不再由本应用更新/);
 	assert.match(note, /回退使用 \/usr\/bin\/xray/);
-	assert.ok(text(h.page.inventory).includes(note));
+	assert.ok(descendants(h.page.inventory).some(node => node.title === note));
 	for (const binary of ['/usr/bin/aether-xray', '/usr/bin/xray', '/opt/custom-xray']) {
 		const rows = model.components({ components: { xray: { path: binary, version: '26.10.21' } } });
 		assert.equal(rows[0].path, binary);
@@ -344,7 +344,7 @@ test('T11.14 updates view: companions dispatch only the bridge, then recheck wit
 			} } : { state: 'ok', result: { packages: bridge_status('0.6.6', 2).updates_available.packages } };
 		};
 		h.ap.call = async method => { calls.push([method]); return bridge_status('0.6.6', 2); };
-		const table = h.page.inventory.children.find(n => n.tag == 'table');
+		const table = descendants(h.page.inventory).find(n => n.tag == 'table');
 		const r = table.children.find(n => text(n.children[0]) == name);
 		assert.equal(text(buttons(r)[0]), '先更新到 0.6.4（第 1/3 步）');
 		await buttons(r)[0].click();
@@ -486,12 +486,12 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	assert.equal(map.options[3].placeholder, '30');
 	assert.equal(map.options[4].validate('update', 'https://channel/'), true);
 	assert.equal(map.options[4].validate('update', 'bad url'), model.validate_url('bad url'));
-	const table = h.page.inventory.children.find(n => n.tag == 'table');
+	const table = descendants(h.page.inventory).find(n => n.tag == 'table');
 	assert.equal(table.children.length, 5);
 	for (const row of table.children.slice(1))
 		assert.deepEqual(row.children.slice(1, 5).map(text), Array(4).fill('读取中…'));
 	for (const name of [ 'xray', 'DNS 引擎' ])
-		assert.ok(h.page.inventory.children.some(n => text(n) == name + ': 读取中… — 读取中… '));
+		assert.ok(descendants(h.page.inventory).some(n => text(n) == name + ': 读取中… — 读取中… '));
 	assert.equal(buttons(h.page.inventory).length, 1, 'no package actions before status');
 	assert.equal(text(buttons(h.page.inventory)[0]), '检查更新');
 	assert.equal(buttons(h.page.inventory)[0].disabled, true);
@@ -516,15 +516,15 @@ test('T10.16 updates scenario 3: status fills only inventory and preserves unsav
 	} };
 	h.calls[0].resolve(reply);
 	await settle();
-	const table = h.page.inventory.children.find(n => n.tag == 'table');
+	const table = descendants(h.page.inventory).find(n => n.tag == 'table');
 	const vm = model.table(reply, false, Date.now() / 1000);
 	assert.deepEqual(table.children.slice(1).map(r => r.children.slice(0, 5).map(text)),
 		vm.rows.map(r => [ r.name, r.installed, r.available, r.previous, r.status ]));
 	for (const row of model.components(reply))
-		assert.ok(h.page.inventory.children.some(n => text(n) ==
+		assert.ok(descendants(h.page.inventory).some(n => text(n) ==
 			row.name + ': ' + row.version + ' — ' + row.path + ' ' + row.note));
 	assert.doesNotMatch(text(root), /读取中…/);
-	assert.deepEqual(buttons(h.page.inventory).map(text), [ '立即更新', '回滚到 1', '检查更新' ]);
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '检查更新', '立即更新', '回滚到 1' ]);
 	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
 	for (const [i, node] of nodes.entries())
 		assert.equal(root.children[i], node, 'only inventory contents may be replaced');
@@ -545,7 +545,7 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		h.start();
 		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
 		await settle();
-		assert.equal(text(h.page.inventory.children[0]), code + '：offline');
+		assert.equal(text(h.page.inventory.children[0].children[3]), code + '：offline');
 		assert.doesNotMatch(text(root), /读取中…/);
 		const actions = buttons(h.page.inventory);
 		assert.equal(actions.length, 1);
@@ -570,7 +570,7 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	h.start();
 	h.calls[0].resolve({ ok: true, ...status() });
 	await settle();
-	assert.deepEqual(buttons(h.page.inventory).map(text), [ '立即更新', '回滚到 1', '检查更新' ]);
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '检查更新', '立即更新', '回滚到 1' ]);
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === false));
 	for (const busy of [ true, false ]) {
 		h.page.busy = busy;
@@ -580,7 +580,7 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	// The install-only state must share the same enabled/disabled rule.
 	h.page.status = { ok: true, ...status({ ...entry, installed: null, previous: null }) };
 	h.page.show_inventory();
-	assert.deepEqual(buttons(h.page.inventory).map(text), [ '安装', '检查更新' ]);
+	assert.deepEqual(buttons(h.page.inventory).map(text), [ '检查更新', '安装' ]);
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === false));
 	h.page.busy = true;
 	h.page.show_inventory();
@@ -598,11 +598,16 @@ async () => {
 		h.page.summary.textContent = 'check result';
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
-		const index = h.page.inventory.children.indexOf(row);
-		assert.equal(text(h.page.inventory.children[index - 2]), model.manual_install_note(),
-			'manual installation guidance precedes migration guidance and actions');
-		assert.equal(text(h.page.inventory.children[index - 1]), model.migration_note());
-		assert.equal(h.page.inventory.children[index + 1].tag, 'h3', 'next block follows the action row');
+		const [packages, components] = h.page.inventory.children;
+		assert.equal(packages.class, 'cbi-section');
+		assert.equal(components.class, 'cbi-section');
+		assert.equal(row.class, 'aether-section-actions');
+		assert.equal(packages.children[0].tag, 'h3');
+		assert.equal(packages.children[1].class, 'cbi-map-descr');
+		assert.equal(packages.children[2], row);
+		assert.equal(packages.children.at(-1).tag, 'table');
+		assert.equal(components.children[1].children[0].title, model.migration_note());
+		assert.ok(!h.page.inventory.children.some(node => node.class === 'cbi-map-descr'));
 	}
 });
 
@@ -677,7 +682,7 @@ async function ready_view(s = all_packages_status()) {
 	return h;
 }
 function rollback_button(h, name) {
-	const table = h.page.inventory.children.find(node => node.tag == 'table');
+	const table = descendants(h.page.inventory).find(node => node.tag == 'table');
 	const row = table.children.find(node => text(node.children[0]) == name);
 	return buttons(row).find(node => text(node).startsWith('回滚到'));
 }
@@ -693,7 +698,7 @@ test('T10.46 scenario 1: only Xray offers rollback even when all four previous v
 		assert.equal(!!rollback_button(h, name), name == 'aether-xray');
 	assert.equal(buttons(h.page.inventory).filter(b => text(b).startsWith('回滚')).length, 1);
 	assert.deepEqual(buttons(h.page.inventory).map(text),
-		['立即更新', '回滚到 OLD-0', '立即更新', '立即更新', '立即更新', '检查更新']);
+		['检查更新', '立即更新', '回滚到 OLD-0', '立即更新', '立即更新', '立即更新']);
 });
 test('T10.46 scenario 1: Xray keeps single-package confirmation, cancellation, dispatch and result', async () => {
 	const h = await ready_view();
@@ -729,17 +734,17 @@ test('T10.46 scenario 2: model and view contain no grouped rollback or manual re
 });
 const manual_note = '如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，' +
 	'或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。';
-test('T10.46 scenario 3: translated manual install guidance sits immediately below the package table', async () => {
+test('T10.46 scenario 3: translated manual install guidance is a tooltip above the package table', async () => {
 	assert.equal(model.manual_install_note(), manual_note);
 	const h = load_view();
 	await h.page.render();
 	for (const s of [undefined, all_packages_status(), { ok: false, code: 'RPC_FAILED' }]) {
 		h.page.status = s;
 		h.page.show_inventory();
-		const children = h.page.inventory.children;
-		const index = children.findIndex(node => node.tag == 'table');
-		assert.equal(children[index + 1].tag, 'p');
-		assert.equal(text(children[index + 1]), manual_note);
+		const [packages] = h.page.inventory.children;
+		const note = packages.children[1].children[0];
+		assert.equal(note.textContent, '如需安装其他版本：');
+		assert.equal(note.title, manual_note);
 	}
 });
 test('T10.46 scenario 4: automatic recovery text remains unchanged for Xray and backend installs', async () => {
@@ -769,7 +774,7 @@ test('T10.46 scenario 5: every package still installs and updates without previo
 			return { state: 'ok', result: { ok: true, from: installed, to: 'NEW' } };
 		};
 		for (const name of names) {
-			const table = h.page.inventory.children.find(node => node.tag == 'table');
+			const table = descendants(h.page.inventory).find(node => node.tag == 'table');
 			const row = table.children.find(node => text(node.children[0]) == name);
 			const button = buttons(row).find(b => text(b) == (installed ? '立即更新' : '安装'));
 			assert.ok(button && !button.disabled);
@@ -800,7 +805,7 @@ async function display_group_result(result, expected) {
 		assert.deepEqual(args, ['luci-app-aether-proxy']);
 		return { state: result.ok ? 'ok' : 'failed', result };
 	};
-	const table = h.page.inventory.children.find(node => node.tag == 'table');
+	const table = descendants(h.page.inventory).find(node => node.tag == 'table');
 	const row = table.children.find(node => text(node.children[0]) == 'luci-app-aether-proxy');
 	await buttons(row).find(b => text(b) == '立即更新').click();
 	assert.equal(text(h.page.summary), expected);

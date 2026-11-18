@@ -117,8 +117,7 @@ return view.extend({
 
 	buildMap: function() {
 		const self = this;
-		const m = new form.Map('aetherproxy', _('Access Control', 'aether-proxy'),
-			_('Set the policy for each LAN device and for devices that are not listed.', 'aether-proxy'));
+		const m = new form.Map('aetherproxy', _('Access Control', 'aether-proxy'));
 		const renderContents = m.renderContents.bind(m);
 		/* Section rendering builds detached nodes; formvalue() still searches
 		   the old Map root then. Wait for replacement so modal saves and resets
@@ -140,12 +139,17 @@ return view.extend({
 		const self = this;
 		const s = m.section(form.NamedSection, 'main', 'global');
 		let o;
-		s.description = [
+		const help = [
 			_('To proxy all devices, set Unlisted devices to Follow default mode, then set exceptions below to Direct.',
 				'aether-proxy'),
 			_('To proxy only some devices, set Unlisted devices to Direct, then list the devices to proxy below.',
 				'aether-proxy')
 		].join(' ');
+		ap.form_section(s, {
+			title: _('Unlisted devices', 'aether-proxy'),
+			description: E('span', { title: help },
+				_('Set the policy for each LAN device and for devices that are not listed.', 'aether-proxy'))
+		});
 		o = s.option(form.DummyValue, '_mode', _('Default mode', 'aether-proxy'));
 		o.cfgvalue = function() {
 			return model.mode_text(uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn');
@@ -321,14 +325,6 @@ return view.extend({
 			},
 			renderContents: function(ids, nodes) {
 				const node = form.GridSection.prototype.renderContents.call(this, ids, nodes);
-				node.insertBefore(E('div', {
-					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-				}, E('button', {
-					'class': 'cbi-button cbi-button-add',
-					'click': ui.createHandlerFn(this, 'handleAdd'),
-					'disabled': this.map.readonly || null
-				}, _('Add', 'aether-proxy'))), node.querySelector('table'));
 				self.tableNode = node;
 				return node;
 			}
@@ -337,6 +333,14 @@ return view.extend({
 		s.anonymous = true;
 		s.addremove = true;
 		s.nodescriptions = true;
+		ap.form_section(s, {
+			title: _('Device', 'aether-proxy'),
+			actions: () => [ E('button', {
+				'class': 'cbi-button cbi-button-add',
+				'click': ui.createHandlerFn(s, 'handleAdd'),
+				'disabled': m.readonly || null
+			}, _('Add', 'aether-proxy')) ]
+		});
 
 		o = s.option(form.Flag, 'enabled', _('Enabled', 'aether-proxy'));
 		this.inlineFlag(o);

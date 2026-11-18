@@ -300,6 +300,7 @@ function build_form() {
 	}
 
 	class Section {
+		render() { return E('div', { class: 'cbi-section-node-tabbed' }); }
 		constructor(kind, section, type, title) {
 			this.kind = kind;
 			this.section = section;
@@ -338,10 +339,11 @@ function build_form() {
 			return s;
 		}
 
-		render() {
+		async render() {
+			globalThis.E = E;
 			for (const option of created.filter(o => ['DynamicList', 'DeviceSelect'].includes(o.type)))
 				option.input = renderList(option, 'main', option.default);
-			return Promise.resolve({});
+			return E('div', { class: 'cbi-map' }, [E('h2', {}, this.title), ...await Promise.all(this.sections.map(s => s.render()))]);
 		}
 		parse() {
 			for (const option of created.filter(o => o.input))
@@ -393,7 +395,14 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 		'aether-proxy.model.advanced': spy, 'aether-proxy.common': {}
 	}, { window: {}, document: {} });
 
-	await view.render();
+	const root = await view.render();
+	assert.equal(root.children[0].tag, 'h2');
+	assert.ok(!root.children.some(node => node.class === 'cbi-map-descr'));
+	const [, block] = root.children;
+	assert.equal(block.class, 'cbi-section');
+	assert.equal(block.children[0].tag, 'h3');
+	assert.equal(block.children[1].class, 'cbi-map-descr');
+	assert.equal(block.children[2].class, 'cbi-section-node-tabbed');
 
 	assert.equal(state.map.config, 'aetherproxy');
 	assert.equal(state.map.sections.length, 1);

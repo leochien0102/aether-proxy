@@ -189,14 +189,19 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			if (dark)
 				assert.equal(await page.evaluate(() => matchMedia('(max-device-width: 600px)').matches), true);
 			await subscription.locator('summary').click();
-			const scroll = subscription.locator('.aether-subscription-scroll');
-			const scrollMetrics = await scroll.evaluate(el => {
-				el.scrollLeft = el.scrollWidth;
-				return { client: el.clientWidth, width: el.scrollWidth, left: el.scrollLeft, viewport: window.innerWidth };
-			});
-			assert.ok(scrollMetrics.client <= scrollMetrics.viewport && scrollMetrics.width > scrollMetrics.client
-				&& scrollMetrics.left > 0, `${theme}: subscription table overflow is local (${JSON.stringify(scrollMetrics)})`);
-			assert.equal(await result.evaluate(el => getComputedStyle(el.parentElement).display), 'table-row');
+			for (const selector of ['.aether-subscription-scroll', '.aether-node-scroll']) {
+				const scroll = page.locator(selector);
+				const scrollMetrics = await scroll.evaluate(el => {
+					el.scrollLeft = el.scrollWidth;
+					return { client: el.clientWidth, width: el.scrollWidth, left: el.scrollLeft, viewport: window.innerWidth };
+				});
+				assert.ok(scrollMetrics.client <= scrollMetrics.viewport && scrollMetrics.width > scrollMetrics.client
+					&& scrollMetrics.left > 0, `${theme}: ${selector} overflow is local (${JSON.stringify(scrollMetrics)})`);
+				assert.equal(await scroll.locator('.cbi-section-table .tr').last()
+					.evaluate(el => getComputedStyle(el).display), 'table-row');
+				assert.equal(await scroll.locator('.cbi-section-table .th').first()
+					.evaluate(el => getComputedStyle(el).display), 'table-cell');
+			}
 			assert.equal(await result.getByText('尚未更新', { exact: true })
 				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
 			console.log(`PASS ${theme}: conditional column, single-line placeholder, narrow table scroll, existing alignment, three failover states, focus, Space, cell and mark clicks`);

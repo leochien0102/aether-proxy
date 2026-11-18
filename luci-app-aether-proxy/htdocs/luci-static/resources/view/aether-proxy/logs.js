@@ -183,13 +183,13 @@ return view.extend({
 			'class': 'cbi-button cbi-button-remove', click: () => this.changeLogs(true)
 		}, _('Truncate to last startup', 'aether-proxy'));
 		// Page-level controls stay mounted when either tab's data is refreshed.
-		this.toolbar = E('div', { style: rowStyle + '; justify-content:space-between' }, [
-			E('div', { style: groupStyle }, [
-				E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
-				E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
-			]),
-			E('div', { style: groupStyle }, [ this.clearButton, this.truncateButton ])
+		const tabs = E('div', { style: groupStyle }, [
+			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
+			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
 		]);
+		const actions = E('div', { style: groupStyle + '; margin-inline-start:auto' },
+			[ this.clearButton, this.truncateButton ]);
+		this.toolbar = ap.section_actions([actions], tabs);
 		this.rawPanel = E('div', { hidden: true }, [
 			E('div', { style: rowStyle + '; justify-content:space-between' }, [
 				E('div', { style: groupStyle }, [
@@ -205,9 +205,10 @@ return view.extend({
 		this.showEvents();
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
-			this.toolbar,
-			this.toolbarError,
-			this.eventPanel, this.rawPanel
+			ap.section({
+				title: _('Logs', 'aether-proxy'), actions: this.toolbar, stacked: true,
+				body: [this.toolbarError, this.eventPanel, this.rawPanel]
+			})
 		]);
 		/* Give LuCI a turn to display the complete page before fetching events. */
 		window.setTimeout(() => {
