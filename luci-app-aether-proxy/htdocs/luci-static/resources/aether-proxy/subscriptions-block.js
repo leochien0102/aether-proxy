@@ -292,19 +292,16 @@ return baseclass.extend({
 			return;
 		const { widget, description } = this.failoverSetting;
 		let text = _('Switch automatically if the current node fails.', 'aether-proxy');
-		let title = FAILOVER_RISK;
-		if (!active) {
-			title += ' ' + FAILOVER_INACTIVE;
-		}
-		else {
+		let title = active ? '' : FAILOVER_INACTIVE;
+		if (active) {
 			const node = current ? uci.get('aetherproxy', current) : null;
 			if (node?.disabled === '1') {
 				text = _('The current node is disabled. Automatic failover is inactive.', 'aether-proxy');
-				title += ' ' + text;
+				title = text;
 			}
 			else if (!node || !selected.has(current)) {
 				text = _('The current node is not on the list. Automatic failover is inactive.', 'aether-proxy');
-				title += ' ' + _('The current node “%s” is not on the failover list. Add it to the list or turn off the main switch.',
+				title = _('The current node “%s” is not on the failover list. Add it to the list or turn off the main switch.',
 					'aether-proxy').format(node?.label || current || '–');
 			}
 		}
@@ -465,6 +462,23 @@ return baseclass.extend({
 		const renderSection = s.render;
 		s.render = function(...args) {
 			return renderSection.apply(this, args).then(content => {
+				// LuCI renders the label only when the option title is a string.
+				const title = content.querySelector('[data-name="failover"] > .cbi-value-title');
+				if (title) {
+					title.appendChild(E('span', {
+						'class': 'aether-warning',
+						role: 'img',
+						tabindex: '0',
+						title: FAILOVER_RISK,
+						'aria-label': FAILOVER_RISK,
+						style: 'cursor:help; margin-left:0.35em; opacity:0.85',
+						click: ev => {
+							// The SDK label forwards clicks to the switch; the warning must not.
+							ev.stopPropagation();
+							ev.preventDefault();
+						}
+					}, [ '⚠' ]));
+				}
 				content.classList?.remove('cbi-section');
 				return ap.section({ title: _('General settings', 'aether-proxy'), body: content });
 			});

@@ -110,10 +110,23 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 			const flags = [];
 			for (const o of section.options) {
 				const widget = o.renderWidget(section.type, 0, uci.get('aetherproxy', section.type, o.field));
-				if (o.kind === 'Flag')
-					flags.push(E('label', {}, [o.title, widget, E('span', {}, o.description)]));
+				if (o.kind !== 'Flag')
+					continue;
+				// Like form.js, only a nonempty string title produces a label.
+				const label = typeof o.title === 'string' && o.title
+					? E('label', { class: 'cbi-value-title' }, [o.title]) : null;
+				if (label)
+					label.appendChild = child => { label.children.push(child); return child; };
+				flags.push(E('div', { class: 'cbi-value', 'data-name': o.field },
+					[label, E('div', { class: 'cbi-value-field' }, [widget, E('span', {}, o.description)])]));
 			}
-			return E('section', {}, flags);
+			const content = E('section', {}, flags);
+			content.querySelector = selector => {
+				assert.equal(selector, '[data-name="failover"] > .cbi-value-title');
+				const row = find(content, node => node['data-name'] === 'failover')[0];
+				return row?.children.find(node => node.class === 'cbi-value-title') ?? null;
+			};
+			return content;
 		}
 		return E('div', {}, [
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
@@ -1849,7 +1862,7 @@ function toggleFailover(h, checked) {
 	checkbox.change({ target: checkbox });
 }
 
-test('T16.18: general Flag defaults off, warns about exit IP risk and does not write on unchanged Save', async () => {
+test('T16.18: general Flag defaults off and does not write on unchanged Save', async () => {
 	const h = await harness('nodes');
 	await render(h);
 	const flag = h.subscriptions.generalOptions.failover;
@@ -1861,9 +1874,7 @@ test('T16.18: general Flag defaults off, warns about exit IP risk and does not w
 	const inline = find(general, node => node.class === 'aether-failover-setting')[0];
 	assert.equal(inline.firstChild, flag.getUIElement('sub'));
 	assert.equal(inline.lastChild.textContent, '当前节点不可达时自动切换。');
-	assert.doesNotMatch(general.textContent, new RegExp(failoverRisk));
-	assert.ok(flag.getUIElement('sub').title.includes(failoverRisk));
-	assert.ok(flag.getUIElement('sub').title.includes(inactiveFailover));
+	assert.equal(flag.getUIElement('sub').title, inactiveFailover);
 	await h.view.handleSave();
 	assert.equal(h.uciCalls.some(call => call[3] === 'failover'), false);
 	assert.equal(Object.hasOwn(h.general[0], 'failover'), false);
@@ -1894,6 +1905,38 @@ const failoverEffective = '当前节点不可达时自动切换。';
 const failoverUnlisted = '当前节点未加入名单，自动切换暂不生效。';
 const currentNodeHint = '当前节点；未加入名单时不会触发自动切换。';
 
+test('T16.19: failover risk warning is focusable in the label with the switch off or on', async () => {
+	for (const value of ['0', '1']) {
+		const h = await harness('nodes');
+		h.general.push({ '.name': 'sub', failover: value });
+		await render(h);
+		const general = h.subscriptions.map.node.firstChild;
+		const row = find(general, node => node['data-name'] === 'failover')[0];
+		const label = row.firstChild;
+		assert.equal(label.tag, 'label');
+		assert.equal(label.class, 'cbi-value-title');
+		assert.equal(label.firstChild.textContent, '自动切换');
+		const icon = label.lastChild;
+		assert.equal(icon.tag, 'span');
+		assert.equal(icon.class, 'aether-warning');
+		assert.equal(icon.textContent, '⚠');
+		assert.equal(icon.getAttribute('role'), 'img');
+		assert.equal(icon.getAttribute('tabindex'), '0');
+		assert.equal(icon.getAttribute('title'), failoverRisk);
+		assert.equal(icon.getAttribute('aria-label'), failoverRisk);
+		assert.equal(icon.getAttribute('style'), 'cursor:help; margin-left:0.35em; opacity:0.85');
+		assert.deepEqual(find(general, node => node.class === 'aether-warning'), [icon]);
+		assert.ok(!general.textContent.includes(failoverRisk));
+		assert.ok(!failoverSwitchTitle(h).includes(failoverRisk));
+		const cancelled = [];
+		icon.click({
+			stopPropagation: () => cancelled.push('propagation'),
+			preventDefault: () => cancelled.push('default')
+		});
+		assert.deepEqual(cancelled, ['propagation', 'default'], 'clicking the warning cannot activate the label');
+	}
+});
+
 test('T16.25: switch and membership drafts update the description and only the unchecked current row in place', async () => {
 	const h = await harness('nodes');
 	await render(h);
@@ -1905,7 +1948,7 @@ test('T16.25: switch and membership drafts update the description and only the u
 	const assertOff = () => {
 		assert.equal(description.textContent, failoverEffective);
 		assert.equal(description.style, 'opacity:0.65');
-		assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + inactiveFailover);
+		assert.equal(failoverSwitchTitle(h), inactiveFailover);
 		assert.equal(current.title, '自动切换 — ' + inactiveFailover + ' — ' + currentNodeHint);
 		assert.equal(other.title, '自动切换 — ' + inactiveFailover);
 		assert.equal(subscription.title, '自动切换 — ' + inactiveFailover);
@@ -1913,8 +1956,8 @@ test('T16.25: switch and membership drafts update the description and only the u
 	const assertUnlisted = () => {
 		assert.equal(description.textContent, failoverUnlisted);
 		assert.equal(description.style, '');
-		assert.equal(failoverSwitchTitle(h), failoverRisk +
-			' 当前节点「Node A」不在自动切换名单中。请将其加入名单，或关闭总开关。');
+		assert.equal(failoverSwitchTitle(h),
+			'当前节点「Node A」不在自动切换名单中。请将其加入名单，或关闭总开关。');
 		assert.equal(current['aria-checked'], 'false');
 		assert.equal(current.title, '自动切换 — ' + currentNodeHint);
 		assert.equal(other.title, '自动切换');
@@ -1928,7 +1971,7 @@ test('T16.25: switch and membership drafts update the description and only the u
 	assertUnlisted(); // List contains only another node.
 	await current.click();
 	assert.equal(description.textContent, failoverEffective);
-	assert.equal(failoverSwitchTitle(h), failoverRisk);
+	assert.equal(failoverSwitchTitle(h), '');
 	assert.equal(current['aria-checked'], 'true');
 	assert.equal(current.title, '自动切换');
 	assert.equal(other.title, '自动切换');
@@ -1949,13 +1992,13 @@ test('T16.25: a disabled current node takes precedence over missing membership w
 	await render(h);
 	const disabled = '当前节点已停用，自动切换暂不生效。';
 	assert.equal(failoverDescription(h).textContent, disabled);
-	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + disabled);
+	assert.equal(failoverSwitchTitle(h), disabled);
 	await failoverBox(h, 'n_a').click();
 	assert.equal(failoverDescription(h).textContent, disabled);
-	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + disabled);
+	assert.equal(failoverSwitchTitle(h), disabled);
 	toggleFailover(h, false);
 	assert.equal(failoverDescription(h).textContent, failoverEffective);
-	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + inactiveFailover);
+	assert.equal(failoverSwitchTitle(h), inactiveFailover);
 });
 
 function assertFailover(h, id, pressed, label, active = false) {
@@ -2154,7 +2197,7 @@ test('T16.18: docs/10 records block order, default and exit IP risk', () => {
 	const docs = fs.readFileSync(path.resolve(APP, '../docs/10-cli-luci.md'), 'utf8');
 	assert.match(docs, /\*\*通用设置\*\*[^\n]+\*\*订阅\*\*[^\n]+\*\*节点\*\*[^\n]+批量导入/);
 	const section = docs.split('### 节点故障自动切换（T16.18）')[1]?.split('\n### ')[0] ?? '';
-	assert.match(section, /`sub\.failover`[^\n]*默认关闭[^\n]*风控/);
+	assert.match(section, /`sub\.failover`[^\n]*默认关闭[^\n]*标签旁的 ⚠ 图标[^\n]*风控/);
 });
 
 test('T9.42: a hostile node name stays literal text on the nodes page', async () => {
