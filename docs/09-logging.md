@@ -135,6 +135,8 @@ aether-proxy: CMD_FAILED external command failed [cmd="nft -f /var/run/aether-pr
 | `NODE_RESOLVE_FALLBACK` / `NODE_RESOLVE_FAILED` | warn / error | `node`、`domain`、`lkg_ip` |
 | `NODE_IP_CHANGED` | notice | `node`、`old`、`new`、`source`（dns/lkg/literal）、`raw`（最后一次 resolveip 原始 stdout，最多 512 字节） |
 | `NODE_IP_UNREACHABLE` | warn | `node`（节点 ID）、`address`（配置的节点地址）、`ip`（候选新 IPv4）、`port`（节点端口）、`source`（dns/lkg/literal）、`raw`（最后一次 resolveip 原始 stdout，最多 512 字节）；新 IP 的 3 秒 TCP 探测失败，保留当前 IP，不产生 `NODE_IP_CHANGED` |
+| `NODE_FAILOVER` | notice | `from`、`to`（节点 ID）、`ip`、`reason`（`node_tcp_failed_3`）；运行时故障切换成功，不写 UCI |
+| `NODE_FAILOVER_FAILED` | warn | `reason`（`no_reachable_candidate` 或 reload 失败原因）；同一故障仅尝试一次，至少 10 分钟冷却 |
 | `NODE_STALE` / `NODE_STALE_IN_USE` | warn | `node`、`label` |
 | `NODE_INSECURE_IGNORED` | warn | `node`、`label` |
 | `PROXY_HEALTHY` / `PROXY_UNHEALTHY` | notice / warn | `latency_ms`、`fails` |

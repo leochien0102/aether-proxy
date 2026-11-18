@@ -28,14 +28,14 @@ export const cases = [
 	{
 		name: 'T9.17 old config materializes all three defaults',
 		kind: 'normalize', common: null, overrides: {},
-		expect: { sub: DEFAULTS, subs: { s_00000001: DEFAULTS } }
+		expect: { sub: { failover: false, ...DEFAULTS }, subs: { s_00000001: DEFAULTS } }
 	},
 	{
 		name: 'T9.17 empty options inherit common settings',
 		kind: 'normalize', common: { user_agent: 'x', fetch_via: 'direct', interval_hours: '12' },
 		overrides: { user_agent: '', fetch_via: '', interval_hours: '' },
 		expect: {
-			sub: { user_agent: 'x', fetch_via: 'direct', interval_hours: 12 },
+			sub: { failover: false, user_agent: 'x', fetch_via: 'direct', interval_hours: 12 },
 			subs: { s_00000001: { user_agent: 'x', fetch_via: 'direct', interval_hours: 12 } }
 		}
 	},
@@ -43,7 +43,7 @@ export const cases = [
 		name: 'T9.17 partial common settings fall back per field',
 		kind: 'normalize', common: { interval_hours: '0' }, overrides: { user_agent: 'own' },
 		expect: {
-			sub: { ...DEFAULTS, interval_hours: 0 },
+			sub: { failover: false, ...DEFAULTS, interval_hours: 0 },
 			subs: { s_00000001: { user_agent: 'own', fetch_via: 'auto', interval_hours: 0 } }
 		}
 	},
@@ -51,7 +51,7 @@ export const cases = [
 		name: 'T9.17 load inherits common values preserves zero and legacy explicit values',
 		kind: 'fixture',
 		expect: {
-			sub: { user_agent: 'x', fetch_via: 'direct', interval_hours: 12 },
+			sub: { failover: false, user_agent: 'x', fetch_via: 'direct', interval_hours: 12 },
 			subs: {
 				s_00000001: { user_agent: 'x', fetch_via: 'direct', interval_hours: 12 },
 				s_00000002: { user_agent: 'x', fetch_via: 'direct', interval_hours: 0 },

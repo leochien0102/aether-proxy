@@ -545,6 +545,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - **中文说明**：每个事件码一个模板，`{参数名}` 换成 `args` 中的值。模板覆盖 [09](09-logging.md)「事件码目录」中等级为 notice、warn、error 的**全部**事件码（`CHILD_STARTED`、`CMD_RUN` 只在 syslog 出现，不需要）。
   参数值的显示：缺失 → `?`；数组 → 用「、」连接；对象 → `键 值` 用「、」连接（例如 `skipped` 的按原因计数、`steps`）；其他 → 原样。
   T16.14：`NODE_IP_UNREACHABLE`（warn）显示「节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）」；`NODE_IP_CHANGED` 显示「节点 {node} 的 IP 已从 {old} 变为 {new}（来源：{source}，原始输出：{raw}）」。两者新增 `source`（dns/lkg/literal）与 `raw`（最后一次 resolveip 原始 stdout，最多 512 字节），节点 ID 仍映射为名称，全部原始参数保留在悬停内容中。
+  T16.17 事件表：`NODE_FAILOVER`（notice，`from/to/ip/reason`）→「节点故障自动切换：{from} → {to}（{ip}，原因：{reason}）」；`NODE_FAILOVER_FAILED`（warn，`reason`）→「节点故障自动切换失败：{reason}」。本卡仅增加事件模板，不增加界面控件。
   模板只用参数，不另外翻译参数的值（例如 `reason`、`mode` 原样显示）。未知事件码 → 「<事件码> <args 的 JSON>」。
   `SERVICE_STARTED` 只显示耗时，不展开 `steps`（`steps` 仍在悬停的 `args` 里）。
 

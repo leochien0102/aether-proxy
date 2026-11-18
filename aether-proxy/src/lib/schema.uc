@@ -107,6 +107,7 @@ const host = [
 ];
 
 const sub = [
+	{ name: 'failover', type: 'bool', default: false },
 	{ name: 'user_agent', type: 'string', default: C.PROG + '/' + C.VERSION },
 	{ name: 'fetch_via', type: 'enum', enum: [ 'auto', 'direct', 'proxy' ], default: 'auto' },
 	{ name: 'interval_hours', type: 'int', min: 0, default: 24 }
@@ -127,6 +128,8 @@ const subscription = [
 // node cannot be rendered without them. Defaults for `source` (null), `stale` (false) and
 // `security` (none) are likewise not in 05.
 const node = [
+	// Absent inherits the global switch; explicit false opts this node out.
+	{ name: 'failover', type: 'bool', default: null, omit_unset: true },
 	{ name: 'label', type: 'string', default: null },
 	{ name: 'source', type: 'string', default: null },
 	{ name: 'stale', type: 'bool', default: false },

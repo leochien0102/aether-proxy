@@ -59,6 +59,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
+| `failover` | bool | `0` | 节点故障自动切换总开关；显式开启后才生效。频繁切换出口 IP 可能触发敏感应用/网站风控 |
 | `user_agent` | 字符串 | `aether-proxy/<版本>` | 部分机场按 UA 决定返回格式，可改 |
 | `fetch_via` | enum(`auto`\|`direct`\|`proxy`) | `auto` | `auto` = 先直连，失败再经代理；`proxy` 指**经当前节点**（本机 Xray 的 HTTP 入站），不是独立的代理（[06](06-nodes-subscription.md)） |
 | `interval_hours` | int ≥ 0 | `24` | 0 = 只手动更新。LuCI 以下拉给出 0 / 12 / 24 / 72 / 168，命令行接受任意非负整数 |
@@ -83,6 +84,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
+| `failover` | 可选 bool | 缺省跟随 `sub.failover`；显式 `0` 不参与（当前节点不触发，也不作为候选），`1` 参与但不能越过全局关闭；手工节点同规则 |
 | `label` | 字符串 | 显示名（订阅的 `#name` 或手填） |
 | `source` | `manual` 或订阅段名 | |
 | `stale` | bool | 订阅中已消失、但仍被引用而保留 |

@@ -620,6 +620,8 @@ function check_main(snap, errors, warnings) {
 
 // Keep singleton names in one place for normalization and both raw readers (docs/05, docs/06).
 const SINGLETON_SECTIONS = [ 'main', 'dns', 'update', 'probe', 'sub', 'stats' ];
+// sub.failover is a global switch and must never be inherited by subscriptions.
+const SUBSCRIPTION_INHERITED = [ 'interval_hours', 'fetch_via', 'user_agent' ];
 
 // raw: { main, dns, update, probe, sub, stats: option objects (or null when the section is absent),
 //        hosts: [option objects in file order],
@@ -646,8 +648,10 @@ export function normalize(raw) {
 
 		snap[coll] = {};
 
-		// Sorted by section name so the snapshot is deterministic (docs/12 rule 6).
-		for (let name in sort(keys(src))) {
+		// Nodes follow UCI file order; the same file remains deterministic.
+		// Subscription ordering is unchanged.
+		let names = kind == 'node' ? keys(src) : sort(keys(src));
+		for (let name in names) {
 			if (match(name, re) == null)
 				push(errors, { field: `${kind}.${name}`, code: 'invalid_name',
 					detail: `section name must match ${kind == 'node' ? 'n_<32 hex>' : 's_<8 hex>'}` });
@@ -655,8 +659,8 @@ export function normalize(raw) {
 			let section = normalize_section(SCHEMA[kind], src[name], `${kind}.${name}`, errors);
 			if (kind == 'subscription')
 				// Resolve inheritance once, after validation. Nullish coalescing preserves explicit 0.
-				for (let field, value in snap.sub)
-					section[field] ??= value;
+				for (let field in SUBSCRIPTION_INHERITED)
+					section[field] ??= snap.sub[field];
 			snap[coll][name] = section;
 		}
 	}

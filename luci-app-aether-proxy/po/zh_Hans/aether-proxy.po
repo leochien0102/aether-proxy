@@ -2917,3 +2917,11 @@ msgstr "实验性功能"
 msgctxt "aether-proxy"
 msgid "These features are still being validated and may change or be removed in future versions. All are disabled by default; when disabled, the interface matches the stable version."
 msgstr "以下功能仍在验证中，可能随版本变化或移除；默认全部关闭，关闭时界面与正式版一致。"
+
+msgctxt "aether-proxy"
+msgid "Node failover: {from} to {to} ({ip}, reason: {reason})"
+msgstr "节点故障自动切换：{from} → {to}（{ip}，原因：{reason}）"
+
+msgctxt "aether-proxy"
+msgid "Node failover failed: {reason}"
+msgstr "节点故障自动切换失败：{reason}"

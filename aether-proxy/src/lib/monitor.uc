@@ -19,7 +19,7 @@ import * as usage from 'aetherproxy.usage';
 import * as xray_ready from 'aetherproxy.xray_ready';
 
 // tick is declared up front: finish_tick schedules it before its definition (ucode does not hoist).
-let initial_state, interval_ms, next, tick;
+let initial_state, interval_ms, next, tick, node_reachable;
 
 function system_path(ctx, path) {
 	let root = ctx.root ?? '';
@@ -127,6 +127,12 @@ function observe(daemon) {
 		table_present: table.ok ? table.exists : true,
 		xray_listening,
 		chinadns_listening,
+		node_id: daemon.state?.node_id,
+		node_tcp_ip: daemon.state?.node_ip,
+		node_reload: daemon.state?.last_reload,
+		node_tcp_ok: daemon.snapshot.sub?.failover === true &&
+			daemon.snapshot.nodes?.[daemon.state.node_id]?.failover !== false && daemon.state.node_ip != null
+			? node_reachable(daemon.state.node_ip, daemon.snapshot.nodes[daemon.state.node_id].port) : null,
 		proxy_ok: proxy?.ok ?? null,
 		proxy_latency_ms: proxy?.latency_ms ?? null,
 		dns_ok: dns
@@ -248,7 +254,7 @@ function action_set_tier(daemon, tier, done) {
 
 // A nonblocking connect tests only TCP reachability, not the proxy protocol. Waiting
 // for nc's stdin/peer EOF can misclassify a connected but silent node as unreachable.
-function node_reachable(ip, port) {
+node_reachable = function(ip, port) {
 	let sock = socket.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
 	if (sock == null)
 		return false;
@@ -398,7 +404,93 @@ function update_node_ip(daemon, machine, done) {
 		});
 };
 
+// T16.17: config preserves UCI insertion order. Never sort by ID or latency.
+function failover_candidate(daemon, machine) {
+	for (let id, node in daemon.snapshot.nodes) {
+		if (id == daemon.state.node_id || node.failover === false)
+			continue;
+		let attempted = machine.failover_candidates[id];
+		let attempt_at = time();
+		if (attempted != null && attempt_at - attempted < C.NODE_FAILOVER_CANDIDATE_SECS)
+			continue;
+		machine.failover_candidates[id] = attempt_at;
+		let resolved = apply.resolve_node(daemon.ctx, node.address);
+		if (resolved.ok && node_reachable(resolved.ip, node.port))
+			return { id, address: node.address, ...resolved };
+	}
+	return null;
+};
+
+function action_failover(daemon, machine, done) {
+	// An earlier refresh in this action list may have repaired the route. Three failures
+	// of the previous IP must never evict a freshly installed, reachable IP.
+	if (machine.node_ip != machine.failover_ip) {
+		machine.failover_ip = machine.node_ip;
+		machine.failover_failures = 0;
+		machine.failover_latched = false;
+		done(null);
+		return;
+	}
+	let from = daemon.state.node_id, ts = time(), before = machine.node_ip;
+	let reason = 'node_tcp_failed_3';
+	let candidate = failover_candidate(daemon, machine);
+	let changed = null;
+	if (candidate != null && daemon.reload != null) {
+		let snapshot = { ...daemon.snapshot, main: { ...daemon.snapshot.main, node: candidate.id } };
+		// Reuse frozen data and reload's validation/rollback, without reading or writing UCI.
+		// Both snapshots name the already-resolved node so reload cannot resolve a different IP.
+		let live = { ...daemon, snapshot, applied_context: { ...daemon.applied_context, snapshot },
+			state: { ...daemon.state, dns_tier: machine.dns_tier, node_ip: candidate.ip } };
+		changed = daemon.reload(live, null, { mode: machine.degraded_mode });
+		if (changed.last_reload != null)
+			daemon.state.last_reload = changed.last_reload;
+	}
+	let success = changed?.ok == true && !changed.stop;
+	machine.failover_until = time() + C.NODE_FAILOVER_COOLDOWN_SECS;
+	if (success) {
+		daemon.state = changed.state;
+		daemon.snapshot = changed.snapshot;
+		daemon.applied_context = changed.applied_context;
+		daemon.ctx.service_node = candidate.id;
+		machine.node_ip = changed.state.node_ip;
+		machine.failover_ip = changed.state.node_ip;
+		machine.failover_node_id = candidate.id;
+		machine.failover_failures = 0;
+		machine.failover_latched = false;
+		machine.last_node_refresh = time();
+		machine.last_node_refresh_attempt = time();
+		machine.node_probe_failures = 0;
+		machine.node_probe_retry_at = null;
+		if (candidate.source != 'lkg') {
+			let saved = apply.update_lkg(daemon.ctx, { [candidate.address]: candidate.ip });
+			if (!saved.ok)
+				log.event('error', 'FS_FAILED', { op: 'update_lkg', path: saved.path, detail: saved.detail });
+		}
+		log.event('notice', 'NODE_FAILOVER', { from, to: candidate.id, ip: candidate.ip, reason });
+	}
+	else {
+		reason = candidate == null ? 'no_reachable_candidate' : (changed?.detail ?? 'missing reload handler');
+		if (type(reason) != 'string')
+			reason = sprintf('%.J', reason);
+		log.event('warn', 'NODE_FAILOVER_FAILED', { reason });
+	}
+	write_node_probe(daemon, {
+		ts, address: candidate?.address ?? null, attempts: candidate?.attempts ?? 0,
+		raw: substr(candidate?.raw ?? '', 0, C.NODE_PROBE_RAW_MAX),
+		ip: candidate?.ip ?? null, source: candidate?.source ?? null,
+		elapsed_ms: candidate?.elapsed_ms ?? 0, tier: machine.dns_tier,
+		node_ip_before: before, reachable: candidate != null, action: 'failover',
+		from, to: success ? candidate.id : null, reason, ok: success
+	});
+	// A failed attempt completes this fault episode, not an action-error retry loop.
+	done(null);
+};
+
 function run_action(daemon, machine, name, done) {
+	if (name == 'failover') {
+		action_failover(daemon, machine, done);
+		return;
+	}
 	if (name == 'set_degraded_mode') {
 		// Inject the reload entry to avoid a module cycle (reload already uses monitor's
 		// readiness check). It stages, validates and rolls back exactly like user reloads.
@@ -681,6 +773,12 @@ initial_state = (service, now) => {
 		last_node_refresh_attempt: null,
 		node_probe_failures: 0,
 		node_probe_retry_at: null,
+		failover_node_id: service?.node_id ?? null,
+		failover_ip: service?.node_ip ?? null,
+		failover_failures: 0,
+		failover_latched: false,
+		failover_until: 0,
+		failover_candidates: {},
 		node_ip: service?.node_ip ?? null,
 		degraded_mode: service?.degraded_mode ?? null,
 		degraded_since: service?.degraded_since ?? null,
@@ -719,6 +817,12 @@ next = (state, obs, cfg) => {
 		last_node_refresh_attempt: old.last_node_refresh_attempt ?? null,
 		node_probe_failures: old.node_probe_failures ?? 0,
 		node_probe_retry_at: old.node_probe_retry_at ?? null,
+		failover_node_id: old.failover_node_id ?? null,
+		failover_ip: old.failover_ip ?? null,
+		failover_failures: old.failover_failures ?? 0,
+		failover_latched: old.failover_latched == true,
+		failover_until: old.failover_until ?? 0,
+		failover_candidates: { ...(old.failover_candidates ?? {}) },
 		node_ip: old.node_ip ?? null,
 		degraded_mode: old.degraded_mode ?? null,
 		degraded_since: old.degraded_since ?? null,
@@ -922,6 +1026,35 @@ next = (state, obs, cfg) => {
 		out.degraded_mode = target;
 		out.degraded_since = target == null ? null : now;
 		action('set_degraded_mode');
+	}
+
+	// T16.17: TCP samples of the live IP alone arm failover, never HTTP or DNS candidates.
+	// Automatic switches update the tracked ID themselves; a different reload target is manual.
+	if (obs.node_id != null && obs.node_id != out.failover_node_id) {
+		out.failover_node_id = obs.node_id;
+		out.failover_failures = 0;
+		out.failover_latched = false;
+		if (obs.node_reload?.ok && obs.node_reload.target_node == obs.node_id)
+			out.failover_until = max(out.failover_until, obs.node_reload.at + C.NODE_FAILOVER_COOLDOWN_SECS);
+	}
+	if (obs.node_tcp_ip != null && obs.node_tcp_ip != out.failover_ip) {
+		out.failover_ip = obs.node_tcp_ip;
+		out.failover_failures = 0;
+		out.failover_latched = false;
+	}
+	let participating = cfg.sub?.failover === true && cfg.nodes?.[obs.node_id]?.failover !== false;
+	if (!participating || obs.node_tcp_ok === true) {
+		out.failover_failures = 0;
+		out.failover_latched = false;
+	}
+	else if (obs.node_tcp_ok === false) {
+		out.failover_failures = min(out.failover_failures + 1, C.NODE_FAILOVER_FAILURES);
+		if (out.failover_failures >= C.NODE_FAILOVER_FAILURES && !out.failover_latched &&
+		    now >= out.failover_until) {
+			out.failover_latched = true;
+			// Last: no later action failure may discard an already applied switch.
+			action('failover');
+		}
 	}
 
 	return { state: out, actions, events };

@@ -33,6 +33,8 @@ const TEMPLATES = {
 	NODE_IP_CHANGED: _('Node {node} IP changed from {old} to {new} (source: {source}, raw: {raw})', 'aether-proxy'),
 	NODE_IP_UNREACHABLE: _('Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP (source: {source}, raw: {raw})',
 		'aether-proxy'),
+	NODE_FAILOVER: _('Node failover: {from} to {to} ({ip}, reason: {reason})', 'aether-proxy'),
+	NODE_FAILOVER_FAILED: _('Node failover failed: {reason}', 'aether-proxy'),
 	NODE_STALE: _('Node {node} is stale', 'aether-proxy'),
 	NODE_STALE_IN_USE: _('Current node {node} is stale', 'aether-proxy'),
 	NODE_INSECURE_IGNORED: _('Ignored insecure setting for node {node}', 'aether-proxy'),

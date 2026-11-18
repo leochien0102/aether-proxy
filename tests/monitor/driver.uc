@@ -9,6 +9,7 @@ import * as uci from 'uci';
 import * as config from 'aetherproxy.config';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as monitor from 'aetherproxy.monitor';
+import * as reload from 'aetherproxy.reload';
 import * as usage from 'aetherproxy.usage';
 import * as supervise from 'aetherproxy.supervise';
 import * as C from 'aetherproxy.const';
@@ -102,7 +103,128 @@ if (!uloop.init()) {
 	exit(1);
 }
 
-if (match(scenario, /^disabled-/)) {
+if (match(scenario, /^failover-/)) {
+	let d = opts.daemon, original = d.state.node_id;
+	let conf = opts.opts.confdir + '/aetherproxy', uci_before = fs.readfile(conf);
+	let events_path = opts.ctx.root + C.RUN_DIR + '/' + C.EVENTS_FILE;
+	let calls_path = opts.ctx.root + C.RUN_DIR + '/calls.log';
+	let reserved = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+	let listener = socket.create(socket.AF_INET, socket.SOCK_STREAM);
+	check(reserved != null && reserved.bind({ address: '127.0.0.1', port: 0 }) &&
+		listener != null && listener.bind({ address: '127.0.0.1', port: 0 }) && listener.listen(64),
+		'T16.17 real loopback reachable and refused endpoints');
+	let dead_port = reserved.sockname().port, live_port = listener.sockname().port;
+	d.snapshot.sub.failover = scenario != 'failover-off';
+	d.snapshot.dns.direct_dns_enabled = false;
+	d.snapshot.dns.allow_china_fallback = false;
+	d.snapshot.main.degrade_gfw = false;
+	d.snapshot.nodes[original].port = dead_port;
+	d.state.node_ip = '127.0.0.1';
+	d.machine = { ...d.machine, node_ip: '127.0.0.1', state: 'running', dns_tier: 'T1',
+		last_node_refresh: time(), ever_healthy: true };
+	let template = { protocol: 'socks', security: 'none', transport: 'raw', address: '127.0.0.1' };
+	let excluded = 'n_ffffffffffffffffffffffffffffffff';
+	let dead = 'n_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+	let first = 'n_dddddddddddddddddddddddddddddddd';
+	let later = 'n_00000000000000000000000000000000';
+	// Deliberately reverse lexical order. Opt-out is reachable but must never be attempted.
+	d.snapshot.nodes[excluded] = { ...template, port: live_port, failover: false };
+	d.snapshot.nodes[dead] = { ...template, port: dead_port };
+	d.snapshot.nodes[first] = { ...template, port: live_port };
+	d.snapshot.nodes[later] = { ...template, port: live_port, failover: true };
+	if (scenario == 'failover-opt-out') d.snapshot.nodes[original].failover = false;
+	if (scenario == 'failover-all-dead') {
+		d.snapshot.nodes[first].port = dead_port;
+		d.snapshot.nodes[later].port = dead_port;
+	}
+	if (scenario == 'failover-rollback')
+		write(opts.ctx.root + '/xray-test-rc', '1');
+	d.reload = reload.run_live;
+	function tick_once() {
+		d.skip_next = false;
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+	};
+	tick_once();
+	tick_once();
+	check(d.state.node_id == original && count(fs.readfile(events_path), '"NODE_FAILOVER"') == 0,
+		'T16.17 two live-IP failures do not switch');
+	tick_once();
+	let success = scenario == 'failover-success';
+	let disabled = scenario == 'failover-off' || scenario == 'failover-opt-out';
+	if (success) {
+		check(d.state.node_id == first && d.snapshot.main.node == first,
+			'T16.17 UCI insertion order skips current opted-out and dead candidates');
+		check(count(fs.readfile(events_path), '"NODE_FAILOVER"') == 1 &&
+			index(fs.readfile(events_path), 'node_tcp_failed_3') >= 0,
+			'T16.17 successful failover emits notice with TCP reason');
+		let calls = fs.readfile(calls_path) ?? '';
+		check(count(calls, 'run -test') >= 1 && count(calls, 'nft -f ') >= 1 &&
+			count(fs.readfile(opts.ctx.root + '/calls.log'), 'xray run -c') >= 1,
+			'T16.17 failover uses reload validation nft and Xray restart');
+		check(d.machine.failover_candidates[excluded] == null && d.machine.failover_candidates[original] == null &&
+			d.machine.failover_candidates[dead] != null && d.machine.failover_candidates[first] != null &&
+			d.machine.failover_candidates[later] == null,
+			'T16.17 first reachable stops candidate iteration');
+		let node = json(fs.readfile(opts.current + '/xray.json')).outbounds[0];
+		check(node.settings.servers[0].port == live_port, 'T16.17 reload installs chosen candidate artifact');
+		// The original endpoint recovers, but only the new live endpoint is observed.
+		d.snapshot.nodes[original].port = live_port;
+		tick_once();
+		check(d.state.node_id == first && count(fs.readfile(events_path), '"NODE_FAILOVER"') == 1,
+			'T16.17 original recovery never switches back');
+		// New failure during cooldown does not cause another candidate attempt.
+		d.snapshot.nodes[first].port = dead_port;
+		for (let i = 0; i < 4; i++) tick_once();
+		check(d.state.node_id == first && count(fs.readfile(events_path), '"NODE_FAILOVER"') == 1,
+			'T16.17 successful switch enforces ten-minute cooldown');
+		// Match daemon's user-reload publication: it replaces state/snapshot but retains machine history.
+		d.state.node_id = original;
+		d.snapshot.main.node = original;
+		d.snapshot.nodes[original].port = dead_port;
+		let manual_at = time();
+		d.state.last_reload = { at: manual_at, target_node: original, ok: true };
+		for (let i = 0; i < 3; i++) tick_once();
+		check(d.state.node_id == original && d.machine.failover_until >= manual_at + 600 &&
+			count(fs.readfile(events_path), '"NODE_FAILOVER"') == 1,
+			'T16.17 manual node selection is protected for ten minutes');
+	}
+	else {
+		check(d.state.node_id == original, 'T16.17 failed or disabled failover preserves runtime node');
+		check(count(fs.readfile(events_path), '"NODE_FAILOVER_FAILED"') == (disabled ? 0 : 1),
+			'T16.17 disabled is silent and failed attempt emits one warn');
+		if (!disabled) {
+			check(d.machine.failover_until >= time() + 590 && d.machine.failover_latched,
+				'T16.17 failed attempt latches fault and starts ten-minute cooldown');
+			let remembered = sprintf('%.J', d.machine.failover_candidates);
+			for (let i = 0; i < 3; i++) tick_once();
+			check(count(fs.readfile(events_path), '"NODE_FAILOVER_FAILED"') == 1 &&
+				sprintf('%.J', d.machine.failover_candidates) == remembered,
+				'T16.17 sustained fault never repeats candidate attempts');
+			// Rearm a distinct fault, expire global cooldown, retain candidate cooldown.
+			d.machine.failover_latched = false;
+			d.machine.failover_failures = 0;
+			d.machine.failover_until = 0;
+			for (let i = 0; i < 3; i++) tick_once();
+			let previous = json(remembered), unchanged = true;
+			for (let id, stamp in previous)
+				unchanged = unchanged && d.machine.failover_candidates[id] == stamp;
+			check(unchanged, 'T16.17 same candidates not retried within thirty minutes');
+		}
+	}
+	check(fs.readfile(conf) == uci_before &&
+		config.load(uci.cursor(opts.opts.confdir, opts.ctx.root + '/uci-savedir')).snapshot.main.node == original,
+		'T16.17 UCI unchanged byte-for-byte and main.node retains user selection');
+	let probe = fs.readfile(opts.ctx.root + C.RUN_DIR + '/' + C.NODE_PROBE_LOG) ?? '';
+	let records = filter(split(trim(probe), '\n'), line => line != '');
+	let failovers = filter(records, line => json(line).action == 'failover');
+	check(length(failovers) == (disabled ? 0 : (success ? 1 : 2)),
+		'T16.17 each attempted failover appends one action=failover record', probe);
+	reserved.close();
+	listener.close();
+	no_external_children(d);
+}
+else if (match(scenario, /^disabled-/)) {
 	let d = opts.daemon;
 	d.snapshot.probe.fail_threshold = 1;
 	d.snapshot.probe.recover_threshold = 2;

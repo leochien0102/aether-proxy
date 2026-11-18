@@ -95,6 +95,9 @@ for scenario in disabled-fallback disabled-no-fallback disabled-t3 disabled-stal
 	run_case "$scenario" 1
 done
 run_case disabled-recover
+for scenario in failover-success failover-off failover-opt-out failover-all-dead failover-rollback; do
+	run_case "$scenario"
+done
 run_case proxy-tier 2
 run_case node-refresh
 run_case node-unreachable

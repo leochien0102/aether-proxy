@@ -63,6 +63,7 @@
     "node_concurrency": 16
   },
   "sub": {
+    "failover": false,
     "user_agent": "aether-proxy/0.0.0-dev",
     "fetch_via": "auto",
     "interval_hours": 24
@@ -126,6 +127,37 @@
     }
   },
   "nodes": {
+    "n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
+      "label": null,
+      "source": null,
+      "stale": false,
+      "match_strong": null,
+      "match_weak": null,
+      "protocol": "shadowsocks",
+      "address": "203.0.113.7",
+      "port": 8388,
+      "uuid": null,
+      "password": "YWFhYWFhYWFhYWFhYWFhYQ==",
+      "method": "2022-blake3-aes-128-gcm",
+      "flow": null,
+      "encryption": null,
+      "transport": "raw",
+      "host": null,
+      "path": null,
+      "service_name": null,
+      "xhttp_mode": null,
+      "header_type": null,
+      "security": "tls",
+      "sni": null,
+      "alpn": [
+      ],
+      "fingerprint": null,
+      "pinned_cert_sha256": "30c07ed862900574d87fde20ff227737a5379845a4df0316c443baed1ec8ddc6,0B:BD:9E:4A:66:58:51:AE:F7:FB:5D:73:C7:EC:AE:DC:F8:36:C8:E7:45:F0:79:79:F2:22:C5:BF:73:BA:FA:62",
+      "verify_name": "ss.example.com",
+      "reality_pbk": null,
+      "reality_sid": null,
+      "reality_spx": null
+    },
     "n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
       "label": "HK 01",
       "source": "s_0123abcd",
@@ -158,37 +190,6 @@
       "reality_pbk": "bEj5Ey_FUC3BG3l94gfyMc3wL-PY3FEbceSbeXgZDoM",
       "reality_sid": "abcd",
       "reality_spx": "/spx"
-    },
-    "n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": {
-      "label": null,
-      "source": null,
-      "stale": false,
-      "match_strong": null,
-      "match_weak": null,
-      "protocol": "shadowsocks",
-      "address": "203.0.113.7",
-      "port": 8388,
-      "uuid": null,
-      "password": "YWFhYWFhYWFhYWFhYWFhYQ==",
-      "method": "2022-blake3-aes-128-gcm",
-      "flow": null,
-      "encryption": null,
-      "transport": "raw",
-      "host": null,
-      "path": null,
-      "service_name": null,
-      "xhttp_mode": null,
-      "header_type": null,
-      "security": "tls",
-      "sni": null,
-      "alpn": [
-      ],
-      "fingerprint": null,
-      "pinned_cert_sha256": "30c07ed862900574d87fde20ff227737a5379845a4df0316c443baed1ec8ddc6,0B:BD:9E:4A:66:58:51:AE:F7:FB:5D:73:C7:EC:AE:DC:F8:36:C8:E7:45:F0:79:79:F2:22:C5:BF:73:BA:FA:62",
-      "verify_name": "ss.example.com",
-      "reality_pbk": null,
-      "reality_sid": null,
-      "reality_spx": null
     },
     "n_cccccccccccccccccccccccccccccccc": {
       "label": null,

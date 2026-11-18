@@ -328,6 +328,16 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
 6. **节点 IP 刷新**：距上次超过 10 分钟，或本轮转入 `PROXY_UNHEALTHY`，就重新解析（[03](03-dns.md)）；两次刷新尝试至少间隔 60 秒，防抖字段仅保存在机器状态，daemon 重启时重置。新 IP 须先通过节点端口的 3 秒 TCP 探测，才进入集合导出、渲染写入与 Xray 重启；失败记 warn `NODE_IP_UNREACHABLE` 并正常结束刷新，不切 IP、不触发动作错误重试。
 
+7. **节点故障自动切换（T16.17，默认关闭）**：仅 `sub.failover=1` 且当前节点未显式
+   `failover=0` 时，每轮用 `node_reachable(state.node_ip, port)` 做独立的 3 秒 TCP 探测。
+   连续 3 次失败后同一故障仅尝试一次，探测恢复才重新武装；不复用 HTTP 或候选 IP 失败计数。
+   按已应用 UCI 节点顺序跳过当前和显式退出的节点，每个候选解析后做 3 秒 TCP 探测，取第一个可达者。
+   同一候选 30 分钟内不重复尝试；成功或全部失败后至少 10 分钟不自动切换。
+   用户成功 reload 到不同节点后按其 `last_reload.at` 保护 10 分钟。
+   复用 reload 事务及其回滚，以运行时快照选节点，不写 `main.node`；更新 `state.node_id`，
+   重启仍回 UCI 选择。原节点恢复不自动切回。每次成功/失败写事件和一行 `action=failover` 的
+   `node-probe.log`，开关关闭时不进行此额外 TCP 探测。
+
 daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 10 秒的超时；一轮检测累计超过 30 秒时跳过下一轮。信号只在回到事件循环时处理，所以 SIGTERM 要等当前一轮检测的同步部分做完，最坏约 20 秒（curl 加两次 resolveip）；procd 的 `term_timeout` 因此设为 30 秒，仍超时则由 `cleanup` 兜底。
 
 monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要拿全局锁。拿不到锁就跳过本轮（说明用户正在操作），
