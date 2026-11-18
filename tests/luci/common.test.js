@@ -45,6 +45,20 @@ function setup(t) {
 	return { ap, rpc, document };
 }
 
+test('T16.24: a section only renders a heading when it has a title', (t) => {
+	const { ap } = setup(t);
+	const original = globalThis.E;
+	t.after(() => { globalThis.E = original; });
+	globalThis.E = element;
+	const body = element('div');
+	for (const title of [undefined, null, '', '  '])
+		assert.deepEqual(ap.section({ title, body }).children, [body]);
+	const titled = ap.section({ title: 'Inventory', body });
+	assert.equal(titled.children[0].tag, 'h3');
+	assert.equal(titled.children[0].textContent, 'Inventory');
+	assert.equal(titled.children[1], body);
+});
+
 test('scenario 1: ap.call resolves with the rpc reply; rpc failure becomes RPC_FAILED without rejecting', async (t) => {
 	const { ap, rpc } = setup(t);
 

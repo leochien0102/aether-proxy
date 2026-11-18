@@ -206,7 +206,7 @@ return view.extend({
 		const root = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Logs', 'aether-proxy')),
 			ap.section({
-				title: _('Logs', 'aether-proxy'), actions: this.toolbar, stacked: true,
+				actions: this.toolbar, stacked: true,
 				body: [this.toolbarError, this.eventPanel, this.rawPanel]
 			})
 		]);

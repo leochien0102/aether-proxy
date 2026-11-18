@@ -545,7 +545,7 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		h.start();
 		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
 		await settle();
-		assert.equal(text(h.page.inventory.children[0].children[3]), code + '：offline');
+		assert.equal(text(h.page.inventory.children[0].children[2]), code + '：offline');
 		assert.doesNotMatch(text(root), /读取中…/);
 		const actions = buttons(h.page.inventory);
 		assert.equal(actions.length, 1);
@@ -602,10 +602,11 @@ async () => {
 		assert.equal(packages.class, 'cbi-section');
 		assert.equal(components.class, 'cbi-section');
 		assert.equal(row.class, 'aether-section-actions');
-		assert.equal(packages.children[0].tag, 'h3');
-		assert.equal(packages.children[1].class, 'cbi-map-descr');
-		assert.equal(packages.children[2], row);
-		assert.equal(packages.children.at(-1).tag, 'table');
+		assert.equal(packages.children[0].class, 'cbi-map-descr');
+		assert.equal(packages.children[1], row);
+		assert.equal(packages.children[2].tag, 'table');
+		assert.equal(components.children[0].tag, 'h3');
+		assert.equal(text(components.children[0]), '运行中的组件');
 		assert.equal(components.children[1].children[0].title, model.migration_note());
 		assert.ok(!h.page.inventory.children.some(node => node.class === 'cbi-map-descr'));
 	}
@@ -742,7 +743,7 @@ test('T10.46 scenario 3: translated manual install guidance is a tooltip above t
 		h.page.status = s;
 		h.page.show_inventory();
 		const [packages] = h.page.inventory.children;
-		const note = packages.children[1].children[0];
+		const note = packages.children[0].children[0];
 		assert.equal(note.textContent, '如需安装其他版本：');
 		assert.equal(note.title, manual_note);
 	}

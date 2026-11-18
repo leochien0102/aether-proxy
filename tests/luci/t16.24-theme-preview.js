@@ -140,6 +140,12 @@ async function verify(page, view) {
 	const heading = root.getByRole('heading', { name: tr(pages[view]), exact: true, level: 2 });
 	await heading.waitFor();
 	assert.equal(await heading.evaluate(el => Boolean(el.closest('.cbi-section'))), false);
+	const normalize = value => value.replace(/\s+/g, ' ').trim();
+	const pageTitle = normalize(await heading.textContent());
+	for (const sectionTitle of await root.locator('.cbi-section > h3').allTextContents()) {
+		assert.ok(normalize(sectionTitle), `${view}: do not render empty block headings`);
+		assert.notEqual(normalize(sectionTitle), pageTitle, `${view}: block heading repeats the page title`);
+	}
 	assert.equal(await root.locator('.cbi-map-descr:not(.cbi-section > .cbi-map-descr)').count(), 0);
 	assert.equal(await root.locator('.aether-section-actions:not(.cbi-section > .aether-section-actions)').count(), 0);
 	if (view === 'logs') {

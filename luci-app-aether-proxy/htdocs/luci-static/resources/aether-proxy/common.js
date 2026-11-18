@@ -241,7 +241,9 @@ var ap = baseclass.extend({
 		const attrs = { 'class': 'cbi-section', style: 'margin:0 0 1em' };
 		if (collapsible)
 			attrs.open = (collapsible.open ?? true) || null;
-		const children = [ E(collapsible ? 'summary' : 'h3', {}, title) ];
+		const children = [];
+		if (typeof title == 'string' ? title.trim() : title)
+			children.push(E(collapsible ? 'summary' : 'h3', {}, title));
 		const toolbar = [];
 		if (description)
 			toolbar.push(E('div', { 'class': 'cbi-map-descr', style: 'margin:0' }, [description]));

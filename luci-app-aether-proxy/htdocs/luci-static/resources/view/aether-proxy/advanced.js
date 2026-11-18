@@ -53,7 +53,7 @@ return view.extend({
 	load: function() { return uci.load('aetherproxy'); },
 	render: function() {
 		const m = new form.Map('aetherproxy', _('Advanced', 'aether-proxy'));
-		const s = m.section(form.NamedSection, 'main', 'global', _('Advanced', 'aether-proxy'));
+		const s = m.section(form.NamedSection, 'main', 'global');
 		ap.form_section(s, {
 			description: _('Interception, logging, boot and health-check settings.', 'aether-proxy')
 		});

@@ -111,7 +111,6 @@ return view.extend({
 			})
 		]);
 		this.inventory.replaceChildren(ap.section({
-			title: _('Updates', 'aether-proxy'),
 			description: E('span', { title: model.manual_install_note() }, _('To install another version:', 'aether-proxy')),
 			actions: [ E('span', { style: 'margin:0' },
 				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
