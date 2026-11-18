@@ -69,6 +69,7 @@ const main = [
 	{ name: 'port_scope', type: 'enum', enum: [ 'all', 'common', 'common_extra' ], default: 'all' },
 	{ name: 'extra_ports', type: 'string', default: '' },
 	{ name: 'node', type: 'string', default: null },
+	{ name: 'failover_nodes', type: 'list', item: 'string', default: null, omit_unset: true },
 	{ name: 'lan_ifaces', type: 'list', item: 'ifname', min_items: 1, default: [ 'br-lan' ] },
 	{ name: 'unlisted_policy', type: 'enum', enum: [ 'follow', 'direct' ], default: 'follow' },
 	{ name: 'quic_block', type: 'bool', default: true },
@@ -128,8 +129,8 @@ const subscription = [
 // node cannot be rendered without them. Defaults for `source` (null), `stale` (false) and
 // `security` (none) are likewise not in 05.
 const node = [
-	// Absent inherits the global switch; explicit false opts this node out.
-	{ name: 'failover', type: 'bool', default: null, omit_unset: true },
+	// Reserved: only an explicit true excludes a listed node from failover.
+	{ name: 'disabled', type: 'bool', default: null, omit_unset: true },
 	{ name: 'label', type: 'string', default: null },
 	{ name: 'source', type: 'string', default: null },
 	{ name: 'stale', type: 'bool', default: false },

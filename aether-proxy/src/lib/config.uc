@@ -7,6 +7,7 @@
 // (docs/12 rule 1) and takes those plain objects, so it can be tested without UCI.
 
 import * as C from 'aetherproxy.const';
+import * as node_failover from 'aetherproxy.node_failover';
 import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, FINGERPRINTS, XHTTP_MODES,
 	SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
@@ -203,6 +204,11 @@ function default_of(f, proto) {
 // value is then only a placeholder). `proto` is the node protocol, or null.
 function normalize_field(f, raw, field, proto, errors) {
 	let v = raw[f.name];
+	if (field == 'main.failover_nodes') {
+		let ids = node_failover.normalize(v);
+		return length(ids) ? ids : null;
+	}
+
 	// Retained inactive text must not block unrelated settings or old configurations.
 	if (field == 'main.extra_ports' && raw.port_scope != 'common_extra')
 		return v ?? '';

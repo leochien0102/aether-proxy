@@ -127,12 +127,16 @@ if (match(scenario, /^failover-/)) {
 	let dead = 'n_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 	let first = 'n_dddddddddddddddddddddddddddddddd';
 	let later = 'n_00000000000000000000000000000000';
-	// Deliberately reverse lexical order. Opt-out is reachable but must never be attempted.
-	d.snapshot.nodes[excluded] = { ...template, port: live_port, failover: false };
+	let unlisted = 'n_cccccccccccccccccccccccccccccccc';
+	// Deliberately differ from both lexical and list order. Neither excluded node may be probed.
+	d.snapshot.nodes[unlisted] = { ...template, port: live_port };
+	d.snapshot.nodes[excluded] = { ...template, port: live_port, disabled: true };
 	d.snapshot.nodes[dead] = { ...template, port: dead_port };
 	d.snapshot.nodes[first] = { ...template, port: live_port };
-	d.snapshot.nodes[later] = { ...template, port: live_port, failover: true };
-	if (scenario == 'failover-opt-out') d.snapshot.nodes[original].failover = false;
+	d.snapshot.nodes[later] = { ...template, port: live_port };
+	d.snapshot.main.failover_nodes = [ later, dead, excluded, first, 'missing' ];
+	if (scenario != 'failover-opt-out')
+		push(d.snapshot.main.failover_nodes, original);
 	if (scenario == 'failover-all-dead') {
 		d.snapshot.nodes[first].port = dead_port;
 		d.snapshot.nodes[later].port = dead_port;
@@ -172,7 +176,7 @@ if (match(scenario, /^failover-/)) {
 	let disabled = scenario == 'failover-off' || scenario == 'failover-opt-out';
 	if (success) {
 		check(d.state.node_id == first && d.snapshot.main.node == first,
-			'T16.17 UCI insertion order skips current opted-out and dead candidates');
+			'T16.21 UCI insertion order skips current, unlisted, disabled and dead candidates');
 		check(count(fs.readfile(events_path), '"NODE_FAILOVER"') == 1 &&
 			index(fs.readfile(events_path), 'node_tcp_failed_3') >= 0,
 			'T16.17 successful failover emits notice with TCP reason');
@@ -180,7 +184,8 @@ if (match(scenario, /^failover-/)) {
 		check(count(calls, 'run -test') >= 1 && count(calls, 'nft -f ') >= 1 &&
 			count(fs.readfile(opts.ctx.root + '/calls.log'), 'xray run -c') >= 1,
 			'T16.17 failover uses reload validation nft and Xray restart');
-		check(d.machine.failover_candidates[excluded] == null && d.machine.failover_candidates[original] == null &&
+		check(d.machine.failover_candidates[excluded] == null && d.machine.failover_candidates[unlisted] == null &&
+			d.machine.failover_candidates[original] == null &&
 			d.machine.failover_candidates[dead] != null && d.machine.failover_candidates[first] != null &&
 			d.machine.failover_candidates[later] == null,
 			'T16.17 first reachable stops candidate iteration');

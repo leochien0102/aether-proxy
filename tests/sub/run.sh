@@ -118,6 +118,11 @@ BODY="$FIX/one-node.txt"
 out=$(ap --json s_00000001 2>"$T/stderr1"); rc=$?
 expect "initial import exits successfully" 0 "$rc"
 expect "initial import reports one added node" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+if ! has_line "$R/etc/config/aetherproxy" 'failover_nodes'; then
+	ok 'T16.21 first subscription import without a previous selection does not join roster'
+else
+	bad 'T16.21 first subscription import without a previous selection does not join roster'
+fi
 if cmp -s "$R/etc/config/aetherproxy" "$R/etc/aether-proxy/config.backup" &&
 	[ "$(stat -c %a "$R/etc/aether-proxy/config.backup")" = 600 ]; then
 	ok 'T10.70 subscription success updates private validated backup'
@@ -581,6 +586,127 @@ out=$(ap --json s_00000001 2>"$T/new-uri-repeat.stderr"); rc=$?
 expect 'T11.11 identical second update succeeds' 0 "$rc"
 expect 'T11.11 identical second update adds nothing' 0 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
 expect 'T11.11 identical second update changes nothing' 0 "$(printf '%s\n' "$out" | jget subs.s_00000001.updated)"
+
+# T16.21 uses the real host UCI CLI and preserves exports with KEEP_TMP=1.
+u() {
+	LD_LIBRARY_PATH="$ROOT/tests/host/prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+		"$ROOT/tests/host/prefix/bin/uci" -q -c "$R/etc/config" -C "$R/tmp/uci-override" -P "$R/tmp/uci-delta" "$@"
+}
+export_case() { u export aetherproxy > "$T/failover-$1.uci"; }
+roster() { u get aetherproxy.main.failover_nodes; }
+write_uci() {
+	local body="$1"; shift
+	"$UCODE" -e "
+import { cursor } from 'uci';
+let c = cursor(shift(ARGV), shift(ARGV));
+let p = 'aetherproxy';
+$body
+if (!c.commit(p)) die(c.error());" -- "$R/etc/config" "$R/tmp/uci-delta" "$@"
+}
+set_roster() {
+	write_uci 'if (!c.set(p, "main", "failover_nodes", ARGV)) die(c.error());' "$@"
+}
+find_id() {
+	u show aetherproxy | awk -F '[.=]' -v host="'$1'" '$3 == "address" && substr($0, index($0, "=") + 1) == host { print $2 }'
+}
+
+make_root "$T/root-failover"
+init_current_config
+old=n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+missing=n_ffffffffffffffffffffffffffffffff
+base_uri="$(<"$FIX/one-node.txt")"
+extra_uri='vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee@extra.example.com:443?security=tls#Extra'
+third_uri='vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee@third.example.com:443?security=tls#Third'
+printf '%s\n%s\n' "$base_uri" "$extra_uri" > "$T/failover-two.txt"
+printf '%s\n%s\n%s\n' "$base_uri" "$extra_uri" "$third_uri" > "$T/failover-three.txt"
+printf '%s\n%s\n' "$base_uri" "$third_uri" > "$T/failover-replacement.txt"
+set_roster "$old" "$missing" "$old"
+BODY="$T/failover-two.txt"
+export_case add-before
+out=$(ap --json s_00000001 2>"$T/failover-add.stderr"); rc=$?
+expect 'T16.21 full selection refresh succeeds with global switch off' 0 "$rc"
+extra=$(find_id extra.example.com)
+[ -n "$extra" ] && ok 'T16.21 refresh creates extra node' || bad 'T16.21 refresh creates extra node'
+expect 'T16.21 full selection prunes unknown and duplicate IDs then appends new ID' "$old $extra" "$(roster)"
+export_case add-after
+
+cp "$R/etc/config/aetherproxy" "$T/failover-unchanged.conf"
+stamp_before=$(stat -c '%i %y' "$R/etc/config/aetherproxy")
+out=$(ap --json s_00000001 2>"$T/failover-unchanged.stderr"); rc=$?
+expect 'T16.21 no-op roster refresh succeeds' 0 "$rc"
+expect 'T16.21 no-op refresh does not replace live UCI file' "$stamp_before" "$(stat -c '%i %y' "$R/etc/config/aetherproxy")"
+cmp -s "$T/failover-unchanged.conf" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.21 no-op refresh preserves UCI bytes' || bad 'T16.21 no-op refresh preserves UCI bytes'
+
+set_roster "$old"
+BODY="$T/failover-three.txt"
+out=$(ap --json s_00000001 2>"$T/failover-partial.stderr"); rc=$?
+expect 'T16.21 partial selection refresh succeeds' 0 "$rc"
+third=$(find_id third.example.com)
+[ -n "$third" ] && ok 'T16.21 partial selection still adds node' || bad 'T16.21 partial selection still adds node'
+expect 'T16.21 partial selection does not extend' "$old" "$(roster)"
+
+set_roster "$extra" "$old" "$third"
+BODY="$T/failover-two.txt"
+export_case remove-before
+out=$(ap --json s_00000001 2>"$T/failover-remove.stderr"); rc=$?
+expect 'T16.21 pure reduction refresh succeeds' 0 "$rc"
+expect 'T16.21 pure reduction deletes node' '' "$(find_id third.example.com)"
+expect 'T16.21 pure reduction retains survivor order' "$extra $old" "$(roster)"
+export_case remove-after
+
+BODY="$T/failover-replacement.txt"
+out=$(ap --json s_00000001 2>"$T/failover-replacement.stderr"); rc=$?
+expect 'T16.21 replacement refresh succeeds' 0 "$rc"
+expect 'T16.21 replacement removes old node' '' "$(find_id extra.example.com)"
+third=$(find_id third.example.com)
+[ -n "$third" ] && ok 'T16.21 replacement adds node' || bad 'T16.21 replacement adds node'
+expect 'T16.21 replacement appends new ID after removing old ID' "$old $third" "$(roster)"
+
+printf '%s\n%s\n' "${base_uri//edge.example.com/edge-moved.example.com}" "$third_uri" > "$T/failover-moved.txt"
+BODY="$T/failover-moved.txt"
+out=$(ap --json s_00000001 2>"$T/failover-moved.stderr"); rc=$?
+expect 'T16.21 address change refresh succeeds' 0 "$rc"
+expect 'T16.21 address change matches original ID' "$old" "$(find_id edge-moved.example.com)"
+expect 'T16.21 address change preserves roster' "$old $third" "$(roster)"
+
+BODY="$FIX/one-node.txt"
+cp "$R/etc/config/aetherproxy" "$T/failover-rejected.conf"
+out=$(STUB_XRAY_TEST_RC=1 ap --json s_00000001 2>"$T/failover-rejected.stderr"); rc=$?
+expect 'T16.21 invalid rendered update fails' 1 "$rc"
+cmp -s "$T/failover-rejected.conf" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.21 rejected staged update publishes neither node nor roster changes' \
+	|| bad 'T16.21 rejected staged update publishes neither node nor roster changes'
+
+# Delete the last subscription through UCI; leave one owned node to exercise orphan cleanup.
+export_case delete-sub-baseline
+write_uci '
+if (!c.set(p, "main", "enabled", "0") || !c.delete(p, "main", "node") ||
+    !c.delete(p, ARGV[0]) || !c.delete(p, "s_00000001")) die(c.error());' "$third"
+export_case delete-sub-before
+out=$(ap --json 2>"$T/failover-delete-sub.stderr"); rc=$?
+expect 'T16.21 update-all after last subscription deletion succeeds' 0 "$rc"
+expect 'T16.21 last subscription removal clears missing and orphaned IDs' '' "$(roster)"
+export_case delete-sub-after
+
+make_root "$T/root-failover-import"
+write_config
+import_uri() {
+	"$UCODE" -S "$ENTRY" -- node import "$1" --json \
+		--sys-root "$R" --confdir "$R/etc/config" --run-dir "$R/var/run/aether-proxy"
+}
+out=$(import_uri "$base_uri" 2>"$T/failover-import-off.stderr"); rc=$?
+expect 'T16.21 manual import with global switch off succeeds' 0 "$rc"
+expect 'T16.21 manual import with global switch off leaves roster absent' '' "$(roster)"
+write_uci 'if (!c.set(p, "sub", "sub") || !c.set(p, "sub", "failover", "1")) die(c.error());'
+out=$(import_uri "$extra_uri" 2>"$T/failover-import-on.stderr"); rc=$?
+expect 'T16.21 manual import with global switch on succeeds' 0 "$rc"
+manual=$(printf '%s\n' "$out" | jget node)
+expect 'T16.21 manual import with global switch on joins roster' "$manual" "$(roster)"
+out=$(import_uri "$extra_uri" 2>"$T/failover-import-duplicate.stderr"); rc=$?
+expect 'T16.21 duplicate import succeeds' 0 "$rc"
+expect 'T16.21 duplicate import is recognized' true "$(printf '%s\n' "$out" | jget duplicate)"
+expect 'T16.21 duplicate import does not repeat entry' "$manual" "$(roster)"
 
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -182,7 +182,9 @@ export function import_node(ctx, line) {
 	log_warnings(parsed.warnings, id);
 
 	let planned = plan_changes(parsed.node, id);
-	let staged = sub.stage_package(ctx, original_text, C.SUB_TEMP_PACKAGE, { changes: planned.changes });
+	if (loaded.snapshot.sub.failover === true)
+		planned.failover = { added: [ id ] };
+	let staged = sub.stage_package(ctx, original_text, C.SUB_TEMP_PACKAGE, planned);
 	if (!staged.ok) {
 		let detail = staged.detail;
 		lock.close();

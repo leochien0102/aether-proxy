@@ -406,6 +406,7 @@ export const NODE_PROBE_RAW_MAX = 512;
 export const NODE_PROBE_RETRY_SECS = [ 60, 120, 240, 600 ];
 
 // T16.17: runtime-only node failover, independently debounced from IP refresh.
+export const NODE_FAILOVER_MAX_NODES = 64;
 export const NODE_FAILOVER_FAILURES = 3;
 export const NODE_FAILOVER_COOLDOWN_SECS = 600;
 export const NODE_FAILOVER_CANDIDATE_SECS = 1800;

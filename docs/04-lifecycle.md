@@ -328,10 +328,10 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
 6. **节点 IP 刷新**：距上次超过 10 分钟，或本轮转入 `PROXY_UNHEALTHY`，就重新解析（[03](03-dns.md)）；两次刷新尝试至少间隔 60 秒，防抖字段仅保存在机器状态，daemon 重启时重置。新 IP 须先通过节点端口的 3 秒 TCP 探测，才进入集合导出、渲染写入与 Xray 重启；失败记 warn `NODE_IP_UNREACHABLE` 并正常结束刷新，不切 IP、不触发动作错误重试。
 
-7. **节点故障自动切换（T16.17，默认关闭）**：仅 `sub.failover=1` 且当前节点未显式
-   `failover=0` 时，每轮用 `node_reachable(state.node_ip, port)` 做独立的 3 秒 TCP 探测。
+7. **节点故障自动切换（T16.21，默认关闭）**：仅 `sub.failover=1` 且当前节点在
+   `main.failover_nodes` 名单内、未停用时，每轮用 `node_reachable(state.node_ip, port)` 做独立的 3 秒 TCP 探测。
    连续 3 次失败后同一故障仅尝试一次，探测恢复才重新武装；不复用 HTTP 或候选 IP 失败计数。
-   按已应用 UCI 节点顺序跳过当前和显式退出的节点，每个候选解析后做 3 秒 TCP 探测，取第一个可达者。
+   按已应用 UCI 节点顺序找候选，跳过当前节点、名单外节点及停用节点；候选解析后做 3 秒 TCP 探测，取第一个可达者。
    同一候选 30 分钟内不重复尝试；成功或全部失败后至少 10 分钟不自动切换。
    用户成功 reload 到不同节点后按其 `last_reload.at` 保护 10 分钟。
    复用 reload 事务及其回滚，以运行时快照选节点，不写 `main.node`；更新 `state.node_id`，

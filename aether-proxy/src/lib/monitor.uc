@@ -14,6 +14,7 @@ import * as pipeline from 'aetherproxy.pipeline';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
 import * as net from 'aetherproxy.net';
+import * as node_failover from 'aetherproxy.node_failover';
 import * as counters from 'aetherproxy.counters';
 import * as usage from 'aetherproxy.usage';
 import * as xray_ready from 'aetherproxy.xray_ready';
@@ -130,8 +131,8 @@ function observe(daemon) {
 		node_id: daemon.state?.node_id,
 		node_tcp_ip: daemon.state?.node_ip,
 		node_reload: daemon.state?.last_reload,
-		node_tcp_ok: daemon.snapshot.sub?.failover === true &&
-			daemon.snapshot.nodes?.[daemon.state.node_id]?.failover !== false && daemon.state.node_ip != null
+		node_tcp_ok: daemon.state?.node_ip != null &&
+			node_failover.participates(daemon.snapshot, daemon.state.node_id)
 			? node_reachable(daemon.state.node_ip, daemon.snapshot.nodes[daemon.state.node_id].port, daemon.node_probe_socket) : null,
 		proxy_ok: proxy?.ok ?? null,
 		proxy_latency_ms: proxy?.latency_ms ?? null,
@@ -413,7 +414,7 @@ function update_node_ip(daemon, machine, done) {
 // T16.17: config preserves UCI insertion order. Never sort by ID or latency.
 function failover_candidate(daemon, machine) {
 	for (let id, node in daemon.snapshot.nodes) {
-		if (id == daemon.state.node_id || node.failover === false)
+		if (id == daemon.state.node_id || !node_failover.participates(daemon.snapshot, id))
 			continue;
 		let attempted = machine.failover_candidates[id];
 		let attempt_at = time();
@@ -1048,7 +1049,7 @@ next = (state, obs, cfg) => {
 		out.failover_failures = 0;
 		out.failover_latched = false;
 	}
-	let participating = cfg.sub?.failover === true && cfg.nodes?.[obs.node_id]?.failover !== false;
+	let participating = node_failover.participates(cfg, obs.node_id);
 	if (!participating || obs.node_tcp_ok === true) {
 		out.failover_failures = 0;
 		out.failover_latched = false;

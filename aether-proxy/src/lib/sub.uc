@@ -12,6 +12,8 @@ import * as config from 'aetherproxy.config';
 import * as identity from 'aetherproxy.identity';
 import * as log from 'aetherproxy.log';
 import * as net from 'aetherproxy.net';
+import * as node_failover from 'aetherproxy.node_failover';
+import { SUBSCRIPTION_NAME_RE } from 'aetherproxy.schema';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as sys from 'aetherproxy.sys';
 import * as uri from 'aetherproxy.uri';
@@ -437,6 +439,34 @@ function copy_file_atomic(source_text, path) {
 	return { ok: true };
 }
 
+// Compute the list against the staged inventory, after the node changes and before commit.
+function failover_changes(cursor, package_name, policy) {
+	let raw = cursor.get(package_name, 'main', 'failover_nodes');
+	let ids = node_failover.normalize(raw);
+	if (policy.prune) {
+		ids = filter(ids, id => {
+			let node = cursor.get_all(package_name, id);
+			if (node?.['.type'] != 'node' || node['.name'] != id)
+				return false;
+			let source = node.source;
+			return type(source) != 'string' || match(source, SUBSCRIPTION_NAME_RE) == null ||
+				cursor.get(package_name, source) == 'subscription';
+		});
+	}
+	let selected = node_failover.normalize([ ...ids, ...policy.added ]);
+	let changes = [];
+	if (!length(selected)) {
+		if (raw != null)
+			add_change(changes, 'delete_option', 'main', 'failover_nodes');
+	}
+	else if (!same_value(raw, selected)) {
+		if (cursor.get_all(package_name, 'main') == null)
+			add_change(changes, 'add', 'main', null, 'global');
+		add_change(changes, 'set', 'main', 'failover_nodes', selected);
+	}
+	return changes;
+}
+
 export function stage_package(ctx, original_text, package_name, plan_result) {  // T8.2: reused by node import
 	let dirs = temp_dirs(ctx);
 	if (!sys.mkdir_p(dirs.base) || !sys.mkdir_p(dirs.delta))
@@ -452,6 +482,14 @@ export function stage_package(ctx, original_text, package_name, plan_result) {  
 	let applied = apply_changes(cursor, package_name, plan_result.changes);
 	if (!applied.ok)
 		return applied;
+	if (plan_result.failover != null) {
+		let changes = failover_changes(cursor, package_name, plan_result.failover);
+		if (!length(plan_result.changes) && !length(changes))
+			return { ok: true, content: original_text };
+		applied = apply_changes(cursor, package_name, changes);
+		if (!applied.ok)
+			return applied;
+	}
 	if (!cursor.commit(package_name))
 		return { ok: false, detail: `commit ${package_name}: ${uci_error(cursor)}` };
 
@@ -648,6 +686,13 @@ function update_one(ctx, name, sub, snapshot, original_text, all_ids) {
 		log.event(null, warning.code, { node: node_id, label: warning.args?.label ?? '-' });
 	}
 
+	let selected = snapshot.main.failover_nodes ?? [];
+	let all_selected = node_failover.subscription_state(keys(old_nodes), selected) == 'all';
+	planned.failover = {
+		prune: true,
+		added: all_selected ? map(filter(planned.matched.assign, item => item.from == 'new'), item => item.id) : []
+	};
+
 	let new_count = length(planned.matched.assign);
 	let shrank = length(keys(old_nodes)) >= 4 && new_count * 2 < length(keys(old_nodes));
 
@@ -679,7 +724,8 @@ function update_one(ctx, name, sub, snapshot, original_text, all_ids) {
 		};
 	}
 
-	let published = publish_config(ctx, original_text, staged.content);
+	let published = staged.content == original_text ? { ok: true }
+		: publish_config(ctx, original_text, staged.content);
 	if (!published.ok) {
 		return {
 			result: fail_subscription(name, 'SUB_APPLY_INVALID', `replace ${original_path}: ${published.detail}`, planned.counts),
@@ -874,6 +920,20 @@ export function update(ctx, sub_name) {
 		}
 	}
 
+	// If the last subscription was deleted (or none ran), there is no per-subscription
+	// transaction to prune its IDs. Use the same isolated staging and publication path.
+	if (!any_attempt && sub_name == null) {
+		let staged = stage_package(ctx, original_text, C.SUB_TEMP_PACKAGE, {
+			changes: [], failover: { prune: true, added: [] }
+		});
+		let cleaned = !staged.ok || staged.content == original_text ? staged
+			: publish_config(ctx, original_text, staged.content);
+		if (!cleaned.ok) {
+			lock.close();
+			return { ok: false, code: cleaned.code ?? 'SUB_APPLY_INVALID', exit: 1,
+				detail: cleaned.detail, subs: results };
+		}
+	}
 	lock.close();
 
 	let service_state = fs.readfile(ctx.opts.run_dir + '/' + C.STATE_FILE);
