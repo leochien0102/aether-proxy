@@ -29,7 +29,6 @@
  * Synchronous UCI unload follows 「r12 缺陷修正」 (T10.32).
  * Long keys, preserved dropdown values and both Vision flows follow 「节点编辑框：长字段与下拉」 (T10.33).
  * The independent subscription map precedes this node region (「节点与订阅合并为一页」, T10.37).
- * Failover previews the two-level config rule (「节点故障自动切换」, T16.18).
  * Both grids share modal required/format feedback (docs/10 r17–r18, T10.58/T10.61).
  * Protocol-specific method aliases retain inactive and unknown values (docs/10 r18).
  */
@@ -91,12 +90,11 @@ return view.extend({
 		this.probing = false;
 		this.pendingProbes = [];
 		this.selectedNodes = new Set();
-		this.failoverCells = new Map();
 
 		// Only the two actual form.Map roots are .cbi-map; the view footer saves both.
 		const root = E('div');
 		this.root = root;
-		const block = await subscriptions.render(() => this.redrawNodes(), () => this.updateFailoverCells());
+		const block = await subscriptions.render(() => this.redrawNodes());
 		dom.content(root, await this.buildPage());
 		this.updateProbeColumns();
 		window.setTimeout(() => this.refreshResults(), 0);
@@ -220,26 +218,9 @@ return view.extend({
 		});
 	},
 
-	paintFailoverCell: function(cell, section_id, enabled) {
-		// GridSection renders after modal Save too: read the override from staged UCI.
-		const state = model.failover_state(enabled, uci.get('aetherproxy', section_id, 'failover'));
-		if (state.muted)
-			cell.setAttribute('style', 'opacity:0.6');
-		else
-			cell.removeAttribute('style');
-		dom.content(cell, [ state.text ]);
-	},
-
-	updateFailoverCells: function() {
-		const enabled = subscriptions.failover_enabled();
-		for (const [id, cell] of this.failoverCells)
-			this.paintFailoverCell(cell, id, enabled);
-	},
-
 	buildMap: function() {
 		const self = this;
 		const rowMap = this.rowMap;
-		this.failoverCells = new Map();
 		let m, s, o;
 
 		m = new form.Map('aetherproxy');
@@ -453,20 +434,6 @@ return view.extend({
 			}, '✔') : E([]);
 		};
 
-		const failoverTitle = E('span', {
-			'title': _(
-				'The main switch is in General settings above Subscriptions; node overrides apply only when it is on.',
-				'aether-proxy') + ' ' + subscriptions.failover_risk
-		}, [ _('Automatic failover', 'aether-proxy') ]);
-		o = s.option(form.DummyValue, '_failover', failoverTitle);
-		o.modalonly = false;
-		o.textvalue = function(section_id) {
-			const cell = E('span');
-			self.failoverCells.set(section_id, cell);
-			self.paintFailoverCell(cell, section_id, subscriptions.failover_enabled());
-			return cell;
-		};
-
 		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
@@ -485,21 +452,6 @@ return view.extend({
 		   match_* keys are deliberately not editable. */
 		o = s.option(form.Value, 'label', _('Display name', 'aether-proxy'));
 		o.modalonly = true;
-
-		o = s.option(form.ListValue, 'failover', _('Automatic failover', 'aether-proxy'));
-		o.modalonly = true;
-		o.rmempty = true;
-		const renderFailover = o.renderWidget;
-		o.renderWidget = function(id, index, value) {
-			// These lists belong to the modal clone, not the grid option.
-			const current = model.failover_switch_text(subscriptions.failover_enabled());
-			this.keylist = [];
-			this.vallist = [];
-			this.value('', _('Follow general settings (currently: %s)', 'aether-proxy').format(current));
-			this.value('1', _('Participate', 'aether-proxy'));
-			this.value('0', _('Do not participate', 'aether-proxy'));
-			return renderFailover.call(this, id, index, value);
-		};
 
 		o = s.option(form.ListValue, 'protocol', _('Protocol', 'aether-proxy'));
 		o.modalonly = true;

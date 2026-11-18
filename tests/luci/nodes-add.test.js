@@ -191,11 +191,7 @@ async function harness() {
 		dom: { content: (target, content) => contentChildren(target, content) },
 		'aether-proxy.common': ap, 'aether-proxy.model.nodes': model,
 		// Isolate node modal staging; progressive-lists exercises the real subscription map.
-		'aether-proxy.subscriptions-block': {
-			render: async () => E('div'),
-			failover_enabled: () => false,
-			failover_risk: ''
-		}
+		'aether-proxy.subscriptions-block': { render: async () => E('div') }
 	}, { window: {
 		setTimeout() {},
 		crypto: { getRandomValues: bytes => {
@@ -521,7 +517,7 @@ async () => {
 	assert.equal(configured.transport_security, 'ws / tls');
 	const h = await harness();
 	assert.deepEqual(find(h.root, node => node.tag === 'th').map(n => n.textContent),
-		['', '名称', '协议', '传输 / 安全层', '来源', '选用', '自动切换', 'TCP 可达／延迟']);
+		['', '名称', '协议', '传输 / 安全层', '来源', '选用', 'TCP 可达／延迟']);
 	assert.doesNotMatch(h.root.textContent, /协议 \/ 传输 \/ 安全层/);
 	for (const name of ['VLESS', 'VMess', 'Trojan', 'Shadowsocks'])
 		assert.equal(po[name], name);
