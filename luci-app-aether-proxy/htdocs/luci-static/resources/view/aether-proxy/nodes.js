@@ -78,11 +78,14 @@ function renderPreservedList(section_id, option_index, cfgvalue) {
 // Mount with the page, not either redrawable map or each current-node cell.
 const pageStyle = `
 [data-name="_label"].cbi-value-field { text-align: start !important; }
+.aether-node-name-title, .aether-node-name {
+	padding-inline-start: 1.25em;
+	text-align: start;
+}
+.aether-node-name-title { display: block; }
 .aether-node-name {
 	display: inline-block;
 	position: relative;
-	padding-inline-start: 1.25em;
-	text-align: start;
 }
 .aether-node-current {
 	position: absolute;
@@ -102,11 +105,12 @@ const pageStyle = `
 @media (prefers-reduced-motion: reduce) {
 	.aether-node-current { animation: none; }
 }
-.cbi-section-table-cell:has(.aether-failover-title),
+.aether-failover-title { display: block; text-align: center; white-space: nowrap; }
 .cbi-value-field[data-name="_failover"] {
-	text-align: left !important; /* Some themes force centered table cells. */
+	text-align: center !important;
 	white-space: nowrap;
 }
+.cbi-value-field[data-name="_failover"] > input { margin-inline: 0; }
 .cbi-value-field[data-name="_failover"] > input:indeterminate {
 	appearance: auto !important; /* Preserve the mixed mark even when a theme forces appearance:none. */
 }
@@ -452,7 +456,8 @@ return view.extend({
 			rowMap[id]?.enabled ? _('Enabled', 'aether-proxy') : _('Disabled', 'aether-proxy')
 		]);
 
-		o = s.option(form.DummyValue, '_label', _('Name', 'aether-proxy'));
+		o = s.option(form.DummyValue, '_label',
+			E('span', { 'class': 'aether-node-name-title' }, _('Name', 'aether-proxy')));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];

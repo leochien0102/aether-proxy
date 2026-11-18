@@ -85,8 +85,14 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			const names = await page.locator('.aether-node-name > span:last-child').all();
 			assert.equal(names.length, 3);
 			const nameBoxes = await Promise.all(names.map(el => el.boundingBox()));
-			assert.ok(nameBoxes.every(rect => Math.abs(rect.x - nameBoxes[0].x) < 1),
-				'all node names start at the same x-coordinate');
+			const textBox = locator => locator.evaluate(el => {
+				const range = document.createRange();
+				range.selectNodeContents(el);
+				return range.getBoundingClientRect().toJSON();
+			});
+			const nameHeader = await textBox(page.locator('.aether-node-name-title'));
+			assert.ok(nameBoxes.every(rect => Math.abs(rect.x - nameHeader.x) < 1),
+				'all node names start at the same x-coordinate as their header');
 			const mark = await dot.boundingBox();
 			assert.ok(mark.x + mark.width < nameBoxes[0].x, 'the marker occupies its own gutter');
 			const general = page.locator('.aether-failover-setting');
@@ -100,7 +106,16 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.match(await box.getAttribute('title'), /半选 · 1\/2/);
 			const cellStyle = prop => box.evaluate((el, p) => getComputedStyle(el.parentElement)[p], prop);
 			assert.equal(await cellStyle('whiteSpace'), 'nowrap');
-			assert.equal(await cellStyle('textAlign'), 'left');
+			assert.equal(await cellStyle('textAlign'), 'center');
+			const tables = await page.locator('.table:has(.aether-failover-title)').all();
+			assert.equal(tables.length, 2);
+			for (const table of tables) {
+				const cx = rect => rect.x + rect.width / 2;
+				const heading = await textBox(table.locator('.aether-failover-title'));
+				for (const input of await table.locator('[data-name="_failover"] input').all())
+					assert.ok(Math.abs(cx(await input.boundingBox()) - cx(heading)) < 1,
+						`${theme}: failover checkboxes share their heading's centerline`);
+			}
 			assert.equal(await box.evaluate(el => getComputedStyle(el).appearance), 'auto');
 			assert.deepEqual(await page.locator('#view h3').allTextContents(), ['通用设置', '订阅', '节点']);
 			for (const toolbar of await page.locator('.aether-section-toolbar').all()) {
