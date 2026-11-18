@@ -63,6 +63,7 @@ function optionDouble(uci, kind, field, title) {
 			if (kind === 'Flag') {
 				// Render through the option hook, like LuCI, so flag wrappers are observable.
 				widget = checkboxWidget(initial !== '0');
+				widget.node = widget;
 				widget.children[0].change = event => {
 					const value = event.target.checked ? '1' : '0';
 					this.setFormValue(id, value);
@@ -112,7 +113,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				if (o.kind === 'Flag')
 					flags.push(E('label', {}, [o.title, widget, E('span', {}, o.description)]));
 			}
-			return E('section', {}, [E('h3', {}, section.title), ...flags]);
+			return E('section', {}, flags);
 		}
 		return E('div', {}, [
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
@@ -139,6 +140,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					value.contains = target => value === target || find(value, node => node === target).length > 0;
 					return E('td', { field: option.field }, value);
 				},
+				render() { return renderSection(this); },
 				handleModalCancel() {},
 				option(kind, field, title) {
 					const option = optionDouble(uci, kind, field, title);
@@ -460,7 +462,7 @@ test('T10.34 scenario 1: existing general section displays its values without wr
 	assert.equal(section.kind, 'NamedSection');
 	assert.equal(section.type, 'sub');
 	assert.equal(section.sectionType, 'sub');
-	assert.equal(section.title, '通用设置');
+	assert.equal(h.maps[0].node.children[0].firstChild.textContent, '通用设置');
 	for (const field of ['interval_hours', 'fetch_via', 'user_agent'])
 		assert.equal(h.page.generalOptions[field].getUIElement('sub').value, h.general[0][field]);
 	assert.deepEqual(h.uciCalls, [['load', 'aetherproxy']]);
@@ -1064,7 +1066,7 @@ test('T10.27 scenarios 1/2: node actions share progress before the table; Import
 	assert.equal(importBox.children.at(-2), h.page.importText);
 });
 
-test('T10.27 scenarios 1/2: subscription Update all and Add share text-first row below the table after redraw',
+test('T16.23: subscription Update all and Add share a row before the table after redraw',
 async () => {
 	const h = await harness('subscriptions');
 	await render(h);
@@ -1076,7 +1078,7 @@ async () => {
 		const row = actionRow(h.root, ['全部更新', '添加'],
 			[h.page.statusError, h.page.progress, h.page.summary]);
 		assert.equal(h.maps.at(-1).node.children[1], h.page.details);
-		assert.equal(h.page.details.children.at(-1), row, 'actions stay below the table inside details');
+		assert.equal(h.page.details.children[2], row, 'actions stay above the table inside details');
 	}
 });
 
@@ -1167,7 +1169,7 @@ test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed se
 	await h.maps.at(-1).render();
 	const options = h.page.grid.options.filter(o => o.textvalue);
 	assert.deepEqual(options.slice(0, -1).map(o => text(o.textvalue(id))),
-		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点', '关总开关未开启，当前不生效']);
+		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点', '']);
 	assert.match(text(options.at(-1).textvalue(id)), /成功，13 个节点/);
 	h.uci.remove('aetherproxy', id);
 	for (const option of options)
@@ -1489,7 +1491,7 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 	await render(h);
 	const section = h.maps[0].sections[0];
 	const headers = find(h.root, node => node.tag === 'th').map(text);
-	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', '自动切换', 'TCP 可达／延迟']);
+	assert.deepEqual(headers, ['', '启用', '名称', '协议', '传输 / 安全层', '来源', '自动切换', 'TCP 可达／延迟']);
 	assert.ok(!section.options.some(option => option.field === '_address'));
 	for (const id of ['n_a', 'n_b']) {
 		const edit = buttons(actions(h, id)).find(node => text(node) === '编辑');
@@ -1510,19 +1512,30 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 		'manual modal must not inherit the previous subscription hint');
 });
 
-test('T10.25 scenario 4: only current row has a titled green check; stale name is faded', async () => {
+test('T16.23: only the current name starts with a labelled green dot; stale names stay faded', async () => {
 	const h = await harness('nodes');
 	h.nodes[1].stale = '1';
 	await render(h);
 	const cell = (id, field) => find(gridRow(h, id), node => node.field === field)[0];
-	const mark = cell('n_a', '_current');
-	assert.equal(text(mark), '✔');
-	assert.equal(mark.children[0].title, '当前节点');
-	assert.equal(mark.children[0].style, 'color:var(--success-color-high, #2f855a)');
-	assert.equal(text(cell('n_b', '_current')), '');
+	const mark = cell('n_a', '_label').firstChild.firstChild;
+	assert.equal(mark.class, 'aether-node-current');
+	assert.equal(mark.title, '当前节点');
+	assert.equal(mark.attrs['aria-label'], '当前节点');
+	assert.deepEqual(find(h.root, node => node.class === 'aether-node-current'), [mark]);
+	assert.equal(find(h.root, node => node.field === '_current').length, 0);
+	assert.doesNotMatch(text(h.root), /选用/);
+	const styles = () => find(h.fullRoot, node => node.id === 'aether-nodes-page-style');
+	assert.equal(styles().length, 1);
+	assert.match(text(styles()[0]), /@keyframes aether-node-pulse/);
+	assert.match(text(styles()[0]), /@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/);
+	assert.equal(text(cell('n_a', '_enabled')), '启用');
+	h.nodes[1].disabled = '1';
+	await h.view.redrawNodes();
+	assert.equal(text(cell('n_b', '_enabled')), '禁用');
+	assert.equal(styles().length, 1);
 	assert.equal(text(cell('n_b', '_label')), 'Node B（已失效）');
 	assert.equal(cell('n_b', '_label').children[0].style, 'opacity:0.6');
-	assert.equal(cell('n_a', '_label').children[0].style, null);
+	assert.equal(cell('n_a', '_label').firstChild.lastChild.style, null);
 	assert.ok(text(h.root).includes('切换节点请到概览页选择后点「应用」。'));
 	assert.ok(!buttons(h.root).some(button => text(button) === '设为当前'));
 	assert.equal(h.page.handleSetCurrent, undefined);
@@ -1616,28 +1629,38 @@ test('T10.25 defensive: bulk save failure reports error and always clears busy s
 	assert.match(text(h.uciCalls.at(-1)[2]), /操作失败：save failed/);
 });
 
-test('T16.18: general settings are outside subscription details, with exactly two save maps', async () => {
+test('T16.23: three shared sections contain their own headings, descriptions, tools and bodies', async () => {
 	const h = await harness('nodes');
 	await render(h);
 	const page = h.view;
 	assert.equal(h.fullRoot.children[0].textContent, '节点与订阅');
 	const { root, map: subMap, details } = h.subscriptions;
-	assert.deepEqual(h.fullRoot.children.slice(1), [root, page.root]);
+	assert.deepEqual(h.fullRoot.children.slice(2), [root, page.root]);
 	assert.deepEqual(root.children, [subMap.node]);
 	assert.deepEqual(subMap.sections.map(section => section.type), ['sub', 'subscription']);
 	const [general, collapsedRegion] = subMap.node.children;
-	assert.equal(general.tag, 'section');
+	assert.equal(general.tag, 'div');
+	assert.equal(general.children[0].tag, 'h3');
 	assert.equal(general.children[0].textContent, '通用设置');
 	assert.equal(collapsedRegion, details);
 	assert.equal(details.tag, 'details');
 	assert.equal(details.open, true);
 	assert.equal(details.children[0].textContent, '订阅');
-	assert.match(details.children[1].textContent, /Alpha.*Beta/);
+	assert.equal(details.children[0].tag, 'summary');
+	assert.equal(details.children[1].class, 'cbi-map-descr');
+	assert.equal(details.children[2].class, 'aether-section-actions');
 	assert.deepEqual(buttons(details.children[2]).map(text), ['全部更新', '添加']);
+	assert.match(details.children[3].textContent, /Alpha.*Beta/);
 	assert.doesNotMatch(details.textContent, /通用设置/, 'the general heading and fields are not inside details');
 	const tools = actionRow(page.root, ['检测全部', '删除所选', '添加节点']);
 	const region = find(page.root, node => (node.children ?? []).includes(page.nodeMap.node))[0];
-	assert.deepEqual(region.children.slice(-3), [tools, page.nodeMap.node, page.importDetails]);
+	for (const block of [general, details, region]) {
+		assert.equal(block.class, 'cbi-section');
+		assert.equal(block.style, general.style);
+	}
+	assert.equal(region.children[1].class, 'cbi-map-descr');
+	assert.equal(tools.class, 'aether-section-actions');
+	assert.deepEqual(region.children.slice(2), [tools, page.nodeMap.node, page.importDetails]);
 	assert.equal(page.importDetails.open, false);
 	assert.deepEqual(find(h.fullRoot, node => node.tag === 'h2').map(text), ['节点与订阅'],
 		'one page heading; the node region uses a section heading');
@@ -1724,7 +1747,7 @@ async () => {
 	assert.deepEqual(h.general, [{ '.name': 'sub', '.type': 'sub' }]);
 	assert.equal(h.uciCalls.filter(call => call[0] === 'add').length, 2,
 		'node imports use the combined load path after unloading a legacy configuration');
-	assert.equal(h.fullRoot.children[1], block.root);
+	assert.ok(h.fullRoot.children.includes(block.root));
 	assert.equal(h.uciCalls.some(call => call[0] === 'save'), false);
 });
 
@@ -1797,8 +1820,10 @@ test('T16.18: general Flag defaults off, warns about exit IP risk and does not w
 	assert.equal(flag.kind, 'Flag');
 	assert.equal(flag.formvalue('sub'), '0');
 	assert.equal(flag.getUIElement('sub').children[0].checked, false);
-	assert.match(h.subscriptions.map.node.children[0].textContent, /当前节点不可达时自动切换到下一个可用节点/);
-	assert.ok(flag.description.includes(failoverRisk));
+	assert.match(h.subscriptions.map.node.children[0].textContent, /当前节点不可达时自动切换。/);
+	assert.ok(!flag.description.includes(failoverRisk));
+	assert.ok(flag.getUIElement('sub').title.includes(failoverRisk));
+	assert.ok(flag.getUIElement('sub').title.includes(inactiveFailover));
 	await h.view.handleSave();
 	assert.equal(h.uciCalls.some(call => call[3] === 'failover'), false);
 	assert.equal(Object.hasOwn(h.general[0], 'failover'), false);
@@ -1820,16 +1845,20 @@ test('T16.18: general Flag defaults off, warns about exit IP risk and does not w
 const inactiveFailover = '总开关未开启，当前不生效';
 const failoverCell = (h, id) => find(find(h.fullRoot, node => node.sid === id)[0],
 	node => node.field === '_failover')[0];
-const failoverButton = (h, id) => failoverCell(h, id).firstChild;
+const failoverBox = (h, id) => failoverCell(h, id).firstChild;
 const failoverWrites = h => h.uciCalls.filter(call => call[3] === 'failover_nodes');
 
 function assertFailover(h, id, pressed, label, active = false) {
-	const button = failoverButton(h, id);
-	assert.equal(button.attrs['aria-pressed'], pressed);
-	assert.equal(button.firstChild.textContent, label);
-	assert.equal(button.lastChild.textContent, active ? '' : inactiveFailover);
-	assert.equal(button.style.includes('opacity:'), !active);
-	assert.equal(button.disabled, false);
+	const box = failoverBox(h, id);
+	assert.equal(box.tag, 'input');
+	assert.equal(box.type, 'checkbox');
+	assert.equal(box.checked, pressed === 'true');
+	assert.equal(box.indeterminate, pressed === 'mixed');
+	assert.equal(box.title, (pressed === 'mixed' ? label : '自动切换') +
+		(active ? '' : ' — ' + inactiveFailover));
+	assert.equal(failoverCell(h, id).textContent, '');
+	assert.equal(box.style.includes('opacity:'), !active);
+	assert.equal(box.disabled, false);
 }
 
 test('T16.22: subscription off, partial 8/10 and on; batches and confirmation are draft-only', async () => {
@@ -1847,7 +1876,7 @@ test('T16.22: subscription off, partial 8/10 and on; batches and confirmation ar
 	let confirm = false;
 	const confirmations = [];
 	h.ap.confirm = async options => { confirmations.push(options); return confirm; };
-	const button = failoverButton(h, 's_a');
+	const button = failoverBox(h, 's_a');
 	const ua = h.subscriptions.generalOptions.user_agent;
 	ua.setFormValue('sub', 'Keep this draft');
 	await button.click();
@@ -1862,12 +1891,12 @@ test('T16.22: subscription off, partial 8/10 and on; batches and confirmation ar
 	assertFailover(h, 's_a', 'false', '关', true);
 	assertFailover(h, ids[0], 'false', '关', true);
 	assertFailover(h, 'n_a', 'true', '开', true);
-	assert.equal(failoverButton(h, 's_a'), button, 'repaint in place');
+	assert.equal(failoverBox(h, 's_a'), button, 'repaint in place');
 	assert.equal(ua.formvalue('sub'), 'Keep this draft');
 	assert.deepEqual(failoverWrites(h), []);
 	await h.view.handleSave();
 	assert.deepEqual(failoverWrites(h), [['set', 'aetherproxy', 'main', 'failover_nodes', ['n_a']]]);
-	await failoverButton(h, 's_a').click();
+	await failoverBox(h, 's_a').click();
 	assertFailover(h, 's_a', 'true', '开', true);
 	await h.view.handleSave();
 	assert.deepEqual(h.main.failover_nodes, ['n_a', ...ids]);
@@ -1887,7 +1916,7 @@ test('T16.22: entire node cell toggles while grey; it repaints subscription and 
 	await failoverCell(h, 'n_b').click({ target: failoverCell(h, 'n_b') });
 	await h.view.handleSave();
 	assert.deepEqual(h.main.failover_nodes, ['n_b']);
-	await failoverButton(h, 'n_b').click();
+	await failoverBox(h, 'n_b').click();
 	assertFailover(h, 's_a', 'false', '关');
 	await h.view.handleSave();
 	assert.deepEqual(failoverWrites(h), [
@@ -1906,7 +1935,8 @@ test('T16.22: binary subscription modal follows the column, stages only on succe
 		const modal = h.subscriptions.grid.modal;
 		const option = modal.options.find(o => o.field === '_failover_edit');
 		const checkbox = option.getUIElement('s_a').firstChild;
-		assert.match(option.widget.textContent, new RegExp(inactiveFailover));
+		assert.equal(option.widget.title, inactiveFailover);
+		assert.doesNotMatch(option.widget.textContent, new RegExp(inactiveFailover));
 		return { modal, checkbox, set(checked) { checkbox.checked = checked; checkbox.change({ target: checkbox }); } };
 	};
 	assertFailover(h, 's_a', 'mixed', '半选 · 1/2');
@@ -1943,7 +1973,7 @@ for (const active of [true, false]) {
 		const h = await harness('nodes');
 		h.general.push({ '.name': 'sub', failover: active ? '1' : '0' });
 		await render(h);
-		await failoverButton(h, 'n_b').click();
+		await failoverBox(h, 'n_b').click();
 		h.view.importText.value = 'vless://new';
 		const imported = h.view.handleImport({});
 		await flush();
@@ -1968,7 +1998,7 @@ test('T16.22: exceeding the list cap does not silently make a partial selection'
 	const h = await harness('nodes');
 	h.main.failover_nodes = Array.from({ length: 64 }, (_, i) => 'n_old_' + i);
 	await render(h);
-	await failoverButton(h, 's_a').click();
+	await failoverBox(h, 's_a').click();
 	assertFailover(h, 's_a', 'false', '关');
 	assert.match(h.notices[0].textContent, /名单最多包含 64 个节点/);
 	await h.view.handleSave();
@@ -1977,7 +2007,7 @@ test('T16.22: exceeding the list cap does not silently make a partial selection'
 
 test('T16.18: docs/10 records block order, default and exit IP risk', () => {
 	const docs = fs.readFileSync(path.resolve(APP, '../docs/10-cli-luci.md'), 'utf8');
-	assert.match(docs, /\*\*通用设置\*\*[^\n]+→ \*\*订阅\*\*[^\n]+→ \*\*节点表\*\*[^\n]+→ \*\*批量导入分享链接\*\*/);
+	assert.match(docs, /\*\*通用设置\*\*[^\n]+\*\*订阅\*\*[^\n]+\*\*节点\*\*[^\n]+批量导入/);
 	const section = docs.split('### 节点故障自动切换（T16.18）')[1]?.split('\n### ')[0] ?? '';
 	assert.match(section, /`sub\.failover`[^\n]*默认关闭[^\n]*风控/);
 });
@@ -1995,7 +2025,7 @@ test('T9.42: a hostile node name stays literal text on the nodes page', async ()
 	/* The DummyValue returns a node whose child is a text node, so luci-base's
 	 * form.js renderTextValue (E('td', ..., value)) cannot see HTML. */
 	assert.equal(cell('n_a', '_label').children[0].tag, 'span', 'textvalue returns an element');
-	assert.equal(cell('n_a', '_label').children[0].children[0].tag, '#text');
+	assert.equal(cell('n_a', '_label').firstChild.lastChild.firstChild.tag, '#text');
 	assert.equal(find(h.root, node => node.tag === 'img').length, 0,
 		'a hostile name never builds an element, including its onerror handler');
 	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],

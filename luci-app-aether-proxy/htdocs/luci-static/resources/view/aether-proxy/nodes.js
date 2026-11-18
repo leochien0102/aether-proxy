@@ -75,6 +75,36 @@ function renderPreservedList(section_id, option_index, cfgvalue) {
 	return form.ListValue.prototype.renderWidget.call(option, section_id, option_index, cfgvalue);
 }
 
+// Mount with the page, not either redrawable map or each current-node cell.
+const pageStyle = `
+.aether-node-current {
+	display: inline-block;
+	width: 0.55em;
+	height: 0.55em;
+	margin-inline-end: 0.5em;
+	vertical-align: 0.1em;
+	border-radius: 50%;
+	color: var(--success-color-high, #2f855a);
+	background: currentColor;
+	animation: aether-node-pulse 2s ease-out infinite;
+}
+@keyframes aether-node-pulse {
+	0% { box-shadow: 0 0 0 0 currentColor; }
+	75%, 100% { box-shadow: 0 0 0 0.35em transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.aether-node-current { animation: none; }
+}
+.cbi-section-table-cell:has(.aether-failover-title),
+.cbi-value-field[data-name="_failover"] {
+	text-align: left !important; /* Some themes force centered table cells. */
+	white-space: nowrap;
+}
+.cbi-value-field[data-name="_failover"] > input:indeterminate {
+	appearance: auto !important; /* Preserve the mixed mark even when a theme forces appearance:none. */
+}
+`;
+
 return view.extend({
 	load: function() {
 		return ap.load_config().then(function() {
@@ -99,7 +129,8 @@ return view.extend({
 		this.updateProbeColumns();
 		window.setTimeout(() => this.refreshResults(), 0);
 		return E('div', {}, [
-			E('h2', {}, _('Nodes & Subscriptions', 'aether-proxy')),
+			E('h2', { style: 'margin-bottom:0.5em' }, _('Nodes & Subscriptions', 'aether-proxy')),
+			E('style', { id: 'aether-nodes-page-style' }, [pageStyle]),
 			block, root
 		]);
 	},
@@ -211,23 +242,17 @@ return view.extend({
 			'class': 'btn cbi-button cbi-button-add',
 			'click': ui.createHandlerFn(self, 'handleAddNode')
 		}, _('Add node', 'aether-proxy'));
-		const controls = E('div', {
-			'style': 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-		}, [ this.progressEl, probeAll, this.deleteSelected, addNode ]);
 
 		const mapNodePromise = this.buildMap().render();
 
 		return mapNodePromise.then(function(mapNode) {
 			self.updateSelection();
-			return E('div', {}, [
-				E('h3', {}, _('Nodes', 'aether-proxy')),
-				E('div', { 'class': 'cbi-map-descr' }, _('Manage the proxy nodes, probe their TCP reachability and import node share links.', 'aether-proxy')),
-				E('p', {}, _('To switch nodes, select a node on the Overview page and click Apply.', 'aether-proxy')),
-				controls,
-				mapNode,
-				importBox
-			]);
+			return ap.section({
+				title: _('Nodes', 'aether-proxy'),
+				description: _('To switch nodes, select a node on the Overview page and click Apply.', 'aether-proxy'),
+				actions: [self.progressEl, probeAll, self.deleteSelected, addNode],
+				body: [mapNode, importBox]
+			});
 		});
 	},
 
@@ -246,6 +271,12 @@ return view.extend({
 		s.sortable = true;
 		// Keep the named UCI IDs, but do not expose a redundant section-name column.
 		s.anonymous = true;
+		s.render = function(...args) {
+			return this.super('render', args).then(content => {
+				content.classList?.remove('cbi-section');
+				return content;
+			});
+		};
 
 		/* Both manual addition and URI import create named node IDs. The grid's
 		   generic add button would create an anonymous section instead. */
@@ -407,14 +438,26 @@ return view.extend({
 			return box;
 		};
 
-		/* Table columns; all computed by the model, none editable in the table. */
+		/* Show the stored enabled state without exposing a node disable editor. */
+		o = s.option(form.DummyValue, '_enabled', _('Enabled', 'aether-proxy'));
+		o.modalonly = false;
+		o.textvalue = id => E('span', {}, [
+			rowMap[id]?.enabled ? _('Enabled', 'aether-proxy') : _('Disabled', 'aether-proxy')
+		]);
+
 		o = s.option(form.DummyValue, '_label', _('Name', 'aether-proxy'));
 		o.modalonly = false;
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			/* The label comes from a share link or subscription: text node only. */
-			return E('span', { 'style': row?.stale ? 'opacity:0.6' : null },
-				[ row ? row.name : section_id ]);
+			const label = E('span', { style: row?.stale ? 'opacity:0.6' : null }, [row?.name ?? section_id]);
+			if (!row?.current)
+				return label;
+			const current = _('Current node', 'aether-proxy');
+			return E('span', {}, [
+				E('span', { 'class': 'aether-node-current', 'title': current, 'aria-label': current, role: 'img' }),
+				label
+			]);
 		};
 
 		o = s.option(form.DummyValue, '_protocol', _('Protocol', 'aether-proxy'));
@@ -435,16 +478,6 @@ return view.extend({
 			const row = rowMap[section_id];
 			/* The subscription name is user input (docs/10 「UI 规则」). */
 			return E('span', {}, [ row ? row.source : '–' ]);
-		};
-
-		o = s.option(form.DummyValue, '_current', _('In use', 'aether-proxy'));
-		o.modalonly = false;
-		o.textvalue = function(section_id) {
-			const row = rowMap[section_id];
-			return row?.current ? E('span', {
-				'title': _('Current node', 'aether-proxy'),
-				'style': 'color:var(--success-color-high, #2f855a)'
-			}, '✔') : E([]);
 		};
 
 		subscriptions.failover_column(s, 'node');

@@ -81,6 +81,7 @@ function formDouble(uci) {
 			const options = [];
 			const section = {
 				options, children: options,
+				render() { return renderSection(name, this); },
 				option: (kind, field) => {
 					const option = { option: field, value() {}, depends() {}, formvalue() {}, getUIElement() {} };
 					options.push(option);

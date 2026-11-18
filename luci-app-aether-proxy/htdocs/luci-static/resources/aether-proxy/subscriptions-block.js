@@ -259,14 +259,14 @@ return baseclass.extend({
 		const remaining = new Set(this.failover_nodes(kind, id));
 		this.stage_failover(ids.filter(node => remaining.has(node)), state !== 'on');
 	},
-	paint_failover: function(button, status, active) {
+	paint_failover: function(box, status, active) {
 		const { state, count, total } = status;
-		button.setAttribute('aria-pressed', state === 'mixed' ? 'mixed' : String(state === 'on'));
-		button.firstChild.textContent = state === 'on' ? _('Failover on', 'aether-proxy')
-			: state === 'mixed' ? _('Partial · %s/%s', 'aether-proxy').format(count, total)
-				: _('Failover off', 'aether-proxy');
-		button.lastChild.textContent = active ? '' : FAILOVER_INACTIVE;
-		button.setAttribute('style', active ? 'width:100%' : 'width:100%;opacity:0.65');
+		box.checked = state === 'on';
+		box.indeterminate = state === 'mixed';
+		const hint = state === 'mixed' ? _('Partial · %s/%s', 'aether-proxy').format(count, total)
+			: FAILOVER_TITLE;
+		box.setAttribute('title', active ? hint : hint + ' — ' + FAILOVER_INACTIVE);
+		box.setAttribute('style', active ? '' : 'opacity:0.65');
 	},
 	refresh_failover: function() {
 		if (!this.failoverCells)
@@ -277,11 +277,11 @@ return baseclass.extend({
 		for (const [kind, cells] of Object.entries(this.failoverCells)) {
 			const ids = new Set((kind === 'node' ? nodes : uci.sections('aetherproxy', 'subscription'))
 				.map(section => section['.name']));
-			for (const [id, button] of cells) {
+			for (const [id, box] of cells) {
 				if (!ids.has(id))
 					cells.delete(id);
 				else
-					this.paint_failover(button, model.failover_state(
+					this.paint_failover(box, model.failover_state(
 						kind === 'node' ? [id] : this.failover_nodes(kind, id, nodes), selected), active);
 			}
 		}
@@ -289,33 +289,40 @@ return baseclass.extend({
 	failover_column: function(grid, kind) {
 		this.failoverEdits ??= new Map();
 		this.failoverCells ??= { node: new Map(), subscription: new Map() };
-		const o = grid.option(form.DummyValue, '_failover', FAILOVER_TITLE);
+		const o = grid.option(form.DummyValue, '_failover',
+			E('span', { 'class': 'aether-failover-title' }, FAILOVER_TITLE));
+		o.width = '1%'; // Minimum table width; nowrap keeps the title's intrinsic width.
 		o.modalonly = false;
 		o.textvalue = id => {
 			if (kind === 'subscription' && !uci.get('aetherproxy', id))
 				return E('span', {}, [ '–' ]);
+			const status = () => model.failover_state(this.failover_nodes(kind, id), this.selected_failover());
 			const readonly = grid.map?.readonly;
-			const button = E('button', {
-				type: 'button', 'class': 'btn cbi-button cbi-button-neutral',
+			const box = E('input', {
+				type: 'checkbox',
+				'aria-label': FAILOVER_TITLE,
 				disabled: readonly || null,
-				click: () => this.toggle_failover(kind, id)
-			}, [E('span'), E('small', { style: 'display:block' })]);
-			this.failoverCells[kind].set(id, button);
-			this.paint_failover(button, model.failover_state(this.failover_nodes(kind, id),
-				this.selected_failover()), this.failover_enabled());
-			return button;
+				change: () => {
+					// Native activation flips checked and clears indeterminate before change.
+					// Restore the draft state while confirmation is pending or if the edit is rejected.
+					this.paint_failover(box, status(), this.failover_enabled());
+					return this.toggle_failover(kind, id);
+				}
+			});
+			this.failoverCells[kind].set(id, box);
+			this.paint_failover(box, status(), this.failover_enabled());
+			return box;
 		};
 		const block = this;
 		const renderTextValue = grid.renderTextValue;
 		grid.renderTextValue = function(id, option) {
 			const cell = renderTextValue.call(this, id, option);
-			const button = cell.firstChild;
-			if (option === o && button === block.failoverCells[kind].get(id) && !button.disabled) {
+			const box = cell.firstChild;
+			if (option === o && box === block.failoverCells[kind].get(id) && !box.disabled) {
 				cell.setAttribute('style', 'cursor:pointer');
 				cell.addEventListener('click', ev => {
-					// The native button handles keyboard input and clicks on its own children.
-					if (!button.contains(ev.target))
-						button.click();
+					if (ev.target !== box)
+						box.click();
 				});
 			}
 			return cell;
@@ -333,9 +340,7 @@ return baseclass.extend({
 				block.selected_failover()).state;
 			this.failoverTouched = false;
 			const widget = renderWidget.call(this, id, index, this.initialFailover === 'on' ? '1' : '0');
-			return active ? widget : E('div', { style: 'opacity:0.65' }, [
-				widget, E('div', { 'class': 'cbi-value-description' }, [FAILOVER_INACTIVE])
-			]);
+			return active ? widget : E('div', { style: 'opacity:0.65', title: FAILOVER_INACTIVE }, [widget]);
 		};
 		o.onchange = function() { this.failoverTouched = true; };
 		o.write = function(id) { this.map.failoverChoice = { id, enabled: true }; };
@@ -392,7 +397,14 @@ return baseclass.extend({
 		return o;
 	},
 	general_settings: function(m) {
-		const s = m.section(form.NamedSection, 'sub', 'sub', _('General settings', 'aether-proxy'));
+		const s = m.section(form.NamedSection, 'sub', 'sub');
+		const renderSection = s.render;
+		s.render = function(...args) {
+			return renderSection.apply(this, args).then(content => {
+				content.classList?.remove('cbi-section');
+				return ap.section({ title: _('General settings', 'aether-proxy'), body: content });
+			});
+		};
 		this.generalOptions = {
 			interval_hours: this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), false),
 			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
@@ -401,10 +413,21 @@ return baseclass.extend({
 		const failover = s.option(form.Flag, 'failover', FAILOVER_TITLE);
 		failover.default = '0';
 		failover.rmempty = true;
-		failover.description = _(
-			'Automatically switch to the next available node when the current node is unreachable.', 'aether-proxy'
-		) + ' ' + FAILOVER_RISK;
-		failover.onchange = () => this.refresh_failover();
+		failover.description = _('Switch automatically if the current node fails.', 'aether-proxy');
+		const renderWidget = failover.renderWidget;
+		const syncTooltip = (widget, active) => widget.setAttribute('title',
+			active ? FAILOVER_RISK : FAILOVER_RISK + ' ' + FAILOVER_INACTIVE);
+		failover.renderWidget = function(id, index, value) {
+			const widget = renderWidget.call(this, id, index, value);
+			syncTooltip(widget, value === '1');
+			return widget;
+		};
+		failover.onchange = (ev, id, value) => {
+			const widget = failover.getUIElement(id)?.node;
+			if (widget)
+				syncTooltip(widget, value === '1');
+			this.refresh_failover();
+		};
 		this.generalOptions.failover = failover;
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
@@ -547,13 +570,15 @@ return baseclass.extend({
 			self.rowButtons = new Map();
 			self.rowWrappers = new Map();
 			return this.super('render', args).then(content => {
-				// Wrap only the grid and its tools, including when Map.reset redraws both sections.
-				const open = self.details?.open ?? true;
-				self.details = E('details', { 'class': 'cbi-section', open: open || null }, [
-					E('summary', {}, _('Subscriptions', 'aether-proxy')),
-					content,
-					self.update_controls()
-				]);
+				// Keep the grid (including its empty state) and its tools within the disclosure.
+				content.classList?.remove('cbi-section');
+				self.details = ap.section({
+					title: _('Subscriptions', 'aether-proxy'),
+					description: _('Manage subscriptions and update their nodes.', 'aether-proxy'),
+					actions: self.update_controls(),
+					body: content,
+					collapsible: self.details ?? true
+				});
 				self.refresh_changes();
 				return self.details;
 			});
@@ -624,13 +649,10 @@ return baseclass.extend({
 			'click': ui.createHandlerFn(this, 'update', [])
 		}, _('Update all', 'aether-proxy'));
 		this.pendingHint = E('span');
-		return E('div', {
-			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-		}, [ this.statusError, this.progress, this.summary, this.pendingHint, this.updateAll,
+		return [ this.statusError, this.progress, this.summary, this.pendingHint, this.updateAll,
 			E('button', {
 				'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, 'add')
-			}, _('Add', 'aether-proxy')) ]);
+			}, _('Add', 'aether-proxy')) ];
 	},
 	add: function() {
 		const id = model.new_id(uci.sections('aetherproxy').map(s => s['.name']), () => window.crypto.getRandomValues(new Uint8Array(4)));

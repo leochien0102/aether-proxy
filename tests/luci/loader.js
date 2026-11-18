@@ -171,13 +171,14 @@ function loadModule(file, modules, env) {
 			return {};
 		/* Page harnesses keep their RPC/UI doubles, but exercise the shipped
 		 * config helper against their own UCI double (not a success-only stub). */
-		if (r.name == 'aether-proxy.common' && !modules[r.name]?.load_config) {
+		if (r.name == 'aether-proxy.common' && (!modules[r.name]?.load_config || !modules[r.name]?.section)) {
 			modules[r.name] ??= {};
 			const common = loadModule(require('node:path').resolve(__dirname,
 				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js'),
 			{ baseclass: { extend: object => object }, rpc: { declare: () => () => {} },
 				ui: {}, uci: modules.uci }, env);
-			modules[r.name].load_config = common.load_config;
+			modules[r.name].load_config ??= common.load_config;
+			modules[r.name].section ??= common.section;
 		}
 		if (!(r.name in modules))
 			throw new Error('loader: no double provided for require "' + r.name + '"');
@@ -339,6 +340,14 @@ function element(tag, attrs = {}, children = []) {
 
 	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple', 'open' ])
 		node[name] = attrs[name] != null;
+	if (tag === 'input' && attrs.type === 'checkbox' && attrs.change && !attrs.click)
+		node.click = () => {
+			if (!node.disabled) {
+				node.checked = !node.checked;
+				node.indeterminate = false;
+				return node.change({ target: node, currentTarget: node });
+			}
+		};
 	if (tag === 'select') {
 		const options = node.childNodes;
 		node.value = (options.find(option => option?.selected) ?? options[0])?.value ?? '';

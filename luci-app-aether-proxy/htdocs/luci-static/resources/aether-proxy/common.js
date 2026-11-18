@@ -226,6 +226,24 @@ var ap = baseclass.extend({
 	call: call,
 	load_config: load_config,
 
+	/* Pass the previous details (or { open: false }) as collapsible to retain
+	   local disclosure state without coupling separate sections by title. */
+	section: function({ title, description, actions, body, collapsible }) {
+		const attrs = { 'class': 'cbi-section', style: 'margin:0 0 1em' };
+		if (collapsible)
+			attrs.open = (collapsible.open ?? true) || null;
+		const children = [ E(collapsible ? 'summary' : 'h3', {}, title) ];
+		if (description)
+			children.push(E('div', { 'class': 'cbi-map-descr' }, [description]));
+		if (actions?.length)
+			children.push(E('div', {
+				'class': 'aether-section-actions',
+				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+			}, actions));
+		return E(collapsible ? 'details' : 'div', attrs, children.concat(body));
+	},
+
 	/* Use elapsed wall time, not tick counts: background tabs can delay timers. */
 	job_progress: function(target, text) {
 		const started = Date.now();

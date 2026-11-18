@@ -255,6 +255,7 @@ return baseclass.extend({
 					+ (s.stale == '1' ? _('(stale)', 'aether-proxy') : ''),
 				stale: s.stale == '1',
 				current: id === current,
+				enabled: s.disabled !== '1',
 				protocol: protocol_text(s.protocol),
 				transport_security: [ s.transport || (s.protocol === 'hysteria' ? 'hysteria' : 'raw'),
 					s.security || (s.protocol === 'hysteria' ? 'tls' : 'none') ].join(' / '),

@@ -1053,8 +1053,8 @@ msgid "Unhandled notice: %s."
 msgstr "未处理的提示：%s。"
 
 msgctxt "aether-proxy"
-msgid "Manage the proxy nodes, probe their TCP reachability and import node share links."
-msgstr "管理代理节点，检测它们的 TCP 可达性，并导入节点分享链接。"
+msgid "Manage subscriptions and update their nodes."
+msgstr "管理订阅并更新订阅节点。"
 
 msgctxt "aether-proxy"
 msgid "Batch import share links"
@@ -1145,10 +1145,6 @@ msgstr "Shadowsocks"
 msgctxt "aether-proxy"
 msgid "Source"
 msgstr "来源"
-
-msgctxt "aether-proxy"
-msgid "In use"
-msgstr "选用"
 
 msgctxt "aether-proxy"
 msgid "TCP reachability / latency"
@@ -2091,14 +2087,6 @@ msgid "Automatic failover"
 msgstr "自动切换"
 
 msgctxt "aether-proxy"
-msgid "Failover on"
-msgstr "开"
-
-msgctxt "aether-proxy"
-msgid "Failover off"
-msgstr "关"
-
-msgctxt "aether-proxy"
 msgid "Partial · %s/%s"
 msgstr "半选 · %s/%s"
 
@@ -2115,8 +2103,8 @@ msgid "Automatic failover supports at most %s nodes."
 msgstr "自动切换名单最多包含 %s 个节点。"
 
 msgctxt "aether-proxy"
-msgid "Automatically switch to the next available node when the current node is unreachable."
-msgstr "当前节点不可达时自动切换到下一个可用节点。"
+msgid "Switch automatically if the current node fails."
+msgstr "当前节点不可达时自动切换。"
 
 msgctxt "aether-proxy"
 msgid "Frequent changes to your exit IP may trigger security checks on some sites or apps. Enable only when needed."
