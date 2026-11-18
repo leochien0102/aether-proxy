@@ -22,8 +22,11 @@ function actionRow(root, labels, messages = []) {
 	const row = nodes.find(node => node.children?.includes(buttons[0]));
 	assert.equal(row?.tag, 'div', 'a separate action row contains the buttons');
 	for (const rule of [ /display:\s*flex/, /justify-content:\s*flex-end/, /align-items:\s*center/,
-		/gap:\s*0\.5em/, /flex-wrap:\s*wrap/, /margin:\s*0\.5em\s+0\s+1em/ ])
+		/gap:\s*0\.5em/, /flex-wrap:\s*wrap/ ])
 		assert.match(row.attrs.style, rule, labels.join(', '));
+	const toolbar = row.class === 'aether-section-actions'
+		? nodes.find(node => node.children?.includes(row)) : row;
+	assert.match(toolbar.attrs.style, /margin:\s*0\.5em\s+0\s+1em/, labels.join(', '));
 	assert.deepEqual(row.children.filter(node => node?.tag === 'button'), buttons, 'button order is unchanged');
 	for (const message of messages) {
 		assert.ok(row.children.includes(message), 'result/progress shares the action row');

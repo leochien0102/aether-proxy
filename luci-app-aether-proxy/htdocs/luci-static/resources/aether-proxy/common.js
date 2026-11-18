@@ -233,14 +233,20 @@ var ap = baseclass.extend({
 		if (collapsible)
 			attrs.open = (collapsible.open ?? true) || null;
 		const children = [ E(collapsible ? 'summary' : 'h3', {}, title) ];
+		const toolbar = [];
 		if (description)
-			children.push(E('div', { 'class': 'cbi-map-descr' }, [description]));
+			toolbar.push(E('div', { 'class': 'cbi-map-descr', style: 'margin:0' }, [description]));
 		if (actions?.length)
-			children.push(E('div', {
+			toolbar.push(E('div', {
 				'class': 'aether-section-actions',
 				style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-					+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+					+ 'flex-wrap:wrap; margin-inline-start:auto; min-width:0'
 			}, actions));
+		if (toolbar.length)
+			children.push(E('div', {
+				'class': 'aether-section-toolbar',
+				style: 'display:flex; flex-wrap:wrap; align-items:center; gap:0.5em 1em; margin:0.5em 0 1em'
+			}, toolbar));
 		return E(collapsible ? 'details' : 'div', attrs, children.concat(body));
 	},
 

@@ -962,7 +962,8 @@ async () => {
 	const importRow = actionRow(box, ['导入'], [h.page.importResult]);
 	assert.equal(box.children.at(-1), importRow);
 	assert.equal(text(h.page.importResult), '');
-	const toolbar = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
+	const actions = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
+	const toolbar = find(h.root, node => node.children?.includes(actions))[0];
 	const content = find(h.root, node => (node.children ?? []).includes(h.maps[0].node))[0];
 	assert.deepEqual(content.children.slice(-3), [toolbar, h.maps[0].node, box],
 		'toolbar immediately precedes the table, bulk import immediately follows it');
@@ -1057,8 +1058,10 @@ test('T10.27 scenarios 1/2: node actions share progress before the table; Import
 	await render(h);
 	const row = actionRow(h.root, ['检测全部', '删除所选', '添加节点'], [h.page.progressEl]);
 	beforeTable(h.root, row, h.maps[0].node);
-	const parent = find(h.root, node => (node.children ?? []).includes(row))[0];
-	assert.equal(parent.children[parent.children.indexOf(row) + 1], h.maps[0].node,
+	const toolbar = find(h.root, node => node.class === 'aether-section-toolbar')[0];
+	assert.ok(toolbar.children.includes(row));
+	const parent = find(h.root, node => node.children?.includes(toolbar))[0];
+	assert.equal(parent.children[parent.children.indexOf(toolbar) + 1], h.maps[0].node,
 		'no import block separates the table toolbar from its table');
 	const importRow = actionRow(h.root, ['导入']);
 	const importBox = find(h.root, node => (node.children ?? []).includes(h.page.importText))[0];
@@ -1077,8 +1080,9 @@ async () => {
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.root, ['全部更新', '添加'],
 			[h.page.statusError, h.page.progress, h.page.summary]);
-		assert.equal(h.maps.at(-1).node.children[1], h.page.details);
-		assert.equal(h.page.details.children[2], row, 'actions stay above the table inside details');
+		const block = h.maps.at(-1).node.children[1];
+		assert.equal(block.children[1].children[1], row, 'actions share the description line');
+		assert.equal(block.children[2], h.page.details, 'only the table is collapsible');
 	}
 });
 
@@ -1638,29 +1642,35 @@ test('T16.23: three shared sections contain their own headings, descriptions, to
 	assert.deepEqual(h.fullRoot.children.slice(2), [root, page.root]);
 	assert.deepEqual(root.children, [subMap.node]);
 	assert.deepEqual(subMap.sections.map(section => section.type), ['sub', 'subscription']);
-	const [general, collapsedRegion] = subMap.node.children;
+	const [general, subscriptionBlock] = subMap.node.children;
 	assert.equal(general.tag, 'div');
 	assert.equal(general.children[0].tag, 'h3');
 	assert.equal(general.children[0].textContent, '通用设置');
-	assert.equal(collapsedRegion, details);
+	const [subscriptionHeading, subscriptionToolbar, list] = subscriptionBlock.children;
+	assert.equal(subscriptionHeading.tag, 'h3');
+	assert.equal(subscriptionHeading.textContent, '订阅');
+	assert.equal(subscriptionToolbar.class, 'aether-section-toolbar');
+	assert.equal(subscriptionToolbar.firstChild.class, 'cbi-map-descr');
+	assert.equal(subscriptionToolbar.lastChild.class, 'aether-section-actions');
+	assert.deepEqual(buttons(subscriptionToolbar.lastChild).map(text), ['全部更新', '添加']);
+	assert.equal(list, details);
 	assert.equal(details.tag, 'details');
 	assert.equal(details.open, true);
-	assert.equal(details.children[0].textContent, '订阅');
-	assert.equal(details.children[0].tag, 'summary');
-	assert.equal(details.children[1].class, 'cbi-map-descr');
-	assert.equal(details.children[2].class, 'aether-section-actions');
-	assert.deepEqual(buttons(details.children[2]).map(text), ['全部更新', '添加']);
-	assert.match(details.children[3].textContent, /Alpha.*Beta/);
-	assert.doesNotMatch(details.textContent, /通用设置/, 'the general heading and fields are not inside details');
+	assert.equal(details.firstChild.tag, 'summary');
+	assert.equal(details.firstChild.textContent, '订阅清单');
+	assert.match(details.lastChild.textContent, /Alpha.*Beta/);
+	assert.doesNotMatch(details.textContent, /全部更新|通用设置/, 'collapse excludes tools and general settings');
 	const tools = actionRow(page.root, ['检测全部', '删除所选', '添加节点']);
 	const region = find(page.root, node => (node.children ?? []).includes(page.nodeMap.node))[0];
-	for (const block of [general, details, region]) {
+	for (const block of [general, subscriptionBlock, region]) {
 		assert.equal(block.class, 'cbi-section');
 		assert.equal(block.style, general.style);
 	}
-	assert.equal(region.children[1].class, 'cbi-map-descr');
-	assert.equal(tools.class, 'aether-section-actions');
-	assert.deepEqual(region.children.slice(2), [tools, page.nodeMap.node, page.importDetails]);
+	const nodeToolbar = region.children[1];
+	assert.equal(nodeToolbar.class, 'aether-section-toolbar');
+	assert.equal(nodeToolbar.firstChild.class, 'cbi-map-descr');
+	assert.equal(nodeToolbar.lastChild, tools);
+	assert.deepEqual(region.children.slice(2), [page.nodeMap.node, page.importDetails]);
 	assert.equal(page.importDetails.open, false);
 	assert.deepEqual(find(h.fullRoot, node => node.tag === 'h2').map(text), ['节点与订阅'],
 		'one page heading; the node region uses a section heading');

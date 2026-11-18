@@ -77,7 +77,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			await page.evaluate(() => window.ready.then(() => null));
 			await page.locator('.aether-node-current').waitFor({ timeout: 5000 });
 			await page.evaluate(() => document.fonts.ready.then(() => null));
-			const subscription = page.locator('details.cbi-section').first();
+			const subscription = page.locator('details.aether-subscription-list');
 			const box = subscription.locator('[data-name="_failover"] input').first();
 			const dot = page.locator('.aether-node-current');
 			assert.equal(await box.evaluate(el => el.indeterminate), true);
@@ -88,12 +88,24 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await cellStyle('whiteSpace'), 'nowrap');
 			assert.equal(await cellStyle('textAlign'), 'left');
 			assert.equal(await box.evaluate(el => getComputedStyle(el).appearance), 'auto');
-			assert.equal(await page.locator('#view h3').count(), 2);
+			assert.deepEqual(await page.locator('#view h3').allTextContents(), ['通用设置', '订阅', '节点']);
+			for (const toolbar of await page.locator('.aether-section-toolbar').all()) {
+				const descr = await toolbar.locator(':scope > .cbi-map-descr').boundingBox();
+				const firstButton = await toolbar.locator('button').first().boundingBox();
+				assert.ok(descr.x + descr.width <= firstButton.x);
+				assert.ok(Math.abs(descr.y + descr.height / 2 - firstButton.y - firstButton.height / 2) < 2,
+					'the description and action buttons are centered on the same line');
+			}
 			await page.screenshot({ path: path.join(out, `${theme}.png`), fullPage: true });
 			await box.click();
 			assert.equal(await box.isChecked(), true);
 			assert.equal(await box.evaluate(el => el.indeterminate), false);
-			console.log(`PASS ${theme}: native mixed → checked, reduced motion, and screenshot`);
+			await subscription.locator('summary').click();
+			assert.equal(await box.isVisible(), false);
+			assert.equal(await page.getByRole('button', { name: '全部更新', exact: true }).isVisible(), true);
+			await page.evaluate(async () => { await (await L.require('aether-proxy.subscriptions-block')).map.reset(); });
+			assert.equal(await subscription.evaluate(el => el.open), false);
+			console.log(`PASS ${theme}: shared toolbar line, collapsible list, native mixed → checked, reduced motion`);
 			await page.close();
 		}
 	}

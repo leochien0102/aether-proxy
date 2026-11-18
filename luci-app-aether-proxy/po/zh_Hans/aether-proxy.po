@@ -1057,6 +1057,10 @@ msgid "Manage subscriptions and update their nodes."
 msgstr "管理订阅并更新订阅节点。"
 
 msgctxt "aether-proxy"
+msgid "Subscription list"
+msgstr "订阅清单"
+
+msgctxt "aether-proxy"
 msgid "Batch import share links"
 msgstr "批量导入分享链接"
 

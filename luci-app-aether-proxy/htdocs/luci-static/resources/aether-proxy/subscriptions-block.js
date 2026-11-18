@@ -570,17 +570,21 @@ return baseclass.extend({
 			self.rowButtons = new Map();
 			self.rowWrappers = new Map();
 			return this.super('render', args).then(content => {
-				// Keep the grid (including its empty state) and its tools within the disclosure.
+				// Collapse only the list; keep the heading and tools available.
 				content.classList?.remove('cbi-section');
-				self.details = ap.section({
+				const open = self.details?.open ?? true;
+				self.details = E('details', { 'class': 'aether-subscription-list', open: open || null }, [
+					E('summary', { style: 'margin-bottom:0.5em' }, _('Subscription list', 'aether-proxy')),
+					content
+				]);
+				const block = ap.section({
 					title: _('Subscriptions', 'aether-proxy'),
 					description: _('Manage subscriptions and update their nodes.', 'aether-proxy'),
 					actions: self.update_controls(),
-					body: content,
-					collapsible: self.details ?? true
+					body: self.details
 				});
 				self.refresh_changes();
-				return self.details;
+				return block;
 			});
 		};
 		// The generic Add creates anonymous sections, which are not subscription IDs.
