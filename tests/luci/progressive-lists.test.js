@@ -381,7 +381,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	}
 	return { name, page: name === 'nodes' ? view : subscriptions, view, subscriptions,
 		get maps() { return allMaps.filter(map => map.sections[0].type === (name === 'nodes' ? 'node' : 'sub')); },
-		allMaps, otherReads, allCalls, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
+		allMaps, otherReads, allCalls, calls, reads, turns, uciCalls, builtins, ap, model, nodes, subs, uci,
 		general, main, versionRead, versionCalls,
 		setChanges: fn => { changes = fn; },
 		statusCalls, statusReads, timers, notices, tick, setCurrent: id => { current = id; } };
@@ -2175,6 +2175,63 @@ test('T9.42: a hostile node name stays literal text on the nodes page', async ()
 		'a hostile name never builds an element, including its onerror handler');
 	assert.deepEqual(htmlWritesSince(writeMark).filter(text => text.includes(unsafe)), [],
 		'the hostile name never takes the innerHTML path');
+});
+
+test('T16.19: subscription address reveals as text, toggles in place and masks again on redraw', async () => {
+	const h = await harness('subscriptions');
+	const url = 'https://user:password@host/sub?token=fake&x=<b>literal</b>';
+	h.subs[0].url = url;
+	const masked = h.model.mask(url);
+	const writeMark = htmlWriteMark();
+	await render(h);
+	const addressCell = id => find(gridRow(h, id), node => node.field === '_address')[0];
+	const cell = addressCell('s_a');
+	const control = cell.firstChild;
+	const other = addressCell('s_b');
+	assert.equal(text(cell), masked);
+	assert.equal(control.tag, 'a');
+	assert.equal(control.getAttribute('role'), 'button');
+	assert.equal(control.getAttribute('tabindex'), '0');
+	assert.equal(control.getAttribute('title'), '点击显示完整地址');
+	assert.equal(control.getAttribute('href'), null);
+
+	let active;
+	control.focus = () => { active = control; };
+	const snapshot = [h.uciCalls.length, h.allCalls.length];
+	control.click();
+	cell.click({ target: control }); // Browser bubble must not toggle twice.
+	assert.equal(text(cell), url);
+	assert.equal(cell.firstChild, control);
+	assert.equal(control.getAttribute('title'), '点击隐藏完整地址');
+	assert.equal(control.firstChild.tag, '#text');
+	assert.equal(active, control);
+	assert.equal(text(other), h.model.mask(h.subs[1].url));
+	control.click();
+	assert.equal(text(cell), masked);
+	assert.equal(control.getAttribute('title'), '点击显示完整地址');
+
+	let prevented = 0;
+	const press = (key, repeat = false) => control.keydown({ key, repeat, preventDefault: () => { prevented++; } });
+	press('Tab');
+	assert.equal(prevented, 0);
+	assert.equal(text(cell), masked);
+	press('Enter');
+	assert.equal(text(cell), url);
+	press('Enter', true);
+	assert.equal(text(cell), url);
+	press(' ');
+	assert.equal(text(cell), masked);
+	assert.equal(prevented, 3);
+	assert.equal(active, control);
+	cell.click({ target: cell });
+	assert.equal(text(cell), url);
+	assert.deepEqual([h.uciCalls.length, h.allCalls.length], snapshot, 'toggle never writes UCI or calls RPC');
+
+	await h.page.redraw();
+	assert.notEqual(addressCell('s_a').firstChild, control);
+	assert.equal(text(addressCell('s_a')), masked);
+	assert.equal(addressCell('s_a').firstChild.getAttribute('title'), '点击显示完整地址');
+	assert.ok(!htmlWritesSince(writeMark).some(value => value.includes(url)), 'URL never takes the HTML path');
 });
 
 test('T9.42: a hostile subscription name stays literal text in the subscription grid', async () => {

@@ -332,6 +332,7 @@ function element(tag, attrs = {}, children = []) {
 			}
 		},
 		// T10.40: wrapper tooltips are removed when the row becomes available.
+		getAttribute(name) { return this.attrs[name] == null ? null : String(this.attrs[name]); },
 		setAttribute(name, value) { this.attrs[name] = this[name] = String(value); },
 		removeAttribute(name) { delete this.attrs[name]; delete this[name]; },
 		addEventListener(event, fn) { this.attrs[event] = fn; this[event] = fn; }

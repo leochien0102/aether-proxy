@@ -393,8 +393,10 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 `sub.json` 不存在或损坏 → `{ "ok": true, "subs": {} }`，不记事件（页面会在更新后读取）。只输出配置中仍存在的订阅。
 
 **页面**（模型 `model/subscriptions.js`，视图 `view/aether-proxy/subscriptions.js`）：
-- 列表用 `form.GridSection`（`subscription` 段），列：名称（`name`，没有就显示段名）、地址（**只显示 `协议://主机/…`**，订阅地址里常带令牌，不在列表中明文显示）、启用、更新间隔
+- 列表用 `form.GridSection`（`subscription` 段），列：名称（`name`，没有就显示段名）、地址（默认遮蔽为 `协议://主机/…`，避免截图或投屏时泄露令牌）、启用、更新间隔
   （`interval_hours`，0 显示「仅手动」）、经由（`fetch_via`）、最近一次结果。
+- 点击订阅的地址单元格（或聚焦后按 Enter / 空格），会在原处以纯文本显示完整 URL；再次操作即收起。
+  切换不保存、不发送请求；表格重绘或刷新页面后恢复遮蔽。节点列表不受影响。
 - 最近一次结果（来自 `sub_status`）：没有记录 →「尚未更新」；`error` 为空 →「成功，<nodes> 个节点」；否则显示事件码对应的文字（`SUB_FETCH_FAILED` 下载失败、`SUB_DECODE_FAILED` 解码失败、
   `SUB_FORMAT_UNSUPPORTED` 格式不支持、`SUB_NO_VALID_NODES` 没有可用节点、`SUB_APPLY_INVALID` 应用后配置无效、`SUB_PROXY_UNAVAILABLE` 代理不可用、`SUB_SHRANK` 节点数骤减；未知码原样显示）；
   附相对时间（`last_attempt`）。`skipped` 不为空时另起一行「跳过 <总数> 个：<原因> <数量>、…」，原因用中文（`malformed` 格式错误、`unsupported_scheme` 不支持的协议、

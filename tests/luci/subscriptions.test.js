@@ -13,6 +13,18 @@ const model = loadModule(path.resolve(__dirname,
 	'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/model/subscriptions.js'),
 	{ baseclass: { extend: value => value } }, {});
 
+for (const [url, expected] of [
+	['https://host/sub?token=fake#fragment', 'https://host/…'],
+	['https://user:password@host/sub', 'https://host/…'],
+	['https://host', 'https://host/…'],
+	['https://user:password@host?token=fake', 'https://host/…'],
+	['https://host#fragment', 'https://host/…'],
+	['http://[2001:db8::1]:8080/sub', 'http://[2001:db8::1]:8080/…'],
+	['not a URL', '…']
+]) {
+	test(`T16.19 mask: ${url} -> ${expected}`, () => assert.equal(model.mask(url), expected));
+}
+
 for (const enabled of [undefined, '1', '0']) {
 	for (const pending of [false, true]) {
 		for (const busy of [false, true]) {

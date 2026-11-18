@@ -1127,6 +1127,14 @@ msgid "Address"
 msgstr "地址"
 
 msgctxt "aether-proxy"
+msgid "Click to show full address"
+msgstr "点击显示完整地址"
+
+msgctxt "aether-proxy"
+msgid "Click to hide full address"
+msgstr "点击隐藏完整地址"
+
+msgctxt "aether-proxy"
 msgid "Transport / Security"
 msgstr "传输 / 安全层"
 

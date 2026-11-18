@@ -124,6 +124,34 @@ function requiredOptions(grid, rules) {
 	};
 }
 
+function addressControl(masked, url) {
+	// Recreating the cell discards reveal state. The URL is never a link or an attribute.
+	const show = _('Click to show full address', 'aether-proxy');
+	const hide = _('Click to hide full address', 'aether-proxy');
+	let revealed = false;
+	const control = E('a', {
+		role: 'button',
+		tabindex: '0',
+		title: show,
+		style: 'display:block;color:inherit;text-decoration:none;cursor:pointer;overflow-wrap:anywhere',
+		click: () => {
+			revealed = !revealed;
+			control.textContent = revealed ? url : masked;
+			control.setAttribute('title', revealed ? hide : show);
+			control.focus({ preventScroll: true });
+		},
+		keydown: ev => {
+			if (ev.key !== 'Enter' && ev.key !== ' ')
+				return;
+			ev.preventDefault();
+			if (!ev.repeat)
+				control.click();
+		}
+	});
+	control.textContent = masked;
+	return control;
+}
+
 return baseclass.extend({
 	required_options: requiredOptions,
 	failover_risk: FAILOVER_RISK,
@@ -561,10 +589,13 @@ return baseclass.extend({
 			const o = s.option(form.DummyValue, field, title);
 			o.modalonly = false;
 			o.textvalue = function(id) {
-				const row = model.row(uci.get('aetherproxy', id), self.status, Date.now() / 1000,
+				const subscription = uci.get('aetherproxy', id);
+				const row = model.row(subscription, self.status, Date.now() / 1000,
 					self.busy, uci.get('aetherproxy', 'sub'));
 				if (!row)
 					return E('span', {}, [ '–' ]);
+				if (field === '_address')
+					return addressControl(row.address, subscription.url);
 				if (field === '_result') {
 					// An edit can make GridSection render cells again on the same map.
 					// Keep the value wrapper mounted when fetched status changes.
@@ -576,6 +607,22 @@ return baseclass.extend({
 				/* A string textvalue is rendered as HTML by luci-base (docs/10 「UI 规则」). */
 				return E('span', {}, [ row[field.slice(1)] ]);
 			};
+			if (field === '_address') {
+				const renderTextValue = s.renderTextValue;
+				s.renderTextValue = function(id, option) {
+					const cell = renderTextValue.call(this, id, option);
+					const control = cell.firstChild;
+					if (option === o && control?.getAttribute('role') === 'button') {
+						cell.setAttribute('style', 'cursor:pointer');
+						cell.addEventListener('click', ev => {
+							// Include the cell padding without double-toggling on bubbled control clicks.
+							if (ev.target === cell)
+								control.click();
+						});
+					}
+					return cell;
+				};
+			}
 		}
 	},
 	redraw: function() {

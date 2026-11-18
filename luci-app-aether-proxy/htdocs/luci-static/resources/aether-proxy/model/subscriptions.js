@@ -140,6 +140,7 @@ return baseclass.extend({
 	failover_ids,
 	failover_state,
 	update_state,
+	mask,
 	row,
 	pending_ids: function(changes) {
 		// Subscription IDs own the s_ namespace, including removed sections absent from UCI now.
