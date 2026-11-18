@@ -66,7 +66,7 @@ function optionDouble(uci, kind, field, title) {
 				widget.children[0].change = event => {
 					const value = event.target.checked ? '1' : '0';
 					this.setFormValue(id, value);
-					this.onchange(event, id, value);
+					this.onchange?.(event, id, value);
 				};
 				widget.value = initial ?? '';
 			}
@@ -106,9 +106,13 @@ function optionDouble(uci, kind, field, title) {
 function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 	async function renderSection(section) {
 		if (section.kind === 'NamedSection') {
-			for (const o of section.options)
-				o.renderWidget(section.type, 0, uci.get('aetherproxy', section.type, o.field) ?? o.default);
-			return E('section', {}, section.title);
+			const flags = [];
+			for (const o of section.options) {
+				const widget = o.renderWidget(section.type, 0, uci.get('aetherproxy', section.type, o.field));
+				if (o.kind === 'Flag')
+					flags.push(E('label', {}, [o.title, widget, E('span', {}, o.description)]));
+			}
+			return E('section', {}, [E('h3', {}, section.title), ...flags]);
 		}
 		return E('div', {}, [
 			E('tr', { 'data-title': section.anonymous ? null : '名称' },
@@ -139,10 +143,11 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					this.modal = { id, value: 'unsaved modal input' };
 					if (this.addModalOptions)
 						this.addModalOptions(this.modal, id);
-					/* Only subscription modals render widgets here: node modal widgets call
-					   LuCI class prototypes this double lacks; nodes-fields.test.js covers them. */
-					if (type === 'subscription') {
-						this.modal.options = this.options.filter(o => o.modalonly !== false).map(source => {
+					/* Most node widgets call LuCI prototypes this double lacks (see nodes-fields.test.js). */
+					if (type === 'subscription' || type === 'node') {
+						const visible = o => o.modalonly !== false
+							&& (type === 'subscription' || o.field === 'failover');
+						this.modal.options = this.options.filter(visible).map(source => {
 							const clone = optionDouble(uci, source.kind, source.field, source.title);
 							for (const key of Object.keys(source))
 								if (key !== 'widgets')
@@ -219,8 +224,11 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 			}
 			return this.render();
 		}
-		async render() {
-			this.node = E('form', { 'class': 'cbi-map', map: this }, await Promise.all(this.sections.map(section =>
+		render() { return this.renderContents(); }
+		reset() { return this.renderContents(); }
+		async renderContents() {
+			this.node ??= E('form', { 'class': 'cbi-map', map: this });
+			contentChildren(this.node, await Promise.all(this.sections.map(section =>
 				section.render ? section.render() : renderSection(section))));
 			return this.node;
 		}
@@ -1066,8 +1074,8 @@ async () => {
 		h.page.progress.textContent = 'elapsed';
 		const row = actionRow(h.root, ['全部更新', '添加'],
 			[h.page.statusError, h.page.progress, h.page.summary]);
-		assert.deepEqual(h.root.children, [h.maps.at(-1).node, row],
-			'T10.37 moves subscription actions below the general settings and subscription table');
+		assert.equal(h.maps.at(-1).node.children[1], h.page.details);
+		assert.equal(h.page.details.children.at(-1), row, 'actions stay below the table inside details');
 	}
 });
 
@@ -1480,7 +1488,7 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 	await render(h);
 	const section = h.maps[0].sections[0];
 	const headers = find(h.root, node => node.tag === 'th').map(text);
-	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', 'TCP 可达／延迟']);
+	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', '自动切换', 'TCP 可达／延迟']);
 	assert.ok(!section.options.some(option => option.field === '_address'));
 	for (const id of ['n_a', 'n_b']) {
 		const edit = buttons(actions(h, id)).find(node => text(node) === '编辑');
@@ -1607,23 +1615,25 @@ test('T10.25 defensive: bulk save failure reports error and always clears busy s
 	assert.match(text(h.uciCalls.at(-1)[2]), /操作失败：save failed/);
 });
 
-test('T10.37 scenario 2: expanded subscriptions precede node tools/table and collapsed batch import', async () => {
+test('T16.18: general settings are outside subscription details, with exactly two save maps', async () => {
 	const h = await harness('nodes');
 	await render(h);
 	const page = h.view;
 	assert.equal(h.fullRoot.children[0].textContent, '节点与订阅');
-	assert.deepEqual(h.fullRoot.children.slice(1), [page.subscriptionsDetails, page.root]);
-	assert.equal(page.subscriptionsDetails.tag, 'details');
-	assert.equal(page.subscriptionsDetails.open, true);
-	assert.equal(page.subscriptionsDetails.children[0].textContent, '订阅');
-	assert.equal(page.subscriptionsDetails.children[1], h.subscriptions.root);
-	const subMap = h.subscriptions.map;
+	const { root, map: subMap, details } = h.subscriptions;
+	assert.deepEqual(h.fullRoot.children.slice(1), [root, page.root]);
+	assert.deepEqual(root.children, [subMap.node]);
 	assert.deepEqual(subMap.sections.map(section => section.type), ['sub', 'subscription']);
-	assert.deepEqual(h.subscriptions.root.children.map(node => node.tag), ['form', 'div']);
-	assert.equal(h.subscriptions.root.children[0], subMap.node);
-	assert.equal(subMap.node.children[0].textContent, '通用设置');
-	assert.match(subMap.node.children[1].textContent, /Alpha.*Beta/);
-	assert.deepEqual(buttons(h.subscriptions.root.children[1]).map(text), ['全部更新', '添加']);
+	const [general, collapsedRegion] = subMap.node.children;
+	assert.equal(general.tag, 'section');
+	assert.equal(general.children[0].textContent, '通用设置');
+	assert.equal(collapsedRegion, details);
+	assert.equal(details.tag, 'details');
+	assert.equal(details.open, true);
+	assert.equal(details.children[0].textContent, '订阅');
+	assert.match(details.children[1].textContent, /Alpha.*Beta/);
+	assert.deepEqual(buttons(details.children[2]).map(text), ['全部更新', '添加']);
+	assert.doesNotMatch(details.textContent, /通用设置/, 'the general heading and fields are not inside details');
 	const tools = actionRow(page.root, ['检测全部', '删除所选', '添加节点']);
 	const region = find(page.root, node => (node.children ?? []).includes(page.nodeMap.node))[0];
 	assert.deepEqual(region.children.slice(-3), [tools, page.nodeMap.node, page.importDetails]);
@@ -1653,7 +1663,7 @@ for (const ids of [['s_a'], []]) {
 		block.grid.renderMoreOptionsModal('s_a');
 		block.grid.modal.value = 'Unsaved modal text';
 		const modal = block.grid.modal, form = block.map.node;
-		page.subscriptionsDetails.open = false;
+		block.details.open = false;
 		page.importDetails.open = true;
 		page.importText.value = '\n vless://unsaved-import \n';
 		page.importResult.textContent = 'Previous import result';
@@ -1682,7 +1692,7 @@ for (const ids of [['s_a'], []]) {
 		assert.equal(flag.checked, false);
 		assert.equal(subOption(h, 'enabled').formvalue('s_b'), '0');
 		assert.equal(block.rowButtons.get('s_b').disabled, true, 'local pending flag survives refresh');
-		assert.equal(page.subscriptionsDetails.open, false);
+		assert.equal(block.details.open, false);
 		assert.equal(page.importDetails.open, true);
 		assert.equal(page.importText.value, '\n vless://unsaved-import \n');
 		assert.equal(page.importResult.textContent, 'Previous import result');
@@ -1713,7 +1723,7 @@ async () => {
 	assert.deepEqual(h.general, [{ '.name': 'sub', '.type': 'sub' }]);
 	assert.equal(h.uciCalls.filter(call => call[0] === 'add').length, 2,
 		'node imports use the combined load path after unloading a legacy configuration');
-	assert.equal(h.fullRoot.children[1].children[1], block.root);
+	assert.equal(h.fullRoot.children[1], block.root);
 	assert.equal(h.uciCalls.some(call => call[0] === 'save'), false);
 });
 
@@ -1771,6 +1781,109 @@ test('T10.37 scenario 5: inherited page Save saves both maps and their pending s
 	assert.equal(h.uci.get('aetherproxy', 'sub', 'user_agent'), 'Save both/1');
 	assert.equal(h.uci.get('aetherproxy', 's_b', 'enabled'), '0');
 	assert.equal(h.uci.get('aetherproxy', 'n_b', 'label'), 'Saved node');
+});
+
+const failoverRisk = '频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启';
+
+function failoverCell(h, id) {
+	return find(gridRow(h, id), node => node.field === '_failover')[0].children[0];
+}
+
+function toggleFailover(h, checked) {
+	const checkbox = h.subscriptions.generalOptions.failover.getUIElement('sub').children[0];
+	checkbox.checked = checked;
+	checkbox.change({ target: checkbox });
+}
+
+test('T16.18: general Flag defaults off, warns about exit IP risk and does not write on unchanged Save', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const flag = h.subscriptions.generalOptions.failover;
+	const writes = () => h.uciCalls.filter(call => call[3] === 'failover');
+	assert.equal(flag.kind, 'Flag');
+	assert.equal(flag.formvalue('sub'), '0');
+	assert.equal(flag.getUIElement('sub').children[0].checked, false);
+	assert.match(h.subscriptions.map.node.children[0].textContent, /当前节点不可达时自动切换到下一个可用节点/);
+	assert.ok(flag.description.includes(failoverRisk));
+	await h.view.handleSave();
+	assert.equal(h.uciCalls.some(call => call[3] === 'failover'), false);
+	assert.equal(Object.hasOwn(h.general[0], 'failover'), false);
+	toggleFailover(h, true);
+	assert.equal(h.uci.get('aetherproxy', 'sub', 'failover'), undefined, 'preview does not stage a write');
+	await h.view.handleSave();
+	assert.deepEqual(writes(), [['set', 'aetherproxy', 'sub', 'failover', '1']]);
+	toggleFailover(h, false);
+	await h.view.handleSave();
+	assert.deepEqual(writes().at(-1), ['unset', 'aetherproxy', 'sub', 'failover']);
+	assert.equal(Object.hasOwn(h.general[0], 'failover'), false);
+});
+
+test('T16.18: node column renders all four effective states and follows Flag changes and Reset in place', async () => {
+	const h = await harness('nodes');
+	h.nodes[1].failover = '1';
+	h.nodes.push({ '.name': 'n_c', failover: '0' });
+	await render(h);
+	const header = find(h.root, node => node.tag === 'th' && text(node) === '自动切换')[0].children[0];
+	assert.match(header.title, /总开关.*通用设置.*节点覆盖才生效/);
+	assert.ok(header.title.includes(failoverRisk));
+	const cells = ['n_a', 'n_b', 'n_c'].map(id => failoverCell(h, id));
+	const values = () => cells.map(cell => [text(cell), cell.attrs.style ?? '']);
+	const off = Array.from({ length: 3 }, () => ['关', 'opacity:0.6']);
+	assert.deepEqual(values(), off);
+	toggleFailover(h, true);
+	assert.deepEqual(values(), [['跟随·开', ''], ['开', ''], ['不参与', 'opacity:0.6']]);
+	assert.equal(failoverCell(h, 'n_b'), cells[1]);
+	assert.equal(h.uciCalls.some(call => call[3] === 'failover'), false);
+
+	h.subscriptions.details.open = false;
+	await h.subscriptions.map.reset();
+	assert.deepEqual(values(), off, 'reset repaints the existing node cells from the restored flag');
+	assert.equal(h.subscriptions.details.open, false, 'map re-render preserves collapsed details');
+});
+
+test('T16.18: cloned node modal follows current global value and saves absence, 1 or 0', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const open = () => {
+		h.view.nodeGrid.renderMoreOptionsModal('n_b');
+		return h.view.nodeGrid.modal;
+	};
+	const writes = () => h.uciCalls.filter(call => call[2] === 'n_b' && call[3] === 'failover');
+	let modal = open();
+	assert.deepEqual(modal.options[0].keylist, ['', '1', '0']);
+	assert.deepEqual(modal.options[0].vallist, ['跟随通用设置（当前：关）', '参与', '不参与']);
+	assert.equal(modal.options[0].formvalue('n_b'), '');
+	await modal.save();
+	assert.deepEqual(writes(), []);
+
+	toggleFailover(h, true);
+	for (const [value, expected, label] of [['1', '', '开'], ['0', '1', '不参与'], ['', '0', '跟随·开']]) {
+		modal = open();
+		const option = modal.options[0];
+		assert.equal(option.vallist[0], '跟随通用设置（当前：开）');
+		assert.equal(option.formvalue('n_b'), expected);
+		option.setFormValue('n_b', value);
+		await modal.save();
+		await h.view.nodeMap.reset();
+		assert.equal(text(failoverCell(h, 'n_b')), label);
+	}
+	assert.deepEqual(writes(), [
+		['set', 'aetherproxy', 'n_b', 'failover', '1'],
+		['set', 'aetherproxy', 'n_b', 'failover', '0'],
+		['unset', 'aetherproxy', 'n_b', 'failover']
+	]);
+	assert.equal(Object.hasOwn(h.nodes[1], 'failover'), false);
+});
+
+test('T16.18: docs/10 records block order, default, four states and the three UCI choices', () => {
+	const docs = fs.readFileSync(path.resolve(APP, '../docs/10-cli-luci.md'), 'utf8');
+	assert.match(docs, /\*\*通用设置\*\*[^\n]+→ \*\*订阅\*\*[^\n]+→ \*\*节点表\*\*[^\n]+→ \*\*批量导入分享链接\*\*/);
+	const section = docs.split('### 节点故障自动切换（T16.18）')[1]?.split('\n### ')[0] ?? '';
+	assert.match(section, /`sub\.failover`[^\n]*默认关闭[^\n]*风控/);
+	for (const row of ['| 关 | 任意 | 关（灰） |', '| 开 | 缺省 | 跟随·开 |', '| 开 | `1` | 开 |',
+		'| 开 | `0` | 不参与（灰） |'])
+		assert.ok(section.includes(row), row);
+	assert.match(section, /跟随通用设置[^\n]*缺省不写 `node\.<id>\.failover`[^\n]*参与（写 `1`）、不参与（写 `0`）/);
 });
 
 test('T9.42: a hostile node name stays literal text on the nodes page', async () => {

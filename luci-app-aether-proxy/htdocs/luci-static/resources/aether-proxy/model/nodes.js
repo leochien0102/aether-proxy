@@ -175,7 +175,24 @@ function optional_format(check, message) {
 	return (id, value) => value == null || value === '' || check(value) ? true : message;
 }
 
+// docs/10 「节点故障自动切换」: a node override cannot bypass the global switch.
+function failover_switch_text(enabled) {
+	return enabled ? _('Failover on', 'aether-proxy') : _('Failover off', 'aether-proxy');
+}
+
+function failover_state(enabled, override) {
+	if (!enabled)
+		return { text: failover_switch_text(false), muted: true };
+	if (override === '0')
+		return { text: _('Do not participate', 'aether-proxy'), muted: true };
+	if (override === '1')
+		return { text: failover_switch_text(true), muted: false };
+	return { text: _('Follow · On', 'aether-proxy'), muted: false };
+}
+
 return baseclass.extend({
+	failover_switch_text,
+	failover_state,
 	probe_column,
 	probe_level,
 	ss_methods: SS_METHODS,

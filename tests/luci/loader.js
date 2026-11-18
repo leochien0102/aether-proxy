@@ -334,7 +334,7 @@ function element(tag, attrs = {}, children = []) {
 
 	appendChildren(node, children);
 
-	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple' ])
+	for (const name of [ 'disabled', 'checked', 'selected', 'readonly', 'hidden', 'multiple', 'open' ])
 		node[name] = attrs[name] != null;
 	if (tag === 'select') {
 		const options = node.childNodes;

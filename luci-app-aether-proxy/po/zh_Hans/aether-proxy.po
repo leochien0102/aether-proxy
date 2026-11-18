@@ -2087,6 +2087,46 @@ msgid "Off"
 msgstr "关闭"
 
 msgctxt "aether-proxy"
+msgid "Automatic failover"
+msgstr "自动切换"
+
+msgctxt "aether-proxy"
+msgid "Automatically switch to the next available node when the current node is unreachable."
+msgstr "当前节点不可达时自动切换到下一个可用节点。"
+
+msgctxt "aether-proxy"
+msgid "Frequent changes to your exit IP may trigger security checks on some sites or apps. Enable only when needed."
+msgstr "频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启。"
+
+msgctxt "aether-proxy"
+msgid "The main switch is in General settings above Subscriptions; node overrides apply only when it is on."
+msgstr "总开关在「订阅」上方的「通用设置」；总开关开启后，节点覆盖才生效。"
+
+msgctxt "aether-proxy"
+msgid "Failover on"
+msgstr "开"
+
+msgctxt "aether-proxy"
+msgid "Failover off"
+msgstr "关"
+
+msgctxt "aether-proxy"
+msgid "Follow · On"
+msgstr "跟随·开"
+
+msgctxt "aether-proxy"
+msgid "Follow general settings (currently: %s)"
+msgstr "跟随通用设置（当前：%s）"
+
+msgctxt "aether-proxy"
+msgid "Participate"
+msgstr "参与"
+
+msgctxt "aether-proxy"
+msgid "Do not participate"
+msgstr "不参与"
+
+msgctxt "aether-proxy"
 msgid "Proxy connections"
 msgstr "代理连接"
 

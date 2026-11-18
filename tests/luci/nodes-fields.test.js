@@ -189,13 +189,14 @@ test('T10.30 scenario 4 / T9.41: heartbeat and concurrency use backend integer r
 	]);
 });
 
-test('T10.30 scenario 5: parse cleanup includes every new option and the node table columns are unchanged', () => {
+test('T10.30 scenario 5: parse cleanup includes protocol fields; failover is separate', () => {
 	const { options, model } = harness();
 	for (const field of Object.keys(NEW_FIELDS))
 		assert.ok(model.node_fields.includes(field), field + ' is cleared before parsing');
 	assert.equal(new Set(model.node_fields).size, model.node_fields.length, 'no duplicate cleanup fields');
+	assert.ok(!model.node_fields.includes('failover'), 'filling a share link must not erase the failover choice');
 	assert.deepEqual([...options.values()].filter(o => o.modalonly === false).map(o => o.field),
-		['_select', '_label', '_protocol', '_transport_security', '_source', '_current', '_probe']);
+		['_select', '_label', '_protocol', '_transport_security', '_source', '_current', '_failover', '_probe']);
 });
 
 for (const field of ['reality_pqv', 'ech_config_list']) {

@@ -2,6 +2,7 @@
 // Bind subscription forms, confirmed deletion and background updates to UCI and shared RPC helpers.
 // Design: docs/10「订阅页」「订阅页修正」「作业机制」「UI 规则」「其余页面先出页面」「r12 缺陷修正」.
 // Also follows docs/10「订阅：通用设置、获取方式与行首开关」「节点与订阅合并为一页」.
+// Global failover follows docs/10「节点故障自动切换」(T16.18).
 // r13 pending-state and tooltip rules: docs/10「r13 修正：订阅编辑框与启用开关」.
 // Inline feedback and action sizing: docs/10「r13 修正：块内行与表格操作列」.
 // Saved disabled state and card alignment: docs/10「r14 修正：订阅已停用时「立即更新」不可用、窄屏卡片」.
@@ -17,6 +18,9 @@
 'require aether-proxy.common as ap';
 'require aether-proxy.model.subscriptions as model';
 
+const FAILOVER_RISK = _(
+	'Frequent changes to your exit IP may trigger security checks on some sites or apps. Enable only when needed.',
+	'aether-proxy');
 const REQUIRED_COLOR = 'var(--error-color-high, #c53030)';
 
 function requiredValue(map, id, field) {
@@ -117,14 +121,17 @@ function requiredOptions(grid, rules) {
 
 return baseclass.extend({
 	required_options: requiredOptions,
+	failover_risk: FAILOVER_RISK,
 	load: function() {
 		return uci.load('aetherproxy').then(() => {
 			if (!uci.get('aetherproxy', 'sub'))
 				uci.add('aetherproxy', 'sub', 'sub');
 		});
 	},
-	render: function(refresh_nodes) {
+	render: function(refresh_nodes, refresh_failover) {
 		this.refresh_nodes = refresh_nodes;
+		this.refresh_failover = refresh_failover;
+		this.details = null;
 		this.status = undefined;
 		this.busy = false;
 		this.pendingIds = new Set();
@@ -171,6 +178,10 @@ return baseclass.extend({
 		}
 		return model.general_values(values, this.defaultUA);
 	},
+	failover_enabled: function() {
+		const value = this.generalOptions?.failover?.formvalue('sub') ?? uci.get('aetherproxy', 'sub', 'failover');
+		return value === '1';
+	},
 	setting_option: function(section, field, title, inherited) {
 		const self = this;
 		const kind = field === 'user_agent' ? form.Value : form.ListValue;
@@ -215,6 +226,14 @@ return baseclass.extend({
 			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
 			user_agent: this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), false)
 		};
+		const failover = s.option(form.Flag, 'failover', _('Automatic failover', 'aether-proxy'));
+		failover.default = '0';
+		failover.rmempty = true;
+		failover.description = _(
+			'Automatically switch to the next available node when the current node is unreachable.', 'aether-proxy'
+		) + ' ' + FAILOVER_RISK;
+		failover.onchange = () => this.refresh_failover?.();
+		this.generalOptions.failover = failover;
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
 	result_content: function(result) {
@@ -329,12 +348,19 @@ return baseclass.extend({
 		this.changesGeneration ??= 0;
 		this.resultCells = {};
 		this.statusError = E('span', { style: 'margin:0' });
-		const subs = uci.sections('aetherproxy', 'subscription');
-		const vm = model.build(subs, this.status, Date.now() / 1000, this.busy);
 		this.rowButtons = new Map();
 		this.rowWrappers = new Map();
 		const m = new form.Map('aetherproxy');
 		this.map = m;
+		const renderContents = m.renderContents;
+		m.renderContents = function(...args) {
+			return renderContents.apply(this, args).then(content => {
+				// Footer Reset and modal saves may replace the flag widget without firing onchange.
+				self.sync_buttons();
+				self.refresh_failover?.();
+				return content;
+			});
+		};
 		this.general_settings(m);
 		const s = m.section(form.GridSection, 'subscription');
 		this.grid = s;
@@ -344,9 +370,15 @@ return baseclass.extend({
 			self.rowButtons = new Map();
 			self.rowWrappers = new Map();
 			return this.super('render', args).then(content => {
-				// Map.reset after modal Save also renders this section, not the whole page.
+				// Wrap only the grid and its tools, including when Map.reset redraws both sections.
+				const open = self.details?.open ?? true;
+				self.details = E('details', { 'class': 'cbi-section', open: open || null }, [
+					E('summary', {}, _('Subscriptions', 'aether-proxy')),
+					content,
+					self.update_controls()
+				]);
 				self.refresh_changes();
-				return content;
+				return self.details;
 			});
 		};
 		// The generic Add creates anonymous sections, which are not subscription IDs.
@@ -404,25 +436,23 @@ return baseclass.extend({
 		form_defaults.section(s);
 		requiredOptions(s, model.required_fields);
 		return m.render().then(content => {
-			const updateAll = E('button', {
-				'class': 'btn cbi-button cbi-button-action', 'disabled': !vm.can_update || null,
-				'click': ui.createHandlerFn(self, 'update', [])
-			}, _('Update all', 'aether-proxy'));
-			self.updateAll = updateAll;
-			self.pendingHint = E('span');
-			dom.content(self.root, [
-				content,
-				E('div', {
-					style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
-						+ 'flex-wrap:wrap; margin:0.5em 0 1em'
-				}, [ self.statusError, self.progress, self.summary, self.pendingHint, updateAll,
-					E('button', {
-						'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(self, 'add')
-					}, _('Add', 'aether-proxy')) ]),
-			]);
-			self.sync_buttons();
+			dom.content(self.root, content);
 			self.show_results();
 		});
+	},
+	update_controls: function() {
+		this.updateAll = E('button', {
+			'class': 'btn cbi-button cbi-button-action', 'disabled': this.busy || null,
+			'click': ui.createHandlerFn(this, 'update', [])
+		}, _('Update all', 'aether-proxy'));
+		this.pendingHint = E('span');
+		return E('div', {
+			style: 'display:flex; justify-content:flex-end; align-items:center; gap:0.5em; '
+				+ 'flex-wrap:wrap; margin:0.5em 0 1em'
+		}, [ this.statusError, this.progress, this.summary, this.pendingHint, this.updateAll,
+			E('button', {
+				'class': 'btn cbi-button cbi-button-add', 'click': ui.createHandlerFn(this, 'add')
+			}, _('Add', 'aether-proxy')) ]);
 	},
 	add: function() {
 		const id = model.new_id(uci.sections('aetherproxy').map(s => s['.name']), () => window.crypto.getRandomValues(new Uint8Array(4)));
