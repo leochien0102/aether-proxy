@@ -286,14 +286,13 @@ return baseclass.extend({
 	},
 	paint_failover: function(box, status, active, uncheckedHint) {
 		const { state, count, total } = status;
-		box.checked = state === 'on';
-		box.indeterminate = state === 'mixed';
+		box.setAttribute('aria-checked', state === 'mixed' ? 'mixed' : String(state === 'on'));
+		box.setAttribute('class', `aether-tri aether-tri--${state}${active ? '' : ' aether-tri--inactive'}`);
 		const hint = state === 'mixed' ? _('Partial · %s/%s', 'aether-proxy').format(count, total)
 			: FAILOVER_TITLE;
 		const title = active ? hint : hint + ' — ' + FAILOVER_INACTIVE;
 		const extra = state === 'off' ? uncheckedHint?.() : null;
 		box.setAttribute('title', extra ? title + ' — ' + extra : title);
-		box.setAttribute('style', active ? '' : 'opacity:0.65');
 	},
 	refresh_failover: function() {
 		if (!this.failoverCells)
@@ -326,17 +325,23 @@ return baseclass.extend({
 				return E('span', {}, [ '–' ]);
 			const status = () => model.failover_state(this.failover_nodes(kind, id), this.selected_failover());
 			const readonly = grid.map?.readonly;
-			const box = E('input', {
-				type: 'checkbox',
+			const box = E('span', {
+				role: 'checkbox',
+				tabindex: readonly ? '-1' : '0',
 				'aria-label': FAILOVER_TITLE,
-				disabled: readonly || null,
-				change: () => {
-					// Native activation flips checked and clears indeterminate before change.
-					// Restore the draft state while confirmation is pending or if the edit is rejected.
-					paint(status(), this.failover_enabled());
-					return this.toggle_failover(kind, id);
+				'aria-disabled': readonly ? 'true' : null,
+				click: () => {
+					if (!readonly)
+						return this.toggle_failover(kind, id);
+				},
+				keydown: ev => {
+					if (ev.key !== ' ' && ev.key !== 'Enter')
+						return;
+					ev.preventDefault();
+					if (!ev.repeat)
+						return box.click();
 				}
-			});
+			}, E('span', { 'class': 'aether-tri-mark', 'aria-hidden': 'true' }));
 			const hint = uncheckedHint ? () => uncheckedHint(id) : null;
 			const paint = (state, active) => this.paint_failover(box, state, active, hint);
 			this.failoverCells[kind].set(id, { box, paint });
@@ -348,11 +353,12 @@ return baseclass.extend({
 		grid.renderTextValue = function(id, option) {
 			const cell = renderTextValue.call(this, id, option);
 			const box = cell.firstChild;
-			if (option === o && box === block.failoverCells[kind].get(id)?.box && !box.disabled) {
+			if (option === o && box === block.failoverCells[kind].get(id)?.box && !this.map?.readonly) {
 				cell.setAttribute('style', 'cursor:pointer');
 				cell.addEventListener('click', ev => {
-					if (ev.target !== box)
-						box.click();
+					// The control and its mark already go through the control's click handler.
+					if (ev.target === cell)
+						return box.click();
 				});
 			}
 			return cell;

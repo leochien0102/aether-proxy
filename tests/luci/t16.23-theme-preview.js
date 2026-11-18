@@ -14,13 +14,15 @@ const messages = parsePo(fs.readFileSync(path.join(app, 'po/zh_Hans/aether-proxy
 const staticRoot = path.join(www, 'luci-static');
 const themePaths = { 'bootstrap-dark': 'bootstrap/cascade.css', 'argon-light': 'argon-plus/css/cascade.css' };
 const entries = [
-	['main', 'main', { node: 'n_a', failover_nodes: ['n_b'] }],
+	['main', 'main', { node: 'n_a', failover_nodes: ['n_b', 'n_d'] }],
 	['sub', 'sub', { failover: '0' }],
 	['s_a', 'subscription', { name: '示例订阅', url: 'https://example.org/subscription' }],
 	['s_b', 'subscription', { name: '备用订阅', url: 'https://example.net/subscription' }],
+	['s_c', 'subscription', { name: '全选订阅', url: 'https://example.com/subscription' }],
 	['n_a', 'node', { label: '手动 · 香港', source: 'manual', protocol: 'vless', security: 'reality' }],
 	['n_b', 'node', { label: '订阅 · 东京', source: 's_a', protocol: 'vless', transport: 'ws', security: 'tls' }],
-	['n_c', 'node', { label: '订阅 · 新加坡', source: 's_a', protocol: 'trojan', security: 'tls' }]
+	['n_c', 'node', { label: '订阅 · 新加坡', source: 's_a', protocol: 'trojan', security: 'tls' }],
+	['n_d', 'node', { label: '订阅 · 台北', source: 's_c', protocol: 'vless', security: 'tls' }]
 ];
 const values = Object.fromEntries(entries.map(([id, type, options], index) =>
 	[id, { '.name': id, '.type': type, '.index': index, ...options }]));
@@ -80,12 +82,12 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			await page.locator('.aether-node-current').waitFor({ timeout: 5000 });
 			await page.evaluate(() => document.fonts.ready.then(() => null));
 			const subscription = page.locator('details.aether-subscription-list');
-			const box = subscription.locator('[data-name="_failover"] input').first();
+			const box = subscription.locator('[data-name="_failover"] .aether-tri').first();
 			const dot = page.locator('.aether-node-current');
-			assert.equal(await box.evaluate(el => el.indeterminate), true);
+			assert.equal(await box.getAttribute('aria-checked'), 'mixed');
 			assert.equal(await dot.count(), 1);
 			const names = await page.locator('.aether-node-name > span:last-child').all();
-			assert.equal(names.length, 3);
+			assert.equal(names.length, 4);
 			const nameBoxes = await Promise.all(names.map(el => el.boundingBox()));
 			const textBox = locator => locator.evaluate(el => {
 				const range = document.createRange();
@@ -114,11 +116,10 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			for (const table of tables) {
 				const cx = rect => rect.x + rect.width / 2;
 				const heading = await textBox(table.locator('.aether-failover-title'));
-				for (const input of await table.locator('[data-name="_failover"] input').all())
-					assert.ok(Math.abs(cx(await input.boundingBox()) - cx(heading)) < 1,
-						`${theme}: failover checkboxes share their heading's centerline`);
+				for (const control of await table.locator('[data-name="_failover"] .aether-tri').all())
+					assert.ok(Math.abs(cx(await control.boundingBox()) - cx(heading)) < 1,
+						`${theme}: failover controls share their heading's centerline`);
 			}
-			assert.equal(await box.evaluate(el => getComputedStyle(el).appearance), 'auto');
 			assert.deepEqual(await page.locator('#view h3').allTextContents(), ['通用设置', '订阅', '节点']);
 			for (const toolbar of await page.locator('.aether-section-toolbar').all()) {
 				const descr = await toolbar.locator(':scope > .cbi-map-descr').boundingBox();
@@ -135,14 +136,43 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await result.locator('br').count(), 0);
 			assert.equal(await result.getByText('尚未更新', { exact: true })
 				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
+			const inspect = locator => locator.evaluate(el => {
+				const css = getComputedStyle(el);
+				const mark = getComputedStyle(el.firstElementChild, '::after');
+				return { fill: css.backgroundColor, gradient: css.backgroundImage, border: css.borderColor,
+					check: mark.content, checkColor: mark.color };
+			});
+			assert.equal(await cellStyle('opacity'), '0.65');
+			await flagInput.click();
+			assert.equal(await cellStyle('opacity'), '1');
+			assert.doesNotMatch(await box.getAttribute('title'), /总开关未开启/);
+			const off = await inspect(subscription.locator('.aether-tri[aria-checked="false"]'));
+			const on = await inspect(subscription.locator('.aether-tri[aria-checked="true"]'));
+			const mixed = await inspect(box);
+			assert.equal(off.fill, 'rgba(0, 0, 0, 0)');
+			assert.equal(off.gradient, 'none');
+			assert.equal(off.check, 'none');
+			assert.equal(on.fill, on.border);
+			assert.equal(on.check, '"✓"');
+			assert.equal(on.checkColor, 'rgb(255, 255, 255)');
+			assert.equal(mixed.fill, off.fill);
+			assert.equal(mixed.check, 'none');
+			assert.equal(mixed.gradient, `linear-gradient(90deg, ${on.fill} 50%, ${off.fill} 50%)`);
 			await page.screenshot({ path: path.join(out, `${theme}.png`), fullPage: true });
 			await flagInput.click();
-			assert.doesNotMatch(await box.getAttribute('title'), /总开关未开启/);
-			await flagInput.click();
 			assert.match(await box.getAttribute('title'), /总开关未开启/);
-			await box.click();
-			assert.equal(await box.isChecked(), true);
-			assert.equal(await box.evaluate(el => el.indeterminate), false);
+			await page.keyboard.press('Tab');
+			await box.focus();
+			assert.equal(await box.evaluate(el => getComputedStyle(el).outlineStyle), 'solid');
+			await page.keyboard.press('Space');
+			assert.equal(await box.getAttribute('aria-checked'), 'true');
+			// A click in the cell padding and a real bubbled mark click each toggle exactly once.
+			const current = nodeTable.locator('tr:has(.aether-node-current) .aether-tri');
+			const currentCell = nodeTable.locator('tr:has(.aether-node-current) [data-name="_failover"]');
+			await currentCell.click({ position: { x: 3, y: 3 } });
+			assert.equal(await current.getAttribute('aria-checked'), 'true');
+			await current.locator('.aether-tri-mark').click();
+			assert.equal(await current.getAttribute('aria-checked'), 'false');
 			await subscription.locator('summary').click();
 			assert.equal(await box.isVisible(), false);
 			assert.equal(await page.getByRole('button', { name: '全部更新', exact: true }).isVisible(), true);
@@ -154,7 +184,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 				await view.nodeMap.reset();
 			});
 			assert.equal(await nodeTable.locator('th').getByText('启用', { exact: true }).count(), 1);
-			assert.deepEqual(await nodeTable.locator('[data-name="_enabled"]').allTextContents(), ['启用', '启用', '已停用']);
+			assert.deepEqual(await nodeTable.locator('[data-name="_enabled"]').allTextContents(), ['启用', '启用', '已停用', '启用']);
 			await page.setViewportSize({ width: 360, height: 800 });
 			if (dark)
 				assert.equal(await page.evaluate(() => matchMedia('(max-device-width: 600px)').matches), true);
@@ -169,7 +199,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await result.evaluate(el => getComputedStyle(el.parentElement).display), 'table-row');
 			assert.equal(await result.getByText('尚未更新', { exact: true })
 				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
-			console.log(`PASS ${theme}: conditional column, single-line placeholder, narrow table scroll, existing alignment and failover`);
+			console.log(`PASS ${theme}: conditional column, single-line placeholder, narrow table scroll, existing alignment, three failover states, focus, Space, cell and mark clicks`);
 			await page.close();
 		}
 	}

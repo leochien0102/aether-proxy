@@ -110,9 +110,35 @@ const pageStyle = `
 	text-align: center !important;
 	white-space: nowrap;
 }
-.cbi-value-field[data-name="_failover"] > input { margin-inline: 0; }
-.cbi-value-field[data-name="_failover"] > input:indeterminate {
-	appearance: auto !important; /* Preserve the mixed mark even when a theme forces appearance:none. */
+.cbi-value-field[data-name="_failover"]:has(> .aether-tri--inactive) { opacity: 0.65; }
+.aether-tri {
+	--aether-tri-color: var(--primary-color-high, var(--primary, Highlight));
+	display: inline-grid;
+	box-sizing: border-box;
+	width: 1em;
+	height: 1em;
+	border: 2px solid var(--aether-tri-color);
+	border-radius: 3px;
+	vertical-align: middle;
+	background: transparent;
+}
+.aether-tri-mark {
+	display: grid;
+	place-items: center;
+	line-height: 1;
+}
+.aether-tri--on { background: var(--aether-tri-color); }
+.aether-tri--on > .aether-tri-mark::after {
+	content: '✓';
+	color: var(--white, white);
+	font-size: 0.75em;
+}
+.aether-tri--mixed {
+	background: linear-gradient(90deg, var(--aether-tri-color) 50%, transparent 50%);
+}
+.aether-tri:focus-visible {
+	outline: 2px solid var(--aether-tri-color);
+	outline-offset: 2px;
 }
 /* Use a scrollable table, not the theme's stacked mobile cards, for subscriptions. */
 .aether-subscription-scroll > .cbi-tblsection { overflow: visible; }

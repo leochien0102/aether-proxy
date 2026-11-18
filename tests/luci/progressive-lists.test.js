@@ -1915,7 +1915,7 @@ test('T16.25: switch and membership drafts update the description and only the u
 		assert.equal(description.style, '');
 		assert.equal(failoverSwitchTitle(h), failoverRisk +
 			' 当前节点「Node A」不在自动切换名单中。请将其加入名单，或关闭总开关。');
-		assert.equal(current.checked, false);
+		assert.equal(current['aria-checked'], 'false');
 		assert.equal(current.title, '自动切换 — ' + currentNodeHint);
 		assert.equal(other.title, '自动切换');
 		assert.equal(subscription.title, '自动切换');
@@ -1929,7 +1929,7 @@ test('T16.25: switch and membership drafts update the description and only the u
 	await current.click();
 	assert.equal(description.textContent, failoverEffective);
 	assert.equal(failoverSwitchTitle(h), failoverRisk);
-	assert.equal(current.checked, true);
+	assert.equal(current['aria-checked'], 'true');
 	assert.equal(current.title, '自动切换');
 	assert.equal(other.title, '自动切换');
 	await current.click();
@@ -1937,7 +1937,7 @@ test('T16.25: switch and membership drafts update the description and only the u
 	toggleFailover(h, false);
 	assertOff();
 	assert.equal(failoverDescription(h), description, 'draft edits must not replace the description');
-	assert.equal(failoverBox(h, 'n_a'), current, 'draft edits must not replace the checkbox');
+	assert.equal(failoverBox(h, 'n_a'), current, 'draft edits must not replace the control');
 	assert.deepEqual(failoverWrites(h), []);
 });
 
@@ -1960,15 +1960,21 @@ test('T16.25: a disabled current node takes precedence over missing membership w
 
 function assertFailover(h, id, pressed, label, active = false) {
 	const box = failoverBox(h, id);
-	assert.equal(box.tag, 'input');
-	assert.equal(box.type, 'checkbox');
-	assert.equal(box.checked, pressed === 'true');
-	assert.equal(box.indeterminate, pressed === 'mixed');
+	assert.equal(box.tag, 'span');
+	assert.equal(box.role, 'checkbox');
+	assert.equal(box.tabindex, '0');
+	assert.equal(box['aria-label'], '自动切换');
+	assert.equal(box['aria-checked'], pressed);
+	const state = { 'true': 'on', 'false': 'off', mixed: 'mixed' }[pressed];
+	assert.equal(box.class, `aether-tri aether-tri--${state}${active ? '' : ' aether-tri--inactive'}`);
+	assert.equal(box.children.length, 1);
+	assert.equal(box.firstChild.tag, 'span');
+	assert.equal(box.firstChild.class, 'aether-tri-mark');
+	assert.equal(box.firstChild['aria-hidden'], 'true');
 	assert.equal(box.title, (pressed === 'mixed' ? label : '自动切换') +
 		(active ? '' : ' — ' + inactiveFailover));
 	assert.equal(failoverCell(h, id).textContent, '');
-	assert.equal(box.style.includes('opacity:'), !active);
-	assert.equal(box.disabled, false);
+	assert.equal(box['aria-disabled'], null);
 }
 
 test('T16.22: subscription off, partial 8/10 and on; batches and confirmation are draft-only', async () => {
@@ -2010,6 +2016,35 @@ test('T16.22: subscription off, partial 8/10 and on; batches and confirmation ar
 	assertFailover(h, 's_a', 'true', '开', true);
 	await h.view.handleSave();
 	assert.deepEqual(h.main.failover_nodes, ['n_a', ...ids]);
+});
+
+test('T16.26: click, Space, Enter, and cell background use the same toggle once', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const cell = failoverCell(h, 'n_b');
+	const box = cell.firstChild;
+	const toggles = [];
+	h.subscriptions.toggle_failover = async (...args) => { toggles.push(args); };
+	let prevented = 0;
+	const press = (key, repeat = false) => box.keydown({ key, repeat, preventDefault: () => { prevented++; } });
+	await box.click();
+	await press(' ');
+	await press('Enter');
+	await cell.click({ target: cell });
+	// Simulate a mark click followed by bubbling in the DOM double.
+	await box.click({ target: box.firstChild });
+	await cell.click({ target: box.firstChild });
+	await press(' ', true);
+	await press('Tab');
+	assert.deepEqual(toggles, Array.from({ length: 5 }, () => ['node', 'n_b']));
+	assert.equal(prevented, 3, 'suppress scrolling and repeat activation, but allow Tab');
+});
+
+test('T16.26: failover no longer uses native mixed-state styling or assignment', () => {
+	const block = fs.readFileSync(path.join(RES, 'aether-proxy/subscriptions-block.js'), 'utf8');
+	const view = fs.readFileSync(path.join(RES, 'view/aether-proxy/nodes.js'), 'utf8');
+	assert.doesNotMatch(block, /\.indeterminate\s*=/);
+	assert.doesNotMatch(view, /appearance\s*:\s*auto\s*!important|\[data-name="_failover"\]\s*>\s*input/);
 });
 
 test('T16.22: entire node cell toggles while grey; it repaints subscription and footer reset drops changes', async () => {
