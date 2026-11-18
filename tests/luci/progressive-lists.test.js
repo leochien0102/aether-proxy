@@ -1841,7 +1841,7 @@ test('T10.37 scenario 5: page Save saves both maps and their pending settings', 
 	assert.equal(h.uci.get('aetherproxy', 's_b', 'enabled'), '0');
 });
 
-const failoverRisk = '频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启';
+const failoverRisk = '频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启。';
 
 function toggleFailover(h, checked) {
 	const checkbox = h.subscriptions.generalOptions.failover.getUIElement('sub').children[0];
@@ -1887,6 +1887,76 @@ const failoverCell = (h, id) => find(find(h.fullRoot, node => node.sid === id)[0
 	node => node.field === '_failover')[0];
 const failoverBox = (h, id) => failoverCell(h, id).firstChild;
 const failoverWrites = h => h.uciCalls.filter(call => call[3] === 'failover_nodes');
+
+const failoverDescription = h => find(h.fullRoot, node => node.class === 'aether-failover-setting')[0].lastChild;
+const failoverSwitchTitle = h => h.subscriptions.generalOptions.failover.getUIElement('sub').title;
+const failoverEffective = '当前节点不可达时自动切换。';
+const failoverUnlisted = '当前节点未加入名单，自动切换暂不生效。';
+const currentNodeHint = '当前节点；未加入名单时不会触发自动切换。';
+
+test('T16.25: switch and membership drafts update the description and only the unchecked current row in place', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const description = failoverDescription(h);
+	const current = failoverBox(h, 'n_a');
+	const other = failoverBox(h, 'n_b');
+	const subscription = failoverBox(h, 's_a');
+
+	const assertOff = () => {
+		assert.equal(description.textContent, failoverEffective);
+		assert.equal(description.style, 'opacity:0.65');
+		assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + inactiveFailover);
+		assert.equal(current.title, '自动切换 — ' + inactiveFailover + ' — ' + currentNodeHint);
+		assert.equal(other.title, '自动切换 — ' + inactiveFailover);
+		assert.equal(subscription.title, '自动切换 — ' + inactiveFailover);
+	};
+	const assertUnlisted = () => {
+		assert.equal(description.textContent, failoverUnlisted);
+		assert.equal(description.style, '');
+		assert.equal(failoverSwitchTitle(h), failoverRisk +
+			' 当前节点「Node A」不在自动切换名单中。请将其加入名单，或关闭总开关。');
+		assert.equal(current.checked, false);
+		assert.equal(current.title, '自动切换 — ' + currentNodeHint);
+		assert.equal(other.title, '自动切换');
+		assert.equal(subscription.title, '自动切换');
+	};
+
+	assertOff();
+	toggleFailover(h, true);
+	assertUnlisted(); // Empty list.
+	await other.click();
+	assertUnlisted(); // List contains only another node.
+	await current.click();
+	assert.equal(description.textContent, failoverEffective);
+	assert.equal(failoverSwitchTitle(h), failoverRisk);
+	assert.equal(current.checked, true);
+	assert.equal(current.title, '自动切换');
+	assert.equal(other.title, '自动切换');
+	await current.click();
+	assertUnlisted();
+	toggleFailover(h, false);
+	assertOff();
+	assert.equal(failoverDescription(h), description, 'draft edits must not replace the description');
+	assert.equal(failoverBox(h, 'n_a'), current, 'draft edits must not replace the checkbox');
+	assert.deepEqual(failoverWrites(h), []);
+});
+
+test('T16.25: a disabled current node takes precedence over missing membership while the switch is on', async () => {
+	const h = await harness('nodes');
+	h.general.push({ '.name': 'sub', failover: '1' });
+	h.main.failover_nodes = ['n_a'];
+	h.nodes[0].disabled = '1';
+	await render(h);
+	const disabled = '当前节点已停用，自动切换暂不生效。';
+	assert.equal(failoverDescription(h).textContent, disabled);
+	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + disabled);
+	await failoverBox(h, 'n_a').click();
+	assert.equal(failoverDescription(h).textContent, disabled);
+	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + disabled);
+	toggleFailover(h, false);
+	assert.equal(failoverDescription(h).textContent, failoverEffective);
+	assert.equal(failoverSwitchTitle(h), failoverRisk + ' ' + inactiveFailover);
+});
 
 function assertFailover(h, id, pressed, label, active = false) {
 	const box = failoverBox(h, id);

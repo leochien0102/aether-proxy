@@ -2115,6 +2115,22 @@ msgid "Switch automatically if the current node fails."
 msgstr "当前节点不可达时自动切换。"
 
 msgctxt "aether-proxy"
+msgid "The current node is not on the list. Automatic failover is inactive."
+msgstr "当前节点未加入名单，自动切换暂不生效。"
+
+msgctxt "aether-proxy"
+msgid "The current node is disabled. Automatic failover is inactive."
+msgstr "当前节点已停用，自动切换暂不生效。"
+
+msgctxt "aether-proxy"
+msgid "The current node “%s” is not on the failover list. Add it to the list or turn off the main switch."
+msgstr "当前节点「%s」不在自动切换名单中。请将其加入名单，或关闭总开关。"
+
+msgctxt "aether-proxy"
+msgid "Current node; automatic failover will not trigger if it is not on the list."
+msgstr "当前节点；未加入名单时不会触发自动切换。"
+
+msgctxt "aether-proxy"
 msgid "Frequent changes to your exit IP may trigger security checks on some sites or apps. Enable only when needed."
 msgstr "频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启。"
 

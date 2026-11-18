@@ -259,13 +259,40 @@ return baseclass.extend({
 		const remaining = new Set(this.failover_nodes(kind, id));
 		this.stage_failover(ids.filter(node => remaining.has(node)), state !== 'on');
 	},
-	paint_failover: function(box, status, active) {
+	paint_failover_setting: function(active, current, selected) {
+		if (!this.failoverSetting)
+			return;
+		const { widget, description } = this.failoverSetting;
+		let text = _('Switch automatically if the current node fails.', 'aether-proxy');
+		let title = FAILOVER_RISK;
+		if (!active) {
+			title += ' ' + FAILOVER_INACTIVE;
+		}
+		else {
+			const node = current ? uci.get('aetherproxy', current) : null;
+			if (node?.disabled === '1') {
+				text = _('The current node is disabled. Automatic failover is inactive.', 'aether-proxy');
+				title += ' ' + text;
+			}
+			else if (!node || !selected.has(current)) {
+				text = _('The current node is not on the list. Automatic failover is inactive.', 'aether-proxy');
+				title += ' ' + _('The current node “%s” is not on the failover list. Add it to the list or turn off the main switch.',
+					'aether-proxy').format(node?.label || current || '–');
+			}
+		}
+		widget.setAttribute('title', title);
+		description.textContent = text;
+		description.setAttribute('style', active ? '' : 'opacity:0.65');
+	},
+	paint_failover: function(box, status, active, uncheckedHint) {
 		const { state, count, total } = status;
 		box.checked = state === 'on';
 		box.indeterminate = state === 'mixed';
 		const hint = state === 'mixed' ? _('Partial · %s/%s', 'aether-proxy').format(count, total)
 			: FAILOVER_TITLE;
-		box.setAttribute('title', active ? hint : hint + ' — ' + FAILOVER_INACTIVE);
+		const title = active ? hint : hint + ' — ' + FAILOVER_INACTIVE;
+		const extra = state === 'off' ? uncheckedHint?.() : null;
+		box.setAttribute('title', extra ? title + ' — ' + extra : title);
 		box.setAttribute('style', active ? '' : 'opacity:0.65');
 	},
 	refresh_failover: function() {
@@ -274,19 +301,20 @@ return baseclass.extend({
 		const nodes = uci.sections('aetherproxy', 'node');
 		const selected = this.selected_failover();
 		const active = this.failover_enabled();
+		this.paint_failover_setting(active, uci.get('aetherproxy', 'main', 'node'), selected);
 		for (const [kind, cells] of Object.entries(this.failoverCells)) {
 			const ids = new Set((kind === 'node' ? nodes : uci.sections('aetherproxy', 'subscription'))
 				.map(section => section['.name']));
-			for (const [id, box] of cells) {
+			for (const [id, { paint }] of cells) {
 				if (!ids.has(id))
 					cells.delete(id);
 				else
-					this.paint_failover(box, model.failover_state(
+					paint(model.failover_state(
 						kind === 'node' ? [id] : this.failover_nodes(kind, id, nodes), selected), active);
 			}
 		}
 	},
-	failover_column: function(grid, kind) {
+	failover_column: function(grid, kind, uncheckedHint) {
 		this.failoverEdits ??= new Map();
 		this.failoverCells ??= { node: new Map(), subscription: new Map() };
 		const o = grid.option(form.DummyValue, '_failover',
@@ -305,12 +333,14 @@ return baseclass.extend({
 				change: () => {
 					// Native activation flips checked and clears indeterminate before change.
 					// Restore the draft state while confirmation is pending or if the edit is rejected.
-					this.paint_failover(box, status(), this.failover_enabled());
+					paint(status(), this.failover_enabled());
 					return this.toggle_failover(kind, id);
 				}
 			});
-			this.failoverCells[kind].set(id, box);
-			this.paint_failover(box, status(), this.failover_enabled());
+			const hint = uncheckedHint ? () => uncheckedHint(id) : null;
+			const paint = (state, active) => this.paint_failover(box, state, active, hint);
+			this.failoverCells[kind].set(id, { box, paint });
+			paint(status(), this.failover_enabled());
 			return box;
 		};
 		const block = this;
@@ -318,7 +348,7 @@ return baseclass.extend({
 		grid.renderTextValue = function(id, option) {
 			const cell = renderTextValue.call(this, id, option);
 			const box = cell.firstChild;
-			if (option === o && box === block.failoverCells[kind].get(id) && !box.disabled) {
+			if (option === o && box === block.failoverCells[kind].get(id)?.box && !box.disabled) {
 				cell.setAttribute('style', 'cursor:pointer');
 				cell.addEventListener('click', ev => {
 					if (ev.target !== box)
@@ -414,23 +444,19 @@ return baseclass.extend({
 		failover.default = '0';
 		failover.rmempty = true;
 		const renderWidget = failover.renderWidget;
-		const syncTooltip = (widget, active) => widget.setAttribute('title',
-			active ? FAILOVER_RISK : FAILOVER_RISK + ' ' + FAILOVER_INACTIVE);
+		const block = this;
 		failover.renderWidget = function(id, index, value) {
 			const widget = renderWidget.call(this, id, index, value);
-			syncTooltip(widget, value === '1');
+			const description = E('span');
+			block.failoverSetting = { widget, description };
+			block.paint_failover_setting(value === '1', uci.get('aetherproxy', 'main', 'node'), block.selected_failover());
 			widget.setAttribute('style', 'display:inline-flex; align-items:center');
 			return E('div', {
 				'class': 'aether-failover-setting',
 				style: 'display:inline-flex; align-items:center; gap:0.5em; vertical-align:middle'
-			}, [widget, E('span', {}, [_('Switch automatically if the current node fails.', 'aether-proxy')])]);
+			}, [widget, description]);
 		};
-		failover.onchange = (ev, id, value) => {
-			const widget = failover.getUIElement(id)?.node;
-			if (widget)
-				syncTooltip(widget, value === '1');
-			this.refresh_failover();
-		};
+		failover.onchange = () => this.refresh_failover();
 		this.generalOptions.failover = failover;
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},

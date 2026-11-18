@@ -519,7 +519,9 @@ return view.extend({
 			return E('span', {}, [ row ? row.source : '–' ]);
 		};
 
-		subscriptions.failover_column(s, 'node');
+		subscriptions.failover_column(s, 'node', id => id === uci.get('aetherproxy', 'main', 'node')
+			? _('Current node; automatic failover will not trigger if it is not on the list.', 'aether-proxy')
+			: null);
 
 		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency', 'aether-proxy'));
 		o.modalonly = false;
