@@ -82,6 +82,20 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			const dot = page.locator('.aether-node-current');
 			assert.equal(await box.evaluate(el => el.indeterminate), true);
 			assert.equal(await dot.count(), 1);
+			const names = await page.locator('.aether-node-name > span:last-child').all();
+			assert.equal(names.length, 3);
+			const nameBoxes = await Promise.all(names.map(el => el.boundingBox()));
+			assert.ok(nameBoxes.every(rect => Math.abs(rect.x - nameBoxes[0].x) < 1),
+				'all node names start at the same x-coordinate');
+			const mark = await dot.boundingBox();
+			assert.ok(mark.x + mark.width < nameBoxes[0].x, 'the marker occupies its own gutter');
+			const general = page.locator('.aether-failover-setting');
+			const flagInput = general.locator('input[type="checkbox"]');
+			const flag = await flagInput.boundingBox();
+			const help = await general.locator(':scope > span:last-child').boundingBox();
+			assert.ok(flag.x + flag.width < help.x);
+			assert.ok(Math.abs(flag.y + flag.height / 2 - help.y - help.height / 2) < 2,
+				`${theme}: the inline explanation follows its checkbox on the same line (${JSON.stringify({ flag, help })})`);
 			assert.equal(await dot.evaluate(el => getComputedStyle(el).animationName), 'none');
 			assert.match(await box.getAttribute('title'), /半选 · 1\/2/);
 			const cellStyle = prop => box.evaluate((el, p) => getComputedStyle(el.parentElement)[p], prop);
@@ -97,6 +111,10 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 					'the description and action buttons are centered on the same line');
 			}
 			await page.screenshot({ path: path.join(out, `${theme}.png`), fullPage: true });
+			await flagInput.click();
+			assert.doesNotMatch(await box.getAttribute('title'), /总开关未开启/);
+			await flagInput.click();
+			assert.match(await box.getAttribute('title'), /总开关未开启/);
 			await box.click();
 			assert.equal(await box.isChecked(), true);
 			assert.equal(await box.evaluate(el => el.indeterminate), false);
@@ -105,7 +123,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await page.getByRole('button', { name: '全部更新', exact: true }).isVisible(), true);
 			await page.evaluate(async () => { await (await L.require('aether-proxy.subscriptions-block')).map.reset(); });
 			assert.equal(await subscription.evaluate(el => el.open), false);
-			console.log(`PASS ${theme}: shared toolbar line, collapsible list, native mixed → checked, reduced motion`);
+			console.log(`PASS ${theme}: aligned node names, inline Flag explanation, shared toolbar line, collapsible list, native mixed → checked`);
 			await page.close();
 		}
 	}

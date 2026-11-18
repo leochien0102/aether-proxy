@@ -1538,7 +1538,8 @@ test('T16.23: only the current name starts with a labelled green dot; stale name
 	assert.equal(text(cell('n_b', '_enabled')), '禁用');
 	assert.equal(styles().length, 1);
 	assert.equal(text(cell('n_b', '_label')), 'Node B（已失效）');
-	assert.equal(cell('n_b', '_label').children[0].style, 'opacity:0.6');
+	assert.equal(cell('n_b', '_label').firstChild.class, 'aether-node-name');
+	assert.equal(cell('n_b', '_label').firstChild.lastChild.style, 'opacity:0.6');
 	assert.equal(cell('n_a', '_label').firstChild.lastChild.style, null);
 	assert.ok(text(h.root).includes('切换节点请到概览页选择后点「应用」。'));
 	assert.ok(!buttons(h.root).some(button => text(button) === '设为当前'));
@@ -1830,8 +1831,11 @@ test('T16.18: general Flag defaults off, warns about exit IP risk and does not w
 	assert.equal(flag.kind, 'Flag');
 	assert.equal(flag.formvalue('sub'), '0');
 	assert.equal(flag.getUIElement('sub').children[0].checked, false);
-	assert.match(h.subscriptions.map.node.children[0].textContent, /当前节点不可达时自动切换。/);
-	assert.ok(!flag.description.includes(failoverRisk));
+	const general = h.subscriptions.map.node.children[0];
+	const inline = find(general, node => node.class === 'aether-failover-setting')[0];
+	assert.equal(inline.firstChild, flag.getUIElement('sub'));
+	assert.equal(inline.lastChild.textContent, '当前节点不可达时自动切换。');
+	assert.doesNotMatch(general.textContent, new RegExp(failoverRisk));
 	assert.ok(flag.getUIElement('sub').title.includes(failoverRisk));
 	assert.ok(flag.getUIElement('sub').title.includes(inactiveFailover));
 	await h.view.handleSave();

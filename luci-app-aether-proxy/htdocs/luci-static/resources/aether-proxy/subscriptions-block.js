@@ -413,14 +413,17 @@ return baseclass.extend({
 		const failover = s.option(form.Flag, 'failover', FAILOVER_TITLE);
 		failover.default = '0';
 		failover.rmempty = true;
-		failover.description = _('Switch automatically if the current node fails.', 'aether-proxy');
 		const renderWidget = failover.renderWidget;
 		const syncTooltip = (widget, active) => widget.setAttribute('title',
 			active ? FAILOVER_RISK : FAILOVER_RISK + ' ' + FAILOVER_INACTIVE);
 		failover.renderWidget = function(id, index, value) {
 			const widget = renderWidget.call(this, id, index, value);
 			syncTooltip(widget, value === '1');
-			return widget;
+			widget.setAttribute('style', 'display:inline-flex; align-items:center');
+			return E('div', {
+				'class': 'aether-failover-setting',
+				style: 'display:inline-flex; align-items:center; gap:0.5em; vertical-align:middle'
+			}, [widget, E('span', {}, [_('Switch automatically if the current node fails.', 'aether-proxy')])]);
 		};
 		failover.onchange = (ev, id, value) => {
 			const widget = failover.getUIElement(id)?.node;

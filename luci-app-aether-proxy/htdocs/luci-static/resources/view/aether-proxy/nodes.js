@@ -77,12 +77,19 @@ function renderPreservedList(section_id, option_index, cfgvalue) {
 
 // Mount with the page, not either redrawable map or each current-node cell.
 const pageStyle = `
-.aether-node-current {
+[data-name="_label"].cbi-value-field { text-align: start !important; }
+.aether-node-name {
 	display: inline-block;
+	position: relative;
+	padding-inline-start: 1.25em;
+	text-align: start;
+}
+.aether-node-current {
+	position: absolute;
+	inset-inline-start: 0.25em;
+	inset-block-start: 0.4em;
 	width: 0.55em;
 	height: 0.55em;
-	margin-inline-end: 0.5em;
-	vertical-align: 0.1em;
 	border-radius: 50%;
 	color: var(--success-color-high, #2f855a);
 	background: currentColor;
@@ -450,14 +457,15 @@ return view.extend({
 		o.textvalue = function(section_id) {
 			const row = rowMap[section_id];
 			/* The label comes from a share link or subscription: text node only. */
-			const label = E('span', { style: row?.stale ? 'opacity:0.6' : null }, [row?.name ?? section_id]);
-			if (!row?.current)
-				return label;
-			const current = _('Current node', 'aether-proxy');
-			return E('span', {}, [
-				E('span', { 'class': 'aether-node-current', 'title': current, 'aria-label': current, role: 'img' }),
-				label
-			]);
+			const children = [];
+			if (row?.current) {
+				const current = _('Current node', 'aether-proxy');
+				children.push(E('span', {
+					'class': 'aether-node-current', 'title': current, 'aria-label': current, role: 'img'
+				}));
+			}
+			children.push(E('span', { style: row?.stale ? 'opacity:0.6' : null }, [row?.name ?? section_id]));
+			return E('span', { 'class': 'aether-node-name' }, children);
 		};
 
 		o = s.option(form.DummyValue, '_protocol', _('Protocol', 'aether-proxy'));
