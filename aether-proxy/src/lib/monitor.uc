@@ -132,7 +132,7 @@ function observe(daemon) {
 		node_reload: daemon.state?.last_reload,
 		node_tcp_ok: daemon.snapshot.sub?.failover === true &&
 			daemon.snapshot.nodes?.[daemon.state.node_id]?.failover !== false && daemon.state.node_ip != null
-			? node_reachable(daemon.state.node_ip, daemon.snapshot.nodes[daemon.state.node_id].port) : null,
+			? node_reachable(daemon.state.node_ip, daemon.snapshot.nodes[daemon.state.node_id].port, daemon.node_probe_socket) : null,
 		proxy_ok: proxy?.ok ?? null,
 		proxy_latency_ms: proxy?.latency_ms ?? null,
 		dns_ok: dns
@@ -252,20 +252,26 @@ function action_set_tier(daemon, tier, done) {
 		});
 };
 
+// poll() returns an entry even on timeout, when SO_ERROR can still be zero.
+export function connect_poll_ready(polled, sock) {
+	let revents = polled?.[0]?.[1] ?? 0;
+	return revents != 0 && sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0;
+};
+
 // A nonblocking connect tests only TCP reachability, not the proxy protocol. Waiting
 // for nc's stdin/peer EOF can misclassify a connected but silent node as unreachable.
-node_reachable = function(ip, port) {
-	let sock = socket.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
+node_reachable = function(ip, port, socket_api) {
+	socket_api ??= socket;
+	let sock = socket_api.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
 	if (sock == null)
 		return false;
 	let connected = sock.connect(ip, port);
 	if (!connected) {
-		let code = socket.error(true);
+		let code = socket_api.error(true);
 		if (code == 115 || code == 114) {
-			let polled = socket.poll(C.NODE_PROBE_TIMEOUT_SECS * 1000,
+			let polled = socket_api.poll(C.NODE_PROBE_TIMEOUT_SECS * 1000,
 				[ sock, socket.POLLOUT | socket.POLLERR | socket.POLLHUP | socket.POLLNVAL, 1 ]);
-			connected = polled != null && length(polled) > 0 &&
-				sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR) == 0;
+			connected = connect_poll_ready(polled, sock);
 		}
 	}
 	sock.close();
@@ -1064,4 +1070,4 @@ interval_ms = machine => {
 	return machine?.state == 'running' ? C.MONITOR_RUNNING_INTERVAL_MS : C.MONITOR_OTHER_INTERVAL_MS;
 };
 
-export { create_daemon, flush_usage, initial_state, interval_ms, next, tick, wait_xray_port };
+export { create_daemon, flush_usage, initial_state, interval_ms, next, node_reachable, tick, wait_xray_port };

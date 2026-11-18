@@ -145,12 +145,30 @@ if (match(scenario, /^failover-/)) {
 		monitor.tick(d);
 		while (d.busy) uloop.run(100);
 	};
-	tick_once();
+	let success = scenario == 'failover-success';
+	if (success) {
+		let polls = 0, reads = 0, closes = 0;
+		let sock = {
+			connect: () => false,
+			getopt: () => { reads++; return 0; },
+			close: () => { closes++; }
+		};
+		d.node_probe_socket = {
+			create: () => sock,
+			error: () => 115, // EINPROGRESS
+			poll: () => { polls++; return [[ sock, 0, 1 ]]; }
+		};
+		tick_once();
+		delete d.node_probe_socket;
+		check(polls == 1 && reads == 0 && closes == 1 && d.machine.failover_failures == 1,
+			'T16.20 silent poll timeout counts as the first live-IP failure without reading SO_ERROR');
+	}
+	else
+		tick_once();
 	tick_once();
 	check(d.state.node_id == original && count(fs.readfile(events_path), '"NODE_FAILOVER"') == 0,
 		'T16.17 two live-IP failures do not switch');
 	tick_once();
-	let success = scenario == 'failover-success';
 	let disabled = scenario == 'failover-off' || scenario == 'failover-opt-out';
 	if (success) {
 		check(d.state.node_id == first && d.snapshot.main.node == first,

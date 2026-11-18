@@ -161,8 +161,7 @@ function connect_target(target, timeout_ms) {
 	let sock = socket.create(socket.AF_INET, socket.SOCK_STREAM | socket.SOCK_NONBLOCK);
 	if (sock == null)
 		return false;
-	let started = monotonic_ms();
-	if (started == null) {
+	if (monotonic_ms() == null) {
 		sock.close();
 		return false;
 	}
@@ -176,25 +175,11 @@ function connect_target(target, timeout_ms) {
 		sock.close();
 		return false;
 	}
-	let left = timeout_ms;
-	while (left > 0) {
-		let polled = socket.poll(left, [ sock, socket.POLLOUT | socket.POLLERR | socket.POLLHUP | socket.POLLNVAL, 1 ]);
-		if (polled == null) {
-			sock.close();
-			return false;
-		}
-		if (length(polled)) {
-			let error = sock.getopt(socket.SOL_SOCKET, socket.SO_ERROR);
-			sock.close();
-			return error == 0;
-		}
-		let now = monotonic_ms();
-		if (now == null)
-			break;
-		left = timeout_ms - (now - started);
-	}
+	let polled = timeout_ms > 0
+		? socket.poll(timeout_ms, [ sock, socket.POLLOUT | socket.POLLERR | socket.POLLHUP | socket.POLLNVAL, 1 ]) : null;
+	connected = monitor.connect_poll_ready(polled, sock);
 	sock.close();
-	return false;
+	return connected;
 };
 
 function network_ready(ctx, snapshot, timeout_ms) {
