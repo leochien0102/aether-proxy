@@ -21,6 +21,11 @@
 const FAILOVER_RISK = _(
 	'Frequent changes to your exit IP may trigger security checks on some sites or apps. Enable only when needed.',
 	'aether-proxy');
+const FAILOVER_TITLE = _('Automatic failover', 'aether-proxy');
+const FAILOVER_INACTIVE = _('The main switch is off; these settings are not active.', 'aether-proxy');
+const FAILOVER_MAX_NODES = 64; // Matches NODE_FAILOVER_MAX_NODES in const.uc.
+const failoverLimitText = () => _('Automatic failover supports at most %s nodes.', 'aether-proxy')
+	.format(FAILOVER_MAX_NODES);
 const REQUIRED_COLOR = 'var(--error-color-high, #c53030)';
 
 function requiredValue(map, id, field) {
@@ -128,9 +133,10 @@ return baseclass.extend({
 				uci.add('aetherproxy', 'sub', 'sub');
 		});
 	},
-	render: function(refresh_nodes, refresh_failover) {
+	render: function(refresh_nodes) {
 		this.refresh_nodes = refresh_nodes;
-		this.refresh_failover = refresh_failover;
+		this.failoverEdits = new Map();
+		this.failoverCells = { node: new Map(), subscription: new Map() };
 		this.details = null;
 		this.status = undefined;
 		this.busy = false;
@@ -179,8 +185,174 @@ return baseclass.extend({
 		return model.general_values(values, this.defaultUA);
 	},
 	failover_enabled: function() {
-		const value = this.generalOptions?.failover?.formvalue('sub') ?? uci.get('aetherproxy', 'sub', 'failover');
-		return value === '1';
+		const flag = this.generalOptions?.failover;
+		return (flag?.getUIElement?.('sub') ? flag.formvalue('sub') : uci.get('aetherproxy', 'sub', 'failover')) === '1';
+	},
+	failover_nodes: function(kind, id, nodes) {
+		if (kind === 'node')
+			return uci.get('aetherproxy', id) ? [id] : [];
+		return (nodes ?? uci.sections('aetherproxy', 'node'))
+			.filter(node => node.source === id).map(node => node['.name']);
+	},
+	saved_failover: function() {
+		return model.failover_ids(uci.get('aetherproxy', 'main', 'failover_nodes'));
+	},
+	selected_failover: function(saved = this.saved_failover()) {
+		const selected = new Set(saved);
+		for (const [id, enabled] of this.failoverEdits) {
+			if (uci.get('aetherproxy', id))
+				enabled ? selected.add(id) : selected.delete(id);
+		}
+		return selected;
+	},
+	stage_failover: function(ids, enabled) {
+		const saved = this.saved_failover();
+		if (enabled) {
+			const selected = this.selected_failover(saved);
+			if (ids.some(id => !selected.has(id)) && new Set([...selected, ...ids]).size > FAILOVER_MAX_NODES) {
+				ui.addNotification(null, E('p', {}, [failoverLimitText()]));
+				return;
+			}
+		}
+		for (const id of ids) {
+			if (saved.has(id) === enabled)
+				this.failoverEdits.delete(id);
+			else
+				this.failoverEdits.set(id, enabled);
+		}
+		this.refresh_failover();
+	},
+	save: async function() {
+		// Use the footer save only. Modal saves and immediate RPC jobs must
+		// not flush the list draft, and a UCI reload must not overwrite it.
+		await this.map.save(() => {
+			const saved = this.saved_failover();
+			const selected = this.selected_failover(saved);
+			if (selected.size === saved.size && [...selected].every(id => saved.has(id)))
+				return;
+			// A backend import or refresh can grow the base list after editing.
+			if (selected.size > FAILOVER_MAX_NODES)
+				throw new Error(failoverLimitText());
+			if (selected.size)
+				uci.set('aetherproxy', 'main', 'failover_nodes', [...selected]);
+			else
+				uci.unset('aetherproxy', 'main', 'failover_nodes');
+		});
+		this.failoverEdits.clear();
+		this.refresh_failover();
+	},
+	reset: function() {
+		this.failoverEdits.clear();
+		return this.map.reset();
+	},
+	toggle_failover: async function(kind, id) {
+		const ids = this.failover_nodes(kind, id);
+		const { state, count } = model.failover_state(ids, this.selected_failover());
+		if (kind === 'subscription' && state === 'on' && !await ap.confirm({
+			title: FAILOVER_TITLE,
+			text: _('Remove %s nodes from automatic failover?', 'aether-proxy').format(count),
+			ok: _('Off', 'aether-proxy'),
+			destructive: true
+		}))
+			return;
+		// A background refresh may have removed IDs while the confirmation was open.
+		const remaining = new Set(this.failover_nodes(kind, id));
+		this.stage_failover(ids.filter(node => remaining.has(node)), state !== 'on');
+	},
+	paint_failover: function(button, status, active) {
+		const { state, count, total } = status;
+		button.setAttribute('aria-pressed', state === 'mixed' ? 'mixed' : String(state === 'on'));
+		button.firstChild.textContent = state === 'on' ? _('Failover on', 'aether-proxy')
+			: state === 'mixed' ? _('Partial · %s/%s', 'aether-proxy').format(count, total)
+				: _('Failover off', 'aether-proxy');
+		button.lastChild.textContent = active ? '' : FAILOVER_INACTIVE;
+		button.setAttribute('style', active ? 'width:100%' : 'width:100%;opacity:0.65');
+	},
+	refresh_failover: function() {
+		if (!this.failoverCells)
+			return;
+		const nodes = uci.sections('aetherproxy', 'node');
+		const selected = this.selected_failover();
+		const active = this.failover_enabled();
+		for (const [kind, cells] of Object.entries(this.failoverCells)) {
+			const ids = new Set((kind === 'node' ? nodes : uci.sections('aetherproxy', 'subscription'))
+				.map(section => section['.name']));
+			for (const [id, button] of cells) {
+				if (!ids.has(id))
+					cells.delete(id);
+				else
+					this.paint_failover(button, model.failover_state(
+						kind === 'node' ? [id] : this.failover_nodes(kind, id, nodes), selected), active);
+			}
+		}
+	},
+	failover_column: function(grid, kind) {
+		this.failoverEdits ??= new Map();
+		this.failoverCells ??= { node: new Map(), subscription: new Map() };
+		const o = grid.option(form.DummyValue, '_failover', FAILOVER_TITLE);
+		o.modalonly = false;
+		o.textvalue = id => {
+			if (kind === 'subscription' && !uci.get('aetherproxy', id))
+				return E('span', {}, [ '–' ]);
+			const readonly = grid.map?.readonly;
+			const button = E('button', {
+				type: 'button', 'class': 'btn cbi-button cbi-button-neutral',
+				disabled: readonly || null,
+				click: () => this.toggle_failover(kind, id)
+			}, [E('span'), E('small', { style: 'display:block' })]);
+			this.failoverCells[kind].set(id, button);
+			this.paint_failover(button, model.failover_state(this.failover_nodes(kind, id),
+				this.selected_failover()), this.failover_enabled());
+			return button;
+		};
+		const block = this;
+		const renderTextValue = grid.renderTextValue;
+		grid.renderTextValue = function(id, option) {
+			const cell = renderTextValue.call(this, id, option);
+			const button = cell.firstChild;
+			if (option === o && button === block.failoverCells[kind].get(id) && !button.disabled) {
+				cell.setAttribute('style', 'cursor:pointer');
+				cell.addEventListener('click', ev => {
+					// The native button handles keyboard input and clicks on its own children.
+					if (!button.contains(ev.target))
+						button.click();
+				});
+			}
+			return cell;
+		};
+	},
+	failover_modal: function(grid) {
+		const o = grid.option(form.Flag, '_failover_edit', FAILOVER_TITLE);
+		o.modalonly = true;
+		o.rmempty = true;
+		const renderWidget = o.renderWidget;
+		const block = this;
+		o.renderWidget = function(id, index) {
+			const active = block.failover_enabled();
+			this.initialFailover = model.failover_state(block.failover_nodes('subscription', id),
+				block.selected_failover()).state;
+			this.failoverTouched = false;
+			const widget = renderWidget.call(this, id, index, this.initialFailover === 'on' ? '1' : '0');
+			return active ? widget : E('div', { style: 'opacity:0.65' }, [
+				widget, E('div', { 'class': 'cbi-value-description' }, [FAILOVER_INACTIVE])
+			]);
+		};
+		o.onchange = function() { this.failoverTouched = true; };
+		o.write = function(id) { this.map.failoverChoice = { id, enabled: true }; };
+		o.remove = function(id) {
+			// An untouched binary flag must not clear a partial selection.
+			this.map.failoverChoice = this.isActive(id) && (this.initialFailover === 'on' || this.failoverTouched)
+				? { id, enabled: false } : null;
+		};
+		const cancel = grid.handleModalCancel;
+		grid.handleModalCancel = function(modalMap, ev, isSaving) {
+			const choice = modalMap.failoverChoice;
+			delete modalMap.failoverChoice;
+			return Promise.resolve(cancel.call(this, modalMap, ev, isSaving)).then(() => {
+				if (isSaving && choice)
+					block.stage_failover(block.failover_nodes('subscription', choice.id), choice.enabled);
+			});
+		};
 	},
 	setting_option: function(section, field, title, inherited) {
 		const self = this;
@@ -226,13 +398,13 @@ return baseclass.extend({
 			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
 			user_agent: this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), false)
 		};
-		const failover = s.option(form.Flag, 'failover', _('Automatic failover', 'aether-proxy'));
+		const failover = s.option(form.Flag, 'failover', FAILOVER_TITLE);
 		failover.default = '0';
 		failover.rmempty = true;
 		failover.description = _(
 			'Automatically switch to the next available node when the current node is unreachable.', 'aether-proxy'
 		) + ' ' + FAILOVER_RISK;
-		failover.onchange = () => this.refresh_failover?.();
+		failover.onchange = () => this.refresh_failover();
 		this.generalOptions.failover = failover;
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
@@ -319,9 +491,14 @@ return baseclass.extend({
 		const columns = [
 			['_name', _('Name', 'aether-proxy')], ['_address', _('Address', 'aether-proxy')],
 			['_interval', _('Update interval', 'aether-proxy')],
-			['_via', _('Fetch method', 'aether-proxy')], ['_result', _('Last result', 'aether-proxy')]
+			['_via', _('Fetch method', 'aether-proxy')], ['_failover', FAILOVER_TITLE],
+			['_result', _('Last result', 'aether-proxy')]
 		];
 		for (const [field, title] of columns) {
+			if (field === '_failover') {
+				this.failover_column(s, 'subscription');
+				continue;
+			}
 			const o = s.option(form.DummyValue, field, title);
 			o.modalonly = false;
 			o.textvalue = function(id) {
@@ -357,7 +534,7 @@ return baseclass.extend({
 			return renderContents.apply(this, args).then(content => {
 				// Footer Reset and modal saves may replace the flag widget without firing onchange.
 				self.sync_buttons();
-				self.refresh_failover?.();
+				self.refresh_failover();
 				return content;
 			});
 		};
@@ -432,6 +609,7 @@ return baseclass.extend({
 		o.validate = function(id, value) { return model.validate_url(value); };
 		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
+		this.failover_modal(s);
 		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
 		form_defaults.section(s);
 		requiredOptions(s, model.required_fields);
@@ -486,6 +664,7 @@ return baseclass.extend({
 			uci.unload('aetherproxy');
 			const data = await Promise.all([this.load(), ap.call('sub_status')]);
 			this.status = data[1];
+			this.refresh_failover();
 			if (this.refresh_nodes)
 				await this.refresh_nodes();
 		}

@@ -2091,6 +2091,30 @@ msgid "Automatic failover"
 msgstr "自动切换"
 
 msgctxt "aether-proxy"
+msgid "Failover on"
+msgstr "开"
+
+msgctxt "aether-proxy"
+msgid "Failover off"
+msgstr "关"
+
+msgctxt "aether-proxy"
+msgid "Partial · %s/%s"
+msgstr "半选 · %s/%s"
+
+msgctxt "aether-proxy"
+msgid "The main switch is off; these settings are not active."
+msgstr "总开关未开启，当前不生效"
+
+msgctxt "aether-proxy"
+msgid "Remove %s nodes from automatic failover?"
+msgstr "从自动切换名单移除 %s 个节点？"
+
+msgctxt "aether-proxy"
+msgid "Automatic failover supports at most %s nodes."
+msgstr "自动切换名单最多包含 %s 个节点。"
+
+msgctxt "aether-proxy"
 msgid "Automatically switch to the next available node when the current node is unreachable."
 msgstr "当前节点不可达时自动切换到下一个可用节点。"
 

@@ -152,11 +152,14 @@ function loadModule(file, modules, env) {
 		/* Node-only tests stub subscription loading/rendering, not the shared
 		 * modal guard. Exercise the shipped guard rather than a no-op copy. */
 		if (r.name == 'aether-proxy.subscriptions-block' && modules[r.name] && !modules[r.name].required_options) {
-			const block = loadModule(require('node:path').resolve(__dirname,
-				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/subscriptions-block.js'),
-			{ ...modules, baseclass: { extend: object => object },
-				'aether-proxy.model.subscriptions': {} }, env);
-			modules[r.name].required_options = block.required_options;
+			const path = require('node:path');
+			const dir = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy');
+			const baseclass = { extend: object => object };
+			const model = loadModule(path.join(dir, 'model/subscriptions.js'), { baseclass }, env);
+			const block = loadModule(path.join(dir, 'subscriptions-block.js'),
+				{ ...modules, baseclass, 'aether-proxy.model.subscriptions': model }, env);
+			for (const method of ['required_options', 'failover_column', 'refresh_failover'])
+				modules[r.name][method] = block[method].bind(block);
 		}
 		/* All page-model tests exercise the real shared latency thresholds. */
 		if (r.name == 'aether-proxy.model.latency' && !(r.name in modules))

@@ -121,7 +121,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				const trEl = E('div', { sid: s['.name'] },
 					section.options.filter(o => o.textvalue || o.editable).map(o => o.editable
 						? o.renderFrame(s['.name'], true, 0, o.renderWidget(s['.name'], 0, s[o.field]))
-						: E('td', { field: o.field }, o.textvalue(s['.name']))));
+						: section.renderTextValue(s['.name'], o)));
 				trEl.getBoundingClientRect = () => ({ left: 30, top: 80 });
 				trEl.children.push(section.renderRowActions(s['.name'], null, trEl));
 				return trEl;
@@ -133,7 +133,13 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 		constructor() { this.sections = []; maps.push(this); }
 		section(kind, type, sectionType, title) {
 			const section = {
-				kind, type, sectionType, title, options: [], modal: { value: 'unsaved modal input' },
+				kind, type, sectionType, title, map: this, options: [], modal: { value: 'unsaved modal input' },
+				renderTextValue(id, option) {
+					const value = option.textvalue(id);
+					value.contains = target => value === target || find(value, node => node === target).length > 0;
+					return E('td', { field: option.field }, value);
+				},
+				handleModalCancel() {},
 				option(kind, field, title) {
 					const option = optionDouble(uci, kind, field, title);
 					this.options.push(option);
@@ -149,15 +155,18 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 							for (const key of Object.keys(source))
 								if (key !== 'widgets')
 									clone[key] = source[key];
-							clone.renderWidget(id, 0, uci.get('aetherproxy', id, clone.field));
+							clone.map = this.modal;
+							clone.widget = clone.renderWidget(id, 0, uci.get('aetherproxy', id, clone.field));
 							return clone;
 						});
 						this.modal.save = async () => {
 							for (const option of this.modal.options)
 								await option.parse(id);
 							await uci.save();
+							await this.map.reset();
+							await this.handleModalCancel(this.modal, null, true);
 						};
-						this.modal.cancel = () => {};
+						this.modal.cancel = () => this.handleModalCancel(this.modal, null, false);
 					}
 					this.modal.node = E('div', {}, [
 						E('p', {}, this.modal.description ?? ''),
@@ -217,8 +226,10 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 					: uci.sections('aetherproxy', section.type).map(s => s['.name']);
 				for (const id of ids)
 					for (const option of section.options)
-						await option.parse(id);
+						if (section.kind === 'NamedSection' || (option.editable && !option.modalonly))
+							await option.parse(id);
 			}
+			await args[0]?.();
 			return this.render();
 		}
 		render() { return this.renderContents(); }
@@ -236,7 +247,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const otherReads = [], allCalls = [];
 	const statusCalls = [], statusReads = [], timers = new Map(), notices = [];
 	let now = 0, timerID = 0, current = 'n_a';
-	const general = [], versionRead = deferred(), versionCalls = [];
+	const general = [], main = { '.name': 'main' }, versionRead = deferred(), versionCalls = [];
 	let changes = async () => ({});
 	const nodes = [
 		{ '.name': 'n_a', label: 'Node A', address: '203.0.113.1', port: '443' },
@@ -252,7 +263,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		get: (config, id, option) => {
 			if (id === 'main' && option === 'node')
 				return current;
-			const section = [...nodes, ...subs, ...general].find(s => s['.name'] === id);
+			const section = [main, ...nodes, ...subs, ...general].find(s => s['.name'] === id);
 			return option == null ? section ?? null : section?.[option];
 		},
 		changes: () => changes(),
@@ -276,7 +287,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 		},
 		set: (config, id, option, value) => {
 			uciCalls.push(['set', config, id, option, value]);
-			const section = [...nodes, ...subs, ...general].find(s => s['.name'] === id);
+			const section = uci.get(config, id);
 			if (section)
 				section[option] = value;
 		},
@@ -313,15 +324,8 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	};
 	const model = loadModule(path.join(RES, 'aether-proxy/model', name + '.js'),
 		{ baseclass: { extend: o => o } }, {});
-	// LuCI's inherited footer walks the actual .cbi-map roots, not named view properties.
-	const viewBase = {
-		handleSave: async function() {
-			await Promise.all(find(this.fullRoot, node => node.class === 'cbi-map')
-				.map(node => node.map.save()));
-		}
-	};
 	const { view, subscriptions } = loadNodesPage({
-		view: { extend: o => Object.assign(Object.create(viewBase), o) }, form, uci,
+		view: { extend: o => o }, form, uci,
 		ui: {
 			/* Same contract as luci-base ui.js: bound arguments first, the event
 			   last; the button is disabled until fn settles and nothing is returned. */
@@ -376,7 +380,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	return { name, page: name === 'nodes' ? view : subscriptions, view, subscriptions,
 		get maps() { return allMaps.filter(map => map.sections[0].type === (name === 'nodes' ? 'node' : 'sub')); },
 		allMaps, otherReads, allCalls, calls, reads, turns, uciCalls, builtins, ap, nodes, subs, uci,
-		general, versionRead, versionCalls,
+		general, main, versionRead, versionCalls,
 		setChanges: fn => { changes = fn; },
 		statusCalls, statusReads, timers, notices, tick, setCurrent: id => { current = id; } };
 }
@@ -1140,7 +1144,7 @@ test('T10.28 scenario 1: subscription grid has one Name column and no section-na
 	const header = find(h.root, node => node.tag === 'tr')[0];
 	assert.equal(header.attrs['data-title'], null);
 	assert.deepEqual(find(header, node => node.tag === 'th').map(text),
-		['启用', '名称', '地址', '更新间隔', '获取方式', '最近一次结果']);
+		['启用', '名称', '地址', '更新间隔', '获取方式', '自动切换', '最近一次结果']);
 	assert.doesNotMatch(text(h.root), /s_a|s_b/);
 });
 
@@ -1163,7 +1167,7 @@ test('T10.28 scenario 2: modal Save reads current UCI for every cell; removed se
 	await h.maps.at(-1).render();
 	const options = h.page.grid.options.filter(o => o.textvalue);
 	assert.deepEqual(options.slice(0, -1).map(o => text(o.textvalue(id))),
-		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点']);
+		['New saved name', 'https://new.example/…', '不自动更新', '经当前节点', '关总开关未开启，当前不生效']);
 	assert.match(text(options.at(-1).textvalue(id)), /成功，13 个节点/);
 	h.uci.remove('aetherproxy', id);
 	for (const option of options)
@@ -1485,7 +1489,7 @@ test('T10.25 scenarios 2/3: no address column; Edit opens the correct modal with
 	await render(h);
 	const section = h.maps[0].sections[0];
 	const headers = find(h.root, node => node.tag === 'th').map(text);
-	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', 'TCP 可达／延迟']);
+	assert.deepEqual(headers, ['', '名称', '协议', '传输 / 安全层', '来源', '选用', '自动切换', 'TCP 可达／延迟']);
 	assert.ok(!section.options.some(option => option.field === '_address'));
 	for (const id of ['n_a', 'n_b']) {
 		const edit = buttons(actions(h, id)).find(node => text(node) === '编辑');
@@ -1761,7 +1765,7 @@ test('T10.37 defensive: node repaint failure preserves subscription input and re
 	assert.equal(common.user_agent.formvalue('sub'), 'Keep after failure');
 });
 
-test('T10.37 scenario 5: inherited page Save saves both maps and their pending settings', async () => {
+test('T10.37 scenario 5: page Save saves both maps and their pending settings', async () => {
 	const h = await harness('nodes');
 	await render(h);
 	const block = h.subscriptions;
@@ -1769,15 +1773,12 @@ test('T10.37 scenario 5: inherited page Save saves both maps and their pending s
 	block.generalOptions.fetch_via.setFormValue('sub', 'direct');
 	block.generalOptions.user_agent.setFormValue('sub', 'Save both/1');
 	block.grid.options.find(option => option.field === 'enabled').setFormValue('s_b', '0');
-	h.view.nodeGrid.options.find(option => option.field === 'label').setFormValue('n_b', 'Saved node');
-	assert.equal(Object.hasOwn(h.view, 'handleSave'), false, 'use LuCI footer behavior without a custom override');
 	await h.view.handleSave();
 	assert.equal(h.uciCalls.filter(call => call[0] === 'map.save').length, 2);
 	assert.equal(h.uci.get('aetherproxy', 'sub', 'interval_hours'), '168');
 	assert.equal(h.uci.get('aetherproxy', 'sub', 'fetch_via'), 'direct');
 	assert.equal(h.uci.get('aetherproxy', 'sub', 'user_agent'), 'Save both/1');
 	assert.equal(h.uci.get('aetherproxy', 's_b', 'enabled'), '0');
-	assert.equal(h.uci.get('aetherproxy', 'n_b', 'label'), 'Saved node');
 });
 
 const failoverRisk = '频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启';
@@ -1814,6 +1815,164 @@ test('T16.18: general Flag defaults off, warns about exit IP risk and does not w
 	await h.view.handleSave();
 	assert.deepEqual(writes().at(-1), ['unset', 'aetherproxy', 'sub', 'failover']);
 	assert.equal(Object.hasOwn(h.general[0], 'failover'), false);
+});
+
+const inactiveFailover = '总开关未开启，当前不生效';
+const failoverCell = (h, id) => find(find(h.fullRoot, node => node.sid === id)[0],
+	node => node.field === '_failover')[0];
+const failoverButton = (h, id) => failoverCell(h, id).firstChild;
+const failoverWrites = h => h.uciCalls.filter(call => call[3] === 'failover_nodes');
+
+function assertFailover(h, id, pressed, label, active = false) {
+	const button = failoverButton(h, id);
+	assert.equal(button.attrs['aria-pressed'], pressed);
+	assert.equal(button.firstChild.textContent, label);
+	assert.equal(button.lastChild.textContent, active ? '' : inactiveFailover);
+	assert.equal(button.style.includes('opacity:'), !active);
+	assert.equal(button.disabled, false);
+}
+
+test('T16.22: subscription off, partial 8/10 and on; batches and confirmation are draft-only', async () => {
+	const h = await harness('nodes');
+	const ids = ['n_b', ...Array.from({ length: 9 }, (_, i) => 'n_extra_' + i)];
+	h.nodes.push(...ids.slice(1).map(id => ({ '.name': id, source: 's_a' })));
+	h.main.failover_nodes = ['n_a', ...ids.slice(0, 8)];
+	await render(h);
+	assertFailover(h, 's_a', 'mixed', '半选 · 8/10');
+	assertFailover(h, 's_b', 'false', '关');
+	assertFailover(h, ids.at(-1), 'false', '关');
+	toggleFailover(h, true);
+	assertFailover(h, 's_a', 'mixed', '半选 · 8/10', true);
+	assertFailover(h, ids.at(-1), 'false', '关', true);
+	let confirm = false;
+	const confirmations = [];
+	h.ap.confirm = async options => { confirmations.push(options); return confirm; };
+	const button = failoverButton(h, 's_a');
+	const ua = h.subscriptions.generalOptions.user_agent;
+	ua.setFormValue('sub', 'Keep this draft');
+	await button.click();
+	assertFailover(h, 's_a', 'true', '开', true);
+	assertFailover(h, ids.at(-1), 'true', '开', true);
+	assert.equal(confirmations.length, 0, 'partial click adds all without confirmation');
+	await button.click();
+	assertFailover(h, 's_a', 'true', '开', true);
+	assert.equal(confirmations[0].text, '从自动切换名单移除 10 个节点？');
+	confirm = true;
+	await button.click();
+	assertFailover(h, 's_a', 'false', '关', true);
+	assertFailover(h, ids[0], 'false', '关', true);
+	assertFailover(h, 'n_a', 'true', '开', true);
+	assert.equal(failoverButton(h, 's_a'), button, 'repaint in place');
+	assert.equal(ua.formvalue('sub'), 'Keep this draft');
+	assert.deepEqual(failoverWrites(h), []);
+	await h.view.handleSave();
+	assert.deepEqual(failoverWrites(h), [['set', 'aetherproxy', 'main', 'failover_nodes', ['n_a']]]);
+	await failoverButton(h, 's_a').click();
+	assertFailover(h, 's_a', 'true', '开', true);
+	await h.view.handleSave();
+	assert.deepEqual(h.main.failover_nodes, ['n_a', ...ids]);
+});
+
+test('T16.22: entire node cell toggles while grey; it repaints subscription and footer reset drops changes', async () => {
+	const h = await harness('nodes');
+	await render(h);
+	const cell = failoverCell(h, 'n_b');
+	await cell.click({ target: cell });
+	assertFailover(h, 'n_b', 'true', '开');
+	assertFailover(h, 's_a', 'true', '开');
+	await h.view.handleReset();
+	assertFailover(h, 'n_b', 'false', '关');
+	assertFailover(h, 's_a', 'false', '关');
+	assert.deepEqual(failoverWrites(h), []);
+	await failoverCell(h, 'n_b').click({ target: failoverCell(h, 'n_b') });
+	await h.view.handleSave();
+	assert.deepEqual(h.main.failover_nodes, ['n_b']);
+	await failoverButton(h, 'n_b').click();
+	assertFailover(h, 's_a', 'false', '关');
+	await h.view.handleSave();
+	assert.deepEqual(failoverWrites(h), [
+		['set', 'aetherproxy', 'main', 'failover_nodes', ['n_b']],
+		['unset', 'aetherproxy', 'main', 'failover_nodes']
+	]);
+});
+
+test('T16.22: binary subscription modal follows the column, stages only on successful modal Save', async () => {
+	const h = await harness('nodes');
+	h.nodes.push({ '.name': 'n_c', source: 's_a' });
+	h.main.failover_nodes = 'n_b'; // UCI may return a scalar.
+	await render(h);
+	const open = () => {
+		h.subscriptions.grid.renderMoreOptionsModal('s_a');
+		const modal = h.subscriptions.grid.modal;
+		const option = modal.options.find(o => o.field === '_failover_edit');
+		const checkbox = option.getUIElement('s_a').firstChild;
+		assert.match(option.widget.textContent, new RegExp(inactiveFailover));
+		return { modal, checkbox, set(checked) { checkbox.checked = checked; checkbox.change({ target: checkbox }); } };
+	};
+	assertFailover(h, 's_a', 'mixed', '半选 · 1/2');
+	let edit = open();
+	assert.equal(edit.checkbox.checked, false);
+	await edit.modal.save();
+	assertFailover(h, 's_a', 'mixed', '半选 · 1/2', false);
+	edit = open();
+	edit.set(true);
+	await edit.modal.cancel();
+	assertFailover(h, 's_a', 'mixed', '半选 · 1/2');
+	edit = open();
+	edit.set(true);
+	const save = h.uci.save;
+	h.uci.save = async () => { throw new Error('UCI save failed'); };
+	await assert.rejects(edit.modal.save(), /UCI save failed/);
+	assertFailover(h, 's_a', 'mixed', '半选 · 1/2');
+	h.uci.save = save;
+	await edit.modal.save();
+	assertFailover(h, 's_a', 'true', '开');
+	assertFailover(h, 'n_c', 'true', '开');
+	assert.deepEqual(failoverWrites(h), [], 'modal UCI save did not flush the list');
+	edit = open();
+	assert.equal(edit.checkbox.checked, true, 'modal sees the same unapplied list');
+	edit.set(false);
+	await edit.modal.save();
+	assertFailover(h, 's_a', 'false', '关');
+	await h.view.handleSave();
+	assert.equal(h.main.failover_nodes, undefined);
+});
+
+for (const active of [true, false]) {
+	test(`T16.22: import reflects the backend list default (main switch ${active ? 'on' : 'off'})`, async () => {
+		const h = await harness('nodes');
+		h.general.push({ '.name': 'sub', failover: active ? '1' : '0' });
+		await render(h);
+		await failoverButton(h, 'n_b').click();
+		h.view.importText.value = 'vless://new';
+		const imported = h.view.handleImport({});
+		await flush();
+		assert.deepEqual(h.calls[1], ['node_import', { uri: 'vless://new' }]);
+		// Mock the backend commit before import returns, not a frontend set call.
+		h.nodes.push({ '.name': 'n_new', source: 'manual' });
+		if (active)
+			h.main.failover_nodes = ['n_new'];
+		h.reads[1].resolve({ ok: true, duplicate: false, node: 'n_new' });
+		await flush();
+		h.reads[2].resolve(success('nodes'));
+		await imported;
+		assertFailover(h, 'n_new', String(active), active ? '开' : '关', active);
+		assertFailover(h, 'n_b', 'true', '开', active);
+		assert.deepEqual(failoverWrites(h), []);
+		await h.view.handleSave();
+		assert.deepEqual(h.main.failover_nodes, active ? ['n_new', 'n_b'] : ['n_b']);
+	});
+}
+
+test('T16.22: exceeding the list cap does not silently make a partial selection', async () => {
+	const h = await harness('nodes');
+	h.main.failover_nodes = Array.from({ length: 64 }, (_, i) => 'n_old_' + i);
+	await render(h);
+	await failoverButton(h, 's_a').click();
+	assertFailover(h, 's_a', 'false', '关');
+	assert.match(h.notices[0].textContent, /名单最多包含 64 个节点/);
+	await h.view.handleSave();
+	assert.deepEqual(failoverWrites(h), []);
 });
 
 test('T16.18: docs/10 records block order, default and exit IP risk', () => {

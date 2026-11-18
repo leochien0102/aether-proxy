@@ -53,6 +53,13 @@ function result(record, now) {
 		skipped: entries.length ? fmt(_('Skipped %s: %s', 'aether-proxy'), Object.values(counts).reduce((a, b) => a + b, 0), entries.join('、')) : ''
 	};
 }
+function failover_ids(raw) {
+	return new Set((Array.isArray(raw) ? raw : [raw]).filter(id => typeof id === 'string' && id.trim()));
+}
+function failover_state(ids, selected) {
+	const count = ids.filter(id => selected.has(id)).length;
+	return { count, total: ids.length, state: count === 0 ? 'off' : count === ids.length ? 'on' : 'mixed' };
+}
 function status_result(status, id, now) {
 	return status === undefined ? { text: _('Reading…', 'aether-proxy'), time: '', skipped: '' } :
 		result(status?.subs?.[id], now);
@@ -130,6 +137,8 @@ return baseclass.extend({
 		return values.map(value => [value, interval_text(value)]);
 	},
 	status_result,
+	failover_ids,
+	failover_state,
 	update_state,
 	row,
 	pending_ids: function(changes) {

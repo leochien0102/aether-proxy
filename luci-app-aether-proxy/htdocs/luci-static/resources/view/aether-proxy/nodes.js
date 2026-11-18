@@ -91,7 +91,7 @@ return view.extend({
 		this.pendingProbes = [];
 		this.selectedNodes = new Set();
 
-		// Only the two actual form.Map roots are .cbi-map; the view footer saves both.
+		// Keep the two form.Map roots independent so in-page redraws preserve other inputs.
 		const root = E('div');
 		this.root = root;
 		const block = await subscriptions.render(() => this.redrawNodes());
@@ -102,6 +102,18 @@ return view.extend({
 			E('h2', {}, _('Nodes & Subscriptions', 'aether-proxy')),
 			block, root
 		]);
+	},
+
+	handleSave: async function() {
+		// Both maps share the UCI cache; finish the first save/reload before
+		// applying the failover draft in the subscription map's save callback.
+		await this.nodeMap.save();
+		await subscriptions.save();
+	},
+
+	handleReset: async function() {
+		await subscriptions.reset();
+		await this.nodeMap.reset();
 	},
 
 	// Subscription jobs already reloaded UCI. Replace only the node region, not either input block.
@@ -129,6 +141,7 @@ return view.extend({
 			return self.buildPage().then(function(content) {
 				dom.content(self.root, content);
 				self.updateProbeColumns();
+				subscriptions.refresh_failover();
 			});
 		});
 	},
@@ -433,6 +446,8 @@ return view.extend({
 				'style': 'color:var(--success-color-high, #2f855a)'
 			}, '✔') : E([]);
 		};
+
+		subscriptions.failover_column(s, 'node');
 
 		o = s.option(form.DummyValue, '_probe', _('TCP reachability / latency', 'aether-proxy'));
 		o.modalonly = false;
