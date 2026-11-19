@@ -177,6 +177,6 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 - T10.78（channel 0.6.0 aether-xray 包）已合并（2026-10-31，channel main 本地）
 
 - T11.5（`aether-xray` 迁入 aether-proxy 仓库）已合并（2026-10-31，main）；T11.6（channel 单源复制）已发（2026-10-31，channel main）；T11.7（双发布 workflow，不升版）已合并（2026-10-31，main）；T11.8（Hysteria2 出站）已合并（2026-10-31，main）；T11.9（chinadns-ng 单源迁移）已合并（2026-10-31，三仓库）；T11.10（CI 发布门禁/smoke 依赖修复）已合并并 CI 全绿（2026-11-01，main）
-| T16.33 | 更新页：状态行收拢与通道地址链接 | 已交回 `ebcf603`，待 T16.34 合入后 rebase 复审 |
-| T16.34 | 回退候选通道：客户端只读正式通道 | 待实现（2026-11-19） |
-| T16.35 | 回退候选通道：发版工具与 channel 仓 | 待实现（2026-11-19） |
+| T16.33 | 更新页：状态行收拢与通道地址链接 | 已合并（`e55fbf3`） |
+| T16.34 | 回退候选通道：客户端只读正式通道 | 已合并（`60c3d6d`） |
+| T16.35 | 回退候选通道：发版工具与 channel 仓 | 已合并（app `08c65d6` / channel `e1ff710`） |
