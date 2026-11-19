@@ -559,6 +559,8 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - 内容用 `<pre>` 按原样显示 `text`，不做着色；失败显示 `code` 与 `detail`。
 - UCI `main.log_level` 为 `debug` 时，在标签顶部显示 [09](09-logging.md)「logd 容量」的提示。
 
+运维自检 `aether-proxy log stats [--json] [--run-dir <dir>]` 汇总子进程日志过滤器的会话计数，不读取或修改原始日志；详见 [日志设计](09-logging.md)「限流自检」。
+
 **页级工具栏**（T16.10/T16.13，2026-11-17）：标题下方、标签行右端固定放「清空日志」与「截断到上次启动」两个按钮（两个标签下都可见，切标签不重建）。点击先弹确认框，然后分别调用 rpcd `log_clear` 与 `log_truncate`（无参数）；成功后让两个标签的在途请求失效并按当前标签刷新，失败在按钮下方显示一行错误。「截断到上次启动」只保留 `ts >= state.json.started_at` 的记录（旧状态文件没有该字段时退回 `since`），三个文件（`events.jsonl`、`raw.log`、`raw.log.1`）都处理，原地重写、不换 inode；命令行为 `aether-proxy log truncate [--since <epoch>]`。
 
 ### 高级页（2026-10-16 定，T8.11b）

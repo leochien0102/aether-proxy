@@ -662,5 +662,11 @@ else
 	bad 'T16.9 log truncate CLI scenarios'
 fi
 
+if python3 "$ROOT/tests/cli/log-stats.py"; then
+	ok 'T16.36 log stats CLI and live filter'
+else
+	bad 'T16.36 log stats CLI and live filter'
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

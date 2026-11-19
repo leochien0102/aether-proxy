@@ -1,5 +1,7 @@
 # Merge repeated child messages, then limit output before procd/logd (docs/09 "child process logs").
 BEGIN {
+	SESSION_START = previous = systime()
+	STARTUP_SECONDS = 5
 	SECOND_LIMIT = 20
 	MINUTE_LIMIT = 120
 	WINDOW_SECONDS = 60
@@ -9,15 +11,57 @@ BEGIN {
 		"[0-9][0-9]:[0-9][0-9]:[0-9][0-9]"
 	XRAY_TIMESTAMP = "^[0-9][0-9][0-9][0-9]/[0-9][0-9]/[0-9][0-9] " \
 		"[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]+)?"
+	if (stats != "") {
+		# A failed awk redirection is fatal. Let a shell consume the JSON before trying
+		# to write it, so stats I/O errors cannot close the child's log FIFO (SIGPIPE).
+		stats_writer = "set -- " shell_quote(stats) "; IFS= read -r line && " \
+			"{ [ ! -L \"$1\" ] && { [ ! -e \"$1\" ] || [ -f \"$1\" ]; } && " \
+			"{ umask 077; printf '%s\\n' \"$line\" > \"$1\"; }; }"
+		for (i = 1; i < 32; i++)
+			json_control[sprintf("%c", i)] = sprintf("\\u%04x", i)
+		stats_name = json_string(name)
+		write_stats()
+	}
+}
+
+function shell_quote(value,    quote) {
+	quote = sprintf("%c", 39)
+	gsub(quote, quote "\"" quote "\"" quote, value)
+	return quote value quote
+}
+
+function json_string(value,    i, c, out) {
+	out = "\""
+	for (i = 1; i <= length(value); i++) {
+		c = substr(value, i, 1)
+		out = out (c in json_control ? json_control[c] : (c == "\"" || c == "\\" ? "\\" c : c))
+	}
+	return out "\""
+}
+
+function write_stats() {
+	if (stats == "")
+		return
+	printf "{\"name\":%s,\"accepted\":%d,\"dropped\":%d,\"first_drop\":%s,\"last_drop\":%s," \
+		"\"second_limit\":%d,\"minute_limit\":%d}\n", \
+		stats_name, total_accepted, total_dropped, total_dropped ? session_first_drop : "null", \
+		total_dropped ? last_drop : "null", SECOND_LIMIT, MINUTE_LIMIT | stats_writer
+	if (close(stats_writer) != 0)
+		stats = ""
 }
 
 function summary() {
-	if (!dropped)
-		return
 	# Summaries sit outside the quota so a saturated minute cannot hide the loss (docs/09).
-	printf "aether-proxy: %s output rate limited, dropped %d lines between %s and %s\n", \
-		name, dropped, strftime("%H:%M:%S", first_drop), strftime("%H:%M:%S", last_drop)
+	printf "aether-proxy: %s output rate limited, dropped %d lines between %s and %s, first: %s\n", \
+		name, dropped, strftime("%H:%M:%S", first_drop), strftime("%H:%M:%S", last_drop), first_message
 	fflush()
+	write_stats()
+}
+
+function finish_drops() {
+	# The first drop was already reported. Summarize the complete streak only if it grew.
+	if (dropped > 1)
+		summary()
 	dropped = 0
 }
 
@@ -91,18 +135,23 @@ function duplicate(message) {
 	now = systime()
 	if (test_clock == 1) {
 		now = $0 + 0
+		if (!seen_line)
+			SESSION_START = previous = (test_start == "" ? now : test_start + 0)
 		sub(/^[0-9]+ /, "")
 	}
 	# Rolling 60-second window (docs/09). A clock that went back (NTP correction, manual
 	# change) restarts the counts: clamping to the last time would admit only one second's
 	# quota until the clock caught up, silencing the child for as long as the jump.
 	if (now < previous) {
+		# Move the origin along with the clock; a rollback never renews startup grace.
+		SESSION_START -= previous - now
 		for (second in accepted)
 			delete accepted[second]
 		minute_count = 0
 		# Discard the old deduplication window too: backward time starts afresh (docs/09).
 		clear_repeats()
 	}
+	seen_line = 1
 	previous = now
 	if (window_active && now - repeat_start >= REPEAT_SECONDS) {
 		repeat_summary()
@@ -122,21 +171,30 @@ function duplicate(message) {
 			delete accepted[second]
 		}
 	}
-	if (accepted[now] < SECOND_LIMIT && minute_count < MINUTE_LIMIT) {
-		summary()
+	if (minute_count < MINUTE_LIMIT && (now - SESSION_START < STARTUP_SECONDS || accepted[now] < SECOND_LIMIT)) {
+		finish_drops()
 		printf "%s\n", forwarded
 		fflush()
 		accepted[now]++
 		minute_count++
-	} else {
-		if (!dropped)
-			first_drop = now
-		last_drop = now
-		dropped++
+		if (++total_accepted == 1)
+			write_stats()
+		next
 	}
+	if (!dropped) {
+		first_drop = now
+		first_message = substr(forwarded, 1, 160)
+	}
+	if (!total_dropped)
+		session_first_drop = now
+	last_drop = now
+	total_dropped++
+	if (++dropped == 1)
+		summary()
 }
 
 END {
-	summary()
+	finish_drops()
 	repeat_summary()
+	write_stats()
 }

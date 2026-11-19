@@ -256,7 +256,72 @@ function truncate_logs(args) {
 	return pipeline.finish(opts, result, 0, sprintf('logs truncated since %s: %.J', opts.since, result.kept));
 }
 
+function read_logstats(path) {
+	if (fs.lstat(path)?.type != 'file')
+		return null;
+	let text = fs.readfile(path);
+	let row;
+	// A snapshot may be unreadable or momentarily incomplete while awk replaces its contents.
+	try { row = text != null ? json(text) : null; }
+	catch (e) { return null; }
+	if (type(row) != 'object' || type(row.name) != 'string' || !length(row.name))
+		return null;
+	for (let key in [ 'accepted', 'dropped', 'second_limit', 'minute_limit' ]) {
+		if (type(row[key]) != 'int' || row[key] < 0)
+			return null;
+	}
+	for (let key in [ 'first_drop', 'last_drop' ]) {
+		if (row[key] != null && type(row[key]) != 'int')
+			return null;
+	}
+	return row;
+}
+
+function log_stats(args) {
+	let opts = { json: index(args, '--json') >= 0, run_dir: C.RUN_DIR };
+	let seen_dir = false;
+	for (let i = 0; i < length(args); i++) {
+		let arg = args[i];
+		if (arg == '--json')
+			continue;
+		let value = args[i + 1];
+		if (arg == '--run-dir' && !seen_dir && value && substr(value, 0, 2) != '--') {
+			seen_dir = true;
+			opts.run_dir = value;
+			i++;
+			continue;
+		}
+		let detail = `invalid log stats option ${arg}`;
+		return pipeline.finish(opts, { ok: false, code: 'USAGE', detail }, 2, detail);
+	}
+
+	let files = fs.lsdir(opts.run_dir);
+	if (files == null) {
+		let error = fs.error();
+		if (error != 'No such file or directory') {
+			let detail = `list ${opts.run_dir}: ${error ?? 'unknown error'}`;
+			return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail }, 1, detail);
+		}
+	}
+	let rows = [];
+	for (let file in sort(files ?? [])) {
+		if (substr(file, -length(C.CHILD_LOG_STATS_SUFFIX)) != C.CHILD_LOG_STATS_SUFFIX)
+			continue;
+		let row = read_logstats(`${opts.run_dir}/${file}`);
+		if (row != null)
+			push(rows, row);
+	}
+	let table = [ 'NAME\tACCEPTED\tDROPPED\tFIRST_DROP\tLAST_DROP\tSECOND_LIMIT\tMINUTE_LIMIT' ];
+	for (let row in rows) {
+		push(table, join('\t', [ row.name, row.accepted, row.dropped, row.first_drop ?? '-',
+			row.last_drop ?? '-', row.second_limit, row.minute_limit ]));
+	}
+	return pipeline.finish(opts, { ok: true, stats: rows }, 0, join('\n', table));
+}
+
 export function run(args) {
+	if (args[0] == 'stats')
+		return log_stats(slice(args, 1));
 	if (args[0] == 'truncate')
 		return truncate_logs(slice(args, 1));
 	if (args[0] == 'clear')

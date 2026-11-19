@@ -102,6 +102,7 @@ export const XRAY_COMPONENT = 'xray';
 // Legacy logical id / compatibility alias: internal discovery, events and requests still use it.
 // Reassess migration in phase 2 (M4-02).
 export const CHINADNS_COMPONENT = 'chinadns-ng';
+export const AETHER_DNS_COMPONENT = 'aether-dns';
 export const PRECHECK_NFT_FILE = 'precheck.nft';
 
 // T2.2 (child process supervision)
@@ -271,6 +272,7 @@ export const APK_INSTALLED_PATH = '/lib/apk/db/installed';
 // T9.7 (docs/09 child output rate limiting).
 export const CHILD_LOG_FILTER = '/usr/share/aether-proxy/logfilter.awk';
 export const CHILD_LOG_FIFO_SUFFIX = '.log.fifo';
+export const CHILD_LOG_STATS_SUFFIX = '.logstats';
 export const RAW_LOG_FILE = 'raw.log';
 export const RAW_LOG_COLLECTOR = '/usr/share/aether-proxy/rawlog.sh';
 export const CHILD_LOG_FILTER_TEST_ENV = 'AETHER_PROXY_TEST_LOGFILTER';

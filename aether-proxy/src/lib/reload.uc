@@ -202,7 +202,7 @@ function execute_action(daemon, action, artifacts, components) {
 		if (daemon.children.dns != null)
 			wait_stopped(daemon.children.dns);
 		let bin = components[C.CHINADNS_COMPONENT].path;
-		let error = start_child(daemon, 'dns', C.CHINADNS_COMPONENT,
+		let error = start_child(daemon, 'dns', supervise.dns_name(bin),
 			[ bin, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
 		if (error != null)
 			return { ok: false, detail: error };
@@ -260,8 +260,9 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 		}
 		else if (action == 'restart_chinadns') {
 			if (daemon.children.dns != null) wait_stopped(daemon.children.dns);
-			let err = start_child(daemon, 'dns', C.CHINADNS_COMPONENT,
-				[ old_components[C.CHINADNS_COMPONENT].path, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
+			let bin = old_components[C.CHINADNS_COMPONENT].path;
+			let err = start_child(daemon, 'dns', supervise.dns_name(bin),
+				[ bin, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
 			if (err != null) log_failure(daemon, 'rollback_chinadns', err);
 			else {
 				let hup = apply.dnsmasq_hup(daemon.ctx);

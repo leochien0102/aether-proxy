@@ -17,9 +17,9 @@ def check(value, name):
 	print('PASS  ' + name)
 
 
-def summary(count, first, last):
+def summary(count, first, last, message):
 	return (f'aether-proxy: fixture output rate limited, dropped {count} lines '
-		f'between {first} and {last}')
+		f'between {first} and {last}, first: {message}')
 
 
 def exercise(awk):
@@ -35,31 +35,43 @@ def exercise(awk):
 	plain = [f'line {i}' for i in range(20)]
 	check(run([f'100 {line}' for line in plain]) == plain,
 		f'{label}: same second 20 lines preserved in order')
-	lines = [f'100 line {i}' for i in range(25)] + ['101 next']
-	check(run(lines) == plain + [summary(5, '00:01:40', '00:01:40'), 'next'],
-		f'{label}: same second 25 lines drops 5 before next second')
-	check(run(lines[:-1]) == plain + [summary(5, '00:01:40', '00:01:40')],
-		f'{label}: EOF flushes pending summary')
+	startup = [f'startup {i}' for i in range(25)]
+	check(run([f'100 {line}' for line in startup] + [f'104 end {i}' for i in range(25)]) ==
+		startup + [f'end {i}' for i in range(25)],
+		f'{label}: 25 lines in each of startup seconds 1 and 5 all pass')
+	check(run([f'100 startup {i}' for i in range(121)]) ==
+		[f'startup {i}' for i in range(120)] + [summary(1, '00:01:40', '00:01:40', 'startup 120')],
+		f'{label}: the rolling minute limit still applies during startup')
+	lines = ['100 origin'] + [f'105 line {i}' for i in range(25)] + ['106 next']
+	drops = [summary(n, '00:01:45', '00:01:45', 'line 20') for n in (1, 5)]
+	check(run(lines) == ['origin'] + plain + drops + ['next'],
+		f'{label}: sixth second applies the 20-line limit and summarizes on recovery')
+	check(run(lines[:-1]) == ['origin'] + plain + drops,
+		f'{label}: EOF flushes the full drop streak')
 	lines = [f'{100 + i // 5} line {i}' for i in range(130)] + ['160 recovered']
 	check(run(lines) == [f'line {i}' for i in range(120)] +
-		[summary(10, '00:02:04', '00:02:05'), 'recovered'],
+		[summary(1, '00:02:04', '00:02:04', 'line 120'),
+			summary(10, '00:02:04', '00:02:05', 'line 120'), 'recovered'],
 		f'{label}: rolling minute admits 120 of 130 then summarizes')
-	# Quotas count admitted lines, not incoming attempts or the notification itself.
 	lines = [f'{100 + i // 10} line {i}' for i in range(120)]
 	lines += ['159 dropped-a', '159 dropped-b', '160 recovered']
-	check(run(lines)[-2:] == [summary(2, '00:02:39', '00:02:39'), 'recovered'],
+	check(run(lines)[-3:] == [summary(n, '00:02:39', '00:02:39', 'dropped-a') for n in (1, 2)] + ['recovered'],
 		f'{label}: rolling window boundary recovers at exactly 60 seconds')
-	lines = ['100 ' + str(i) for i in range(25)] + ['100 another-drop', '99 rollback', '99 again']
-	check(run(lines)[-3:] == [summary(6, '00:01:40', '00:01:40'), 'rollback', 'again'],
+	lines = ['95 origin'] + ['100 ' + str(i) for i in range(25)] + ['100 another-drop', '99 rollback', '99 again']
+	check(run(lines)[-3:] == [summary(6, '00:01:40', '00:01:40', '20'), 'rollback', 'again'],
 		f'{label}: clock rollback restarts the counts instead of silencing the child')
-	lines = ['5000 ' + str(i) for i in range(25)] + [f'1400 back {i}' for i in range(20)]
-	check(run(lines)[20:] == [summary(5, '01:23:20', '01:23:20')] + [f'back {i}' for i in range(20)],
-		f'{label}: an hour-long rollback admits a full second at once')
+	lines = ['4995 origin'] + ['5000 ' + str(i) for i in range(25)] + [f'1400 back {i}' for i in range(21)]
+	check(run(lines)[21:] == [summary(n, '01:23:20', '01:23:20', '20') for n in (1, 5)] +
+		[f'back {i}' for i in range(20)] + [summary(1, '00:23:20', '00:23:20', 'back 20')],
+		f'{label}: rollback clears the quota but does not renew startup grace')
 	long_line = 'x' * 131072 + '\t  tail  '
 	check(run(['100 ', '100 ' + long_line]) == ['', long_line],
 		f'{label}: empty and very long lines preserved byte-for-byte')
-	check(run([f'100 {i}' for i in range(25)] + [f'101 {i}' for i in range(25)])[20] ==
-		summary(5, '00:01:40', '00:01:40'), f'{label}: separate suppressed runs have separate summaries')
+	lines = ['95 origin'] + [f'100 first {i}' for i in range(25)] + [f'101 second {i}' for i in range(25)]
+	notes = [line for line in run(lines) if 'rate limited' in line]
+	check(notes == [summary(n, clock, clock, message)
+		for clock, message in [('00:01:40', 'first 20'), ('00:01:41', 'second 20')] for n in (1, 5)],
+		f'{label}: separate suppressed runs have separate summaries')
 	# The pipe stays open after this write. Waiting for EOF or the next line would fail.
 	p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=ENV)
 	try:
@@ -79,7 +91,7 @@ def exercise(awk):
 def exercise_dedup(awk):
 	"""T9.30: timestamp-independent, bounded deduplication before both quotas (docs/09)."""
 	label = ' '.join(awk)
-	argv = awk + ['-v', 'test_clock=1', '-v', 'name=fixture', '-f', str(FILTER)]
+	argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=95', '-v', 'name=fixture', '-f', str(FILTER)]
 
 	def run(lines):
 		p = subprocess.run(argv, input='\n'.join(lines) + '\n', text=True,
@@ -133,7 +145,7 @@ def exercise_dedup(awk):
 	lines = ['100 anchor'] * 500 + [f'100 distinct-{i}' for i in range(19)]
 	check(run(lines + ['100 overflow', '101 recovered']) ==
 		['anchor'] + [f'distinct-{i}' for i in range(19)] +
-		[summary(1, '00:01:40', '00:01:40'), 'recovered', repeated('anchor', 499)],
+		[summary(1, '00:01:40', '00:01:40', 'overflow'), 'recovered', repeated('anchor', 499)],
 		f'{label}: merged lines consume neither the 20 per second quota nor the dropped counter')
 	# Keep anchor in the bounded table while exercising the complete rolling minute quota.
 	lines = ['100 anchor']
@@ -142,16 +154,16 @@ def exercise_dedup(awk):
 		lines += [f'{clock} anchor', f'{clock} minute-{i}']
 	check(run(lines + ['106 overflow', '160 recovered']) ==
 		['anchor'] + [f'minute-{i}' for i in range(119)] +
-		[repeated('anchor', 119), summary(1, '00:01:46', '00:01:46'), 'recovered'],
+		[summary(1, '00:01:46', '00:01:46', 'overflow'), repeated('anchor', 119), 'recovered'],
 		f'{label}: merged lines leave all 120 rolling minute slots available')
 	lines = [f'100 full-{i}' for i in range(20)] + ['100 full-0', '100 overflow', '100 full-0']
 	check(run(lines) == [f'full-{i}' for i in range(20)] +
-		[summary(1, '00:01:40', '00:01:40'), repeated('full-0', 2)],
+		[summary(1, '00:01:40', '00:01:40', 'overflow'), repeated('full-0', 2)],
 		f'{label}: EOF repetition summaries bypass a saturated quota')
 	# Conservatively track even a first occurrence dropped by the downstream rate limiter.
 	lines = [f'100 full-{i}' for i in range(20)] + ['100 overflow', '101 overflow']
 	check(run(lines) == [f'full-{i}' for i in range(20)] +
-		[summary(1, '00:01:40', '00:01:40'), repeated('overflow', 1)],
+		[summary(1, '00:01:40', '00:01:40', 'overflow'), repeated('overflow', 1)],
 		f'{label}: quota-dropped first occurrence still participates in deduplication')
 
 	check(run(['0 epoch', '9 epoch', '10 epoch', '10 epoch']) ==
@@ -161,7 +173,7 @@ def exercise_dedup(awk):
 		['old', 'old', repeated('old', 1)],
 		f'{label}: clock rollback discards old repeats and admits the same message afresh')
 	lines = [f'100 old-{i}' for i in range(32)] + ['99 fresh', '99 fresh']
-	check(run(lines)[-3:] == [summary(12, '00:01:40', '00:01:40'), 'fresh', repeated('fresh', 1)],
+	check(run(lines)[-3:] == [summary(12, '00:01:40', '00:01:40', 'old-20'), 'fresh', repeated('fresh', 1)],
 		f'{label}: clock rollback clears a full table as well as rate quota')
 
 	prefix = 'x' * 160

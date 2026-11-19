@@ -153,9 +153,13 @@ def verify_output(root, mode, fifo, filter_pids, out, err):
 			'crash: restart creates a fresh FIFO and cleanup removes pid-less FIFO')
 		for i in (1, 2):
 			check([line for line in lines if line.startswith(f'launch-{i} ')] ==
-				[f'launch-{i} line-{j}' for j in range(20)], f'crash: launch {i} output still filtered')
-		check(sum('dropped 480 lines between' in line for line in lines) == 2,
-			'crash: both EOF summaries retain all 480 dropped lines')
+				[f'launch-{i} line-{j}' for j in range(120)], f'crash: launch {i} output still filtered')
+		check(sum('dropped 1 lines between' in line for line in lines) == 2 and
+			sum('dropped 380 lines between' in line for line in lines) == 2,
+			'crash: both sessions report first drop and all 380 dropped lines')
+		row = json.loads(fifo.with_name(NAME + '.logstats').read_text())
+		check(row['name'] == NAME and row['accepted'] == 120 and row['dropped'] == 380,
+			'crash: stats path with shell metacharacters holds latest session counts')
 	else:
 		check(not crashes, f'{mode}: active stop emits no CHILD_CRASHED')
 		want = [f'launch-1 line-{i}' for i in ((0, 2) if mode in ('missing', 'nofilter') else (0, 1, 2))]

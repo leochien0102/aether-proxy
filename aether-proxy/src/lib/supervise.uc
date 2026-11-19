@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
+import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
 
@@ -30,6 +31,15 @@ function remove_fifo(path) {
 	return { ok: true };
 };
 
+export function dns_name(path) {
+	return component_id.engine(path) ?? C.CHINADNS_COMPONENT;
+};
+
+function awk_value(value) {
+	// awk -v unescapes backslashes even when the shell argument was properly quoted.
+	return replace(value, /\\/g, () => '\\\\');
+};
+
 function filtered_argv(opts, path) {
 	// Never interpolate names, paths or child arguments into shell source. exec keeps
 	// uloop's pid and exit status attached to the actual service, not a shell wrapper.
@@ -48,9 +58,10 @@ function filtered_argv(opts, path) {
 		});
 		return opts.argv;
 	}
+	let stats = `${opts.run_dir}/${opts.name}${C.CHILD_LOG_STATS_SUFFIX}`;
 	return [ '/bin/sh', '-c',
-		'fifo=$3; awk -v name="$1" -f "$2" <"$fifo" & shift 3; exec "$@" >"$fifo" 2>&1',
-		'aether-proxy-logfilter', opts.name, filter, path, ...opts.argv ];
+		'fifo=$3; awk -v name="$1" -v stats="$4" -f "$2" <"$fifo" & shift 4; exec "$@" >"$fifo" 2>&1',
+		'aether-proxy-logfilter', awk_value(opts.name), filter, path, awk_value(stats), ...opts.argv ];
 };
 
 function process_exists(pid) {
@@ -70,6 +81,10 @@ function create(opts) {
 	if (type(opts) != 'object' || !opts.name || type(opts.argv) != 'array' || !length(opts.argv) ||
 	    !opts.run_dir || type(opts.backoff) != 'array' || !length(opts.backoff))
 		die('supervise.create: name, argv, run_dir and non-empty backoff are required');
+
+	// Monitor-driven DNS recovery still calls with the legacy logical name.
+	if (opts.name == C.CHINADNS_COMPONENT)
+		opts = { ...opts, name: dns_name(opts.argv[0]) };
 
 	let cb = opts.on_event;
 	let inherit_output = opts.respawn == false && opts.inherit_output == true;

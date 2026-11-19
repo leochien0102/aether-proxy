@@ -79,6 +79,10 @@ def running_identity(f, path, version, label):
 	check(label + ' process argv matches state path', str(path).encode() in argv and state['path'] == str(path))
 	check(label + ' process version matches state version',
 		(f.root / f'engine-version-{pid}').read_text().strip() == version == state['version'])
+	name = state['engine'] or 'chinadns-ng'
+	check(label + ' PID file uses the selected supervision name',
+		int((f.run / f'{name}.pid').read_text()) == pid)
+	check(label + ' DNS FIFO uses the selected supervision name', (f.run / f'{name}.log.fifo').is_fifo())
 	return pid
 
 

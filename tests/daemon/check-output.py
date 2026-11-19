@@ -39,12 +39,14 @@ for line in lines:
 		groups[match[1], match[2]].append(int(match[3]))
 for name in ('xray', 'chinadns-ng'):
 	bursts = [values for (child, _), values in groups.items() if child == name]
-	assert bursts and all(values == list(range(1, min(20, amount) + 1)) for values in bursts), (name, groups)
-	print(f'PASS  daemon {amount}: {name} emits exactly first {min(20, amount)} lines per second unchanged')
+	assert bursts and all(values == list(range(1, min(120, amount) + 1)) for values in bursts), (name, groups)
+	print(f'PASS  daemon {amount}: {name} emits exactly first {min(120, amount)} startup lines unchanged')
 	summaries = [line for line in lines if line.startswith(f'aether-proxy: {name} output rate limited, ')]
-	if amount > 20:
-		assert len(summaries) == len(bursts) and all('dropped 480 lines between' in line for line in summaries)
-		print(f'PASS  daemon {amount}: {name} has one dropped 480 EOF summary per burst')
+	if amount > 120:
+		assert len(summaries) == 2 * len(bursts)
+		assert all(f'dropped {count} lines between' in line and ', first: ' in line
+			for line, count in zip(summaries, [1, amount - 120] * len(bursts)))
+		print(f'PASS  daemon {amount}: {name} reports the first drop and the whole streak')
 	else:
 		assert not summaries, summaries
 		print(f'PASS  daemon {amount}: {name} small output needs no summary')

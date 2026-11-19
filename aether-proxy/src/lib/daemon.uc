@@ -313,8 +313,11 @@ function pid_path(ctx, name) {
 	return `${run_dir(ctx)}/${name}.pid`;
 };
 
+// Include the legacy name so the first start after upgrading can still clean it up.
+const supervised_names = [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT, C.AETHER_DNS_COMPONENT ];
+
 function remove_pidfiles(ctx) {
-	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+	for (let name in supervised_names) {
 		let path = pid_path(ctx, name);
 		if (fs.stat(path) != null && !fs.unlink(path))
 			event_failure(ctx, 'cleanup', `cannot unlink ${path}: ${fs.error() ?? 'unknown error'}`);
@@ -375,7 +378,7 @@ function apply_cleanup(ctx, release_handoff) {
 	let dnsmasq = apply.dnsmasq_remove(ctx);
 	if (!dnsmasq.ok)
 		push(failures, `dnsmasq_remove: ${dnsmasq.detail}`);
-	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ]) {
+	for (let name in supervised_names) {
 		let r = supervise.kill_stale(run_dir(ctx), name, run_dir(ctx));
 		if (!r.ok)
 			push(failures, `kill_stale ${name}: ${r.detail}`);
@@ -800,7 +803,7 @@ function start_sequence(ctx, opts, signal_pending) {
 	if (stop_requested())
 		return interrupted('chinadns_start');
 	step_started = monotonic_ms();
-	children.dns = child_options(ctx, C.CHINADNS_COMPONENT,
+	children.dns = child_options(ctx, supervise.dns_name(dns_path),
 		[ dns_path, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
 	children.dns.start();
 	let dns_required = map([ 'udp', 'tcp' ], protocol => ({
