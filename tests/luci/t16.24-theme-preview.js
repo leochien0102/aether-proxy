@@ -235,13 +235,24 @@ async function verifyToolbars(page, view, narrow = false) {
 	const [a, b, bounds] = await Promise.all([left.boundingBox(), right.boundingBox(), toolbar.boundingBox()]);
 	assert.ok(a && b && bounds, `${view}: both toolbar groups are visible`);
 	if (narrow) {
-		assert.ok(a.y + a.height <= b.y + 1, `${view}: toolbar groups wrap at 360 px`);
+		// At 360 px the strip and the buttons either stack or squeeze onto one row;
+		// both are acceptable as long as nothing leaves the block.
+		const stacked = a.y + a.height <= b.y + 1;
 		assert.ok(a.x + a.width <= bounds.x + bounds.width + 1 && b.x + b.width <= bounds.x + bounds.width + 1,
-			`${view}: wrapped toolbar groups fit their container`);
+			`${view}: toolbar groups fit their container at 360 px (tab ${a.x}+${a.width} vs ${bounds.x}+${bounds.width})`);
+		if (stacked)
+			assert.ok(a.x >= bounds.x - 1 && a.x + a.width <= bounds.x + bounds.width + 1
+				&& b.x >= bounds.x - 1 && b.x + b.width <= bounds.x + bounds.width + 1,
+				`${view}: stacked toolbar groups stay inside the block`);
+		else
+			assert.ok(a.x + a.width <= b.x + 1, `${view}: side-by-side toolbar groups do not overlap at 360 px`);
 	} else {
 		assert.ok(a.x + a.width <= b.x + 1, `${view}: description or tabs are to the left of actions`);
 		assert.ok(a.y < b.y + b.height && b.y < a.y + a.height, `${view}: both groups share one desktop row`);
 	}
+	const sectionLeft = await root.locator('table').evaluate(el => el.getBoundingClientRect().left);
+	assert.ok(Math.abs(a.x - sectionLeft) <= 1, `${view}: the tab strip is flush with the block content (tab ${a.x} vs table ${sectionLeft})`);
+	assert.ok(Math.abs(b.x + b.width - bounds.x - bounds.width) <= 1, `${view}: the actions end at the block edge`);
 	assert.deepEqual(await toolbar.locator('button').allTextContents(),
 		['Clear logs', 'Truncate to last startup'].map(tr));
 	const items = left.locator('li');

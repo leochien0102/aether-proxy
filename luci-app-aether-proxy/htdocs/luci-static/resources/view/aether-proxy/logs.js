@@ -226,8 +226,11 @@ return view.extend({
 			}),
 			// Keep theme tabs at their natural width; the toolbar wraps the groups.
 			E('style', {}, [`
-				.aether-log-toolbar .cbi-tabmenu { flex:0 0 auto; margin:0 }
+				/* section_actions() sets the gutter inline; the tabs must line up with the table. */
+				.aether-log-toolbar { padding-inline:0 !important }
+				.aether-log-toolbar .cbi-tabmenu { flex:0 0 auto; margin:0; padding:0 }
 				.aether-log-toolbar .cbi-tabmenu > li { flex:0 0 auto; max-width:none }
+				.aether-log-toolbar .cbi-tabmenu > li:first-child { margin-inline-start:0 }
 				.aether-log-toolbar .cbi-tabmenu > li > a { overflow:visible; text-overflow:clip }
 			`])
 		]);
