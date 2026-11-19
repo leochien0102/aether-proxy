@@ -11,6 +11,10 @@ FIX="$ROOT/tests/fixtures/sample"
 STUB_SRC="$ROOT/tests/stubs/daemon-bin"
 export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
 export AETHER_PROXY_TEST_RAW_LOG_COLLECTOR="$ROOT/aether-proxy/files/aether-proxy-rawlog.sh"
+python3 "$ROOT/tests/daemon/raw-log-burst.py" || exit 1
+if command -v busybox >/dev/null; then
+	RAW_LOG_BUSYBOX=1 python3 "$ROOT/tests/daemon/raw-log-burst.py" || exit 1
+fi
 python3 "$ROOT/tests/daemon/raw-log.py" || exit 1
 python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1
@@ -86,9 +90,33 @@ mkdir -p "$T/data" "$T/base" "$T/custom" "$T/bin"
 for f in gfwlist chnlist apple; do printf 'example.com\n' > "$T/base/$f.txt"; done
 printf '1.0.0.0/8\n' > "$T/base/chnroute4.txt"
 printf '91.108.4.0/22\n' > "$T/base/gfw_static4.txt"
-cat > "$T/bin/logread" <<'SH'
+cat > "$T/bin/logread" <<'PY'
+#!/usr/bin/env python3
+import sys, time
+from pathlib import Path
+root = Path.cwd().parents[2]
+assert sys.argv[1:] == ['-f', '-e', 'aether-proxy']
+if (root / 'logread-delayed').exists():
+    time.sleep(.65)
+if (root / 'logread-silent').exists():
+    import signal
+    signal.pause()
+with (root / 'logread-feed').open('a+') as feed:
+    (root / 'logread-attached').touch()
+    while True:
+        data = feed.read()
+        if data:
+            sys.stdout.write(data)
+            sys.stdout.flush()
+        time.sleep(.005)
+PY
+cat > "$T/bin/logger" <<'SH'
 #!/bin/sh
-exec python3 -c 'import signal; signal.pause()'
+[ "$1 $2 $3" = '-p daemon.info -t' ] || exit 2
+root=${PWD%/var/run/aether-proxy}
+[ -e "$root/logread-attached" ] || exit 0
+shift 3
+printf 'Thu Nov 19 12:00:00 2026 daemon.info %s: %s\n' "$1" "$2" >> "$root/logread-feed"
 SH
 cp "$STUB_SRC/nft" "$T/bin/nft"
 cp "$STUB_SRC/ip" "$T/bin/ip"
@@ -112,6 +140,11 @@ cat > "$T/bin/xray" <<'EOF'
 #!/bin/sh
 if [ "$1" = run ] && [ "$2" = -c ]; then
 	root=${3%/var/run/aether-proxy/current/*}
+	if [ -f "$root/logread-delayed" ]; then
+		if [ -f "$root/var/run/aether-proxy/raw-log.ready" ] && [ -f "$root/logread-attached" ]; then
+			printf 'xray after raw-log handshake\n' >> "$root/calls.log"
+		fi
+	fi
 	if [ -f "$root/xray-listen-delay" ]; then
 		read -r uptime rest < /proc/uptime
 		printf '%s\n' "$uptime" >> "$root/xray-launch-times"
@@ -124,7 +157,26 @@ if [ "$1" = run ] && [ "$2" = -test ]; then
 fi
 exec "$(dirname "$0")/xray-original" "$@"
 EOF
-cp "$STUB_SRC/chinadns-ng" "$T/bin/chinadns-ng"
+cp "$STUB_SRC/chinadns-ng" "$T/bin/chinadns-original"
+cat > "$T/bin/chinadns-ng" <<'SH'
+#!/bin/sh
+if [ "$1" = -C ]; then
+	root=${2%/var/run/aether-proxy/current/*}
+	if [ "$root" != "$2" ] && [ -f "$root/logread-delayed" ]; then
+		(
+			log="$(dirname "$0")/logger"
+			cd "$root/var/run/aether-proxy" || exit 1
+			for i in 1 2 3 4 5 6 7; do
+				"$log" -p daemon.info -t 'aether-proxy[1]' "dnl_init $i"
+			done
+			for i in 1 2 3 4 5 6 7 8 9 10 11; do
+				"$log" -p daemon.info -t 'aether-proxy[1]' "on_start $i"
+			done
+		)
+	fi
+fi
+exec "$(dirname "$0")/chinadns-original" "$@"
+SH
 cp "$STUB_SRC/kill" "$T/bin/kill"
 chmod +x "$T/bin/"*
 
@@ -249,6 +301,7 @@ UCODE
 # 1. Default-off startup begins on T1; its first immediate success still reaches running within 5 s.
 R1="$T/sys1"; L1="$T/sys1/calls.log"; make_root "$R1"; : > "$L1"
 L1_START="$T/sys1/startup.log"
+touch "$R1/logread-delayed" "$R1/var/run/aether-proxy/raw-log.ready"
 printf '{"gfw4":["1.2.3.4"],"udirect4":[],"uproxy4":[]}\n' > "$R1/var/run/aether-proxy/sets.save"
 read -r startup_time rest < /proc/uptime
 start_daemon "$R1" "$L1"
@@ -264,6 +317,14 @@ if wait_for "$R1/var/run/aether-proxy/state.json" '"state": "running"' 100; then
 else
 	bad 'startup curl and running state arrive within 5 seconds' "daemon stderr: $(cat "$R1/daemon.stderr")"
 fi
+RAW1="$R1/var/run/aether-proxy/raw.log"
+expect 'xray starts only after a fresh raw-log handshake' 1 "$(count_calls "$L1" 'xray after raw-log handshake')"
+# Compare the complete DNS burst while logread is still following.
+expected_burst=$(printf 'dnl_init %s\n' {1..7}; printf 'on_start %s\n' {1..11})
+wait_for "$RAW1" 'on_start 11' 40 || :
+expect 'delayed logread captures the complete DNS startup burst in order' "$expected_burst" \
+	"$(awk -F 'aether-proxy\\[1\\]: ' 'NF == 2 { print $2 }' "$RAW1")"
+expect 'raw-log readiness probes are not written into raw.log' 0 "$(count_calls "$RAW1" 'aether-proxy-rawlog:')"
 # T9.26: status must expose the applied snapshot, not infer the mode from UCI.
 expect 'T9.26 startup persists configured mode' gfw "$(jget mode < "$R1/var/run/aether-proxy/state.json")"
 startup_status=$(ap status --json --sys-root "$R1" --bin-dir "$T/bin" \
@@ -953,6 +1014,7 @@ stop_daemon; expect 'T9.26 network wait daemon stops' 0 "$?"
 
 # 8. Boot wait succeeds using only a local loopback TCP listener.
 R8="$T/sys8"; L8="$T/sys8/calls.log"; BOOT_CONF="$T/boot-conf"; make_root "$R8"; : > "$L8"
+touch "$R8/logread-silent"
 mkdir -p "$BOOT_CONF"
 sed "/option enabled '1'/a\\	option boot_wait_timeout '15'\n\tlist boot_check_targets '127.0.0.1:1'" \
 	"$FIX/aetherproxy" > "$BOOT_CONF/aetherproxy"
@@ -975,6 +1037,8 @@ if start_loopback_listener "$T/listener.port" "$T/listener.accepted"; then
 	else
 		bad "--boot publishes service-started after setup" "$(cat "$R8/daemon.stderr")"
 	fi
+	expect 'silent logread warns once and startup still succeeds' 1 \
+		"$(count_calls "$R8/var/run/aether-proxy/events.jsonl" 'raw-log readiness timed out')"
 	[ -s "$T/listener.accepted" ] && ok "--boot connected to loopback listener" || bad "--boot connected to loopback listener"
 	stop_daemon; expect "--boot daemon stops" 0 "$?"
 	assert_no_children "$R8"

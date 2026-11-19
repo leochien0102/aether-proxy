@@ -59,7 +59,8 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 **限流自检**：`aether-proxy log stats [--json] [--run-dir <dir>]` 汇总运行目录（默认 `/var/run/aether-proxy`）下
 `<名称>.logstats` 的单行 JSON 快照，JSON 输出为 `{"ok":true,"stats":[…]}`，无快照时显示只有表头的空表或空数组，退出 0。
 每个快照含 `name/accepted/dropped/first_drop/last_drop/second_limit/minute_limit`；计数按会话累计，不含重复折叠行与摘要；
-首次/末次限流用 epoch 秒（尚未限流为 `null`）。会话开始、首次放行、限流摘要及 EOF 刷新快照，不逐行写入。
+首次/末次限流用 epoch 秒（尚未限流为 `null`）。会话开始、首次放行及 EOF 刷新快照。此后放行新行时，距上次写入已过 5 秒
+或新增 50 条放行计数才刷新；丢弃计数变化及发出摘要时仍立即刷新。无输入时不轮询，写失败则本会话停写快照，不中断日志。
 快照保留到同名子进程下次启动（或运行目录清理），不是存活检测；不可读或正在写入的不完整快照会略过。不影响原始日志轮转。
 
 注意：被信号结束的子进程在 `uloop.process` 回调里报告的退出码也是 0，与正常退出无法区分。daemon 必须自己记录「这次是主动停止」，
@@ -84,6 +85,7 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 
 - daemon 启动时由 supervise 启动独立 collector，正常停止时发 TERM、等待退出并回收；重载及启动重试不重复启动。异常退出只记一次 warn，不退避重启，不阻断主服务。
 - collector 执行 `logread -f -e aether-proxy`：OpenWrt 的 `-f` 未指定 `-l` 时请求 `lines=0`，只取新行，不做历史回填。再次校验真实 `aether-proxy[<pid>]:` 标签，原始整行追加到 `/var/run/aether-proxy/raw.log`（tmpfs，0600）。Xray / chinadns-ng 仍走现有过滤器与 procd → logd 链路。
+- **收集器握手**：读到本次的 `aether-proxy-rawlog` 探针或真实应用实时日志后，collector 才创建 `raw-log.ready`；探针不写入 `raw.log`。每次重新挂载前清除旧标记；首次启动时 daemon 最多等 2 秒才启动 Xray / DNS，超时记一条 warn 后继续。握手只覆盖首次启动，不补超时或掉线期间的日志。
 - 每段最多 1 MiB（含换行字节）或 2000 行；下一行会越过字节上限时先轮转，恰好达到上限时立即轮转。`raw.log` 改名覆盖 `raw.log.1`，重新创建空的 0600 当前段，只保留一份旧段（总计最多约 2 MiB / 4000 行）。单条超过 1 MiB 的异常记录整行丢弃，不截断原始行。
 - 重启 collector 保留应用已有段并继续计数，但不向 logd 请求历史。CLI 按 `raw.log.1` → `raw.log` 顺序合并后分类、过滤、取最后 N 行；缺失或空文件返回空结果。不运行 `logread`，事件页仍读 `events.jsonl`。
 

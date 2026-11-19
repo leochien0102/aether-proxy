@@ -9,15 +9,35 @@ cd "$1"
 chmod 0600 raw.log
 [ ! -e raw.log.1 ] || chmod 0600 raw.log.1
 fifo=raw-log.pipe
-rm -f "$fifo"
-reader= writer= sleeper=
+ready=raw-log.ready
+rm -f "$fifo" "$ready"
+reader= writer= sleeper= prober=
+probe_follow() {
+	# The -p pidfile precedes the logd subscription. Round-trip a live record instead.
+	pause=
+	trap '[ -z "$pause" ] || { kill "$pause" || :; wait "$pause" || :; }; exit 0' TERM INT
+	i=0
+	while [ ! -f "$ready" ] && [ "$i" -lt 20 ]; do
+		"$2" -p daemon.info -t aether-proxy-rawlog "$1" &
+		pause=$!
+		wait "$pause" || :
+		i=$((i + 1))
+		sleep 0.1 &
+		pause=$!
+		wait "$pause" || :
+		pause=
+	done
+}
 stop_pair() {
+	# A worker may already have exited; still wait to reap its status.
+	[ -z "$prober" ] || kill "$prober" || :
 	[ -z "$reader" ] || kill "$reader" || :
 	[ -z "$writer" ] || kill "$writer" || :
+	[ -z "$prober" ] || wait "$prober" || :
 	[ -z "$reader" ] || wait "$reader" || :
 	[ -z "$writer" ] || wait "$writer" || :
-	reader= writer=
-	rm -f "$fifo"
+	reader= writer= prober=
+	rm -f "$fifo" "$ready"
 }
 cleanup() {
 	trap '' TERM INT
@@ -28,13 +48,29 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' TERM INT
 delay=1
+attempt=0
 while :; do
+	rm -f "$ready"
+	attempt=$((attempt + 1))
+	probe="ready:$$:$attempt"
 	mkfifo -m 0600 "$fifo"
 	started=$(date +%s)
 	# -f without -l asks OpenWrt logd for lines=0: new records only.
 	"${2:-logread}" -f -e aether-proxy > "$fifo" &
 	reader=$!
-	awk -v bytes="$(wc -c < raw.log)" -v lines="$(wc -l < raw.log)" '
+	awk -v bytes="$(wc -c < raw.log)" -v lines="$(wc -l < raw.log)" \
+		-v ready="$ready" -v probe=" daemon.info aether-proxy-rawlog: $probe" '
+function mark_ready() {
+	if (!attached) {
+		printf "%s", "" > ready
+		close(ready)
+		attached = 1
+	}
+}
+substr($0, length($0) - length(probe) + 1) == probe {
+	mark_ready()
+	next
+}
 function rotate() {
 	close("raw.log")
 	if (system("mv -f raw.log raw.log.1") != 0) exit 1
@@ -44,18 +80,23 @@ function rotate() {
 }
 # Only a real application tag, not a quoted tag in another program message.
 /^[^\n]* [a-z0-9]+\.[a-z]+ aether-proxy\[[0-9]+\]: / {
+	# A genuine live application record also proves the subscription is active.
+	mark_ready()
 	n = length($0) + 1
 	# Preserve whole records: a single oversized record cannot fit a segment.
 	if (n > 1048576) next
 	if (bytes + n > 1048576 || lines >= 2000) rotate()
 	print $0 >> "raw.log"
-	if (fflush("raw.log") != 0) exit 1
+	# BusyBox awk flushes but does not define a return value for fflush().
+	fflush("raw.log")
 	bytes += n
 	lines++
 	if (bytes >= 1048576 || lines >= 2000) rotate()
 }
 	' < "$fifo" &
 	writer=$!
+	probe_follow "$probe" "${3:-logger}" &
+	prober=$!
 	# Reader EOF ends awk; an awk failure must also stop the old reader before retry.
 	# A nonzero wait is expected here and must not trigger set -e / collector exit.
 	wait "$writer" || :

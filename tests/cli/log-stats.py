@@ -86,6 +86,63 @@ def live(run_dir):
 	return row
 
 
+def live_accepted(run_dir):
+	stats = run_dir / 'xray.logstats'
+	argv = [*AWK, '-v', 'name=xray', '-v', f'stats={stats}', '-f',
+		str(ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk')]
+	with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL) as proc:
+		try:
+			def send(line):
+				proc.stdin.write(f'{line}\n'.encode())
+				proc.stdin.flush()
+
+			send('first')
+			wait_for_row(stats, snapshot('xray', 1, 0))
+			started = time.monotonic()
+			first = cli(run_dir).splitlines()[1]
+			for i in range(1, 7):
+				time.sleep(max(0, started + i - time.monotonic()))
+				send(f'live tick {i}')
+				last = cli(run_dir).splitlines()[1]
+				if last != first:
+					break
+			elapsed = time.monotonic() - started
+			assert 1 < int(last.split('\t')[1]) <= 7 and elapsed < 10, (first, last, elapsed)
+			assert proc.poll() is None and last.split('\t')[2] == '0'
+			print(f'T16.37 live log stats ({elapsed:.2f}s, before EOF): {first!r} -> {last!r}')
+		finally:
+			proc.stdin.close()
+			proc.wait(timeout=3)
+
+
+def stats_boundaries(run_dir):
+	path = run_dir / 'fixture.logstats'
+	argv = [*AWK, '-v', 'test_clock=1', '-v', 'name=fixture', '-v', f'stats={path}',
+		'-f', str(ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk')]
+	with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL) as proc:
+		try:
+			def advance(records, count, dropped=0, first=None, last=None):
+				proc.stdin.write(('\n'.join(records) + '\n').encode())
+				proc.stdin.flush()
+				wait_for_row(path, snapshot('fixture', count, dropped, first, last))
+
+			advance(['100 first'], 1)
+			advance([f'100 burst {i}' for i in range(50)], 51)
+			advance(['104 not yet', '105 five seconds'], 53)
+			advance([f'105 live {i}' for i in range(19)] + ['105 first drop'], 72, 1, 105, 105)
+			advance(['106 turn'] + [f'106 other {i}' for i in range(20)], 92, 2, 105, 106)
+			advance(['106 another drop'], 92, 3, 105, 106)
+			assert proc.poll() is None
+			print('PASS stats refresh after 50 accepted rows, 5 seconds, and every drop (before EOF)')
+		finally:
+			proc.stdin.close()
+			proc.wait(timeout=3)
+
+
+with tempfile.TemporaryDirectory(prefix='log-stats-live-') as tmp:
+	live_accepted(Path(tmp))
+	stats_boundaries(Path(tmp))
+
 with tempfile.TemporaryDirectory(prefix="log-stats-' ") as tmp:
 	run_dir = Path(tmp)
 	assert json.loads(cli(run_dir / 'missing', '--json')) == {'ok': True, 'stats': []}

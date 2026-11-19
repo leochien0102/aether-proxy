@@ -54,6 +54,9 @@ with (base / 'feed').open() as f:
         time.sleep(.005)
 ''')
     stub.chmod(0o755)
+    logger = base / 'logger'
+    logger.write_text('#!/bin/sh\nexit 0\n')
+    logger.chmod(0o755)
     run = base / "run ' directory"
     run.mkdir()
     env = dict(os.environ, PATH=f'{base}:{os.environ["PATH"]}')
@@ -162,6 +165,7 @@ with (base / 'feed').open() as f:
         proc.send_signal(sig)
         assert proc.wait(timeout=2) == 0
         assert not (run / 'raw-log.pipe').exists()
+        assert not (run / 'raw-log.ready').exists()
         assert all(not Path(f'/proc/{pid}').exists() for pid in owned), owned
 
     # Normal EOF must reconnect, append later service events, and preserve counts.
@@ -185,6 +189,7 @@ with (base / 'feed').open() as f:
     print('PASS normal EOF reconnects and collects later SERVICE_STARTED/PROXY_HEALTHY')
 
     # Exit 5 repeatedly: measure real delays through the cap, then stop during sleep.
+    (run / 'raw-log.ready').touch()  # Simulate a marker left by SIGKILL.
     (base / 'fail').touch()
     before = len(attempts())
     p = subprocess.Popen(['/bin/sh', str(SCRIPT), str(run), str(stub)], env=env)
@@ -192,6 +197,7 @@ with (base / 'feed').open() as f:
         until(lambda: len(attempts()) >= before + 7, timeout=25)
         rows = attempts()[before:]
         assert len(rows) == 7, rows
+        assert not (run / 'raw-log.ready').exists(), 'failed follow reused stale readiness'
         gaps = [float(b[0]) - float(a[0]) for a, b in zip(rows, rows[1:])]
         for gap, expected in zip(gaps, [1, 2, 3, 4, 5, 5]):
             assert expected - .1 <= gap < expected + 1, gaps

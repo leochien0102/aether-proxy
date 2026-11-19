@@ -658,7 +658,11 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: 1, step: 'signal', detail: 'startup cancelled', interrupted: true };
 	}
 	if (ctx.start_collector != null)
-		ctx.start_collector();
+		ctx.start_collector(signal_pending);
+	if (ctx.stopping_requested || signal_pending()) {
+		locked.close();
+		return { ok: false, code: 1, step: 'signal', detail: 'startup cancelled', interrupted: true };
+	}
 	let current = `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}`;
 	step_started = monotonic_ms();
 	let published = publish_staging(ctx, staging, current);
@@ -1281,17 +1285,39 @@ function run(args) {
 
 	// Separate from dataplane children: start only after residue/preflight gates,
 	// otherwise a blocked private generation would still fork a new collector.
+	let collector_script = getenv('AETHER_PROXY_TEST_RAW_LOG_COLLECTOR') ?? C.RAW_LOG_COLLECTOR;
 	let raw_collector = supervise.create({ name: 'raw-log', raw_log: true,
 		run_dir: run_dir(ctx), backoff: [ 0 ],
-		argv: [ '/bin/sh', getenv('AETHER_PROXY_TEST_RAW_LOG_COLLECTOR') ?? C.RAW_LOG_COLLECTOR,
-			run_dir(ctx), ctx.bin_dir ? `${ctx.bin_dir}/logread` : 'logread' ] });
+		argv: [ '/bin/sh', collector_script,
+			run_dir(ctx), cmd(ctx, 'logread'), cmd(ctx, 'logger') ] });
 	let collector_started = false;
-	ctx.start_collector = () => {
-		if (!collector_started && !ctx.stopping_requested) {
-			supervise.kill_stale(run_dir(ctx), 'raw-log', run_dir(ctx));
-			raw_collector.start();
-			collector_started = true;
+	ctx.start_collector = (signal_pending) => {
+		if (collector_started || ctx.stopping_requested)
+			return;
+		let dir = run_dir(ctx);
+		let ready = `${dir}/raw-log.ready`;
+		supervise.kill_stale(dir, 'raw-log', dir);
+		let marker_cleared = fs.lstat(ready) == null || fs.unlink(ready);
+		raw_collector.start();
+		collector_started = true;
+		// On uninstalled hosts there is no marker to wait for; the supervisor reports
+		// the failed exec as before.
+		if (!fs.access(collector_script, 'r'))
+			return;
+		let deadline = (monotonic_ms() ?? 0) + 2000;
+		for (let polls = 0; marker_cleared && polls <= 40; polls++) {
+			if (signal_pending())
+				return;
+			if (fs.lstat(ready)?.type == 'file')
+				return;
+			let remaining = deadline - (monotonic_ms() ?? 0);
+			if (remaining < 1 || polls == 40)
+				break;
+			sleep(int(min(50, remaining)));
 		}
+		log.event('warn', 'FS_FAILED', { op: marker_cleared ? 'wait' : 'unlink', path: ready,
+			detail: marker_cleared ? 'raw-log readiness timed out; continuing startup'
+				: 'cannot clear stale raw-log.ready; continuing startup' });
 	};
 	let exit_code = 0, retry_index = 0, retry_attempt = 0, finished = false;
 

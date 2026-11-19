@@ -1,6 +1,6 @@
 # Merge repeated child messages, then limit output before procd/logd (docs/09 "child process logs").
 BEGIN {
-	SESSION_START = previous = systime()
+	now = SESSION_START = previous = systime()
 	STARTUP_SECONDS = 5
 	SECOND_LIMIT = 20
 	MINUTE_LIMIT = 120
@@ -48,6 +48,8 @@ function write_stats() {
 		total_dropped ? last_drop : "null", SECOND_LIMIT, MINUTE_LIMIT | stats_writer
 	if (close(stats_writer) != 0)
 		stats = ""
+	last_stats_write = now
+	last_stats_accepted = total_accepted
 }
 
 function summary() {
@@ -78,16 +80,20 @@ function message_key(line, message) {
 	return message
 }
 
-function repeat_summary(    i, message) {
+function repeat_summary(    i, message, emitted) {
 	# Stable first-seen order avoids depending on awk's associative-array iteration order.
 	for (i = 1; i <= tracked; i++) {
 		message = messages[i]
-		if (repeats[message])
+		if (repeats[message]) {
 			printf "aether-proxy: %s repeated %d more times: %s\n", \
 				name, repeats[message], substr(message, 1, 160)
+			emitted = 1
+		}
 	}
 	# Like rate-limit summaries, repetition summaries sit outside the output quota.
 	fflush()
+	if (emitted)
+		write_stats()
 }
 
 function clear_repeats(    i) {
@@ -135,8 +141,10 @@ function duplicate(message) {
 	now = systime()
 	if (test_clock == 1) {
 		now = $0 + 0
-		if (!seen_line)
+		if (!seen_line) {
 			SESSION_START = previous = (test_start == "" ? now : test_start + 0)
+			last_stats_write = now
+		}
 		sub(/^[0-9]+ /, "")
 	}
 	# Rolling 60-second window (docs/09). A clock that went back (NTP correction, manual
@@ -145,6 +153,7 @@ function duplicate(message) {
 	if (now < previous) {
 		# Move the origin along with the clock; a rollback never renews startup grace.
 		SESSION_START -= previous - now
+		last_stats_write -= previous - now
 		for (second in accepted)
 			delete accepted[second]
 		minute_count = 0
@@ -177,7 +186,8 @@ function duplicate(message) {
 		fflush()
 		accepted[now]++
 		minute_count++
-		if (++total_accepted == 1)
+		total_accepted++
+		if (total_accepted == 1 || now - last_stats_write >= 5 || total_accepted - last_stats_accepted >= 50)
 			write_stats()
 		next
 	}
@@ -191,6 +201,8 @@ function duplicate(message) {
 	total_dropped++
 	if (++dropped == 1)
 		summary()
+	else
+		write_stats()
 }
 
 END {
