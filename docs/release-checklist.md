@@ -40,8 +40,13 @@ stable 还没有该版本时，`release-assets` 按 tag commit 下载门禁产�
 stable 已有该版本时，工作流只核对已有正式 Release 与 stable 的实际包字节，不重建、不创建或覆盖 Release。
 
 正式 tag 已推但 Release 失败时，核对 tag commit 后手动重跑 app 仓 `release-assets.yml`（`tag=正式 tag`，
-`dry_run=false`），不要重推 tag。若同版本同名包与 stable 字节不同，停止发布；修复可复现性或提升
-组件的包修订号，再以新 commit 走门禁。
+`dry_run=false`），不要重推 tag。
+
+**同版本包复用已发布字节（M4-17）**：不是每个组件都会随版本升号。门禁会重新构建全部组件，
+构建产物未必逐字节可复现；因此 `stage.py` 在正式组装时先读 `channel-stable` 清单，对**版本号与
+已发布版本相同**的包，直接取通道里的已发布字节（逐个校验 sha256/size），再写 `SHA256SUMS` 与
+inventory。所以 Release 的字节来源是「升号包用门禁产物、未升号包用已发布字节」，二者都必须能在
+stable 清单里对上。若复用之后仍有冲突，才说明版本号变了却没构建出预期内容，这时才停止发布。
 
 ## 4. Promote 写正式通道
 
