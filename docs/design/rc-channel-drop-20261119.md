@@ -47,3 +47,4 @@
 - 发版工具与 channel 仓：T16.35（`rc.sh`、`promote-rc.sh`、`publish_target=rc`、`channel-rc` 分支）
 
 保留：`promote` 的"正式 Release 输入"模式（T16.30 的另一半能力），以及"正式版逐字节晋升"这条保证。
+"晋升"在取消 RC 之后只剩一种含义：**已发布的正式 Release → 写进 `channel-stable`**，不再有 RC → 正式的晋升。
