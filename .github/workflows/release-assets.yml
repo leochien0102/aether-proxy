@@ -48,7 +48,7 @@ jobs:
           ref: refs/tags/${{ env.TAG }}
           path: release-source
           persist-credentials: false
-      - name: Resolve the tag commit and find matching channel packages
+      - name: Resolve the tag commit and check whether stable already has the Release
         id: route
         working-directory: release-source
         shell: bash
@@ -60,7 +60,7 @@ jobs:
           if [[ "$DRY_RUN" == true ]]; then
             echo 'mode=direct' >> "$GITHUB_OUTPUT"
           else
-            python3 ../workflow-source/tools/release/verify.py channel-stage "$GH_REPO" "$TAG" "$sha" >> "$GITHUB_OUTPUT"
+            python3 ../workflow-source/tools/release/verify.py publication-route "$GH_REPO" "$TAG" "$sha" >> "$GITHUB_OUTPUT"
           fi
       - name: Select the exact successful gate run (direct)
         if: steps.route.outputs.mode == 'direct'
@@ -86,11 +86,12 @@ jobs:
           set -euo pipefail
           python3 ../workflow-source/tools/release/stage.py --formal
       - name: Print the package inventory and verify SHA256SUMS
+        if: steps.route.outputs.mode == 'direct'
         working-directory: release-source
         shell: bash
         run: |
           set -euo pipefail
-          echo "Publication route: ${{ steps.route.outputs.mode }}"
+          echo 'Publication route: direct'
           cat SHA256SUMS
           (cd release-assets && sha256sum --check --strict ../SHA256SUMS)
       - name: Check that direct packages do not conflict with published bytes
@@ -101,7 +102,7 @@ jobs:
           set -euo pipefail
           python3 ../workflow-source/tools/release/verify.py check-direct "$GH_REPO" "$TAG"
       - name: Publish the verified Release (never overwrite assets)
-        if: ${{ !inputs.dry_run }}
+        if: ${{ steps.route.outputs.mode == 'direct' && !inputs.dry_run }}
         working-directory: release-source
         shell: bash
         run: |
@@ -128,3 +129,6 @@ jobs:
             gh release create "$TAG" release-assets/* --verify-tag --title "aether-proxy $version" --notes-file publish-notes.md
           fi
           gh release view "$TAG" --json url -q .url
+      - name: Report the already published Release
+        if: steps.route.outputs.mode == 'channel'
+        run: echo 'The formal Release and stable assets already match; no changes needed.'

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select retained gate artifacts for an exact RC commit (docs/08, M4-15).
+"""Select retained gate artifacts for an exact release commit (docs/08, M4-15).
 
 No build fallback exists here. API errors and incomplete/expired matrices fail closed.
 """

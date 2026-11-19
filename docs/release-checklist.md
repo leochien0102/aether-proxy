@@ -1,7 +1,9 @@
 # 发版清单（1.1.x 起的常规流程）
 
 面向仓库所有者与代理执行者。目标是**每个 commit 只构建一次**，发布的字节与被 smoke 验证的字节一致。
-流程依据：M4-15（复用门禁产物）、T16.30（三个入口及同版本资产不可覆盖）。
+流程依据：M4-15（复用门禁产物）、T16.35（只发布正式通道，不覆盖同版本资产）。
+
+不提供候选通道；试用请手动下载并安装预发布 Release，预发布不会进入更新通道。
 
 ## 0. 前提
 
@@ -25,76 +27,43 @@
 - [ ] 把上面所有改动合成**一次推送**到 main。CI 的 `build` 就是这次发布唯一的构建。
 - [ ] 等 `test` 与 `build` 都成功，记下 `build` 的 run id 与 SHA。
 
-## 3. 发 RC（预发布 + 持久的 RC 通道）
+## 3. 发 Release
 
 ```bash
-tools/release/rc.sh 1.2.1 --dry-run
-tools/release/rc.sh 1.2.1
+bash tools/release/release.sh 1.2.1 --dry-run
+bash tools/release/release.sh 1.2.1
 ```
 
-在干净工作树上运行。脚本核对 HEAD 的版本、迁移契约、发布说明和同 SHA 的成功门禁，推送下一个
-`v<ver>-r<n>-rc<N>`（从 `rc1` 起，绝不覆盖），等待 `release-candidate`，打印预发布 URL 和 26/27 件资产。
-确认预发布来自同一 commit 的门禁后，派发 `promote.yml`（`release_tag=RC tag`, `publish_target=rc`）。
-签名清单会持久写到 [`channel-rc`](https://github.com/leochien0102/aether-proxy-channel/releases/tag/channel-rc)，
-供开启 RC 检查的设备读取。清单整体 `prerelease: true`，24 个架构/格式格子的哈希与 RC 一致；`previous`
-取 stable 当前同包条目。下一次发 RC 会替换旧条目，成功发布 stable 后清空。
-RC 包沿用最终包版本（如 `1.2.1-r1`）；这一步**不写 stable、不打正式 tag、不建正式 Release**。
-未通过试用就停在这里。三条入口的 `--dry-run` 只打印计划，允许查询 GitHub 元数据；不会推 tag 或派发工作流。
-`rc.sh 0.0.0-dryrun --dry-run` 是合成示例，只借一个已发布版本的真实门禁来展示计划。
+正式入口核对干净工作树、HEAD 版本、迁移契约、发布说明及同 SHA 的成功门禁，再推正式 tag。
+stable 还没有该版本时，`release-assets` 按 tag commit 下载门禁产物，组装 18 件正式包并验证 `SHA256SUMS`，
+再创建 Release（资产版本、SHA-256 与 commit 写入发布说明的 inventory 注释，不额外上传一件资产）。
+stable 已有该版本时，工作流只核对已有正式 Release 与 stable 的实际包字节，不重建、不创建或覆盖 Release。
 
-## 4. RC Promote（Release → RC 字节对照 → stable）
+正式 tag 已推但 Release 失败时，核对 tag commit 后手动重跑 app 仓 `release-assets.yml`（`tag=正式 tag`，
+`dry_run=false`），不要重推 tag。若同版本同名包与 stable 字节不同，停止发布；修复可复现性或提升
+组件的包修订号，再以新 commit 走门禁。
 
-```bash
-tools/release/promote-rc.sh v1.2.1-r1-rc1 --dry-run
-tools/release/promote-rc.sh v1.2.1-r1-rc1
-```
+## 4. Promote 写正式通道
 
-仅用于已通过试用的 RC。核对 prerelease、候选工作流和 manifest 与 RC tag 指向同一门禁 commit 后，先推同一
-commit 的正式 tag。此时 stable 没有该版本，`release-assets` 走 direct，从同 commit 门禁产物组 18 件并发布。
-再确认正式 Release 不是 draft/prerelease、正式 tag 与 RC 同 commit，并逐件比较 18 个正式包与对应 RC 包的
-SHA-256（noarch 选择 ARM64 构建副本）。**任一项不一致就停止，不写通道**。只有比对通过才用**正式 tag**
-派发 `promote.yml`（`publish_target=stable`）；stable 成功后清空持久的 `channel-rc`。
+`release.sh` 在正式 Release 成功后自动派发 channel 仓的 `promote.yml`。工作流只接受已发布的正式 tag，
+下载已发布包并验 18 件包、版本和 inventory（旧 Release 若无注释，则从资产名及下载字节计算）；
+随后预览并写入签名的 `channel-stable`，不重新构建包。入口最终核对正式 Release 与通道的实际下载字节，
+打印 Release URL、`current/previous` 与 24 个架构/格式格子的 SHA-256（noarch 每格式实际一件）。
 
-- **正式 tag 已推、Release 失败**：不要重打 tag；核对 tag commit 后手动重跑 app `release-assets.yml`
-  （`tag=正式 tag`, `dry_run=false`）。正式 Release 成功后再做下述比对。
-- **Release 已发、通道未推进**：先重新验证，再以正式 tag 派发 stable（示例）：
+Release 已发但通道未推进时，只需重跑通道仓 `promote.yml`（`release_tag=正式 tag`、`dry_run=false`），
+不用重发 Release。两边发布成功后可重跑只读对照：
+`python3 tools/release/verify.py compare leochien0102/aether-proxy v1.2.1-r1`。
 
-  ```bash
-  python3 tools/release/verify.py compare leochien0102/aether-proxy v1.2.1-r1 v1.2.1-r1-rc1 &&
-    gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f publish_target=stable
-  ```
-
-  若比对失败，保留 `channel-rc`，查明原因；不挪动 tag、不覆盖已发资产、不绕过比对。
-
-## 5. 发 Release（不经过 RC，Release 先于通道）
-
-```bash
-tools/release/release.sh 1.2.1 --dry-run
-tools/release/release.sh 1.2.1
-```
-
-前置检查与发 RC 相同。先推正式 tag；如果 stable 还没有该版本，`release-assets` 为 tag commit 选门禁、
-下载产物并组装 18 件正式包，验证 `SHA256SUMS` 后创建 Release。再派发 `promote.yml`（正式 tag、`publish_target=stable`）
-推进 stable，并在成功后清理残留的 `channel-rc`。入口打印 Release URL、`current/previous` 及 24 个架构/格式格子的
-SHA-256（noarch 每格式实际一件）。
-
-- **Release 已发、通道未推进**：重跑通道仓 `promote.yml`，`release_tag=正式 tag`, `dry_run=false`；不重发 Release。
-- **直接发版组包失败**：修复门禁产物/权限后在 app 仓重跑 `release-assets.yml`，不重新推同一个 tag。
-  如同版本同名包与 stable 的字节不同，停止发布，检查可复现性或提升该组件的包修订号，再以新 commit 走门禁。
-  新发版不从旧 Release 替换门禁包；历史上做过此类替换的 RC 只可用于 `--dry-run`，不能再推进。
-
-已部署新工作流后，可单独手动派发远端只读验收：
+本地 `--dry-run` 只查询 GitHub 元数据并打印计划，不打 tag、不派发工作流。部署后可另行手动派发远端预演：
 
 ```bash
 gh workflow run release-assets.yml -R leochien0102/aether-proxy --ref main -f tag=v1.2.1-r1 -f dry_run=true
-gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f publish_target=stable -f dry_run=true
-gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1-rc1 -f publish_target=rc -f dry_run=true
+gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f dry_run=true
 ```
 
-前者强制走直发组包，即使 stable 已有此版本；后者读取已发布的 18 件套，打印将保留/写入的清单版本和哈希。
-第三条校验 RC 并预演持久 RC 清单。以上远端 dry-run 都不修改 Release 或通道；本地入口的 dry-run 不执行这些命令。
+前者强制从门禁组装 18 件包；后者读取正式 Release，预览将保留或写入的清单及哈希。两者都不改远端 Release。
 
-## 6. 固件 feed 钉版（**每次发版必做**，2026-11-17 起固化）
+## 5. 固件 feed 钉版（**每次发版必做**，2026-11-17 起固化）
 
 固件构建从 `openwrt-actions` 的 `configs/feeds.conf` 取 `aetherproxy` 提交，**与通道无关**；
 不同步就会出现"在线更新已是新版、刷固件还是旧版"。
@@ -105,7 +74,7 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 - [ ] 提交并推送 `openwrt-actions` main（`📌 feeds: pin aether-proxy <版本>`）。
 - [ ] 固件构建只跑每周日定时 + 手动 dispatch，推送本身不触发；需要立即验证时手动 dispatch。
 
-## 7. 设备与记录
+## 6. 设备与记录
 
 - [ ] H28K 页面更新；核对版本、`UPDATE_STARTED/INSTALLED` 事件、无 `PREREQ_*`、配置哈希、`boot_id`。
 - [ ] 写 `docs/validation/<ver>-release-<date>.md`，更新 `docs/tasks/README.md`。
@@ -115,11 +84,10 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 
 | 现象 | 处理 |
 |---|---|
-| RC 失败「No successful build.yml run」/ 产物过期 | 先让门禁在该 SHA 成功；确认 `build.yml` 产物保留期（90 天） |
-| RC 失败「Missing/duplicate SDK artifact matrix」 | 门禁运行不完整，重跑门禁，不要绕过 |
-| promote 失败「Same version has different assets」 | 仅使用同 commit 门禁字节；不得覆盖同版本资产或手工改清单，按第 5 节处理 |
-| promote 失败「RC tag/commit binding mismatch」 | RC 与正式 tag 必须在同一 commit |
-| release-assets 失败（版本不一致/资产缺失） | 按第 4–5 节区分匹配清单路径与直发路径后重跑 |
+| release-assets 失败「No successful build.yml run」/ 产物过期 | 先让门禁在该 SHA 成功；确认 `build.yml` 产物保留期（90 天） |
+| release-assets 失败「Missing/duplicate SDK artifact matrix」 | 门禁运行不完整，重跑门禁，不要绕过 |
+| promote 失败「Same version has different assets」 | 仅使用同 commit 门禁字节；不得覆盖同版本资产或手工改清单，按第 3–4 节处理 |
+| release-assets 失败（版本不一致/资产缺失） | 按第 3 节核对 tag 与门禁后重跑 |
 
 **回退**：只允许显式决定——更新通道 `AETHER_PROXY_REF` 走直发 `packages`（会再构建一次），并在
 `docs/validation/` 里写明原因；不要静默回退。

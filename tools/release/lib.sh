@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Shared helpers for the three operator entry points. All mutations are explicit.
+# Shared helpers for the release entry point. All mutations are explicit.
 set -euo pipefail
 RELEASE_TOOLS=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 APP_REPO=leochien0102/aether-proxy
 CHANNEL_REPO=leochien0102/aether-proxy-channel
 FORMAL_RE='^v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$'
-RC_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-r[0-9]+)?-rc[1-9][0-9]*$'
 
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 command_plan() { printf '+ '; printf '%q ' "$@"; printf '\n'; }
@@ -32,7 +31,7 @@ remote_tags() {
 
 remote_commit() {
     local tag=$1
-    python3 - "$RELEASE_TOOLS" "$APP_REPO" "$tag" <<'PY'
+    python3 -B - "$RELEASE_TOOLS" "$APP_REPO" "$tag" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
 from verify import commit_for
@@ -135,9 +134,8 @@ wait_workflow() {
 }
 
 promote() {
-    local tag=$1 target=$2 request_id
-    [[ $target == rc || $target == stable ]] || die "Unknown publish target: $target"
-    local args=(gh workflow run promote.yml -R "$CHANNEL_REPO" --ref main -f "release_tag=$tag" -f "publish_target=$target")
+    local tag=$1 request_id
+    local args=(gh workflow run promote.yml -R "$CHANNEL_REPO" --ref main -f "release_tag=$tag")
     if "$DRY_RUN"; then
         command_plan "${args[@]}" -f dry_run=true
     else
@@ -146,23 +144,4 @@ promote() {
         "${args[@]}" -f "request_id=$request_id"
         wait_workflow "$CHANNEL_REPO" promote.yml workflow_dispatch "Promote $tag $request_id"
     fi
-}
-
-rc_inventory_plan() {
-    local arch pkg ipk_arch previous
-    previous=$(gh api "repos/$APP_REPO/actions/workflows/release-candidate.yml/runs?head_sha=$SHA&event=push&per_page=100" \
-        --jq '[.workflow_runs[] | select(.conclusion == "success")] | first | .head_branch // empty')
-    if [[ $previous =~ $RC_RE ]]; then
-        printf 'RC inventory (from %s, published at the same gate commit):\n' "$previous"
-        gh release view "$previous" -R "$APP_REPO" --json assets --jq '.assets[].name'
-        return
-    fi
-    printf 'RC inventory (24 packages; glob for the exact gate-built version):\n'
-    for arch in aarch64_generic x86_64; do
-        for pkg in aether-proxy luci-app-aether-proxy luci-i18n-aether-proxy-zh-cn aether-xray chinadns-ng aether-dns; do
-            case $pkg in aether-proxy|luci-*) ipk_arch=all ;; *) ipk_arch=$arch ;; esac
-            printf '  %s--%s_*_%s.ipk\n  %s--%s-*.apk\n' "$arch" "$pkg" "$ipk_arch" "$arch" "$pkg"
-        done
-    done
-    printf '  rc-manifest.json\n  SHA256SUMS\n  compatibility.json (only when reviewed in the tagged commit)\n'
 }

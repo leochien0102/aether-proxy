@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only release verification and channel-backed formal staging."""
+"""Read-only release verification and formal Release/stable byte checks."""
 import hashlib
 import json
 import re
@@ -8,16 +8,13 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from gate import api_pages
-from stage import ARCH_ALL, formal_name, write_formal_metadata
+from stage import ARCH_ALL
 
-APP = 'leochien0102/aether-proxy'
 CHANNEL = 'leochien0102/aether-proxy-channel'
 ARCHES = ('aarch64_generic', 'x86_64')
 FORMATS = ('ipk', 'apk')
 NAMES = (*ARCH_ALL, 'aether-xray', 'chinadns-ng', 'aether-dns')
 FORMAL = r'v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+'
-RC = r'v[0-9]+\.[0-9]+\.[0-9]+(?:-r[0-9]+)?-rc[1-9][0-9]*'
 
 
 def gh(*args):
@@ -39,10 +36,10 @@ def commit_for(repo, tag):
     raise ValueError(f'Tag does not resolve to a commit: {tag}')
 
 
-def published(repo, tag, prerelease=False):
+def published(repo, tag):
     release = api(repo, 'releases/tags/' + tag)
     if (release['tag_name'] != tag or release['draft'] is not False
-            or release['prerelease'] is not prerelease):
+            or release['prerelease'] is not False):
         raise ValueError(f'Draft/prerelease mismatch: {tag}')
     return release
 
@@ -54,55 +51,6 @@ def download(repo, tag, directory, *patterns):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def read_rc(repo, tag, directory, all_assets=False):
-    if not re.fullmatch(RC, tag):
-        raise ValueError('Expected an RC tag')
-    release = published(repo, tag, prerelease=True)
-    commit = commit_for(repo, tag)
-    # A successful candidate run binds the published manifest to the exact gate-selected commit.
-    runs = api_pages(repo, f'actions/workflows/release-candidate.yml/runs?head_sha={commit}&event=push&per_page=100',
-                     'workflow_runs')
-    if not any(r['head_sha'] == commit and r['head_branch'] == tag and r['event'] == 'push'
-               and r['conclusion'] == 'success' for r in runs):
-        raise ValueError(f'No successful release-candidate run for {tag} at {commit}')
-    download(repo, tag, directory, *(() if all_assets else ('rc-manifest.json', 'SHA256SUMS')))
-    manifest = json.loads((directory / 'rc-manifest.json').read_text())
-    target = manifest['target_tag']
-    if (manifest['schema'] != 1 or manifest['rc_tag'] != tag or manifest['commit'] != commit
-            or not re.fullmatch(FORMAL, target)
-            or not re.fullmatch(re.escape(target.split('-r')[0]) + r'(?:-r' + target.split('-r')[1] + r')?-rc[1-9][0-9]*', tag)):
-        raise ValueError('RC tag/commit/target mismatch')
-    sums = {}
-    for line in (directory / 'SHA256SUMS').read_text().splitlines():
-        match = re.fullmatch(r'([0-9a-f]{64})  ([A-Za-z0-9._-]+)', line)
-        if not match or match[2] in sums:
-            raise ValueError('Invalid RC checksum list')
-        sums[match[2]] = match[1]
-    if (set(sums) | {'SHA256SUMS'} != {a['name'] for a in release['assets']}
-            or sums.get('rc-manifest.json') != digest(directory / 'rc-manifest.json')):
-        raise ValueError('RC checksum list does not bind the published assets')
-    if all_assets and any(digest(directory / name) != value for name, value in sums.items()):
-        raise ValueError('RC asset checksum mismatch')
-    entries = manifest['assets']
-    matrix = {(n, a, f) for n in NAMES for a in ARCHES for f in FORMATS}
-    if len(entries) != 24 or {(e['package'], e['arch'], e['format']) for e in entries} != matrix:
-        raise ValueError('Invalid RC package matrix')
-    for e in entries:
-        if (not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.+~_-]*\.' + e['format'], e['filename'])
-                or '..' in e['filename'] or sums.get(e['asset']) != e['sha256']):
-            raise ValueError('Unbound RC package')
-    return manifest
-
-
-def gate_only_rc(manifest):
-    return all(e.get('source') == 'built' for e in manifest['assets'])
-
-
-def rc_inventory(manifest, field):
-    return {formal_name(e['package'], e['arch'], e['format'], e['filename']): e[field]
-            for e in manifest['assets'] if e['package'] not in ARCH_ALL or e['arch'] == ARCHES[0]}
 
 
 def stable_only(value):
@@ -152,34 +100,18 @@ def channel_packages(manifest):
                 yield name, arch, fmt, asset
 
 
-def channel_stage(repo, tag, commit):
+def publication_route(repo, tag, commit):
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
         manifest = stable_manifest(root)
         if not matches_version(manifest, tag):
             print('mode=direct')
             return
-        selected = {a['url']: a['sha256'] for _, _, _, a in channel_packages(manifest)}
-        # A version match is not a provenance check: require a matching immutable RC
-        # whose candidate workflow succeeded for this exact formal tag commit.
-        candidates = [r['tag_name'] for page in json.loads(gh('api', '--paginate', '--slurp',
-                      f'repos/{repo}/releases?per_page=100')) for r in page if r['prerelease'] and not r['draft']
-                      and re.fullmatch(RC, r['tag_name']) and r['tag_name'].rsplit('-rc', 1)[0] in
-                      (tag, tag.split('-r')[0])]
-        for candidate in candidates:
-            if commit_for(repo, candidate) != commit:
-                continue
-            dest = root / candidate
-            rc = read_rc(repo, candidate, dest)
-            if rc['target_tag'] == tag and gate_only_rc(rc) and rc_inventory(rc, 'sha256') == selected:
-                break
-        else:
-            raise ValueError('Matching stable version has no byte-identical RC for the formal tag commit')
-        out = Path('release-assets')
-        download(CHANNEL, 'channel-stable', out, *sorted(selected))
-        if {p.name: digest(p) for p in out.iterdir()} != selected:
-            raise ValueError('Stable manifest/package checksum mismatch')
-        write_formal_metadata(out, commit, rc_inventory(rc, 'version'))
+        # A matching stable version permits an idempotent rerun, not a new
+        # Release assembled from mutable channel assets.
+        if commit_for(repo, tag) != commit:
+            raise ValueError('Formal tag commit changed')
+        compare_bytes(repo, tag, root, manifest, log=sys.stderr)
         print('mode=channel')
 
 
@@ -199,84 +131,51 @@ def check_direct():
                             raise ValueError(f'Gate bytes conflict with published package {name}; bump its package release')
 
 
-def rc_channel_summary(repo, tag):
-    with TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        rc = read_rc(repo, tag, root / 'rc')
-        release = published(CHANNEL, 'channel-rc', prerelease=True)
-        download(CHANNEL, 'channel-rc', root, 'manifest.json')
-        manifest = json.loads((root / 'manifest.json').read_text())
-        if (manifest['schema'] != 2 or manifest.get('prerelease') is not True
-                or manifest.get('rc_tag') != tag or manifest.get('commit') != rc['commit']):
-            raise ValueError('Published channel-rc does not match the requested RC')
-        cells = {(name, arch, fmt): (entry['current']['version'], asset['url'], asset['sha256'])
-                 for name, entry in manifest['packages'].items()
-                 for arch, formats in entry['current']['assets'].items() for fmt, asset in formats.items()}
-        expected = {(e['package'], e['arch'], e['format']): (e['version'], e['asset'], e['sha256'])
-                    for e in rc['assets']}
-        release_names = {a['name'] for a in release['assets']}
-        if (len(cells) != 24 or cells != expected
-                or not ({v[1] for v in cells.values()} | {'manifest.json', 'manifest.json.sig'}) <= release_names):
-            raise ValueError('Published channel-rc package matrix differs from the RC')
-        print(f'{release["html_url"]} (manifest version: {manifest["packages"]["aether-proxy"]["current"]["version"]})')
-        for (name, arch, fmt), (version, _, sha) in sorted(cells.items()):
-            print(f'{name} {version} {arch}/{fmt} {sha}  (RC = channel-rc)')
+def compare_bytes(repo, tag, root, manifest, log):
+    release = published(repo, tag)
+    if not matches_version(manifest, tag):
+        raise ValueError('Stable current version does not match the Release')
+    assets = {(n, a, f): item for n, a, f, item in channel_packages(manifest)}
+    expected = {a['url']: a['sha256'] for a in assets.values()}
+    names = {a['name'] for a in release['assets']}
+    if len(expected) != 18 or names - {'SHA256SUMS'} != set(expected):
+        raise ValueError('Formal Release/stable package set mismatch')
+    out = root / 'formal'
+    download(repo, tag, out, '*.ipk', '*.apk')
+    if {p.name: digest(p) for p in out.iterdir()} != expected:
+        raise ValueError('Formal Release/stable checksum mismatch')
+    channel = root / 'stable'
+    download(CHANNEL, 'channel-stable', channel, *sorted(expected))
+    if {p.name: digest(p) for p in channel.iterdir()} != expected:
+        raise ValueError('Published channel assets do not match its manifest')
+    for name in NAMES:
+        item = manifest['packages'][name]
+        print(f'{name}: current={item["current"]["version"]} previous={(item.get("previous") or {}).get("version", "-")}',
+              file=log)
+        for arch in ARCHES:
+            for fmt in FORMATS:
+                asset = assets[name, 'all' if name in ARCH_ALL else arch, fmt]
+                print(f'  {arch}/{fmt}: {asset["sha256"]}  {asset["url"]}  (Release = channel)', file=log)
+    print(release['html_url'], file=log)
 
 
-def compare(repo, tag, rc_tag=None):
+def compare(repo, tag):
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
-        release = published(repo, tag)
-        if rc_tag:
-            rc = read_rc(repo, rc_tag, root / 'rc', all_assets=True)
-            if rc['target_tag'] != tag or rc['commit'] != commit_for(repo, tag) or not gate_only_rc(rc):
-                raise ValueError('Formal Release is not bound to the same gate-only RC commit')
-        out = root / 'formal'
-        download(repo, tag, out, '*.ipk', '*.apk')
-        hashes = {p.name: digest(p) for p in out.iterdir()}
-        if rc_tag:
-            expected = rc_inventory(rc, 'sha256')
-            if len(expected) != 18 or hashes != expected or {a['name'] for a in release['assets']} != set(expected):
-                raise ValueError('Formal Release/RC package checksum mismatch')
-            for name, value in sorted(hashes.items()):
-                print(f'{value}  {name}  (Release = RC)')
-        else:
-            manifest = stable_manifest(root)
-            if not matches_version(manifest, tag):
-                raise ValueError('Stable current version does not match the Release')
-            assets = {(n, a, f): item for n, a, f, item in channel_packages(manifest)}
-            expected = {a['url']: a['sha256'] for a in assets.values()}
-            if len(expected) != 18 or hashes != expected:
-                raise ValueError('Formal Release/stable checksum mismatch')
-            with TemporaryDirectory() as channel:
-                download(CHANNEL, 'channel-stable', channel, *sorted(expected))
-                if {p.name: digest(p) for p in Path(channel).iterdir()} != expected:
-                    raise ValueError('Published channel assets do not match its manifest')
-            for name in NAMES:
-                item = manifest['packages'][name]
-                print(f'{name}: current={item["current"]["version"]} previous={(item.get("previous") or {}).get("version", "-")}')
-                for arch in ARCHES:
-                    for fmt in FORMATS:
-                        a = assets[name, 'all' if name in ARCH_ALL else arch, fmt]
-                        print(f'  {arch}/{fmt}: {a["sha256"]}  {a["url"]}  (Release = channel)')
-        print(release['html_url'])
+        compare_bytes(repo, tag, root, stable_manifest(root), log=sys.stdout)
 
 
 if __name__ == '__main__':
     action, repo, tag, *rest = sys.argv[1:]
     try:
-        if action in ('rc', 'rc-gate-only'):
-            with TemporaryDirectory() as tmp:
-                m = read_rc(repo, tag, Path(tmp))
-                if action == 'rc-gate-only' and not gate_only_rc(m):
-                    raise ValueError('RC contains historically reconciled packages; publish a gate-only RC')
-                print(m['commit'], m['target_tag'])
-        elif action == 'rc-channel':
-            rc_channel_summary(repo, tag)
-        elif action == 'channel-stage':
-            channel_stage(repo, tag, *rest)
+        if not re.fullmatch(FORMAL, tag):
+            raise ValueError('Expected a formal vVERSION-rN tag')
+        if action == 'publication-route':
+            publication_route(repo, tag, *rest)
         elif action == 'compare':
-            compare(repo, tag, *rest)
+            if rest:
+                raise ValueError('compare accepts only the app repository and formal tag')
+            compare(repo, tag)
         elif action == 'check-direct':
             check_direct()
         elif action == 'stable-matches':
