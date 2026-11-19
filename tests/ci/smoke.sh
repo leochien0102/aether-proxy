@@ -139,15 +139,18 @@ if command -v mkfifo >/dev/null 2>&1 && mkfifo "$work/log.fifo" && [ -p "$work/l
 else
 	bad 'mkfifo available and creates FIFO'
 fi
-awk 'BEGIN { for (i = 1; i <= 500; i++) printf "100 sample %d\n", i }' > "$work/flood"
-awk 'BEGIN { for (i = 1; i <= 20; i++) printf "sample %d\n", i }' > "$work/filtered.expected"
-printf '%s\n' 'aether-proxy: smoke output rate limited, dropped 480 lines between 00:01:40 and 00:01:40' \
+# Start outside the grace window; zero-based messages make sample 20 the first drop.
+awk 'BEGIN { for (i = 0; i < 500; i++) printf "100 sample %d\n", i }' > "$work/flood"
+awk 'BEGIN { for (i = 0; i < 20; i++) printf "sample %d\n", i }' > "$work/filtered.expected"
+printf '%s\n' \
+	'aether-proxy: smoke output rate limited, dropped 1 lines between 00:01:40 and 00:01:40, first: sample 20' \
+	'aether-proxy: smoke output rate limited, dropped 480 lines between 00:01:40 and 00:01:40, first: sample 20' \
 	>> "$work/filtered.expected"
-if TZ=UTC0 awk -v test_clock=1 -v name=smoke -f "$root/usr/share/aether-proxy/logfilter.awk" \
+if TZ=UTC0 awk -v test_clock=1 -v test_start=90 -v name=smoke -f "$root/usr/share/aether-proxy/logfilter.awk" \
 	"$work/flood" > "$work/filtered" && cmp -s "$work/filtered.expected" "$work/filtered"; then
-	ok 'firmware awk limits 500 lines to 20 plus EOF summary'
+	ok 'firmware awk limits 500 lines to 20 with first-drop and EOF summaries'
 else
-	bad 'firmware awk limits 500 lines to 20 plus EOF summary'
+	bad 'firmware awk limits 500 lines to 20 with first-drop and EOF summaries'
 fi
 
 # docs/05 "校验规则" rule 1: a node is required only when enabled=1. The packaged

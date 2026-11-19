@@ -244,7 +244,7 @@ def verify_scenarios(work, golden):
 		'data': 'FAIL  data status counts chnlist lines',
 		'components': 'FAIL  components exits 0 (got 1)',
 		'filter-missing': 'FAIL  file /usr/share/aether-proxy/logfilter.awk',
-		'filter-bypass': 'FAIL  firmware awk limits 500 lines to 20 plus EOF summary',
+		'filter-bypass': 'FAIL  firmware awk limits 500 lines to 20 with first-drop and EOF summaries',
 	}
 	for manager in ('opkg', 'apk'):
 		result, root = run_scenario(work, golden, manager, '')
@@ -252,7 +252,7 @@ def verify_scenarios(work, golden):
 			f'{manager}: complete smoke PASS', result.stdout)
 		expect('PASS  installed init sets nofile 1000000 1000000' in result.stdout,
 			f'{manager}: installed init nofile limit checked', result.stdout)
-		expect('PASS  firmware awk limits 500 lines to 20 plus EOF summary' in result.stdout,
+		expect('PASS  firmware awk limits 500 lines to 20 with first-drop and EOF summaries' in result.stdout,
 			f'{manager}: installed filter and mkfifo exercised', result.stdout)
 		for kind in ARTIFACTS:
 			expect(f'PASS  render {kind} matches host golden' in result.stdout,
