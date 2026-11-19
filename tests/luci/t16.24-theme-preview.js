@@ -181,12 +181,19 @@ async function verifyToolbars(page, view, narrow = false) {
 	if (view === 'updates') {
 		const block = page.locator('.cbi-section').filter({ has: page.locator('.aether-update-status') });
 		const row = block.locator('.aether-update-status');
-		const note = block.locator(':scope > .cbi-map-descr');
+		const heading = block.getByRole('heading', { level: 3, name: tr('Component updates'), exact: true });
+		const note = heading.locator('.aether-update-manual-note');
 		const button = row.getByRole('button', { name: tr('Check for updates') });
 		assert.equal(await block.locator(':scope > *').evaluateAll(nodes => nodes.map(n => n.className || n.tagName).join(',')),
-			'H3,aether-update-status,aether-update-feedback,cbi-map-descr,table');
+			'aether-update-heading,aether-update-status,aether-update-feedback,table');
 		assert.match(await row.innerText(), /上次检查: .* — https:\/\//);
 		assert.match(await note.innerText(), /从发布页.*降级前注意/);
+		assert.ok(await heading.evaluate((el, narrow) => {
+			const [title, note] = el.children;
+			const a = title.getBoundingClientRect(), b = note.getBoundingClientRect();
+			const fits = b.right <= el.getBoundingClientRect().right + 1 && note.scrollWidth <= note.clientWidth + 1;
+			return fits && (narrow ? a.bottom <= b.top + 1 : a.right <= b.left && a.bottom > b.top);
+		}, narrow), 'Manual guidance is beside the title on desktop and wraps without overflow at 360 px');
 		assert.equal(await button.isVisible(), true);
 		assert.equal(await row.getByRole('switch', { name: tr('Check for release candidates') }).isVisible(), true);
 		assert.ok(await row.evaluate(el => {

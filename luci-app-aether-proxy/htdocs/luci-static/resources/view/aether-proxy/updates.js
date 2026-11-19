@@ -143,7 +143,8 @@ return view.extend({
 			E('input', { type: 'checkbox', role: 'switch', checked: this.rc || null, disabled: !vm.can_check || null,
 				'aria-describedby': 'aether-update-channel-note',
 				change: ui.createHandlerFn(this, function(ev) { return this.set_channel(ev.target.checked); }) }),
-			_('Check for release candidates', 'aether-proxy')
+			_('Check for release candidates', 'aether-proxy'),
+			E('span', { id: 'aether-update-channel-note', hidden: true }, model.channel_note())
 		]);
 		const statusRow = E('div', { class: 'aether-update-status',
 			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0' }, [
@@ -156,12 +157,15 @@ return view.extend({
 		const feedback = E('div', { class: 'aether-update-feedback', style: 'margin:0.25em 0 0',
 			role: 'status', hidden: !hasFeedback || null },
 			[ this.progress, this.summary, ...(vm.error ? [E('div', {}, vm.error)] : []) ]);
-		const note = E('div', { class: 'cbi-map-descr', style: 'max-width:56em; margin:0.5em 0' }, [
-			E('div', { id: 'aether-update-channel-note' }, model.channel_note()), model.manual_install_note()
+		const heading = E('h3', { class: 'aether-update-heading', 'aria-labelledby': 'aether-update-title',
+			style: 'display:flex; flex-wrap:wrap; align-items:baseline; gap:0.25em 1em' }, [
+			E('span', { id: 'aether-update-title' }, _('Component updates', 'aether-proxy')),
+			E('span', { class: 'aether-update-manual-note',
+				style: 'flex:1 1 28em; min-width:0; font-size:0.75em; font-weight:400; line-height:1.45; '
+					+ 'white-space:normal; overflow-wrap:anywhere' }, model.manual_install_note())
 		]);
 		this.inventory.replaceChildren(ap.section({
-			title: _('Component updates', 'aether-proxy'),
-			body: [ statusRow, feedback, note, table ]
+			body: [ heading, statusRow, feedback, table ]
 		}), ap.section({
 			title: _('Running components', 'aether-proxy'),
 			description: E('span', { title: model.migration_note() },

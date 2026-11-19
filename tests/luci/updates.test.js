@@ -596,11 +596,18 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === true));
 });
 
-test('T16.31 Component updates orders status, feedback, note and table', async () => {
+test('T16.31 Component updates puts guidance in the heading and reserves the body for status, feedback and table', async () => {
 	const h = await ready_view(status());
 	const [packages, components] = h.page.inventory.children;
-	const [heading, row, feedback, note, table] = packages.children;
-	assert.equal(text(heading), '组件更新');
+	const [heading, row, feedback, table] = packages.children;
+	assert.equal(packages.children.length, 4);
+	assert.equal(heading.tag, 'h3');
+	const [title, note] = heading.children;
+	assert.equal(heading['aria-labelledby'], title.id);
+	assert.equal(text(title), '组件更新');
+	assert.equal(text(note), model.manual_install_note());
+	assert.match(heading.style, /flex-wrap:wrap/);
+	assert.match(note.style, /font-size:0\.75em/);
 	assert.equal(row.class, 'aether-update-status');
 	for (const style of ['display:flex', 'flex-wrap:wrap', 'align-items:center', 'justify-content:space-between', 'gap:0.5em 1em'])
 		assert.ok(row.style.includes(style));
@@ -609,9 +616,6 @@ test('T16.31 Component updates orders status, feedback, note and table', async (
 	assert.equal(text(buttons(row)[0]), '检查更新');
 	assert.equal(feedback.class, 'aether-update-feedback');
 	assert.equal(feedback.hidden, true);
-	assert.equal(note.class, 'cbi-map-descr');
-	assert.match(note.style, /max-width:56em/);
-	assert.ok(text(note).includes(model.manual_install_note()));
 	assert.equal(table.tag, 'table');
 	assert.equal(text(components.children[0]), '运行中的组件');
 	assert.equal(components.children[1].children[0].title, model.migration_note());
@@ -668,7 +672,7 @@ test('T16.31 RC switch applies UCI before rechecking; badges only on available R
 	assert.equal(badge().length, 1);
 	assert.equal(text(badge()[0]), '预发布');
 	assert.equal(badge()[0].title, '预发布，可能与正式版同版本号。');
-	assert.equal(h.page.inventory.children[0].children[4].children[2].children[4].textContent, '最新');
+	assert.equal(h.page.inventory.children[0].children[3].children[2].children[4].textContent, '最新');
 	assert.ok(!buttons(h.page.inventory).some(b => text(b) === '立即更新'), 'RC is discovery-only, not a stable install target');
 	await flag().click();
 	assert.deepEqual(h.channelWrites[2], ['aetherproxy', 'main', { update_channel: 'stable' }]);
@@ -767,7 +771,7 @@ test('T10.46 scenario 2: model and view contain no grouped rollback or manual re
 });
 const manual_note = '如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，' +
 	'或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。';
-test('T10.46 / T16.28: translated manual install guidance stays visible above the package table', async () => {
+test('T10.46: translated manual install guidance stays visible in the title row', async () => {
 	assert.equal(model.manual_install_note(), manual_note);
 	const h = load_view();
 	await h.page.render();
@@ -775,9 +779,9 @@ test('T10.46 / T16.28: translated manual install guidance stays visible above th
 		h.page.status = s;
 		h.page.show_inventory();
 		const [packages] = h.page.inventory.children;
-		const description = packages.children[3];
-		assert.equal(description.class, 'cbi-map-descr');
-		assert.ok(text(description).endsWith(model.manual_install_note()));
+		const description = packages.children[0].children[1];
+		assert.equal(description.class, 'aether-update-manual-note');
+		assert.equal(text(description), model.manual_install_note());
 		assert.ok(descendants(description).every(node => !node.hidden && node.title == null));
 		assert.equal(packages.children.at(-1).tag, 'table');
 	}
