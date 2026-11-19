@@ -226,6 +226,47 @@ var ap = baseclass.extend({
 	call: call,
 	load_config: load_config,
 
+	hint_icon: function({ text, label, icon = 'ⓘ' }) {
+		const bubble = E('span', {
+			hidden: true, style: 'position:absolute; top:100%; left:0; z-index:10; '
+				+ 'text-align:start; white-space:normal; width:18em; max-width:70vw; padding:0.5em; '
+				+ 'background:var(--background-color, Canvas); color:var(--text-color, CanvasText); '
+				+ 'border:1px solid currentColor; border-radius:0.25em'
+		}, [text]);
+		let open = false, pointerOpen = null;
+		const show = visible => {
+			open = visible;
+			bubble.hidden = !visible;
+			button.setAttribute('aria-expanded', String(visible));
+		};
+		const button = E('span', {
+			role: 'button', tabindex: '0', title: text,
+			'aria-label': label, 'aria-expanded': 'false',
+			style: 'position:relative; font-size:1em; cursor:help; margin-left:0.25em',
+			// Pointer focus precedes click: toggle from the pre-focus state on touch too.
+			pointerdown: () => { pointerOpen = open; },
+			pointercancel: () => { pointerOpen = null; },
+			focus: () => show(true),
+			blur: () => { pointerOpen = null; show(false); },
+			click: ev => {
+				ev.preventDefault();
+				ev.stopPropagation(); // A surrounding SDK label must not activate its control.
+				show(!(pointerOpen ?? open));
+				pointerOpen = null;
+			},
+			keydown: ev => {
+				if (ev.key !== 'Escape' && ev.key !== 'Enter' && ev.key !== ' ')
+					return;
+				ev.preventDefault();
+				ev.stopPropagation();
+				pointerOpen = null;
+				if (!ev.repeat)
+					show(ev.key !== 'Escape' && !open);
+			}
+		}, [icon, bubble]);
+		return button;
+	},
+
 	/* Pass the previous details (or { open: false }) as collapsible to retain
 	   local disclosure state without coupling separate sections by title. */
 	section_actions: function(actions, leading, inline = false) {

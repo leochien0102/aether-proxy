@@ -28,6 +28,77 @@ const failoverLimitText = () => _('Automatic failover supports at most %s nodes.
 	.format(FAILOVER_MAX_NODES);
 const REQUIRED_COLOR = 'var(--error-color-high, #c53030)';
 
+const failoverStyle = `
+.aether-warning { color: var(--warn-color-high, #e0a800); opacity: .85; }
+@media (prefers-color-scheme: dark) {
+	:root:not([data-darkmode="false"]) .aether-warning { color: var(--warn-color-high, #f0b429); }
+}
+:root[data-darkmode="true"] .aether-warning { color: var(--warn-color-high, #f0b429); }
+.aether-failover-title {
+	display: block;
+	text-align: center;
+	white-space: nowrap;
+	/* Reserve column space at the header, not at each unchecked/checked control. */
+	min-inline-size: calc(17px + 0.45em + 5ch);
+}
+.cbi-value-field[data-name="_failover"] {
+	text-align: center !important;
+	white-space: nowrap;
+}
+.cbi-value-field[data-name="_failover"]:has(> .aether-tri--inactive) { opacity: .65; }
+.aether-tri {
+	--aether-tri-color: var(--primary-color-high, var(--primary, Highlight));
+	display: inline-grid;
+	grid-auto-flow: column;
+	align-items: center;
+	vertical-align: middle;
+}
+.aether-tri-box, .aether-tri-check { grid-area: 1 / 1; }
+.aether-tri-box {
+	box-sizing: border-box;
+	width: 17px;
+	height: 17px;
+	border: 1.5px solid currentColor;
+	border-radius: 4px;
+	background: transparent;
+}
+.aether-tri--off > .aether-tri-box { opacity: .55; }
+.aether-tri--mixed > .aether-tri-box,
+.aether-tri--on > .aether-tri-box,
+.cbi-value-field[data-name="_failover"]:hover .aether-tri-box,
+.aether-tri:hover > .aether-tri-box { border-color: var(--aether-tri-color); opacity: 1; }
+.aether-tri--on > .aether-tri-box { background: var(--aether-tri-color); }
+.aether-tri-check { display: grid; place-items: center; pointer-events: none; }
+.aether-tri--mixed > .aether-tri-check::after {
+	content: '';
+	width: 9px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--aether-tri-color);
+}
+.aether-tri--on > .aether-tri-check::after {
+	content: '';
+	box-sizing: border-box;
+	width: 9px;
+	height: 5px;
+	border: solid var(--background-color, Canvas);
+	border-width: 0 0 2px 2px;
+	transform: translateY(-1px) rotate(-45deg);
+}
+.aether-tri-count {
+	margin-inline-start: 0.45em;
+	opacity: .75;
+	font-variant-numeric: tabular-nums;
+}
+.aether-tri:focus-visible {
+	outline: 2px solid var(--aether-tri-color);
+	outline-offset: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.aether-tri-box { transition: border-color .12s ease, opacity .12s ease; }
+}
+`;
+
 function requiredValue(map, id, field) {
 	// SDK lookupOption searches mounted frames; initial renderFrame runs before
 	// they are attached. The cloned section is already complete at that point.
@@ -173,6 +244,7 @@ return baseclass.extend({
 		this.defaultUA = _('Reading…', 'aether-proxy');
 		this.changesGeneration = 0;
 		this.root = E('div');
+		this.failoverStyle = E('style', {}, [failoverStyle]);
 		// Keep these nodes across redraws so the timer never targets a detached node.
 		this.progress = E('div');
 		this.summary = E('div');
@@ -318,6 +390,17 @@ return baseclass.extend({
 		const title = active ? hint : hint + ' — ' + FAILOVER_INACTIVE;
 		const extra = state === 'off' ? uncheckedHint?.() : null;
 		box.setAttribute('title', extra ? title + ' — ' + extra : title);
+		if (state === 'mixed') {
+			let ratio = box.children[2];
+			if (!ratio) {
+				ratio = E('span', { 'class': 'aether-tri-count' });
+				box.appendChild(ratio);
+			}
+			ratio.textContent = count + '/' + total;
+		}
+		else if (box.children[2]) {
+			box.removeChild(box.children[2]);
+		}
 	},
 	refresh_failover: function() {
 		if (!this.failoverCells)
@@ -366,7 +449,10 @@ return baseclass.extend({
 					if (!ev.repeat)
 						return box.click();
 				}
-			}, E('span', { 'class': 'aether-tri-mark', 'aria-hidden': 'true' }));
+			}, [
+				E('span', { 'class': 'aether-tri-box', 'aria-hidden': 'true' }),
+				E('span', { 'class': 'aether-tri-check', 'aria-hidden': 'true' })
+			]);
 			const hint = uncheckedHint ? () => uncheckedHint(id) : null;
 			const paint = (state, active) => this.paint_failover(box, state, active, hint);
 			this.failoverCells[kind].set(id, { box, paint });
@@ -465,19 +551,13 @@ return baseclass.extend({
 				// LuCI renders the label only when the option title is a string.
 				const title = content.querySelector('[data-name="failover"] > .cbi-value-title');
 				if (title) {
-					title.appendChild(E('span', {
-						'class': 'aether-warning',
-						role: 'img',
-						tabindex: '0',
-						title: FAILOVER_RISK,
-						'aria-label': FAILOVER_RISK,
-						style: 'cursor:help; margin-left:0.35em; opacity:0.85',
-						click: ev => {
-							// The SDK label forwards clicks to the switch; the warning must not.
-							ev.stopPropagation();
-							ev.preventDefault();
-						}
-					}, [ '⚠' ]));
+					const hint = ap.hint_icon({
+						icon: '⚠',
+						label: _('Failover risk information', 'aether-proxy'),
+						text: FAILOVER_RISK
+					});
+					hint.setAttribute('class', 'aether-warning');
+					title.appendChild(hint);
 				}
 				content.classList?.remove('cbi-section');
 				return ap.section({ title: _('General settings', 'aether-proxy'), body: content });
@@ -745,7 +825,7 @@ return baseclass.extend({
 		form_defaults.section(s);
 		requiredOptions(s, model.required_fields);
 		return m.render().then(content => {
-			dom.content(self.root, content);
+			dom.content(self.root, [content, self.failoverStyle]);
 			self.show_results();
 		});
 	},

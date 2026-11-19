@@ -2147,6 +2147,10 @@ msgid "Frequent changes to your exit IP may trigger security checks on some site
 msgstr "频繁切换出口 IP 可能导致部分网站/应用触发风控，建议只在必要时开启。"
 
 msgctxt "aether-proxy"
+msgid "Failover risk information"
+msgstr "自动切换风险说明"
+
+msgctxt "aether-proxy"
 msgid "Proxy connections"
 msgstr "代理连接"
 

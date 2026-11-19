@@ -126,6 +126,9 @@ test('T10.57 scenario 2: Game mode dependency hiding survives inline display and
 test('T10.57 scenario 2: fixes add no media queries, stylesheets or theme-specific classes', () => {
 	for (const file of ['aether-proxy/subscriptions-block.js', 'view/aether-proxy/access.js']) {
 		const source = fs.readFileSync(path.join(RES, file), 'utf8');
-		assert.doesNotMatch(source, /@media|E\(['"]style['"]|E\(['"]link['"]|class:\s*['"][^'"]*proton/);
+		// The separate T16.27 hint/tri-state styles do not style SDK card flags.
+		const flagsSource = source.replace(/const failoverStyle = `[^`]*`;/, '')
+			.replace("this.failoverStyle = E('style', {}, [failoverStyle]);", '');
+		assert.doesNotMatch(flagsSource, /@media|E\(['"]style['"]|E\(['"]link['"]|class:\s*['"][^'"]*proton/);
 	}
 });

@@ -171,7 +171,7 @@ function loadModule(file, modules, env) {
 			return {};
 		/* Page harnesses keep their RPC/UI doubles, but exercise the shipped
 		 * config helper against their own UCI double (not a success-only stub). */
-		const shared = ['load_config', 'section', 'section_actions', 'form_section'];
+		const shared = ['load_config', 'section', 'section_actions', 'form_section', 'hint_icon'];
 		if (r.name == 'aether-proxy.common' && shared.some(method => !modules[r.name]?.[method])) {
 			modules[r.name] ??= {};
 			const common = loadModule(require('node:path').resolve(__dirname,
@@ -317,6 +317,17 @@ function element(tag, attrs = {}, children = []) {
 			this.children.length = 0;
 			if (text !== '')
 				this.children.push(textNode(text));
+		},
+		appendChild(child) {
+			insertDomNode(this.children, child);
+			return child;
+		},
+		removeChild(child) {
+			const index = this.children.indexOf(child);
+			if (index < 0)
+				throw new Error('NotFoundError');
+			this.children.splice(index, 1);
+			return child;
 		},
 		replaceChildren(...nodes) {
 			/* replaceChildren() converts DOMString arguments to text nodes (no

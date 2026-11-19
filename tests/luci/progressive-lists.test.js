@@ -1680,7 +1680,7 @@ test('T16.23: three shared sections contain their own headings, descriptions, to
 	assert.equal(h.fullRoot.children[0].textContent, '节点与订阅');
 	const { root, map: subMap, details } = h.subscriptions;
 	assert.deepEqual(h.fullRoot.children.slice(2), [root, page.root]);
-	assert.deepEqual(root.children, [subMap.node]);
+	assert.deepEqual(root.children, [subMap.node, h.subscriptions.failoverStyle]);
 	assert.deepEqual(subMap.sections.map(section => section.type), ['sub', 'subscription']);
 	const [general, subscriptionBlock] = subMap.node.children;
 	assert.equal(general.tag, 'div');
@@ -1905,7 +1905,7 @@ const failoverEffective = '当前节点不可达时自动切换。';
 const failoverUnlisted = '当前节点未加入名单，自动切换暂不生效。';
 const currentNodeHint = '当前节点；未加入名单时不会触发自动切换。';
 
-test('T16.19: failover risk warning is focusable in the label with the switch off or on', async () => {
+test('T16.27: failover risk warning shares the hint behavior without toggling the switch', async () => {
 	for (const value of ['0', '1']) {
 		const h = await harness('nodes');
 		h.general.push({ '.name': 'sub', failover: value });
@@ -1919,21 +1919,46 @@ test('T16.19: failover risk warning is focusable in the label with the switch of
 		const icon = label.lastChild;
 		assert.equal(icon.tag, 'span');
 		assert.equal(icon.class, 'aether-warning');
-		assert.equal(icon.textContent, '⚠');
-		assert.equal(icon.getAttribute('role'), 'img');
+		const [glyph, bubble] = icon.children;
+		assert.equal(glyph.textContent, '⚠');
+		assert.equal(bubble.textContent, failoverRisk);
+		assert.equal(icon.getAttribute('role'), 'button');
 		assert.equal(icon.getAttribute('tabindex'), '0');
 		assert.equal(icon.getAttribute('title'), failoverRisk);
-		assert.equal(icon.getAttribute('aria-label'), failoverRisk);
-		assert.equal(icon.getAttribute('style'), 'cursor:help; margin-left:0.35em; opacity:0.85');
+		assert.equal(icon.getAttribute('aria-label'), '自动切换风险说明');
+		const visible = expected => {
+			assert.equal(icon.getAttribute('aria-expanded'), String(expected));
+			assert.equal(bubble.hidden, !expected);
+		};
+		visible(false);
+		const rules = h.subscriptions.failoverStyle.textContent.split('.aether-failover-title')[0];
+		assert.match(rules, /var\(--warn-color-high, #e0a800\)/);
+		assert.match(rules, /var\(--warn-color-high, #f0b429\)/);
+		assert.doesNotMatch(rules, /--primary/);
 		assert.deepEqual(find(general, node => node.class === 'aether-warning'), [icon]);
-		assert.ok(!general.textContent.includes(failoverRisk));
 		assert.ok(!failoverSwitchTitle(h).includes(failoverRisk));
+		icon.focus();
+		visible(true);
+		icon.blur();
+		visible(false);
 		const cancelled = [];
-		icon.click({
+		const event = {
 			stopPropagation: () => cancelled.push('propagation'),
 			preventDefault: () => cancelled.push('default')
-		});
-		assert.deepEqual(cancelled, ['propagation', 'default'], 'clicking the warning cannot activate the label');
+		};
+		icon.pointerdown();
+		icon.focus();
+		icon.click(event);
+		visible(true);
+		icon.pointerdown();
+		icon.click(event);
+		visible(false);
+		assert.deepEqual(cancelled, ['default', 'propagation', 'default', 'propagation']);
+		for (const [key, open] of [['Enter', true], [' ', false], [' ', true], ['Escape', false]]) {
+			icon.keydown({ ...event, key });
+			visible(open);
+		}
+		assert.equal(h.subscriptions.failover_enabled(), value === '1');
 	}
 });
 
@@ -2010,13 +2035,16 @@ function assertFailover(h, id, pressed, label, active = false) {
 	assert.equal(box['aria-checked'], pressed);
 	const state = { 'true': 'on', 'false': 'off', mixed: 'mixed' }[pressed];
 	assert.equal(box.class, `aether-tri aether-tri--${state}${active ? '' : ' aether-tri--inactive'}`);
-	assert.equal(box.children.length, 1);
-	assert.equal(box.firstChild.tag, 'span');
-	assert.equal(box.firstChild.class, 'aether-tri-mark');
-	assert.equal(box.firstChild['aria-hidden'], 'true');
+	const mixed = pressed === 'mixed';
+	assert.deepEqual(box.children.map(child => child.class),
+		mixed ? ['aether-tri-box', 'aether-tri-check', 'aether-tri-count'] : ['aether-tri-box', 'aether-tri-check']);
+	for (const child of box.children.slice(0, 2)) {
+		assert.equal(child.tag, 'span');
+		assert.equal(child['aria-hidden'], 'true');
+	}
 	assert.equal(box.title, (pressed === 'mixed' ? label : '自动切换') +
 		(active ? '' : ' — ' + inactiveFailover));
-	assert.equal(failoverCell(h, id).textContent, '');
+	assert.equal(failoverCell(h, id).textContent, mixed ? label.split(' · ')[1] : '');
 	assert.equal(box['aria-disabled'], null);
 }
 

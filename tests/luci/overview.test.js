@@ -874,12 +874,12 @@ function sections(root) {
 
 /* T10.65 groups the runtime rows in one column, independently of the heading. */
 function runtimeRows(root) {
-	return sections(root)[0].children.at(-1);
+	return sections(root)[0].children[1];
 }
 
 /* The node controls remain the last row, with or without the details row. */
 function nodeRow(root) {
-	return sections(root)[0].children[1].children.at(-1).children[0];
+	return runtimeRows(root).children.at(-1);
 }
 
 function renderStatus(status, version = { ok: true, version: '0.2.0-r6' }, enabled = true) {
@@ -908,6 +908,12 @@ test('T14.3: no-node fallback clears only its margin and keeps wrapping beside p
 	assert.ok(row.children.length > 1, 'probe controls remain beside the fallback');
 });
 
+/* Banner assertions ignore the stable region wrappers, not their order. */
+function pageParts(page) {
+	return page.content.children.flatMap((region) =>
+		region === page.noticeContent ? region.children : sections(region));
+}
+
 test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notices and removed subscriptions', () => {
 	const status = { ok: true, state: 'running', notices: [
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
@@ -917,13 +923,10 @@ test('T10.3 scenario 6a: ordered sections, title refresh controls, absent notice
 	assert.deepEqual(sections(root).map((s) => s.children[0].textContent),
 		[ '运行状态', '流量与连接', '组件版本' ]);
 	const title = page.actionFields.children[0];
-	assert.equal(title.tag, 'h2');
-	assert.equal(title.textContent, '以太跃迁');
-	assert.ok(!page.content.children.some(node => node.class === 'cbi-map-descr'));
-	assert.equal(sections(root)[0].children[1].class, 'aether-section-actions');
-	assert.equal(findAll(page.refreshControl, 'select').length, 1);
-	assert.equal(findAll(page.refreshControl, 'button')[0].textContent, '刷新');
-	assert.ok(visibleText(page.refreshControl).includes('自动刷新'));
+	assert.equal(findAll(title, 'h2')[0].textContent, '以太跃迁');
+	assert.equal(findAll(title, 'select').length, 1);
+	assert.equal(findAll(title, 'button')[0].textContent, '刷新');
+	assert.ok(visibleText(title).includes('自动刷新'));
 	const noticeItems = findAll(root, 'li');
 	assert.equal(noticeItems.length, 2);
 	assert.ok(noticeItems.every((li) => li.attrs.class === 'alert-message warning'));
@@ -1131,9 +1134,9 @@ test('T10.4 scenario 5 / T10.5: defer components once, preserve inventory during
 	await page.fetchRefresh();
 	assert.equal(calls.filter((m) => m === 'components').length, 1, 'poll/manual refresh must not rediscover versions');
 	assert.deepEqual(page.vm.components.slice(1).map((c) => c.path), [ '/usr/bin/xray', '未找到' ]);
-	const toolbar = sections(root)[0].children[1];
-	assert.match(toolbar.attrs.style, /margin:\s*0\.5em 0 1em/);
-	const label = findAll(page.refreshControl, 'label').find((el) => visibleText(el).includes('自动刷新'));
+	const title = page.actionFields.children[0];
+	assert.match(title.attrs.style, /margin-bottom:\s*1em/);
+	const label = findAll(title, 'label').find((el) => visibleText(el).includes('自动刷新'));
 	assert.ok(findAll(label, 'span').some((n) => n.textContent === '自动刷新'
 		&& /white-space:\s*nowrap/.test(n.attrs.style)));
 	assert.equal(findAll(label, 'select').length, 1, 'label and select share the flex container');
@@ -1262,7 +1265,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	await page.initialRequest;
 	const blocks = sections(root).slice(0, -1);
 	const tables = findAll(root, 'table');
-	const nodes = findAll(nodeRow(root), 'select')[0];
+	const nodes = findAll(blocks[0], 'select')[0];
 	nodes.value = 'n_b';
 	nodes.attrs.change();
 	page.probeMessage.content = '检测中';
@@ -1280,7 +1283,7 @@ test('T10.5 scenario 2a: post-render inventory updates only the table and is nev
 	sections(root).slice(0, -1).forEach((block, i) => assert.equal(block, blocks[i]));
 	assert.equal(findAll(root, 'table')[0], tables[0], 'traffic table is not replaced');
 	assert.notEqual(findAll(root, 'table')[1], tables[1], 'component table alone is replaced');
-	assert.equal(findAll(nodeRow(root), 'select')[0], nodes);
+	assert.equal(findAll(blocks[0], 'select')[0], nodes);
 	assert.equal(nodes.value, 'n_b');
 	assert.equal(page.probeMessage.content, '检测中');
 	await polls[0]();
@@ -1402,7 +1405,7 @@ test('T10.6 scenario 2a: WAN row title and small inactive explanation precede co
 		page.previousStats = inactiveReadings(1000, 100, 200);
 		page.refresh(status, inactiveReadings(2000, 1124, 2248));
 		const block = sections(root).find((s) => s.children[0].textContent === '流量与连接');
-		const [table, connections] = block.children[1].children;
+		const table = block.children[1];
 		const total = table.children[3];
 		assert.deepEqual(total.children.slice(1).map((c) => c.textContent), [ '1.0 KB/s', '2.0 KB/s' ]);
 		assert.equal(visibleText(total.children[0]), inactive ? '合计（WAN 口）' + TRAFFIC_NOTE : '合计（WAN 口）');
@@ -1410,12 +1413,12 @@ test('T10.6 scenario 2a: WAN row title and small inactive explanation precede co
 		for (const row of table.children.slice(1, 3))
 			assert.deepEqual(row.children.slice(1).map((c) => c.textContent), [ '–', '–' ]);
 		/* the inactive note lives in the WAN row's label cell, not below the table */
-		assert.equal(block.children.length, 2);
+		assert.equal(block.children.length, 3);
 		if (inactive) {
 			const small = total.children[0].children.find((c) => c.tag === 'small');
 			assert.equal(visibleText(small), TRAFFIC_NOTE);
 		}
-		assert.equal(visibleText(connections), '代理连接 3总连接 10');
+		assert.equal(visibleText(block.children.at(-1)), '代理连接 3总连接 10');
 		assert.equal(visibleText(block).includes(TRAFFIC_NOTE), inactive);
 	}
 });
@@ -1485,27 +1488,33 @@ test('T10.9 scenario 1: disable confirmation and enable tooltip come from the mo
 	}
 });
 
-test('T10.9 scenario 2: h2 stays outside the runtime block; enable and refresh share the block toolbar', () => {
+test('T10.9 scenario 2: title left group has heading then tooltip-only enable; right group has refresh controls',
+	() => {
 	const { page, root } = renderStatus({ ok: true, state: 'running' });
 	const title = page.actionFields.children[0];
-	const [heading, toolbar] = sections(root)[0].children;
-	const [enable, refresh] = toolbar.children;
-	assert.equal(title.tag, 'h2');
-	assert.equal(visibleText(title), '以太跃迁');
-	assert.equal(heading.tag, 'h3');
-	assert.equal(toolbar.class, 'aether-section-actions');
-	assert.equal(visibleText(enable), '启用');
-	assert.match(enable.attrs.style, /align-items:\s*center/);
-	assert.equal(enable.attrs.title, page.vm.enabled_note);
-	assert.equal(findAll(enable, 'input')[0].attrs.title, page.vm.enabled_note);
-	assert.equal(findAll(refresh, 'label').length, 1);
-	assert.equal(visibleText(findAll(refresh, 'span')[0]), '自动刷新');
-	assert.equal(findAll(refresh, 'select').length, 1);
-	assert.equal(findAll(refresh, 'button')[0].textContent, '刷新');
+	assert.equal(title.children.length, 2);
+	const [left, right] = title.children;
+	assert.deepEqual(left.children.map((n) => n.tag), [ 'h2', 'label' ]);
+	assert.equal(visibleText(left.children[0]), '以太跃迁');
+	assert.equal(visibleText(left.children[1]), '启用');
+	assert.match(left.attrs.style, /align-items:\s*center/);
+	assert.match(left.children[1].attrs.style, /align-items:\s*center/);
+	assert.equal(left.children[1].attrs.title, page.vm.enabled_note);
+	assert.equal(findAll(left, 'input')[0].attrs.title, page.vm.enabled_note);
+	assert.equal(findAll(right, 'label').length, 1);
+	assert.equal(visibleText(findAll(right, 'span')[0]), '自动刷新');
+	assert.equal(findAll(right, 'select').length, 1);
+	assert.equal(findAll(right, 'button')[0].textContent, '刷新');
 	assert.ok(!visibleText(root).includes(page.vm.enabled_note));
-	assert.equal(findAll(root, 'input').length, 1, 'only one enable switch');
+	assert.equal(findAll(root, 'input').length, 1, 'only one enable switch, in the title');
+	for (const block of sections(root)) {
+		assert.equal(block.firstChild.tag, 'h3');
+		assert.ok(!findAll(block, 'h2').length);
+		assert.ok(!findAll(block, 'input').length, 'enable is outside every section');
+		assert.ok(!findAll(block, 'button').includes(findAll(right, 'button')[0]));
+	}
 	page.refresh({ ok: true, state: 'stopped' });
-	assert.deepEqual(sections(root)[0].children[1].children.slice(0, 2), [enable, refresh]);
+	assert.deepEqual(page.actionFields.children[0].children, [left, right]);
 });
 
 test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm saves 0; enable skips confirm',
@@ -1545,14 +1554,14 @@ test('T10.9 scenario 3: disable cancel restores checkbox without writes; confirm
 	}
 });
 
-test('T10.9 scenario 4: banners stay in the runtime block with original severity and order; clean has none',
+test('T10.9 scenario 4: banners follow title before first section with original severity and order; clean has none',
 	() => {
 	const { page, root } = renderStatus({ ok: false, code: 'TIMEOUT' }, undefined, false);
-	assert.equal(page.actionFields.children[0].tag, 'h2');
-	assert.equal(page.actionFields.children[1], page.content, 'content follows the page title');
-	let parts = page.noticeContent.children;
+	assert.equal(page.actionFields.children[0].children[0].children[0].tag, 'h2');
+	assert.equal(page.actionFields.children[1], page.content, 'banners occupy the content immediately after the title');
+	let parts = pageParts(page);
 	assert.deepEqual(parts.map((n) => n.attrs.class), [
-		'alert-message error', 'alert-message warning'
+		'alert-message error', 'alert-message warning', 'cbi-section', 'cbi-section', 'cbi-section'
 	]);
 	assert.ok(visibleText(parts[0]).includes('TIMEOUT'));
 	assert.ok(visibleText(parts[1]).includes('服务未启用'));
@@ -1560,16 +1569,16 @@ test('T10.9 scenario 4: banners stay in the runtime block with original severity
 		{ code: 'COMPONENT_MISSING', args: { component: 'xray' } },
 		{ code: 'UPDATE_AVAILABLE', args: { package: 'aether-xray', available: '27' } }
 	] });
-	parts = page.noticeContent.children;
+	parts = pageParts(page);
 	assert.equal(parts[0].attrs.class, 'alert-message warning', 'disabled banner remains first');
 	assert.equal(parts[1].tag, 'ul');
 	assert.ok(visibleText(parts[1].children[0]).includes('xray'));
 	assert.ok(visibleText(parts[1].children[1]).includes('27'));
 	assert.ok(parts[1].children.every((n) => n.attrs.class === 'alert-message warning'));
-	assert.equal(sections(root)[0].children[2], page.noticeContent);
+	assert.equal(parts[2], sections(root)[0]);
 	assert.doesNotMatch(visibleText(root), /待处理提示/);
 	const clean = renderStatus({ ok: true, state: 'running' });
-	assert.equal(clean.page.noticeContent.children.length, 0);
+	assert.equal(pageParts(clean.page)[0], sections(clean.root)[0]);
 	assert.equal(visibleText(sections(clean.root)[0].children[0]), '运行状态');
 	assert.equal(findAll(clean.root, 'div').filter((n) => /alert-message/.test(n.attrs.class ?? '')).length, 0);
 });
@@ -1583,24 +1592,24 @@ test('T10.9 scenario 5: one runtime block has state/buttons, optional details an
 		const blocks = sections(root);
 		assert.deepEqual(blocks.map((n) => visibleText(n.children[0])), [ '运行状态', '流量与连接', '组件版本' ]);
 		const block = blocks[0];
-		assert.equal(block.children.length, 4, 'heading, toolbar, notices and runtime body');
+		assert.equal(block.children.length, 2, 'heading and runtime column');
 		const rows = runtimeRows(root).children;
-		const state = rows[0];
-		assert.equal(findAll(state, 'strong')[0].textContent, '运行中');
-		assert.ok(visibleText(state).includes('已持续'));
-		assert.ok(visibleText(state).includes('DNS 已回退到原配置'));
-		assert.deepEqual(serviceButtons(root).map(visibleText), [ '启动', '重启', '停止' ]);
+		const [left, right] = rows[0].children;
+		assert.equal(findAll(left, 'strong')[0].textContent, '运行中');
+		assert.ok(visibleText(left).includes('已持续'));
+		assert.ok(visibleText(left).includes('DNS 已回退到原配置'));
+		assert.deepEqual(findAll(right, 'button').map(visibleText), [ '启动', '重启', '停止' ]);
 		assert.equal(findAll(rows[0], 'input').length, 0);
-		assert.match(block.children[1].attrs.style, /justify-content:\s*flex-end/);
+		assert.match(rows[0].attrs.style, /justify-content:\s*space-between/);
 		const hasDetails = !!(last_error || dns_tier);
-		assert.equal(rows.length, hasDetails ? 2 : 1, 'state and optional details');
+		assert.equal(rows.length, hasDetails ? 3 : 2, 'state, optional details, node row');
 		if (hasDetails) {
 			const details = rows[1];
 			assert.equal(visibleText(details).includes('原因：配置无效'), !!last_error);
 			assert.equal(visibleText(details).includes('境外域名解析：经节点解析（正常）'), !!dns_tier);
 			assert.equal(details.children.length, Number(!!last_error) + Number(!!dns_tier));
 		}
-		assert.ok(block.children[1].children.at(-1).children.includes(nodeRow(root)));
+		assert.equal(rows.at(-1), nodeRow(root));
 		assert.equal(findAll(nodeRow(root), 'select')[0], findAll(page.nodeControl, 'select')[0]);
 		assert.ok(!findAll(root, 'h3').some((n) => [ '状态', '当前节点', '待处理提示' ].includes(visibleText(n))));
 	}
@@ -1755,9 +1764,9 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 		await refresh();
 		assert.deepEqual(calls, [ [ 'status', undefined ], [ 'stats', undefined ],
 			[ 'events', { since: now - 600, level: 'error' } ] ]);
-		const parts = page.noticeContent.children;
+		const parts = pageParts(page);
 		assert.equal(parts[0].attrs.class, 'alert-message warning');
-		assert.equal(sections(root)[0].children[2], page.noticeContent, 'banner is inside the runtime section');
+		assert.equal(parts[1], sections(root)[0], 'banner is before runtime section');
 		assert.equal(visibleText(parts[0]),
 			failedSwitchText('Beta', 'Alpha', logText(switchEvents()[0]), `${now - NOW + 30} 秒前`));
 		assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_a', 'runtime remains preselected');
@@ -1768,7 +1777,7 @@ test('T10.11 scenario 4a: equal nodes skip events; every mismatched refresh fetc
 	await page.fetchRefresh();
 	assert.deepEqual(calls.map(([method]) => method), [ 'status', 'stats' ]);
 	assert.equal(page.vm.switch_notice, null);
-	assert.equal(page.noticeContent.children.length, 0);
+	assert.equal(pageParts(page)[0], sections(root)[0]);
 	assert.equal(findAll(nodeRow(root), 'select')[0].value, 'n_b');
 });
 
@@ -1781,7 +1790,7 @@ test('T10.11 scenario 4b: initial mismatch fetches one events response after ren
 	await page.initialRequest;
 	assert.deepEqual(calls.filter(([method]) => method === 'events'),
 		[ [ 'events', { since: NOW - 600, level: 'error' } ] ]);
-	assert.equal(page.noticeContent.children[0].attrs.class, 'alert-message warning');
+	assert.equal(pageParts(page)[0].attrs.class, 'alert-message warning');
 	assert.ok(visibleText(root).includes('切换到「Beta」未生效'));
 });
 
@@ -1796,7 +1805,7 @@ test('T10.11 scenario 5: failed events reads show pending warning without errors
 		await page.componentRequest;
 		await page.initialRequest;
 		for (let refresh = 0; refresh < 2; refresh++) {
-			const banner = page.noticeContent.children[0];
+			const banner = pageParts(page)[0];
 			assert.equal(banner.attrs.class, 'alert-message warning');
 			assert.equal(visibleText(banner), '正在切换到「Beta」…');
 			assert.deepEqual(notifications, []);
@@ -2040,7 +2049,7 @@ function disabled(button) {
 }
 
 function serviceButtons(root) {
-	return findAll(sections(root)[0].children[1].children.at(-2), 'button');
+	return findAll(runtimeRows(root).children[0], 'button');
 }
 
 function ownVersion(root) {
@@ -2129,6 +2138,9 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.equal(nodes.value, 'n_b', 'first status preserves edits when the effective node is unchanged');
 	assert.equal(findAll(root, 'input')[0], enable);
 	const settledRuntime = sections(root)[0];
+	const [, refresh] = page.actionFields.firstChild.children;
+	const interval = findAll(refresh, 'select')[0];
+	const refreshButton = findAll(refresh, 'button')[0];
 	writes.length = 0;
 	await h.reply('stats', readings(1000, 0, 0, 0, 0));
 	await page.initialRequest;
@@ -2145,6 +2157,10 @@ test('T10.17 scenario 3a: independent version, status and stats replies update o
 	assert.deepEqual(serviceButtons(root).map(disabled), [ false, true, true ]);
 	await h.reply('stats', readings(2000, 1024, 2048, 4096, 8192));
 	await next;
+	const [, currentRefresh] = page.actionFields.firstChild.children;
+	assert.equal(findAll(root, 'input')[0], enable, 'polling preserves the page-header enable switch');
+	assert.equal(findAll(currentRefresh, 'select')[0], interval, 'polling preserves the interval control');
+	assert.equal(findAll(currentRefresh, 'button')[0], refreshButton, 'polling preserves the refresh button');
 	assert.deepEqual(findAll(sections(root)[1], 'tr')[1].children.slice(1).map((cell) => cell.textContent),
 		[ '1.0 KB/s', '2.0 KB/s' ]);
 	assert.equal(calls.filter((call) => call.method === 'version').length, 1);
@@ -3730,18 +3746,19 @@ test('T10.65 scenario 1: runtime column uses one gap and omits absent details; d
 	]) {
 		const { root } = renderStatus(status);
 		const block = sections(root)[0];
-		assert.equal(block.children.at(-1), runtimeRows(root));
+		assert.equal(block.children.length, 2, 'only the heading and one column are in the section');
 		const column = runtimeRows(root);
 		assert.equal(column.tag, 'div');
 		for (const rule of [/display:\s*flex/, /flex-direction:\s*column/, /align-items:\s*stretch/,
 			/gap:\s*0\.75em(?:;|$)/])
 			assert.match(column.attrs.style, rule);
 		const rows = column.children;
-		assert.equal(rows.length, expected.length ? 2 : 1, 'absent details do not consume another gap');
+		assert.equal(rows.length, expected.length ? 3 : 2, 'absent details do not consume another gap');
 		assert.equal(rows[0].tag, 'div');
 		assert.ok(findTag(rows[0], 'strong'));
-		assert.deepEqual(serviceButtons(root).map(visibleText), ['启动', '重启', '停止']);
-		assert.ok(findTag(nodeRow(root), 'select'));
+		assert.deepEqual(findAll(rows[0], 'button').map(visibleText), ['启动', '重启', '停止']);
+		assert.equal(rows.at(-1), nodeRow(root));
+		assert.ok(findTag(rows.at(-1), 'select'));
 		for (const row of rows)
 			assert.doesNotMatch(row.attrs.style ?? '', /margin/);
 		if (expected.length) {
@@ -4258,10 +4275,11 @@ test('M4-16: scope icon title, accessible label and non-flow bubble preserve sel
 	const root = scopeControls(page);
 	const label = root.children[1].children[1];
 	const [caption, select] = label.children;
-	const [text, icon, bubble] = caption.children;
+	const [text, icon] = caption.children;
+	const [glyph, bubble] = icon.children;
 	assert.equal(text.textContent, '端口范围');
 	assert.equal(select, page.portScopeSelect);
-	assert.equal(icon.textContent, 'ⓘ');
+	assert.equal(glyph.textContent, 'ⓘ');
 	assert.equal(icon.attrs.tabindex, '0');
 	assert.equal(icon.attrs.role, 'button');
 	assert.equal(icon.attrs.title, '只影响 TCP；UDP 始终按原策略代理。');
@@ -4279,9 +4297,10 @@ test('M4-16: scope icon title, accessible label and non-flow bubble preserve sel
 test('M4-16: click, touch focus ordering and keyboard focus reveal the same hint', () => {
 	const page = loadView();
 	const label = scopeControls(page).children[1].children[1];
-	const [, icon, bubble] = label.children[0].children;
+	const [, icon] = label.children[0].children;
+	const bubble = icon.children[1];
 	let prevented = 0;
-	const event = { preventDefault: () => { prevented++; } };
+	const event = { preventDefault: () => { prevented++; }, stopPropagation() {} };
 	const visible = expected => {
 		assert.equal(bubble.hidden, !expected);
 		assert.equal(icon.attrs['aria-expanded'], String(expected));
@@ -4308,5 +4327,8 @@ test('M4-16: click, touch focus ordering and keyboard focus reveal the same hint
 	}
 	icon.attrs.blur();
 	visible(false);
-	assert.equal(prevented, 6, 'prevent label activation and keyboard scrolling');
+	icon.attrs.focus();
+	icon.attrs.keydown({ ...event, key: 'Escape' });
+	visible(false);
+	assert.equal(prevented, 7, 'prevent label activation and keyboard scrolling');
 });

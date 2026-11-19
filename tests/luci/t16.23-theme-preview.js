@@ -14,7 +14,7 @@ const messages = parsePo(fs.readFileSync(path.join(app, 'po/zh_Hans/aether-proxy
 const staticRoot = path.join(www, 'luci-static');
 const themePaths = { 'bootstrap-dark': 'bootstrap/cascade.css', 'argon-light': 'argon-plus/css/cascade.css' };
 const entries = [
-	['main', 'main', { node: 'n_a', failover_nodes: ['n_b', 'n_d'] }],
+	['main', 'main', { node: 'n_a', failover_nodes: ['n_b', 'n_d', ...Array.from({ length: 7 }, (_, i) => `n_extra_${i}`)] }],
 	['sub', 'sub', { failover: '0' }],
 	['s_a', 'subscription', { name: '示例订阅', url: 'https://example.org/subscription' }],
 	['s_b', 'subscription', { name: '备用订阅', url: 'https://example.net/subscription' }],
@@ -22,7 +22,9 @@ const entries = [
 	['n_a', 'node', { label: '手动 · 香港', source: 'manual', protocol: 'vless', security: 'reality' }],
 	['n_b', 'node', { label: '订阅 · 东京', source: 's_a', protocol: 'vless', transport: 'ws', security: 'tls' }],
 	['n_c', 'node', { label: '订阅 · 新加坡', source: 's_a', protocol: 'trojan', security: 'tls' }],
-	['n_d', 'node', { label: '订阅 · 台北', source: 's_c', protocol: 'vless', security: 'tls' }]
+	['n_d', 'node', { label: '订阅 · 台北', source: 's_c', protocol: 'vless', security: 'tls' }],
+	...Array.from({ length: 8 }, (_, i) => [`n_extra_${i}`, 'node',
+		{ label: `订阅 · 示例 ${i + 1}`, source: 's_a', protocol: 'trojan', security: 'tls' }])
 ];
 const values = Object.fromEntries(entries.map(([id, type, options], index) =>
 	[id, { '.name': id, '.type': type, '.index': index, ...options }]));
@@ -34,7 +36,7 @@ const values = Object.fromEntries(entries.map(([id, type, options], index) =>
 		for (const [theme, stylesheet] of Object.entries(themePaths)) {
 			const dark = theme === 'bootstrap-dark';
 			const page = await browser.newPage({ viewport: { width: 1320, height: 1200 },
-				colorScheme: dark ? 'dark' : 'light', reducedMotion: 'reduce' });
+				colorScheme: dark ? 'dark' : 'light', reducedMotion: 'reduce', hasTouch: true, deviceScaleFactor: 2 });
 			await page.route('**/*', async route => {
 				const url = new URL(route.request().url());
 				if (url.hostname !== 'luci.test')
@@ -87,7 +89,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await box.getAttribute('aria-checked'), 'mixed');
 			assert.equal(await dot.count(), 1);
 			const names = await page.locator('.aether-node-name > span:last-child').all();
-			assert.equal(names.length, 4);
+			assert.equal(names.length, 12);
 			const nameBoxes = await Promise.all(names.map(el => el.boundingBox()));
 			const textBox = locator => locator.evaluate(el => {
 				const range = document.createRange();
@@ -107,7 +109,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.ok(Math.abs(flag.y + flag.height / 2 - help.y - help.height / 2) < 2,
 				`${theme}: the inline explanation follows its checkbox on the same line (${JSON.stringify({ flag, help })})`);
 			assert.equal(await dot.evaluate(el => getComputedStyle(el).animationName), 'none');
-			assert.match(await box.getAttribute('title'), /半选 · 1\/2/);
+			assert.match(await box.getAttribute('title'), /半选 · 8\/10/);
 			const cellStyle = prop => box.evaluate((el, p) => getComputedStyle(el.parentElement)[p], prop);
 			assert.equal(await cellStyle('whiteSpace'), 'nowrap');
 			assert.equal(await cellStyle('textAlign'), 'center');
@@ -137,28 +139,76 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			assert.equal(await result.getByText('尚未更新', { exact: true })
 				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
 			const inspect = locator => locator.evaluate(el => {
-				const css = getComputedStyle(el);
-				const mark = getComputedStyle(el.firstElementChild, '::after');
+				const css = getComputedStyle(el.firstElementChild);
+				const mark = getComputedStyle(el.children[1], '::after');
+				const probe = el.appendChild(document.createElement('span'));
+				probe.style.color = 'var(--background-color, Canvas)';
+				const canvas = getComputedStyle(probe).color;
+				probe.remove();
 				return { fill: css.backgroundColor, gradient: css.backgroundImage, border: css.borderColor,
-					check: mark.content, checkColor: mark.color };
+					box: [css.width, css.height, css.borderRadius, css.borderTopWidth],
+					opacity: css.opacity, transition: css.transitionDuration, mark: mark.content,
+					markFill: mark.backgroundColor, markBorder: mark.borderLeftColor,
+					markWidth: mark.width, markHeight: mark.height, transform: mark.transform, canvas,
+					count: el.querySelector('.aether-tri-count')?.textContent };
 			});
+			const warning = page.getByRole('button', { name: '自动切换风险说明' });
+			const bubble = warning.locator('span');
+			const checkWarning = async open => {
+				assert.equal(await warning.getAttribute('aria-expanded'), String(open));
+				assert.equal(await bubble.isVisible(), open);
+				assert.equal(await flagInput.isChecked(), false);
+			};
+			await checkWarning(false);
+			await warning.scrollIntoViewIfNeeded();
+			const rect = await general.locator('..').locator('..').boundingBox();
+			const clip = { x: Math.max(0, rect.x - 10), y: Math.max(0, rect.y - 5),
+				width: Math.min(700, rect.width), height: 155 };
+			if (dark)
+				await page.screenshot({ path: path.join(out, 'warning-closed.png'), clip });
+			await warning.tap();
+			await checkWarning(true);
+			if (dark)
+				await page.screenshot({ path: path.join(out, 'warning-open.png'), clip });
+			await warning.tap({ position: { x: 5, y: 5 } });
+			await checkWarning(false);
+			await warning.press('Enter');
+			await checkWarning(true);
+			await warning.press('Escape');
+			await checkWarning(false);
 			assert.equal(await cellStyle('opacity'), '0.65');
 			await flagInput.click();
+			await page.mouse.move(0, 0);
 			assert.equal(await cellStyle('opacity'), '1');
 			assert.doesNotMatch(await box.getAttribute('title'), /总开关未开启/);
-			const off = await inspect(subscription.locator('.aether-tri[aria-checked="false"]'));
-			const on = await inspect(subscription.locator('.aether-tri[aria-checked="true"]'));
+			const offControl = subscription.locator('.aether-tri[aria-checked="false"]');
+			const onControl = subscription.locator('.aether-tri[aria-checked="true"]');
+			const off = await inspect(offControl);
+			const on = await inspect(onControl);
 			const mixed = await inspect(box);
+			assert.deepEqual(off.box.slice(0, 3), ['17px', '17px', '4px']);
+			assert.ok(['1px', '1.5px'].includes(off.box[3]), 'Chromium can round fractional borders');
+			assert.equal(off.opacity, '0.55');
+			assert.equal(off.transition, '0s');
 			assert.equal(off.fill, 'rgba(0, 0, 0, 0)');
 			assert.equal(off.gradient, 'none');
-			assert.equal(off.check, 'none');
+			assert.equal(off.mark, 'none');
+			assert.equal(off.count, undefined);
 			assert.equal(on.fill, on.border);
-			assert.equal(on.check, '"✓"');
-			assert.equal(on.checkColor, 'rgb(255, 255, 255)');
+			assert.equal(on.markBorder, on.canvas);
+			assert.notEqual(on.markBorder, on.fill);
+			assert.deepEqual([on.markWidth, on.markHeight], ['9px', '5px']);
+			assert.notEqual(on.transform, 'none');
+			assert.equal(on.count, undefined);
 			assert.equal(mixed.fill, off.fill);
-			assert.equal(mixed.check, 'none');
-			assert.equal(mixed.gradient, `linear-gradient(90deg, ${on.fill} 50%, ${off.fill} 50%)`);
-			await page.screenshot({ path: path.join(out, `${theme}.png`), fullPage: true });
+			assert.equal(mixed.gradient, 'none');
+			assert.equal(mixed.border, on.fill);
+			assert.equal(mixed.markFill, on.fill);
+			assert.deepEqual([mixed.markWidth, mixed.markHeight, mixed.count], ['9px', '2px', '8/10']);
+			await offControl.hover();
+			assert.equal((await inspect(offControl)).border, on.fill);
+			await page.mouse.move(0, 0);
+			await page.screenshot({ path: path.join(out, `tri-${theme}.png`) });
 			await flagInput.click();
 			assert.match(await box.getAttribute('title'), /总开关未开启/);
 			await page.keyboard.press('Tab');
@@ -171,7 +221,7 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			const currentCell = nodeTable.locator('tr:has(.aether-node-current) [data-name="_failover"]');
 			await currentCell.click({ position: { x: 3, y: 3 } });
 			assert.equal(await current.getAttribute('aria-checked'), 'true');
-			await current.locator('.aether-tri-mark').click();
+			await current.locator('.aether-tri-box').click();
 			assert.equal(await current.getAttribute('aria-checked'), 'false');
 			await subscription.locator('summary').click();
 			assert.equal(await box.isVisible(), false);
@@ -184,11 +234,20 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 				await view.nodeMap.reset();
 			});
 			assert.equal(await nodeTable.locator('th').getByText('启用', { exact: true }).count(), 1);
-			assert.deepEqual(await nodeTable.locator('[data-name="_enabled"]').allTextContents(), ['启用', '启用', '已停用', '启用']);
+			assert.deepEqual(await nodeTable.locator('[data-name="_enabled"]').allTextContents(), ['启用', '启用', '已停用', ...Array(9).fill('启用')]);
+			for (const label of ['订阅 · 东京', '订阅 · 示例 1'])
+				await nodeTable.locator('tr').filter({ hasText: label }).locator('.aether-tri').press('Enter');
 			await page.setViewportSize({ width: 360, height: 800 });
 			if (dark)
 				assert.equal(await page.evaluate(() => matchMedia('(max-device-width: 600px)').matches), true);
 			await subscription.locator('summary').click();
+			const column = subscription.locator('th:has(.aether-failover-title)');
+			const width = async () => (await column.boundingBox()).width;
+			const narrowWidth = await width();
+			assert.equal(await box.locator('.aether-tri-count').textContent(), '8/10');
+			await box.press('Enter');
+			assert.equal(await box.getAttribute('aria-checked'), 'true');
+			assert.equal(await width(), narrowWidth, 'the narrow column reserves mixed-count width');
 			for (const selector of ['.aether-subscription-scroll', '.aether-node-scroll']) {
 				const scroll = page.locator(selector);
 				const scrollMetrics = await scroll.evaluate(el => {
@@ -204,6 +263,24 @@ window.ready = Promise.all(['uci', 'aether-proxy.common'].map(m => L.require(m))
 			}
 			assert.equal(await result.getByText('尚未更新', { exact: true })
 				.evaluate(el => getComputedStyle(el).whiteSpace), 'nowrap');
+			const css = await page.locator('#view style').evaluateAll(styles =>
+				styles.find(style => style.textContent.includes('.aether-warning')).textContent);
+			assert.match(css, /border: 1\.5px solid currentColor/);
+			assert.doesNotMatch(css, /#(?:fff|ffffff|000|000000)\b|:\s*(?:white|black)\b/i);
+			const fallback = await browser.newPage();
+			await fallback.setContent(`<style>${css}</style><span class="aether-tri aether-tri--on">
+				<span class="aether-tri-box"></span><span class="aether-tri-check"></span></span>`);
+			const fallbackColors = await fallback.locator('.aether-tri').evaluate(el => {
+				const swatch = document.createElement('span');
+				swatch.style.cssText = 'color:Highlight;background:Canvas';
+				document.body.appendChild(swatch);
+				const defaults = getComputedStyle(swatch);
+				return [getComputedStyle(el.firstElementChild).backgroundColor, defaults.color,
+					getComputedStyle(el.children[1], '::after').borderLeftColor, defaults.backgroundColor];
+			});
+			assert.equal(fallbackColors[0], fallbackColors[1]);
+			assert.equal(fallbackColors[2], fallbackColors[3]);
+			await fallback.close();
 			console.log(`PASS ${theme}: conditional column, single-line placeholder, narrow table scroll, existing alignment, three failover states, focus, Space, cell and mark clicks`);
 			await page.close();
 		}

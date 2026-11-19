@@ -146,7 +146,19 @@ async function verify(page, view) {
 		assert.ok(normalize(sectionTitle), `${view}: do not render empty block headings`);
 		assert.notEqual(normalize(sectionTitle), pageTitle, `${view}: block heading repeats the page title`);
 	}
-	assert.equal(await root.locator('.cbi-map-descr:not(.cbi-section > .cbi-map-descr)').count(), 0);
+	if (view === 'overview') {
+		const top = root.locator('fieldset > div').first();
+		assert.equal(await top.locator('h2').count(), 1);
+		assert.equal(await top.getByRole('checkbox').count(), 1);
+		assert.equal(await top.locator('select').count(), 1);
+		assert.deepEqual(await root.locator('div.cbi-section > h3').allTextContents(),
+			['Runtime status', 'Traffic and connections', 'Component versions'].map(tr));
+		const service = root.getByRole('button', { name: tr('Restart'), exact: true });
+		const running = root.locator('strong').filter({ hasText: tr('Running') }).first();
+		assert.ok((await service.boundingBox()).x > (await running.boundingBox()).x);
+	}
+	else
+		assert.equal(await root.locator('.cbi-map-descr:not(.cbi-section > .cbi-map-descr)').count(), 0);
 	assert.equal(await root.locator('.aether-section-actions:not(.cbi-section > .aether-section-actions)').count(), 0);
 	if (view === 'logs') {
 		const row = root.locator('.aether-section-actions');
@@ -247,7 +259,7 @@ async function capture(browser, theme, stylesheet, view) {
 	fs.mkdirSync(out, { recursive: true });
 	try {
 		for (const [theme, stylesheet] of Object.entries(themes))
-			for (const view of Object.keys(pages))
+			for (const view of process.env.AETHER_PREVIEW_VIEW ? [process.env.AETHER_PREVIEW_VIEW] : Object.keys(pages))
 				await capture(browser, theme, stylesheet, view);
 	} finally {
 		await browser.close();

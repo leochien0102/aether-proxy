@@ -371,18 +371,17 @@ async function mounted(replies = {}, heatmap = '1') {
 test('T16.5 view: disabled has original traffic structure, no heatmap and no history RPC', async () => {
 	const { view, calls, root } = await mounted({}, '0');
 	assert.deepEqual(view.content.children,
-		[ view.runtimeContent, view.trafficContainer, view.componentSection ]);
+		[ view.noticeContent, view.runtimeContent, view.trafficContainer, view.componentSection ]);
 	assert.equal(calls.includes('stats_history'), false);
 	assert.equal(calls.includes('stats_quota'), false);
 	assert.equal(findAll(root, 'div').some((n) => n.attrs.class === 'ap-heat-wrap'), false);
 	assert.equal(view.heatmapContainer.children.length, 0);
-	assert.deepEqual(view.trafficBody.children.map((n) => n.tag), [ 'table', 'div' ]);
+	assert.deepEqual(view.trafficBody.children.map((n) => n.tag), [ 'h3', 'table', 'div' ]);
 });
 
 test('T16.6 view: fitted top-aligned columns, quota-first caption and 18-column responsive CSS', async () => {
 	const { view } = await mounted();
-	const [heading] = view.trafficContainer.children[0].children;
-	const [columns] = view.trafficBody.children;
+	const [heading, columns] = view.trafficBody.children;
 	assert.equal(heading.textContent, tr('Traffic and connections'));
 	assert.equal(columns.attrs.class, 'ap-traffic-columns');
 	assert.deepEqual(columns.children, [ view.heatmapContainer, view.trafficLive ]);
@@ -568,10 +567,10 @@ test('T16.5 view: switch changes and backend disabled hide heatmap without repla
 	await h.view.fetchRefresh();
 	assert.equal(h.calls.includes('stats_history'), false);
 	assert.equal(h.view.heatmapContainer.children.length, 0);
-	assert.equal(h.view.trafficBody.children[0], table);
+	assert.equal(h.view.trafficBody.children[1], table);
 	const off = await mounted({ stats_history: { ok: true, enabled: false, days: [] } });
 	assert.equal(off.view.heatmapContainer.children.length, 0);
-	assert.deepEqual(off.view.trafficBody.children.map((n) => n.tag), ['table', 'div']);
+	assert.deepEqual(off.view.trafficBody.children.map((n) => n.tag), ['h3', 'table', 'div']);
 });
 
 
