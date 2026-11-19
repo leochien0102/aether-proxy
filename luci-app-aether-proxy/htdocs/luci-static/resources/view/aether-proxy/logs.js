@@ -204,6 +204,7 @@ return view.extend({
 		const actions = E('div', { style: groupStyle + '; margin-inline-start:auto' },
 			[ this.clearButton, this.truncateButton ]);
 		this.toolbar = ap.section_actions([actions], tabs);
+		this.toolbar.classList?.add('aether-log-toolbar');
 		this.rawPanel = E('div', { hidden: true }, [
 			E('div', { style: rowStyle + '; justify-content:space-between' }, [
 				E('div', { style: groupStyle }, [
@@ -222,7 +223,13 @@ return view.extend({
 			ap.section({
 				actions: this.toolbar, stacked: true,
 				body: [this.toolbarError, this.eventPanel, this.rawPanel]
-			})
+			}),
+			// Keep theme tabs at their natural width; the toolbar wraps the groups.
+			E('style', {}, [`
+				.aether-log-toolbar .cbi-tabmenu { flex:0 0 auto; margin:0 }
+				.aether-log-toolbar .cbi-tabmenu > li { flex:0 0 auto; max-width:none }
+				.aether-log-toolbar .cbi-tabmenu > li > a { overflow:visible; text-overflow:clip }
+			`])
 		]);
 		/* Give LuCI a turn to display the complete page before fetching events. */
 		window.setTimeout(() => {

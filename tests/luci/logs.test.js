@@ -677,7 +677,10 @@ test('T16.13 / T16.28: native tabs, right actions, shared error and panels stay 
 	assert.ok(!root.children.some(node => node.class === 'cbi-map-descr'));
 	assert.equal(section.children[0], toolbar);
 	const [tabs, actions] = toolbar.children;
-	assert.equal(root.children.length, 2, 'no action row or state sits outside the block');
+	const [,, style] = root.children;
+	assert.equal(root.children.length, 3, 'only the heading, block and scoped stylesheet');
+	assert.equal(style.tag, 'style');
+	assert.match(text(style), /\.aether-log-toolbar \.cbi-tabmenu > li > a \{ overflow:visible; text-overflow:clip \}/);
 	assert.deepEqual(section.children, [toolbar, error, v.eventPanel, v.rawPanel]);
 	assert.equal(toolbar.children.length, 2);
 	assert.equal(tabs.tag, 'ul');
