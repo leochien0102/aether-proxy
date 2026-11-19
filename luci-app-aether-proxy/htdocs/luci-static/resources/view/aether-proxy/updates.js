@@ -13,11 +13,36 @@
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  * Group update progress comes from the model (docs/10 "B17").
  * Xray-only rollback and manual installation guidance follow docs/10 "r13：取消三包手动回滚".
- * Centered inline feedback follows docs/10 "r13 修正：块内行与表格操作列".
+ * Component update layout and the RC discovery flag follow docs/10 "更新页".
  */
 return view.extend({
 	load: function() {
 		return ap.load_config();
+	},
+	set_channel: async function(checked) {
+		const value = checked ? 'rc' : 'stable';
+		this.busy = true;
+		this.summary.textContent = '';
+		this.show_inventory();
+		try {
+			// Apply only this switch; do not silently apply another page's staged changes.
+			const changes = Object.entries(await uci.changes());
+			if (changes.some(([config, entries]) => entries.some(change =>
+				config !== 'aetherproxy' || change[0] !== 'set' || change[1] !== 'main' || change[2] !== 'update_channel')))
+				throw new Error(_('Apply or discard pending configuration changes before switching update channels.', 'aether-proxy'));
+			await uci.callSet('aetherproxy', 'main', { update_channel: value });
+			await uci.callApply(0, false);
+			this.rc = checked;
+			uci.unload('aetherproxy');
+			await ap.load_config();
+		}
+		catch (e) {
+			this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
+			this.busy = false;
+			this.show_inventory();
+			return;
+		}
+		return this.run('update_check');
 	},
 	run: async function(kind, name, previous) {
 		const bridge = kind == 'update_package' && !previous &&
@@ -83,7 +108,7 @@ return view.extend({
 			}) }, [ label ]);
 	},
 	show_inventory: function() {
-		const vm = model.table(this.status, this.busy, Date.now() / 1000);
+		const vm = model.table(this.status, this.busy, Date.now() / 1000, this.rc);
 		const check = E('button', {
 			type: 'button', class: 'cbi-button cbi-button-action', disabled: !vm.can_check || null,
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
@@ -105,19 +130,38 @@ return view.extend({
 				jobButtons.push(...actions);
 				return E('tr', { class: 'tr' }, [
 					/* Version strings come from the signed manifest, not from this page. */
-					...[ row.name, row.installed, row.available, row.previous, row.status ]
-						.map(text => E('td', { class: 'td' }, [ text ])), E('td', { class: 'td' }, actions)
+					...[ row.name, row.installed, row.available, row.previous ].map(text => E('td', { class: 'td' }, [ text ])),
+					E('td', { class: 'td' }, [ row.status, ...(row.prerelease ? [ ' ',
+						E('span', { class: 'label', title: _('Pre-release; may have the same version number as the stable release.', 'aether-proxy') },
+							_('Pre-release', 'aether-proxy')) ] : []) ]),
+					E('td', { class: 'td' }, actions)
 				]);
 			})
 		]);
+		const channel = E('label', { class: 'aether-update-channel', title: model.channel_note(),
+			style: 'display:flex; align-items:center; gap:0.4em; min-width:0' }, [
+			E('input', { type: 'checkbox', role: 'switch', checked: this.rc || null, disabled: !vm.can_check || null,
+				'aria-describedby': 'aether-update-channel-note',
+				change: ui.createHandlerFn(this, function(ev) { return this.set_channel(ev.target.checked); }) }),
+			_('Check for release candidates', 'aether-proxy')
+		]);
+		const statusRow = E('div', { class: 'aether-update-status',
+			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0' }, [
+			E('span', { style: 'flex:1 1 21em; min-width:0; overflow-wrap:anywhere' },
+				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url, ...(vm.rc_url ? [ ' · ', vm.rc_url ] : []) ]),
+			E('div', { style: 'display:flex; flex-wrap:wrap; align-items:center; min-width:0; gap:0.5em 1em; margin-inline-start:auto' },
+				[ channel, check ])
+		]);
+		const hasFeedback = this.busy || this.summary.textContent || vm.error;
+		const feedback = E('div', { class: 'aether-update-feedback', style: 'margin:0.25em 0 0',
+			role: 'status', hidden: !hasFeedback || null },
+			[ this.progress, this.summary, ...(vm.error ? [E('div', {}, vm.error)] : []) ]);
+		const note = E('div', { class: 'cbi-map-descr', style: 'max-width:56em; margin:0.5em 0' }, [
+			E('div', { id: 'aether-update-channel-note' }, model.channel_note()), model.manual_install_note()
+		]);
 		this.inventory.replaceChildren(ap.section({
 			title: _('Component updates', 'aether-proxy'),
-			// Wrap the long note without taking the whole toolbar on desktop.
-			description: E('span', { style: 'display:block; max-width:36em' }, model.manual_install_note()),
-			actions: [ E('span', { style: 'margin:0' },
-				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
-				this.summary, this.progress, check ],
-			body: vm.error ? [E('p', {}, [vm.error]), table] : table
+			body: [ statusRow, feedback, note, table ]
 		}), ap.section({
 			title: _('Running components', 'aether-proxy'),
 			description: E('span', { title: model.migration_note() },
@@ -130,11 +174,11 @@ return view.extend({
 	},
 	render: function() {
 		this.status = undefined;
+		this.rc = uci.get('aetherproxy', 'main', 'update_channel') === 'rc';
 		this.busy = false;
 		this.inventory = E('div');
 		this.summary = E('div');
-		// A paragraph's default margins would shift progress away from the button's center.
-		this.progress = E('span', { style: 'margin:0' });
+		this.progress = E('span');
 		this.show_inventory();
 		const map = new form.Map('aetherproxy', _('Updates', 'aether-proxy'));
 		const section = map.section(form.NamedSection, 'update', 'update', _('Update policy', 'aether-proxy'));

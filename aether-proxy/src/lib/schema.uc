@@ -64,6 +64,9 @@ export const NODE_NAME_RE = /^n_[0-9a-f]{32}$/;
 export const COMMON_TCP_PORTS = [ 22, 53, 80, 143, 443, 465, 587, 853, 993, 995, 9418 ];
 
 const main = [
+	// Unset stays omitted for snapshot compatibility. Discovery defaults to stable unless
+	// explicitly set to 'rc'; unknown scalar values must not invalidate the configuration.
+	{ name: 'update_channel', type: 'string', default: null, omit_unset: true },
 	{ name: 'enabled', type: 'bool', default: false },
 	{ name: 'mode', type: 'enum', enum: [ 'gfw', 'bypass_cn', 'global' ], default: 'bypass_cn' },
 	{ name: 'port_scope', type: 'enum', enum: [ 'all', 'common', 'common_extra' ], default: 'all' },

@@ -148,7 +148,7 @@ function channel_url(base, file) {
 	return `${replace(base, /\/$/, '')}/${file}`;
 }
 
-function download_manifest(ctx, base, proxied_first, index) {
+function download_manifest(ctx, base, proxied_first, index, prerelease) {
 	let manifest_path = `${ctx.download_dir}/manifest-${index}.json`;
 	let sig_path = `${ctx.download_dir}/manifest-${index}.json.sig`;
 	if (!fetch_file(ctx, channel_url(base, 'manifest.json'), manifest_path, C.UPDATE_MANIFEST_MAX, proxied_first) ||
@@ -158,14 +158,14 @@ function download_manifest(ctx, base, proxied_first, index) {
 	let usign = ctx.bin_dir ? `${ctx.bin_dir}/usign` : 'usign';
 	let verified = run([ usign, '-V', '-q', '-m', manifest_path, '-P', ctx.keys_dir ], { timeout: 10, quiet: true });
 	let manifest = verified.code == 0 ? read_object(manifest_path) : null;
-	if (manifest == null || manifest.schema != 2) {
+	if (manifest == null || manifest.schema != 2 || (manifest.prerelease === true) != prerelease) {
 		log.event('error', 'MANIFEST_BAD_SIGNATURE', { url: base });
 		return { reached: true };
 	}
 	return { manifest, path: manifest_path };
 }
 
-function load_channel_urls(confdir) {
+function load_channels(confdir) {
 	let cursor = uci.cursor(confdir);
 	let loaded = config.load(cursor);
 	if (!loaded.ok) {
@@ -173,7 +173,7 @@ function load_channel_urls(confdir) {
 		log.event('error', 'CONFIG_INVALID', { field: first.field ?? '-', reason: first.code ?? first.detail ?? 'invalid configuration' });
 		return { ok: false, detail: 'configuration is invalid' };
 	}
-	return { ok: true, urls: loaded.snapshot.update.channel_urls };
+	return { ok: true, urls: loaded.snapshot.update.channel_urls, rc: loaded.snapshot.main.update_channel == 'rc' };
 }
 
 // Manifest assets are keyed by package format (08 `manifest.json`: "ipk"/"apk"), not by the
@@ -398,9 +398,8 @@ function bridge_plan(manifest, installed, arch, pm) {
 	return { ok: true, active: true, next, remaining, rollback };
 }
 
-function build_result(ctx, manifest, base, arch, pm) {
+function build_result(ctx, manifest, base, arch, pm, prior) {
 	let packages = {};
-	let prior = read_object(`${ctx.run_dir}/${C.UPDATE_FILE}`);
 	let backend = { ok: true, version: null };
 	if (index(keys(manifest), 'compatibility') >= 0) {
 		backend = installed_version(ctx, pm, C.PROG);
@@ -409,6 +408,7 @@ function build_result(ctx, manifest, base, arch, pm) {
 	}
 	let plan = bridge_plan(manifest, backend.version, arch, pm);
 	for (let name in C.UPDATE_PACKAGES) {
+		let bridge = plan.active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0);
 		let entry = manifest.packages?.[name];
 		if (type(entry) != 'object' || type(entry.current) != 'object')
 			continue;
@@ -418,7 +418,6 @@ function build_result(ctx, manifest, base, arch, pm) {
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
-		let bridge = plan.active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0);
 		if (bridge) {
 			current = plan.ok ? plan.next : current;
 			// All application entry points select this same backend-only step.
@@ -444,13 +443,45 @@ function build_result(ctx, manifest, base, arch, pm) {
 		};
 	}
 	return {
-		ok: true,
+		ok: true, bridge_active: plan.active,
 		value: {
 			checked: time(), url: base, arch, pm,
 			packages,
 			data: data_status(ctx, manifest)
 		}
 	};
+}
+
+function merge_rc_result(ctx, plat, stable, rc, prior) {
+	let packages = { ...stable.value.packages };
+	for (let name in C.UPDATE_PACKAGES) {
+		// Do not replace entries governed by the signed stable bridge.
+		if (stable.bridge_active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0))
+			continue;
+		let entry = packages[name];
+		let available = rc.manifest.packages?.[name]?.current?.version;
+		// A promoted (or newer) stable version wins, including equivalent -N/-rN forms.
+		if (type(available) != 'string' ||
+			(type(entry?.available) == 'string' && !version_newer(available, entry.available)))
+			continue;
+
+		let asset = package_asset(rc.manifest, name, plat.arch, plat.pm, false);
+		let installed = entry == null ? installed_version(ctx, plat.pm, name) : { ok: true, version: entry.installed };
+		if (!installed.ok)
+			return installed;
+		let newer = asset != null && version_newer(available, installed.version);
+		if (asset == null)
+			log.event('error', 'ARCH_UNSUPPORTED', { arch: plat.arch });
+		let was_reported = prior?.packages?.[name]?.available == available && prior?.packages?.[name]?.newer == true;
+		if (newer && !was_reported)
+			log.event('notice', 'UPDATE_AVAILABLE', { package: name, current: installed.version, latest: available });
+		packages[name] = {
+			installed: installed.version, available, newer,
+			previous: entry?.previous ?? null,
+			asset: asset?.url ?? null, prerelease: true
+		};
+	}
+	return { ok: true, value: { ...stable.value, rc_url: rc.base, packages } };
 }
 
 function free_bytes(ctx) {
@@ -524,7 +555,7 @@ export function download_asset(opts, base, asset, name) {
 
 // Shared by `update check` and `update data`: download and verify the first valid manifest.
 // Failure codes follow 08 "检查": unreachable -> UPDATE_FETCH_FAILED (1), bad signature -> 4.
-function fetch_manifest(opts) {
+function fetch_manifest(opts, check_rc) {
 	let root = opts.sys_root ?? '';
 	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
 	let ctx = {
@@ -536,7 +567,7 @@ function fetch_manifest(opts) {
 		keys_dir: system_path(root, C.KEYS_DIR)
 	};
 	log.set_run_dir(run_dir);
-	let loaded = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
+	let loaded = load_channels(opts.confdir ?? system_path(root, C.CONFIG_DIR));
 	if (!loaded.ok)
 		return { ok: false, code: 'CONFIG_INVALID', exit: 2, detail: loaded.detail };
 	// An empty channel list is a configuration problem (08 "检查"), not a usage error.
@@ -552,12 +583,29 @@ function fetch_manifest(opts) {
 	let proxied = proxy_running(ctx), selected = null, reached = false;
 	for (let i = 0; i < length(loaded.urls); i++) {
 		let base = loaded.urls[i];
-		let candidate = download_manifest(ctx, base, proxied, i);
+		let candidate = download_manifest(ctx, base, proxied, i, false);
 		if (candidate.manifest != null) {
 			selected = { ...candidate, base };
 			break;
 		}
 		reached ||= candidate.reached;
+	}
+	let rc = null;
+	if (selected != null && check_rc && loaded.rc) {
+		// A stable mirror can serve the matching RC channel as a sibling. Otherwise use
+		// the built-in RC endpoint; arbitrary stable mirror paths remain unchanged.
+		let urls = filter(loaded.urls, url => match(url, /\/channel-stable\/?$/) != null);
+		urls = map(urls, url => replace(url, /\/channel-stable\/?$/, '/channel-rc/'));
+		if (!length(urls))
+			urls = [ C.CHANNEL_RC_URL ];
+		for (let i = 0; i < length(urls); i++) {
+			let base = urls[i];
+			let candidate = download_manifest(ctx, base, proxied, length(loaded.urls) + i, true);
+			if (candidate.manifest != null) {
+				rc = { ...candidate, base };
+				break;
+			}
+		}
 	}
 	let download_names = fs.lsdir(ctx.download_dir);
 	if (download_names == null) {
@@ -579,7 +627,7 @@ function fetch_manifest(opts) {
 		log.event('error', 'UPDATE_FETCH_FAILED', { urls: loaded.urls });
 		return { ok: false, code: 'UPDATE_FETCH_FAILED', exit: 1, detail: 'no update channel could be reached' };
 	}
-	return { ok: true, ctx, manifest: selected.manifest, base: selected.base, urls: loaded.urls };
+	return { ok: true, ctx, manifest: selected.manifest, base: selected.base, urls: loaded.urls, rc };
 }
 
 function platform(ctx) {
@@ -602,21 +650,32 @@ function platform(ctx) {
 
 // Compare the manifest with what is installed and store the result as updates.json.
 function write_updates(ctx, fetched, plat) {
-	let built = build_result(ctx, fetched.manifest, fetched.base, plat.arch, plat.pm);
-	if (!built.ok)
-		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: built.detail };
 	let update_path = `${ctx.run_dir}/${C.UPDATE_FILE}`;
-	if (!sys.write_atomic(update_path, sprintf('%.J', built.value) + '\n')) {
+	let prior = read_object(update_path);
+	let stable = build_result(ctx, fetched.manifest, fetched.base, plat.arch, plat.pm, prior);
+	if (!stable.ok)
+		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: stable.detail };
+	let result = stable.value;
+	if (fetched.rc != null) {
+		let rc = merge_rc_result(ctx, plat, stable, fetched.rc, prior?.release_candidates);
+		if (!rc.ok)
+			return { ok: false, code: 'CMD_FAILED', exit: 1, detail: rc.detail };
+		// Keep the stable projection compatible with status, notices and automatic Xray installs.
+		// The optional RC view has its own cache key and never controls package installation.
+		result = rc.value;
+		stable.value.release_candidates = rc.value;
+	}
+	if (!sys.write_atomic(update_path, sprintf('%.J', stable.value) + '\n')) {
 		let detail = sys.error() ?? 'unknown write error';
 		log.event('error', 'FS_FAILED', { op: 'write', path: update_path, detail });
 		return { ok: false, code: 'FS_FAILED', exit: 1, detail };
 	}
-	return { ok: true, value: built.value, exit: 0 };
+	return { ok: true, value: result, exit: 0 };
 }
 
 export function check(opts) {
 	opts ??= {};
-	let fetched = fetch_manifest(opts);
+	let fetched = fetch_manifest(opts, true);
 	if (!fetched.ok)
 		return fetched;
 	let plat = platform(fetched.ctx);

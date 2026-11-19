@@ -45,7 +45,7 @@ async function updateOptions(saved) {
 	const view = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
 		view: { extend: o => o }, form: { ...types, Map: class {
 			section() { return section; } render() { return Promise.resolve(element('form')); }
-		} }, uci: {}, ui: {}, 'aether-proxy.common': {}, 'aether-proxy.model.updates': {}
+		} }, uci: { get: () => null }, ui: {}, 'aether-proxy.common': {}, 'aether-proxy.model.updates': {}
 	}, { window: { setTimeout() {} }, document: {} });
 	view.show_inventory = () => {};
 	globalThis.E = element;

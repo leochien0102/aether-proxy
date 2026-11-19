@@ -178,11 +178,35 @@ async function verify(page, view) {
 }
 
 async function verifyToolbars(page, view, narrow = false) {
-	if (view !== 'updates' && view !== 'logs')
+	if (view === 'updates') {
+		const block = page.locator('.cbi-section').filter({ has: page.locator('.aether-update-status') });
+		const row = block.locator('.aether-update-status');
+		const note = block.locator(':scope > .cbi-map-descr');
+		const button = row.getByRole('button', { name: tr('Check for updates') });
+		assert.equal(await block.locator(':scope > *').evaluateAll(nodes => nodes.map(n => n.className || n.tagName).join(',')),
+			'H3,aether-update-status,aether-update-feedback,cbi-map-descr,table');
+		assert.match(await row.innerText(), /上次检查: .* — https:\/\//);
+		assert.match(await note.innerText(), /从发布页.*降级前注意/);
+		assert.equal(await button.isVisible(), true);
+		assert.equal(await row.getByRole('switch', { name: tr('Check for release candidates') }).isVisible(), true);
+		assert.ok(await row.evaluate(el => {
+			const [text, actions] = el.children;
+			const bounds = el.getBoundingClientRect();
+			return getComputedStyle(text).overflowWrap === 'anywhere' &&
+				text.scrollWidth <= text.clientWidth + 1 && actions.scrollWidth <= actions.clientWidth + 1 &&
+				bounds.right <= window.innerWidth + 1 && Math.abs(actions.getBoundingClientRect().right - bounds.right) <= 1;
+		}), 'status URL and actions fit; toolbar uses the right edge of the component block');
+		const [checked, action] = await Promise.all([row.locator(':scope > span').boundingBox(), button.boundingBox()]);
+		if (!narrow)
+			assert.ok(checked.y < action.y + action.height && action.y < checked.y + checked.height,
+				'Last checked and Check for updates share the desktop row');
+		return;
+	}
+	if (view !== 'logs')
 		return;
 	const root = page.locator('#view');
-	const toolbar = root.locator(view === 'updates' ? '.aether-section-toolbar' : '.aether-section-actions');
-	const left = toolbar.locator(view === 'updates' ? ':scope > .cbi-map-descr' : ':scope > ul.cbi-tabmenu');
+	const toolbar = root.locator('.aether-section-actions');
+	const left = toolbar.locator(':scope > ul.cbi-tabmenu');
 	const right = toolbar.locator(':scope > :nth-child(2)');
 	const [a, b, bounds] = await Promise.all([left.boundingBox(), right.boundingBox(), toolbar.boundingBox()]);
 	assert.ok(a && b && bounds, `${view}: both toolbar groups are visible`);
@@ -193,13 +217,6 @@ async function verifyToolbars(page, view, narrow = false) {
 	} else {
 		assert.ok(a.x + a.width <= b.x + 1, `${view}: description or tabs are to the left of actions`);
 		assert.ok(a.y < b.y + b.height && b.y < a.y + a.height, `${view}: both groups share one desktop row`);
-	}
-	if (view === 'updates') {
-		assert.equal(await root.getByRole('heading', { name: tr('Component updates'), level: 3 }).count(), 1);
-		assert.match(await left.innerText(), /从发布页.*降级前注意/);
-		assert.match(await right.innerText(), /上次检查: .* — https:\/\/updates\.example\/stable\//);
-		assert.equal(await right.getByRole('button', { name: tr('Check for updates') }).isVisible(), true);
-		return;
 	}
 	assert.deepEqual(await toolbar.locator('button').allTextContents(),
 		['Clear logs', 'Truncate to last startup'].map(tr));
@@ -238,6 +255,38 @@ async function capture(browser, theme, stylesheet, view) {
 		timezoneId: 'Asia/Shanghai', serviceWorkers: 'block' });
 	const errors = [];
 	const requests = new Set();
+	const rcPreview = view === 'updates' && process.env.AETHER_T16_31 === '1';
+	const liveConfig = structuredClone(configs.aetherproxy);
+	const liveStatus = structuredClone(status);
+	const stable = liveStatus.updates_available;
+	const channelUrl = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-';
+	if (rcPreview)
+		stable.url = channelUrl + 'stable/';
+	const rc = { ...structuredClone(stable), rc_url: channelUrl + 'rc/' };
+	rc.packages['aether-xray'] = { ...rc.packages['aether-xray'], available: '26.11.2-r1', prerelease: true };
+	let pending, finished = false;
+	const previewRpc = {
+		'uci.get': params => params.config === 'aetherproxy' ? { values: liveConfig } : rpcFixtures['uci.get'](params),
+		'uci.set': ({ config, section, values }) => {
+			assert.equal(config, 'aetherproxy');
+			assert.equal(section, 'main');
+			pending = values.update_channel;
+			return {};
+		},
+		'uci.apply': () => { liveConfig.main.update_channel = pending; return {}; },
+		'aetherproxy.status': () => liveStatus,
+		'aetherproxy.job_start': ({ kind, args }) => {
+			assert.deepEqual([kind, args], ['update_check', []]);
+			assert.equal(liveConfig.main.update_channel, 'rc');
+			return { ok: true, job: 'preview-check' };
+		},
+		'aetherproxy.job_status': () => {
+			if (!finished)
+				return { ok: true, state: 'running' };
+			stable.release_candidates = rc;
+			return { ok: true, state: 'ok', result: rc };
+		}
+	};
 	try {
 		await context.route('**/*', async route => {
 			const request = route.request();
@@ -255,7 +304,7 @@ async function capture(browser, theme, stylesheet, view) {
 						return { jsonrpc: '2.0', id: call.id, result: {} };
 					const [, object, method, params] = call.params;
 					const key = `${object}.${method}`;
-					const fixture = rpcFixtures[key];
+					const fixture = (rcPreview ? previewRpc[key] : null) ?? rpcFixtures[key];
 					requests.add(key);
 					if (!fixture) {
 						errors.push(`Missing RPC fixture: ${key}`);
@@ -289,6 +338,23 @@ async function capture(browser, theme, stylesheet, view) {
 		assert.ok(await page.evaluate(href => Array.from(document.styleSheets).some(sheet => sheet.href === href),
 			`${origin}/luci-static/${stylesheet}`), 'Theme stylesheet was applied');
 		await verifyToolbars(page, view);
+		const feedback = page.locator('.aether-update-feedback');
+		if (rcPreview) {
+			await page.getByRole('switch', { name: tr('Check for release candidates') }).click();
+			await feedback.filter({ hasText: /正在检查更新.*已用/ }).waitFor();
+			assert.equal(await page.getByRole('button', { name: tr('Check for updates') }).isDisabled(), true);
+			await page.setViewportSize({ width: 360, height: dark ? 1000 : 1500 });
+			await verifyToolbars(page, view, true);
+			await page.screenshot({ path: path.join(out, `${view}-${theme}-360-progress.png`), fullPage: true, animations: 'disabled' });
+			finished = true;
+			await feedback.filter({ hasText: /检查完成，1 个包有更新/ }).waitFor();
+			await page.locator('td .label').filter({ hasText: tr('Pre-release') }).waitFor();
+			assert.equal(await page.getByRole('button', { name: tr('Check for updates') }).isEnabled(), true);
+			await verifyToolbars(page, view, true);
+			await page.screenshot({ path: path.join(out, `${view}-${theme}-360.png`), fullPage: true, animations: 'disabled' });
+			await page.setViewportSize({ width: 1320, height });
+			await verifyToolbars(page, view);
+		}
 		const file = path.join(out, `${view}-${theme}.png`);
 		const png = await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
 		assert.equal(png.readUInt32BE(16), 1320, `${file}: desktop PNG width`);

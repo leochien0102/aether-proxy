@@ -13,7 +13,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { loadModule, parsePo, element } = require('./loader');
-const { actionRow, descendants, marginlessMessages } = require('./button-layout');
+const { descendants } = require('./button-layout');
 const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
 const APP = path.join(ROOT, 'luci-app-aether-proxy');
@@ -294,14 +294,23 @@ function load_view(config = {}) {
 			return Promise.resolve();
 		}
 	};
+	const channelWrites = [];
+	const uci = {
+		load: name => { loads.push(name); return Promise.resolve('uci-loaded'); },
+		get: (name, section, option) => config[option],
+		unload() {},
+		changes: async () => ({}),
+		callSet: async (...args) => { channelWrites.push(args); },
+		callApply: async (...args) => { channelWrites.push(args); }
+	};
+	ap.load_config = () => uci.load('aetherproxy');
 	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
-		view: { extend: o => o }, form,
-		uci: { load: name => { loads.push(name); return Promise.resolve('uci-loaded'); } },
+		view: { extend: o => o }, form, uci,
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
 		'aether-proxy.model.updates': model,
 		'aether-proxy.common': ap
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
-	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes,
+	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes, channelWrites, uci,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -475,7 +484,7 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	assert.equal(root.children.length, 2);
 	assert.equal(root.children[0], h.maps[0].node);
 	assert.equal(root.children[1], h.page.inventory);
-	assert.ok(descendants(h.page.inventory).includes(h.page.summary), 'summary now belongs to the action row');
+	assert.ok(descendants(h.page.inventory).includes(h.page.summary), 'summary slot exists before status resolves');
 	const map = h.maps[0];
 	assert.equal(map.config, 'aetherproxy');
 	assert.equal(map.section_info.name, 'update');
@@ -587,58 +596,30 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === true));
 });
 
-test('T10.27 scenario 1: Check for updates shares a spaced right-aligned row with result and progress after redraw',
-async () => {
-	const h = load_view();
-	await h.page.render();
-	for (const busy of [false, true, false]) {
-		h.page.status = { ok: true, ...status() };
-		h.page.busy = busy;
-		h.page.show_inventory();
-		h.page.summary.textContent = 'check result';
-		h.page.progress.textContent = 'elapsed';
-		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
-		const [packages, components] = h.page.inventory.children;
-		assert.equal(packages.class, 'cbi-section');
-		assert.equal(components.class, 'cbi-section');
-		assert.equal(row.class, 'aether-section-actions');
-		const [heading, toolbar, table] = packages.children;
-		assert.equal(heading.tag, 'h3');
-		assert.equal(text(heading), '组件更新');
-		assert.equal(toolbar.class, 'aether-section-toolbar');
-		assert.match(toolbar.style, /display:flex/);
-		assert.match(toolbar.style, /flex-wrap:wrap/);
-		assert.equal(toolbar.children[0].class, 'cbi-map-descr');
-		assert.equal(text(toolbar.children[0]), model.manual_install_note());
-		assert.equal(toolbar.children[1], row);
-		assert.match(text(row.children[0]), /^上次检查: .+ — https:\/\/channel\/$/);
-		assert.equal(table.tag, 'table');
-		assert.ok(text(table).includes('aether-xray'));
-		assert.equal(components.children[0].tag, 'h3');
-		assert.equal(text(components.children[0]), '运行中的组件');
-		assert.equal(components.children[1].children[0].title, model.migration_note());
-		assert.ok(!h.page.inventory.children.some(node => node.class === 'cbi-map-descr'));
-	}
+test('T16.31 Component updates orders status, feedback, note and table', async () => {
+	const h = await ready_view(status());
+	const [packages, components] = h.page.inventory.children;
+	const [heading, row, feedback, note, table] = packages.children;
+	assert.equal(text(heading), '组件更新');
+	assert.equal(row.class, 'aether-update-status');
+	for (const style of ['display:flex', 'flex-wrap:wrap', 'align-items:center', 'justify-content:space-between', 'gap:0.5em 1em'])
+		assert.ok(row.style.includes(style));
+	assert.match(text(row.children[0]), /^上次检查: .+ — https:\/\/channel\/$/);
+	assert.match(row.children[0].style, /overflow-wrap:anywhere/);
+	assert.equal(text(buttons(row)[0]), '检查更新');
+	assert.equal(feedback.class, 'aether-update-feedback');
+	assert.equal(feedback.hidden, true);
+	assert.equal(note.class, 'cbi-map-descr');
+	assert.match(note.style, /max-width:56em/);
+	assert.ok(text(note).includes(model.manual_install_note()));
+	assert.equal(table.tag, 'table');
+	assert.equal(text(components.children[0]), '运行中的组件');
+	assert.equal(components.children[1].children[0].title, model.migration_note());
 });
 
-test('T10.44 scenario 1: Last checked, live progress and completed check share the centered button row', async () => {
-	const h = load_view();
-	await h.page.render();
-	function checkRow() {
-		const row = actionRow(h.page.inventory, ['检查更新'], [h.page.summary, h.page.progress]);
-		const checked = descendants(h.page.inventory).filter(node =>
-			['span', 'p'].includes(node.tag) && text(node).startsWith('上次检查: '));
-		assert.equal(checked.length, 1, 'Last checked is mounted exactly once');
-		assert.ok(row.children.includes(checked[0]), 'Last checked shares the button row');
-		assert.ok(row.children.indexOf(checked[0]) < row.children.indexOf(buttons(row)[0]),
-			'Last checked precedes the button');
-		marginlessMessages([checked[0], h.page.summary, h.page.progress]);
-		return checked[0];
-	}
-	assert.match(text(checkRow()), /读取中…/);
-	h.page.status = status();
-	h.page.show_inventory();
-	assert.doesNotMatch(text(checkRow()), /读取中…/);
+test('T16.31 progress and summary occupy separate full-width feedback row', async () => {
+	const h = await ready_view(status());
+	const feedback = () => h.page.inventory.children[0].children[2];
 	let finishJob;
 	h.ap.run_job = () => new Promise(resolve => { finishJob = resolve; });
 	h.ap.job_progress = target => {
@@ -646,17 +627,59 @@ test('T10.44 scenario 1: Last checked, live progress and completed check share t
 		return { stop() { target.textContent = ''; } };
 	};
 	const pending = h.page.run('update_check');
-	assert.match(text(h.page.progress), /已用 0 秒/);
-	checkRow();
+	assert.equal(feedback().hidden, false);
+	assert.match(text(feedback()), /已用 0 秒/);
+	assert.ok(buttons(h.page.inventory).every(b => b.disabled));
 	finishJob({ state: 'ok', result: { ok: true, packages: {} } });
-	await settle();
-	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
-	checkRow();
-	h.calls[0].resolve(status());
 	await pending;
+	assert.equal(feedback().hidden, false);
 	assert.equal(text(h.page.progress), '');
-	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
-	checkRow();
+	assert.equal(text(feedback()), '检查完成，0 个包有更新');
+	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+});
+
+test('T16.31 RC switch applies UCI before rechecking; badges only on available RC updates', async () => {
+	const s = status();
+	const rc = { ...entry, available: '4', prerelease: true };
+	s.updates_available.release_candidates = {
+		...s.updates_available, rc_url: 'https://channel-rc/',
+		packages: {
+			'aether-xray': rc,
+			'aether-proxy': { ...rc, installed: '4', newer: false },
+			'luci-app-aether-proxy': { ...rc, asset: null }
+		}
+	};
+	const h = await ready_view(s);
+	const find = predicate => descendants(h.page.inventory).filter(predicate);
+	const flag = () => find(n => n.role === 'switch')[0];
+	const badge = () => find(n => n.class === 'label');
+	assert.equal(flag().checked, false);
+	assert.equal(badge().length, 0);
+	assert.match(text(h.page.inventory), /检查 RC 更新/);
+	const startingJob = h.ap.run_job;
+	h.ap.run_job = (kind, args) => {
+		assert.deepEqual(h.channelWrites.at(-1), [0, false]);
+		assert.equal(flag().disabled, true);
+		return startingJob(kind, args);
+	};
+	await flag().click();
+	assert.deepEqual(h.channelWrites[0], ['aetherproxy', 'main', { update_channel: 'rc' }]);
+	assert.equal(flag().checked, true);
+	assert.equal(badge().length, 1);
+	assert.equal(text(badge()[0]), '预发布');
+	assert.equal(badge()[0].title, '预发布，可能与正式版同版本号。');
+	assert.equal(h.page.inventory.children[0].children[4].children[2].children[4].textContent, '最新');
+	assert.ok(!buttons(h.page.inventory).some(b => text(b) === '立即更新'), 'RC is discovery-only, not a stable install target');
+	await flag().click();
+	assert.deepEqual(h.channelWrites[2], ['aetherproxy', 'main', { update_channel: 'stable' }]);
+	assert.equal(flag().checked, false);
+	assert.equal(badge().length, 0);
+	assert.deepEqual(h.jobs.map(job => job.kind), ['update_check', 'update_check']);
+	h.uci.changes = async () => ({ aetherproxy: [['set', 'main', 'mode', 'global']] });
+	await flag().click();
+	assert.equal(flag().checked, false);
+	assert.equal(h.channelWrites.length, 4, 'do not apply other settings');
+	assert.match(text(h.page.summary), /先应用或丢弃暂存/);
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {
@@ -752,9 +775,9 @@ test('T10.46 / T16.28: translated manual install guidance stays visible above th
 		h.page.status = s;
 		h.page.show_inventory();
 		const [packages] = h.page.inventory.children;
-		const toolbar = packages.children[1];
-		const description = toolbar.children[0];
-		assert.equal(text(description), model.manual_install_note());
+		const description = packages.children[3];
+		assert.equal(description.class, 'cbi-map-descr');
+		assert.ok(text(description).endsWith(model.manual_install_note()));
 		assert.ok(descendants(description).every(node => !node.hidden && node.title == null));
 		assert.equal(packages.children.at(-1).tag, 'table');
 	}

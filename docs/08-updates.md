@@ -389,6 +389,22 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 ### 检查（`aether-proxy update check`，T7.3）
 
+**通道选择（T16.31）**：`main.update_channel` 默认 `stable`；任何不是 `rc` 的选项值都按
+`stable` 处理。正式通道 `channel-stable` 始终按 `update.channel_urls` 的顺序检查，默认只读这条通道。
+切换到 `rc` 后另外检查 `channel-rc`：若配置的正式 URL 以 `/channel-stable/` 结尾（末尾斜线可省略），
+对应的 RC URL 取同级 `/channel-rc/`，按配置顺序尝试；没有这样的地址时用内建的 GitHub RC URL。
+两份清单各自验签，RC 清单必须带顶层 `prerelease: true`；RC 缺失或无法验证时继续返回正式通道结果。
+
+RC 模式按包名合并：RC 独有或比正式通道更新的条目进入结果，带 `prerelease: true`；同版本或正式版
+更新时保留正式条目，不能让过期的 RC 遮住后续正式版。版本比较仍用 `version_newer()`：
+RC 与通过验证后发布的正式版可以有**同一个包版本号**，没有额外的 RC 后缀参与排序；设备已安装同版本时
+显示「最新」，不会再提示更新。RC 验证不通过就不将该候选版提升为正式发布；不试用 RC 的普通设备不会读到它。
+
+`updates.json` 顶层保留正式通道结果，RC 合并结果另存于 `release_candidates` 缓存键（含 `rc_url`）。
+`update check --json` 返回本次所选模式的结果；关闭 RC 并完成检查后不再返回预发布结果。LuCI 切换开关
+后立即重查。RC 只影响组件检查和展示：预发布包须手动从候选版发布页安装，原有安装、自动更新、
+回滚、签名兼容链和规则数据流程仍依据正式通道；回滚所显示的上一版也来自正式通道。
+
 下载并验签清单后，对比本机状态，结果原子写入 `/var/run/aether-proxy/updates.json`，`status` 的 `updates_available` 直接取它（没有该文件时为 `null`）：
 
 ```json

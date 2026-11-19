@@ -146,13 +146,18 @@ return baseclass.extend({
 		return /^https?:\/\/[^\/?#\s]+[^\s]*$/.test(value) ||
 			_('Enter an HTTP or HTTPS URL without whitespace', 'aether-proxy');
 	},
-	table: function(status, busy, now) {
+	channel_note: function() {
+		return _('Also checks the pre-release channel. Release candidates and stable releases can have the same version number.', 'aether-proxy');
+	},
+	table: function(status, busy, now, rc) {
 		const pending = status === undefined;
 		const loading = _('Reading…', 'aether-proxy');
-		const updates = status?.updates_available;
+		const stable = status?.updates_available;
+		const updates = (rc ? stable?.release_candidates : null) ?? stable;
 		return {
 			error: status?.ok === false ? failure(status) : null,
 			checked: pending ? loading : relative(updates?.checked, now), url: updates?.url ?? '–',
+			rc_url: updates?.rc_url,
 			can_check: !pending && !busy,
 			rows: PACKAGES.map(name => {
 				const p = updates?.packages?.[name];
@@ -179,13 +184,15 @@ return baseclass.extend({
 					text = _('Not installed', 'aether-proxy');
 				else
 					text = p.newer ? _('Update available', 'aether-proxy') : _('Up to date', 'aether-proxy');
+				const prerelease = p?.prerelease === true;
 				return {
 					name,
+					prerelease: prerelease && p.asset != null && (p.newer === true || p.installed == null),
 					installed: pending ? loading : (p ? (p.installed ?? _('Not installed', 'aether-proxy')) : '–'),
 					available: pending ? loading : (p?.next_step?.version ?? p?.available ?? '–'),
 					previous: pending ? loading : (p?.previous ?? '–'), status: text,
-					install: !!p && !blocked && p.asset != null && p.installed == null,
-					update: !!p && !blocked && p.asset != null && p.installed != null && p.newer === true,
+					install: !!p && !prerelease && !blocked && p.asset != null && p.installed == null,
+					update: !!p && !prerelease && !blocked && p.asset != null && p.installed != null && p.newer === true,
 					bridge_required: bridge, blocked, update_label,
 					rollback: can_rollback(name, p),
 					disabled: pending || !!busy || blocked,
