@@ -195,7 +195,7 @@ async function verifyToolbars(page, view, narrow = false) {
 			return fits && (narrow ? a.bottom <= b.top + 1 : a.right <= b.left && a.bottom > b.top);
 		}, narrow), 'Manual guidance is beside the title on desktop and wraps without overflow at 360 px');
 		assert.equal(await button.isVisible(), true);
-		assert.equal(await row.getByRole('switch', { name: tr('Check for release candidates') }).isVisible(), true);
+		assert.equal(await block.getByRole('switch').count(), 0);
 		assert.ok(await row.evaluate(el => {
 			const [text, actions] = el.children;
 			const bounds = el.getBoundingClientRect();
@@ -262,35 +262,17 @@ async function capture(browser, theme, stylesheet, view) {
 		timezoneId: 'Asia/Shanghai', serviceWorkers: 'block' });
 	const errors = [];
 	const requests = new Set();
-	const rcPreview = view === 'updates' && process.env.AETHER_T16_31 === '1';
-	const liveConfig = structuredClone(configs.aetherproxy);
-	const liveStatus = structuredClone(status);
-	const stable = liveStatus.updates_available;
-	const channelUrl = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-';
-	if (rcPreview)
-		stable.url = channelUrl + 'stable/';
-	const rc = { ...structuredClone(stable), rc_url: channelUrl + 'rc/' };
-	rc.packages['aether-xray'] = { ...rc.packages['aether-xray'], available: '26.11.2-r1', prerelease: true };
+	const updatePreview = view === 'updates';
+	const result = structuredClone(status.updates_available);
+	result.url = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
 	let finished = false;
 	const previewRpc = {
-		'uci.get': params => params.config === 'aetherproxy' ? { values: liveConfig } : rpcFixtures['uci.get'](params),
-		'aetherproxy.set_update_channel': ({ value }) => {
-			assert.equal(value, 'rc');
-			liveConfig.main.update_channel = value;
-			return { ok: true };
-		},
-		'aetherproxy.status': () => liveStatus,
+		'aetherproxy.status': () => ({ ...status, updates_available: result }),
 		'aetherproxy.job_start': ({ kind, args }) => {
 			assert.deepEqual([kind, args], ['update_check', []]);
-			assert.equal(liveConfig.main.update_channel, 'rc');
 			return { ok: true, job: 'preview-check' };
 		},
-		'aetherproxy.job_status': () => {
-			if (!finished)
-				return { ok: true, state: 'running' };
-			stable.release_candidates = rc;
-			return { ok: true, state: 'ok', result: rc };
-		}
+		'aetherproxy.job_status': () => finished ? { ok: true, state: 'ok', result } : { ok: true, state: 'running' }
 	};
 	try {
 		await context.route('**/*', async route => {
@@ -309,7 +291,7 @@ async function capture(browser, theme, stylesheet, view) {
 						return { jsonrpc: '2.0', id: call.id, result: {} };
 					const [, object, method, params] = call.params;
 					const key = `${object}.${method}`;
-					const fixture = (rcPreview ? previewRpc[key] : null) ?? rpcFixtures[key];
+					const fixture = (updatePreview ? previewRpc[key] : null) ?? rpcFixtures[key];
 					requests.add(key);
 					if (!fixture) {
 						errors.push(`Missing RPC fixture: ${key}`);
@@ -344,28 +326,17 @@ async function capture(browser, theme, stylesheet, view) {
 			`${origin}/luci-static/${stylesheet}`), 'Theme stylesheet was applied');
 		await verifyToolbars(page, view);
 		const feedback = page.locator('.aether-update-feedback');
-		if (rcPreview) {
-			await page.getByRole('switch', { name: tr('Check for release candidates') }).click();
+		if (updatePreview) {
+			await page.getByRole('button', { name: tr('Check for updates') }).click();
 			await feedback.filter({ hasText: /正在检查更新.*已用/ }).waitFor();
 			assert.equal(await page.getByRole('button', { name: tr('Check for updates') }).isDisabled(), true);
 			await page.setViewportSize({ width: 360, height: dark ? 1000 : 1500 });
 			await verifyToolbars(page, view, true);
 			finished = true;
 			await feedback.filter({ hasText: /检查完成，1 个包有更新/ }).waitFor();
-			await page.locator('td .label').filter({ hasText: tr('Pre-release') }).waitFor();
-			await page.getByRole('button', { name: tr('Update to pre-release') }).waitFor();
-			assert.ok(!requests.has('uci.apply') && !requests.has('file.exec'));
 			assert.equal(await page.getByRole('button', { name: tr('Check for updates') }).isEnabled(), true);
 			await verifyToolbars(page, view, true);
 			await page.screenshot({ path: path.join(out, `${view}-${theme}-360.png`), fullPage: true, animations: 'disabled' });
-			// Capture another check with the existing RC row still visible but disabled.
-			finished = false;
-			await page.getByRole('button', { name: tr('Check for updates') }).click();
-			await feedback.filter({ hasText: /正在检查更新.*已用/ }).waitFor();
-			assert.equal(await page.getByRole('button', { name: tr('Update to pre-release') }).isDisabled(), true);
-			await page.screenshot({ path: path.join(out, `${view}-${theme}-360-progress.png`), fullPage: true, animations: 'disabled' });
-			finished = true;
-			await feedback.filter({ hasText: /检查完成，1 个包有更新/ }).waitFor();
 			await page.setViewportSize({ width: 1320, height });
 			await verifyToolbars(page, view);
 		}

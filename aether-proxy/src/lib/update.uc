@@ -148,7 +148,7 @@ function channel_url(base, file) {
 	return `${replace(base, /\/$/, '')}/${file}`;
 }
 
-function download_manifest(ctx, base, proxied_first, index, prerelease) {
+function download_manifest(ctx, base, proxied_first, index) {
 	let manifest_path = `${ctx.download_dir}/manifest-${index}.json`;
 	let sig_path = `${ctx.download_dir}/manifest-${index}.json.sig`;
 	if (!fetch_file(ctx, channel_url(base, 'manifest.json'), manifest_path, C.UPDATE_MANIFEST_MAX, proxied_first) ||
@@ -158,14 +158,14 @@ function download_manifest(ctx, base, proxied_first, index, prerelease) {
 	let usign = ctx.bin_dir ? `${ctx.bin_dir}/usign` : 'usign';
 	let verified = run([ usign, '-V', '-q', '-m', manifest_path, '-P', ctx.keys_dir ], { timeout: 10, quiet: true });
 	let manifest = verified.code == 0 ? read_object(manifest_path) : null;
-	if (manifest == null || manifest.schema != 2 || (manifest.prerelease === true) != prerelease) {
+	if (manifest == null || manifest.schema != 2) {
 		log.event('error', 'MANIFEST_BAD_SIGNATURE', { url: base });
 		return { reached: true };
 	}
 	return { manifest, path: manifest_path };
 }
 
-function load_channels(confdir) {
+function load_channel_urls(confdir) {
 	let cursor = uci.cursor(confdir);
 	let loaded = config.load(cursor);
 	if (!loaded.ok) {
@@ -173,7 +173,7 @@ function load_channels(confdir) {
 		log.event('error', 'CONFIG_INVALID', { field: first.field ?? '-', reason: first.code ?? first.detail ?? 'invalid configuration' });
 		return { ok: false, detail: 'configuration is invalid' };
 	}
-	return { ok: true, urls: loaded.snapshot.update.channel_urls, rc: loaded.snapshot.main.update_channel == 'rc' };
+	return { ok: true, urls: loaded.snapshot.update.channel_urls };
 }
 
 // Manifest assets are keyed by package format (08 `manifest.json`: "ipk"/"apk"), not by the
@@ -398,8 +398,9 @@ function bridge_plan(manifest, installed, arch, pm) {
 	return { ok: true, active: true, next, remaining, rollback };
 }
 
-function build_result(ctx, manifest, base, arch, pm, prior) {
+function build_result(ctx, manifest, base, arch, pm) {
 	let packages = {};
+	let prior = read_object(`${ctx.run_dir}/${C.UPDATE_FILE}`);
 	let backend = { ok: true, version: null };
 	if (index(keys(manifest), 'compatibility') >= 0) {
 		backend = installed_version(ctx, pm, C.PROG);
@@ -408,7 +409,6 @@ function build_result(ctx, manifest, base, arch, pm, prior) {
 	}
 	let plan = bridge_plan(manifest, backend.version, arch, pm);
 	for (let name in C.UPDATE_PACKAGES) {
-		let bridge = plan.active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0);
 		let entry = manifest.packages?.[name];
 		if (type(entry) != 'object' || type(entry.current) != 'object')
 			continue;
@@ -418,6 +418,7 @@ function build_result(ctx, manifest, base, arch, pm, prior) {
 		let installed = installed_version(ctx, pm, name);
 		if (!installed.ok)
 			return { ok: false, detail: installed.detail };
+		let bridge = plan.active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0);
 		if (bridge) {
 			current = plan.ok ? plan.next : current;
 			// All application entry points select this same backend-only step.
@@ -443,48 +444,13 @@ function build_result(ctx, manifest, base, arch, pm, prior) {
 		};
 	}
 	return {
-		ok: true, bridge_active: plan.active,
+		ok: true,
 		value: {
 			checked: time(), url: base, arch, pm,
 			packages,
 			data: data_status(ctx, manifest)
 		}
 	};
-}
-
-function package_source(stable, name, bridge_active) {
-	if (bridge_active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0))
-		return stable;
-	let candidate = stable.rc?.manifest?.packages?.[name]?.current?.version;
-	let current = stable.manifest.packages?.[name]?.current?.version;
-	// A promoted (or newer) stable version wins, including equivalent -N/-rN forms.
-	return type(candidate) == 'string' && (type(current) != 'string' || version_newer(candidate, current))
-		? stable.rc : stable;
-}
-
-function merge_rc_result(ctx, plat, stable, fetched) {
-	let packages = { ...stable.value.packages };
-	for (let name in C.UPDATE_PACKAGES) {
-		let source = package_source(fetched, name, stable.bridge_active);
-		if (source == fetched)
-			continue;
-		let entry = packages[name];
-		let available = source.manifest.packages[name].current.version;
-		let asset = package_asset(source.manifest, name, plat.arch, plat.pm, false);
-		let installed = entry == null ? installed_version(ctx, plat.pm, name) : { ok: true, version: entry.installed };
-		if (!installed.ok)
-			return installed;
-		let newer = asset != null && version_newer(available, installed.version);
-		if (asset == null)
-			log.event('error', 'ARCH_UNSUPPORTED', { arch: plat.arch });
-		// UPDATE_AVAILABLE notifications are emitted only by the stable result.
-		packages[name] = {
-			installed: installed.version, available, newer,
-			previous: entry?.previous ?? null,
-			asset: asset?.url ?? null, prerelease: true
-		};
-	}
-	return { ok: true, value: { ...stable.value, rc_url: fetched.rc.base, packages } };
 }
 
 function free_bytes(ctx) {
@@ -558,7 +524,7 @@ export function download_asset(opts, base, asset, name) {
 
 // Shared by `update check` and `update data`: download and verify the first valid manifest.
 // Failure codes follow 08 "检查": unreachable -> UPDATE_FETCH_FAILED (1), bad signature -> 4.
-function fetch_manifest(opts, check_rc) {
+function fetch_manifest(opts) {
 	let root = opts.sys_root ?? '';
 	let run_dir = opts.run_dir ?? system_path(root, C.RUN_DIR);
 	let ctx = {
@@ -570,7 +536,7 @@ function fetch_manifest(opts, check_rc) {
 		keys_dir: system_path(root, C.KEYS_DIR)
 	};
 	log.set_run_dir(run_dir);
-	let loaded = load_channels(opts.confdir ?? system_path(root, C.CONFIG_DIR));
+	let loaded = load_channel_urls(opts.confdir ?? system_path(root, C.CONFIG_DIR));
 	if (!loaded.ok)
 		return { ok: false, code: 'CONFIG_INVALID', exit: 2, detail: loaded.detail };
 	// An empty channel list is a configuration problem (08 "检查"), not a usage error.
@@ -586,30 +552,12 @@ function fetch_manifest(opts, check_rc) {
 	let proxied = proxy_running(ctx), selected = null, reached = false;
 	for (let i = 0; i < length(loaded.urls); i++) {
 		let base = loaded.urls[i];
-		let candidate = download_manifest(ctx, base, proxied, i, false);
+		let candidate = download_manifest(ctx, base, proxied, i);
 		if (candidate.manifest != null) {
 			selected = { ...candidate, base };
 			break;
 		}
 		reached ||= candidate.reached;
-	}
-	let rc = null;
-	if (selected != null && check_rc && (opts.channel == null ? loaded.rc : opts.channel == 'rc')) {
-		// A stable mirror can serve the matching RC channel as a sibling. Otherwise use
-		// the built-in RC endpoint; arbitrary stable mirror paths remain unchanged.
-		let urls = filter(loaded.urls, url => match(url, /\/channel-stable\/?$/) != null);
-		urls = map(urls, url => replace(url, /\/channel-stable\/?$/, '/channel-rc/'));
-		if (!length(urls))
-			urls = [ C.CHANNEL_RC_URL ];
-		for (let i = 0; i < length(urls); i++) {
-			let base = urls[i];
-			let candidate = download_manifest(ctx, base, proxied, length(loaded.urls) + i, true);
-			if (candidate.manifest != null) {
-				// Use only the verified RC base for RC assets, never stable mirrors.
-				rc = { ...candidate, base, urls: [ base ], prerelease: true };
-				break;
-			}
-		}
 	}
 	let download_names = fs.lsdir(ctx.download_dir);
 	if (download_names == null) {
@@ -631,7 +579,7 @@ function fetch_manifest(opts, check_rc) {
 		log.event('error', 'UPDATE_FETCH_FAILED', { urls: loaded.urls });
 		return { ok: false, code: 'UPDATE_FETCH_FAILED', exit: 1, detail: 'no update channel could be reached' };
 	}
-	return { ok: true, ctx, manifest: selected.manifest, base: selected.base, urls: loaded.urls, rc };
+	return { ok: true, ctx, manifest: selected.manifest, base: selected.base, urls: loaded.urls };
 }
 
 function platform(ctx) {
@@ -654,32 +602,21 @@ function platform(ctx) {
 
 // Compare the manifest with what is installed and store the result as updates.json.
 function write_updates(ctx, fetched, plat) {
+	let built = build_result(ctx, fetched.manifest, fetched.base, plat.arch, plat.pm);
+	if (!built.ok)
+		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: built.detail };
 	let update_path = `${ctx.run_dir}/${C.UPDATE_FILE}`;
-	let prior = read_object(update_path);
-	let stable = build_result(ctx, fetched.manifest, fetched.base, plat.arch, plat.pm, prior);
-	if (!stable.ok)
-		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: stable.detail };
-	let result = stable.value;
-	if (fetched.rc != null) {
-		let rc = merge_rc_result(ctx, plat, stable, fetched);
-		if (!rc.ok)
-			return { ok: false, code: 'CMD_FAILED', exit: 1, detail: rc.detail };
-		// Keep the stable projection compatible with status, notices and automatic Xray installs.
-		// The optional RC view has its own cache key; manual installs reverify manifests.
-		result = rc.value;
-		stable.value.release_candidates = rc.value;
-	}
-	if (!sys.write_atomic(update_path, sprintf('%.J', stable.value) + '\n')) {
+	if (!sys.write_atomic(update_path, sprintf('%.J', built.value) + '\n')) {
 		let detail = sys.error() ?? 'unknown write error';
 		log.event('error', 'FS_FAILED', { op: 'write', path: update_path, detail });
 		return { ok: false, code: 'FS_FAILED', exit: 1, detail };
 	}
-	return { ok: true, value: result, exit: 0 };
+	return { ok: true, value: built.value, exit: 0 };
 }
 
 export function check(opts) {
 	opts ??= {};
-	let fetched = fetch_manifest(opts, true);
+	let fetched = fetch_manifest(opts);
 	if (!fetched.ok)
 		return fetched;
 	let plat = platform(fetched.ctx);
@@ -995,8 +932,7 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 
 // Install one manifest-selected package. All package-manager calls happen only after the
 // signed manifest and downloaded asset have both been verified.
-function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous, recovery) {
-	recovery ??= selected;
+function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous) {
 	if (!budget_ready())
 		return incomplete();
 	let from = installed_version(ctx, pm, name);
@@ -1028,15 +964,15 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 		return { ok: true, exit: 0, value: { ok: true, package: name, from: from.version, to: asset.version, rolled_back: false, code: null } };
 	}
 	log.event('error', 'UPDATE_VERIFY_FAILED', { package: name, version: asset.version });
-	let prior = package_asset(recovery.manifest, name, arch, pm, false);
-	let previous_asset = package_asset(recovery.manifest, name, arch, pm, true);
+	let prior = package_asset(selected.manifest, name, arch, pm, false);
+	let previous_asset = package_asset(selected.manifest, name, arch, pm, true);
 	// --previous is an explicit downgrade request, not a failed upgrade; restore current only if
 	// its post-install check fails.
 	let rollback = previous == true ? prior : previous_asset;
 	if (rollback == null)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: 'no rollback version is available',
 			value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: false, code: 'UPDATE_VERIFY_FAILED', detail: '无可回滚的版本' } };
-	let rollback_file = download_asset(opts, recovery.urls, rollback, rollback.url);
+	let rollback_file = download_asset(opts, selected.urls, rollback, rollback.url);
 	if (!rollback_file.ok)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `rollback asset unavailable: ${rollback_file.code}` };
 	let rolled = install_package(ctx, pm, rollback_file.path, true);
@@ -1052,13 +988,12 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 
 // UI packages follow only a verified (or unchanged) backend. Their failures never
 // trigger backend recovery: the new backend still serves the old UI (docs/08).
-function update_companion(opts, ctx, selected, plat, name, requested) {
+function update_companion(opts, ctx, selected, plat, name) {
 	let installed = installed_version(ctx, plat.pm, name);
 	if (!installed.ok)
 		return { status: 'failed', code: 'CMD_FAILED', detail: installed.detail };
 	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, false);
-	if (asset == null || (installed.version == null
-		? !(selected.prerelease && name == requested) : !version_newer(asset.version, installed.version)))
+	if (installed.version == null || asset == null || !version_newer(asset.version, installed.version))
 		return { status: 'skipped' };
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
 	if (!downloaded.ok)
@@ -1079,20 +1014,18 @@ function update_companion(opts, ctx, selected, plat, name, requested) {
 	return { status: 'installed' };
 }
 
-function update_together(opts, ctx, selected, plat, asset, target, requested) {
-	target ??= selected;
+function update_together(opts, ctx, selected, plat, asset) {
 	let from = installed_version(ctx, plat.pm, C.PROG);
 	if (!from.ok)
 		return group_failure('CMD_FAILED', from.detail);
-	let result = version_newer(asset.version, from.version) || (target.prerelease && from.version == null)
-		? install_with_rollback(opts, ctx, target, C.PROG, plat.arch, plat.pm, asset, false, selected)
+	let result = version_newer(asset.version, from.version)
+		? install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, false)
 		: { ok: true, exit: 0, value: { ok: true, package: C.PROG, from: from.version,
 			to: from.version, rolled_back: false, code: null } };
 	let companions = {}, failure = null;
 	for (let name in C.UPDATE_COMPANIONS) {
 		// Do not change page files after any backend failure, including automatic recovery.
-		let source = package_source(selected, name);
-		let outcome = result.ok ? update_companion(opts, ctx, source, plat, name, requested) : { status: 'skipped' };
+		let outcome = result.ok ? update_companion(opts, ctx, selected, plat, name) : { status: 'skipped' };
 		companions[name] = outcome.status;
 		if (outcome.status != 'failed')
 			continue;
@@ -1348,7 +1281,7 @@ function package_update_selected(opts, name, previous, selected) {
 		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
 		if (!plan.ok)
 			return group_failure(plan.code, plan.detail);
-		if (!plan.active && package_source(selected, primary) == selected && package_source(selected, name) == selected)
+		if (!plan.active)
 			return { ok: true, exit: 0, value: { ok: true, package: C.PROG,
 				from: installed.version, to: installed.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
 		if (plan.active) {
@@ -1357,7 +1290,7 @@ function package_update_selected(opts, name, previous, selected) {
 			// only a backend; old pages remain compatible with the new backend.
 			let old = selected.manifest.packages[C.PROG];
 			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
-			let staged = { ...selected, rc: null, bridge_step: true, manifest: { ...selected.manifest,
+			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
 				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
 			let remaining = getenv('AETHER_PROXY_CHAIN_LEFT');
 			let limit = remaining == null ? plan.remaining : min(+remaining, plan.remaining);
@@ -1380,8 +1313,7 @@ function package_update_selected(opts, name, previous, selected) {
 			return result;
 		}
 	}
-	let target = previous == true ? selected : package_source(selected, primary);
-	let asset = package_asset(target.manifest, primary, arch, pm, previous == true);
+	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });
 		let detail = `no ${pm} asset for ${primary} on ${arch}`;
@@ -1390,18 +1322,10 @@ function package_update_selected(opts, name, previous, selected) {
 		return together ? group_failure('ARCH_UNSUPPORTED', detail)
 			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
 	}
-	if (target.prerelease && !together) {
-		let from = installed_version(ctx, pm, name);
-		if (!from.ok)
-			return { ok: false, code: 'CMD_FAILED', exit: 1, detail: from.detail };
-		if (from.version != null && !version_newer(asset.version, from.version))
-			return { ok: true, exit: 0, value: { ok: true, package: name, from: from.version,
-				to: from.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
-	}
 	let result = together
 		? install_target(opts, selected, plat, asset.version,
-			() => update_together(opts, ctx, selected, plat, asset, target, name))
-		: install_with_rollback(opts, ctx, target, name, arch, pm, asset, previous, selected);
+			() => update_together(opts, ctx, selected, plat, asset))
+		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
 	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
 	// offering what was just installed. The install outcome stands even if the refresh fails.
 	let refreshed = write_updates(ctx, selected, plat);
@@ -1430,8 +1354,8 @@ export function package_update(opts, name, previous) {
 		chain_deadline = min(chain_deadline, +inherited);
 	if (budget_left() <= 0)
 		return incomplete();
+	let selected = fetch_manifest(opts);
 	let before = getenv('AETHER_PROXY_CHAIN_FROM');
-	let selected = fetch_manifest(opts, previous != true && before == null);
 	if (selected.ok && before != null) {
 		let plat = platform(selected.ctx);
 		if (!plat.ok)

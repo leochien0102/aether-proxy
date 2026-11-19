@@ -2,7 +2,6 @@
 'require view';
 'require form';
 'require aether-proxy.form-defaults as form_defaults';
-'require uci';
 'require ui';
 'require aether-proxy.common as ap';
 'require aether-proxy.model.updates as model';
@@ -13,34 +12,13 @@
  * Job progress and unconditional recovery follow docs/10 "UI 规则".
  * Group update progress comes from the model (docs/10 "B17").
  * Xray-only rollback and manual installation guidance follow docs/10 "r13：取消三包手动回滚".
- * Component update layout and the RC discovery flag follow docs/10 "更新页".
+ * Component update layout follows docs/10 "更新页".
  */
 return view.extend({
 	load: function() {
 		return ap.load_config();
 	},
-	set_channel: async function(checked) {
-		const value = checked ? 'rc' : 'stable';
-		this.busy = true;
-		this.summary.textContent = '';
-		this.show_inventory();
-		try {
-			const reply = await ap.call('set_update_channel', { value });
-			if (!reply?.ok)
-				throw new Error(reply?.detail ?? reply?.code ?? 'RPC_FAILED');
-			this.rc = checked;
-			uci.unload('aetherproxy');
-			await ap.load_config();
-		}
-		catch (e) {
-			this.summary.textContent = _('Operation failed: %s', 'aether-proxy').format(e?.message ?? String(e));
-			this.busy = false;
-			this.show_inventory();
-			return;
-		}
-		return this.run('update_check');
-	},
-	run: async function(kind, name, previous, channel) {
+	run: async function(kind, name, previous) {
 		const bridge = kind == 'update_package' && !previous &&
 			this.status?.updates_available?.packages?.[name]?.bridge_required === true;
 		this.busy = true;
@@ -51,8 +29,7 @@ return view.extend({
 			const text = model.job_progress(kind, name, previous, this.status);
 			timer = ap.job_progress(this.progress, text);
 			const job = kind == 'update_check' ? await ap.run_job('update_check', []) :
-				await ap.run_job('update_package', previous ? [ name, '--previous' ] :
-					(channel ? [ name, '--channel', channel ] : [ name ]));
+				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);
 			timer.stop();
 			this.summary.textContent = model.job_result(kind, name, job);
 			if (bridge && job.state == 'ok' && job.result?.ok !== false) {
@@ -100,17 +77,12 @@ return view.extend({
 					return;
 				if (row.disabled)
 					return;
-				if (row.prerelease && !previous && !await ap.confirm({
-					title: label, text: model.prerelease_note(), ok: label, destructive: true
-				}))
-					return;
-				// Explicitly pin the channel that the user saw and confirmed.
-				const channel = row.prerelease ? 'rc' : 'stable';
-				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous, channel);
+				// Companion rows must not install the target's page/translation independently.
+				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous);
 			}) }, [ label ]);
 	},
 	show_inventory: function() {
-		const vm = model.table(this.status, this.busy, Date.now() / 1000, this.rc);
+		const vm = model.table(this.status, this.busy, Date.now() / 1000);
 		const check = E('button', {
 			type: 'button', class: 'cbi-button cbi-button-action', disabled: !vm.can_check || null,
 			click: ui.createHandlerFn(this, function() { return this.run('update_check'); })
@@ -124,7 +96,7 @@ return view.extend({
 			...vm.rows.map(row => {
 				const actions = [];
 				if (row.install)
-					actions.push(this.package_button(row, row.install_label, false));
+					actions.push(this.package_button(row, row.bridge_required ? row.update_label : _('Install', 'aether-proxy'), false));
 				if (row.update || row.blocked)
 					actions.push(this.package_button(row, row.update_label, false));
 				if (row.rollback)
@@ -132,28 +104,18 @@ return view.extend({
 				jobButtons.push(...actions);
 				return E('tr', { class: 'tr' }, [
 					/* Version strings come from the signed manifest, not from this page. */
-					...[ row.name, row.installed, row.available, row.previous ].map(text => E('td', { class: 'td' }, [ text ])),
-					E('td', { class: 'td' }, [ row.status, ...(row.prerelease ? [ ' ',
-						E('span', { class: 'label', title: _('Pre-release; may have the same version number as the stable release.', 'aether-proxy') },
-							_('Pre-release', 'aether-proxy')) ] : []) ]),
+					...[ row.name, row.installed, row.available, row.previous, row.status ]
+						.map(text => E('td', { class: 'td' }, [ text ])),
 					E('td', { class: 'td' }, actions)
 				]);
 			})
 		]);
-		const channel = E('label', { class: 'aether-update-channel', title: model.channel_note(),
-			style: 'display:flex; align-items:center; gap:0.4em; min-width:0' }, [
-			E('input', { type: 'checkbox', role: 'switch', checked: this.rc || null, disabled: !vm.can_check || null,
-				'aria-describedby': 'aether-update-channel-note',
-				change: ui.createHandlerFn(this, function(ev) { return this.set_channel(ev.target.checked); }) }),
-			_('Check for release candidates', 'aether-proxy'),
-			E('span', { id: 'aether-update-channel-note', hidden: true }, model.channel_note())
-		]);
 		const statusRow = E('div', { class: 'aether-update-status',
 			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0' }, [
 			E('span', { style: 'flex:1 1 21em; min-width:0; overflow-wrap:anywhere' },
-				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url, ...(vm.rc_url ? [ ' · ', vm.rc_url ] : []) ]),
+				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
 			E('div', { style: 'display:flex; flex-wrap:wrap; align-items:center; min-width:0; gap:0.5em 1em; margin-inline-start:auto' },
-				[ channel, check ])
+				[ check ])
 		]);
 		const hasFeedback = this.busy || this.summary.textContent || vm.error;
 		const feedback = E('div', { class: 'aether-update-feedback', style: 'margin:0.25em 0 0',
@@ -180,7 +142,6 @@ return view.extend({
 	},
 	render: function() {
 		this.status = undefined;
-		this.rc = uci.get('aetherproxy', 'main', 'update_channel') === 'rc';
 		this.busy = false;
 		this.inventory = E('div');
 		this.summary = E('div');

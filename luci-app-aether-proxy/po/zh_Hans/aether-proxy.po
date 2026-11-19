@@ -1799,34 +1799,6 @@ msgid "Check for updates"
 msgstr "检查更新"
 
 msgctxt "aether-proxy"
-msgid "Check for release candidates"
-msgstr "检查 RC 更新"
-
-msgctxt "aether-proxy"
-msgid "Also checks the pre-release channel. Release candidates and stable releases can have the same version number."
-msgstr "同时检查预发布通道。RC 与正式版可能使用同一个版本号。"
-
-msgctxt "aether-proxy"
-msgid "Pre-release"
-msgstr "预发布"
-
-msgctxt "aether-proxy"
-msgid "Pre-release; may have the same version number as the stable release."
-msgstr "预发布，可能与正式版同版本号。"
-
-msgctxt "aether-proxy"
-msgid "Update to pre-release"
-msgstr "更新到预发布"
-
-msgctxt "aether-proxy"
-msgid "Install pre-release"
-msgstr "安装预发布"
-
-msgctxt "aether-proxy"
-msgid "This is a pre-release. If problems occur, reinstall the stable release."
-msgstr "这是预发布，出问题需要重装正式版。"
-
-msgctxt "aether-proxy"
 msgid "Component updates"
 msgstr "组件更新"
 

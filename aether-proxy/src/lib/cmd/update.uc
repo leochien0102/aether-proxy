@@ -22,12 +22,6 @@ function parse_args(args) {
 			opts.json = true;
 			continue;
 		}
-		if (arg == '--channel') {
-			if (index([ 'stable', 'rc' ], args[i + 1]) < 0)
-				return { error: 'option --channel needs stable or rc' };
-			opts.channel = args[++i];
-			continue;
-		}
 		let key = VALUE_OPTIONS[arg];
 		if (key != null) {
 			if (i + 1 >= length(args))
@@ -44,7 +38,7 @@ function parse_args(args) {
 
 function usage(opts, detail) {
 	return pipeline.finish(opts, { ok: false, code: 'USAGE', detail }, 2,
-		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update data [options]\n       aether-proxy update package <package> [--previous] [--channel stable|rc] [options]`);
+		`${detail}\nUsage: aether-proxy update check [options]\n       aether-proxy update data [options]\n       aether-proxy update package <package> [--previous] [options]`);
 }
 
 export function run(args) {
@@ -62,7 +56,7 @@ export function run(args) {
 				result.exit, `${result.code}: ${result.detail}`);
 		return pipeline.finish(parsed.opts, result.value, 0, 'update package completed');
 	}
-	if (parsed.opts.previous || parsed.opts.channel != null || length(parsed.positional) != 1 || index([ 'check', 'data' ], parsed.positional[0]) < 0)
+	if (parsed.opts.previous || length(parsed.positional) != 1 || index([ 'check', 'data' ], parsed.positional[0]) < 0)
 		return usage(parsed.opts, 'expected `update check`, `update data` or `update package <package>`');
 	let result = parsed.positional[0] == 'data' ? update.data_update(parsed.opts) : update.check(parsed.opts);
 	if (!result.ok)

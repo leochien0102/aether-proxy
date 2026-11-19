@@ -389,21 +389,8 @@ Telegram 公布的网段是事实性的 IP 地址列表，同样可以随包分�
 
 ### 检查（`aether-proxy update check`，T7.3）
 
-**通道选择（T16.31）**：`main.update_channel` 默认 `stable`；任何不是 `rc` 的选项值都按
-`stable` 处理。正式通道 `channel-stable` 始终按 `update.channel_urls` 的顺序检查，默认只读这条通道。
-切换到 `rc` 后另外检查 `channel-rc`：若配置的正式 URL 以 `/channel-stable/` 结尾（末尾斜线可省略），
-对应的 RC URL 取同级 `/channel-rc/`，按配置顺序尝试；没有这样的地址时用内建的 GitHub RC URL。
-两份清单各自验签，RC 清单必须带顶层 `prerelease: true`；RC 缺失或无法验证时继续返回正式通道结果。
-
-RC 模式按包名合并：RC 独有或比正式通道更新的条目进入结果，带 `prerelease: true`；同版本或正式版
-更新时保留正式条目，不能让过期的 RC 遮住后续正式版。版本比较仍用 `version_newer()`：
-RC 与通过验证后发布的正式版可以有**同一个包版本号**，没有额外的 RC 后缀参与排序；设备已安装同版本时
-显示「最新」，不会再提示更新。RC 验证不通过就不将该候选版提升为正式发布；不试用 RC 的普通设备不会读到它。
-
-`updates.json` 顶层保留正式通道结果，RC 合并结果另存于 `release_candidates` 缓存键（含 `rc_url`）。
-`update check --json` 返回本次所选模式的结果；关闭 RC 并完成检查后不再返回预发布结果。LuCI 切换开关
-后立即重查。预发布包使用同一个组件安装／更新按钮，文字标注「安装预发布」或「更新到预发布」，确认后才开始。
-自动 Xray 安装、更新通知、签名兼容链、回滚和规则数据仍依据正式通道；回滚显示的上一版也来自正式通道。
+客户端只使用正式通道 `channel-stable`（或 `update.channel_urls` 配置的正式通道镜像）。
+检查、安装、回滚和规则数据更新共用这条通道。预发布 Release 不进入通道，只能手动下载和安装。
 
 下载并验签清单后，对比本机状态，结果原子写入 `/var/run/aether-proxy/updates.json`，`status` 的 `updates_available` 直接取它（没有该文件时为 `null`）：
 
@@ -438,11 +425,7 @@ RC 与通过验证后发布的正式版可以有**同一个包版本号**，没�
   不删除文件，下一次 `update check`（每天的调度或用户点「检查更新」）照常覆盖。`update package` 装完会重新检查并写 `updates.json`（T7.4），它写入的 `checked` 晚于这次安装，不会被判为过期。
   `data status` 只用其中的 `data` 部分，与软件包无关，不受影响。判断写成一个函数，`status` 与 daemon 的自动安装共用。
 
-### 软件包安装（`aether-proxy update package <包> [--previous] [--channel stable|rc]`，T7.4）
-
-不传 `--channel` 时读取 `main.update_channel`，显式参数优先。手动 RC 安装重新下载并验签两份清单，
-沿用检查的逐包选择规则：RC 版本严格高于 stable（或 stable 无该包）且不受正式兼容链控制，才从对应 RC 清单的 URL 下载。
-回滚始终读 stable；定时自动安装 Xray 显式传 `--channel stable`，不读取 RC 清单。
+### 软件包安装（`aether-proxy update package <包> [--previous]`，T7.4）
 
 1. 下载并验签清单；取本机架构与包管理器对应的资产（`--previous` 时取 `previous`），按清单校验 `size` 与 `sha256`。
 2. 记下当前已装版本（用于回滚判断）。

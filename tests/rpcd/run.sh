@@ -23,8 +23,6 @@ bad() { fail=$((fail + 1)); echo "FAIL  $1"; [ $# -gt 1 ] && echo "      $2"; }
 export RPCD_TEST_CTRL="$T/ctrl"
 export RPCD_TEST_CLI_LOG="$T/cli.log"
 export RPCD_TEST_INIT_LOG="$T/init.log"
-export RPCD_TEST_CHANNEL_ROOT="$T/channel"
-mkdir -p "$RPCD_TEST_CHANNEL_ROOT"/{etc/config,delta}
 # The init stub sleeps long enough to prove that the plugin backgrounds the
 # service action instead of waiting for it (docs/10 "service").
 export RPCD_TEST_INIT_SLEEP=5

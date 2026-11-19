@@ -246,13 +246,9 @@ function buttons(node) {
 }
 function load_view(config = {}) {
 	globalThis.E = element;
-	const calls = [], loads = [], timers = [], maps = [], jobs = [], confirmations = [], writes = [], channelWrites = [];
+	const calls = [], loads = [], timers = [], maps = [], jobs = [], confirmations = [], writes = [] = [];
 	const ap = {
-		call: (method, params) => {
-			if (method === 'set_update_channel') {
-				channelWrites.push(params);
-				return Promise.resolve({ ok: true });
-			}
+		call: method => {
 			let resolve;
 			const promise = new Promise(done => { resolve = done; });
 			calls.push({ method, resolve });
@@ -298,19 +294,14 @@ function load_view(config = {}) {
 			return Promise.resolve();
 		}
 	};
-	const uci = {
-		load: name => { loads.push(name); return Promise.resolve('uci-loaded'); },
-		get: (name, section, option) => config[option],
-		unload() {}
-	};
-	ap.load_config = () => uci.load('aetherproxy');
+	ap.load_config = () => { loads.push('aetherproxy'); return Promise.resolve('uci-loaded'); };
 	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
-		view: { extend: o => o }, form, uci,
+		view: { extend: o => o }, form,
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
 		'aether-proxy.model.updates': model,
 		'aether-proxy.common': ap
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
-	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes, channelWrites, uci,
+	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes,
 		start: () => {
 			assert.equal(timers.length, 1);
 			assert.equal(timers[0].delay, 0);
@@ -357,7 +348,7 @@ test('T11.14 updates view: companions dispatch only the bridge, then recheck wit
 		const r = table.children.find(n => text(n.children[0]) == name);
 		assert.equal(text(buttons(r)[0]), '先更新到 0.6.4（第 1/3 步）');
 		await buttons(r)[0].click();
-		assert.deepEqual(calls, [['update_package', ['aether-proxy', '--channel', 'stable']], ['update_check', []], ['status']]);
+		assert.deepEqual(calls, [['update_package', ['aether-proxy']], ['update_check', []], ['status']]);
 		assert.match(text(h.page.summary), /请刷新页面后继续下一步更新/);
 		assert.equal(buttons(h.page.inventory).filter(b => text(b) == '先更新到 0.6.6（第 1/2 步）').length, 3);
 		assert.equal(h.root.children[0], form);
@@ -613,7 +604,7 @@ test('T16.31 Component updates puts guidance in the heading and reserves the bod
 		assert.ok(row.style.includes(style));
 	assert.match(text(row.children[0]), /^上次检查: .+ — https:\/\/channel\/$/);
 	assert.match(row.children[0].style, /overflow-wrap:anywhere/);
-	assert.equal(text(buttons(row)[0]), '检查更新');
+	assert.deepEqual(row.children[1].children.map(text), ['检查更新']);
 	assert.equal(feedback.class, 'aether-update-feedback');
 	assert.equal(feedback.hidden, true);
 	assert.equal(table.tag, 'table');
@@ -640,61 +631,6 @@ test('T16.31 progress and summary occupy separate full-width feedback row', asyn
 	assert.equal(text(h.page.progress), '');
 	assert.equal(text(feedback()), '检查完成，0 个包有更新');
 	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
-});
-
-test('T16.31 RC switch commits without apply, preserves form edits and confirms RC updates', async () => {
-	const s = status();
-	const rc = { ...entry, available: '4', prerelease: true };
-	s.updates_available.release_candidates = {
-		...s.updates_available, rc_url: 'https://channel-rc/',
-		packages: {
-			'aether-xray': rc,
-			'aether-proxy': { ...rc, installed: '4', newer: false },
-			'luci-app-aether-proxy': { ...rc, asset: null }
-		}
-	};
-	const h = await ready_view(s);
-	const find = predicate => descendants(h.page.inventory).filter(predicate);
-	const flag = () => find(n => n.role === 'switch')[0];
-	const badge = () => find(n => n.class === 'label');
-	assert.equal(flag().checked, false);
-	assert.equal(badge().length, 0);
-	assert.match(text(h.page.inventory), /检查 RC 更新/);
-	const formInput = h.root.children[0].children[4];
-	formInput.value = 'https://unsaved/';
-	const startingJob = h.ap.run_job;
-	h.ap.run_job = (kind, args) => {
-		if (kind === 'update_check')
-			assert.deepEqual(h.channelWrites.at(-1), { value: h.page.rc ? 'rc' : 'stable' });
-		assert.equal(flag().disabled, true);
-		return startingJob(kind, args);
-	};
-	await flag().click();
-	assert.deepEqual(h.channelWrites[0], { value: 'rc' });
-	assert.equal(flag().checked, true);
-	assert.equal(badge().length, 1);
-	assert.equal(text(badge()[0]), '预发布');
-	assert.equal(badge()[0].title, '预发布，可能与正式版同版本号。');
-	assert.equal(h.page.inventory.children[0].children[3].children[2].children[4].textContent, '最新');
-	const update = () => buttons(h.page.inventory).find(b => text(b) === '更新到预发布');
-	assert.ok(update());
-	await update().click();
-	assert.match(h.confirmations[0].text, /这是预发布，出问题需要重装正式版/);
-	assert.equal(h.jobs.length, 1, 'cancel must not install');
-	h.ap.confirm = async () => true;
-	await update().click();
-	assert.deepEqual(h.jobs.at(-1), { kind: 'update_package', args: ['aether-xray', '--channel', 'rc'] });
-	s.updates_available.release_candidates.packages['aether-xray'] = { ...rc, installed: null, newer: false };
-	h.page.show_inventory();
-	const install = buttons(h.page.inventory).find(b => text(b) === '安装预发布');
-	assert.ok(install && !install.disabled);
-	await flag().click();
-	assert.deepEqual(h.channelWrites[1], { value: 'stable' });
-	assert.equal(flag().checked, false);
-	assert.equal(badge().length, 0);
-	assert.equal(h.root.children[0].children[4], formInput);
-	assert.equal(formInput.value, 'https://unsaved/');
-	assert.deepEqual(h.jobs.map(job => job.kind), ['update_check', 'update_package', 'update_check']);
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {
@@ -830,7 +766,7 @@ test('T10.46 scenario 5: every package still installs and updates without previo
 			const button = buttons(row).find(b => text(b) == (installed ? '立即更新' : '安装'));
 			assert.ok(button && !button.disabled);
 			await button.click();
-			assert.deepEqual(h.jobs.at(-1), { kind: 'update_package', args: [name, '--channel', 'stable'] });
+			assert.deepEqual(h.jobs.at(-1), { kind: 'update_package', args: [name] });
 			const result = installed ? `${name} 已从 CURRENT 更新到 NEW` : `${name} 已安装 NEW`;
 			assert.equal(text(h.page.summary), result +
 				(name == 'aether-xray' ? '' : ' 页面文件可能已变化，请刷新浏览器。'));
@@ -853,7 +789,7 @@ async function display_group_result(result, expected) {
 	const h = await ready_view();
 	h.ap.run_job = async (kind, args) => {
 		assert.equal(kind, 'update_package');
-		assert.deepEqual(args, ['luci-app-aether-proxy', '--channel', 'stable']);
+		assert.deepEqual(args, ['luci-app-aether-proxy']);
 		return { state: result.ok ? 'ok' : 'failed', result };
 	};
 	const table = descendants(h.page.inventory).find(node => node.tag == 'table');
