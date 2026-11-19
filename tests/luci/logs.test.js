@@ -532,7 +532,7 @@ test('T13.3: tabs, raw filters and actions share spaced wrapping flex rows with 
 	assert.deepEqual(actions.children.map(text), ['刷新']);
 	assert.equal(styles(toolbar)['justify-content'], 'space-between');
 	assert.equal(styles(actions)['justify-content'], 'flex-end');
-	for (const row of [tabRow, tabs, toolbar, filters, actions]) {
+	for (const row of [tabRow, toolbar, filters, actions]) {
 		assert.equal(styles(row).display, 'flex');
 		assert.equal(styles(row)['align-items'], 'center');
 		assert.equal(styles(row).gap, '0.5em');
@@ -666,7 +666,7 @@ test('T16.10: tab switch during action refreshes the tab selected at completion'
 	assert.equal(v.truncateButton.disabled, false);
 });
 
-test('T16.13: tab row orders left tabs, right actions, shared error and panels persistently', async () => {
+test('T16.13 / T16.28: native tabs, right actions, shared error and panels stay in place', async () => {
 	const h = load_view(), v = h.page;
 	const root = v.render();
 	const toolbar = v.toolbar, error = v.toolbarError;
@@ -680,17 +680,48 @@ test('T16.13: tab row orders left tabs, right actions, shared error and panels p
 	assert.equal(root.children.length, 2, 'no action row or state sits outside the block');
 	assert.deepEqual(section.children, [toolbar, error, v.eventPanel, v.rawPanel]);
 	assert.equal(toolbar.children.length, 2);
-	assert.deepEqual(tabs.children.map(text), ['事件', '原始日志']);
+	assert.equal(tabs.tag, 'ul');
+	assert.equal(tabs.class, 'cbi-tabmenu');
+	assert.equal(tabs.attrs.role, 'tablist');
+	const items = tabs.children.slice();
+	assert.deepEqual(items.map(text), ['事件', '原始日志']);
+	const links = items.map(item => {
+		assert.equal(item.tag, 'li');
+		assert.equal(item.attrs.role, 'tab');
+		assert.equal(item.children.length, 1);
+		const link = item.children[0];
+		assert.equal(link.tag, 'a');
+		assert.equal(link.attrs.href, '#');
+		return link;
+	});
+	assert.ok(descendants(root).every(node =>
+		!['事件', '原始日志'].includes(text(node)) || !/\bcbi-button\b/.test(node.class ?? '')));
+	function checkSelection(active) {
+		assert.deepEqual(tabs.children, items);
+		items.forEach((item, index) => {
+			assert.equal(item.children[0], links[index]);
+			assert.equal(item.class, index === active ? 'cbi-tab' : 'cbi-tab-disabled');
+			assert.equal(item.attrs['aria-selected'], String(index === active));
+		});
+		assert.equal(v.eventPanel.hidden, active !== 0);
+		assert.equal(v.rawPanel.hidden, active !== 1);
+	}
+	checkSelection(0);
 	assert.deepEqual(actions.children, [v.clearButton, v.truncateButton]);
 	assert.equal(styles(toolbar)['justify-content'], 'space-between');
-	for (const group of [toolbar, tabs, actions]) {
+	for (const group of [toolbar, actions]) {
 		assert.equal(styles(group).display, 'flex');
 		assert.equal(styles(group)['align-items'], 'center');
 		assert.equal(styles(group).gap, '0.5em');
+		assert.equal(styles(group)['flex-wrap'], 'wrap');
 	}
 	setContent(error, ['persistent action error']);
 	for (const tab of ['raw', 'events', 'raw']) {
-		const pending = v.switchTab(tab);
+		const active = tab === 'events' ? 0 : 1;
+		let prevented = false;
+		const pending = links[active].attrs.click({ preventDefault: () => { prevented = true; } });
+		assert.equal(prevented, true);
+		checkSelection(active);
 		h.calls.at(-1).resolve(tab == 'events' ? payload([]) : { ok: true, lines: [] });
 		await pending;
 		assert.equal(section.children[0], toolbar);

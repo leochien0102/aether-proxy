@@ -489,7 +489,8 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
     「回滚到 <previous>」（`previous` 不为空且 `installed` 不为空且 `installed` 不等于 `previous`）→ 确认后 `ap.run_job('update_package', [<包>, '--previous'])`，按钮用 `cbi-button-remove`。
     确认框写明「将安装 <previous>，替换当前的 <installed>」；`aether-proxy` 与两个 luci 包另加一句「服务会重启」。
   - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。2026-10-25 起 `aether-proxy` 与 `luci-app-aether-proxy` 一起更新，结果文字与刷新提示见「B17：更新页显示「一起更新」的结果」（T10.67）。
-  - 表下一行：上次检查时间（相对时间）与清单地址（`url`）；`updates_available` 为 `null` 时显示「尚未检查」。
+  - 块标题为「组件更新」，其下说明如何手动安装其他版本及降级时的注意事项。
+  - 表上工具栏显示上次检查时间（相对时间）与清单地址（`url`）；`updates_available` 为 `null` 时显示「尚未检查」。
 - **运行中的组件**：`status.components` 中 `xray`、逻辑组件 `dns` 的版本（`null` 显示「未知」）与路径；
   DNS 行显示「DNS 引擎」，优先读 `dns`，旧后端没有该键时回退 `chinadns-ng`。
   `engine` 为物理引擎标识；仅字段缺失时按 path basename 兜底，无法识别或显式 `null` 为未知。

@@ -602,9 +602,18 @@ async () => {
 		assert.equal(packages.class, 'cbi-section');
 		assert.equal(components.class, 'cbi-section');
 		assert.equal(row.class, 'aether-section-actions');
-		assert.equal(packages.children[0].class, 'cbi-map-descr');
-		assert.equal(packages.children[1], row);
-		assert.equal(packages.children[2].tag, 'table');
+		const [heading, toolbar, table] = packages.children;
+		assert.equal(heading.tag, 'h3');
+		assert.equal(text(heading), '组件更新');
+		assert.equal(toolbar.class, 'aether-section-toolbar');
+		assert.match(toolbar.style, /display:flex/);
+		assert.match(toolbar.style, /flex-wrap:wrap/);
+		assert.equal(toolbar.children[0].class, 'cbi-map-descr');
+		assert.equal(text(toolbar.children[0]), model.manual_install_note());
+		assert.equal(toolbar.children[1], row);
+		assert.match(text(row.children[0]), /^上次检查: .+ — https:\/\/channel\/$/);
+		assert.equal(table.tag, 'table');
+		assert.ok(text(table).includes('aether-xray'));
 		assert.equal(components.children[0].tag, 'h3');
 		assert.equal(text(components.children[0]), '运行中的组件');
 		assert.equal(components.children[1].children[0].title, model.migration_note());
@@ -735,7 +744,7 @@ test('T10.46 scenario 2: model and view contain no grouped rollback or manual re
 });
 const manual_note = '如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，' +
 	'或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。';
-test('T10.46 scenario 3: translated manual install guidance is a tooltip above the package table', async () => {
+test('T10.46 / T16.28: translated manual install guidance stays visible above the package table', async () => {
 	assert.equal(model.manual_install_note(), manual_note);
 	const h = load_view();
 	await h.page.render();
@@ -743,9 +752,11 @@ test('T10.46 scenario 3: translated manual install guidance is a tooltip above t
 		h.page.status = s;
 		h.page.show_inventory();
 		const [packages] = h.page.inventory.children;
-		const note = packages.children[0].children[0];
-		assert.equal(note.textContent, '如需安装其他版本：');
-		assert.equal(note.title, manual_note);
+		const toolbar = packages.children[1];
+		const description = toolbar.children[0];
+		assert.equal(text(description), model.manual_install_note());
+		assert.ok(descendants(description).every(node => !node.hidden && node.title == null));
+		assert.equal(packages.children.at(-1).tag, 'table');
 	}
 });
 test('T10.46 scenario 4: automatic recovery text remains unchanged for Xray and backend installs', async () => {

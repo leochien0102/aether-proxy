@@ -1799,6 +1799,10 @@ msgid "Check for updates"
 msgstr "检查更新"
 
 msgctxt "aether-proxy"
+msgid "Component updates"
+msgstr "组件更新"
+
+msgctxt "aether-proxy"
 msgid "Running components"
 msgstr "运行中的组件"
 
@@ -2431,10 +2435,6 @@ msgstr "订阅尚未应用，请先保存并应用"
 msgctxt "aether-proxy"
 msgid "Update failed: %s"
 msgstr "更新失败：%s"
-
-msgctxt "aether-proxy"
-msgid "To install another version:"
-msgstr "如需安装其他版本："
 
 msgctxt "aether-proxy"
 msgid "To install another version: download the three packages for that version from the release page, then upload and install them on the system Software page, or use opkg install. Before downgrading, note that older versions may not recognize newer settings; restore the default configuration first if necessary."

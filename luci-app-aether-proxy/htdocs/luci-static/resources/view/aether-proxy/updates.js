@@ -111,11 +111,13 @@ return view.extend({
 			})
 		]);
 		this.inventory.replaceChildren(ap.section({
-			description: E('span', { title: model.manual_install_note() }, _('To install another version:', 'aether-proxy')),
+			title: _('Component updates', 'aether-proxy'),
+			// Wrap the long note without taking the whole toolbar on desktop.
+			description: E('span', { style: 'display:block; max-width:36em' }, model.manual_install_note()),
 			actions: [ E('span', { style: 'margin:0' },
 				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
 				this.summary, this.progress, check ],
-			body: vm.error ? [E('p', {}, [vm.error]), table] : table, stacked: true
+			body: vm.error ? [E('p', {}, [vm.error]), table] : table
 		}), ap.section({
 			title: _('Running components', 'aether-proxy'),
 			description: E('span', { title: model.migration_note() },

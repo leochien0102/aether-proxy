@@ -97,6 +97,7 @@ const rpcFixtures = {
 			source: i === 4 ? 'baseline' : 'downloaded', version: `2026.11.${18 - i}`, updated_at: time - 86400, changed: i === 0 }])) }),
 	'aetherproxy.list_file': ({ name }) => ({ ok: true, content: lists[name] }),
 	'aetherproxy.events': () => ({ ok: true, events }),
+	'aetherproxy.log': () => ({ ok: true, lines: [{ text: 'demo raw log' }] }),
 };
 
 function shell(view, stylesheet, dark) {
@@ -158,13 +159,8 @@ async function verify(page, view) {
 		assert.ok((await service.boundingBox()).x > (await running.boundingBox()).x);
 	}
 	else
-		assert.equal(await root.locator('.cbi-map-descr:not(.cbi-section > .cbi-map-descr)').count(), 0);
-	assert.equal(await root.locator('.aether-section-actions:not(.cbi-section > .aether-section-actions)').count(), 0);
-	if (view === 'logs') {
-		const row = root.locator('.aether-section-actions');
-		assert.deepEqual(await row.locator('button').allTextContents(),
-			['Events', 'Raw logs', 'Clear logs', 'Truncate to last startup'].map(tr));
-	}
+		assert.equal(await root.locator('.cbi-map-descr:not(.cbi-section > .cbi-map-descr, .cbi-section > .aether-section-toolbar > .cbi-map-descr)').count(), 0);
+	assert.equal(await root.locator('.aether-section-actions:not(.cbi-section > .aether-section-actions, .cbi-section > .aether-section-toolbar > .aether-section-actions)').count(), 0);
 	const rowCounts = { overview: 3, access: 3, rules: 5, updates: 4, logs: 3 };
 	if (view in rowCounts) {
 		const table = root.locator('table').filter({ has: page.locator('td').filter({ hasText: text }) });
@@ -179,6 +175,57 @@ async function verify(page, view) {
 	}
 	if (view === 'overview')
 		await root.locator('.ap-heat-grid').waitFor();
+}
+
+async function verifyToolbars(page, view, narrow = false) {
+	if (view !== 'updates' && view !== 'logs')
+		return;
+	const root = page.locator('#view');
+	const toolbar = root.locator(view === 'updates' ? '.aether-section-toolbar' : '.aether-section-actions');
+	const left = toolbar.locator(view === 'updates' ? ':scope > .cbi-map-descr' : ':scope > ul.cbi-tabmenu');
+	const right = toolbar.locator(':scope > :nth-child(2)');
+	const [a, b, bounds] = await Promise.all([left.boundingBox(), right.boundingBox(), toolbar.boundingBox()]);
+	assert.ok(a && b && bounds, `${view}: both toolbar groups are visible`);
+	if (narrow) {
+		assert.ok(a.y + a.height <= b.y + 1, `${view}: toolbar groups wrap at 360 px`);
+		assert.ok(a.x + a.width <= bounds.x + bounds.width + 1 && b.x + b.width <= bounds.x + bounds.width + 1,
+			`${view}: wrapped toolbar groups fit their container`);
+	} else {
+		assert.ok(a.x + a.width <= b.x + 1, `${view}: description or tabs are to the left of actions`);
+		assert.ok(a.y < b.y + b.height && b.y < a.y + a.height, `${view}: both groups share one desktop row`);
+	}
+	if (view === 'updates') {
+		assert.equal(await root.getByRole('heading', { name: tr('Component updates'), level: 3 }).count(), 1);
+		assert.match(await left.innerText(), /从发布页.*降级前注意/);
+		assert.match(await right.innerText(), /上次检查: .* — https:\/\/updates\.example\/stable\//);
+		assert.equal(await right.getByRole('button', { name: tr('Check for updates') }).isVisible(), true);
+		return;
+	}
+	assert.deepEqual(await toolbar.locator('button').allTextContents(),
+		['Clear logs', 'Truncate to last startup'].map(tr));
+	const items = left.locator('li');
+	assert.deepEqual(await items.allTextContents(), ['Events', 'Raw logs'].map(tr));
+	if (narrow)
+		return;
+	const [events, raw] = await items.all();
+	const table = root.locator('table');
+	const rawLink = raw.locator('a');
+	await rawLink.focus();
+	await page.keyboard.press('Enter');
+	await root.locator('pre').filter({ hasText: 'demo raw log' }).waitFor();
+	assert.equal(await table.isHidden(), true);
+	assert.equal(await events.getAttribute('aria-selected'), 'false');
+	assert.equal(await raw.getAttribute('aria-selected'), 'true');
+	assert.equal(await events.getAttribute('class'), 'cbi-tab-disabled');
+	assert.equal(await raw.getAttribute('class'), 'cbi-tab');
+	assert.equal(await rawLink.evaluate(el => el === document.activeElement), true);
+	assert.equal(new URL(page.url()).hash, '');
+	await events.locator('a').click();
+	await table.waitFor();
+	assert.equal(await root.locator('pre').isHidden(), true);
+	assert.equal(await events.getAttribute('aria-selected'), 'true');
+	assert.equal(await raw.getAttribute('aria-selected'), 'false');
+	await page.locator('body').click({ position: { x: 5, y: 5 } }); // no focus ring in the comparison
 }
 
 async function capture(browser, theme, stylesheet, view) {
@@ -241,11 +288,16 @@ async function capture(browser, theme, stylesheet, view) {
 		await page.evaluate(() => document.fonts.ready.then(() => null));
 		assert.ok(await page.evaluate(href => Array.from(document.styleSheets).some(sheet => sheet.href === href),
 			`${origin}/luci-static/${stylesheet}`), 'Theme stylesheet was applied');
-		assert.deepEqual(errors, [], `Browser errors on ${view}/${theme}`);
+		await verifyToolbars(page, view);
 		const file = path.join(out, `${view}-${theme}.png`);
 		const png = await page.screenshot({ path: file, fullPage: true, animations: 'disabled' });
 		assert.equal(png.readUInt32BE(16), 1320, `${file}: desktop PNG width`);
 		assert.ok(png.readUInt32BE(20) >= 1200, `${file}: full-page PNG height`);
+		if (view === 'updates' || view === 'logs') {
+			await page.setViewportSize({ width: 360, height: 900 });
+			await verifyToolbars(page, view, true);
+		}
+		assert.deepEqual(errors, [], `Browser errors on ${view}/${theme}`);
 		console.log(`PASS ${view}/${theme} ${png.readUInt32BE(16)}×${png.readUInt32BE(20)} ${file} (${[...requests].join(', ')})`);
 	} catch (error) {
 		throw new Error(`${view}/${theme}: ${error.message}${errors.length ? `\n${errors.join('\n')}` : ''}`, { cause: error });

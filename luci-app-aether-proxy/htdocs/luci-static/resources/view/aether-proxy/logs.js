@@ -123,6 +123,10 @@ return view.extend({
 
 	switchTab: function(tab) {
 		this.tab = tab;
+		for (const [id, item] of Object.entries(this.tabs)) {
+			item.setAttribute('class', id == tab ? 'cbi-tab' : 'cbi-tab-disabled');
+			item.setAttribute('aria-selected', String(id == tab));
+		}
 		this.eventPanel.hidden = tab != 'events';
 		this.rawPanel.hidden = tab != 'raw';
 		this.startPolling();
@@ -183,10 +187,20 @@ return view.extend({
 			'class': 'cbi-button cbi-button-remove', click: () => this.changeLogs(true)
 		}, _('Truncate to last startup', 'aether-proxy'));
 		// Page-level controls stay mounted when either tab's data is refreshed.
-		const tabs = E('div', { style: groupStyle }, [
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('events') }, _('Events', 'aether-proxy')),
-			E('button', { 'class': 'cbi-button', click: () => this.switchTab('raw') }, _('Raw logs', 'aether-proxy'))
-		]);
+		const tabItem = (id, label) => E('li', {
+			'class': this.tab == id ? 'cbi-tab' : 'cbi-tab-disabled',
+			role: 'tab', 'aria-selected': String(this.tab == id)
+		}, E('a', {
+			href: '#', click: ev => {
+				ev.preventDefault();
+				return this.switchTab(id);
+			}
+		}, label));
+		this.tabs = {
+			events: tabItem('events', _('Events', 'aether-proxy')),
+			raw: tabItem('raw', _('Raw logs', 'aether-proxy'))
+		};
+		const tabs = E('ul', { 'class': 'cbi-tabmenu', role: 'tablist' }, Object.values(this.tabs));
 		const actions = E('div', { style: groupStyle + '; margin-inline-start:auto' },
 			[ this.clearButton, this.truncateButton ]);
 		this.toolbar = ap.section_actions([actions], tabs);
