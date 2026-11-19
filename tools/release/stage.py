@@ -139,16 +139,18 @@ def main(formal=False):
 				raise SystemExit('Unexpected package artifacts')
 	if any(len({e['version'] for e in entries if e['package'] == n}) != 1 for n in names):
 		raise SystemExit('Inconsistent package versions across matrix')
+	for entry in entries:
+		entry['source'] = 'built'
+	# M4-17: a package whose version did not change must ship the bytes that are already
+	# published, otherwise a reproducible-build difference would force a needless bump.
+	# Formal staging always reconciles against channel-stable; RC replay only when asked.
+	if formal or os.environ.get('CHANNEL_MANIFEST'):
+		reconcile(entries, out)
 	if formal:
 		write_formal_metadata(out, commit, {
 			e['asset']: e['version'] for e in entries if e['package'] not in ARCH_ALL or e['arch'] == 'aarch64_generic'
 		})
 		return
-	for entry in entries:
-		entry['source'] = 'built'
-	# Historical offline replay only; never substitute package bytes in Actions.
-	if os.environ.get('CHANNEL_MANIFEST') and os.environ.get('GITHUB_ACTIONS') != 'true':
-		reconcile(entries, out)
 	# A bridge chain is opt-in and reviewed: present at bridges/compatibility.json in the
 	# tagged commit it rides the prerelease verbatim (promote verifies its assets); the
 	# terminal step must be the built aether-proxy, or the file is stale for this RC.
