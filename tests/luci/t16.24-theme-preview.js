@@ -203,6 +203,10 @@ async function verifyToolbars(page, view, narrow = false) {
 			return info.scrollWidth <= info.clientWidth + 1 && actions.scrollWidth <= actions.clientWidth + 1 &&
 				bounds.right <= window.innerWidth + 1 && Math.abs(actions.getBoundingClientRect().right - bounds.right) <= 1;
 		}), 'status links and actions fit; toolbar uses the right edge of the component block');
+		assert.ok(await row.evaluate(el => {
+			const table = el.parentElement.querySelector(':scope > table');
+			return table && table.getBoundingClientRect().top - el.getBoundingClientRect().bottom >= 8;
+		}), 'the status row keeps a visible gap above the table (no button glued to the header)');
 		if (narrow)
 			assert.ok(await row.evaluate(el => {
 				const info = el.firstElementChild;

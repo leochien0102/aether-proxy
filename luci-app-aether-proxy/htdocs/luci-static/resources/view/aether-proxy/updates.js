@@ -115,7 +115,7 @@ return view.extend({
 		this.summary.hidden = !this.summary.textContent;
 		this.progress.hidden = !this.busy;
 		const statusRow = E('div', { class: 'aether-update-status',
-			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0' }, [
+			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0; margin:0 0 0.75em' }, [
 			E('span', { style: 'min-width:0' }, [
 				_('Last checked', 'aether-proxy'), ': ',
 				this.status === undefined ? _('Not checked yet', 'aether-proxy') : vm.checked,
