@@ -1,7 +1,7 @@
 # 发版清单（1.1.x 起的常规流程）
 
 面向仓库所有者与代理执行者。目标是**每个 commit 只构建一次**，发布的字节与被 smoke 验证的字节一致。
-流程依据：M4-15（复用门禁产物）、M4-17（未变版包复用已发布字节）。
+流程依据：M4-15（复用门禁产物）、T16.30（三个入口及同版本资产不可覆盖）。
 
 ## 0. 前提
 
@@ -25,51 +25,63 @@
 - [ ] 把上面所有改动合成**一次推送**到 main。CI 的 `build` 就是这次发布唯一的构建。
 - [ ] 等 `test` 与 `build` 都成功，记下 `build` 的 run id 与 SHA。
 
-## 3. RC（不重建）
-
-- [ ] 在**同一个 commit** 打 RC tag：`v<ver>-r1-rc1`，push。
-- [ ] `release-candidate` 成功，且该运行里**没有** packages 编译 job。
-- [ ] 逐字节对比门禁产物与 RC 资产（应 20/20 一致）：
+## 3. 发 RC（到预发布为止）
 
 ```bash
-g=$(mktemp -d); r=$(mktemp -d)
-gh run download <build_run_id> -R leochien0102/aether-proxy -D "$g"
-gh release download v<ver>-r1-rc1 -R leochien0102/aether-proxy -D "$r"
-python3 - "$g" "$r" <<'PY'
-import hashlib, re, sys
-from pathlib import Path
-g, r = Path(sys.argv[1]), Path(sys.argv[2])
-bad = n = 0
-for f in g.rglob('*'):
-    if f.suffix not in ('.ipk', '.apk'): continue
-    arch = [p.name for p in f.parents if p.name.startswith('packages-')][0]
-    arch = re.sub(r'^packages-[^-]+-', '', arch)
-    cand = r / (arch + '--' + re.sub(r'[^A-Za-z0-9._-]', '.', f.name))
-    if not cand.exists(): print('MISSING', f.name); bad += 1; continue
-    n += 1
-    if hashlib.sha256(f.read_bytes()).hexdigest() != hashlib.sha256(cand.read_bytes()).hexdigest():
-        print('DIFF', cand.name); bad += 1
-print(f'{n} compared, {bad} mismatches')
-PY
+tools/release/rc.sh 1.2.1 --dry-run
+tools/release/rc.sh 1.2.1
 ```
 
-## 4. Promote（通道）
+在干净工作树上运行。脚本核对 HEAD 的版本、迁移契约、发布说明和同 SHA 的成功门禁，推送下一个
+`v<ver>-r<n>-rc<N>`（从 `rc1` 起，绝不覆盖），等待 `release-candidate`，打印预发布 URL 和 26/27 件资产。
+RC 包的版本是最终包版本（如 `1.2.1-r1`），只有 Git tag 含 `-rcN`。本步骤**不写通道、不打正式 tag、不建正式 Release**。
+未通过试用就停在这里。三条入口的 `--dry-run` 只打印计划，允许查询 GitHub 元数据；不会推 tag 或派发工作流。
+`rc.sh 0.0.0-dryrun --dry-run` 是合成示例，只借一个已发布版本的真实门禁来展示计划。
 
-- [ ] 触发（通道仓库，main）：
+## 4. RC Promote（通道先于 Release）
 
 ```bash
-gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f rc_tag=v<ver>-r1-rc1
+tools/release/promote-rc.sh v1.2.1-r1-rc1 --dry-run
+tools/release/promote-rc.sh v1.2.1-r1-rc1
 ```
 
-- [ ] `promote` 成功；通道 `channel-stable` 清单里 `aether-proxy` / `luci-app-aether-proxy` 的 `current`
-      为 `<ver>-r1`、`previous` 为上一版；未变版包的 `sha256` 与上一版**相同**。
-- [ ] 确认通道**没有**触发新的 `packages` 构建。
+仅用于已通过试用的 RC。验证 prerelease、tag、候选工作流和 manifest 的 commit 绑定后，派发通道的
+`promote.yml`（`release_tag` 填 RC tag）。此时才会暂存独立的签名 `channel-rc`（整体 `prerelease: true`），
+用同批字节发布正式 `channel-stable` 清单并清空 `channel-rc`。stable 的新旧条目都不能带 prerelease 标记。
+通道成功后才推同一 commit 的正式 tag；`release-assets` 校验匹配的 stable 字节和同 commit 的 RC 后建 Release。
+入口最后逐个核对 18 个正式包和对应的 RC 包（noarch 选择 ARM64 构建副本）。
 
-## 5. 正式发布
+- **通道已推进、正式 Release 失败**：确认正式 tag 已存在且仍指向原 commit，然后用 app 仓的
+  `release-assets.yml` 手动派发（`tag=正式 tag`, `dry_run=false`）重跑；有匹配清单时会复用已验证的通道字节，
+  不需要再 promote。若正式 tag 尚未推送，先核对成功的 promote 再补推该 commit 的正式 tag。
+- 若发布通道中途失败，查日志，修复后重跑同一个 `release_tag` 的 `promote.yml`。暂存的 RC 会在成功后清除。
+  不挪动任何已发布的 Git tag，不自动回滚。
 
-- [ ] 在**同一个 commit** 打正式 tag：`v<ver>-r1`，push。
-- [ ] `release-assets` 成功；Release 为 **18 个资产**、非 draft、Latest；说明来自 `docs/releases/<ver>-r1.md`。
-- [ ] 抽查一个未变版包（如 `aether-xray`）与上一版 Release 的哈希相同。
+## 5. 发 Release（不经过 RC，Release 先于通道）
+
+```bash
+tools/release/release.sh 1.2.1 --dry-run
+tools/release/release.sh 1.2.1
+```
+
+前置检查与发 RC 相同。先推正式 tag；如果 stable 还没有该版本，`release-assets` 为 tag commit 选门禁、
+下载产物并组装 18 件正式包，验证 `SHA256SUMS` 后创建 Release。再派发 `promote.yml`（`release_tag` 填正式 tag）
+推进 stable。入口打印 Release URL、`current/previous` 及 24 个架构/格式格子的 SHA-256（noarch 每格式实际一件）。
+
+- **Release 已发、通道未推进**：重跑通道仓 `promote.yml`，`release_tag=正式 tag`, `dry_run=false`；不重发 Release。
+- **直接发版组包失败**：修复门禁产物/权限后在 app 仓重跑 `release-assets.yml`，不重新推同一个 tag。
+  如同版本同名包与 stable 的字节不同，停止发布，检查可复现性或提升该组件的包修订号，再以新 commit 走门禁。
+  新发版不从旧 Release 替换门禁包；历史上做过此类替换的 RC 只可用于 `--dry-run`，不能再推进。
+
+已部署新工作流后，可单独手动派发远端只读验收：
+
+```bash
+gh workflow run release-assets.yml -R leochien0102/aether-proxy --ref main -f tag=v1.2.1-r1 -f dry_run=true
+gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f dry_run=true
+```
+
+前者强制走直发组包，即使 stable 已有此版本；后者读取已发布的 18 件套，打印将保留/写入的清单版本和哈希。
+两个远端 dry-run 都不修改 Release 或通道；本地入口的 dry-run 不执行上述命令。
 
 ## 6. 固件 feed 钉版（**每次发版必做**，2026-11-17 起固化）
 
@@ -94,9 +106,9 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 |---|---|
 | RC 失败「No successful build.yml run」/ 产物过期 | 先让门禁在该 SHA 成功；确认 `build.yml` 产物保留期（90 天） |
 | RC 失败「Missing/duplicate SDK artifact matrix」 | 门禁运行不完整，重跑门禁，不要绕过 |
-| promote 失败「Same version has different assets」 | M4-17 应已阻止；检查 RC 是否用了已发布字节；不得手工改清单 |
+| promote 失败「Same version has different assets」 | 仅使用同 commit 门禁字节；不得覆盖同版本资产或手工改清单，按第 5 节处理 |
 | promote 失败「RC tag/commit binding mismatch」 | RC 与正式 tag 必须在同一 commit |
-| release-assets 失败（版本不一致/资产缺失） | 核对通道清单 `current` 与 tag 推导的版本是否一致 |
+| release-assets 失败（版本不一致/资产缺失） | 按第 4–5 节区分匹配清单路径与直发路径后重跑 |
 
 **回退**：只允许显式决定——更新通道 `AETHER_PROXY_REF` 走直发 `packages`（会再构建一次），并在
 `docs/validation/` 里写明原因；不要静默回退。

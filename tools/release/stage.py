@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Validate/stage RC bytes and reconcile published versions (docs/08, M4-15/M4-17).
+"""Validate and stage gate-built packages without compiling.
 
-Never build packages or replace published bytes with a same-version rebuild.
+A local CHANNEL_MANIFEST fixture can replay the historical M4-17 reconciliation.
+Actual RC and formal publication always stage the tagged commit's gate bytes.
 """
 import hashlib
 import json
@@ -15,7 +16,7 @@ from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # Shared canonical-version rule with channel promote (fetched from the same commit).
-from channel.build import canonical_version
+from channel.build import ARCH_ALL, asset_name, canonical_version
 from gate import validate_directories
 
 
@@ -72,19 +73,22 @@ def reconcile(entries, out, manifest_source=None, fetch=fetch_bytes):
 		raise SystemExit(f'Published reconciliation failed ({source}): {exc}') from exc
 
 
-def main():
+def main(formal=False):
 	tag, commit = os.environ['TAG'], os.environ['BUILD_SHA']
 	validate_directories(Path('artifacts'))
 	version = field('aether-proxy', 'PKG_VERSION')
 	release = field('aether-proxy', 'PKG_RELEASE')
 	target = f'{version}-r{release}'
-	if not re.fullmatch(r'v' + re.escape(version) + r'(?:-r' + re.escape(release) + r')?-rc[1-9][0-9]*', tag):
+	if formal:
+		if tag != 'v' + target:
+			raise SystemExit('Formal tag/version mismatch')
+	elif not re.fullmatch(r'v' + re.escape(version) + r'(?:-r' + re.escape(release) + r')?-rc[1-9][0-9]*', tag):
 		raise SystemExit('RC tag/version mismatch')
-	if subprocess.check_output(['git', 'rev-parse', tag + '^{commit}'], text=True).strip() != commit:
-		raise SystemExit('RC tag/commit mismatch')
+	if subprocess.check_output(['git', 'rev-parse', 'refs/tags/' + tag + '^{commit}'], text=True).strip() != commit:
+		raise SystemExit(('Formal' if formal else 'RC') + ' tag/commit mismatch')
 	names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng',
 		'aether-dns']
-	out = Path('rc-assets')
+	out = Path('release-assets' if formal else 'rc-assets')
 	out.mkdir()
 	entries = []
 	for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]:
@@ -120,8 +124,14 @@ def main():
 				elif not re.fullmatch(r'[0-9][A-Za-z0-9.+~_-]*', pkg_version):
 					raise SystemExit('Invalid translation version')
 				# Keep both SDK noarch builds, even when their bytes differ. GitHub-safe names.
-				asset = arch + '--' + re.sub(r'[^A-Za-z0-9._-]', '.', path.name)
-				shutil.copyfile(path, out / asset)
+				if formal:
+					asset = formal_name(name, arch, ext, path.name)
+					# Same deterministic noarch choice as channel/build.py.
+					if name not in ARCH_ALL or arch == 'aarch64_generic':
+						shutil.copyfile(path, out / asset)
+				else:
+					asset = arch + '--' + asset_name(path.name)
+					shutil.copyfile(path, out / asset)
 				entries.append(dict(package=name, arch=arch, format=ext, filename=path.name,
 									asset=asset, version=pkg_version,
 									sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
@@ -129,8 +139,16 @@ def main():
 				raise SystemExit('Unexpected package artifacts')
 	if any(len({e['version'] for e in entries if e['package'] == n}) != 1 for n in names):
 		raise SystemExit('Inconsistent package versions across matrix')
-	# Reconcile before writing any manifest/SHA256SUMS: failure cannot produce a promotable RC.
-	reconcile(entries, out)
+	if formal:
+		write_formal_metadata(out, commit, {
+			e['asset']: e['version'] for e in entries if e['package'] not in ARCH_ALL or e['arch'] == 'aarch64_generic'
+		})
+		return
+	for entry in entries:
+		entry['source'] = 'built'
+	# Historical offline replay only; never substitute package bytes in Actions.
+	if os.environ.get('CHANNEL_MANIFEST') and os.environ.get('GITHUB_ACTIONS') != 'true':
+		reconcile(entries, out)
 	# A bridge chain is opt-in and reviewed: present at bridges/compatibility.json in the
 	# tagged commit it rides the prerelease verbatim (promote verifies its assets); the
 	# terminal step must be the built aether-proxy, or the file is stale for this RC.
@@ -155,5 +173,24 @@ def main():
 	(out / 'SHA256SUMS').write_text(sums)
 
 
+def formal_name(name, arch, ext, filename):
+	if name not in ARCH_ALL and ext == 'apk':
+		filename = f'{filename[:-4]}_{arch}.apk'
+	return asset_name(filename)
+
+
+def write_formal_metadata(out, commit, versions):
+	files = sorted(out.iterdir())
+	if len(files) != 18 or set(versions) != {p.name for p in files} or any(not p.stat().st_size for p in files):
+		raise SystemExit('Expected exactly 18 nonempty formal package assets')
+	assets = {p.name: dict(version=versions[p.name], sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in files}
+	(out.parent / 'SHA256SUMS').write_text(''.join(f'{a["sha256"]}  {name}\n' for name, a in assets.items()))
+	# GitHub normalizes characters such as ~ in asset names. Bind the version as
+	# installed by the package manager without adding a nineteenth Release asset.
+	(out.parent / 'release-inventory.json').write_text(json.dumps(dict(commit=commit, assets=assets), sort_keys=True) + '\n')
+
+
 if __name__ == '__main__':
-	main()
+	if sys.argv[1:] not in ([], ['--formal']):
+		raise SystemExit('usage: stage.py [--formal]')
+	main(formal=sys.argv[1:] == ['--formal'])

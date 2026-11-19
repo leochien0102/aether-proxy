@@ -1,210 +1,130 @@
 name: Release assets
+run-name: Release assets ${{ inputs.tag || github.ref_name }}${{ inputs.dry_run && ' (dry-run)' || '' }}
 
 on:
   push:
-    tags: ['v*']
-  # Use GitHub's built-in ref selector to choose an existing tag (not a branch).
+    tags: ['v[0-9]+.[0-9]+.[0-9]+-r[0-9]+']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing formal tag (vVERSION-rN)
+        required: true
+        type: string
+      dry_run:
+        description: Stage directly from gate artifacts without creating/updating a Release
+        type: boolean
+        default: false
 
 permissions:
   actions: read
   contents: write
 
 concurrency:
-  group: release-assets-${{ github.ref }}
+  group: release-assets-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   release-assets:
-    # RC tags are handled by release-candidate.yml; they must not run the formal
-    # release workflow or wait 90 minutes for a matching channel manifest.
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main' || inputs.dry_run
     runs-on: ubuntu-latest
-    # Up to 90 minutes each for the build gate and channel manifest, plus downloads.
-    timeout-minutes: 195
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      TAG: ${{ github.ref_name }}
-      REF_TYPE: ${{ github.ref_type }}
-      CHANNEL_URL: https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable
-      BUILD_SHA: ${{ github.sha }}
-      BUILD_WAIT_SECONDS: '5400'
-      WAIT_SECONDS: '5400'
-      POLL_SECONDS: '60'
+      TAG: ${{ inputs.tag || github.ref_name }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve tag
+        with:
+          path: workflow-source
+          persist-credentials: false
+      - name: Validate formal tag
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$REF_TYPE" != tag || ! "$TAG" =~ ^v[0-9][0-9A-Za-z._+-]*$ ]]; then
-            echo '::error::Select an existing v* version tag, not a branch.' >&2
-            exit 1
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$ ]] || { echo 'Expected a formal vVERSION-rN tag' >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          path: release-source
+          persist-credentials: false
+      - name: Resolve the tag commit and find matching channel packages
+        id: route
+        working-directory: release-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          [[ $(git rev-parse HEAD) == "$sha" ]]
+          echo "BUILD_SHA=$sha" >> "$GITHUB_ENV"
+          if [[ "$DRY_RUN" == true ]]; then
+            echo 'mode=direct' >> "$GITHUB_OUTPUT"
+          else
+            python3 ../workflow-source/tools/release/verify.py channel-stage "$GH_REPO" "$TAG" "$sha" >> "$GITHUB_OUTPUT"
           fi
-          printf 'VERSION=%s\n' "${TAG#v}" >> "$GITHUB_ENV"
-
-      - name: Wait for successful build
+      - name: Select the exact successful gate run (direct)
+        if: steps.route.outputs.mode == 'direct'
+        id: gate
         shell: bash
         run: |
           set -euo pipefail
-          deadline=$((SECONDS + BUILD_WAIT_SECONDS))
-          reason="no build.yml run found for $BUILD_SHA"
-          while :; do
-            remaining=$((deadline - SECONDS))
-            request_timeout=$((remaining > 60 ? 60 : remaining))
-            ((request_timeout > 0)) || request_timeout=1
-            # Ignore PR merge/test runs; select the newest push/manual build for this exact SHA.
-            if run=$(timeout "${request_timeout}s" gh api --method GET \
-                "repos/$GH_REPO/actions/workflows/build.yml/runs" \
-                -f "head_sha=$BUILD_SHA" -f per_page=100 \
-                --jq '.workflow_runs | map(select(.event == "push" or .event == "workflow_dispatch")) | sort_by(.id) | last | select(. != null) | [.id, .head_sha, .status, .conclusion] | @tsv'); then
-              if [[ -n "$run" ]]; then
-                IFS=$'\t' read -r run_id head_sha status conclusion <<< "$run"
-                if [[ "$head_sha" != "$BUILD_SHA" ]]; then
-                  echo '::error::Build run SHA mismatch' >&2
-                  exit 1
-                fi
-                if [[ "$status" == completed ]]; then
-                  if [[ "$conclusion" == success ]]; then
-                    echo "Build $run_id succeeded for $BUILD_SHA"
-                    break
-                  fi
-                  echo "::error::Build $run_id failed: $conclusion" >&2
-                  exit 1
-                fi
-                reason="build $run_id is $status"
-              else
-                reason="no build.yml run found for $BUILD_SHA"
-              fi
-            else
-              reason='build.yml run API query failed'
-            fi
-            echo "Waiting: $reason"
-            remaining=$((deadline - SECONDS))
-            if ((remaining <= 0)); then
-              echo "::error::Timed out: $reason" >&2
-              exit 1
-            fi
-            sleep "$((remaining < POLL_SECONDS ? remaining : POLL_SECONDS))"
-          done
-
-      - name: Wait for channel manifest
+          python3 workflow-source/tools/release/gate.py --sha "$BUILD_SHA" --repo "$GH_REPO" \
+            | tee -a "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.route.outputs.mode == 'direct'
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.gate.outputs.run_id }}
+          artifact-ids: ${{ steps.gate.outputs.artifact_ids }}
+          merge-multiple: false
+          path: release-source/artifacts
+      - name: Stage the 18 formal package assets (direct)
+        if: steps.route.outputs.mode == 'direct'
+        working-directory: release-source
         shell: bash
         run: |
           set -euo pipefail
-          deadline=$((SECONDS + WAIT_SECONDS))
-          reason='manifest not available (manifest 未出现)'
-          while :; do
-            remaining=$((deadline - SECONDS))
-            request_timeout=$((remaining > 20 ? 20 : remaining))
-            ((request_timeout > 0)) || request_timeout=1
-            if curl --fail --silent --show-error --location --connect-timeout 10 \
-                --max-time "$request_timeout" "$CHANNEL_URL/manifest.json" -o manifest.pending.json; then
-              if actual=$(python3 -c 'import json; m=json.load(open("manifest.pending.json")); print(m["packages"]["aether-proxy"]["current"]["version"])'); then
-                if [[ "$actual" == "$VERSION" ]]; then
-                  mv manifest.pending.json manifest.json
-                  echo "Matched channel manifest: $VERSION"
-                  break
-                fi
-                reason="manifest version mismatch (版本不匹配): wanted $VERSION, got $actual"
-              else
-                reason='manifest not available (manifest 未出现): invalid manifest'
-              fi
-            else
-              reason='manifest not available (manifest 未出现): fetch failed'
-            fi
-            echo "Waiting: $reason"
-            remaining=$((deadline - SECONDS))
-            if ((remaining <= 0)); then
-              echo "::error::Timed out: $reason" >&2
-              exit 1
-            fi
-            sleep "$((remaining < POLL_SECONDS ? remaining : POLL_SECONDS))"
-          done
-
-      - name: Select and verify packages
+          python3 ../workflow-source/tools/release/stage.py --formal
+      - name: Print the package inventory and verify SHA256SUMS
+        working-directory: release-source
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json, re
-          from pathlib import Path
-
-          manifest = json.loads(Path('manifest.json').read_text())
-          selected = {}
-          packages = manifest['packages']
-          names = ['aether-proxy', 'luci-app-aether-proxy']
-          names += sorted(n for n in packages if n.startswith('luci-i18n-aether-proxy-'))
-          if len(names) == 2:
-              raise SystemExit('::error::Asset selection failed: missing i18n package')
-          names += ['aether-xray', 'chinadns-ng', 'aether-dns']
-          for name in names:
-              assets = packages[name]['current']['assets']
-              arches = ['aarch64_generic', 'x86_64'] if name in ('aether-xray', 'chinadns-ng', 'aether-dns') else sorted(assets)
-              if not arches:
-                  raise SystemExit(f'::error::Asset selection failed: no architectures for {name}')
-              for arch in arches:
-                  for ext in ('ipk', 'apk'):
-                      asset = assets[arch][ext]
-                      filename, digest = asset['url'], asset['sha256']
-                      # Only a bare relative filename: no paths, URL, query, escapes or shell syntax.
-                      if (not isinstance(filename, str)
-                              or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+~-]*\.' + ext, filename)
-                              or '..' in filename
-                              or not filename.startswith(name + ('_' if ext == 'ipk' else '-'))):
-                          raise SystemExit(f'::error::Unsafe manifest filename: {filename!r}')
-                      if not isinstance(digest, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', digest):
-                          raise SystemExit(f'::error::Invalid manifest sha256: {filename}')
-                      if filename in selected and selected[filename] != digest.lower():
-                          raise SystemExit(f'::error::Conflicting manifest hashes: {filename}')
-                      selected[filename] = digest.lower()
-          Path('selected.tsv').write_text(''.join(f'{f}\t{h}\n' for f, h in sorted(selected.items())))
-          PY
-          mkdir -p release-assets
-          while IFS=$'\t' read -r filename expected; do
-            if ! curl --fail --silent --show-error --location --connect-timeout 15 \
-                --max-time 120 --retry 2 "$CHANNEL_URL/$filename" -o "release-assets/$filename"; then
-              echo "::error::Package download failed (下载失败): $filename" >&2
-              exit 1
-            fi
-            actual=$(sha256sum "release-assets/$filename")
-            if [[ "${actual%% *}" != "$expected" ]]; then
-              echo "::error::Package hash mismatch (hash 不符): $filename" >&2
-              exit 1
-            fi
-          done < selected.tsv
-
-      - name: Create or reuse Release and upload
+          echo "Publication route: ${{ steps.route.outputs.mode }}"
+          cat SHA256SUMS
+          (cd release-assets && sha256sum --check --strict ../SHA256SUMS)
+      - name: Check that direct packages do not conflict with published bytes
+        if: ${{ steps.route.outputs.mode == 'direct' && !inputs.dry_run }}
+        working-directory: release-source
         shell: bash
         run: |
           set -euo pipefail
-          notes="docs/releases/$VERSION.md"
-          if [[ ! -f "$notes" ]]; then
-            notes=release-notes.md
-            printf '# aether-proxy %s\n\n' "$VERSION" > "$notes"
-            cat >> "$notes" <<'NOTES'
-          Packages are copied from the matching channel-stable manifest and SHA-256 verified; no rebuild.
-
-          Install aether-xray and chinadns-ng first, then aether-proxy, luci-app-aether-proxy and luci-i18n-aether-proxy-*.
-          Choose .ipk for opkg (OpenWrt 24.10), or .apk for apk (OpenWrt 25.12); do not mix formats.
-          Match the package architecture to your system: aarch64_generic = ARM64, x86_64 = Intel/AMD 64-bit.
-          Architecture-independent application/LuCI/i18n packages may use all/noarch; install the matching aether-xray and chinadns-ng binaries.
-          chinadns-ng is a manual-install component and is not automatically updated.
-          This Release contains aether-xray, not patched xray-core. Manifest/signature files stay on channel-stable.
-          NOTES
+          python3 ../workflow-source/tools/release/verify.py check-direct "$GH_REPO" "$TAG"
+      - name: Publish the verified Release (never overwrite assets)
+        if: ${{ !inputs.dry_run }}
+        working-directory: release-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          notes="docs/releases/$version.md"
+          test -s "$notes"
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[].tag_name' > existing-tags
+          if grep -Fxq "$TAG" existing-tags; then
+            [[ $(gh release view "$TAG" --json isDraft,isPrerelease -q '.isDraft or .isPrerelease') == false ]]
+            gh release download "$TAG" -D existing-release
+            diff -qr release-assets existing-release
+          else
+            if grep -Fq '<!-- aether-release-inventory-v1' "$notes"; then
+              echo 'Release notes use a reserved inventory marker' >&2
+              exit 1
+            fi
+            {
+              cat "$notes"
+              printf '\n\n<!-- aether-release-inventory-v1\n'
+              cat release-inventory.json
+              printf '%s\n' '-->'
+            } > publish-notes.md
+            gh release create "$TAG" release-assets/* --verify-tag --title "aether-proxy $version" --notes-file publish-notes.md
           fi
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            if ! gh release create "$TAG" --verify-tag --title "aether-proxy $VERSION" --notes-file "$notes"; then
-              echo '::error::Release creation failed' >&2
-              exit 1
-            fi
-          fi
-          assets=()
-          while IFS=$'\t' read -r filename expected; do
-            assets+=("release-assets/$filename")
-          done < selected.tsv
-          if ! gh release upload "$TAG" "${assets[@]}" --clobber; then
-            echo '::error::Release upload failed (上传失败)' >&2
-            exit 1
-          fi
+          gh release view "$TAG" --json url -q .url
