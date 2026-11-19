@@ -22,8 +22,10 @@ function test(name, state, obs, cfg, actions, codes, fields) {
 };
 
 export const cases = [
-	{ name: 'started_at initializes at startup and survives degraded to running while since changes',
+	{ name: 'started_at inherits service startup and survives degraded to running while since changes',
 		expect: 'PASS', kind: 'started-at' },
+	{ name: 'started_at falls back to now when service lacks a startup marker',
+		expect: 'PASS', kind: 'started-at-fallback' },
 	{ name: 'monitor cadence follows running state', expect: 'PASS', kind: 'interval' },
 	test('direct DNS default off sends unhealthy proxy directly to T3', { proxy_fail_count: 2 },
 		{ now: 1020, proxy_ok: false },
@@ -146,12 +148,17 @@ export const cases = [
 export function run(c) {
 	if (c.kind == 'started-at') {
 		let state = mon.initial_state({ state: 'degraded', since: 950, started_at: 100 }, 1000);
-		if (state.started_at != 1000 || state.since != 950)
-			return 'FAIL: startup must replace old started_at without changing since';
+		if (state.started_at != 100 || state.since != 950)
+			return 'FAIL: monitor must inherit the service startup marker without changing since';
 		state = mon.next(state, { now: 1010, proxy_ok: true }, CFG).state;
-		if (state.state != 'running' || state.started_at != 1000 || state.since != 1010)
+		if (state.state != 'running' || state.started_at != 100 || state.since != 1010)
 			return 'FAIL: recovery must update since but retain started_at';
 		return 'PASS';
+	}
+	if (c.kind == 'started-at-fallback') {
+		let state = mon.initial_state({ state: 'starting', since: 950 }, 1000);
+		return state.started_at == 1000 && state.since == 950 ? 'PASS'
+			: 'FAIL: missing startup marker must fall back to now without changing since';
 	}
 	if (c.kind == 'startup-recovery') {
 		let cfg = { ...CFG, probe: { fail_threshold: 1, recover_threshold: 2 } };

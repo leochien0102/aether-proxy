@@ -791,7 +791,7 @@ initial_state = (service, now) => {
 		degraded_since: service?.degraded_since ?? null,
 		last_probe: service?.last_probe ?? null,
 		// Unlike since, this identifies the daemon lifetime, not the latest transition.
-		started_at: now,
+		started_at: service?.started_at ?? now,
 		since: service?.since ?? now
 	};
 };

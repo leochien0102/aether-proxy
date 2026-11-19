@@ -15,7 +15,7 @@
 | `dns_failsafe` | chinadns-ng 不可用（可与以上状态叠加，作为标志位） | 不变 | **已撤回**，dnsmasq 回到原配置 |
 | `error` | 启动失败，已回滚 | 无 | 无 |
 
-`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`mode`（当前生效的默认模式：启动或重载**成功应用**后写入，失败的重载不改；与 `node_id` 同理，2026-10-22 加，供概览页判断只换模式的切换何时完成，10「概览页：默认模式下拉」）、`node_ip`、`degraded_mode`、`degraded_since`（分流降级，02「节点不健康时的分流降级」，2026-10-27）、`since`（进入当前状态的时间戳）、`started_at`（本次 daemon 启动的时间戳，运行期不变——状态迁移只改 `since`；`log truncate` 默认以它为参照，2026-11-17 T16.16）、
+`state.json` 字段：`state`、`dns_tier`、`dns_failsafe`、`node_id`、`mode`（当前生效的默认模式：启动或重载**成功应用**后写入，失败的重载不改；与 `node_id` 同理，2026-10-22 加，供概览页判断只换模式的切换何时完成，10「概览页：默认模式下拉」）、`node_ip`、`degraded_mode`、`degraded_since`（分流降级，02「节点不健康时的分流降级」，2026-10-27）、`since`（进入当前状态的时间戳）、`started_at`（本次守护进程启动时刻，早于组件就绪，运行期不变——状态迁移只改 `since`；`log truncate` 默认以它为参照，2026-11-17 T16.16）、
 `last_probe`（`ok`、`latency_ms`、`at`）、`last_error`（事件码）、`components`（各组件的版本与路径）、`render_hash`（各产物的哈希）、
 `wan_dns`（本次成功应用的渲染所用的运营商下发 IPv4 DNS，按接口名排序、保持接口内顺序并去重；`china_dns` 含 `wan` 但取不到时为 `[]`，此时渲染用 `223.5.5.5`；不含 `wan` 时为 `null`。启动和重载成功应用后更新，产物没变也更新；失败的重载不覆盖原值。2026-10-22 T9.23）。
 
@@ -176,7 +176,7 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
   - `start_service`：直接注册 `aether-proxy daemon` 实例（开机时 `boot()` 带 `--boot`），**不再先同步执行 `aether-proxy check`**。
     （2026-10-23 改，r13 窗口：H28K 上这次 check 约 5–10 秒（新进程没有缓存，读配置与数据、渲染、`nft -c`、`xray run -test`），期间 `state.json` 仍是 `stopped`，
     页面点了「启用」「启动」看不到任何变化，重复点只会再排一次 check；daemon 随后又把同样的事做一遍。重载已在 2026-10-21 因同样理由去掉了这次 check。）
-    **daemon 启动后第一件事**是写 `state.json`：`state: starting`、`since`、`started_at`（本次启动时刻）、`node_id` 与 `mode` 取 UCI 原值（此时尚未校验），然后才读配置。
+    **daemon 启动后第一件事**是写 `state.json`：`state: starting`、`since`、`started_at`（守护进程启动时刻，早于组件就绪；等待网络及组件就绪后的状态写入均沿用它）、`node_id` 与 `mode` 取 UCI 原值（此时尚未校验），然后才读配置。
     同时写 `dns_tier`：UCI 原值 `dns.direct_dns_enabled` 为 `1` 时 `T2`，否则 `T1`（与随后的初始级别一致；2026-10-23 r14：原来这份早期状态没有 `dns_tier`，启动的十几秒里状态页的 DNS 级别是空的）。
     配置无效等失败照「启动」各步记事件（`CONFIG_INVALID` 等）、进入 `error` 并按退避重试——页面经 T10.11 的失败原因能看到为什么。
   - `service_stopped`：执行 `aether-proxy cleanup --wait 35`。这是**幂等**的清理（删表、删 rule/route、删 dnsmasq 片段、

@@ -2,11 +2,13 @@
 """T9.27 lifecycle integration: real daemon, isolated state/config and command stubs (docs/04)."""
 
 from contextlib import contextmanager
+from datetime import datetime
 import json
 import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -49,6 +51,22 @@ fi
 exec "$(dirname "$0")/nft-original" "$@"
 ''')
 	(binaries / 'nft').chmod(0o755)
+	(binaries / 'xray').rename(binaries / 'xray-original')
+	(binaries / 'xray').write_text('''#!/bin/sh
+case "$1:$2:$3" in
+	run:-c:*/var/run/aether-proxy/current/*)
+		run_dir=${3%/current/*}
+		if [ -e "$run_dir/truncation-fixture" ]; then
+			stamp=$(LC_ALL=C date '+%a %b %d %T %Y')
+			printf '%s daemon.notice aether-proxy[%s]: %s\\n' \\
+				"$stamp" "$$" 'listening TCP 127.0.0.1:31101' \\
+				"$stamp" "$$" 'Xray fixture started' >> "$run_dir/raw.log"
+		fi
+		;;
+esac
+exec "$(dirname "$0")/xray-original" "$@"
+''')
+	(binaries / 'xray').chmod(0o755)
 	for directory in ('data', 'base', 'custom'):
 		(base / directory).mkdir()
 	for name in ('gfwlist', 'chnlist', 'apple'):
@@ -78,6 +96,18 @@ exec "$(dirname "$0")/nft-original" "$@"
 '''
 	assert config_source.count('export function prepare_config(ctx) {') == 1
 	(modules / 'sub.uc').write_text(config_source.replace('export function prepare_config(ctx) {', hook, 1))
+	# Snapshot each startup state immediately after its atomic write, before it is superseded.
+	state_source = (modules / 'state.uc').read_text()
+	anchor = '\tlast_error = result ? null : sys.error();'
+	assert state_source.count(anchor) == 1
+	(modules / 'state.uc').write_text(state_source.replace(anchor, anchor + '''
+	let trace = getenv('STARTUP_STATE_TRACE');
+	if (result && trace != null && obj.state == 'starting') {
+		let fp = fs.open(trace, 'a');
+		if (fp == null) die('cannot open startup state trace');
+		fp.write(sprintf('%J\\n', json(fs.readfile(path))));
+		fp.close();
+	}''', 1))
 
 	class Fixture:
 		def __init__(self, name):
@@ -120,10 +150,10 @@ exec "$(dirname "$0")/nft-original" "$@"
 			return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 		@contextmanager
-		def daemon(self):
+		def daemon(self, *args):
 			with (self.root / 'stdout').open('w') as stdout, (self.root / 'stderr').open('w') as stderr:
 				command = [str(ROOT / 'tests/host/prefix/bin/ucode'), '-L', str(base / 'modules/*.uc'),
-					'-S', str(ENTRY), '--', 'daemon', *self.args]
+					'-S', str(ENTRY), '--', 'daemon', *self.args, *args]
 				with subprocess.Popen(command, env=self.env, stdout=stdout, stderr=stderr) as child:
 					try:
 						yield child
@@ -271,6 +301,80 @@ exec "$(dirname "$0")/nft-original" "$@"
 			check('fallback cleanup export command failure records only CMD_FAILED and continues',
 				result.returncode == 0 and codes == ['CMD_FAILED']
 				and fixture.state()['state'] == 'stopped' and not (fixture.root / 'nft-table').exists())
+
+	# Reproduce the restart boundary with a real daemon and CLI, with Xray/logd fixture records.
+	fixture = Fixture('truncation')
+	(fixture.run / 'truncation-fixture').touch()
+	startup_trace = fixture.root / 'startup-state.jsonl'
+	fixture.env['STARTUP_STATE_TRACE'] = str(startup_trace)
+	raw = fixture.run / 'raw.log'
+
+	def raw_times(lines):
+		return [line.split(' daemon.', 1)[0] for line in lines]
+
+	def raw_summary(lines):
+		stamps = raw_times(lines)
+		return {'lines': len(stamps), 'first': stamps[0], 'last': stamps[-1]}
+
+	with fixture.daemon() as child:
+		wait_for(lambda: fixture.state().get('state') == 'running', child)
+		fixture.stop(child)
+	previous = raw.read_text().splitlines()
+	stopped = [e for e in fixture.events() if e['code'] == 'SERVICE_STOPPED']
+	check('T16.29 previous run has two raw logs and one SERVICE_STOPPED '
+		f'({len(previous)} raw, {len(stopped)} stop events)', len(previous) == 2 and len(stopped) == 1)
+	stopped = stopped[0]
+	wait_for(lambda: int(time.time()) > stopped['ts'])
+	startup_trace.unlink()
+	(fixture.root / 'xray-dns-delay').write_text('1.2')
+	# A bound but non-listening loopback socket makes the boot-wait timeout local and deterministic.
+	with socket.socket() as refused:
+		refused.bind(('127.0.0.1', 0))
+		conf = fixture.conf / 'aetherproxy'
+		conf.write_text(conf.read_text().replace("option enabled '1'", "option enabled '1'\n"
+			"\toption boot_wait_timeout '2'\n"
+			f"\tlist boot_check_targets '127.0.0.1:{refused.getsockname()[1]}'"))
+		with fixture.daemon('--boot') as child:
+			wait_for(lambda: fixture.state().get('state') == 'running'
+				and any(e['code'] == 'PROXY_HEALTHY' and e['ts'] > stopped['ts'] for e in fixture.events()), child)
+			state = fixture.state()
+			startup = [json.loads(line) for line in startup_trace.read_text().splitlines()]
+			before = raw.read_text().splitlines()
+			current = before[len(previous):]
+			check('T16.29 first, network-wait and component-ready starting states are all captured',
+				len(startup) == 3 and 'waiting_network' not in startup[0]
+				and startup[1]['waiting_network'] is True and startup[2]['waiting_network'] is False)
+			check('T16.29 restart adds exactly the two Xray startup lines',
+				before[:len(previous)] == previous and len(current) == 2
+				and 'listening TCP' in current[0] and 'Xray fixture started' in current[1])
+			first_log = int(datetime.strptime(raw_times(current)[0], '%a %b %d %H:%M:%S %Y').timestamp())
+			marker = state['started_at']
+			check('T16.29 all three on-disk startup states carry the same process marker',
+				all(s['started_at'] == marker for s in startup) and startup[0]['since'] == marker
+				and state['monitor']['started_at'] == marker)
+			check('T16.29 marker precedes Xray logs, component readiness and the first running tick',
+				stopped['ts'] < marker < first_log < startup[2]['since'] <= state['since'])
+			old_events = fixture.events()
+			result = subprocess.run([str(UCODE), '-S', str(ENTRY), '--', 'log', 'truncate',
+				'--run-dir', str(fixture.run), '--json'], env=fixture.env, check=True, capture_output=True,
+				text=True, timeout=12)
+			after = raw.read_text().splitlines()
+			kept_events = fixture.events()
+			codes = [e['code'] for e in kept_events]
+			counts = json.loads(result.stdout)
+			check('T16.29 default truncation drops only prior raw rows and events, including SERVICE_STOPPED',
+				counts['since'] == marker and counts['kept']['raw'] == len(current)
+				and counts['dropped']['raw'] == len(previous) and after == current
+				and kept_events == [e for e in old_events if e['ts'] >= marker]
+				and 'SERVICE_STARTED' in codes and 'PROXY_HEALTHY' in codes and 'SERVICE_STOPPED' not in codes)
+			print('EVIDENCE T16.29 ' + json.dumps({
+				'raw_before_restart': raw_summary(previous), 'raw_before_truncate': raw_summary(before),
+				'raw_after_truncate': raw_summary(after), 'kept_event_codes': codes,
+				'startup_states': [{k: s[k] for k in ('started_at', 'since')} for s in startup],
+				'running_state': {k: state[k] for k in ('started_at', 'since')},
+				'first_current_raw_ts': first_log, 'truncate': counts,
+			}), flush=True)
+			fixture.stop(child)
 
 	# Exercise the unchanged default through real reload and monitor recovery, not a direct apply call.
 	fixture = Fixture('default-policy')

@@ -209,6 +209,7 @@ function wait_network(ctx, opts, snapshot, on_signal) {
 	let deadline = started + timeout;
 	let saved = write_state(ctx, { state: 'starting', dns_tier: snapshot.dns.direct_dns_enabled ? 'T2' : 'T1', dns_failsafe: false,
 		waiting_network: true, node_id: snapshot.main.node, mode: snapshot.main.mode, node_ip: null, since: time(),
+		started_at: ctx.started_at,
 		degraded_mode: null, degraded_since: null });
 	if (!saved.ok)
 		return { ok: false, detail: saved.detail };
@@ -833,7 +834,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		return interrupted('state');
 	let initial_state = {
 		state: degraded ? 'degraded' : 'starting', dns_tier: initial_tier, dns_failsafe: false,
-		node_id, mode: snapshot.main.mode, node_ip, since: time(), waiting_network: false,
+		node_id, mode: snapshot.main.mode, node_ip, since: time(), started_at: ctx.started_at, waiting_network: false,
 		degraded_mode: null, degraded_since: null,
 		last_error: degraded ? 'NODE_RESOLVE_FAILED' : null,
 		components: component_id.with_aliases(components),
@@ -1229,9 +1230,10 @@ function run(args) {
 	let ctx = make_context(opts, []);
 	setup_log(ctx);
 	let daemon_started_at = time();
+	ctx.started_at = daemon_started_at;
 	// Publish before validation or component checks, including an invalid configuration (04).
 	let raw = uci.cursor(opts.confdir);
-	let early = write_state(ctx, { state: 'starting', since: daemon_started_at,
+	let early = write_state(ctx, { state: 'starting', since: daemon_started_at, started_at: ctx.started_at,
 		dns_tier: raw.get(C.UCI_PACKAGE, 'dns', 'direct_dns_enabled') == '1' ? 'T2' : 'T1',
 		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode'),
 		degraded_mode: null, degraded_since: null });

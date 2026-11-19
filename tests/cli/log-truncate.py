@@ -69,28 +69,34 @@ with tempfile.TemporaryDirectory(prefix='.log-truncate-', dir=ROOT / 'tests/cli'
         collector.flush()
         check('held collector descriptor still appends to visible file',
               (directory / 'raw.log').read_text() == current * 2)
-    # T16.16: all valid lines predate the most recent transition, but not startup.
+    # T16.29: process startup < Xray startup rows < first monitor tick (running since).
     startup = since - 60
-    marker = {'started_at': startup, 'since': since + 3600}
+    tick = since + 60
+    marker = {'started_at': startup, 'since': tick}
+    listening = current.replace('current\n', 'listening TCP 127.0.0.1:31101\n')
+    xray_started = current.replace('current\n', 'Xray fixture started\n')
     (directory / 'state.json').write_text(json.dumps(marker))
     startup_contents = {
-        'events.jsonl': json.dumps({'ts': startup}) + '\n' + json.dumps({'ts': since}) + '\n',
-        'raw.log': current * 2,
-        'raw.log.1': current,
+        'events.jsonl': ''.join(json.dumps(event) + '\n' for event in (
+            {'ts': startup, 'code': 'NET_WAIT_TIMEOUT'},
+            {'ts': tick, 'code': 'SERVICE_STARTED'},
+        )),
+        'raw.log': listening + xray_started,
+        'raw.log.1': listening,
     }
     for name, text in startup_contents.items():
         (directory / name).write_text(text)
     value = call(directory)
-    check('started_at wins over newer since and retains all startup logs', value == {
+    check('T16.29 started_at wins over first monitor tick and retains Xray startup logs', value == {
         'ok': True, 'since': startup,
         'kept': {'events': 2, 'raw': 2, 'raw1': 1},
         'dropped': {'events': 0, 'raw': 0, 'raw1': 0},
     })
-    print('EVIDENCE T16.16 state=' + json.dumps(marker) + ' result=' + json.dumps(value))
+    print('EVIDENCE T16.29 CLI state=' + json.dumps(marker) + ' result=' + json.dumps(value))
     for name, text in startup_contents.items():
         file = directory / name
         check('startup bytes retained exactly for ' + name, file.read_text() == text)
-        print(f'EVIDENCE T16.16 {name}: before={len(text.splitlines())} lines/{len(text.encode())} bytes; '
+        print(f'EVIDENCE T16.29 CLI {name}: before={len(text.splitlines())} lines/{len(text.encode())} bytes; '
               f'after={len(file.read_text().splitlines())} lines/{file.stat().st_size} bytes')
     value = call(directory, '--since', str(since + 7200))
     check('explicit since overrides both started_at and since', value['since'] == since + 7200
