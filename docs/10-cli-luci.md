@@ -196,6 +196,7 @@ r9 窗口中从点「使用此节点」到切换完成约 25 秒：页面先走 
 | `status` | — | `status` |
 | `service` | `action: start\|stop\|restart` | `/etc/init.d/aether-proxy <action>` |
 | `check` | — | `check` |
+| `set_update_channel` | `value: stable\|rc` | 只提交 `aetherproxy.main.update_channel`，不 apply 或 reload |
 | `job_start` | `kind: probe_nodes\|sub_update\|update_check\|update_package\|update_data\|dns_test`，`args`（按 kind 校验） | `job start …` |
 | `job_status` | `id`（正则 `^j_[0-9]+_[0-9]+$`） | `job status` |
 | `events` | `since`、`level` | `events` |
@@ -232,7 +233,7 @@ ACL：`/usr/share/rpcd/acl.d/luci-app-aether-proxy.json`。读方法（`status`�
   | `probe_nodes` | 0–256 个节点段名（`^n_[0-9a-f]{32}$`，不得重复） | `job start probe nodes [<id>…]` |
   | `sub_update` | 空，或 1 个订阅段名（`^s_[0-9a-f]{8}$`） | `job start sub update [<sub>]` |
   | `update_check`、`update_data` | 必须为空 | `job start update check` / `job start update data` |
-  | `update_package` | `[<包>]` 或 `["aether-xray", "--previous"]`，包名属于 `aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（`--previous` 只允许 `aether-xray`，2026-10-23） | `job start update package <包> [--previous]` |
+  | `update_package` | `[<包>]`、`[<包>, "--channel", "stable" 或 "rc"]` 或 `["aether-xray", "--previous"]`，包名属于 `aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn`（`--previous` 只允许 `aether-xray`，2026-10-23） | `job start update package <包> [--previous] [--channel stable|rc]` |
   | `dns_test` | `[]` | `job start dns test-direct`（2026-10-23） |
 
 - **`events`**：`since` 为非负整数，`level` 为 `error|warn|notice|info|debug`，都可省略。
@@ -485,7 +486,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - **软件包表**：`aether-xray`、`aether-proxy`、`luci-app-aether-proxy`、`luci-i18n-aether-proxy-zh-cn` 四行，列：名称、已安装（`installed`，`null` 显示「未安装」）、最新（`available`）、上一版（`previous`，`null` 显示「–」）、状态、操作。
   - 状态：`updates_available` 为 `null` →「未检查」（其余列显示「–」）；该包不在 `packages` 中 →「通道中没有」；`asset` 为 `null` →「本机不可用」（附 `arch`）；
     `installed` 为 `null` →「未安装」；`newer` 为真 →「有更新」；否则「最新」（按这个顺序判断，第一个成立的生效）。
-  - 操作：「安装」（`installed` 为 `null` 且 `asset` 不为空）或「更新」（`installed` 不为空且 `newer` 为真）→ `ap.run_job('update_package', [<包>])`；
+  - 操作：「安装」（`installed` 为 `null` 且 `asset` 不为空）或「更新」（`installed` 不为空且 `newer` 为真）→ `ap.run_job('update_package', [<包>, '--channel', <通道>])`；
     「回滚到 <previous>」（`previous` 不为空且 `installed` 不为空且 `installed` 不等于 `previous`）→ 确认后 `ap.run_job('update_package', [<包>, '--previous'])`，按钮用 `cbi-button-remove`。
     确认框写明「将安装 <previous>，替换当前的 <installed>」；`aether-proxy` 与两个 luci 包另加一句「服务会重启」。
   - 更新 `aether-proxy` 或 luci 包成功后提示「页面文件可能已变化，请刷新浏览器」（luci 包换了视图与翻译，旧页面继续用缓存的脚本）。2026-10-25 起 `aether-proxy` 与 `luci-app-aether-proxy` 一起更新，结果文字与刷新提示见「B17：更新页显示「一起更新」的结果」（T10.67）。
@@ -493,10 +494,10 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
     **状态行**（左侧「上次检查：<相对时间> — <清单 URL>」，右侧开关和「检查更新」；窄屏可换行，长 URL 在容器内断行）
     → **进度或结果行**（进行中显示用时并禁用按钮，完成后显示摘要或错误，无内容不占行）→ **软件包表**。
     RC 通道说明附在开关的提示和无障碍描述中。
-  - 「检查 RC 更新」开关默认关闭；切换保存 `main.update_channel` 后立即发起 `update_check`，不应用其他暂存配置。
-    启用后 LuCI 使用 `updates_available.release_candidates`（没有时回退正式结果）；有可用更新/可安装资产的 RC 行显示
-    「预发布」及同版本号提示。已安装同版本显示「最新」，不显示预发布徽标；RC 项只供查看和手动安装，
-    不发起正式通道的安装作业（[08](08-updates.md)「检查」）。
+  - 「检查 RC 更新」开关默认关闭；通过 `set_update_channel` 只提交该偏好，重新读取 UCI 后立即发起 `update_check`，
+    不应用配置、不触发服务重载、不覆盖页面其他未保存的编辑。启用后 LuCI 使用 `updates_available.release_candidates`
+    （没有时回退正式结果）；有可用更新或可安装资产的 RC 行显示「预发布」及同版本号提示，并将现有按钮改为
+    「更新到预发布」或「安装预发布」。确认风险后才使用 RC 通道安装；已安装同版本显示「最新」（[08](08-updates.md)「检查」）。
 - **运行中的组件**：`status.components` 中 `xray`、逻辑组件 `dns` 的版本（`null` 显示「未知」）与路径；
   DNS 行显示「DNS 引擎」，优先读 `dns`，旧后端没有该键时回退 `chinadns-ng`。
   `engine` 为物理引擎标识；仅字段缺失时按 path basename 兜底，无法识别或显式 `null` 为未知。

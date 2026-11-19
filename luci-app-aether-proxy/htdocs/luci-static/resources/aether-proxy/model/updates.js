@@ -162,11 +162,12 @@ return baseclass.extend({
 			rows: PACKAGES.map(name => {
 				const p = updates?.packages?.[name];
 				const bridge = p?.bridge_required === true;
+				const prerelease = p?.prerelease === true;
 				const blocked = p?.code == 'BRIDGE_UNAVAILABLE' ||
 					(bridge && (!p.next_step?.version || p.asset == null));
 				const update_label = bridge && p.next_step?.version ?
 					_('Update to %s first (step 1/%s)', 'aether-proxy').format(p.next_step.version, p.steps_remaining) :
-					_('Update now', 'aether-proxy');
+					(prerelease ? _('Update to pre-release', 'aether-proxy') : _('Update now', 'aether-proxy'));
 				let text;
 				if (pending)
 					text = loading;
@@ -184,16 +185,16 @@ return baseclass.extend({
 					text = _('Not installed', 'aether-proxy');
 				else
 					text = p.newer ? _('Update available', 'aether-proxy') : _('Up to date', 'aether-proxy');
-				const prerelease = p?.prerelease === true;
 				return {
 					name,
 					prerelease: prerelease && p.asset != null && (p.newer === true || p.installed == null),
 					installed: pending ? loading : (p ? (p.installed ?? _('Not installed', 'aether-proxy')) : '–'),
 					available: pending ? loading : (p?.next_step?.version ?? p?.available ?? '–'),
 					previous: pending ? loading : (p?.previous ?? '–'), status: text,
-					install: !!p && !prerelease && !blocked && p.asset != null && p.installed == null,
-					update: !!p && !prerelease && !blocked && p.asset != null && p.installed != null && p.newer === true,
+					install: !!p && !blocked && p.asset != null && p.installed == null,
+					update: !!p && !blocked && p.asset != null && p.installed != null && p.newer === true,
 					bridge_required: bridge, blocked, update_label,
+					install_label: bridge ? update_label : (prerelease ? _('Install pre-release', 'aether-proxy') : _('Install', 'aether-proxy')),
 					rollback: can_rollback(name, p),
 					disabled: pending || !!busy || blocked,
 					rollback_label: _('Roll back to %s', 'aether-proxy').format(p?.previous ?? '–'),
@@ -202,6 +203,9 @@ return baseclass.extend({
 				};
 			})
 		};
+	},
+	prerelease_note: function() {
+		return _('This is a pre-release. If problems occur, reinstall the stable release.', 'aether-proxy');
 	},
 	confirmation: function(name, installed, previous) {
 		return _('Install %s, replacing the current %s?', 'aether-proxy').format(previous, installed);

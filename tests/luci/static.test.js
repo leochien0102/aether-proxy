@@ -65,6 +65,7 @@ const PLUGIN_METHODS = {
 	probe_now: [],
 	node_use: [ 'id', 'mode' ],
 	mode_use: [ 'mode' ],
+	set_update_channel: [ 'value' ],
 	probe_url: [ 'site' ],
 	probe_sites: [],
 	sub_status: [],

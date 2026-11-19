@@ -25,13 +25,9 @@ return view.extend({
 		this.summary.textContent = '';
 		this.show_inventory();
 		try {
-			// Apply only this switch; do not silently apply another page's staged changes.
-			const changes = Object.entries(await uci.changes());
-			if (changes.some(([config, entries]) => entries.some(change =>
-				config !== 'aetherproxy' || change[0] !== 'set' || change[1] !== 'main' || change[2] !== 'update_channel')))
-				throw new Error(_('Apply or discard pending configuration changes before switching update channels.', 'aether-proxy'));
-			await uci.callSet('aetherproxy', 'main', { update_channel: value });
-			await uci.callApply(0, false);
+			const reply = await ap.call('set_update_channel', { value });
+			if (!reply?.ok)
+				throw new Error(reply?.detail ?? reply?.code ?? 'RPC_FAILED');
 			this.rc = checked;
 			uci.unload('aetherproxy');
 			await ap.load_config();
@@ -44,7 +40,7 @@ return view.extend({
 		}
 		return this.run('update_check');
 	},
-	run: async function(kind, name, previous) {
+	run: async function(kind, name, previous, channel) {
 		const bridge = kind == 'update_package' && !previous &&
 			this.status?.updates_available?.packages?.[name]?.bridge_required === true;
 		this.busy = true;
@@ -55,7 +51,8 @@ return view.extend({
 			const text = model.job_progress(kind, name, previous, this.status);
 			timer = ap.job_progress(this.progress, text);
 			const job = kind == 'update_check' ? await ap.run_job('update_check', []) :
-				await ap.run_job('update_package', previous ? [ name, '--previous' ] : [ name ]);
+				await ap.run_job('update_package', previous ? [ name, '--previous' ] :
+					(channel ? [ name, '--channel', channel ] : [ name ]));
 			timer.stop();
 			this.summary.textContent = model.job_result(kind, name, job);
 			if (bridge && job.state == 'ok' && job.result?.ok !== false) {
@@ -103,8 +100,13 @@ return view.extend({
 					return;
 				if (row.disabled)
 					return;
-				// Companion rows must not install the target's page/translation independently.
-				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous);
+				if (row.prerelease && !previous && !await ap.confirm({
+					title: label, text: model.prerelease_note(), ok: label, destructive: true
+				}))
+					return;
+				// Explicitly pin the channel that the user saw and confirmed.
+				const channel = row.prerelease ? 'rc' : 'stable';
+				return this.run('update_package', row.bridge_required && !previous ? 'aether-proxy' : row.name, previous, channel);
 			}) }, [ label ]);
 	},
 	show_inventory: function() {
@@ -122,7 +124,7 @@ return view.extend({
 			...vm.rows.map(row => {
 				const actions = [];
 				if (row.install)
-					actions.push(this.package_button(row, row.bridge_required ? row.update_label : _('Install', 'aether-proxy'), false));
+					actions.push(this.package_button(row, row.install_label, false));
 				if (row.update || row.blocked)
 					actions.push(this.package_button(row, row.update_label, false));
 				if (row.rollback)
@@ -157,9 +159,9 @@ return view.extend({
 		const feedback = E('div', { class: 'aether-update-feedback', style: 'margin:0.25em 0 0',
 			role: 'status', hidden: !hasFeedback || null },
 			[ this.progress, this.summary, ...(vm.error ? [E('div', {}, vm.error)] : []) ]);
-		const heading = E('h3', { class: 'aether-update-heading', 'aria-labelledby': 'aether-update-title',
+		const heading = E('h3', { class: 'aether-update-heading',
 			style: 'display:flex; flex-wrap:wrap; align-items:baseline; gap:0.25em 1em' }, [
-			E('span', { id: 'aether-update-title' }, _('Component updates', 'aether-proxy')),
+			E('span', {}, _('Component updates', 'aether-proxy')),
 			E('span', { class: 'aether-update-manual-note',
 				style: 'flex:1 1 28em; min-width:0; font-size:0.75em; font-weight:400; line-height:1.45; '
 					+ 'white-space:normal; overflow-wrap:anywhere' }, model.manual_install_note())

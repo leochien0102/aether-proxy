@@ -104,7 +104,13 @@ for name, version in [('aether-xray','26.11.1-r1'), ('aether-proxy','0.2.0-r1'),
         for asset in assets.values():
             asset['url'] = 'rc-' + asset['url']
 for channel, manifest in [('stable', stable), ('rc', rc)]:
-    (base / f'channel-{channel}' / 'manifest.json').write_text(json.dumps(manifest))
+    dest = base / f'channel-{channel}'
+    (dest / 'manifest.json').write_text(json.dumps(manifest))
+    for entry in manifest['packages'].values():
+        for release in entry.values():
+            for assets in release['assets'].values():
+                for asset in assets.values():
+                    (dest / asset['url']).write_bytes((base / asset['url'].removeprefix('rc-')).read_bytes())
 PY
 for channel in stable rc; do
 	"$USIGN" -S -m "$T/ch1/channel-$channel/manifest.json" -s "$T/sec"
@@ -131,6 +137,12 @@ expect 'T16.31 same-version RC uses stable asset' aether-proxy_0.2.0-r1_aarch64_
 expect 'T16.31 older RC never hides a newer stable' 0.2.0-r1 "$(get "$out" packages.luci-app-aether-proxy.available)"
 expect 'T16.31 RC mode keeps stable cache for auto updates' 26.10.10-r1 "$(get "$(cat "$T/run/updates.json")" packages.aether-xray.available)"
 expect 'T16.31 RC mode caches merged result separately' 26.11.1-r1 "$(get "$(cat "$T/run/updates.json")" release_candidates.packages.aether-xray.available)"
+python3 - "$T/run/events.jsonl" <<'PY' && ok 'T16.31 UPDATE_AVAILABLE notifications read stable only' || bad 'T16.31 UPDATE_AVAILABLE notifications read stable only'
+import json, sys
+events = [json.loads(line) for line in open(sys.argv[1])]
+available = [e['args']['latest'] for e in events if e['code'] == 'UPDATE_AVAILABLE' and e['args']['package'] == 'aether-xray']
+assert available and set(available) == {'26.10.10-r1'}, available
+PY
 out=$(UPDATE_INSTALLED_VERSION=26.11.1-r1 run_check)
 expect 'T16.31 installed RC at same version is up to date' false "$(get "$out" packages.aether-xray.newer)"
 for channel in stable typo; do
@@ -140,6 +152,26 @@ for channel in stable typo; do
 	expect "T16.31 $channel result has no RC packages or marker" false "$(has_rc "$out")"
 	expect "T16.31 $channel result falls back to stable" 26.10.10-r1 "$(get "$out" packages.aether-xray.available)"
 done
+run_channel_update() {
+	UPDATE_INSTALLED_VERSION=0.1.0-r1 UPDATE_PACKAGE_CALLS="$T/rc-package-calls" UPDATE_PACKAGE_STATE_FILE="$T/rc-package-version" \
+		ap update "$@" --json --confdir "$T/conf" --run-dir "$T/run" --sys-root "$T/root" --bin-dir "$T/bin"
+}
+rc_only=luci-i18n-aether-proxy-zh-cn
+rc_asset="${rc_only}_0.2.0-r1_aarch64_generic.ipk"
+channel_config rc > "$T/conf/aetherproxy"
+out=$(run_channel_update package "$rc_only"); expect 'T16.31 default package channel reads rc config' 0 "$?"
+expect 'T16.31 RC-only package installed' 0.2.0-r1 "$(get "$out" to)"
+grep -Fq "\"GET /channel-rc/$rc_asset HTTP/" "$T/http1" && ok 'T16.31 installed asset URL comes from signed channel-rc' || bad 'T16.31 installed asset URL comes from signed channel-rc'
+before_rc=$(rc_requests)
+out=$(run_channel_update package "$rc_only" --channel stable); expect 'T16.31 stable override ignores RC-only package' ARCH_UNSUPPORTED "$(get "$out" code)"
+out=$(run_channel_update data)
+expect 'T16.31 stable override and update data never fetch RC even when configured' "$before_rc" "$(rc_requests)"
+channel_config stable > "$T/conf/aetherproxy"
+out=$(run_channel_update package "$rc_only"); expect 'T16.31 switching off makes RC-only package unavailable' ARCH_UNSUPPORTED "$(get "$out" code)"
+expect 'T16.31 stable config never fetches RC assets or manifest' "$before_rc" "$(rc_requests)"
+rm -f "$T/rc-package-version"
+out=$(run_channel_update package "$rc_only" --channel rc); expect 'T16.31 explicit rc overrides stable config' 0 "$?"
+expect 'T16.31 explicit rc downloads from RC once more' "$((before_rc + 1))" "$(rc_requests)"
 channel_config rc > "$T/conf/aetherproxy"
 rm "$T/ch1/channel-rc/manifest.json.sig"
 out=$(run_check); expect 'T16.31 unavailable RC does not block stable check' 0 "$?"

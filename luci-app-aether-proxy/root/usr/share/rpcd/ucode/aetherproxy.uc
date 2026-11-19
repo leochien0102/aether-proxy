@@ -4,8 +4,8 @@
 // rpcd ucode plugin for the `aetherproxy` ubus object (docs/10 "rpcd 插件").
 //
 // Thin layer per docs/10 "分层": validate arguments (whitelist + regex), forward
-// to the aether-proxy CLI, and return its JSON reply unchanged. All logic lives
-// in the CLI; none may grow here.
+// to the aether-proxy CLI, and return its JSON reply unchanged. The scoped
+// update channel setter only persists a validated preference without applying it.
 
 import * as C from 'aetherproxy.const';
 import * as uci from 'uci';
@@ -149,12 +149,12 @@ function job_argv(kind, args) {
 		return length(args) == 0 ? [ 'job', 'start', 'update', 'data' ] : null;
 
 	if (kind == 'update_package') {
-		// [<package>] or ["aether-xray", "--previous"] (docs/08: older UI/backend configs are unsafe).
-		if (length(args) < 1 || length(args) > 2)
-			return null;
 		if (index(C.UPDATE_PACKAGES, args[0]) < 0)
 			return null;
-		if (length(args) == 2 && (args[0] != 'aether-xray' || args[1] != '--previous'))
+		let n = length(args);
+		let previous = n == 2 && args[0] == 'aether-xray' && args[1] == '--previous';
+		let channel = n == 3 && args[1] == '--channel' && index([ 'stable', 'rc' ], args[2]) >= 0;
+		if (n != 1 && !previous && !channel)
 			return null;
 
 		return [ 'job', 'start', 'update', 'package', ...args ];
@@ -215,6 +215,21 @@ const methods = {
 			return call_cli([ 'mode', 'use', mode ], DEFAULT_TIMEOUT_SECS);
 		},
 		args: { mode: '' }
+	},
+
+	set_update_channel: {
+		call: function(req) {
+			let value = req?.args?.value;
+			if (index([ 'stable', 'rc' ], value) < 0)
+				return usage('value must be stable or rc');
+			let cursor = uci.cursor();
+			// A direct commit does not emit the UCI ubus apply/config-change event,
+			// and does not load the browser session's separate savedir.
+			if (!cursor.set(C.UCI_PACKAGE, 'main', 'update_channel', value) || !cursor.commit(C.UCI_PACKAGE))
+				return { ok: false, code: 'FS_FAILED', detail: uci.error() ?? 'cannot commit update channel' };
+			return { ok: true, value };
+		},
+		args: { value: '' }
 	},
 
 	probe_url: {

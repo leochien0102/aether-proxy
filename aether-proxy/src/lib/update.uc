@@ -452,36 +452,39 @@ function build_result(ctx, manifest, base, arch, pm, prior) {
 	};
 }
 
-function merge_rc_result(ctx, plat, stable, rc, prior) {
+function package_source(stable, name, bridge_active) {
+	if (bridge_active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0))
+		return stable;
+	let candidate = stable.rc?.manifest?.packages?.[name]?.current?.version;
+	let current = stable.manifest.packages?.[name]?.current?.version;
+	// A promoted (or newer) stable version wins, including equivalent -N/-rN forms.
+	return type(candidate) == 'string' && (type(current) != 'string' || version_newer(candidate, current))
+		? stable.rc : stable;
+}
+
+function merge_rc_result(ctx, plat, stable, fetched) {
 	let packages = { ...stable.value.packages };
 	for (let name in C.UPDATE_PACKAGES) {
-		// Do not replace entries governed by the signed stable bridge.
-		if (stable.bridge_active && (name == C.PROG || index(C.UPDATE_COMPANIONS, name) >= 0))
+		let source = package_source(fetched, name, stable.bridge_active);
+		if (source == fetched)
 			continue;
 		let entry = packages[name];
-		let available = rc.manifest.packages?.[name]?.current?.version;
-		// A promoted (or newer) stable version wins, including equivalent -N/-rN forms.
-		if (type(available) != 'string' ||
-			(type(entry?.available) == 'string' && !version_newer(available, entry.available)))
-			continue;
-
-		let asset = package_asset(rc.manifest, name, plat.arch, plat.pm, false);
+		let available = source.manifest.packages[name].current.version;
+		let asset = package_asset(source.manifest, name, plat.arch, plat.pm, false);
 		let installed = entry == null ? installed_version(ctx, plat.pm, name) : { ok: true, version: entry.installed };
 		if (!installed.ok)
 			return installed;
 		let newer = asset != null && version_newer(available, installed.version);
 		if (asset == null)
 			log.event('error', 'ARCH_UNSUPPORTED', { arch: plat.arch });
-		let was_reported = prior?.packages?.[name]?.available == available && prior?.packages?.[name]?.newer == true;
-		if (newer && !was_reported)
-			log.event('notice', 'UPDATE_AVAILABLE', { package: name, current: installed.version, latest: available });
+		// UPDATE_AVAILABLE notifications are emitted only by the stable result.
 		packages[name] = {
 			installed: installed.version, available, newer,
 			previous: entry?.previous ?? null,
 			asset: asset?.url ?? null, prerelease: true
 		};
 	}
-	return { ok: true, value: { ...stable.value, rc_url: rc.base, packages } };
+	return { ok: true, value: { ...stable.value, rc_url: fetched.rc.base, packages } };
 }
 
 function free_bytes(ctx) {
@@ -591,7 +594,7 @@ function fetch_manifest(opts, check_rc) {
 		reached ||= candidate.reached;
 	}
 	let rc = null;
-	if (selected != null && check_rc && loaded.rc) {
+	if (selected != null && check_rc && (opts.channel == null ? loaded.rc : opts.channel == 'rc')) {
 		// A stable mirror can serve the matching RC channel as a sibling. Otherwise use
 		// the built-in RC endpoint; arbitrary stable mirror paths remain unchanged.
 		let urls = filter(loaded.urls, url => match(url, /\/channel-stable\/?$/) != null);
@@ -602,7 +605,8 @@ function fetch_manifest(opts, check_rc) {
 			let base = urls[i];
 			let candidate = download_manifest(ctx, base, proxied, length(loaded.urls) + i, true);
 			if (candidate.manifest != null) {
-				rc = { ...candidate, base };
+				// Use only the verified RC base for RC assets, never stable mirrors.
+				rc = { ...candidate, base, urls: [ base ], prerelease: true };
 				break;
 			}
 		}
@@ -657,11 +661,11 @@ function write_updates(ctx, fetched, plat) {
 		return { ok: false, code: 'CMD_FAILED', exit: 1, detail: stable.detail };
 	let result = stable.value;
 	if (fetched.rc != null) {
-		let rc = merge_rc_result(ctx, plat, stable, fetched.rc, prior?.release_candidates);
+		let rc = merge_rc_result(ctx, plat, stable, fetched);
 		if (!rc.ok)
 			return { ok: false, code: 'CMD_FAILED', exit: 1, detail: rc.detail };
 		// Keep the stable projection compatible with status, notices and automatic Xray installs.
-		// The optional RC view has its own cache key and never controls package installation.
+		// The optional RC view has its own cache key; manual installs reverify manifests.
 		result = rc.value;
 		stable.value.release_candidates = rc.value;
 	}
@@ -991,7 +995,8 @@ function verify_package(ctx, opts, pm, name, version, before_state, before_probe
 
 // Install one manifest-selected package. All package-manager calls happen only after the
 // signed manifest and downloaded asset have both been verified.
-function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous) {
+function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous, recovery) {
+	recovery ??= selected;
 	if (!budget_ready())
 		return incomplete();
 	let from = installed_version(ctx, pm, name);
@@ -1023,15 +1028,15 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 		return { ok: true, exit: 0, value: { ok: true, package: name, from: from.version, to: asset.version, rolled_back: false, code: null } };
 	}
 	log.event('error', 'UPDATE_VERIFY_FAILED', { package: name, version: asset.version });
-	let prior = package_asset(selected.manifest, name, arch, pm, false);
-	let previous_asset = package_asset(selected.manifest, name, arch, pm, true);
+	let prior = package_asset(recovery.manifest, name, arch, pm, false);
+	let previous_asset = package_asset(recovery.manifest, name, arch, pm, true);
 	// --previous is an explicit downgrade request, not a failed upgrade; restore current only if
 	// its post-install check fails.
 	let rollback = previous == true ? prior : previous_asset;
 	if (rollback == null)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: 'no rollback version is available',
 			value: { ok: false, package: name, from: from.version, to: asset.version, rolled_back: false, code: 'UPDATE_VERIFY_FAILED', detail: '无可回滚的版本' } };
-	let rollback_file = download_asset(opts, selected.urls, rollback, rollback.url);
+	let rollback_file = download_asset(opts, recovery.urls, rollback, rollback.url);
 	if (!rollback_file.ok)
 		return { ok: false, code: 'UPDATE_VERIFY_FAILED', exit: 1, detail: `rollback asset unavailable: ${rollback_file.code}` };
 	let rolled = install_package(ctx, pm, rollback_file.path, true);
@@ -1047,12 +1052,13 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 
 // UI packages follow only a verified (or unchanged) backend. Their failures never
 // trigger backend recovery: the new backend still serves the old UI (docs/08).
-function update_companion(opts, ctx, selected, plat, name) {
+function update_companion(opts, ctx, selected, plat, name, requested) {
 	let installed = installed_version(ctx, plat.pm, name);
 	if (!installed.ok)
 		return { status: 'failed', code: 'CMD_FAILED', detail: installed.detail };
 	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, false);
-	if (installed.version == null || asset == null || !version_newer(asset.version, installed.version))
+	if (asset == null || (installed.version == null
+		? !(selected.prerelease && name == requested) : !version_newer(asset.version, installed.version)))
 		return { status: 'skipped' };
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
 	if (!downloaded.ok)
@@ -1073,18 +1079,20 @@ function update_companion(opts, ctx, selected, plat, name) {
 	return { status: 'installed' };
 }
 
-function update_together(opts, ctx, selected, plat, asset) {
+function update_together(opts, ctx, selected, plat, asset, target, requested) {
+	target ??= selected;
 	let from = installed_version(ctx, plat.pm, C.PROG);
 	if (!from.ok)
 		return group_failure('CMD_FAILED', from.detail);
-	let result = version_newer(asset.version, from.version)
-		? install_with_rollback(opts, ctx, selected, C.PROG, plat.arch, plat.pm, asset, false)
+	let result = version_newer(asset.version, from.version) || (target.prerelease && from.version == null)
+		? install_with_rollback(opts, ctx, target, C.PROG, plat.arch, plat.pm, asset, false, selected)
 		: { ok: true, exit: 0, value: { ok: true, package: C.PROG, from: from.version,
 			to: from.version, rolled_back: false, code: null } };
 	let companions = {}, failure = null;
 	for (let name in C.UPDATE_COMPANIONS) {
 		// Do not change page files after any backend failure, including automatic recovery.
-		let outcome = result.ok ? update_companion(opts, ctx, selected, plat, name) : { status: 'skipped' };
+		let source = package_source(selected, name);
+		let outcome = result.ok ? update_companion(opts, ctx, source, plat, name, requested) : { status: 'skipped' };
 		companions[name] = outcome.status;
 		if (outcome.status != 'failed')
 			continue;
@@ -1340,7 +1348,7 @@ function package_update_selected(opts, name, previous, selected) {
 		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
 		if (!plan.ok)
 			return group_failure(plan.code, plan.detail);
-		if (!plan.active)
+		if (!plan.active && package_source(selected, primary) == selected && package_source(selected, name) == selected)
 			return { ok: true, exit: 0, value: { ok: true, package: C.PROG,
 				from: installed.version, to: installed.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
 		if (plan.active) {
@@ -1349,7 +1357,7 @@ function package_update_selected(opts, name, previous, selected) {
 			// only a backend; old pages remain compatible with the new backend.
 			let old = selected.manifest.packages[C.PROG];
 			let rollback = plan.rollback ?? (old.previous?.version == installed.version ? old.previous : null);
-			let staged = { ...selected, bridge_step: true, manifest: { ...selected.manifest,
+			let staged = { ...selected, rc: null, bridge_step: true, manifest: { ...selected.manifest,
 				packages: { ...selected.manifest.packages, [C.PROG]: { current: plan.next, previous: rollback } } } };
 			let remaining = getenv('AETHER_PROXY_CHAIN_LEFT');
 			let limit = remaining == null ? plan.remaining : min(+remaining, plan.remaining);
@@ -1372,7 +1380,8 @@ function package_update_selected(opts, name, previous, selected) {
 			return result;
 		}
 	}
-	let asset = package_asset(selected.manifest, primary, arch, pm, previous == true);
+	let target = previous == true ? selected : package_source(selected, primary);
+	let asset = package_asset(target.manifest, primary, arch, pm, previous == true);
 	if (asset == null) {
 		log.event('error', 'ARCH_UNSUPPORTED', { arch });
 		let detail = `no ${pm} asset for ${primary} on ${arch}`;
@@ -1381,10 +1390,18 @@ function package_update_selected(opts, name, previous, selected) {
 		return together ? group_failure('ARCH_UNSUPPORTED', detail)
 			: { ok: false, code: 'ARCH_UNSUPPORTED', exit: 1, detail };
 	}
+	if (target.prerelease && !together) {
+		let from = installed_version(ctx, pm, name);
+		if (!from.ok)
+			return { ok: false, code: 'CMD_FAILED', exit: 1, detail: from.detail };
+		if (from.version != null && !version_newer(asset.version, from.version))
+			return { ok: true, exit: 0, value: { ok: true, package: name, from: from.version,
+				to: from.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
+	}
 	let result = together
 		? install_target(opts, selected, plat, asset.version,
-			() => update_together(opts, ctx, selected, plat, asset))
-		: install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previous);
+			() => update_together(opts, ctx, selected, plat, asset, target, name))
+		: install_with_rollback(opts, ctx, target, name, arch, pm, asset, previous, selected);
 	// Installed versions changed (or were restored): refresh updates.json so LuCI does not keep
 	// offering what was just installed. The install outcome stands even if the refresh fails.
 	let refreshed = write_updates(ctx, selected, plat);
@@ -1413,8 +1430,8 @@ export function package_update(opts, name, previous) {
 		chain_deadline = min(chain_deadline, +inherited);
 	if (budget_left() <= 0)
 		return incomplete();
-	let selected = fetch_manifest(opts);
 	let before = getenv('AETHER_PROXY_CHAIN_FROM');
+	let selected = fetch_manifest(opts, previous != true && before == null);
 	if (selected.ok && before != null) {
 		let plat = platform(selected.ctx);
 		if (!plat.ok)

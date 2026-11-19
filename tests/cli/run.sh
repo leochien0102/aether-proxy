@@ -659,5 +659,27 @@ else
 	bad 'T16.9 log truncate CLI scenarios'
 fi
 
+# T16.31 package channel overrides are an enum scoped to the package command.
+for value in beta --previous ''; do
+	out=$(ap update package aether-xray --json --channel "$value" 2>"$T/channel.stderr"); rc=$?
+	expect "T16.31 invalid channel '$value' rejected before IO" 2 "$rc"
+	expect "T16.31 invalid channel '$value' reported as USAGE" USAGE "$(jget code <<<"$out")"
+done
+for command in check data; do
+	out=$(ap update "$command" --json --channel rc 2>"$T/channel.stderr"); rc=$?
+	expect "T16.31 update $command disallows channel override" 2 "$rc"
+	expect "T16.31 update $command override reported as USAGE" USAGE "$(jget code <<<"$out")"
+done
+# Use an invalid config to reach the updater without any network access, both
+# with the configured default and with either explicitly parsed enum value.
+mkdir -p "$T/channel-conf"
+printf "config global 'main'\n option mode 'bogus'\n" > "$T/channel-conf/aetherproxy"
+for value in default stable rc; do
+	channel=()
+	[ "$value" = default ] || channel=(--channel "$value")
+	out=$(ap update package aether-xray --json --confdir "$T/channel-conf" --run-dir "$T/channel-conf" "${channel[@]}" 2>"$T/channel.stderr")
+	expect "T16.31 parses package channel $value and reaches config loading" CONFIG_INVALID "$(jget code <<<"$out")"
+done
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

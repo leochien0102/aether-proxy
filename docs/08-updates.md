@@ -402,8 +402,8 @@ RC 与通过验证后发布的正式版可以有**同一个包版本号**，没�
 
 `updates.json` 顶层保留正式通道结果，RC 合并结果另存于 `release_candidates` 缓存键（含 `rc_url`）。
 `update check --json` 返回本次所选模式的结果；关闭 RC 并完成检查后不再返回预发布结果。LuCI 切换开关
-后立即重查。RC 只影响组件检查和展示：预发布包须手动从候选版发布页安装，原有安装、自动更新、
-回滚、签名兼容链和规则数据流程仍依据正式通道；回滚所显示的上一版也来自正式通道。
+后立即重查。预发布包使用同一个组件安装／更新按钮，文字标注「安装预发布」或「更新到预发布」，确认后才开始。
+自动 Xray 安装、更新通知、签名兼容链、回滚和规则数据仍依据正式通道；回滚显示的上一版也来自正式通道。
 
 下载并验签清单后，对比本机状态，结果原子写入 `/var/run/aether-proxy/updates.json`，`status` 的 `updates_available` 直接取它（没有该文件时为 `null`）：
 
@@ -438,7 +438,11 @@ RC 与通过验证后发布的正式版可以有**同一个包版本号**，没�
   不删除文件，下一次 `update check`（每天的调度或用户点「检查更新」）照常覆盖。`update package` 装完会重新检查并写 `updates.json`（T7.4），它写入的 `checked` 晚于这次安装，不会被判为过期。
   `data status` 只用其中的 `data` 部分，与软件包无关，不受影响。判断写成一个函数，`status` 与 daemon 的自动安装共用。
 
-### 软件包安装（`aether-proxy update package <包> [--previous]`，T7.4）
+### 软件包安装（`aether-proxy update package <包> [--previous] [--channel stable|rc]`，T7.4）
+
+不传 `--channel` 时读取 `main.update_channel`，显式参数优先。手动 RC 安装重新下载并验签两份清单，
+沿用检查的逐包选择规则：RC 版本严格高于 stable（或 stable 无该包）且不受正式兼容链控制，才从对应 RC 清单的 URL 下载。
+回滚始终读 stable；定时自动安装 Xray 显式传 `--channel stable`，不读取 RC 清单。
 
 1. 下载并验签清单；取本机架构与包管理器对应的资产（`--previous` 时取 `previous`），按清单校验 `size` 与 `sha256`。
 2. 记下当前已装版本（用于回滚判断）。

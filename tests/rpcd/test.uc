@@ -9,6 +9,7 @@
 // files, all exported by tests/rpcd/run.sh. The real binaries are never run.
 
 import * as fs from 'fs';
+import * as uci from 'uci';
 
 const ROOT = fs.realpath(sourcepath(0, true) + '/../..');
 const PLUGIN_PATH = ROOT + '/luci-app-aether-proxy/root/usr/share/rpcd/ucode/aetherproxy.uc';
@@ -337,6 +338,9 @@ function scenario_6() {
 		  want: [ 'job', 'start', 'update', 'data', '--json' ] },
 		{ name: 'update_package with a package', args: { kind: 'update_package', args: [ 'aether-xray' ] },
 		  want: [ 'job', 'start', 'update', 'package', 'aether-xray', '--json' ] },
+		{ name: 'update_package explicit RC',
+		  args: { kind: 'update_package', args: [ 'aether-xray', '--channel', 'rc' ] },
+		  want: [ 'job', 'start', 'update', 'package', 'aether-xray', '--channel', 'rc', '--json' ] },
 		{ name: 'update_package aether-xray with --previous',
 		  args: { kind: 'update_package', args: [ 'aether-xray', '--previous' ] },
 		  want: [ 'job', 'start', 'update', 'package', 'aether-xray', '--previous', '--json' ] },
@@ -394,6 +398,8 @@ function scenario_7() {
 		{ name: 'T10.73 legacy xray-core --previous is rejected',
 		  args: { kind: 'update_package', args: [ 'xray-core', '--previous' ] } },
 		{ name: 'update_package --previous before package', args: { kind: 'update_package', args: [ '--previous', 'aether-xray' ] } },
+		{ name: 'update_package invalid channel',
+		  args: { kind: 'update_package', args: [ 'aether-xray', '--channel', 'beta' ] } },
 		{ name: 'update_package extra argument', args: { kind: 'update_package', args: [ 'aether-xray', '--previous', 'x' ] } },
 		{ name: 'update_package wrong second argument', args: { kind: 'update_package', args: [ 'aether-xray', '--first' ] } }
 	];
@@ -484,7 +490,7 @@ function scenario_10() {
 		show(sort(app?.read?.ubus?.aetherproxy ?? [])));
 	expect_eq('10. ACL write methods match the write-only whitelist including log_clear',
 		show([ 'check', 'job_start', 'log_clear', 'log_truncate', 'mode_use', 'node_import', 'node_use',
-			'probe_now', 'probe_url', 'save_file', 'service', 'stats_quota' ]),
+			'probe_now', 'probe_url', 'save_file', 'service', 'set_update_channel', 'stats_quota' ]),
 		show(sort(app?.write?.ubus?.aetherproxy ?? [])));
 	check('10. ACL read keeps the aetherproxy UCI grant',
 		deep_eq(app?.read?.uci, [ 'aetherproxy' ]), show(app?.read?.uci));
@@ -495,7 +501,7 @@ function scenario_10() {
 	expect_eq('10. plugin exposes exactly the current methods',
 		show([ 'check', 'components', 'data_status', 'events', 'job_start', 'job_status', 'list_file', 'log',
 			'log_clear', 'log_truncate', 'mode_use', 'node_import', 'node_parse', 'node_use', 'probe_now', 'probe_results', 'probe_sites', 'probe_url',
-			'save_file', 'service', 'stats', 'stats_history', 'stats_quota', 'status', 'sub_status', 'version' ]),
+			'save_file', 'service', 'set_update_channel', 'stats', 'stats_history', 'stats_quota', 'status', 'sub_status', 'version' ]),
 		names != null ? show(names) : null);
 
 	check('T10.4 components declares empty args', deep_eq(methods.components.args, {}), show(methods.components.args));
@@ -861,8 +867,9 @@ function scenario_sessions() {
 	let r = methods.service.call({ args: { action: 'start', ubus_rpc_session: 'session-token' } });
 	check('T9.10 service with ubus_rpc_session: success and correct init action',
 		r.ok === true && wait_for(action_of, 3) == 'start', show(r));
+	// The setter also receives a real session marker in its isolated UCI fixture below.
 	check('T9.10 session scenarios cover every exposed method',
-		deep_eq(sort([ ...keys(cases), 'service' ]), sort(keys(methods))), show(keys(methods)));
+		deep_eq(sort([ ...keys(cases), 'service', 'set_update_channel' ]), sort(keys(methods))), show(keys(methods)));
 }
 
 function scenario_node_probe() {
@@ -1114,6 +1121,42 @@ function scenario_stats_quota() {
 		deep_eq(methods.stats_quota.call({ args: { action: 'clear' } }), failure));
 }
 
+function scenario_update_channel() {
+	let root = getenv('RPCD_TEST_CHANNEL_ROOT');
+	let conf = root + '/etc/config';
+	let path = conf + '/aetherproxy';
+	let input = "\nconfig global 'main'\n\toption mode 'bypass_cn'\n\n";
+	let other = "\nconfig system 'base'\n\toption hostname 'unchanged'\n\n";
+	fs.writefile(path, input);
+	fs.writefile(conf + '/system', other);
+	let cursor = uci.cursor(conf, root + '/delta');
+	cursor.set('system', 'base', 'hostname', 'pending');
+	cursor.save('system');
+	let pending = fs.readfile(root + '/delta/system');
+
+	// Execute the real endpoint and libuci against a sandbox config/savedir.
+	let src = replace(plugin_src, "let cursor = uci.cursor();\n\t\t\t// A direct commit",
+		`let cursor = uci.cursor(${show(conf)}, ${show(root + '/delta')});\n\t\t\t// A direct commit`);
+	let method = loadstring(src)().aetherproxy.set_update_channel;
+	check('T16.31 set_update_channel declares string value', deep_eq(method.args, { value: '' }));
+	let cli = watch_cli(), init = fs.readfile(INIT_LOG);
+	for (let value in [ null, '', 'beta', 'RC', 1, [] ]) {
+		let r = method.call({ args: { value } });
+		check('T16.31 invalid channel rejected without writes', r.code == 'USAGE' && fs.readfile(path) == input, show(r));
+	}
+	for (let value in [ 'rc', 'stable' ]) {
+		let r = method.call({ args: { value, ubus_rpc_session: 'browser-session' } });
+		let want = replace(input, "\n\n", `\n\toption update_channel '${value}'\n\n`);
+		let actual = fs.readfile(path);
+		check('T16.31 only the channel line changes in aetherproxy', r.ok === true && actual == want, show(actual));
+		if (value == 'rc' && r.ok === true)
+			print("INFO  /etc/config/aetherproxy diff: +\toption update_channel 'rc'\n");
+	}
+	check('T16.31 unrelated package and staged edits remain unchanged',
+		fs.readfile(conf + '/system') == other && fs.readfile(root + '/delta/system') == pending && pending != null);
+	check('T16.31 channel commit does not invoke CLI or init reload', cli() == null && fs.readfile(INIT_LOG) == init);
+}
+
 scenario_1();
 scenario_2();
 scenario_3();
@@ -1134,6 +1177,7 @@ scenario_17();
 scenario_18();
 scenario_stats_history();
 scenario_stats_quota();
+scenario_update_channel();
 scenario_components();
 scenario_sessions();
 scenario_node_probe();

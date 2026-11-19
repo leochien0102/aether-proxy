@@ -1185,7 +1185,7 @@ function schedule_update_jobs(ctx, opts, started_at, daemon) {
 	let version = schedule.auto_install_due(cfg, updates.value, record);
 	if (version == null)
 		return;
-	let result = update_job(ctx, opts, [ 'update', 'package', C.XRAY_CORE_PACKAGE ]);
+	let result = update_job(ctx, opts, [ 'update', 'package', C.XRAY_CORE_PACKAGE, '--channel', 'stable' ]);
 	if (result.code == 3)
 		return;
 	if (result.code != 0) {

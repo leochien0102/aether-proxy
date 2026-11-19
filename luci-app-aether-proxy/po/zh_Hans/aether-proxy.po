@@ -1815,8 +1815,16 @@ msgid "Pre-release; may have the same version number as the stable release."
 msgstr "预发布，可能与正式版同版本号。"
 
 msgctxt "aether-proxy"
-msgid "Apply or discard pending configuration changes before switching update channels."
-msgstr "请先应用或丢弃暂存的配置更改，再切换更新通道。"
+msgid "Update to pre-release"
+msgstr "更新到预发布"
+
+msgctxt "aether-proxy"
+msgid "Install pre-release"
+msgstr "安装预发布"
+
+msgctxt "aether-proxy"
+msgid "This is a pre-release. If problems occur, reinstall the stable release."
+msgstr "这是预发布，出问题需要重装正式版。"
 
 msgctxt "aether-proxy"
 msgid "Component updates"
