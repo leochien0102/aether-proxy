@@ -545,7 +545,8 @@ test('T10.16 updates scenario 3: failed status clears placeholders and Check can
 		h.start();
 		h.calls[0].resolve({ ok: false, code, detail: 'offline' });
 		await settle();
-		assert.equal(text(h.page.inventory.children[0].children[2]), code + '：offline');
+		const statusRow = h.page.inventory.children[0].children[1];
+		assert.equal(text(statusRow.children.at(-2)), code + '：offline');
 		assert.doesNotMatch(text(root), /读取中…/);
 		const actions = buttons(h.page.inventory);
 		assert.equal(actions.length, 1);
@@ -587,11 +588,11 @@ test('T10.18 scenario 2: settled update actions are enabled only while idle unde
 	assert.ok(buttons(h.page.inventory).every(button => button.disabled === true));
 });
 
-test('T16.31 Component updates puts guidance in the heading and reserves the body for status, feedback and table', async () => {
+test('T16.33 Component updates keeps guidance in the heading and puts status before the table', async () => {
 	const h = await ready_view(status());
 	const [packages, components] = h.page.inventory.children;
-	const [heading, row, feedback, table] = packages.children;
-	assert.equal(packages.children.length, 4);
+	const [heading, row, table] = packages.children;
+	assert.equal(packages.children.length, 3);
 	assert.equal(heading.tag, 'h3');
 	const [title, note] = heading.children;
 	assert.equal(heading['aria-labelledby'], undefined);
@@ -602,19 +603,18 @@ test('T16.31 Component updates puts guidance in the heading and reserves the bod
 	assert.equal(row.class, 'aether-update-status');
 	for (const style of ['display:flex', 'flex-wrap:wrap', 'align-items:center', 'justify-content:space-between', 'gap:0.5em 1em'])
 		assert.ok(row.style.includes(style));
-	assert.match(text(row.children[0]), /^上次检查: .+ — https:\/\/channel\/$/);
-	assert.match(row.children[0].style, /overflow-wrap:anywhere/);
-	assert.deepEqual(row.children[1].children.map(text), ['检查更新']);
-	assert.equal(feedback.class, 'aether-update-feedback');
-	assert.equal(feedback.hidden, true);
+	assert.match(text(row.children[0]), /^上次检查: .+ · 通道地址$/);
+	assert.equal(text(buttons(row)[0]), '检查更新');
+	assert.equal(h.page.summary.hidden, true);
+	assert.equal(h.page.progress.hidden, true);
 	assert.equal(table.tag, 'table');
 	assert.equal(text(components.children[0]), '运行中的组件');
 	assert.equal(components.children[1].children[0].title, model.migration_note());
 });
 
-test('T16.31 progress and summary occupy separate full-width feedback row', async () => {
+test('T16.33 last checked, progress, summary and errors share the status row', async () => {
 	const h = await ready_view(status());
-	const feedback = () => h.page.inventory.children[0].children[2];
+	const row = () => h.page.inventory.children[0].children[1];
 	let finishJob;
 	h.ap.run_job = () => new Promise(resolve => { finishJob = resolve; });
 	h.ap.job_progress = target => {
@@ -622,15 +622,40 @@ test('T16.31 progress and summary occupy separate full-width feedback row', asyn
 		return { stop() { target.textContent = ''; } };
 	};
 	const pending = h.page.run('update_check');
-	assert.equal(feedback().hidden, false);
-	assert.match(text(feedback()), /已用 0 秒/);
+	assert.equal(h.page.progress.hidden, false);
+	assert.ok(row().children.includes(h.page.progress));
+	assert.match(text(row()), /已用 0 秒/);
 	assert.ok(buttons(h.page.inventory).every(b => b.disabled));
 	finishJob({ state: 'ok', result: { ok: true, packages: {} } });
 	await pending;
-	assert.equal(feedback().hidden, false);
+	assert.match(text(row().children[0]), /^上次检查:/);
+	assert.ok(row().children.includes(h.page.summary));
+	assert.equal(h.page.summary.role, 'status');
+	assert.equal(h.page.summary.hidden, false);
+	assert.equal(text(h.page.summary), '检查完成，0 个包有更新');
 	assert.equal(text(h.page.progress), '');
-	assert.equal(text(feedback()), '检查完成，0 个包有更新');
 	assert.ok(buttons(h.page.inventory).every(b => !b.disabled));
+	h.page.status = { ok: false, code: 'MANIFEST_BAD_SIGNATURE' };
+	h.page.show_inventory();
+	assert.ok(row().children.some(n => text(n) === '签名校验失败'));
+});
+
+test('T16.33 channel address appears only when known and opens safely', async () => {
+	const h = load_view();
+	await h.page.render();
+	const row = () => h.page.inventory.children[0].children[1];
+	const links = () => descendants(row()).filter(n => n.tag === 'a');
+	assert.match(text(row()), /^上次检查: 尚未检查/);
+	assert.equal(links().length, 0);
+	h.start();
+	h.calls[0].resolve({ updates_available: null });
+	await settle();
+	assert.equal(links().length, 0);
+	assert.deepEqual(h.jobs, []);
+	h.page.status = status();
+	h.page.show_inventory();
+	assert.deepEqual(links().map(a => [text(a), a.href, a.target, a.rel, a.title]),
+		[['通道地址', 'https://channel/', '_blank', 'noopener noreferrer', 'https://channel/']]);
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {

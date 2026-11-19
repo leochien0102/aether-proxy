@@ -110,17 +110,23 @@ return view.extend({
 				]);
 			})
 		]);
+		const link = (url, text) =>
+			E('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url }, text);
+		this.summary.hidden = !this.summary.textContent;
+		this.progress.hidden = !this.busy;
 		const statusRow = E('div', { class: 'aether-update-status',
 			style: 'display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.5em 1em; min-width:0' }, [
-			E('span', { style: 'flex:1 1 21em; min-width:0; overflow-wrap:anywhere' },
-				[ _('Last checked', 'aether-proxy'), ': ', vm.checked, ' — ', vm.url ]),
+			E('span', { style: 'min-width:0' }, [
+				_('Last checked', 'aether-proxy'), ': ',
+				this.status === undefined ? _('Not checked yet', 'aether-proxy') : vm.checked,
+				...(vm.url !== '–' ? [ ' · ', link(vm.url, _('Channel address', 'aether-proxy')) ] : []),
+			]),
+			this.summary,
+			this.progress,
+			...(vm.error ? [ E('span', { style: 'min-width:0; overflow-wrap:anywhere' }, vm.error) ] : []),
 			E('div', { style: 'display:flex; flex-wrap:wrap; align-items:center; min-width:0; gap:0.5em 1em; margin-inline-start:auto' },
 				[ check ])
 		]);
-		const hasFeedback = this.busy || this.summary.textContent || vm.error;
-		const feedback = E('div', { class: 'aether-update-feedback', style: 'margin:0.25em 0 0',
-			role: 'status', hidden: !hasFeedback || null },
-			[ this.progress, this.summary, ...(vm.error ? [E('div', {}, vm.error)] : []) ]);
 		const heading = E('h3', { class: 'aether-update-heading',
 			style: 'display:flex; flex-wrap:wrap; align-items:baseline; gap:0.25em 1em' }, [
 			E('span', {}, _('Component updates', 'aether-proxy')),
@@ -129,7 +135,7 @@ return view.extend({
 					+ 'white-space:normal; overflow-wrap:anywhere' }, model.manual_install_note())
 		]);
 		this.inventory.replaceChildren(ap.section({
-			body: [ heading, statusRow, feedback, table ]
+			body: [ heading, statusRow, table ]
 		}), ap.section({
 			title: _('Running components', 'aether-proxy'),
 			description: E('span', { title: model.migration_note() },
@@ -144,7 +150,7 @@ return view.extend({
 		this.status = undefined;
 		this.busy = false;
 		this.inventory = E('div');
-		this.summary = E('div');
+		this.summary = E('span', { role: 'status', style: 'min-width:0; overflow-wrap:anywhere' });
 		this.progress = E('span');
 		this.show_inventory();
 		const map = new form.Map('aetherproxy', _('Updates', 'aether-proxy'));

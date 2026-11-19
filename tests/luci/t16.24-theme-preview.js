@@ -185,8 +185,9 @@ async function verifyToolbars(page, view, narrow = false) {
 		const note = heading.locator('.aether-update-manual-note');
 		const button = row.getByRole('button', { name: tr('Check for updates') });
 		assert.equal(await block.locator(':scope > *').evaluateAll(nodes => nodes.map(n => n.className || n.tagName).join(',')),
-			'aether-update-heading,aether-update-status,aether-update-feedback,table');
-		assert.match(await row.innerText(), /上次检查: .* — https:\/\//);
+			'aether-update-heading,aether-update-status,table');
+		assert.match(await row.innerText(), /上次检查: .* · 通道地址/);
+		assert.doesNotMatch(await row.innerText(), /https:\/\//);
 		assert.match(await note.innerText(), /从发布页.*降级前注意/);
 		assert.ok(await heading.evaluate((el, narrow) => {
 			const [title, note] = el.children;
@@ -197,13 +198,25 @@ async function verifyToolbars(page, view, narrow = false) {
 		assert.equal(await button.isVisible(), true);
 		assert.equal(await block.getByRole('switch').count(), 0);
 		assert.ok(await row.evaluate(el => {
-			const [text, actions] = el.children;
+			const info = el.firstElementChild, actions = el.lastElementChild;
 			const bounds = el.getBoundingClientRect();
-			return getComputedStyle(text).overflowWrap === 'anywhere' &&
-				text.scrollWidth <= text.clientWidth + 1 && actions.scrollWidth <= actions.clientWidth + 1 &&
+			return info.scrollWidth <= info.clientWidth + 1 && actions.scrollWidth <= actions.clientWidth + 1 &&
 				bounds.right <= window.innerWidth + 1 && Math.abs(actions.getBoundingClientRect().right - bounds.right) <= 1;
-		}), 'status URL and actions fit; toolbar uses the right edge of the component block');
-		const [checked, action] = await Promise.all([row.locator(':scope > span').boundingBox(), button.boundingBox()]);
+		}), 'status links and actions fit; toolbar uses the right edge of the component block');
+		if (narrow)
+			assert.ok(await row.evaluate(el => {
+				const info = el.firstElementChild;
+				const range = document.createRange();
+				range.selectNodeContents(info.firstChild);
+				const line = range.getBoundingClientRect();
+				return [...info.querySelectorAll('a')].every(link => {
+					const b = link.getBoundingClientRect();
+					return line.top < b.bottom && b.top < line.bottom;
+				});
+			}), 'Channel links share the timestamp line at 360 px');
+		const [checked, action] = await Promise.all([
+			row.locator(':scope > span:first-child').boundingBox(), button.boundingBox()
+		]);
 		if (!narrow)
 			assert.ok(checked.y < action.y + action.height && action.y < checked.y + checked.height,
 				'Last checked and Check for updates share the desktop row');
@@ -325,7 +338,7 @@ async function capture(browser, theme, stylesheet, view) {
 		assert.ok(await page.evaluate(href => Array.from(document.styleSheets).some(sheet => sheet.href === href),
 			`${origin}/luci-static/${stylesheet}`), 'Theme stylesheet was applied');
 		await verifyToolbars(page, view);
-		const feedback = page.locator('.aether-update-feedback');
+		const feedback = page.locator('.aether-update-status');
 		if (updatePreview) {
 			await page.getByRole('button', { name: tr('Check for updates') }).click();
 			await feedback.filter({ hasText: /正在检查更新.*已用/ }).waitFor();
