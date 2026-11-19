@@ -22,8 +22,10 @@ tag=$FORMAL_TAG-rc$((${latest:-0} + 1))
 require_unused "$tag"
 if "$DRY_RUN"; then
     command_plan git push --porcelain origin "$SHA:refs/tags/$tag"
-    printf 'Wait for release-candidate.yml (%s); stop at the prerelease.\n' "$tag"
+    printf 'Wait for release-candidate.yml (%s), then verify the gate-only prerelease.\n' "$tag"
     rc_inventory_plan
+    promote "$tag" rc
+    printf 'Wait for persistent channel-rc and print its 24 package hashes; do not publish to stable.\n'
     exit 0
 fi
 
@@ -31,3 +33,5 @@ push_tag "$tag"
 wait_workflow "$APP_REPO" release-candidate.yml push "$tag"
 verify rc-gate-only "$tag"
 gh release view "$tag" -R "$APP_REPO" --json url,assets --jq '.url, .assets[].name'
+promote "$tag" rc
+verify rc-channel "$tag"

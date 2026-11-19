@@ -199,16 +199,44 @@ def check_direct():
                             raise ValueError(f'Gate bytes conflict with published package {name}; bump its package release')
 
 
+def rc_channel_summary(repo, tag):
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        rc = read_rc(repo, tag, root / 'rc')
+        release = published(CHANNEL, 'channel-rc', prerelease=True)
+        download(CHANNEL, 'channel-rc', root, 'manifest.json')
+        manifest = json.loads((root / 'manifest.json').read_text())
+        if (manifest['schema'] != 2 or manifest.get('prerelease') is not True
+                or manifest.get('rc_tag') != tag or manifest.get('commit') != rc['commit']):
+            raise ValueError('Published channel-rc does not match the requested RC')
+        cells = {(name, arch, fmt): (entry['current']['version'], asset['url'], asset['sha256'])
+                 for name, entry in manifest['packages'].items()
+                 for arch, formats in entry['current']['assets'].items() for fmt, asset in formats.items()}
+        expected = {(e['package'], e['arch'], e['format']): (e['version'], e['asset'], e['sha256'])
+                    for e in rc['assets']}
+        release_names = {a['name'] for a in release['assets']}
+        if (len(cells) != 24 or cells != expected
+                or not ({v[1] for v in cells.values()} | {'manifest.json', 'manifest.json.sig'}) <= release_names):
+            raise ValueError('Published channel-rc package matrix differs from the RC')
+        print(f'{release["html_url"]} (manifest version: {manifest["packages"]["aether-proxy"]["current"]["version"]})')
+        for (name, arch, fmt), (version, _, sha) in sorted(cells.items()):
+            print(f'{name} {version} {arch}/{fmt} {sha}  (RC = channel-rc)')
+
+
 def compare(repo, tag, rc_tag=None):
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
         release = published(repo, tag)
+        if rc_tag:
+            rc = read_rc(repo, rc_tag, root / 'rc', all_assets=True)
+            if rc['target_tag'] != tag or rc['commit'] != commit_for(repo, tag) or not gate_only_rc(rc):
+                raise ValueError('Formal Release is not bound to the same gate-only RC commit')
         out = root / 'formal'
         download(repo, tag, out, '*.ipk', '*.apk')
         hashes = {p.name: digest(p) for p in out.iterdir()}
         if rc_tag:
-            expected = rc_inventory(read_rc(repo, rc_tag, root / 'rc', all_assets=True), 'sha256')
-            if len(expected) != 18 or hashes != expected:
+            expected = rc_inventory(rc, 'sha256')
+            if len(expected) != 18 or hashes != expected or {a['name'] for a in release['assets']} != set(expected):
                 raise ValueError('Formal Release/RC package checksum mismatch')
             for name, value in sorted(hashes.items()):
                 print(f'{value}  {name}  (Release = RC)')
@@ -243,6 +271,8 @@ if __name__ == '__main__':
                 if action == 'rc-gate-only' and not gate_only_rc(m):
                     raise ValueError('RC contains historically reconciled packages; publish a gate-only RC')
                 print(m['commit'], m['target_tag'])
+        elif action == 'rc-channel':
+            rc_channel_summary(repo, tag)
         elif action == 'channel-stage':
             channel_stage(repo, tag, *rest)
         elif action == 'compare':
