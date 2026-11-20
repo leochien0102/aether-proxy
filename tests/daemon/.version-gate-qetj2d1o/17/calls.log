@@ -1,0 +1,4 @@
+nft -c -f /workspace/openwrt/aether-proxy/tests/daemon/.version-gate-qetj2d1o/17/var/run/aether-proxy/check.3049358/precheck.nft
+ip rule help
+xray version-query
+chinadns-ng version-query

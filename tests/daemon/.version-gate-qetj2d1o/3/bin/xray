@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ "$1" = version ]; then
+	printf 'xray version-query\n' >> "$STUB_LOG"
+	case "$(cat "$SYSROOT/xray-mode")" in
+		fail) cat "$SYSROOT/xray-banner"; exit 7 ;;
+		timeout) exec sleep 30 ;;
+	esac
+	cat "$SYSROOT/xray-banner"
+	exit 0
+fi
+exec "$(dirname "$0")/xray-original" "$@"

@@ -1,0 +1,13 @@
+#!/bin/sh
+printf 'ip %s\n' "$*" >> "$STUB_LOG"
+case " $* " in
+	*" rule help "*) echo 'Usage: ip rule add fwmark FWMARK/MASK'; exit 0 ;;
+	*" -4 route show default "*) echo 'default dev lo'; exit 0 ;;
+	*" rule show "*) if [ -s "$SYSROOT/ip-rules" ]; then cat "$SYSROOT/ip-rules"; else echo '__EMPTY__'; fi; exit 0 ;;
+	*" rule add "*) printf '900: from all fwmark 0x80000/0x80000 lookup 233\n' >> "$SYSROOT/ip-rules"; exit 0 ;;
+	*" rule del "*) : > "$SYSROOT/ip-rules"; exit 0 ;;
+	*" route replace "*) printf 'local default dev lo table 233\n' > "$SYSROOT/ip-routes"; exit 0 ;;
+	*" route flush "*) : > "$SYSROOT/ip-routes"; exit 0 ;;
+	*" -4 route show table "*) if [ -s "$SYSROOT/ip-routes" ]; then cat "$SYSROOT/ip-routes"; else echo '__EMPTY__'; fi; exit 0 ;;
+esac
+exit 0

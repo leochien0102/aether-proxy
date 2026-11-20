@@ -1,0 +1,111 @@
+#!/bin/sh
+# Component banner controls stay inside the daemon fixture root (docs/04 versions).
+if [ "$1" = version ]; then
+	printf 'xray version\n' >> "$STUB_LOG"
+	if [ -f "$SYSROOT/xray-version-delay" ]; then sleep 30; fi
+	if [ -f "$SYSROOT/xray-version-fail" ]; then
+		# A parseable banner with a nonzero exit proves the caller checks the status first.
+		printf 'Xray 26.9.30 (Xray, Penetrates Everything.)\n'
+		printf 'version query failed\n' >&2
+		exit 7
+	fi
+	if [ -f "$SYSROOT/xray-version" ]; then
+		cat "$SYSROOT/xray-version"
+	else
+		printf 'Xray 26.9.30 (Xray, Penetrates Everything.)\nAdditional banner line\n'
+	fi
+	exit 0
+fi
+if [ "$1" = run ] && [ "$2" = -test ]; then
+	printf 'xray %s\n' "$*" >> "$STUB_LOG"
+	# Opt-in controls for failures after a daemon has already started.
+	if [ -f "$SYSROOT/xray-test-rc" ]; then
+		read -r rc < "$SYSROOT/xray-test-rc"
+		exit "$rc"
+	fi
+	exit "${STUB_XRAY_TEST_RC:-0}"
+fi
+if [ "$1" = run ] && [ "$2" = -c ]; then
+	SYSROOT=${3%/var/run/aether-proxy/current/*}
+	STUB_LOG="$SYSROOT/calls.log"
+	printf 'xray %s\n' "$*" >> "$STUB_LOG"
+	echo "$$" > "$SYSROOT/xray.pid"
+	# Per-child proc fixtures model ownership separately from the global health table.
+	# No host /proc data is borrowed by the production gate under ctx.root.
+	proc="$SYSROOT/proc/$$"
+	mkdir -p "$proc/fd" "$proc/net"
+	cp "/proc/$$/stat" "$proc/stat"
+	# The installed test wrapper supplies ucode; this is fixture generation, not a gate.
+	python3 - "$3" "$proc" <<'PY'
+import json
+import os
+import pathlib
+import sys
+import time
+config = json.loads(pathlib.Path(sys.argv[1]).read_text())
+p = pathlib.Path(sys.argv[2])
+tables = {name: [] for name in ('tcp', 'tcp6', 'udp', 'udp6')}
+inode = 10000 + os.getppid() * 10
+root = p.parents[1]
+
+def publish():
+    for name, lines in tables.items():
+        target = p / 'net' / name
+        temporary = target.with_suffix('.tmp')
+        temporary.write_text(''.join(lines))
+        temporary.replace(target)
+
+for inbound in config['inbounds']:
+    if inbound['protocol'] != 'tunnel':
+        continue
+    if inbound['tag'].startswith('dns-in-'):
+        # Opt-in DNS delay/missing controls leave TPROXY and lifecycle visible.
+        # They are not a ready marker; the real gate still parses proc + owned FDs.
+        if not (p / 'dns-pending').exists():
+            publish()
+            (p / 'dns-pending').touch()
+            with (root / 'xray-dns-pending').open('a') as trace:
+                trace.write(f'{os.getppid()} {time.monotonic()}\n')
+            delay = root / 'xray-dns-delay'
+            if delay.exists():
+                time.sleep(float(delay.read_text()))
+        missing = root / 'xray-dns-missing-port'
+        if missing.exists() and inbound['port'] == int(missing.read_text()):
+            continue
+    address = inbound['listen']
+    encoded = ''.join(f'{int(o):02X}' for o in reversed(address.split('.')))
+    for protocol in inbound['settings']['network'].split(','):
+        inode += 1
+        state = '0A' if protocol == 'tcp' else '07'
+        tables[protocol].append(
+            f' 0: {encoded}:{inbound["port"]:04X} 00000000:0000 {state} '
+            f'00000000:00000000 00:00000000 00000000 0 0 {inode}\n')
+        (p / 'fd' / str(inode)).symlink_to(f'socket:[{inode}]')
+publish()
+with (root / 'xray-dns-published').open('a') as trace:
+    trace.write(f'{os.getppid()} {time.monotonic()}\n')
+PY
+	if [ "$?" -ne 0 ]; then printf 'cannot generate child proc fixture\n' >&2; exit 1; fi
+	# Like the real Xray (Go): the global health fixture lists dual-stack in tcp6.
+	printf '  0: 00000000000000000000000000000000:7968 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp6"
+	cleanup() {
+		tmp="$SYSROOT/proc/net/tcp6.tmp"
+		grep -v ':7968 0000' "$SYSROOT/proc/net/tcp6" > "$tmp"	# exits 1 when nothing is left; that is fine
+		mv "$tmp" "$SYSROOT/proc/net/tcp6"
+		rm -rf "$proc"
+		rm -f "$SYSROOT/xray.pid"
+		exit 0
+	}
+	trap cleanup TERM INT
+	# T9.7 opt-in burst; absent control file preserves every existing fixture's behaviour.
+	if [ -f "$SYSROOT/child-log-lines" ]; then
+		read -r lines < "$SYSROOT/child-log-lines"
+		awk -v name=xray -v lines="$lines" 'BEGIN {
+			start = systime(); while (systime() == start) {};
+			for (i = 1; i <= lines; i++) printf "%s log %d %d\n", name, systime(), i;
+		}'
+	fi
+	while :; do sleep 1 & wait $!; done
+fi
+printf 'xray %s\n' "$*" >> "$STUB_LOG"
+exit 64

@@ -1,0 +1,2 @@
+interface=br-lan
+conf-dir=/tmp/dnsmasq.d,*.conf

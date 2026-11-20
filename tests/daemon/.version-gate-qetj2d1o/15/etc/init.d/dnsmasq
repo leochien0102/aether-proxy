@@ -1,0 +1,2 @@
+#!/bin/sh
+printf "dnsmasq %s\n" "$*" >> "$STUB_LOG"

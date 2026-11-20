@@ -1,0 +1,11 @@
+#!/bin/sh
+if [ "$1" = -V ]; then
+	printf 'chinadns-ng version-query\n' >> "$STUB_LOG"
+	case "$(cat "$SYSROOT/chinadns-ng-mode")" in
+		fail) cat "$SYSROOT/chinadns-ng-banner"; exit 7 ;;
+		timeout) exec sleep 30 ;;
+	esac
+	cat "$SYSROOT/chinadns-ng-banner"
+	exit 0
+fi
+exec "$(dirname "$0")/chinadns-ng-original" "$@"
