@@ -78,21 +78,45 @@ function rotate() {
 	close("raw.log")
 	bytes = lines = 0
 }
-# Only a real application tag, not a quoted tag in another program message.
-/^[^\n]* [a-z0-9]+\.[a-z]+ aether-proxy\[[0-9]+\]: / {
-	# A genuine live application record also proves the subscription is active.
-	mark_ready()
-	n = length($0) + 1
-	# Preserve whole records: a single oversized record cannot fit a segment.
-	if (n > 1048576) next
+function append(record, n) {
+	n = length(record) + 1
 	if (bytes + n > 1048576 || lines >= 2000) rotate()
-	print $0 >> "raw.log"
+	print record >> "raw.log"
 	# BusyBox awk flushes but does not define a return value for fflush().
 	fflush("raw.log")
 	bytes += n
 	lines++
 	if (bytes >= 1048576 || lines >= 2000) rotate()
 }
+function flush_suppressed() {
+	if (!suppressed) return
+	append("aether-proxy: chinadns-ng startup: " suppressed " info lines suppressed")
+	suppressed = 0
+}
+function startup_noise(msg) {
+	return msg ~ /^I \[(main|dnl|groups)\.(zig|c):[0-9]+ / &&
+	       msg !~ /local listen addr|failed|^[WE] \[|\[(Warning|Error)\]/ &&
+	       msg !~ /^I \[dnl\.c:[0-9]+ dnl_init\] tag: /
+}
+{ gsub(/\033\[[0-9;]*m/, "") }
+# Split at the first application prefix, not at a tag quoted in its payload.
+match($0, / [a-z0-9]+\.[a-z]+ aether-proxy\[[0-9]+\]: /) {
+	# A genuine live application record also proves the subscription is active.
+	mark_ready()
+	end = RSTART + RLENGTH - 1
+	msg = substr($0, end + 1)
+	sub(/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9] [[:space:]]*/, "", msg)
+	if (startup_noise(msg)) {
+		suppressed++
+		next
+	}
+	record = substr($0, 1, end) msg
+	# Preserve whole records: a single oversized record cannot fit a segment.
+	if (length(record) + 1 > 1048576) next
+	flush_suppressed()
+	append(record)
+}
+END { flush_suppressed() }
 	' < "$fifo" &
 	writer=$!
 	probe_follow "$probe" "${3:-logger}" &
