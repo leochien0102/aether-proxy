@@ -184,3 +184,4 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 | T16.37 | 原始日志收集器：启动 burst 丢失与 log stats 实时化 | 已合并（`f2d5641`） |
 | T16.38 | 原始日志：chinadns-ng 启动噪音收敛 | 已合并（`ea2c1d2`） |
 | T16.39 | 原始日志：修回 dnl_init tag 例外 | 已合并（`2d09364`） |
+| T16.40 | raw.log 相邻重复折叠（B28 收口） | 待实现 |
