@@ -96,7 +96,7 @@ function flush_suppressed() {
 function startup_noise(msg) {
 	return msg ~ /^I \[(main|dnl|groups)\.(zig|c):[0-9]+ / &&
 	       msg !~ /local listen addr|failed|^[WE] \[|\[(Warning|Error)\]/ &&
-	       msg !~ /^I \[dnl\.c:[0-9]+ dnl_init\] tag: /
+	       msg !~ /^I \[dnl\.c:[0-9]+ dnl_init\] tag:/
 }
 { gsub(/\033\[[0-9;]*m/, "") }
 # Split at the first application prefix, not at a tag quoted in its payload.

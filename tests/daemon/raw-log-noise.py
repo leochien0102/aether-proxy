@@ -71,15 +71,18 @@ def cases():
     sources = ['main.zig', 'dnl.c', 'groups.zig']
     noise = [f'I [{sources[i % len(sources)]}:{i} on_start] config detail {i}' for i in range(1, 14)]
     noisy = [line for msg in noise for line in (msg, decorated(msg))]
-    tags = [f'I [dnl.c:66 dnl_init] tag: {tag}, count: 42' for tag in ('gfw', 'chn', 'g1', 'g2')]
+    tags = ['I [dnl.c:534 dnl_init] tag:chn loaded:109671 added:109626 cost:2212.789k',
+            'I [dnl.c:534 dnl_init] tag:gfw loaded:4381 added:4381 cost:91.722k']
+    l2 = 'I [dnl.c:545 dnl_init] L2 items:1358 lists:989 buckets:2048 cost:8.000k'
     listen = 'I [main.zig:90 on_start] local listen addr: 127.0.0.1#5353'
     warning = 'W [Upstream.zig:102 connect] connect failed'
     xray = ['[Warning] core: Xray started', '[Info] infra/conf/serial: Reading config',
             'A unified platform…']
     protected = ['I [main.zig:2 on_start] load failed', 'I [dnl.c:3 dnl_init] [Warning] stale list',
                  'I [groups.c:4 on_start] [Error] invalid group', 'E [main.zig:5 on_start] bad port']
-    yield 'live follow', noisy + list(map(decorated, tags + [listen, warning])) + xray, (
-        [summary(26)] + [PREFIX + msg for msg in tags + [listen, warning] + xray]), False
+    yield 'live follow', noisy + tags + [l2] + list(map(decorated, [listen, warning])) + xray, (
+        [summary(26)] + [PREFIX + msg for msg in tags] + [summary(1)] +
+        [PREFIX + msg for msg in [listen, warning] + xray]), False
     yield 'EOF and reconnect', list(map(decorated, protected)) + noisy[:2], (
         [PREFIX + msg for msg in protected] + [summary(2)]), True
 
