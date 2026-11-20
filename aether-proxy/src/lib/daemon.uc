@@ -501,6 +501,8 @@ function start_sequence(ctx, opts, signal_pending) {
 		return { ok: false, code: cfg.exit ?? 2, step: 'config', detail: `${cfg.code}: ${cfg.detail}`, errors: cfg.errors, untouched: true };
 	}
 	let snapshot = cfg.snapshot;
+	if (!log.set_level(snapshot.main.log_level))
+		log.set_level('notice');
 	ctx.service_mode = snapshot.main.mode;
 	ctx.service_node = snapshot.main.node;
 	ctx.lan_ifaces = read_lan_ifaces(opts, snapshot);
@@ -1429,9 +1431,12 @@ function run(args) {
 					break;
 				}
 				if (changed.ok) {
+					let old_log_level = result.snapshot.main.log_level;
 					result.snapshot = changed.snapshot;
 					result.applied_context = changed.applied_context;
 					result.state = changed.state;
+					if (result.snapshot.main.log_level != old_log_level && !log.set_level(result.snapshot.main.log_level))
+						log.set_level('notice');
 					ctx.service_mode = result.snapshot.main.mode;
 					ctx.service_node = result.snapshot.main.node;
 					monitor_daemon.snapshot = changed.snapshot;

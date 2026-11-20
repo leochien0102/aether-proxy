@@ -24,7 +24,7 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `fail_open` | bool | `1` | Xray 不可用时摘除拦截规则 |
 | `degrade_gfw` | bool | `1` | 节点不健康（Xray 存活、代理健康检测判为不健康）时，把绕过大陆（默认模式与设备覆盖）临时按「仅被墙」分流，全局不降，恢复健康后还原；不写配置（[02](02-dataplane.md)「节点不健康时的分流降级」，2026-10-27 定） |
 | `sniffing` | bool | `1` | Xray 入站嗅探 http/tls/quic，`routeOnly=false`（由节点按域名连接） |
-| `log_level` | enum(`error`\|`warn`\|`notice`\|`info`\|`debug`) | `notice` | aether-proxy 自身的日志等级（[09](09-logging.md)） |
+| `log_level` | enum(`error`\|`warn`\|`notice`\|`info`\|`debug`) | `notice` | aether-proxy 自身的日志等级（[09](09-logging.md)）。级别在启动与重载成功时从 `main.log_level` 应用；CLI 子命令（`check` / `render` / `log` 等）不加载此设置，始终用默认 `notice`。 |
 | `xray_log_level` | enum(`error`\|`warning`\|`info`\|`debug`) | `warning` | |
 | `boot_wait_timeout` | int 秒，0–600 | `120` | 0 = 开机不等待 |
 | `boot_check_targets` | list `ip:port` | `223.5.5.5:53` `114.114.114.114:53` | |

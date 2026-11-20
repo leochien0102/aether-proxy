@@ -92,6 +92,8 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 
 ## 等级
 
+级别在启动与重载成功时从 `main.log_level` 应用；CLI 子命令（`check` / `render` / `log` 等）不加载此设置，始终用默认 `notice`。
+
 | aether-proxy 等级 | syslog 优先级 | 用于 |
 |---|---|---|
 | `error` | `err` | 功能受损：启动失败、故障放行、回滚 |

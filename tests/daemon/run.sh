@@ -228,7 +228,9 @@ start_daemon() {
 		export STUB_LOG="$log" SYSROOT="$root" STUB_CURL_COUNT_FILE="$root/curl-count" PATH="$T/bin:$PATH"
 		export STUB_NFT_FAIL_ONCE="${STUB_NFT_FAIL_ONCE:-0}"
 		export AETHER_PROXY_TEST_RETRY_DELAY="${AETHER_PROXY_TEST_RETRY_DELAY:-}"
-		exec "$UCODE" -S "$ENTRY" -- daemon $(args_for "$root") "$@"
+		local modules=()
+		if [ -n "${DAEMON_LOG_MODULES:-}" ]; then modules=(-L "$DAEMON_LOG_MODULES"); fi
+		exec "$UCODE" "${modules[@]}" -S "$ENTRY" -- daemon $(args_for "$root") "$@"
 	) >"$root/daemon.stdout" 2>"$root/daemon.stderr" &
 	DAEMON_PID=$!
 }
@@ -300,6 +302,55 @@ UCODE
 	for _ in {1..100}; do [ -s "$portfile" ] && return 0; sleep 0.05; done
 	return 1
 }
+
+# T16.41: capture the real application's syslog calls synchronously, without logd.
+mkdir -p "$T/syslog-modules" "$T/log-level-conf"
+cat > "$T/syslog-modules/log.uc" <<'UCODE'
+'use strict';
+export function openlog(tag, options, facility) {
+	return true;
+};
+export function syslog(priority, format, line) {
+	warn(sprintf('syslog %s: %s\n', priority, sprintf(format, line)));
+	return true;
+};
+UCODE
+LOG_CONF="$T/log-level-conf"
+enable_debug_log() { sed -i "/^config main /a\	option log_level 'debug'" "$LOG_CONF/aetherproxy"; }
+for level in notice debug; do
+	RLOG="$T/sys-log-$level"; make_root "$RLOG"
+	cp "$FIX/aetherproxy" "$LOG_CONF/aetherproxy"
+	if [ "$level" = debug ]; then enable_debug_log; fi
+	reload_ok=0
+	DAEMON_LOG_MODULES="$T/syslog-modules/*.uc" start_daemon "$RLOG" "$RLOG/calls.log" --confdir "$LOG_CONF"
+	if wait_for "$RLOG/var/run/aether-proxy/state.json" '"state": "running"'; then
+		line=$(grep -m1 '^syslog debug: CMD_RUN ' "$RLOG/daemon.stderr")
+		if [ "$level" = debug ]; then
+			if [ -n "$line" ]; then ok "T16.41 debug startup: $line"; else bad 'T16.41 debug startup: CMD_RUN missing'; fi
+		elif [ -z "$line" ]; then
+			ok 'T16.41 notice startup (default): no CMD_RUN'
+			# A level-only reload has no renderer actions; observe its completion,
+			# then use the synchronous shutdown commands to exercise the new level.
+			enable_debug_log
+			kill -HUP "$DAEMON_PID"
+			if wait_for "$RLOG/var/run/aether-proxy/state.json" '"last_reload":' &&
+				[ "$(jget last_reload.ok < "$RLOG/var/run/aether-proxy/state.json")" = true ]; then
+				reload_ok=1
+			else
+				bad 'T16.41 level-only reload succeeds'
+			fi
+		else
+			bad 'T16.41 notice startup: unexpected CMD_RUN' "$line"
+		fi
+	else
+		bad "T16.41 $level startup reaches running" "$(cat "$RLOG/daemon.stderr")"
+	fi
+	stop_daemon; expect "T16.41 $level daemon stops cleanly" 0 "$?"
+	if [ "$reload_ok" = 1 ]; then
+		has_line "$RLOG/daemon.stderr" 'syslog debug: CMD_RUN ' \
+			&& ok 'T16.41 level-only reload enables CMD_RUN' || bad 'T16.41 level-only reload enables CMD_RUN'
+	fi
+done
 
 # 1. Default-off startup begins on T1; its first immediate success still reaches running within 5 s.
 R1="$T/sys1"; L1="$T/sys1/calls.log"; make_root "$R1"; : > "$L1"
