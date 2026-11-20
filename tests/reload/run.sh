@@ -55,6 +55,30 @@ wait_count() {
 	return 1
 }
 
+# Require both streams to stay unchanged for 300 ms, with a 5 s polling budget.
+await_quiet() {
+	local started=${EPOCHREALTIME/./} stable_since now previous='' counts
+	stable_since=$started
+	while :; do
+		if ! counts=$(wc -l "$EVENTS" "$LOG"); then
+			bad 'reload logs become quiet' 'cannot count event and call log lines'
+			return 1
+		fi
+		now=${EPOCHREALTIME/./}
+		if (( now - started >= 5000000 )); then
+			bad 'reload logs become quiet' 'timed out after 5 s'
+			return 1
+		fi
+		if [ "$counts" != "$previous" ]; then
+			stable_since=$now
+			previous=$counts
+		elif (( now - stable_since >= 300000 )); then
+			return 0
+		fi
+		sleep 0.05
+	done
+}
+
 # Wait for committed state, not merely a restarted child: publication follows readiness.
 wait_field() {
 	local field="$1" wanted="$2" got=''
@@ -71,6 +95,7 @@ wait_field() {
 # Count only rendered-table validation, not precheck's separate kernel-feature probe.
 artifact_checks() { grep -Ec 'nft -c -f .*/aether-proxy\.nft$' "$LOG"; }
 reload_checkpoint() {
+	await_quiet
 	last_reload_before=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("last_reload", {}).get("at", 0))' \
 		< "$SYSROOT/var/run/aether-proxy/state.json")
 	applied_before=$(count_calls "$EVENTS" 'RELOAD_APPLIED')
@@ -187,6 +212,7 @@ exit 0
 EOF
 chmod +x "$SYSROOT/etc/init.d/dnsmasq"
 : > "$LOG"
+: > "$EVENTS"
 : > "$SYSROOT/ip-rules"
 : > "$SYSROOT/ip-routes"
 : > "$SYSROOT/conflicts"
@@ -240,14 +266,13 @@ assert_dns_aliases 'M4-02 startup publishes deep-equal DNS aliases'
 # No-change reload still runs prerequisites and nft validation, but neither Xray test nor actions.
 reload_checkpoint
 kill -HUP "$DAEMON_PID"
-wait_count "$LOG" 'ip rule help' "$((pre_before + 1))"
-sleep 0.3
+# A no-op has no RELOAD_APPLIED; last_reload is the terminal publication.
+assert_completion external-noop "$NODE_A" gfw true
+await_quiet
 expect 'T9.8 unchanged reload has no success event' "$applied_before" "$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
 expect 'T9.8 unchanged reload skips Xray test' "$tests_before" "$(count_calls "$LOG" 'xray run -test')"
 expect 'T9.8 unchanged reload validates artifact once' "$((checks_before + 1))" "$(artifact_checks)"
 expect 'T9.8 unchanged reload prechecks once' "$((pre_before + 1))" "$(count_calls "$LOG" 'ip rule help')"
-
-assert_completion external-noop "$NODE_A" gfw true
 
 # Mode change: nft and chinadns outputs change; Xray's process must retain its pid.
 reload_checkpoint
@@ -492,6 +517,10 @@ wait_field components.xray.version 26.10.10 \
 	&& ok 'T9.5 path change refreshes version when only live set elements differ' \
 	|| bad 'T9.5 path change refreshes version when only live set elements differ'
 expect 'T9.5 live-element reload does not replace nft' "$nft_before" "$(count_calls "$LOG" 'nft -f ')"
+# The version is published before RELOAD_APPLIED. A wait timeout must fail even
+# if the exact count below happens to match when sampled.
+wait_count "$EVENTS" 'RELOAD_APPLIED' "$((applied_before + 1))" \
+	|| bad 'M4-03a live-set path change waits for RELOAD_APPLIED' 'timed out or daemon exited'
 expect 'M4-03a live-set path change emits success event' "$((applied_before + 1))" \
 	"$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
 expect 'M4-03a live-set path change restarts Xray' "$((xray_starts_before + 1))" \
@@ -506,6 +535,10 @@ failure_checkpoint() {
 	lkg_failure_inode=$(stat -c %i "$SYSROOT/etc/aether-proxy/state/node-ip.json")
 	reload_checkpoint
 	failure_events_before=$(count_calls "$EVENTS" "$1")
+	failure_stderr_token="TRACE reload error: $1 "
+	# Other START_FAILED lines can precede the terminal reload action error.
+	[ "$1" != START_FAILED ] || failure_stderr_token+='[step=reload:actions '
+	failure_stderr_before=$(count_calls "$T/daemon.stderr" "$failure_stderr_token")
 	nft_loads_before=$(count_calls "$LOG" 'nft -f ')
 	state_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- node_id < "$SYSROOT/var/run/aether-proxy/state.json")
 	mode_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- mode < "$SYSROOT/var/run/aether-proxy/state.json")
@@ -517,7 +550,15 @@ assert_failed() {
 	local code="$1" label="$2"
 	wait_count "$EVENTS" "$code" "$((failure_events_before + 1))" \
 		&& ok "T9.8 $label records $code" || bad "T9.8 $label records $code"
-	sleep 0.2
+	wait_count "$T/daemon.stderr" "$failure_stderr_token" "$((failure_stderr_before + 1))" \
+		|| bad "T9.8 $label waits for $code on stderr" 'timed out or daemon exited'
+	# The event/stderr can precede cleanup (including failed rollback); wait for
+	# this attempt's failed completion before sampling any negative assertion.
+	local target_node="$NODE_A" target_mode=gfw
+	[ "$label" = invalid-restored-nft ] || [ "$label" = action-failure ] && target_mode=bypass_cn
+	if [ "$label" = invalid-config ]; then target_node=-; target_mode=-; fi
+	assert_completion "$label" "$target_node" "$target_mode" false
+	await_quiet
 	# A persistent apply failure also logs the failed primitive and failed rollback.
 	if [ "$label" != action-failure ]; then
 		expect "T9.8 $label has exactly one $code" "$((failure_events_before + 1))" \
@@ -545,10 +586,6 @@ assert_failed() {
 	if [ "$label" != action-failure ]; then
 		expect "T9.8 $label never loads nft" "$nft_loads_before" "$(count_calls "$LOG" 'nft -f ')"
 	fi
-	local target_node="$NODE_A" target_mode=gfw
-	[ "$label" = invalid-restored-nft ] || [ "$label" = action-failure ] && target_mode=bypass_cn
-	if [ "$label" = invalid-config ]; then target_node=-; target_mode=-; fi
-	assert_completion "$label" "$target_node" "$target_mode" false
 	# A monitor tick after failure must not overwrite the failed completion.
 	local completion_before
 	completion_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- last_reload \

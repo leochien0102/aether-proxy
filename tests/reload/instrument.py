@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Count real reads/renderers in an isolated module copy, never in product code.
 
-The daemon suite still uses the unmodified modules. This reload suite adds entry
-traces only, so duplicate loads or renders in any pipeline path are observable.
+The daemon suite still uses the unmodified modules. Entry traces expose duplicate
+loads or renders, and stderr mirrors errors that normally only go to syslog.
 """
 import pathlib
 import shutil
@@ -26,3 +26,11 @@ for file, entries in hooks.items():
             raise RuntimeError(f"instrumentation anchor is not unique: {file}: {anchor}")
         text = text.replace(anchor, anchor + f"\n\twarn('TRACE T9.9 {label}\\n');")
     path.write_text(text)
+
+path = target / "log.uc"
+text = path.read_text()
+anchor = "\tappend_event(level, code, args);"
+if text.count(anchor) != 1:
+    raise RuntimeError("instrumentation anchor is not unique: log.uc event append")
+path.write_text(text.replace(anchor, anchor + "\n\tif (level == 'error')"
+                            "\n\t\twarn('TRACE reload error: ' + format_line(code, args, message) + '\\n');"))
