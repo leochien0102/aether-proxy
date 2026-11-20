@@ -21,7 +21,7 @@
   之后同步 `openwrt-actions/configs/feeds.conf` 的 40 位 SHA 与注释。
 - 版本号未变的包复用已发布字节（M4-17）。1.2.2-r1 直发首批曾因门禁重构建 `chinadns-ng`/`aether-dns`
   报 `Gate bytes conflict`，已由 `f9fb943` 在 `stage.py` 里补上「同版本取通道已发布字节」解决。
-- 设备：x86 已在线 **1.2.2-r5**、H28K 停在 **1.2.2-r2** 试用包，两者都待升级到 **1.2.2-r6**（`aether-proxy update package`）。
+- 设备：x86 与 H28K 均已升到 **1.2.2-r6**（H28K 从 r2 试用包跨升，2026-11-20）。
 
 ## 2. 已完成的能力
 
