@@ -20,6 +20,7 @@
 
 | 文件 | 内容 | 实现前必读 |
 |---|---|---|
+| [status.md](status.md) | **项目现状**：发布线、已完成能力、待办与工程债 | 接手/交接先读 |
 | [01-architecture.md](01-architecture.md) | 组件、进程、设备上的目录、包拆分 | 全部任务 |
 | [02-dataplane.md](02-dataplane.md) | nft 表、判定顺序、TPROXY、游戏模式、DNS 劫持 | M2、M4 |
 | [03-dns.md](03-dns.md) | dnsmasq ↔ ChinaDNS-NG ↔ Xray，三级 DNS、引导解析 | M2、M3 |
