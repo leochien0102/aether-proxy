@@ -182,3 +182,4 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 | T16.35 | 回退候选通道：发版工具与 channel 仓 | 已合并（app `08c65d6` / channel `e1ff710`） |
 | T16.36 | 子进程日志限流：启动突发、立即摘要与自检 | 已合并（`fbb998b`） |
 | T16.37 | 原始日志收集器：启动 burst 丢失与 log stats 实时化 | 已合并（`f2d5641`） |
+| T16.38 | 原始日志：chinadns-ng 启动噪音收敛 | 待实现 |
