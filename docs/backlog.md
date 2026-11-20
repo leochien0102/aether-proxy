@@ -225,7 +225,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 ## B19 节点不健康时绕过大陆仍把境外全送代理（2026-10-27）
 
-- 状态：**后端已完成**（T9.40 合并，2026-10-27），见 [02](02-dataplane.md)「节点不健康时的分流降级」；前端待做（概览页提示、高级页开关、09 事件文案）。
+- 状态：**已完成**。后端 T9.40（2026-10-27，见 [02](02-dataplane.md)「节点不健康时的分流降级」）；前端随后补齐——高级页 `degrade_gfw` 开关（`view/aether-proxy/advanced.js`，`model/advanced.js` 暴露字段）、概览页降级提示（`model/overview.js` 按 `degraded_mode`/`degraded_since` 显示「已降级为仅被墙」与持续时长）、[09](09-logging.md) 的 `MODE_DEGRADED`/`MODE_RESTORED` 事件文案。
 - 来源：2026-10-26 当前节点的 IP/端口被封，服务降到 T3 后境外全部打不开；仓库所有者指出应同时把分流临时改为仅被墙。docs/03 原理由「此时境外站点本来就打不开」不成立，已更正。
 - 仓库所有者定（2026-10-27）：开关 `degrade_gfw` 默认开。范围先定为「全局与设备覆盖一起降、强制代理不降」，复核 T9.40 时发现设备「全局」就是 `policy=proxy`（两条互相矛盾），改为**只降绕过大陆（默认模式与设备覆盖），全局一律不降**（全局的用途是绝不直连）。
 
@@ -244,7 +244,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 ## B21 发布复用 RC 的包：编一次、验证、提升（T11.12）
 
-- 状态：**RC / promote 路径已实现并完成离线回归**，未触发真实构建、tag 或发布。操作流程和边界见 [08](08-updates.md)「RC 构建与原样晋升」。原有 channel packages 流程保留；正式 tag 必须由维护者固定在 RC commit。
+- 状态：**已作废（2026-11-19）**。候选通道（RC 写 `channel-rc`、RC Promote、客户端「检查 RC 更新」开关）在 T16.30/T16.31 落地后被 T16.34/T16.35 全部回退：opkg 认为 `1.2.2-rc1` 高于 `1.2.2-r1`，而包内版本号必须与字节一致，两条诉求无法同时成立。现行发版只有「发 Release → 写 `channel-stable`」两步入式；决策与opkg 实测见 [design/rc-channel-drop-20261119.md](../design/rc-channel-drop-20261119.md)。本条保留为历史设计。
 - 来源：发 0.4.0-r1 时仓库所有者指出发布又完整跑一遍 CI 是重复——RC 已经编过、验过，正式版应直接复用 RC 的包。
 - 现状的两个问题：
   1. 重复编译：aether-proxy 的 `build` 编出的包（架构无关 `all`），发布仓库 `packages` 又从源码重编一遍；两段串行，发一次版约 50 分钟。
@@ -317,6 +317,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 
 ## B26 代理端口范围选项（2026-11-10，待实现，已定方向）
 
+- 状态：**已完成**。`main.port_scope`（`all|common|common_extra`）与 `main.extra_ports` 落在 `aether-proxy/src/lib/schema.uc`、`config.uc`、`render/nft.uc`；概览页模式下拉旁「端口范围」、高级页「补充端口」；用例 `tests/unit/port_scope.uc`、`tests/luci/{overview,advanced}.test.js`。只影响 TCP 的 TPROXY 跳转，UDP 仍全代理；53 由 nat 劫持、QUIC 由 `quic_block` 单独处理，均不受影响。
 - 需求（2026-11-10 仓库所有者）：把"代理哪些端口"做成选项，三选一——**全端口**（默认，现行行为）、**常用端口**、**常用 + 自定义补充端口**。位置放在**概览页模式下拉旁边**；自定义补充端口在**高级设置页**配置。
 - 起因：对照 ssr-plus 的"仅常用端口"（`ssr-rules -D -m multiport --dports 22,53,80,143,443,465,587,853,993,995,9418`）时发现，aether-proxy 是全端口 TPROXY，所以 tcping 节点端口 10443 也会被代理；对 P2P/大流量非标端口的带宽控制没有开关。服务端 Xray 的 bittorrent 嗅探+黑洞只覆盖明文 TCP/uTP，加密 BT 会漏，故仍需要端口层面的可选开关（不做成默认）。
 - 现状（2026-11-10 核实）：`render/nft.uc` 的分流跳转不带端口条件；DNS 53 由 nat 劫持单独处理，QUIC 443 由 `quic_block` 单独 reject。
