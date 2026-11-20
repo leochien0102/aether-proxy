@@ -332,7 +332,7 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 测试还须覆盖：`all` 渲染逐字节等于现在；`common`/`common_extra` 的 `tcp dport` 集合与并集；缺省值；非法端口（0/65536/区间反向/超限/非数字）；53 劫持与 QUIC reject 不受影响；页面下拉与高级字段、i18n；旧配置升级后行为不变。
 - 排期：**1.0.0 之后**（1.0.0 已承载依赖切换与事务激活）。排期时再按本条目拆实现卡并把"常用端口清单"冻结进卡。
 
-## B27 `main.log_level` 未生效（2026-11-18 发现，待修）
+## B27 `main.log_level` 未生效（2026-11-18 发现，2026-11-20 由 T16.41 修复）
 
 - 现象：`docs/09` 说 `main.log_level`（`error/warn/notice/info/debug`）控制日志级别，但真机把 `main.log_level=debug` 后
   `log.debug` 一行都不输出。
@@ -342,6 +342,10 @@ LKG 从旧格式读入并写成按地址的表。仓库所有者在浏览器里�
 - 修法建议：启动序列读到 `main.log_level` 后调用一次 `log.set_level`，并对非法值退回默认；
   补 unit 断言"配置 → 生效级别"，再补一条真机验证（`debug` 出现 `log.debug`）。
 - 状态：**待修**（2026-11-20 复核仍在）。按 [status.md](status.md) 第 3 节排期，作为下一张后端小卡。
+
+**已修复**：`ba7cbc71`（T16.41）在启动读取快照后、以及重载成功且级别变化时应用
+`log.set_level(snapshot.main.log_level)`，非法值回落 `notice`；`docs/09`/`docs/05` 写明 CLI 子命令
+不加载该设置。回归在 `tests/unit/log_level.uc` 与 `tests/daemon/run.sh`（notice/debug 两组真 daemon 用例）。
 
 ## B28 子进程日志疑似出现两份（2026-11-20 发现，已降级）
 
