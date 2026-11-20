@@ -83,8 +83,9 @@ def cases():
     yield 'live follow', noisy + tags + [l2] + list(map(decorated, [listen, warning])) + xray, (
         [summary(26)] + [PREFIX + msg for msg in tags] + [summary(1)] +
         [PREFIX + msg for msg in [listen, warning] + xray]), False
-    yield 'EOF and reconnect', list(map(decorated, protected)) + noisy[:2], (
-        [PREFIX + msg for msg in protected] + [summary(2)]), True
+    yield 'EOF and reconnect', list(map(decorated, protected)) + [protected[-1]] + noisy[:2], (
+        [PREFIX + msg for msg in protected] + [summary(2),
+         'aether-proxy: raw log: 1 duplicate line(s) folded']), True
 
 
 class RawLogNoise(unittest.TestCase):

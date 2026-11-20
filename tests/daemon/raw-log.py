@@ -98,7 +98,7 @@ with (base / 'feed').open() as f:
         assert combined[1]['text'].endswith('after rotation')
         # Overflow by bytes before 2000 lines; then replace the old segment again.
         with feed.open('a') as f:
-            f.write(''.join(line('x' * 600000) for _ in range(3)))
+            f.write(''.join(line(ch * 600000) for ch in 'xyz'))
         until(lambda: (run / 'raw.log').stat().st_size > 600000)
         until(lambda: (run / 'raw.log.1').stat().st_size > 600000)
         time.sleep(.1)

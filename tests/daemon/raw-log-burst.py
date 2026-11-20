@@ -15,7 +15,8 @@ with tempfile.TemporaryDirectory() as tmp:
     base = Path(tmp)
     logread = base / 'logread'
     burst = ''.join(f'{PREFIX}burst {i:02d}\n' for i in range(N))
-    (base / 'burst').write_text(burst)
+    # The duplicate must not delay any later live record or leak a summary mid-stream.
+    (base / 'burst').write_text(f'{PREFIX}burst 00\n' + burst)
     logread.write_text(f'''#!/usr/bin/env python3
 from pathlib import Path
 import sys, time
@@ -54,7 +55,7 @@ while True:
         assert (run / 'raw-log.ready').is_file()
         assert not (run / 'raw.log.1').exists()
         print(f'PASS raw.log ({"BusyBox ash + awk" if len(shell) > 1 else "host sh + awk"}): '
-              f'{N}/{N} ordered burst lines + two 1s ticks, live after '
+              f'{N}/{N} distinct burst lines + two 1s ticks, live after '
               f'{time.monotonic() - start:.2f}s')
     finally:
         proc.terminate()

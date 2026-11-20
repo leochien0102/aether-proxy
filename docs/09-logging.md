@@ -87,6 +87,7 @@ chinadns-ng 没有降低日志量的选项（只有 `-v` 加详细日志），da
 - collector 执行 `logread -f -e aether-proxy`：OpenWrt 的 `-f` 未指定 `-l` 时请求 `lines=0`，只取新行，不做历史回填。再次校验真实 `aether-proxy[<pid>]:` 标签，原始整行追加到 `/var/run/aether-proxy/raw.log`（tmpfs，0600）。Xray / chinadns-ng 仍走现有过滤器与 procd → logd 链路。
 - **收集器握手**：读到本次的 `aether-proxy-rawlog` 探针或真实应用实时日志后，collector 才创建 `raw-log.ready`；探针不写入 `raw.log`。每次重新挂载前清除旧标记；首次启动时 daemon 最多等 2 秒才启动 Xray / DNS，超时记一条 warn 后继续。握手只覆盖首次启动，不补超时或掉线期间的日志。
 - 每段最多 1 MiB（含换行字节）或 2000 行；下一行会越过字节上限时先轮转，恰好达到上限时立即轮转。`raw.log` 改名覆盖 `raw.log.1`，重新创建空的 0600 当前段，只保留一份旧段（总计最多约 2 MiB / 4000 行）。单条超过 1 MiB 的异常记录整行丢弃，不截断原始行。
+- **相邻重复折叠（T16.40）**：去掉 ANSI 颜色和消息自带时间戳、跳过 chinadns-ng 启动噪音后，逐字节比较完整的归一化记录（含 syslog 前缀）。`A A A` 只保留一行、计 2 次；`A B A` 保留三行。`local listen addr` 等获豁免的启动行也参与折叠。正常记录仍即时写入；在本次 `logread` 会话 EOF 或轮转前输出 `aether-proxy: raw log: N duplicate line(s) folded`，排在待写的 `suppressed` 摘要之后。摘要不参与相邻比较；已写入的历史日志不回填、不去重。
 - 重启 collector 保留应用已有段并继续计数，但不向 logd 请求历史。CLI 按 `raw.log.1` → `raw.log` 顺序合并后分类、过滤、取最后 N 行；缺失或空文件返回空结果。不运行 `logread`，事件页仍读 `events.jsonl`。
 
 ## 等级

@@ -11,10 +11,13 @@ FIX="$ROOT/tests/fixtures/sample"
 STUB_SRC="$ROOT/tests/stubs/daemon-bin"
 export AETHER_PROXY_TEST_LOGFILTER="$ROOT/aether-proxy/files/aether-proxy-logfilter.awk"
 export AETHER_PROXY_TEST_RAW_LOG_COLLECTOR="$ROOT/aether-proxy/files/aether-proxy-rawlog.sh"
-python3 "$ROOT/tests/daemon/raw-log-burst.py" || exit 1
-if command -v busybox >/dev/null; then
-	RAW_LOG_BUSYBOX=1 python3 "$ROOT/tests/daemon/raw-log-burst.py" || exit 1
-fi
+for raw_log_test in raw-log-burst.py raw-log-dup.py; do
+	RAW_LOG_BUSYBOX=0 python3 "$ROOT/tests/daemon/$raw_log_test" || exit 1
+	if [ "${RAW_LOG_BUSYBOX:-0}" = 1 ] || command -v busybox >/dev/null; then
+		RAW_LOG_BUSYBOX=1 python3 "$ROOT/tests/daemon/$raw_log_test" || exit 1
+	fi
+done
+python3 "$ROOT/tests/daemon/raw-log-noise.py" || exit 1
 python3 "$ROOT/tests/daemon/raw-log.py" || exit 1
 python3 "$ROOT/tests/daemon/logfilter.py" || exit 1
 python3 "$ROOT/tests/daemon/supervise-log.py" || exit 1

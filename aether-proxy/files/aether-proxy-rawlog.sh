@@ -77,6 +77,10 @@ function rotate() {
 	printf "%s", "" > "raw.log"
 	close("raw.log")
 	bytes = lines = 0
+	rotations++
+}
+function fills_segment(n) {
+	return bytes + n >= 1048576 || lines + 1 >= 2000
 }
 function append(record, n) {
 	n = length(record) + 1
@@ -88,10 +92,19 @@ function append(record, n) {
 	lines++
 	if (bytes >= 1048576 || lines >= 2000) rotate()
 }
-function flush_suppressed() {
-	if (!suppressed) return
-	append("aether-proxy: chinadns-ng startup: " suppressed " info lines suppressed")
-	suppressed = 0
+function flush_summaries(all, summary) {
+	if (suppressed) {
+		summary = "aether-proxy: chinadns-ng startup: " suppressed " info lines suppressed"
+		# Keep the suppression summary before the duplicate summary even if it fills the segment.
+		all = all || fills_segment(length(summary) + 1)
+		suppressed = 0
+		append(summary)
+	}
+	if (all && folded) {
+		summary = "aether-proxy: raw log: " folded " duplicate line(s) folded"
+		folded = 0
+		append(summary)
+	}
 }
 function startup_noise(msg) {
 	return msg ~ /^I \[(main|dnl|groups)\.(zig|c):[0-9]+ / &&
@@ -113,10 +126,22 @@ match($0, / [a-z0-9]+\.[a-z]+ aether-proxy\[[0-9]+\]: /) {
 	record = substr($0, 1, end) msg
 	# Preserve whole records: a single oversized record cannot fit a segment.
 	if (length(record) + 1 > 1048576) next
-	flush_suppressed()
+	if (record == last_record) {
+		folded++
+		flush_summaries(0)
+		next
+	}
+	flush_summaries(0)
+	if (folded && fills_segment(length(record) + 1)) {
+		# End the old segment with its summary, before appending the triggering record.
+		before = rotations
+		flush_summaries(1)
+		if (rotations == before) rotate()
+	}
 	append(record)
+	last_record = record
 }
-END { flush_suppressed() }
+END { flush_summaries(1) }
 	' < "$fifo" &
 	writer=$!
 	probe_follow "$probe" "${3:-logger}" &
