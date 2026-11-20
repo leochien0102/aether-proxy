@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 ../workflow-source/tools/release/stage.py --formal
+          python3 ../workflow-source/tools/release/stage.py
       - name: Print the package inventory and verify SHA256SUMS
         if: steps.route.outputs.mode == 'direct'
         working-directory: release-source

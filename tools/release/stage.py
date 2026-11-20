@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate and stage gate-built packages without compiling.
 
-A local CHANNEL_MANIFEST fixture can replay the historical M4-17 reconciliation.
-Actual RC and formal publication always stage the tagged commit's gate bytes.
+Formal staging uses gate-built packages and reuses published bytes for unchanged
+versions. CHANNEL_MANIFEST can override the published manifest source.
 """
 import hashlib
 import json
@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-# Shared canonical-version rule with channel promote (fetched from the same commit).
+# Shared canonical-version rule with the channel publisher.
 from channel.build import ARCH_ALL, asset_name, canonical_version
 from gate import validate_directories
 
@@ -73,22 +73,19 @@ def reconcile(entries, out, manifest_source=None, fetch=fetch_bytes):
 		raise SystemExit(f'Published reconciliation failed ({source}): {exc}') from exc
 
 
-def main(formal=False):
+def main():
 	tag, commit = os.environ['TAG'], os.environ['BUILD_SHA']
 	validate_directories(Path('artifacts'))
 	version = field('aether-proxy', 'PKG_VERSION')
 	release = field('aether-proxy', 'PKG_RELEASE')
 	target = f'{version}-r{release}'
-	if formal:
-		if tag != 'v' + target:
-			raise SystemExit('Formal tag/version mismatch')
-	elif not re.fullmatch(r'v' + re.escape(version) + r'(?:-r' + re.escape(release) + r')?-rc[1-9][0-9]*', tag):
-		raise SystemExit('RC tag/version mismatch')
+	if tag != 'v' + target:
+		raise SystemExit('Formal tag/version mismatch')
 	if subprocess.check_output(['git', 'rev-parse', 'refs/tags/' + tag + '^{commit}'], text=True).strip() != commit:
-		raise SystemExit(('Formal' if formal else 'RC') + ' tag/commit mismatch')
+		raise SystemExit('Formal tag/commit mismatch')
 	names = ['aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn', 'aether-xray', 'chinadns-ng',
 		'aether-dns']
-	out = Path('release-assets' if formal else 'rc-assets')
+	out = Path('release-assets')
 	out.mkdir()
 	entries = []
 	for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]:
@@ -123,14 +120,9 @@ def main(formal=False):
 						raise SystemExit(f'Package version mismatch: {path.name}: {exc}')
 				elif not re.fullmatch(r'[0-9][A-Za-z0-9.+~_-]*', pkg_version):
 					raise SystemExit('Invalid translation version')
-				# Keep both SDK noarch builds, even when their bytes differ. GitHub-safe names.
-				if formal:
-					asset = formal_name(name, arch, ext, path.name)
-					# Same deterministic noarch choice as channel/build.py.
-					if name not in ARCH_ALL or arch == 'aarch64_generic':
-						shutil.copyfile(path, out / asset)
-				else:
-					asset = arch + '--' + asset_name(path.name)
+				asset = formal_name(name, arch, ext, path.name)
+				# Same deterministic noarch choice as channel/build.py.
+				if name not in ARCH_ALL or arch == 'aarch64_generic':
 					shutil.copyfile(path, out / asset)
 				entries.append(dict(package=name, arch=arch, format=ext, filename=path.name,
 									asset=asset, version=pkg_version,
@@ -143,36 +135,10 @@ def main(formal=False):
 		entry['source'] = 'built'
 	# M4-17: a package whose version did not change must ship the bytes that are already
 	# published, otherwise a reproducible-build difference would force a needless bump.
-	# Formal staging always reconciles against channel-stable; RC replay only when asked.
-	if formal or os.environ.get('CHANNEL_MANIFEST'):
-		reconcile(entries, out)
-	if formal:
-		write_formal_metadata(out, commit, {
-			e['asset']: e['version'] for e in entries if e['package'] not in ARCH_ALL or e['arch'] == 'aarch64_generic'
-		})
-		return
-	# A bridge chain is opt-in and reviewed: present at bridges/compatibility.json in the
-	# tagged commit it rides the prerelease verbatim (promote verifies its assets); the
-	# terminal step must be the built aether-proxy, or the file is stale for this RC.
-	reviewed = Path('bridges/compatibility.json')
-	if reviewed.is_file():
-		try:
-			chain = json.loads(reviewed.read_text())
-		except json.JSONDecodeError as exc:
-			raise SystemExit(f'bridges/compatibility.json is not valid JSON: {exc}')
-		steps = chain.get('aether-proxy', {}).get('steps') if isinstance(chain, dict) else None
-		built = next(e['version'] for e in entries if e['package'] == names[0])
-		if not isinstance(steps, list) or not steps or (steps[-1] or {}).get('version') != built:
-			raise SystemExit(f'bridges/compatibility.json terminal step must be the built aether-proxy {built}')
-		shutil.copyfile(reviewed, out / 'compatibility.json')
-	manifest = dict(schema=1, rc_tag=tag, commit=commit, version=version,
-					target_tag='v' + target, assets=entries)
-	if reviewed.is_file():
-		manifest['compatibility'] = 'compatibility.json'
-	(out / 'rc-manifest.json').write_text(json.dumps(manifest, sort_keys=True, indent=2) + '\n')
-	sums = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
-				   for p in sorted(out.iterdir()))
-	(out / 'SHA256SUMS').write_text(sums)
+	reconcile(entries, out)
+	write_formal_metadata(out, commit, {
+		e['asset']: e['version'] for e in entries if e['package'] not in ARCH_ALL or e['arch'] == 'aarch64_generic'
+	})
 
 
 def formal_name(name, arch, ext, filename):
@@ -193,6 +159,6 @@ def write_formal_metadata(out, commit, versions):
 
 
 if __name__ == '__main__':
-	if sys.argv[1:] not in ([], ['--formal']):
-		raise SystemExit('usage: stage.py [--formal]')
-	main(formal=sys.argv[1:] == ['--formal'])
+	if sys.argv[1:]:
+		raise SystemExit('usage: stage.py')
+	main()

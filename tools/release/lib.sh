@@ -133,15 +133,15 @@ wait_workflow() {
     die "Timed out waiting for $workflow ($selector)"
 }
 
-promote() {
+publish_channel() {
     local tag=$1 request_id
-    local args=(gh workflow run promote.yml -R "$CHANNEL_REPO" --ref main -f "release_tag=$tag")
+    local args=(gh workflow run publish-channel.yml -R "$CHANNEL_REPO" --ref main -f "release_tag=$tag")
     if "$DRY_RUN"; then
         command_plan "${args[@]}" -f dry_run=true
     else
         request_id=$(python3 -c 'from uuid import uuid4; print(uuid4().hex)')
         command_plan "${args[@]}" -f "request_id=$request_id"
         "${args[@]}" -f "request_id=$request_id"
-        wait_workflow "$CHANNEL_REPO" promote.yml workflow_dispatch "Promote $tag $request_id"
+        wait_workflow "$CHANNEL_REPO" publish-channel.yml workflow_dispatch "Publish channel $tag $request_id"
     fi
 }

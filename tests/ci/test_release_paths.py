@@ -38,13 +38,13 @@ def packages():
 
 class ReleasePaths(unittest.TestCase):
     def channel_workflow(self):
-        path = CHANNEL / '.github/workflows/promote.yml'
+        path = CHANNEL / '.github/workflows/publish-channel.yml'
         if not path.is_file():
             self.skipTest('set CHANNEL_WORKTREE to the paired channel checkout')
         return load(path)
 
     def channel_step(self, prefix):
-        return next(s['run'] for s in self.channel_workflow()['jobs']['promote']['steps']
+        return next(s['run'] for s in self.channel_workflow()['jobs']['publish']['steps']
                     if s.get('name', '').startswith(prefix))
 
     def check_shell_steps(self, steps):
@@ -60,7 +60,9 @@ class ReleasePaths(unittest.TestCase):
         self.assertEqual((inputs['dry_run']['type'], inputs['dry_run']['default']), ('boolean', 'false'))
         steps = workflow['jobs']['release-assets']['steps']
         self.assertTrue(any('gate.py --sha "$BUILD_SHA"' in s.get('run', '') for s in steps))
-        self.assertTrue(any('stage.py --formal' in s.get('run', '') for s in steps))
+        run = ' '.join(s.get('run', '') for s in steps)
+        self.assertRegex(run, r'stage\.py(\s|$)')
+        self.assertNotIn('stage.py --formal', run)
         mutations = [s for s in steps if 'gh release create' in s.get('run', '')]
         self.assertEqual(len(mutations), 1)
         self.assertIn("steps.route.outputs.mode == 'direct' && !inputs.dry_run", mutations[0]['if'])
@@ -83,7 +85,7 @@ class ReleasePaths(unittest.TestCase):
         self.assertEqual(set(inputs), {'release_tag', 'dry_run', 'request_id'})
         self.assertEqual(inputs['release_tag']['required'], 'true')
         self.assertEqual((inputs['dry_run']['type'], inputs['dry_run']['default']), ('boolean', 'false'))
-        steps = workflow['jobs']['promote']['steps']
+        steps = workflow['jobs']['publish']['steps']
         self.check_shell_steps(steps)
         self.assertEqual([s['uses'] for s in steps if 'uses' in s], ['actions/checkout@v4'])
         self.assertNotIn('with', steps[0])  # Checkout is channel only.

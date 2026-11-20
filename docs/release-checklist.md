@@ -48,14 +48,14 @@ stable 已有该版本时，工作流只核对已有正式 Release 与 stable �
 inventory。所以 Release 的字节来源是「升号包用门禁产物、未升号包用已发布字节」，二者都必须能在
 stable 清单里对上。若复用之后仍有冲突，才说明版本号变了却没构建出预期内容，这时才停止发布。
 
-## 4. Promote 写正式通道
+## 4. 写正式通道
 
-`release.sh` 在正式 Release 成功后自动派发 channel 仓的 `promote.yml`。工作流只接受已发布的正式 tag，
+`release.sh` 在正式 Release 成功后自动派发 channel 仓的 `publish-channel.yml`。工作流只接受已发布的正式 tag，
 下载已发布包并验 18 件包、版本和 inventory（旧 Release 若无注释，则从资产名及下载字节计算）；
 随后预览并写入签名的 `channel-stable`，不重新构建包。入口最终核对正式 Release 与通道的实际下载字节，
 打印 Release URL、`current/previous` 与 24 个架构/格式格子的 SHA-256（noarch 每格式实际一件）。
 
-Release 已发但通道未推进时，只需重跑通道仓 `promote.yml`（`release_tag=正式 tag`、`dry_run=false`），
+Release 已发但尚未写通道时，只需重跑通道仓 `publish-channel.yml`（`release_tag=正式 tag`、`dry_run=false`），
 不用重发 Release。两边发布成功后可重跑只读对照：
 `python3 tools/release/verify.py compare leochien0102/aether-proxy v1.2.1-r1`。
 
@@ -63,7 +63,7 @@ Release 已发但通道未推进时，只需重跑通道仓 `promote.yml`（`rel
 
 ```bash
 gh workflow run release-assets.yml -R leochien0102/aether-proxy --ref main -f tag=v1.2.1-r1 -f dry_run=true
-gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f dry_run=true
+gh workflow run publish-channel.yml -R leochien0102/aether-proxy-channel --ref main -f release_tag=v1.2.1-r1 -f dry_run=true
 ```
 
 前者强制从门禁组装 18 件包；后者读取正式 Release，预览将保留或写入的清单及哈希。两者都不改远端 Release。
@@ -91,7 +91,7 @@ gh workflow run promote.yml -R leochien0102/aether-proxy-channel --ref main -f r
 |---|---|
 | release-assets 失败「No successful build.yml run」/ 产物过期 | 先让门禁在该 SHA 成功；确认 `build.yml` 产物保留期（90 天） |
 | release-assets 失败「Missing/duplicate SDK artifact matrix」 | 门禁运行不完整，重跑门禁，不要绕过 |
-| promote 失败「Same version has different assets」 | 仅使用同 commit 门禁字节；不得覆盖同版本资产或手工改清单，按第 3–4 节处理 |
+| 写通道失败「Same version has different assets」 | 仅使用同 commit 门禁字节；不得覆盖同版本资产或手工改清单，按第 3–4 节处理 |
 | release-assets 失败（版本不一致/资产缺失） | 按第 3 节核对 tag 与门禁后重跑 |
 
 **回退**：只允许显式决定——更新通道 `AETHER_PROXY_REF` 走直发 `packages`（会再构建一次），并在
