@@ -668,5 +668,29 @@ else
 	bad 'T16.36 log stats CLI and live filter'
 fi
 
+# T16.45: a fresh live snapshot is the complete day, including the startup seed.
+hist="$T/restarted-history"
+mkdir -p "$hist"/{conf,run,etc/aether-proxy}
+cp "$FIX/sample/aetherproxy" "$hist/conf/aetherproxy"
+printf "\nconfig stats 'stats'\n\toption heatmap_enabled '1'\n" >> "$hist/conf/aetherproxy"
+read -r today now < <(date '+%F %s')
+disk_tx=200000000 disk_rx=1800000000
+live_tx=$((disk_tx + 2500)) live_rx=$((disk_rx + 4000))
+printf '{"schema":1,"updated_at":%s,"days":{"%s":{"tx":%s,"rx":%s,"observed":1800,"healthy":1500}}}\n' \
+	"$now" "$today" "$disk_tx" "$disk_rx" > "$hist/etc/aether-proxy/usage.json"
+printf '{"usage_today":{"date":"%s","at":%s,"tx":%s,"rx":%s,"observed":1801,"healthy":1500}}\n' \
+	"$today" "$now" "$live_tx" "$live_rx" > "$hist/run/state.json"
+if result="$(ap stats history --json --days 1 --sys-root "$hist" --confdir "$hist/conf" --run-dir "$hist/run")"; then
+	tx="$(jget days.0.tx <<< "$result")" rx="$(jget days.0.rx <<< "$result")"
+	if [[ "$tx" =~ ^[0-9]+$ && "$rx" =~ ^[0-9]+$ ]] && (( tx >= disk_tx && rx >= disk_rx )); then
+		ok 'T16.45 stats history keeps today at or above disk totals'
+	else
+		bad 'T16.45 stats history keeps today at or above disk totals' "$result"
+	fi
+	expect 'T16.45 stats history uses the complete live total without double counting' "$live_tx/$live_rx" "$tx/$rx"
+else
+	bad 'T16.45 stats history reads a live snapshot' "$result"
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

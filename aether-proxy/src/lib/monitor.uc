@@ -686,7 +686,7 @@ function flush_usage(daemon) {
 // B25 usage sampling (docs/b25-heatmap.md §4, T12.3): only a `true` switch samples, and
 // a closed switch must not even run the nft counter query. Data lives in memory between
 // the persistence points (a crossed local date and the clean stop, T12.4); an abnormal
-// exit loses the live day by design.
+// exit loses the unflushed portion of the live day by design.
 function sample_usage(daemon, obs) {
 	if (daemon.snapshot?.stats?.heatmap_enabled !== true)
 		return;
@@ -746,7 +746,7 @@ tick = function(daemon) {
 };
 
 function create_daemon(daemon) {
-	return {
+	daemon = {
 		...daemon,
 		machine: initial_state(daemon.state, time()),
 		busy: false,
@@ -757,6 +757,24 @@ function create_daemon(daemon) {
 		usage_days: null,
 		usage_warned: false
 	};
+	if (daemon.snapshot?.stats?.heatmap_enabled === true) {
+		let today = usage.local_date(time());
+		let path = usage_path(daemon);
+		let loaded = usage.load(path);
+		if (loaded.error != null) {
+			daemon.usage_warned = true;
+			log.set_run_dir(run_dir(daemon));
+			log.event('warn', 'FS_FAILED', { op: 'read', path, detail: loaded.error });
+		}
+		else {
+			let seeded = usage.seed(daemon.usage, loaded.days[today], today, time());
+			if (seeded != null) {
+				daemon.usage = seeded;
+				daemon.usage_days = loaded.days;
+			}
+		}
+	}
+	return daemon;
 };
 
 initial_state = (service, now) => {

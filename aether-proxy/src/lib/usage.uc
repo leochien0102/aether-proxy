@@ -20,11 +20,11 @@ const OBSERVED_STATES = [ 'running', 'degraded', 'failsafe' ];
 // already 1-based, so `mon` is the calendar month number as-is. Adding 1 shifted every
 // label a month ahead (found in T12.4, 2026-11-01: the host build returns mon: 11 for
 // November), hidden so long as producers and consumers shifted consistently.
-function local_date(now) {
+export function local_date(now) {
 	let tm = localtime(now);
 	return type(tm) != 'object' ? null
 		: sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
-}
+};
 
 // The heatmap credits at most the current monitor cadence doubled (docs §4.3): a sleep,
 // a skipped round or a restart gap must not pour minutes of unobserved time into one day.
@@ -81,46 +81,39 @@ export function sample(state, s) {
 	let crossed_day = !rolled_back && state.day != null && date != state.day;
 	let readable = s.tx != null && s.rx != null;
 	let elapsed = clamped_elapsed(s.elapsed, s.cap);
-	let counted = index(OBSERVED_STATES, s.state) >= 0 && readable;
+	// A seeded day already exists, but its first readable nft sample is still baseline-only.
+	let accumulate = readable && state.seed_pending !== true;
+	let counted = index(OBSERVED_STATES, s.state) >= 0 && accumulate;
 	let observed = counted ? elapsed : 0;
 	let healthy = counted && s.state == 'running' && s.proxy_ok === true ? elapsed : 0;
 
-	if (state.day == null) {
-		// Baseline only: no bytes and no seconds are attributed to a sample window
-		// that started before the sampler existed (docs §4.4).
-		if (readable) {
-			state.last_tx = s.tx;
-			state.last_rx = s.rx;
-		}
-	}
-	else if (crossed_day) {
+	if (crossed_day) {
 		// Finalize the old day first, including the bytes since its last sample
 		// (docs §4.5); the new day starts from the current counters.
 		state.days[state.day] = {
-			tx: state.tx + (readable ? delta(s.tx, state.last_tx) : 0),
-			rx: state.rx + (readable ? delta(s.rx, state.last_rx) : 0),
+			tx: state.tx + (accumulate ? delta(s.tx, state.last_tx) : 0),
+			rx: state.rx + (accumulate ? delta(s.rx, state.last_rx) : 0),
 			observed: state.observed + observed,
 			healthy: min(state.healthy + healthy, state.observed + observed)
 		};
 		trim_days(state.days);
 		state.tx = 0; state.rx = 0; state.observed = 0; state.healthy = 0;
-		if (readable) {
-			state.last_tx = s.tx;
-			state.last_rx = s.rx;
-		}
 	}
-	else {
-		if (readable) {
+	else if (state.day != null) {
+		if (accumulate) {
 			state.tx += delta(s.tx, state.last_tx);
 			state.rx += delta(s.rx, state.last_rx);
-			state.last_tx = s.tx;
-			state.last_rx = s.rx;
 		}
 		state.observed += observed;
-		state.healthy += healthy;
-		state.healthy = min(state.healthy, state.observed);
+		state.healthy = min(state.healthy + healthy, state.observed);
 	}
 
+	if (readable) {
+		state.last_tx = s.tx;
+		state.last_rx = s.rx;
+		if (state.seed_pending === true)
+			delete state.seed_pending;
+	}
 	if (state.day == null || crossed_day)
 		state.day = date;
 	return state;
@@ -137,6 +130,15 @@ function numeric(value) {
 function valid_entry(entry) {
 	return type(entry) == 'object' && numeric(entry.tx) && numeric(entry.rx) &&
 		numeric(entry.observed) && numeric(entry.healthy);
+};
+
+// T16.45: restore live accumulators without changing the input or the nft baselines.
+// `day` is the persisted entry's key; `now` is the wall time after the startup read.
+export function seed(state, entry, day, now) {
+	if (day == null || day !== local_date(now) || !valid_entry(entry))
+		return null;
+	return { ...state, day, tx: entry.tx, rx: entry.rx, observed: entry.observed,
+		healthy: entry.healthy, seed_pending: true };
 };
 
 // T16.2: normalize absent or unusable quota without rejecting an older history file.
