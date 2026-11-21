@@ -80,10 +80,12 @@ function no_external_children(d) {
 	}
 };
 
-function base_daemon(args, initial) {
+function base_daemon(args, initial, heatmap_enabled) {
 	let s = settings(args[1], args[2], args[3], args[4], args[5], args[6]);
 	if (s.error)
 		return s;
+	if (heatmap_enabled != null)
+		s.snapshot.stats.heatmap_enabled = heatmap_enabled;
 	let d = monitor.create_daemon({
 		ctx: s.ctx, opts: s.opts, snapshot: s.snapshot, applied_context: s.applied_context,
 		children: { dns: null, xray: null }, state: s.state
@@ -93,38 +95,55 @@ function base_daemon(args, initial) {
 };
 
 // Run after heatmap-on in the same sysroot, with a new daemon and on-disk history.
-function scenario_heatmap_restart(args, payload) {
+function scenario_heatmap_seed(args, payload, enable_at_runtime) {
+	let name = enable_at_runtime ? 'T16.46 runtime enable' : 'T16.45 same-day restart';
 	let root = args[1], path = root + C.USAGE_FILE;
 	let tm = localtime(time());
 	let today = sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
 	let disk = { tx: 200000000, rx: 1800000000, observed: 1800, healthy: 1500 };
 	let seed = sprintf('%.J', { schema: 1, updated_at: time(), days: { [today]: disk } });
-	check(write(path, seed), 'T16.45 same-day restart: persisted 2 GB before daemon creation');
-	let setup = base_daemon(args, {});
-	check(!setup.error, 'T16.45 same-day restart: creates a fresh monitor', setup.error);
+	check(write(path, seed), `${name}: persisted 2 GB before daemon creation`);
+	let setup = base_daemon(args, {}, !enable_at_runtime);
+	check(!setup.error, `${name}: creates a fresh monitor`, setup.error);
 	if (setup.error)
 		return;
 	let d = setup.daemon, counters_path = root + '/nft-counters.json';
 	let state_path = `${root}${C.RUN_DIR}/${C.STATE_FILE}`;
-	check(d.usage_days?.[today]?.rx == disk.rx && d.usage.last_tx == null && d.usage.last_rx == null,
-		'T16.45 same-day restart: seeds history, not nft baselines');
+	check(d.usage_ready === false && d.usage_days == null && d.usage.last_tx == null && d.usage.last_rx == null,
+		`${name}: creation defers disk and nft baselines to the first enabled sample`);
 	function sample(tx, rx) {
 		write(counters_path, payload(tx, rx));
 		monitor.tick(d);
 		while (d.busy) uloop.run(100);
 		return json(fs.readfile(state_path)).usage_today;
 	};
+	if (enable_at_runtime) {
+		sample(699000000, 899000000);
+		let disabled = json(fs.readfile(state_path));
+		check(!('usage_today' in disabled) && d.usage_ready === false && d.usage_days == null &&
+			d.usage.last_tx == null && d.usage.last_rx == null && fs.readfile(path) == seed,
+			`${name}: a disabled tick neither publishes, seeds nor samples usage`);
+		print(`${name} evidence disabled state.json: ` + sprintf('%.J', disabled) + '\n');
+		d.snapshot = { ...d.snapshot, stats: { ...d.snapshot.stats, heatmap_enabled: true } };
+	}
 	let first = sample(700000000, 900000000);
+	check(d.usage_ready === true && d.usage_days?.[today]?.rx == disk.rx &&
+		d.usage.last_tx == 700000000 && d.usage.last_rx == 900000000,
+		`${name}: the first enabled tick loads history and records the nft baselines`);
+	if (enable_at_runtime) {
+		print(`${name} evidence first enabled state.json: ` + sprintf('%.J', { usage_today: first }) + '\n');
+		// Another snapshot replacement must not re-seed the already sampled daemon.
+		d.snapshot = { ...d.snapshot, stats: { ...d.snapshot.stats } };
+	}
 	check(first?.date == today && first.tx == disk.tx && first.rx == disk.rx &&
 		first.observed == disk.observed && first.healthy == disk.healthy,
-		'T16.45 same-day restart: first snapshot retains disk totals without adding nft history',
-		sprintf('%.J', first));
+		`${name}: first snapshot retains disk totals without adding nft history`, sprintf('%.J', first));
 	let second = sample(700002500, 900004000);
 	check(second?.date == today && second.tx == disk.tx + 2500 && second.rx == disk.rx + 4000,
-		'T16.45 same-day restart: state.json grows by exactly the new traffic', sprintf('%.J', second));
-	print('T16.45 evidence seed: ' + seed + '\n');
-	print('T16.45 evidence state.json: ' + sprintf('%.J', { usage_today: second }) + '\n');
-	check(fs.readfile(path) == seed, 'T16.45 same-day restart: live samples do not rewrite history');
+		`${name}: state.json grows by exactly the new traffic`, sprintf('%.J', second));
+	print(`${name} evidence seed: ` + seed + '\n');
+	print(`${name} evidence state.json: ` + sprintf('%.J', { usage_today: second }) + '\n');
+	check(fs.readfile(path) == seed, `${name}: live samples do not rewrite history`);
 
 	// Drive a synthetic local date crossing and the normal flush without waiting for midnight.
 	let tomorrow = timelocal({ year: tm.year, mon: tm.mon, mday: tm.mday + 1, hour: 12, min: 0, sec: 0 });
@@ -133,8 +152,8 @@ function scenario_heatmap_restart(args, payload) {
 	let persisted = json(fs.readfile(path));
 	check(persisted.days[today]?.tx == disk.tx + 2500 && persisted.days[today]?.rx == disk.rx + 4000 &&
 		persisted.days[d.usage.day]?.tx == 0 && d.usage.day > today,
-		'T16.45 same-day restart: crossing writes the complete old day', sprintf('%.J', persisted));
-	print('T16.45 evidence usage.json: ' + sprintf('%.J', persisted) + '\n');
+		`${name}: crossing writes the complete old day`, sprintf('%.J', persisted));
+	print(`${name} evidence usage.json: ` + sprintf('%.J', persisted) + '\n');
 	no_external_children(d);
 };
 
@@ -720,8 +739,10 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 			'heatmap-on: the next good read resumes the series', sprintf('%.J', d.usage));
 	}
 	no_external_children(d);
-	if (scenario == 'heatmap-on')
-		scenario_heatmap_restart(ARGV, payload);
+	if (scenario == 'heatmap-on') {
+		scenario_heatmap_seed(ARGV, payload, false);
+		scenario_heatmap_seed(ARGV, payload, true);
+	}
 }
 else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scenario == 'heatmap-persist-off') {
 	// T12.4 B25: the persistence wiring. The crossed day is produced by driving the pure

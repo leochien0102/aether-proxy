@@ -690,6 +690,25 @@ function flush_usage(daemon) {
 function sample_usage(daemon, obs) {
 	if (daemon.snapshot?.stats?.heatmap_enabled !== true)
 		return;
+	// Try once at the first enabled sample, including after a runtime enable.
+	if (daemon.usage_ready !== true) {
+		daemon.usage_ready = true;
+		let path = usage_path(daemon);
+		let loaded = usage.load(path);
+		if (loaded.error != null) {
+			daemon.usage_warned = true;
+			log.set_run_dir(run_dir(daemon));
+			log.event('warn', 'FS_FAILED', { op: 'read', path, detail: loaded.error });
+		}
+		else {
+			let now = time(), today = usage.local_date(now);
+			let seeded = usage.seed(daemon.usage, loaded.days[today], today, now);
+			if (seeded != null) {
+				daemon.usage = seeded;
+				daemon.usage_days = loaded.days;
+			}
+		}
+	}
 	let live_day = daemon.usage.day;
 	let now_ms = monotonic_ms();
 	let elapsed = daemon.usage_mono_ms == null || now_ms == null
@@ -753,27 +772,11 @@ function create_daemon(daemon) {
 		skip_next: false,
 		interval: null,
 		usage: usage.create(),
+		usage_ready: false,
 		usage_mono_ms: null,
 		usage_days: null,
 		usage_warned: false
 	};
-	if (daemon.snapshot?.stats?.heatmap_enabled === true) {
-		let today = usage.local_date(time());
-		let path = usage_path(daemon);
-		let loaded = usage.load(path);
-		if (loaded.error != null) {
-			daemon.usage_warned = true;
-			log.set_run_dir(run_dir(daemon));
-			log.event('warn', 'FS_FAILED', { op: 'read', path, detail: loaded.error });
-		}
-		else {
-			let seeded = usage.seed(daemon.usage, loaded.days[today], today, time());
-			if (seeded != null) {
-				daemon.usage = seeded;
-				daemon.usage_days = loaded.days;
-			}
-		}
-	}
 	return daemon;
 };
 
