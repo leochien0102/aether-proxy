@@ -1188,8 +1188,8 @@ return view.extend({
 				this.portScopeSelect.disabled = busy;
 			}
 			this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
-			this.enableControl.title = !this.currentNode
-				? _('Please select a node and apply first.', 'aether-proxy') : this.vm.enabled_note;
+			this.enableControl.title = !this.currentNode && this.vm.disabled_notice
+				? this.vm.disabled_notice.text : this.vm.enabled_note;
 			button.disabled = busy || (!model.switch_request(nodes.value, modes.value, current, vm.current_mode)
 				&& this.portScopeSelect.value === (uci.get('aetherproxy', 'main', 'port_scope') || 'all'));
 			nodes.title = this.vm.switch_title ?? this.labels[nodes.value] ?? nodes.value;
@@ -1440,8 +1440,8 @@ return view.extend({
 		this.enableControl ??= this.enableSwitch(vm.enabled_note);
 		this.enableInput.checked = this.enabled;
 		this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
-		this.enableControl.title = !this.currentNode
-			? _('Please select a node and apply first.', 'aether-proxy') : vm.enabled_note;
+		this.enableControl.title = !this.currentNode && vm.disabled_notice
+			? vm.disabled_notice.text : vm.enabled_note;
 		/* Rebase current labels and guards, but keep each independently edited
 		   dropdown even when an external change moves the effective settings. */
 		const labels = JSON.stringify(vm.node_options);
@@ -1547,8 +1547,17 @@ return view.extend({
 					E('pre', {}, [ vm.error_detail ])
 				]) ] : [])
 			]));
-		if (vm.disabled_notice)
-			parts.push(E('div', { 'class': 'alert-message warning' }, [ vm.disabled_notice ]));
+		const notice = vm.disabled_notice;
+		if (notice) {
+			const children = [ E('span', {}, [ notice.text ]) ];
+			if (notice.action)
+				children.push(E('a', { 'href': notice.action.href, 'class': 'cbi-button cbi-button-link' },
+					[ notice.action.label ]));
+			parts.push(E('div', {
+				'class': 'alert-message warning',
+				'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap'
+			}, children));
+		}
 		/* DNSMASQ_EXTRA_SERVERS and the other notices carry local dnsmasq lines. */
 		if (vm.notices.length)
 			parts.push(E('ul', {}, vm.notices.map((text) =>

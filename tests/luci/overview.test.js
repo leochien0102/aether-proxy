@@ -300,11 +300,11 @@ test('T8.11a scenario 2: disabled notice, enable note and the new stop confirmat
 		+ 'This is only temporary: restarting the router or saving the settings of this '
 		+ 'service again starts it; to disable it for good, turn off Enable above.';
 
-	let vm = build({ ok: true, state: 'running' }, null, null, null, false);
+	let vm = build({ ok: true, state: 'running' }, null, { n_a: 'Alpha' }, null, false, 'n_a');
 
 	assert.equal(vm.enabled, false);
 	assert.equal(vm.enabled_note, tr(note));
-	assert.equal(vm.disabled_notice, tr(notice));
+	assert.deepEqual(vm.disabled_notice, { text: tr(notice), action: null });
 
 	vm = build({ ok: true, state: 'running' }, null, null, null, true);
 
@@ -319,6 +319,72 @@ test('T8.11a scenario 2: disabled notice, enable note and the new stop confirmat
 	assert.equal(vm.stop_confirmation, '停止服务后所有流量直连。这只是暂时停止：'
 		+ '重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。');
 });
+
+const nodesAction = {
+	label: '打开节点与订阅',
+	href: '/cgi-bin/luci/admin/services/aether-proxy/nodes'
+};
+const enableNoticeCases = [
+	['no nodes', {}, null, false, '还没有节点：先在『节点与订阅』添加订阅或导入分享链接，然后启用服务', nodesAction],
+	['nodes but none applied', { n_a: 'Alpha', n_b: 'Beta' }, null, false,
+		'已有 2 个节点：请先选择一个节点并应用，再启用服务', nodesAction],
+	['applied node', { n_a: 'Alpha' }, 'n_a', false, '服务未启用：打开『启用』开关后会自动启动', null],
+	['enabled', { n_a: 'Alpha' }, 'n_a', true, null, null]
+];
+
+for (const [name, labels, node, enabled, text, action] of enableNoticeCases) {
+	test(`T16.44: ${name} has the same model notice before and after status resolves`, () => {
+		for (const status of [undefined, { ok: false }, { ok: true, state: 'stopped' }])
+			assert.deepEqual(build(status, null, labels, NOW, enabled, node).disabled_notice,
+				text ? { text, action } : null);
+	});
+
+	test(`T16.44: ${name} renders the correct banner, action, and enable control`, async () => {
+		const ap = {
+			call: async method => method === 'status' ? { ok: true, state: 'stopped' } : { ok: true },
+			poll: () => ({ stop() {} })
+		};
+		const main = { node, enabled: enabled ? '1' : '0', mode: 'bypass_cn' };
+		const page = loadView({ ap, uci: {
+			get: (config, section, option) => main[option],
+			sections: (config, type, cb) => {
+				for (const [id, label] of Object.entries(labels))
+					cb({ '.name': id, label });
+			}
+		} });
+		page.render(await page.load());
+
+		function verify() {
+			const banner = page.noticeContent.children[0];
+			assert.equal(page.noticeContent.children.length, text ? 1 : 0);
+			assert.equal(page.enableInput.disabled, !enabled && !node);
+			assert.equal(page.enableControl.title, !enabled && !node ? text : page.vm.enabled_note);
+			if (!text)
+				return;
+			assert.equal(banner.attrs.class, 'alert-message warning');
+			assert.equal(findTag(banner, 'span').textContent, text);
+			const link = findTag(banner, 'a');
+			if (action) {
+				assert.equal(link.textContent, action.label);
+				assert.equal(link.attrs.href, action.href);
+				assert.equal(link.attrs.class, 'cbi-button cbi-button-link');
+				assert.match(banner.attrs.style, /flex-wrap:wrap/);
+			} else
+				assert.equal(link, null);
+		}
+
+		verify();
+		await page.initialRequest;
+		verify();
+		if (!node && Object.keys(labels).length) {
+			// A dropdown edit alone does not unlock Enable or change its hint.
+			page.nodeSelect.value = 'n_a';
+			page.enableControl.title = '';
+			page.updateNodeButton();
+			verify();
+		}
+	});
+}
 
 test('T8.11a scenario 3a: the switch reflects main.enabled at load; unset counts as 0', async () => {
 	for (const [ raw, expected ] of [ [ '1', true ], [ '0', false ], [ undefined, false ] ]) {
@@ -1068,8 +1134,8 @@ test('T10.4 scenario 4b: probe phrases without full stops, disabled notice and e
 		assert.equal(build({ ok: true, state: 'running', last_probe: probe }).probe_text, text);
 		/* Monitor health retains its wording, independently of real latency. */
 	}
-	assert.equal(build({ ok: true }, null, null, NOW, false).disabled_notice,
-		'服务未启用：打开『启用』开关后会自动启动');
+	assert.equal(build({ ok: true }, null, null, NOW, false).disabled_notice.text,
+		enableNoticeCases[0][4]);
 	for (const empty of [ undefined, null, '' ])
 		assert.equal(model.can_switch(empty, 'n_a'), false);
 	assert.doesNotMatch(fs.readFileSync(MODEL, 'utf8'), /probe_completion/);

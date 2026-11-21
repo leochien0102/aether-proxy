@@ -941,6 +941,18 @@ msgid "The service is not enabled: turn on the Enable switch and it will start a
 msgstr "服务未启用：打开『启用』开关后会自动启动"
 
 msgctxt "aether-proxy"
+msgid "No nodes yet: add a subscription or import share links under Nodes & subscriptions, then enable the service."
+msgstr "还没有节点：先在『节点与订阅』添加订阅或导入分享链接，然后启用服务"
+
+msgctxt "aether-proxy"
+msgid "%s node(s) available: choose one and apply before enabling the service."
+msgstr "已有 %s 个节点：请先选择一个节点并应用，再启用服务"
+
+msgctxt "aether-proxy"
+msgid "Open Nodes & subscriptions"
+msgstr "打开节点与订阅"
+
+msgctxt "aether-proxy"
 msgid "Stopping the service leaves all traffic going out directly. This is only temporary: restarting the router or saving the settings of this service again starts it; to disable it for good, turn off Enable above."
 msgstr "停止服务后所有流量直连。这只是暂时停止：重启路由器或下次保存本服务的设置时会再次启动；要长期停用请关闭『启用』。"
 
@@ -2709,10 +2721,6 @@ msgstr "未选择"
 msgctxt "aether-proxy"
 msgid "Close"
 msgstr "关闭"
-
-msgctxt "aether-proxy"
-msgid "Please select a node and apply first."
-msgstr "请先选择节点并应用。"
 
 msgctxt "aether-proxy"
 msgid "The switch result is uncertain. Check the overview or logs."

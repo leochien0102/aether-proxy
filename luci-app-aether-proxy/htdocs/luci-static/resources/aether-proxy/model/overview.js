@@ -857,8 +857,24 @@ return baseclass.extend({
 			+ 'immediately and all traffic goes out directly.', 'aether-proxy');
 		const disable_confirmation = _('Turning this off stops the service immediately, sends all traffic directly, '
 			+ 'and disables automatic startup at boot. Turn it off?', 'aether-proxy');
-		const disabled_notice = is_enabled ? null : _('The service is not enabled: turn on the Enable switch '
-			+ 'and it will start automatically.', 'aether-proxy');
+		const node_count = Object.keys(labels).length;
+		let disabled_notice = null;
+		if (!is_enabled) {
+			const needs_node = !node_count || !configured_node;
+			disabled_notice = {
+				text: !node_count
+					? _('No nodes yet: add a subscription or import share links under Nodes & subscriptions, '
+						+ 'then enable the service.', 'aether-proxy')
+					: !configured_node
+						? fmt(_('%s node(s) available: choose one and apply before enabling the service.', 'aether-proxy'), node_count)
+						: _('The service is not enabled: turn on the Enable switch '
+							+ 'and it will start automatically.', 'aether-proxy'),
+				action: needs_node ? {
+					label: _('Open Nodes & subscriptions', 'aether-proxy'),
+					href: L.url('admin', 'services', 'aether-proxy', 'nodes')
+				} : null
+			};
+		}
 		const stop_confirmation = _('Stopping the service leaves all traffic going out directly. '
 			+ 'This is only temporary: restarting the router or saving the settings of this '
 			+ 'service again starts it; to disable it for good, turn off Enable above.', 'aether-proxy');
@@ -889,7 +905,7 @@ return baseclass.extend({
 			current_node,
 			current_mode,
 			node_options: node_options(labels, current_node),
-			node_text: Object.keys(labels).length ? null
+			node_text: node_count ? null
 				: _('There are no nodes yet. Add or import nodes on the Nodes page.', 'aether-proxy')
 		};
 

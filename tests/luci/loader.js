@@ -187,7 +187,8 @@ function loadModule(file, modules, env) {
 		return modules[r.name];
 	});
 
-	return factory.apply(null, [ env.window, env.document, env.L ?? {} ].concat(instances));
+	const L = { url: (...parts) => '/cgi-bin/luci/' + parts.join('/'), env: {}, ...env.L };
+	return factory.apply(null, [ env.window, env.document, L ].concat(instances));
 }
 
 /* po entries as msgid → msgstr; msgid and msgstr must sit on adjacent lines.
