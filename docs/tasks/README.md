@@ -185,4 +185,4 @@ OpenCode 的工作空间是 `/workspace/openwrt`（其中还有 helloworld、luc
 | T16.38 | 原始日志：chinadns-ng 启动噪音收敛 | 已合并（`ea2c1d2`） |
 | T16.39 | 原始日志：修回 dnl_init tag 例外 | 已合并（`2d09364`） |
 | T16.40 | raw.log 相邻重复折叠（B28 收口） | 已合并（`4075c5e`） |
-| [m16.md](m16.md)（续） | 发版工具 | T16.48 `reconcile()` 同版本复用字节的离线用例（待实现）。 |
+| [m16.md](m16.md)（续） | 发版工具 | T16.48 `reconcile()` 同版本复用字节的离线用例（已合并 `16f74101`）。 |
