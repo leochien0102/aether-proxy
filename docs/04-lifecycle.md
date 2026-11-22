@@ -343,6 +343,19 @@ daemon 中的外部命令经 `sys.run` 阻塞执行，每次必须带不超过 1
 monitor 自己的动作（重启 chinadns-ng、重新加载 nft 表等）也要拿全局锁。拿不到锁就跳过本轮（说明用户正在操作），
 不要阻塞等待。
 
+## 热力图账本的停止、重启与刷机
+
+- 热力图启用时由 monitor 采样。正常停止、跨天及重载停用前写 `/etc/aether-proxy/usage.json`；
+  同日采样的字节增量每达到 8 MiB 也写一次，不做定时落盘。停用期间不采样，恢复时重新建立 nft 计数器基线。
+- 同次开机内进程异常退出：新 daemon 首份 `state.json` 保留有效的今日 `usage_today`，
+  首个启用态采样点从该快照和磁盘账本取较大值接续。整机重启后 tmpfs 快照不保留。
+- 保留配置的 sysupgrade 由 `/lib/upgrade/keep.d/aether-proxy` 保存 `usage.json`；`state.json`
+  不进备份。本文所用 OpenWrt 的 sysupgrade 按当前目录展开相对保留路径，直接从命令行运行时先 `cd /`。
+  sysupgrade **先做备份，再停服务**，故带走的是备份时已落盘值；门槛把最近成功采样后的字节窗口
+  压到不足 8 MiB，不保证未采样流量或写盘失败时的上限。选择不保留配置（`-n`）、提供自定义归档
+  （`-f`）或手动删除账本，不在这条自动保留路径内。若要让关停前已采样的尾量也进备份，
+  请先正常停服务并确认账本已写入，再启动 sysupgrade。
+
 ## 动态集合的导出与恢复
 
 - 导出：`nft -j list set inet aetherproxy <set>`，把元素写入 `/var/run/aether-proxy/sets.save`（tmpfs，整机重启会丢失）。
