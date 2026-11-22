@@ -18,7 +18,7 @@ CHANNEL = Path(os.environ.get('CHANNEL_WORKTREE', ROOT.parents[1] / 'aether-prox
 TAG = 'v1.2.1-r1'
 COMMIT = 'a' * 40
 sys.path.insert(0, str(TOOLS))
-from stage import formal_name, write_formal_metadata
+from stage import formal_name, reconcile, write_formal_metadata
 import verify
 
 
@@ -242,6 +242,135 @@ else:
                     else:
                         verify.publication_route('offline/app', TAG, COMMIT)
                         self.assertEqual(output.call_args.args, ('mode=channel',))
+
+
+class ReconcilePublishedBytes(unittest.TestCase):
+    BUILT = b'gate build bytes (B2)'
+    PUBLISHED = b'published bytes (B1)'
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        tmp_path = Path(tmp.name)
+        self.out = tmp_path / 'out'
+        self.out.mkdir()
+        self.manifest_source = tmp_path / 'manifest.json'
+        self.published = {}
+        self.fetched = []
+
+    def stage_entry(self, package='aether-dns'):
+        version, arch, fmt = '1.0.2-r1', 'aarch64_generic', 'apk'
+        asset = formal_name(package, arch, fmt, f'{package}-{version}.{fmt}')
+        entry = dict(package=package, version=version, arch=arch, format=fmt, asset=asset,
+                     sha256=hashlib.sha256(self.BUILT).hexdigest())
+        (self.out / asset).write_bytes(self.BUILT)
+        return entry
+
+    def published_asset(self, entry, content):
+        url = 'published/' + entry['asset']
+        self.published[(self.manifest_source.parent / url).as_uri()] = content
+        return dict(url=url, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
+
+    def package_record(self, entry, asset, *, arch=None, version=None):
+        return {'current': {'version': version or entry['version'],
+                            'assets': {arch or entry['arch']: {entry['format']: asset}}}}
+
+    def reconcile(self, entries, manifest):
+        self.manifest_source.write_text(json.dumps(manifest))
+
+        def fetch(url):
+            self.fetched.append(url)
+            if url == self.manifest_source.as_uri():
+                return self.manifest_source.read_bytes()
+            self.assertIn(url, self.published, f'Unexpected fetch: {url}')
+            return self.published[url]
+
+        reconcile(entries, self.out, manifest_source=str(self.manifest_source), fetch=fetch)
+
+    def snapshot(self):
+        return {p.name: (p.read_bytes(), p.stat().st_ino) for p in self.out.iterdir()}
+
+    def test_unchanged_version_reuses_published_bytes(self):
+        entry = self.stage_entry()
+        asset = self.published_asset(entry, self.PUBLISHED)
+        manifest = {'packages': {entry['package']: self.package_record(entry, asset)}}
+
+        self.reconcile([entry], manifest)
+
+        self.assertEqual((self.out / entry['asset']).read_bytes(), self.PUBLISHED)
+        self.assertEqual(entry['source'], 'published')
+        self.assertEqual(entry['sha256'], asset['sha256'])
+
+    def test_different_version_keeps_built_bytes(self):
+        entry = self.stage_entry()
+        asset = self.published_asset(entry, self.PUBLISHED)
+        record = self.package_record(entry, asset, version='1.0.1-r1')
+        before = self.snapshot()
+
+        self.reconcile([entry], {'packages': {entry['package']: record}})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(entry['source'], 'built')
+        self.assertEqual(self.fetched, [self.manifest_source.as_uri()])
+
+    def test_missing_package_keeps_built_bytes(self):
+        entry = self.stage_entry()
+        before = self.snapshot()
+
+        self.reconcile([entry], {'packages': {}})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(entry['source'], 'built')
+        self.assertEqual(self.fetched, [self.manifest_source.as_uri()])
+
+    def test_three_noarch_packages_use_all_assets(self):
+        for name in ('aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
+            with self.subTest(package=name):
+                entry = self.stage_entry(name)
+                content = f'published {name}'.encode()
+                asset = self.published_asset(entry, content)
+                # Deliberately no aarch64_generic key for these entries.
+                record = self.package_record(entry, asset, arch='all')
+
+                self.reconcile([entry], {'packages': {name: record}})
+
+                self.assertEqual((self.out / entry['asset']).read_bytes(), content)
+                self.assertEqual(entry['source'], 'published')
+                self.assertEqual(entry['sha256'], asset['sha256'])
+
+    def test_sha256_mismatch_exits_without_rewriting(self):
+        entry = self.stage_entry()
+        asset = self.published_asset(entry, self.PUBLISHED)
+        asset['sha256'] = hashlib.sha256(self.BUILT).hexdigest()
+        manifest = {'packages': {entry['package']: self.package_record(entry, asset)}}
+        before = self.snapshot()
+
+        with self.assertRaisesRegex(SystemExit, 'Published sha256 mismatch'):
+            self.reconcile([entry], manifest)
+
+        self.assertEqual(self.snapshot(), before)
+
+    def test_size_mismatch_exits_without_rewriting(self):
+        entry = self.stage_entry()
+        asset = self.published_asset(entry, self.PUBLISHED)
+        asset['size'] += 1
+        manifest = {'packages': {entry['package']: self.package_record(entry, asset)}}
+        before = self.snapshot()
+
+        with self.assertRaisesRegex(SystemExit, 'Published size mismatch'):
+            self.reconcile([entry], manifest)
+
+        self.assertEqual(self.snapshot(), before)
+
+    def test_missing_packages_object_exits_without_rewriting(self):
+        entry = self.stage_entry()
+        before = self.snapshot()
+
+        with self.assertRaisesRegex(SystemExit, 'manifest must contain a packages object'):
+            self.reconcile([entry], {})
+
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.fetched, [self.manifest_source.as_uri()])
 
 
 if __name__ == '__main__':
