@@ -692,5 +692,17 @@ else
 	bad 'T16.45 stats history reads a live snapshot' "$result"
 fi
 
+# An incomplete daemon may report only a small fraction of the persisted day.
+printf '{"usage_today":{"date":"%s","at":%s,"tx":310032,"rx":698574,"observed":12,"healthy":8}}\n' \
+	"$today" "$now" > "$hist/run/state.json"
+if result="$(ap stats history --json --days 1 --sys-root "$hist" --confdir "$hist/conf" --run-dir "$hist/run")"; then
+	printf 'T16.47 evidence stats history: %s\n' "$result"
+	expect 'T16.47 stats history preserves 2 GB and both timing fields over a smaller live snapshot' \
+		"$disk_tx/$disk_rx/1800/1500" \
+		"$(jget days.0.tx <<< "$result")/$(jget days.0.rx <<< "$result")/$(jget days.0.observed <<< "$result")/$(jget days.0.healthy <<< "$result")"
+else
+	bad 'T16.47 stats history reads a small live snapshot' "$result"
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

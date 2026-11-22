@@ -6,10 +6,12 @@ checks default/sample configurations, generates the four goldens and loads the r
 Optional --golden-dir exports that same oracle for the six CI containers.
 """
 import argparse
+import io
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import tarfile
 import tempfile
 
 REPO = Path(__file__).resolve().parents[2]
@@ -271,10 +273,26 @@ def verify_scenarios(work, golden):
 					f'{manager}: {fault} still uninstalls packages', result.stdout)
 
 
+def verify_usage_keep(ipk):
+	# OpenWrt's ipkg-build produces a tar envelope with a separate data archive.
+	with tarfile.open(ipk, 'r:*') as package:
+		data = next(member for member in package if member.name.removeprefix('./') == 'data.tar.gz')
+		with tarfile.open(fileobj=io.BytesIO(package.extractfile(data).read()), mode='r:gz') as payload:
+			files = {member.name.removeprefix('./'): member for member in payload}
+			path = 'lib/upgrade/keep.d/aether-proxy'
+			expect(path in files and files[path].isfile(), f'{ipk.name}: /{path} exists')
+			expect(payload.extractfile(files[path]).read() == b'etc/aether-proxy/usage.json\n',
+				f'{ipk.name}: keep list contains only etc/aether-proxy/usage.json')
+			expect('etc/aether-proxy/usage.json' not in files, f'{ipk.name}: does not ship a ledger')
+
+
 def main():
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument('--golden-dir', type=Path)
+	parser.add_argument('--ipk', type=Path, help='also verify the usage keep list in the built aether-proxy IPK')
 	args = parser.parse_args()
+	if args.ipk:
+		verify_usage_keep(args.ipk)
 	result = execute(['sh', '-n', REPO / 'tests/ci/smoke.sh'])
 	expect(result.returncode == 0, 'smoke.sh sh syntax', result.stdout)
 	if shutil.which('busybox'):

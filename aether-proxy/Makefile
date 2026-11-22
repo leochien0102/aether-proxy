@@ -68,6 +68,7 @@ define Package/aether-proxy/install
 	# conffiles cannot list directories; keep.d entries may (sysupgrade runs find on them).
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) ./files/aether-proxy.keep $(1)/lib/upgrade/keep.d/aether-proxy-data
+	$(INSTALL_DATA) ./files/aether-proxy-usage.keep $(1)/lib/upgrade/keep.d/aether-proxy
 endef
 
 define Package/aether-proxy/postinst

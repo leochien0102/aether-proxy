@@ -132,13 +132,26 @@ function valid_entry(entry) {
 		numeric(entry.observed) && numeric(entry.healthy);
 };
 
-// T16.45: restore live accumulators without changing the input or the nft baselines.
-// `day` is the persisted entry's key; `now` is the wall time after the startup read.
-export function seed(state, entry, day, now) {
-	if (day == null || day !== local_date(now) || !valid_entry(entry))
+// Merge already validated totals; neither source is an increment to the other.
+export function max_day(a, b) {
+	return {
+		tx: max(a?.tx ?? 0, b?.tx ?? 0),
+		rx: max(a?.rx ?? 0, b?.rx ?? 0),
+		observed: max(a?.observed ?? 0, b?.observed ?? 0),
+		healthy: max(a?.healthy ?? 0, b?.healthy ?? 0)
+	};
+};
+
+// Restore today's totals without changing the input or the nft baselines.
+// The optional live entry must have passed state.usage_today_of().
+export function seed(state, entry, day, now, live) {
+	if (day == null || day !== local_date(now))
 		return null;
-	return { ...state, day, tx: entry.tx, rx: entry.rx, observed: entry.observed,
-		healthy: entry.healthy, seed_pending: true };
+	let disk = valid_entry(entry) ? entry : null;
+	live = live?.date === day && valid_entry(live) ? live : null;
+	if (disk == null && live == null)
+		return null;
+	return { ...state, ...max_day(disk, live), day, seed_pending: true };
 };
 
 // T16.2: normalize absent or unusable quota without rejecting an older history file.
@@ -204,8 +217,9 @@ export function load(path) {
 
 // collect(state, previous) -> the day map to persist, or null while the sampler never
 // held a live day (this run has nothing to add, so the file is left alone). This run's
-// completed days and the live day — written even when empty (docs §3) — override the
-// previous map for their date. Dates after the live day (a clock that jumped forward
+// completed days override the previous map for their date. The live day is written
+// even when empty (docs §3), but cannot shrink an already persisted total.
+// Dates after the live day (a clock that jumped forward
 // and back) are dropped rather than rewritten, and the map keeps the last
 // USAGE_DAYS_KEEP dates by plain local-date string order (docs §5).
 export function collect(state, previous) {
@@ -218,7 +232,8 @@ export function collect(state, previous) {
 	for (let date in days)
 		if (date > state.day)
 			delete days[date];
-	days[state.day] = { tx: state.tx, rx: state.rx, observed: state.observed, healthy: state.healthy };
+	let prior = previous?.[state.day];
+	days[state.day] = max_day(state, valid_entry(prior) ? prior : null);
 	let dates = sort(keys(days));
 	while (length(dates) > C.USAGE_DAYS_KEEP)
 		delete days[shift(dates)];

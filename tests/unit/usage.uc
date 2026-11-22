@@ -147,7 +147,7 @@ const T124_CASES = [
 		name: 'T12.4 collect merges completed days and the live day over the previous map',
 		run: 'collect',
 		previous: { '2026-10-20': { tx: 9, rx: 9, observed: 9, healthy: 9 },
-			'2026-10-21': { tx: 1, rx: 1, observed: 1, healthy: 1 } },
+			'2026-10-21': { tx: 9, rx: 9, observed: 9, healthy: 9 } },
 		state: { day: '2026-10-22', tx: 5, rx: 6, observed: 7, healthy: 8,
 			days: { '2026-10-21': { tx: 2, rx: 3, observed: 4, healthy: 4 } } },
 		expect: { '2026-10-20': { tx: 9, rx: 9, observed: 9, healthy: 9 },
@@ -155,12 +155,40 @@ const T124_CASES = [
 			'2026-10-22': { tx: 5, rx: 6, observed: 7, healthy: 8 } }
 	},
 	{
-		name: 'T12.4 collect rewrites the live day over a stale copy and drops future dates',
+		name: 'T16.47 collect preserves larger persisted totals and still drops future dates',
 		run: 'collect',
 		previous: { '2026-10-22': { tx: 1, rx: 1, observed: 1, healthy: 1 },
 			'2026-10-24': { tx: 9, rx: 9, observed: 9, healthy: 9 } },
 		state: { day: '2026-10-22', tx: 0, rx: 0, observed: 0, healthy: 0, days: {} },
-		expect: { '2026-10-22': { tx: 0, rx: 0, observed: 0, healthy: 0 } }
+		expect: { '2026-10-22': { tx: 1, rx: 1, observed: 1, healthy: 1 } }
+	},
+	{
+		name: 'T16.47 collect uses all four larger in-memory totals',
+		run: 'collect',
+		previous: { [D1]: { tx: 1, rx: 2, observed: 3, healthy: 2 } },
+		state: { day: D1, tx: 5, rx: 6, observed: 7, healthy: 5, days: {} },
+		expect: { [D1]: { tx: 5, rx: 6, observed: 7, healthy: 5 } }
+	},
+	{
+		name: 'T16.47 collect takes independent maxima (absent live field defaults to zero)',
+		run: 'collect',
+		previous: { [D1]: { tx: 1000, rx: 2000, observed: 90, healthy: 80 } },
+		state: { day: D1, tx: 1500, observed: 100, healthy: 60, days: {} },
+		expect: { [D1]: { tx: 1500, rx: 2000, observed: 100, healthy: 80 } }
+	},
+	{
+		name: 'T16.47 collect ignores a previous entry with a negative field',
+		run: 'collect',
+		previous: { [D1]: { tx: 1000, rx: 2000, observed: 900, healthy: -1 } },
+		state: { day: D1, tx: 5, rx: 6, observed: 7, healthy: 5, days: {} },
+		expect: { [D1]: { tx: 5, rx: 6, observed: 7, healthy: 5 } }
+	},
+	{
+		name: 'T16.47 collect ignores a previous entry with a missing field',
+		run: 'collect',
+		previous: { [D1]: { tx: 1000, rx: 2000, observed: 900 } },
+		state: { day: D1, tx: 5, rx: 6, observed: 7, healthy: 5, days: {} },
+		expect: { [D1]: { tx: 5, rx: 6, observed: 7, healthy: 5 } }
 	},
 	{
 		name: 'T12.4 collect reports nothing to persist while the sampler has no live day',

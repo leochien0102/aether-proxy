@@ -10,6 +10,7 @@ import * as component_id from 'aetherproxy.component_id';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
 import * as state from 'aetherproxy.state';
+import * as usage from 'aetherproxy.usage';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as check from 'aetherproxy.cmd.check';
 import * as apply from 'aetherproxy.apply';
@@ -122,6 +123,9 @@ function write_state(ctx, obj) {
 			event_failure(ctx, 'state', detail);
 		return { ok: false, detail };
 	}
+	// Startup writes replace the full state before the monitor can read it.
+	if (ctx.startup_usage_today != null)
+		obj[C.USAGE_TODAY_FIELD] = ctx.startup_usage_today;
 	if (!state.write(run_dir(ctx), obj)) {
 		let detail = `cannot write state: ${state.error()}`;
 		if (ctx.stopping_requested)
@@ -1240,6 +1244,9 @@ function run(args) {
 	setup_log(ctx);
 	let daemon_started_at = time();
 	ctx.started_at = daemon_started_at;
+	let recovered = state.usage_today_of(state.read(run_dir(ctx)), daemon_started_at);
+	if (recovered?.date === usage.local_date(daemon_started_at))
+		ctx.startup_usage_today = recovered;
 	// Publish before validation or component checks, including an invalid configuration (04).
 	let raw = uci.cursor(opts.confdir);
 	let early = write_state(ctx, { state: 'starting', since: daemon_started_at, started_at: ctx.started_at,
@@ -1337,7 +1344,9 @@ function run(args) {
 		ctx.service_mode = result.snapshot.main.mode;
 		ctx.service_node = result.snapshot.main.node;
 		monitor_daemon = monitor.create_daemon({ ctx, opts, snapshot: result.snapshot, children,
-			applied_context: result.applied_context, state: result.state, reload: reload.run_live });
+			applied_context: result.applied_context, state: result.state, reload: reload.run_live,
+			usage_recovery: ctx.startup_usage_today });
+		delete ctx.startup_usage_today;
 		tick = () => monitor.tick(monitor_daemon);
 		ctx.monitor = uloop.interval(monitor.interval_ms(monitor_daemon.machine), tick);
 		monitor_daemon.interval = ctx.monitor;
@@ -1413,7 +1422,8 @@ function run(args) {
 				// not sample the intentional listener gap or mutate current/ mid-transaction.
 				monitor_daemon.busy = true;
 				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot,
-					applied_context: monitor_daemon.applied_context, state: base, children }, started_ms);
+					applied_context: monitor_daemon.applied_context, state: base, children,
+					usage_owner: monitor_daemon }, started_ms);
 				monitor_daemon.busy = false;
 				// Keep failed reload completion across subsequent monitor state writes (T10.71).
 				if (changed.last_reload != null)

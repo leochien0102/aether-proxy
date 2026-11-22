@@ -187,8 +187,19 @@ case "$1" in
 esac
 exec "$HOST_SHA256" "$@"
 EOF
+# Capture the first startup publication before nft validation or final state commit.
+mv "$T/bin/nft" "$T/bin/nft-original"
+cat > "$T/bin/nft" <<'EOF'
+#!/bin/sh
+capture="$SYSROOT/first-startup-state.json"
+if [ ! -e "$capture" ]; then
+	cp "$SYSROOT/var/run/aether-proxy/state.json" "$capture" || exit 1
+fi
+exec "$(dirname "$0")/nft-original" "$@"
+EOF
 chmod +x "$T/bin/"*
 cp "$FIX/aetherproxy" "$T/conf/aetherproxy"
+printf "\nconfig stats 'stats'\n\toption heatmap_enabled '1'\n" >> "$T/conf/aetherproxy"
 for f in gfwlist chnlist apple; do printf 'example.com\n' > "$T/base/$f.txt"; done
 printf '1.0.0.0/8\n' > "$T/base/chnroute4.txt"
 printf '91.108.4.0/22\n' > "$T/base/gfw_static4.txt"
@@ -222,6 +233,15 @@ printf 'local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid 
 printf '  0: 0100007F:7968 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"
 printf '  1: 0100007F:794D 00000000:0000 0A 00000000:00000000 00:00000000 00000000 0 0 0\n' >> "$SYSROOT/proc/net/tcp"
 
+read -r today now < <(date '+%F %s')
+state_path="$SYSROOT/var/run/aether-proxy/state.json"
+usage_path="$SYSROOT/etc/aether-proxy/usage.json"
+printf '{"state":"running","usage_today":{"date":"%s","at":%s,"tx":200050000,"rx":1800090000,"observed":1805,"healthy":1504}}\n' \
+	"$today" "$now" > "$state_path"
+cp "$state_path" "$T/crashed-state.json"
+printf '{"schema":1,"updated_at":%s,"days":{"%s":{"tx":200000000,"rx":1800000000,"observed":1800,"healthy":1500}}}\n' \
+	"$now" "$today" > "$usage_path"
+
 args=(--sys-root "$SYSROOT" --bin-dir "$T/bin" --confdir "$T/conf" \
 	--data-dir "$T/data" --baseline-dir "$T/base" --custom-dir "$T/custom")
 # Use only the isolated instrumented modules; production has no counter or test switch.
@@ -246,6 +266,41 @@ fi
 
 wait_field state running && ok 'T9.5 startup reaches running' || bad 'T9.5 startup reaches running'
 versions_before=$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components < "$SYSROOT/var/run/aether-proxy/state.json")
+
+if python3 - "$T/crashed-state.json" "$SYSROOT/first-startup-state.json" "$state_path" <<'PYTEST'
+import json
+import sys
+from pathlib import Path
+crashed, first, live = [json.loads(Path(p).read_text()) for p in sys.argv[1:]]
+assert first['state'] == 'starting' and first['usage_today'] == crashed['usage_today'], first
+assert (live['usage_today']['tx'], live['usage_today']['rx']) == (200050000, 1800090000), live
+print('T16.47 evidence G first startup state:', json.dumps(first))
+PYTEST
+then
+	ok 'T16.47 G daemon first startup write preserves the last usage_today before first tick'
+else
+	bad 'T16.47 G daemon first startup write preserves the last usage_today before first tick'
+fi
+
+# Use the real SIGHUP path with its separate transaction and monitor state owners.
+reload_checkpoint
+sed -i "s/option heatmap_enabled '1'/option heatmap_enabled '0'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+assert_completion heatmap-disabled "$NODE_A" gfw true
+if python3 - "$usage_path" "$today" <<'PYTEST'
+import json
+import sys
+from pathlib import Path
+doc = json.loads(Path(sys.argv[1]).read_text())
+day = doc['days'][sys.argv[2]]
+assert day == dict(tx=200050000, rx=1800090000, observed=1805, healthy=1504), doc
+print('T16.47 evidence reload usage.json:', json.dumps(doc))
+PYTEST
+then
+	ok 'T16.47 disabling heatmap via SIGHUP flushes before the switch'
+else
+	bad 'T16.47 disabling heatmap via SIGHUP flushes before the switch'
+fi
 
 # M4-02: check published state, not merely the pure normalizer.
 assert_dns_aliases() {

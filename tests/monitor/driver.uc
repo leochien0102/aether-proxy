@@ -157,6 +157,133 @@ function scenario_heatmap_seed(args, payload, enable_at_runtime) {
 	no_external_children(d);
 };
 
+function scenario_durable_usage(args, payload) {
+	let root = args[1], path = root + C.USAGE_FILE;
+	let now = time(), day = usage.local_date(now);
+	let disk = { tx: 200000000, rx: 1800000000, observed: 1800, healthy: 1500 };
+	let short = { tx: 310032, rx: 698574, observed: 12, healthy: 8 };
+	function matches(entry, expected) {
+		return entry?.tx == expected.tx && entry.rx == expected.rx &&
+			entry.observed == expected.observed && entry.healthy == expected.healthy;
+	};
+	function document() { return json(fs.readfile(path)); };
+	function report(label, value) { print(`T16.47 evidence ${label}: ` + sprintf('%.J', value) + '\n'); };
+
+	let conf = root + '/usage-conf';
+	let conf_path = conf + '/' + C.UCI_PACKAGE;
+	let enabled = fs.readfile(args[2] + '/' + C.UCI_PACKAGE);
+	check(write(conf_path, enabled), 'T16.47 prepares an isolated reload config');
+	let setup = base_daemon([ args[0], root, conf, ...slice(args, 3) ], {});
+	check(!setup.error, 'T16.47 creates a monitor with heatmap enabled', setup.error);
+	if (setup.error)
+		return;
+	let d = setup.daemon;
+	check(write(path, sprintf('%.J', { schema: 1, days: { [day]: disk } })),
+		'T16.47 A writes a 2 GB disk fixture');
+	d.usage_ready = true;
+	d.usage = { ...d.usage, day, ...short };
+	d.usage_days = { [day]: short }; // The disk must win even when the cache is stale.
+	monitor.flush_usage(d);
+	let persisted = document();
+	check(matches(persisted.days[day], disk), 'T16.47 A flush preserves all four disk totals');
+	report('A usage.json', persisted);
+	let tm = localtime(now);
+	let yesterday = usage.local_date(timelocal({ year: tm.year, mon: tm.mon, mday: tm.mday - 1, hour: 12 }));
+	check(write(path, sprintf('%.J', { schema: 1, days: { [yesterday]: disk, [day]: disk } })),
+		'T16.47 A plants the persisted floor for a just-ending day');
+	d.usage.day = yesterday;
+	write(root + '/nft-counters.json', payload(0, 0));
+	monitor.tick(d);
+	while (d.busy) uloop.run(100);
+	check(d.usage.day == day && matches(document().days[yesterday], disk),
+		'T16.47 A rollover also preserves the just-completed day');
+	no_external_children(d);
+
+	setup = base_daemon([ args[0], root, conf, ...slice(args, 3) ], {});
+	check(!setup.error, 'T16.47 B creates a fresh monitor after a simulated crash', setup.error);
+	if (setup.error)
+		return;
+	d = setup.daemon;
+	let tmp = { date: day, at: now, tx: disk.tx + 50000, rx: disk.rx + 90000, observed: 1805, healthy: 1504 };
+	check(state_write(d.ctx, { ...d.state, usage_today: tmp }), 'T16.47 B plants the last tmpfs snapshot');
+	let state_path = root + C.RUN_DIR + '/' + C.STATE_FILE;
+	function tick_with(tx, rx) {
+		write(root + '/nft-counters.json', payload(tx, rx));
+		monitor.tick(d);
+		while (d.busy) uloop.run(100);
+		return json(fs.readfile(state_path)).usage_today;
+	};
+	let tx = 700000000, rx = 900000000;
+	let live = tick_with(tx, rx);
+	check(live?.date == day && matches(live, tmp), 'T16.47 B first tick recovers tmpfs without recounting nft');
+	report('B first state.json', { usage_today: live });
+	let next = tick_with(tx += 2500, rx += 4000);
+	check(next?.tx == tmp.tx + 2500 && next?.rx == tmp.rx + 4000,
+		'T16.47 B second tick adds only new traffic');
+	report('B next state.json', { usage_today: next });
+
+	let inode = fs.stat(path).inode;
+	let quiet = true;
+	for (let i = 0; i < 3; i++) {
+		tick_with(tx, rx);
+		quiet = quiet && fs.stat(path).inode == inode;
+	}
+	check(quiet && matches(document().days[day], disk), 'T16.47 F three quiet ticks do not rewrite the ledger');
+	// Reach threshold minus one, counting both the recovered and newly sampled bytes.
+	let remaining = 8 * 1024 * 1024 - 1 - (next.tx + next.rx - disk.tx - disk.rx);
+	tick_with(tx += remaining, rx);
+	check(fs.stat(path).inode == inode, 'T16.47 F 8 MiB minus one does not rewrite the ledger');
+	live = tick_with(++tx, rx);
+	persisted = document();
+	check(fs.stat(path).inode != inode && matches(persisted.days[day], live),
+		'T16.47 F exactly 8 MiB persists all sampled totals');
+	report('F usage.json', persisted);
+	inode = fs.stat(path).inode;
+	tick_with(tx, rx);
+	check(fs.stat(path).inode == inode, 'T16.47 F checkpoint resets the byte watermark');
+
+	function reconfigure(text, enabled) {
+		if (!write(conf_path, text))
+			return false;
+		let result = reload.run_live(d);
+		let applied = result.ok && !result.stop && result.snapshot?.stats?.heatmap_enabled === enabled;
+		check(applied, enabled ? 'T16.47 D reload enables heatmap' : 'T16.47 C reload disables heatmap', result.detail);
+		if (!applied)
+			return false;
+		d.snapshot = result.snapshot;
+		d.applied_context = result.applied_context;
+		d.state = result.state;
+		return true;
+	};
+
+	let before_disable = tick_with(tx += 71, rx += 91);
+	if (!reconfigure(replace(enabled, /option heatmap_enabled '1'/, "option heatmap_enabled '0'"), false)) {
+		no_external_children(d);
+		return;
+	}
+	persisted = document();
+	check(fs.stat(path).inode != inode && matches(persisted.days[day], before_disable),
+		'T16.47 C successful disable reload flushes pending totals before switching');
+	report('C usage.json', persisted);
+	inode = fs.stat(path).inode;
+	let disabled = tick_with(tx += 50000000, rx += 80000000);
+	check(disabled == null && fs.stat(path).inode == inode && matches(d.usage, before_disable),
+		'T16.47 C disabled tick publishes no usage, does not sample and does not rewrite');
+	if (!reconfigure(enabled, true)) {
+		no_external_children(d);
+		return;
+	}
+	let resumed = tick_with(tx += 7000000, rx += 9000000);
+	check(matches(resumed, before_disable) && fs.stat(path).inode == inode,
+		'T16.47 D first enabled tick retains totals and excludes the disabled interval');
+	report('D first state.json', { usage_today: resumed });
+	let grown = tick_with(tx += 31, rx += 41);
+	check(grown?.tx == before_disable.tx + 31 && grown?.rx == before_disable.rx + 41,
+		'T16.47 D next tick adds only the newly enabled traffic');
+	report('D next state.json', { usage_today: grown });
+	no_external_children(d);
+};
+
 let scenario = ARGV[0];
 let opts = base_daemon(ARGV, {});
 if (opts.error) {
@@ -742,6 +869,7 @@ else if (scenario == 'heatmap-off' || scenario == 'heatmap-on') {
 	if (scenario == 'heatmap-on') {
 		scenario_heatmap_seed(ARGV, payload, false);
 		scenario_heatmap_seed(ARGV, payload, true);
+		scenario_durable_usage(ARGV, payload);
 	}
 }
 else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scenario == 'heatmap-persist-off') {

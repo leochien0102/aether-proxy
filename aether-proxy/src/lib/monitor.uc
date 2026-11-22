@@ -649,15 +649,13 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 
 // B25 usage persistence (docs/b25-heatmap.md §5, T12.4): merge this run's days over the
 // previously persisted history and rewrite usage.json atomically with mode 0600. Called
-// when a sample crosses the local date and by the daemon's clean-stop path; a closed
-// switch must not touch the file at all. A failed write keeps the memory state and
-// never blocks the monitor — the next crossing or stop retries. Defined before its
-// caller: ucode does not hoist declarations (see tick above).
-function flush_usage(daemon) {
+// on date crossing, a byte threshold, disable and clean stop. A closed switch
+// does not touch the file. A failed write leaves the persisted watermark unchanged.
+function flush_usage(daemon, completed_day) {
 	if (daemon?.snapshot?.stats?.heatmap_enabled !== true)
 		return;
 	let path = usage_path(daemon);
-	// T16.2: reload before every flush; quota may have changed through the CLI.
+	// Reload every time: quota or today's published floor may have changed.
 	let loaded = usage.load(path);
 	let warned_read = false;
 	// Preserve the existing once-only read warning and retry cache. Do not log the
@@ -668,9 +666,12 @@ function flush_usage(daemon) {
 		log.set_run_dir(run_dir(daemon));
 		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
 	}
-	if (daemon.usage_days == null)
-		daemon.usage_days = loaded.days;
-	let days = usage.collect(daemon.usage, daemon.usage_days);
+	let previous = { ...(daemon.usage_days ?? {}), ...loaded.days };
+	// On rollover, the just-finalized accumulator has moved out of the live slot.
+	// Protect that day's floor here; collect's merge for other dates is unchanged.
+	if (completed_day != null && previous[completed_day] != null)
+		daemon.usage.days[completed_day] = usage.max_day(daemon.usage.days[completed_day], previous[completed_day]);
+	let days = usage.collect(daemon.usage, previous);
 	if (days == null)
 		return;
 	let written = usage.write(path, days, time(), loaded.document ?? {});
@@ -683,13 +684,26 @@ function flush_usage(daemon) {
 	daemon.usage_days = days;
 };
 
-// B25 usage sampling (docs/b25-heatmap.md §4, T12.3): only a `true` switch samples, and
-// a closed switch must not even run the nft counter query. Data lives in memory between
-// the persistence points (a crossed local date and the clean stop, T12.4); an abnormal
-// exit loses the unflushed portion of the live day by design.
+function pause_usage(daemon) {
+	if (daemon.usage?.day == null)
+		return;
+	flush_usage(daemon);
+	// Keep accumulated totals, but exclude traffic and observation time while disabled.
+	daemon.usage.seed_pending = true;
+	daemon.usage_mono_ms = null;
+};
+
+const USAGE_FLUSH_BYTES = 8 * 1024 * 1024;
+
+function usage_bytes(entry) {
+	return (entry?.tx ?? 0) + (entry?.rx ?? 0);
+};
+
+// A closed switch does not read disk, runtime state or nft counters.
 function sample_usage(daemon, obs) {
 	if (daemon.snapshot?.stats?.heatmap_enabled !== true)
 		return;
+	let before = usage_bytes(daemon.usage);
 	// Try once at the first enabled sample, including after a runtime enable.
 	if (daemon.usage_ready !== true) {
 		daemon.usage_ready = true;
@@ -700,13 +714,16 @@ function sample_usage(daemon, obs) {
 			log.set_run_dir(run_dir(daemon));
 			log.event('warn', 'FS_FAILED', { op: 'read', path, detail: loaded.error });
 		}
-		else {
-			let now = time(), today = usage.local_date(now);
-			let seeded = usage.seed(daemon.usage, loaded.days[today], today, now);
-			if (seeded != null) {
-				daemon.usage = seeded;
-				daemon.usage_days = loaded.days;
-			}
+		let runtime = state_file.read(run_dir(daemon));
+		let now = time(), today = usage.local_date(now);
+		let live = state_file.usage_today_of(runtime, now);
+		if (live?.date !== today)
+			live = state_file.usage_today_of({ [C.USAGE_TODAY_FIELD]: daemon.usage_recovery }, now);
+		delete daemon.usage_recovery;
+		let seeded = usage.seed(daemon.usage, loaded.days[today], today, now, live);
+		if (seeded != null) {
+			daemon.usage = seeded;
+			daemon.usage_days = loaded.days;
 		}
 	}
 	let live_day = daemon.usage.day;
@@ -727,7 +744,14 @@ function sample_usage(daemon, obs) {
 	// The sampler finalized the old day on the crossing (docs §5): get the merged
 	// history on disk before the new day grows.
 	if (live_day != null && daemon.usage.day != live_day)
-		flush_usage(daemon);
+		flush_usage(daemon, live_day);
+	else {
+		let bytes = usage_bytes(daemon.usage);
+		let persisted = usage_bytes(daemon.usage_days?.[daemon.usage.day]);
+		// No timer and no quiet retries: a new byte can retry a failed checkpoint.
+		if (bytes > before && bytes - persisted >= USAGE_FLUSH_BYTES)
+			flush_usage(daemon);
+	}
 };
 
 tick = function(daemon) {
@@ -1092,4 +1116,4 @@ interval_ms = machine => {
 	return machine?.state == 'running' ? C.MONITOR_RUNNING_INTERVAL_MS : C.MONITOR_OTHER_INTERVAL_MS;
 };
 
-export { create_daemon, flush_usage, initial_state, interval_ms, next, node_reachable, tick, wait_xray_port };
+export { create_daemon, flush_usage, initial_state, interval_ms, next, node_reachable, pause_usage, tick, wait_xray_port };

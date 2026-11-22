@@ -15,6 +15,7 @@ import * as check from 'aetherproxy.cmd.check';
 import * as components_cmd from 'aetherproxy.cmd.components';
 import * as apply from 'aetherproxy.apply';
 import * as supervise from 'aetherproxy.supervise';
+import * as monitor from 'aetherproxy.monitor';
 import * as xray_ready from 'aetherproxy.xray_ready';
 
 // Pure plan over renderer hashes and resolved component identities, never raw UCI inputs.
@@ -394,6 +395,8 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 // The no-op plans are successful applies too: warnings, paths and WAN observations
 // may have changed without changing bytes. Never publish a candidate on a failure path.
 function applied_result(daemon, loaded, actions, resolution) {
+	if (daemon.snapshot.stats?.heatmap_enabled === true && loaded.snapshot.stats?.heatmap_enabled !== true)
+		monitor.pause_usage(daemon.usage_owner ?? daemon);
 	daemon.snapshot = loaded.snapshot;
 	daemon.applied_context = loaded;
 	daemon.ctx.lan_ifaces = loaded.snapshot.main.lan_ifaces ?? [];
@@ -666,7 +669,7 @@ function run_live(daemon, started_ms, degradation_request) {
 	if (type(stored) == 'string')
 		live.hashes.chinadns = join(',', [ split(live.hashes.chinadns, ',')[0], ...slice(split(stored, ','), 1) ]);
 	let old_mode = daemon.state.degraded_mode ?? null;
-	let working = { ...daemon, degradation_request,
+	let working = { ...daemon, degradation_request, usage_owner: daemon.usage_owner ?? daemon,
 		state: { ...daemon.state, render_hash: live.hashes } };
 	let result = run(working, started_ms);
 	if (result.ok && !result.stop) {

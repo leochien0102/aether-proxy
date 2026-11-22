@@ -15,6 +15,22 @@ export const cases = [
 	{ name: 'T16.45 valid_entry rejects a missing timing field',
 		entry: { tx: ENTRY.tx, rx: ENTRY.rx, observed: ENTRY.observed }, expect: null },
 	{ name: 'T16.45 no entry does not seed', entry: null, expect: null },
+	{ name: 'T16.47 seed uses all larger runtime totals',
+		live: { date: DAY, tx: ENTRY.tx + 11, rx: ENTRY.rx + 22, observed: 1900, healthy: 1600 },
+		expect: { day: DAY, tx: ENTRY.tx + 11, rx: ENTRY.rx + 22, observed: 1900, healthy: 1600,
+			last_tx: null, last_rx: null, input_unchanged: true } },
+	{ name: 'T16.47 seed uses all larger disk totals',
+		live: { date: DAY, tx: 10, rx: 20, observed: 30, healthy: 25 },
+		expect: { day: DAY, ...ENTRY, last_tx: null, last_rx: null, input_unchanged: true } },
+	{ name: 'T16.47 seed combines mixed totals without summing',
+		live: { date: DAY, tx: 10, rx: ENTRY.rx + 22, observed: 1790, healthy: 1550 },
+		expect: { day: DAY, ...ENTRY, rx: ENTRY.rx + 22, healthy: 1550,
+			last_tx: null, last_rx: null, input_unchanged: true } },
+	{ name: 'T16.47 seed uses validated runtime alone without valid disk',
+		entry: { tx: ENTRY.tx + 11, rx: -1 }, live: { date: DAY, ...ENTRY },
+		expect: { day: DAY, ...ENTRY, last_tx: null, last_rx: null, input_unchanged: true } },
+	{ name: 'T16.47 seed ignores a runtime entry from another day',
+		entry: null, live: { date: NEXT, ...ENTRY }, expect: null },
 	{ name: 'T16.45 first readable sample after a failed read only records the baseline',
 		reads: [[ null, null ], [ 5000, 8000 ]], expect: {
 			day: DAY, ...ENTRY, last_tx: 5000, last_rx: 8000, input_unchanged: true } },
@@ -31,7 +47,7 @@ export const cases = [
 
 export function run(c) {
 	let initial = usage.create();
-	let seeded = usage.seed(initial, 'entry' in c ? c.entry : ENTRY, c.day ?? DAY, NOW);
+	let seeded = usage.seed(initial, 'entry' in c ? c.entry : ENTRY, c.day ?? DAY, NOW, c.live);
 	if (seeded == null)
 		return null;
 	let input_unchanged = sprintf('%.J', initial) == sprintf('%.J', usage.create());

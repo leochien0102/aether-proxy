@@ -156,9 +156,9 @@ function history_cmd(opts, limit, args) {
 	let now = time(), tm = localtime(now);
 	let live = state_file.usage_today_of(read_object(pipeline.run_dir(opts) + '/' + C.STATE_FILE), now);
 	let today = sprintf('%04d-%02d-%02d', tm.year, tm.mon, tm.mday);
-	// Live already includes the startup seed, so it replaces rather than adds to the disk entry.
+	// Live may already include the seed or may be incomplete; neither add nor shrink.
 	if (live != null && live.date == today)
-		loaded.days[today] = { tx: live.tx, rx: live.rx, observed: live.observed, healthy: live.healthy };
+		loaded.days[today] = usage.max_day(live, loaded.days[today]);
 	let result = { ok: true, enabled: true,
 		days: history_entries(loaded.days, limit), updated_at: loaded.updated_at,
 		quota: usage.quota_of(loaded.document) };
