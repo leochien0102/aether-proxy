@@ -997,7 +997,8 @@ function shutdown(ctx, children, normal_stop) {
 		if (saved.ok && stopping_state?.degraded_mode == 'gfw')
 			log.event(null, 'MODE_RESTORED', { mode: stopping_state.mode });
 		if (private_cleanup.ok)
-			log.event('notice', 'SERVICE_STOPPED', { mode: ctx.service_mode ?? '', node: ctx.service_node ?? '' });
+			log.event('notice', 'SERVICE_STOPPED', { mode: ctx.service_mode ?? '', node: ctx.service_node ?? '',
+				...(ctx.usage_deferred != null ? { usage_pending: ctx.usage_deferred } : {}) });
 	}
 	return failures;
 };
@@ -1432,11 +1433,11 @@ function run(args) {
 					stopping = true;
 					cancel_subscription_timer();
 					// The sampled days must reach usage.json before teardown discards them (T12.4).
-					monitor.flush_usage(monitor_daemon);
+					if (!monitor.stop_usage(monitor_daemon).ok)
+						exit_code = 1;
 					let stop_errors = shutdown(ctx, children, true);
 					if (length(stop_errors))
 						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
-					exit_code = 0;
 					finished = true;
 					break;
 				}
@@ -1474,7 +1475,8 @@ function run(args) {
 				uloop.run(C.DAEMON_POLL_MS);
 			stopping = true;
 			// The final tick's samples must reach usage.json before teardown (T12.4).
-			monitor.flush_usage(monitor_daemon);
+			if (!monitor.stop_usage(monitor_daemon).ok)
+				exit_code = 1;
 			let stop_errors = shutdown(ctx, children, true);
 			if (length(stop_errors))
 				event_failure(ctx, 'stop', join('; ', stop_errors));

@@ -955,7 +955,8 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		let cleared = json(fs.readfile(usage_file));
 		check(cleared.quota?.bytes == null && cleared.quota?.set_at == null && cleared.future == 'keep',
 			'T16.2 monitor flush preserves cleared quota without resurrecting the old value');
-		// A failed rewrite leaves the target alone and does not block; the next flush retries.
+		// A dirty failed rewrite leaves the target alone; the next flush retries.
+		d.usage.tx = (d.usage_days[d.usage.day]?.tx ?? 0) + 1;
 		fs.unlink(usage_file);
 		fs.mkdir(usage_file);
 		monitor.flush_usage(d);

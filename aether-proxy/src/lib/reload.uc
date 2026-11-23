@@ -396,7 +396,7 @@ function apply_plan(daemon, actions, artifacts, components, stage_hashes, old_ar
 // may have changed without changing bytes. Never publish a candidate on a failure path.
 function applied_result(daemon, loaded, actions, resolution) {
 	if (daemon.snapshot.stats?.heatmap_enabled === true && loaded.snapshot.stats?.heatmap_enabled !== true)
-		monitor.pause_usage(daemon.usage_owner ?? daemon);
+		monitor.pause_usage(daemon.usage_owner ?? daemon, true);
 	daemon.snapshot = loaded.snapshot;
 	daemon.applied_context = loaded;
 	daemon.ctx.lan_ifaces = loaded.snapshot.main.lan_ifaces ?? [];
@@ -434,6 +434,17 @@ function run_candidate(daemon, started_ms, transaction) {
 		transaction.loaded = loaded;
 	}
 	let snapshot = loaded.snapshot;
+	// Drain before any candidate runtime/state publication. Failure leaves the
+	// enabled owner and its pending accumulators intact; a later reload can retry.
+	if (daemon.snapshot.stats?.heatmap_enabled === true && snapshot.stats?.heatmap_enabled !== true) {
+		let drained = monitor.drain_usage(daemon.usage_owner ?? daemon);
+		// The bounded drain pumps signals. TERM wins before candidate side effects.
+		if (daemon.ctx.stopping_requested)
+			return { ok: false, cancelled: true, detail: 'reload cancelled by stop' };
+		if (!drained.ok)
+			return failure(daemon, 'usage_flush', drained.error ?? 'usage checkpoint failed');
+	}
+
 	steps.config_render = elapsed_ms(step_started);
 	// A different node (or a new address for the same node) needs its own bootstrap IP: the
 	// running one belongs to the old node and also feeds node_ip4 in the nft table.
@@ -654,7 +665,7 @@ function run(daemon, started_ms) {
 		pipeline.discard_frozen(transaction.loaded, previous);
 	else
 		pipeline.prune_frozen(daemon.ctx, result.applied_context);
-	return record_reload(daemon, result, transaction.target);
+	return result.cancelled ? result : record_reload(daemon, result, transaction.target);
 };
 
 // Both user and monitor reloads compare installed outputs. The caller owns busy and,

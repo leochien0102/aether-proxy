@@ -651,9 +651,27 @@ function finish_tick(daemon, machine, transition, lock, started, error) {
 // previously persisted history and rewrite usage.json atomically with mode 0600. Called
 // on date crossing, a byte threshold, disable and clean stop. A closed switch
 // does not touch the file. A failed write leaves the persisted watermark unchanged.
+// Compare the planned day map, not the last sampled byte counter: elapsed time
+// and completed dates can be dirty even when no new bytes arrive.
+function usage_dirty(daemon) {
+	let days = usage.collect(daemon.usage, daemon.usage_days);
+	if (days == null)
+		return false;
+	let previous = daemon.usage_days ?? {};
+	if (length(keys(days)) != length(keys(previous)))
+		return true;
+	for (let date, entry in days)
+		for (let field in [ 'tx', 'rx', 'observed', 'healthy' ])
+			if (entry[field] != previous[date]?.[field])
+				return true;
+	return false;
+};
+
 function flush_usage(daemon, completed_day) {
-	if (daemon?.snapshot?.stats?.heatmap_enabled !== true)
-		return;
+	if (daemon?.snapshot?.stats?.heatmap_enabled !== true || daemon.usage?.day == null)
+		return { ok: true };
+	if (!daemon.usage_pending && !usage_dirty(daemon))
+		return { ok: true };
 	let path = usage_path(daemon);
 	let written = usage.flush(path, daemon.usage, daemon.usage_days, time());
 	let loaded = written.loaded;
@@ -665,19 +683,70 @@ function flush_usage(daemon, completed_day) {
 		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
 	}
 	if (!written.ok) {
+		daemon.usage_pending = true;
 		log.set_run_dir(run_dir(daemon));
-		if (!warned_read && loaded?.error == null)
+		if (!warned_read && loaded?.error == null && !daemon.usage_flush_warned)
 			log.event('warn', 'FS_FAILED', { op: written.op ?? 'write', path, detail: written.error });
-		return;
+		daemon.usage_flush_warned = true;
+		return written;
 	}
 	if (written.days != null)
 		daemon.usage_days = written.days;
+	daemon.usage_pending = false;
+	daemon.usage_flush_warned = false;
+	if (daemon.usage_recovering) {
+		let pending = `${run_dir(daemon)}/usage-pending.json`;
+		if (fs.unlink(pending))
+			daemon.usage_recovering = false;
+		else
+			log.event('warn', 'FS_FAILED', { op: 'unlink', path: pending, detail: fs.error() });
+	}
+	return written;
 };
 
-function pause_usage(daemon) {
+// Lifecycle retries are bounded by forty event-loop slices of at most 50ms.
+function drain_usage(daemon) {
+	let result = flush_usage(daemon);
+	for (let attempt = 0; !result.ok && attempt < 40; attempt++) {
+		let wake = uloop.timer(50, () => uloop.end());
+		if (wake == null)
+			break;
+		let busy = daemon.busy;
+		daemon.busy = true;
+		uloop.run(50);
+		wake.cancel();
+		daemon.busy = busy;
+		result = flush_usage(daemon);
+	}
+	return result;
+};
+
+// A failed ledger must not strand completed days in an exiting process: retain
+// the whole bounded day map atomically in tmpfs. Survives a daemon restart, not
+// a power loss (the same lifetime as the existing live state snapshot).
+function stop_usage(daemon) {
+	let result = drain_usage(daemon);
+	if (result.ok)
+		return result;
+	let path = `${run_dir(daemon)}/usage-pending.json`;
+	let days = usage.collect(daemon.usage, daemon.usage_days);
+	let saved = sys.write_atomic(path, sprintf('%.J', { schema: 1, days, updated_at: time() }) + '\n');
+	if (!saved) {
+		log.event('error', 'FS_FAILED', { op: 'usage_recovery', path, detail: sys.error() });
+		return { ok: false, error: sys.error() };
+	}
+	daemon.ctx.usage_deferred = path;
+	return { ok: true, deferred: path };
+};
+
+function pause_usage(daemon, flushed) {
 	if (daemon.usage?.day == null)
 		return;
-	flush_usage(daemon);
+	if (!flushed) {
+		let result = flush_usage(daemon);
+		if (!result.ok)
+			return result;
+	}
 	// Keep accumulated totals, but exclude traffic and observation time while disabled.
 	daemon.usage.seed_pending = true;
 	daemon.usage_mono_ms = null;
@@ -710,7 +779,25 @@ function sample_usage(daemon, obs) {
 		if (live?.date !== today)
 			live = state_file.usage_today_of({ [C.USAGE_TODAY_FIELD]: daemon.usage_recovery }, now);
 		delete daemon.usage_recovery;
-		let seeded = usage.seed(daemon.usage, loaded.days[today], today, now, live);
+		let pending = usage.load(`${run_dir(daemon)}/usage-pending.json`);
+		if (pending.error != null)
+			log.event('error', 'FS_FAILED', { op: 'usage_recovery', path: `${run_dir(daemon)}/usage-pending.json`, detail: pending.error });
+		if (pending.document != null) {
+			daemon.usage_recovering = true;
+			daemon.usage_pending = true;
+			daemon.usage.days = pending.days;
+			// Keep the newest recovered label on wall-clock rollback, as sample does.
+			let dates = sort(keys(pending.days));
+			let day = length(dates) ? dates[length(dates) - 1] : today;
+			if (day > today) {
+				daemon.usage = { ...daemon.usage, ...pending.days[day], day, seed_pending: true };
+				delete daemon.usage.days[day];
+			}
+			else if (pending.days[today] != null)
+				live = { ...usage.max_day(live, pending.days[today]), date: today };
+		}
+		let seeded = daemon.usage.day > today ? null
+			: usage.seed(daemon.usage, loaded.days[today], today, now, live);
 		if (seeded != null) {
 			daemon.usage = seeded;
 			daemon.usage_days = loaded.days;
@@ -735,10 +822,13 @@ function sample_usage(daemon, obs) {
 	// history on disk before the new day grows.
 	if (live_day != null && daemon.usage.day != live_day)
 		flush_usage(daemon, live_day);
+	else if (daemon.usage_pending)
+		flush_usage(daemon);
 	else {
 		let bytes = usage_bytes(daemon.usage);
 		let persisted = usage_bytes(daemon.usage_days?.[daemon.usage.day]);
-		// No timer and no quiet retries: a new byte can retry a failed checkpoint.
+		// Ordinary samples remain write-free below the threshold; only an
+		// explicitly failed checkpoint is retried by a quiet sample.
 		if (bytes > before && bytes - persisted >= USAGE_FLUSH_BYTES)
 			flush_usage(daemon);
 	}
@@ -1106,4 +1196,4 @@ interval_ms = machine => {
 	return machine?.state == 'running' ? C.MONITOR_RUNNING_INTERVAL_MS : C.MONITOR_OTHER_INTERVAL_MS;
 };
 
-export { create_daemon, flush_usage, initial_state, interval_ms, next, node_reachable, pause_usage, tick, wait_xray_port };
+export { create_daemon, flush_usage, initial_state, interval_ms, next, node_reachable, pause_usage, drain_usage, stop_usage, tick, wait_xray_port };
