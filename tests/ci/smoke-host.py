@@ -281,8 +281,8 @@ def verify_usage_keep(ipk):
 			files = {member.name.removeprefix('./'): member for member in payload}
 			path = 'lib/upgrade/keep.d/aether-proxy'
 			expect(path in files and files[path].isfile(), f'{ipk.name}: /{path} exists')
-			expect(payload.extractfile(files[path]).read() == b'etc/aether-proxy/usage.json\n',
-				f'{ipk.name}: keep list contains only etc/aether-proxy/usage.json')
+			expect(payload.extractfile(files[path]).read() == b'/etc/aether-proxy/usage.json\n',
+				f'{ipk.name}: keep list contains only /etc/aether-proxy/usage.json')
 			expect('etc/aether-proxy/usage.json' not in files, f'{ipk.name}: does not ship a ledger')
 
 
