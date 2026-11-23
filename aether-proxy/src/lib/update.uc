@@ -1011,12 +1011,21 @@ function install_with_rollback(opts, ctx, selected, name, arch, pm, asset, previ
 
 // UI packages follow only a verified (or unchanged) backend. Their failures never
 // trigger backend recovery: the new backend still serves the old UI (docs/08).
-function update_companion(opts, ctx, selected, plat, name) {
+function companion_candidate(ctx, selected, plat, name) {
 	let installed = installed_version(ctx, plat.pm, name);
 	if (!installed.ok)
-		return { status: 'failed', code: 'CMD_FAILED', detail: installed.detail };
+		return { ok: false, code: 'CMD_FAILED', detail: installed.detail };
 	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, false);
-	if (installed.version == null || asset == null || !version_newer(asset.version, installed.version))
+	return { ok: true, asset: installed.version != null && asset != null
+		&& version_newer(asset.version, installed.version) ? asset : null };
+}
+
+function update_companion(opts, ctx, selected, plat, name) {
+	let candidate = companion_candidate(ctx, selected, plat, name);
+	if (!candidate.ok)
+		return { status: 'failed', code: candidate.code, detail: candidate.detail };
+	let asset = candidate.asset;
+	if (asset == null)
 		return { status: 'skipped' };
 	let downloaded = download_asset(opts, selected.urls, asset, asset.url);
 	if (!downloaded.ok)
@@ -1062,6 +1071,32 @@ function update_together(opts, ctx, selected, plat, asset) {
 	result.value ??= { ok: false, package: C.PROG, from: from.version, to: asset.version,
 		rolled_back: false, code: result.code, detail: result.detail };
 	result.value.companions = companions;
+	return result;
+}
+
+// Only an exact, validated bridge terminal may repair its own companions.
+// Preflight the request scope with the ordinary companion decision, then reuse
+// the existing group/single installers. null preserves the legacy terminal no-op.
+function terminal_companions(opts, ctx, selected, plat, name, together, version) {
+	let pending = null;
+	for (let companion in together ? C.UPDATE_COMPANIONS : [ name ]) {
+		let candidate = companion_candidate(ctx, selected, plat, companion);
+		if (!candidate.ok)
+			return group_failure(candidate.code, candidate.detail);
+		if (candidate.asset != null)
+			pending = candidate.asset;
+	}
+	if (pending == null)
+		return null;
+	// No backend mutation (or DNS prerequisite transaction) is needed: the
+	// backend is already exactly this terminal. Its version alone is sufficient
+	// for update_together's unchanged-backend decision; no backend asset is fetched.
+	let result = together
+		? update_together(opts, ctx, selected, plat, { version })
+		: install_with_rollback(opts, ctx, selected, name, plat.arch, plat.pm, pending, false);
+	let refreshed = write_updates(ctx, selected, plat);
+	if (!refreshed.ok)
+		log.event('error', 'CMD_FAILED', { cmd: 'update check (refresh after install)', rc: refreshed.exit, stderr: refreshed.detail });
 	return result;
 }
 
@@ -1307,9 +1342,17 @@ function package_update_selected(opts, name, previous, selected) {
 		let plan = bridge_plan(selected.manifest, installed.version, arch, pm);
 		if (!plan.ok)
 			return group_failure(plan.code, plan.detail);
-		if (!plan.active)
+		if (!plan.active) {
+			// A newer backend is unknown to this terminal's pages: retain the
+			// original no-op rather than pairing it with older companion assets.
+			if (installed.version == selected.manifest.packages[C.PROG].current.version) {
+				let result = terminal_companions(opts, ctx, selected, plat, name, together, installed.version);
+				if (result != null)
+					return result;
+			}
 			return { ok: true, exit: 0, value: { ok: true, package: C.PROG,
 				from: installed.version, to: installed.version, rolled_back: false, code: 'UPDATE_UP_TO_DATE' } };
+		}
 		if (plan.active) {
 			// Even direct CLI requests for a page/translation cannot pull target
 			// assets across a pending backend bridge. Intermediate steps contain
