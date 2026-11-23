@@ -735,6 +735,124 @@ for pair in "$NODE_B global" "$NODE_A gfw"; do
 		"$(printf '%s\n' "$combined_status" | "$UCODE" "$ROOT/tests/cli/jget.uc" -- mode)"
 done
 
+# T16.56 (audit M6): same-path atomic replacement with equal size and mtime, distinct inode.
+# Create both executables simultaneously so their metadata is compared on real host files.
+cp "$T/bin/chinadns-ng" "$T/bin/chinadns-ng-original"
+cat > "$T/bin/chinadns-ng-v1" <<'EOF'
+#!/bin/sh
+if [ "$1" = -V ]; then
+	printf 'chinadns-ng -V\n' >> "$STUB_LOG"
+	printf 'ChinaDNS-NG 2025.09.01 1111111 | fixture\n'
+	exit 0
+fi
+exec "$(dirname "$0")/chinadns-ng-original" "$@"
+EOF
+cat > "$T/bin/chinadns-ng-v2" <<'EOF'
+#!/bin/sh
+if [ "$1" = -V ]; then
+	printf 'chinadns-ng -V\n' >> "$STUB_LOG"
+	printf 'ChinaDNS-NG 2025.09.02 2222222 | fixture\n'
+	exit 0
+fi
+exec "$(dirname "$0")/chinadns-ng-original" "$@"
+EOF
+chmod +x "$T/bin/chinadns-ng-v1" "$T/bin/chinadns-ng-v2"
+touch -r "$T/bin/chinadns-ng-v1" "$T/bin/chinadns-ng-v2"
+
+read -r v1_size v1_mtime v1_inode v2_size v2_mtime v2_inode < <(
+	"$UCODE" -e '
+		import * as fs from "fs";
+		let a = fs.stat(ARGV[0]), b = fs.stat(ARGV[1]);
+		if (a == null || b == null) exit(1);
+		printf("%d %d %d %d %d %d\n", a.size, a.mtime, a.inode, b.size, b.mtime, b.inode);
+	' -- "$T/bin/chinadns-ng-v1" "$T/bin/chinadns-ng-v2"
+)
+expect 'T16.56 fixture v1 and v2 have equal byte size' "$v1_size" "$v2_size"
+expect 'T16.56 fixture v1 and v2 have equal mtime' "$v1_mtime" "$v2_mtime"
+[ "$v1_inode" != "$v2_inode" ] \
+	&& ok "T16.56 fixture v1 and v2 have distinct inodes ($v1_inode != $v2_inode)" \
+	|| bad 'T16.56 fixture v1 and v2 have distinct inodes' "both $v1_inode"
+
+# Install v1 at the unchanged runtime path and establish the baseline via a real reload.
+mv "$T/bin/chinadns-ng-v1" "$T/bin/chinadns-ng"
+reload_checkpoint
+kill -HUP "$DAEMON_PID"
+assert_completion t1656-baseline "$NODE_A" gfw true
+wait_field components.chinadns-ng.version 2025.09.01 \
+	&& ok 'T16.56 baseline v1 version published at unchanged path' \
+	|| bad 'T16.56 baseline v1 version published at unchanged path'
+expect 'T16.56 baseline keeps unchanged DNS path' "$T/bin/chinadns-ng" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.path < "$SYSROOT/var/run/aether-proxy/state.json")"
+
+# Atomically replace the same path with v2 (equal size, equal mtime, different inode).
+reload_checkpoint
+t1656_ver_before=$(count_calls "$LOG" 'chinadns-ng -V')
+mv "$T/bin/chinadns-ng-v2" "$T/bin/chinadns-ng"
+read -r after_size after_mtime after_inode < <(
+	"$UCODE" -e '
+		import * as fs from "fs";
+		let st = fs.stat(ARGV[0]);
+		if (st == null) exit(1);
+		printf("%d %d %d\n", st.size, st.mtime, st.inode);
+	' -- "$T/bin/chinadns-ng"
+)
+expect 'T16.56 renamed binary preserves byte size' "$v1_size" "$after_size"
+expect 'T16.56 renamed binary preserves mtime' "$v1_mtime" "$after_mtime"
+expect 'T16.56 renamed binary switches to v2 inode' "$v2_inode" "$after_inode"
+printf 'TRACE T16.56 meta: before=(size=%s mtime=%s inode=%s) after=(size=%s mtime=%s inode=%s)\n' \
+	"$v1_size" "$v1_mtime" "$v1_inode" "$after_size" "$after_mtime" "$after_inode"
+
+kill -HUP "$DAEMON_PID"
+assert_completion t1656-replace "$NODE_A" gfw true
+await_quiet
+t1656_ver_after_replace=$(count_calls "$LOG" 'chinadns-ng -V')
+t1656_replace_delta=$((t1656_ver_after_replace - t1656_ver_before))
+printf 'TRACE T16.56 reload1 -V calls: before=%d after=%d delta=%d\n' \
+	"$t1656_ver_before" "$t1656_ver_after_replace" "$t1656_replace_delta"
+expect 'T16.56 same-path inode replacement probes -V once' 1 "$t1656_replace_delta"
+expect 'T16.56 same-path inode replacement publishes v2 version' 2025.09.02 \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.version < "$SYSROOT/var/run/aether-proxy/state.json")"
+assert_dns_aliases 'T16.56 same-path inode replacement keeps DNS aliases equal'
+expect 'T16.56 same-path inode replacement keeps unchanged DNS path' "$T/bin/chinadns-ng" \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.path < "$SYSROOT/var/run/aether-proxy/state.json")"
+expect 'T16.56 same-path inode replacement restarts chinadns-ng' "$((dns_starts_before + 1))" \
+	"$(count_calls "$SYSROOT/calls.log" 'chinadns-ng -C ')"
+expect 'T16.56 same-path inode replacement emits RELOAD_APPLIED' "$((applied_before + 1))" \
+	"$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
+
+# Immediate second reload without changing the file must reuse the cached signature and skip -V.
+reload_checkpoint
+t1656_ver_before_noop=$(count_calls "$LOG" 'chinadns-ng -V')
+kill -HUP "$DAEMON_PID"
+assert_completion t1656-unchanged "$NODE_A" gfw true
+await_quiet
+t1656_ver_after_noop=$(count_calls "$LOG" 'chinadns-ng -V')
+t1656_noop_delta=$((t1656_ver_after_noop - t1656_ver_before_noop))
+printf 'TRACE T16.56 reload2 -V calls: before=%d after=%d delta=%d\n' \
+	"$t1656_ver_before_noop" "$t1656_ver_after_noop" "$t1656_noop_delta"
+expect 'T16.56 unchanged second reload does not probe -V again' 0 "$t1656_noop_delta"
+expect 'T16.56 unchanged second reload does not restart chinadns-ng' "$dns_starts_before" \
+	"$(count_calls "$SYSROOT/calls.log" 'chinadns-ng -C ')"
+expect 'T16.56 unchanged second reload emits no RELOAD_APPLIED' "$applied_before" \
+	"$(count_calls "$EVENTS" 'RELOAD_APPLIED')"
+expect 'T16.56 unchanged second reload keeps v2 version' 2025.09.02 \
+	"$("$UCODE" "$ROOT/tests/cli/jget.uc" -- components.chinadns-ng.version < "$SYSROOT/var/run/aether-proxy/state.json")"
+
+# Verify binary_signature preserves null return and FS_FAILED logging on stat failure.
+t1656_stat_err_dir="$T/stat-err-run"
+mkdir -p "$t1656_stat_err_dir"
+t1656_missing_sig=$("$UCODE" -e '
+	import * as log from "aetherproxy.log";
+	import * as reload from "aetherproxy.reload";
+	log.set_run_dir(ARGV[0]);
+	let sig = reload.binary_signature(ARGV[1]);
+	printf("%s\n", sig == null ? "null" : sig);
+' -- "$t1656_stat_err_dir" "$T/bin/nonexistent-chinadns-ng")
+expect 'T16.56 binary_signature returns null on stat failure' null "$t1656_missing_sig"
+grep -Fq '"FS_FAILED"' "$t1656_stat_err_dir/events.jsonl" \
+	&& ok 'T16.56 binary_signature logs FS_FAILED on stat failure' \
+	|| bad 'T16.56 binary_signature logs FS_FAILED on stat failure'
+
 # Disable: the pure plan returns stop alone and daemon follows the normal stop path.
 sed -i "s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"

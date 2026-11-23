@@ -285,7 +285,7 @@ export function binary_signature(path) {
 		log.event('error', 'FS_FAILED', { op: 'stat', path, detail: fs.error() ?? 'unknown error' });
 		return null;
 	}
-	return sprintf('%.J', [ st.size, st.mtime, st.ino ]);
+	return sprintf('%.J', [ st.size, st.mtime, st.inode ]);
 };
 
 // Preserve resolved versions so planning and publication use the same observation.
