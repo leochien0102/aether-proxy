@@ -1,0 +1,711 @@
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --version
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk mkpkg --help
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+
+Usage: apk mkpkg [<OPTIONS>...]
+
+Description:
+  apk mkpkg creates a package file from given metadata and data files.
+
+Global options:
+  --allow-untrusted     Install packages with untrusted signature or no
+                        signature
+  --arch ARCH           Temporarily override architectures
+  --cache[=BOOL]        When disabled, prevents using any local cache paths
+  --cache-dir CACHEDIR  Temporarily override the cache directory
+  --cache-max-age AGE   Maximum AGE (in minutes) for index in cache before
+                        it's refreshed
+  --cache-packages[=BOOL]
+                        Store a copy of packages at installation time to
+                        cache
+  --cache-predownload[=BOOL]
+                        Download needed packages to cache before starting to
+                        commit a transtaction
+  --check-certificate[=BOOL]
+                        When disabled, omits the validation of the HTTPS
+                        server certificate
+  --force, -f           Enable selected --force-* options (deprecated)
+  --force-binary-stdout
+                        Continue even if binary data will be printed to the
+                        terminal
+  --force-broken-world  DANGEROUS: Delete world constraints until a solution
+                        without conflicts is found
+  --force-missing-repositories
+                        Continue even if some of the repository indexes are
+                        not available
+  --force-no-chroot     Disable chroot for scripts
+  --force-non-repository
+                        Continue even if packages may be lost on reboot
+  --force-old-apk       Continue even if packages use unsupported features
+  --force-overwrite     Overwrite files in other packages
+  --force-refresh       Do not use cached files (local or from proxy)
+  --help, -h            Print the list of all commands with descriptions
+  --interactive[=AUTO]  Determine if questions can be asked before
+                        performing certain operations
+  --keys-dir KEYSDIR    Override the default system trusted keys directories
+  --legacy-info[=BOOL]  Print output from "info" applet in legacy format or
+                        new "query" format
+  --logfile[=BOOL]      If turned off, disables the writing of the log file
+  --network[=BOOL]      If turned off, does not use the network
+  --preserve-env[=BOOL]
+                        Allow passing the user environment down to scripts
+                        (excluding variables starting APK_ which are
+                        reserved)
+  --pretty-print[=AUTO]
+                        Determine if output should be stylized to be human
+                        readable
+  --preupgrade-depends DEPS
+                        Add or modify preupgrade dependencies
+  --print-arch          Print default arch and exit
+  --progress[=AUTO]     Enable or disable progress bar
+  --progress-fd FD      Write progress to the specified file descriptor
+  --purge[=BOOL]        Purge modified configuration and cached packages
+  --quiet, -q           Print less information
+  --repositories-file REPOFILE
+                        Override system repositories, see
+                        apk-repositories(5)
+  --repository, -X REPO
+                        Specify additional package repository
+  --repository-config REPOCONFIG
+                        Specify additional package repository configuration
+  --root, -p ROOT       Manage file system at ROOT
+  --root-tmpfs[=AUTO]   Specify if the ROOT is a temporary filesystem
+  --sync[=AUTO]         Determine if filesystem caches should be committed
+                        to disk
+  --timeout TIME        Timeout network connections if no progress is made
+                        in TIME seconds
+  --update-cache, -U    Alias for '--cache-max-age 0'
+  --uvol-manager UVOL   Specify the OpenWRT UVOL volume manager executable
+                        location
+  --verbose, -v         Print more information (can be specified twice)
+  --version, -V         Print program version and exit
+  --wait TIME           Wait for TIME seconds to get an exclusive repository
+                        lock before failing
+
+Generation options:
+  --compression, -C ALGORITHM[:LEVEL]
+                        Compress the file with given ALGORITHM and LEVEL
+  --sign-key KEYFILE    Sign the file with a private key in the specified
+                        KEYFILE
+
+Mkpkg options:
+  --compat APK_VERSION  Produces packages comptable with given apk versions
+  --files, -F PATH      Specify the build root path from where the files are
+                        collected from to be included in the package
+  --info, -I KEY:VALUE  Specify metadata for the package
+  --output, -o FILE     Specify the FILE as the output file name
+  --rootnode[=BOOL]     Deprecated alias to set compat version
+  --script, -s TYPE:SCRIPT
+                        Add the specified SCRIPT with the TYPE
+  --stdout              Output resulting package to stdout
+  --trigger, -t TRIGGER
+                        Append TRIGGER path specification to list triggers
+                        which affect when the trigger script is executed
+  --xattrs[=BOOL]       Specify if xattrs should be included in the metadata
+
+For more information: man 8 apk-mkpkg
+--- stderr
+--- rc: 1
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk mkndx --help
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+
+Usage: apk mkndx [<OPTIONS>...] PACKAGES...
+
+Description:
+  apk mkndx creates a repository index from a list of package files. See
+  apk-repositories(5) for more information on repository indicies.
+
+Global options:
+  --allow-untrusted     Install packages with untrusted signature or no
+                        signature
+  --arch ARCH           Temporarily override architectures
+  --cache[=BOOL]        When disabled, prevents using any local cache paths
+  --cache-dir CACHEDIR  Temporarily override the cache directory
+  --cache-max-age AGE   Maximum AGE (in minutes) for index in cache before
+                        it's refreshed
+  --cache-packages[=BOOL]
+                        Store a copy of packages at installation time to
+                        cache
+  --cache-predownload[=BOOL]
+                        Download needed packages to cache before starting to
+                        commit a transtaction
+  --check-certificate[=BOOL]
+                        When disabled, omits the validation of the HTTPS
+                        server certificate
+  --force, -f           Enable selected --force-* options (deprecated)
+  --force-binary-stdout
+                        Continue even if binary data will be printed to the
+                        terminal
+  --force-broken-world  DANGEROUS: Delete world constraints until a solution
+                        without conflicts is found
+  --force-missing-repositories
+                        Continue even if some of the repository indexes are
+                        not available
+  --force-no-chroot     Disable chroot for scripts
+  --force-non-repository
+                        Continue even if packages may be lost on reboot
+  --force-old-apk       Continue even if packages use unsupported features
+  --force-overwrite     Overwrite files in other packages
+  --force-refresh       Do not use cached files (local or from proxy)
+  --help, -h            Print the list of all commands with descriptions
+  --interactive[=AUTO]  Determine if questions can be asked before
+                        performing certain operations
+  --keys-dir KEYSDIR    Override the default system trusted keys directories
+  --legacy-info[=BOOL]  Print output from "info" applet in legacy format or
+                        new "query" format
+  --logfile[=BOOL]      If turned off, disables the writing of the log file
+  --network[=BOOL]      If turned off, does not use the network
+  --preserve-env[=BOOL]
+                        Allow passing the user environment down to scripts
+                        (excluding variables starting APK_ which are
+                        reserved)
+  --pretty-print[=AUTO]
+                        Determine if output should be stylized to be human
+                        readable
+  --preupgrade-depends DEPS
+                        Add or modify preupgrade dependencies
+  --print-arch          Print default arch and exit
+  --progress[=AUTO]     Enable or disable progress bar
+  --progress-fd FD      Write progress to the specified file descriptor
+  --purge[=BOOL]        Purge modified configuration and cached packages
+  --quiet, -q           Print less information
+  --repositories-file REPOFILE
+                        Override system repositories, see
+                        apk-repositories(5)
+  --repository, -X REPO
+                        Specify additional package repository
+  --repository-config REPOCONFIG
+                        Specify additional package repository configuration
+  --root, -p ROOT       Manage file system at ROOT
+  --root-tmpfs[=AUTO]   Specify if the ROOT is a temporary filesystem
+  --sync[=AUTO]         Determine if filesystem caches should be committed
+                        to disk
+  --timeout TIME        Timeout network connections if no progress is made
+                        in TIME seconds
+  --update-cache, -U    Alias for '--cache-max-age 0'
+  --uvol-manager UVOL   Specify the OpenWRT UVOL volume manager executable
+                        location
+  --verbose, -v         Print more information (can be specified twice)
+  --version, -V         Print program version and exit
+  --wait TIME           Wait for TIME seconds to get an exclusive repository
+                        lock before failing
+
+Generation options:
+  --compression, -C ALGORITHM[:LEVEL]
+                        Compress the file with given ALGORITHM and LEVEL
+  --sign-key KEYFILE    Sign the file with a private key in the specified
+                        KEYFILE
+
+Mkndx options:
+  --description, -d TEXT
+                        Add a description to the index
+  --filter-spec PKGNAME_SPEC
+                        Filter previous index only
+  --hash HASH           Use HASH as the algorithm for apk v3 integrity
+  --index, -x INDEX     Read an existing index from INDEX to speed up the
+                        creation of the new index by reusing data when
+                        possible
+  --output, -o FILE     Output generated index to FILE
+  --pkgname-spec PKGNAME_SPEC
+                        Specify package name specification for downloading
+                        the packages
+
+For more information: man 8 apk-mkndx
+--- stderr
+--- rc: 1
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk query --help
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+
+Usage: apk query [<OPTIONS>...] QUERY...
+   or: apk query [<OPTIONS>...] --recursive CONSTRAINTS...
+
+Description:
+  apk query searches for matching packages from selected sources.
+
+Global options:
+  --allow-untrusted     Install packages with untrusted signature or no
+                        signature
+  --arch ARCH           Temporarily override architectures
+  --cache[=BOOL]        When disabled, prevents using any local cache paths
+  --cache-dir CACHEDIR  Temporarily override the cache directory
+  --cache-max-age AGE   Maximum AGE (in minutes) for index in cache before
+                        it's refreshed
+  --cache-packages[=BOOL]
+                        Store a copy of packages at installation time to
+                        cache
+  --cache-predownload[=BOOL]
+                        Download needed packages to cache before starting to
+                        commit a transtaction
+  --check-certificate[=BOOL]
+                        When disabled, omits the validation of the HTTPS
+                        server certificate
+  --force, -f           Enable selected --force-* options (deprecated)
+  --force-binary-stdout
+                        Continue even if binary data will be printed to the
+                        terminal
+  --force-broken-world  DANGEROUS: Delete world constraints until a solution
+                        without conflicts is found
+  --force-missing-repositories
+                        Continue even if some of the repository indexes are
+                        not available
+  --force-no-chroot     Disable chroot for scripts
+  --force-non-repository
+                        Continue even if packages may be lost on reboot
+  --force-old-apk       Continue even if packages use unsupported features
+  --force-overwrite     Overwrite files in other packages
+  --force-refresh       Do not use cached files (local or from proxy)
+  --help, -h            Print the list of all commands with descriptions
+  --interactive[=AUTO]  Determine if questions can be asked before
+                        performing certain operations
+  --keys-dir KEYSDIR    Override the default system trusted keys directories
+  --legacy-info[=BOOL]  Print output from "info" applet in legacy format or
+                        new "query" format
+  --logfile[=BOOL]      If turned off, disables the writing of the log file
+  --network[=BOOL]      If turned off, does not use the network
+  --preserve-env[=BOOL]
+                        Allow passing the user environment down to scripts
+                        (excluding variables starting APK_ which are
+                        reserved)
+  --pretty-print[=AUTO]
+                        Determine if output should be stylized to be human
+                        readable
+  --preupgrade-depends DEPS
+                        Add or modify preupgrade dependencies
+  --print-arch          Print default arch and exit
+  --progress[=AUTO]     Enable or disable progress bar
+  --progress-fd FD      Write progress to the specified file descriptor
+  --purge[=BOOL]        Purge modified configuration and cached packages
+  --quiet, -q           Print less information
+  --repositories-file REPOFILE
+                        Override system repositories, see
+                        apk-repositories(5)
+  --repository, -X REPO
+                        Specify additional package repository
+  --repository-config REPOCONFIG
+                        Specify additional package repository configuration
+  --root, -p ROOT       Manage file system at ROOT
+  --root-tmpfs[=AUTO]   Specify if the ROOT is a temporary filesystem
+  --sync[=AUTO]         Determine if filesystem caches should be committed
+                        to disk
+  --timeout TIME        Timeout network connections if no progress is made
+                        in TIME seconds
+  --update-cache, -U    Alias for '--cache-max-age 0'
+  --uvol-manager UVOL   Specify the OpenWRT UVOL volume manager executable
+                        location
+  --verbose, -v         Print more information (can be specified twice)
+  --version, -V         Print program version and exit
+  --wait TIME           Wait for TIME seconds to get an exclusive repository
+                        lock before failing
+
+Query options:
+  --all-matches         Select all matched packages
+  --available           Filter selection to available packages
+  --fields FIELDS[:REVERSE_FIELD]
+                        A comma separated list of fields to include in the
+                        output
+  --format FORMATSPEC   Specify output format from default, yaml or json
+  --from FROMSPEC       Search packages from: system (all system sources),
+                        repositories (exclude installed database), installed
+                        (exclude normal repositories) or none (commandline
+                        repositories only)
+  --installed           Filter selection to installed packages
+  --match FIELDS        A comma separated list of fields to match the query
+                        against
+  --recursive           Run solver algorithm with given CONSTRAINTS to
+                        select packages
+  --summarize FIELD[:REVERSE_FIELD]
+                        Produce a summary of the specified field from all
+                        matches
+  --upgradable          Filter selection to upgradable packages
+  --world               Include apk-world(5) dependencies in constraints
+  --orphaned            Filter selection to orphaned packages
+--- stderr
+--- rc: 1
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk add --help
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+
+Usage: apk add [<OPTIONS>...] [CONSTRAINTS|_file_]...
+
+Description:
+  apk add adds or updates given constraints to WORLD (see apk-world(5)) and
+  commit changes to disk. This usually involves installing new packages, but
+  may also cause other changes to the installed packages.
+
+Global options:
+  --allow-untrusted     Install packages with untrusted signature or no
+                        signature
+  --arch ARCH           Temporarily override architectures
+  --cache[=BOOL]        When disabled, prevents using any local cache paths
+  --cache-dir CACHEDIR  Temporarily override the cache directory
+  --cache-max-age AGE   Maximum AGE (in minutes) for index in cache before
+                        it's refreshed
+  --cache-packages[=BOOL]
+                        Store a copy of packages at installation time to
+                        cache
+  --cache-predownload[=BOOL]
+                        Download needed packages to cache before starting to
+                        commit a transtaction
+  --check-certificate[=BOOL]
+                        When disabled, omits the validation of the HTTPS
+                        server certificate
+  --force, -f           Enable selected --force-* options (deprecated)
+  --force-binary-stdout
+                        Continue even if binary data will be printed to the
+                        terminal
+  --force-broken-world  DANGEROUS: Delete world constraints until a solution
+                        without conflicts is found
+  --force-missing-repositories
+                        Continue even if some of the repository indexes are
+                        not available
+  --force-no-chroot     Disable chroot for scripts
+  --force-non-repository
+                        Continue even if packages may be lost on reboot
+  --force-old-apk       Continue even if packages use unsupported features
+  --force-overwrite     Overwrite files in other packages
+  --force-refresh       Do not use cached files (local or from proxy)
+  --help, -h            Print the list of all commands with descriptions
+  --interactive[=AUTO]  Determine if questions can be asked before
+                        performing certain operations
+  --keys-dir KEYSDIR    Override the default system trusted keys directories
+  --legacy-info[=BOOL]  Print output from "info" applet in legacy format or
+                        new "query" format
+  --logfile[=BOOL]      If turned off, disables the writing of the log file
+  --network[=BOOL]      If turned off, does not use the network
+  --preserve-env[=BOOL]
+                        Allow passing the user environment down to scripts
+                        (excluding variables starting APK_ which are
+                        reserved)
+  --pretty-print[=AUTO]
+                        Determine if output should be stylized to be human
+                        readable
+  --preupgrade-depends DEPS
+                        Add or modify preupgrade dependencies
+  --print-arch          Print default arch and exit
+  --progress[=AUTO]     Enable or disable progress bar
+  --progress-fd FD      Write progress to the specified file descriptor
+  --purge[=BOOL]        Purge modified configuration and cached packages
+  --quiet, -q           Print less information
+  --repositories-file REPOFILE
+                        Override system repositories, see
+                        apk-repositories(5)
+  --repository, -X REPO
+                        Specify additional package repository
+  --repository-config REPOCONFIG
+                        Specify additional package repository configuration
+  --root, -p ROOT       Manage file system at ROOT
+  --root-tmpfs[=AUTO]   Specify if the ROOT is a temporary filesystem
+  --sync[=AUTO]         Determine if filesystem caches should be committed
+                        to disk
+  --timeout TIME        Timeout network connections if no progress is made
+                        in TIME seconds
+  --update-cache, -U    Alias for '--cache-max-age 0'
+  --uvol-manager UVOL   Specify the OpenWRT UVOL volume manager executable
+                        location
+  --verbose, -v         Print more information (can be specified twice)
+  --version, -V         Print program version and exit
+  --wait TIME           Wait for TIME seconds to get an exclusive repository
+                        lock before failing
+
+Commit options:
+  --clean-protected[=BOOL]
+                        If disabled, prevents creation of .apk-new files in
+                        configuration directories
+  --commit-hooks[=BOOL]
+                        If disabled, skips the pre/post hook scripts (but
+                        not other scripts)
+  --initramfs-diskless-boot
+                        Used by initramfs when it's recreating root tmpfs
+  --overlay-from-stdin  Read list of overlay files from stdin
+  --scripts[=BOOL]      If disabled, prevents execution of all scripts
+  --simulate[=BOOL], -s
+                        Simulate the requested operation without making any
+                        changes
+
+Add options:
+  --initdb              Initialize a new package database
+  --latest, -l          Always choose the latest package by version
+  --no-chown            Deperecated alias for --usermode
+  --upgrade, -u         Upgrade PACKAGES and their dependencies
+  --usermode            Create usermode database with --initdb
+  --virtual, -t NAME    Create virtual package NAME with given dependencies
+
+For more information: man 8 apk-add
+--- stderr
+--- rc: 1
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk list --help
+--- stdout
+apk-tools 3.0.5, compiled for x86_64.
+
+Usage: apk list [<OPTIONS>...] PATTERN...
+
+Description:
+  apk list searches package indicies for packages matching the given patterns
+  and prints any matching packages.
+
+Global options:
+  --allow-untrusted     Install packages with untrusted signature or no
+                        signature
+  --arch ARCH           Temporarily override architectures
+  --cache[=BOOL]        When disabled, prevents using any local cache paths
+  --cache-dir CACHEDIR  Temporarily override the cache directory
+  --cache-max-age AGE   Maximum AGE (in minutes) for index in cache before
+                        it's refreshed
+  --cache-packages[=BOOL]
+                        Store a copy of packages at installation time to
+                        cache
+  --cache-predownload[=BOOL]
+                        Download needed packages to cache before starting to
+                        commit a transtaction
+  --check-certificate[=BOOL]
+                        When disabled, omits the validation of the HTTPS
+                        server certificate
+  --force, -f           Enable selected --force-* options (deprecated)
+  --force-binary-stdout
+                        Continue even if binary data will be printed to the
+                        terminal
+  --force-broken-world  DANGEROUS: Delete world constraints until a solution
+                        without conflicts is found
+  --force-missing-repositories
+                        Continue even if some of the repository indexes are
+                        not available
+  --force-no-chroot     Disable chroot for scripts
+  --force-non-repository
+                        Continue even if packages may be lost on reboot
+  --force-old-apk       Continue even if packages use unsupported features
+  --force-overwrite     Overwrite files in other packages
+  --force-refresh       Do not use cached files (local or from proxy)
+  --help, -h            Print the list of all commands with descriptions
+  --interactive[=AUTO]  Determine if questions can be asked before
+                        performing certain operations
+  --keys-dir KEYSDIR    Override the default system trusted keys directories
+  --legacy-info[=BOOL]  Print output from "info" applet in legacy format or
+                        new "query" format
+  --logfile[=BOOL]      If turned off, disables the writing of the log file
+  --network[=BOOL]      If turned off, does not use the network
+  --preserve-env[=BOOL]
+                        Allow passing the user environment down to scripts
+                        (excluding variables starting APK_ which are
+                        reserved)
+  --pretty-print[=AUTO]
+                        Determine if output should be stylized to be human
+                        readable
+  --preupgrade-depends DEPS
+                        Add or modify preupgrade dependencies
+  --print-arch          Print default arch and exit
+  --progress[=AUTO]     Enable or disable progress bar
+  --progress-fd FD      Write progress to the specified file descriptor
+  --purge[=BOOL]        Purge modified configuration and cached packages
+  --quiet, -q           Print less information
+  --repositories-file REPOFILE
+                        Override system repositories, see
+                        apk-repositories(5)
+  --repository, -X REPO
+                        Specify additional package repository
+  --repository-config REPOCONFIG
+                        Specify additional package repository configuration
+  --root, -p ROOT       Manage file system at ROOT
+  --root-tmpfs[=AUTO]   Specify if the ROOT is a temporary filesystem
+  --sync[=AUTO]         Determine if filesystem caches should be committed
+                        to disk
+  --timeout TIME        Timeout network connections if no progress is made
+                        in TIME seconds
+  --update-cache, -U    Alias for '--cache-max-age 0'
+  --uvol-manager UVOL   Specify the OpenWRT UVOL volume manager executable
+                        location
+  --verbose, -v         Print more information (can be specified twice)
+  --version, -V         Print program version and exit
+  --wait TIME           Wait for TIME seconds to get an exclusive repository
+                        lock before failing
+
+Query options:
+  --all-matches         Select all matched packages
+  --available           Filter selection to available packages
+  --fields FIELDS[:REVERSE_FIELD]
+                        A comma separated list of fields to include in the
+                        output
+  --format FORMATSPEC   Specify output format from default, yaml or json
+  --from FROMSPEC       Search packages from: system (all system sources),
+                        repositories (exclude installed database), installed
+                        (exclude normal repositories) or none (commandline
+                        repositories only)
+  --installed           Filter selection to installed packages
+  --match FIELDS        A comma separated list of fields to match the query
+                        against
+  --recursive           Run solver algorithm with given CONSTRAINTS to
+                        select packages
+  --summarize FIELD[:REVERSE_FIELD]
+                        Produce a summary of the specified field from all
+                        matches
+  --upgradable          Filter selection to upgradable packages
+  --world               Include apk-world(5) dependencies in constraints
+  --orphaned            Filter selection to orphaned packages
+
+List options:
+  --available, -a       Consider only available packages
+  --depends, -d         List packages by dependency
+  --installed, -I       Consider only installed packages
+  --manifest            List installed packages in format `<name> <version>`
+  --origin, -o          List packages by origin
+  --orphaned, -O        Consider only orphaned packages
+  --providers, -P       List packages by provider
+  --upgradable, --upgradeable, -u
+                        Consider only upgradable packages
+
+For more information: man 8 apk-list
+--- stderr
+--- rc: 1
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/build-root --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories mkpkg --files /tmp/apk-evidence.lPnO7zw9/files --info name:aether-dns --info version:1.0.0-r1 --info description:apk-installed-query-evidence --info license:MIT --info provides:dns-engine=1.0.0 --output /tmp/apk-evidence.lPnO7zw9/packages/aether-dns.apk
+--- stdout
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/build-root --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories mkpkg --files /tmp/apk-evidence.lPnO7zw9/files --info name:chinadns-ng --info version:2025.08.09-r1 --info description:apk-installed-query-evidence --info license:MIT --info provides:dns-engine --output /tmp/apk-evidence.lPnO7zw9/packages/chinadns-ng.apk
+--- stdout
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/build-root --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories mkpkg --files /tmp/apk-evidence.lPnO7zw9/files --info name:aether-dns --info version:1.0.0-r1 --info description:apk-installed-query-evidence --info license:MIT --output /tmp/apk-evidence.lPnO7zw9/packages/no-provides.apk
+--- stdout
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/aether-dns --usermode --initdb --no-network --allow-untrusted --force-non-repository --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories add /tmp/apk-evidence.lPnO7zw9/packages/aether-dns.apk
+--- stdout
+(1/1) Installing aether-dns (1.0.0-r1)
+OK: 1 B in 1 packages
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/chinadns-ng --usermode --initdb --no-network --allow-untrusted --force-non-repository --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories add /tmp/apk-evidence.lPnO7zw9/packages/chinadns-ng.apk
+--- stdout
+(1/1) Installing chinadns-ng (2025.08.09-r1)
+OK: 1 B in 1 packages
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/no-provides --usermode --initdb --no-network --allow-untrusted --force-non-repository --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories add /tmp/apk-evidence.lPnO7zw9/packages/no-provides.apk
+--- stdout
+(1/1) Installing aether-dns (1.0.0-r1)
+OK: 1 B in 1 packages
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/absent --usermode --initdb --no-network --allow-untrusted --force-non-repository --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories add
+--- stdout
+OK: 0 B in 0 packages
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/repository-only --usermode --initdb --no-network --allow-untrusted --force-non-repository --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories add
+--- stdout
+OK: 0 B in 0 packages
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/build-root --no-network --allow-untrusted --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories mkndx --output /tmp/apk-evidence.lPnO7zw9/packages/Packages.adb /tmp/apk-evidence.lPnO7zw9/packages/aether-dns.apk
+--- stdout
+Index has 1 packages (of which 1 are new)
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/repository-only --no-network --allow-untrusted --repositories-file /tmp/apk-evidence.lPnO7zw9/local-repositories query --from repositories --format json --fields name\,version\,provides aether-dns
+--- stdout
+[
+  {
+    "name": "aether-dns",
+    "version": "1.0.0-r1",
+    "provides": [
+      "dns-engine=1.0.0"
+    ]
+  }
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/repository-only --no-network --allow-untrusted --repositories-file /tmp/apk-evidence.lPnO7zw9/local-repositories query --from installed --format json --fields name\,version\,provides aether-dns
+--- stdout
+[
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/aether-dns --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories query --from installed --format json --fields name\,version\,provides aether-dns
+--- stdout
+[
+  {
+    "name": "aether-dns",
+    "version": "1.0.0-r1",
+    "provides": [
+      "dns-engine=1.0.0"
+    ]
+  }
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/chinadns-ng --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories query --from installed --format json --fields name\,version\,provides chinadns-ng
+--- stdout
+[
+  {
+    "name": "chinadns-ng",
+    "version": "2025.08.09-r1",
+    "provides": [
+      "dns-engine"
+    ]
+  }
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/no-provides --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories query --from installed --format json --fields name\,version\,provides aether-dns
+--- stdout
+[
+  {
+    "name": "aether-dns",
+    "version": "1.0.0-r1"
+  }
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/absent --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories query --from installed --format json --fields name\,version\,provides aether-dns
+--- stdout
+[
+]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/aether-dns --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories list -I aether-dns
+--- stdout
+aether-dns-1.0.0-r1 x86_64 {aether-dns} (MIT) [installed]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/chinadns-ng --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories list -I chinadns-ng
+--- stdout
+chinadns-ng-2025.08.09-r1 x86_64 {chinadns-ng} (MIT) [installed]
+--- stderr
+--- rc: 0
+
+$ /tmp/t1654-evidence/apk-3.0.5/build/src/apk --root /tmp/apk-evidence.lPnO7zw9/failure --no-network --repositories-file /tmp/apk-evidence.lPnO7zw9/repositories query --from installed --format json --fields name\,version\,provides aether-dns
+--- stdout
+--- stderr
+ERROR: Unable to open root: No such file or directory
+--- rc: 99
+
+PASS: real apk installed-query evidence (capture, six scenarios)

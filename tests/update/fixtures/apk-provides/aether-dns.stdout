@@ -1,0 +1,9 @@
+[
+  {
+    "name": "aether-dns",
+    "version": "1.0.0-r1",
+    "provides": [
+      "dns-engine=1.0.0"
+    ]
+  }
+]

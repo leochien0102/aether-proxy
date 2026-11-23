@@ -1,0 +1,9 @@
+[
+  {
+    "name": "chinadns-ng",
+    "version": "2025.08.09-r1",
+    "provides": [
+      "dns-engine"
+    ]
+  }
+]

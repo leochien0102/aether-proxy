@@ -101,12 +101,50 @@ p.write_text(p.read_text().split("config main 'main'")[0])
 PY
 	fi
 done
+# T16.54: replay real installed-database query output through signed transactions.
+apk_metadata_manager() {
+	printf '#!/bin/sh\nexec python3 "%s/tests/update/apk-metadata.py" "$@"\n' "$ROOT" > "$T/bin/apk"
+	chmod +x "$T/bin/apk"
+}
+apk_metadata_manager
+for scenario in aether-dns chinadns-ng no-provides repository-only failure legacy-failure malformed old missing-recovery; do
+	prereq_prepare
+	export APK_METADATA_CASE="$scenario"
+	case "$scenario" in
+		aether-dns|failure|malformed|old)
+			printf '1.0.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-dns"
+			prereq_binary aether-dns 1.0.0 ;;
+		chinadns-ng|legacy-failure)
+			printf '2025.08.09-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/chinadns-ng"
+			prereq_binary chinadns-ng 2025.08.09 ;;
+		no-provides|missing-recovery)
+			printf '1.0.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-dns"
+			prereq_binary aether-dns 1.0.0 ;;
+		repository-only) prereq_binary chinadns-ng 2025.08.09 ;;
+	esac
+	if [ "$scenario" = old ]; then prereq_binary aether-dns 0.9.9; fi
+	if [ "$scenario" = missing-recovery ]; then
+		python3 "$ROOT/tests/update/prerequisite-manifest.py" "$T" recovery
+	fi
+	prereq_sign
+	for log in http1 http2; do wc -c < "$T/$log" > "$T/$log-apk-offset"; done
+	out=$(policy_run aether-proxy); rc=$?
+	case "$scenario" in failure|legacy-failure|malformed|missing-recovery) expected=1 ;; *) expected=0 ;; esac
+	expect "T16.54 $scenario exit" "$expected" "$rc"
+	if python3 "$ROOT/tests/update/apk-provides-assert.py" "$T" "$scenario" "$out"; then
+		ok "T16.54 $scenario installed capability transaction"
+	else
+		bad "T16.54 $scenario installed capability transaction"
+	fi
+done
+unset APK_METADATA_CASE
+rm "$T/bin/apk"
+
 # M4-05: a date version is numerically newer; both managers must still install
 # the exact local 1.0.0 asset, and restore the exact date asset on backend failure.
 for manager in opkg apk; do
 	if [ "$manager" = apk ]; then
-		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
-		chmod +x "$T/bin/apk"
+		apk_metadata_manager
 	fi
 	for outcome in success rollback; do
 		prereq_prepare

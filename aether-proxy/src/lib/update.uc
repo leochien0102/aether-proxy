@@ -199,9 +199,11 @@ function package_manager(bin_dir) {
 	return null;
 }
 
-function installed_metadata(ctx, pm, name) {
+function installed_metadata(ctx, pm, name, with_provides) {
 	let bin = ctx.pm_bin;
-	let argv = pm == 'opkg' ? [ bin, 'status', name ] : [ bin, 'list', '-I', name ];
+	let argv = pm == 'opkg' ? [ bin, 'status', name ]
+		: with_provides ? [ bin, 'query', '--from', 'installed', '--format', 'json',
+			'--fields', 'name,version,provides', name ] : [ bin, 'list', '-I', name ];
 	let result = run(argv, { timeout: 10, quiet: true });
 	if (result.code != 0) {
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });
@@ -217,9 +219,30 @@ function installed_metadata(ctx, pm, name) {
 			return { ok: true, version: null, provides: [] };
 		return { ok: true, version: match_version ? trim(match_version[2]) : null, provides };
 	}
+	if (with_provides) {
+		// Query only the installed database; repository candidates are not evidence.
+		let records = null;
+		try { records = json(result.stdout); }
+		catch (e) {
+			return { ok: false, version: null, provides: [], detail: 'invalid apk installed JSON for ' + name };
+		}
+		if (type(records) == 'array' && length(records) == 0)
+			return { ok: true, version: null, provides: [] };
+		let item = type(records) == 'array' && length(records) == 1 ? records[0] : null;
+		if (type(item) != 'object' || item.name != name || type(item.version) != 'string'
+			|| !length(item.version) || (item.provides != null && type(item.provides) != 'array'))
+			return { ok: false, version: null, provides: [], detail: 'invalid apk installed metadata for ' + name };
+		let provides = [];
+		for (let capability in item.provides ?? []) {
+			if (type(capability) != 'string')
+				return { ok: false, version: null, provides: [], detail: 'invalid apk Provides for ' + name };
+			push(provides, replace(capability, /[<>=~].*$/, ''));
+		}
+		return { ok: true, version: item.version, provides };
+	}
 	let token = split(trim(split(trim(result.stdout), '\n')[0] ?? ''), /[[:space:]]+/)[0] ?? '';
 	let prefix = `${name}-`;
-	// apk list cannot reliably report Provides; unknown is deliberately unsatisfied.
+	// Ordinary version lookups need no capability query.
 	return { ok: true, provides: [],
 		version: substr(token, 0, length(prefix)) == prefix ? substr(token, length(prefix)) : null };
 }
@@ -1049,7 +1072,7 @@ export function prerequisite_satisfied(found, metadata) {
 	let run_ok = found != null && (floor == null || (order != null && order >= 0));
 	let pkg_ok = false;
 	for (let item in metadata)
-		if (item.ok && index(item.provides ?? [], 'dns-engine') >= 0)
+		if (item.ok && item.version != null && index(item.provides ?? [], 'dns-engine') >= 0)
 			pkg_ok = true;
 	return run_ok && pkg_ok;
 };
@@ -1092,14 +1115,17 @@ function prerequisite_prepare(opts, selected, plat) {
 		found = { ...found, version: banner.code == 0
 			? component_version.parse_version(banner.stdout + banner.stderr) : null };
 	}
-	let installed = installed_metadata(ctx, plat.pm, 'aether-dns');
-	let legacy = installed_metadata(ctx, plat.pm, C.CHINADNS_COMPONENT);
+	let installed = installed_metadata(ctx, plat.pm, 'aether-dns', true);
+	let legacy = installed_metadata(ctx, plat.pm, C.CHINADNS_COMPONENT, true);
 	let prerequisite = { package: 'aether-dns', version: installed.version, action: 'skipped' };
 	if (prerequisite_satisfied(found, [ installed, legacy ]))
 		return { ok: true, prerequisite, changed: false };
 	// TODO(design): no failed/not-started action exists; before mutation use manual_required
 	// alongside the original failure code, rather than falsely claiming installation.
 	prerequisite.action = 'manual_required';
+	if (plat.pm == 'apk' && (!installed.ok || !legacy.ok))
+		return { ok: false, exit: 1, code: 'CMD_FAILED',
+			detail: !installed.ok ? installed.detail : legacy.detail, prerequisite };
 	if (!installed.ok)
 		return { ...prerequisite_manual('cannot determine installed aether-dns'), prerequisite };
 	let asset = prerequisite_asset(selected.manifest, plat, false);

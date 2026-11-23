@@ -5,6 +5,7 @@ import * as update from 'aetherproxy.update';
 let provider = { ok: true, version: '1.0.0-r1', provides: [ 'dns-engine' ] };
 let absent = { ok: true, version: null, provides: [] };
 let cases = [
+	[ 'uninstalled capability is not evidence', { path: '/custom/dns' }, [ { ok: true, version: null, provides: [ 'dns-engine' ] } ], false ],
 	[ 'provider without runtime', null, [ provider ], false ],
 	[ 'runtime without provider', { path: '/usr/bin/chinadns-ng', version: '2025.08.09' }, [ absent ], false ],
 	[ 'known engine below floor', { path: '/usr/bin/aether-dns', version: '0.9.9' }, [ provider ], false ],

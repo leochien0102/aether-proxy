@@ -74,8 +74,7 @@ for path in proxy companion; do
 done
 for manager in opkg apk; do
 	if [ "$manager" = apk ]; then
-		cp "$ROOT/tests/stubs/update-bin/apk" "$T/bin/apk"
-		chmod +x "$T/bin/apk"
+		apk_metadata_manager
 	fi
 	for scenario in W1 W2 W3 W4 W5 W5-low W6 W6-newer W7-cap W7-progress fresh-signature legacy legacy-no-progress; do
 		walker_prepare
