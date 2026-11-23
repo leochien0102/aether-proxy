@@ -428,15 +428,15 @@ def quota_tests(base):
 	check('T16.2 quota unreadable path shows unset and preserves the path',
 		json.loads(run().stdout) == unset and file.is_dir())
 	res = run('set', '100G')
-	check('T16.2 quota write failure is FS_FAILED exit 1', res.returncode == 1
+	check('T16.2 quota read failure is FS_FAILED exit 1', res.returncode == 1
 		and res.stderr == '' and json.loads(res.stdout)['code'] == 'FS_FAILED' and file.is_dir())
 	res = run('clear')
-	check('T16.2 quota clear write failure is FS_FAILED exit 1', res.returncode == 1
+	check('T16.2 quota clear read failure is FS_FAILED exit 1', res.returncode == 1
 		and res.stderr == '' and json.loads(res.stdout)['code'] == 'FS_FAILED' and file.is_dir())
 	events = [json.loads(line) for line in (base / 'quota-run/events.jsonl').read_text().splitlines()]
-	check('T16.2 quota write failure records existing FS_FAILED event',
+	check('T16.2 quota read failure records actual FS_FAILED operation',
 		events[-1]['code'] == 'FS_FAILED' and events[-1]['level'] == 'error'
-		and events[-1]['args']['op'] == 'write')
+		and events[-1]['args']['op'] == 'read')
 	file.rmdir()
 	res = run('set', '100G')
 	check('T16.2 quota set creates a missing file with empty history', res.returncode == 0

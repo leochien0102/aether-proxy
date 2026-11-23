@@ -172,6 +172,19 @@ function warn_load(loaded, path, opts) {
 	}
 }
 
+// Manual CLI (and LuCI's CLI adapter) tolerates a short overlapping flush.
+// Only confirmed flock contention is retryable; read/parse/write failures return
+// immediately. Keep the shared transaction non-blocking for background callers.
+function set_quota(path, bytes) {
+	let result;
+	for (let attempt = 0; attempt <= 10; attempt++) {
+		result = usage.set_quota(path, bytes, time());
+		if (result.ok || result.op != 'lock' || result.retryable !== true || attempt == 10)
+			return result;
+		sleep(100);
+	}
+}
+
 function quota_cmd(parsed, args) {
 	let opts = parsed.opts;
 	let words = parsed.positional;
@@ -183,11 +196,13 @@ function quota_cmd(parsed, args) {
 		return usage_error(args, 'stats quota [set <integer bytes|G|GB|T|TB>|clear]');
 	let path = replace(opts.sys_root ?? '', /\/$/, '') + C.USAGE_FILE;
 	let loaded = action == 'show' ? usage.load(path) : null;
-	let written = action == 'show' ? null : usage.set_quota(path, bytes, time());
-	warn_load(loaded ?? written.loaded, path, opts);
+	let written = action == 'show' ? null : set_quota(path, bytes);
+	// Read-only show keeps its warning semantics; a failed mutation emits one
+	// terminal error below, never a second warning for its failed load.
+	warn_load(loaded, path, opts);
 	if (written != null && !written.ok) {
 		log.set_run_dir(pipeline.run_dir(opts));
-		log.event('error', 'FS_FAILED', { op: 'write', path, detail: written.error });
+		log.event('error', 'FS_FAILED', { op: written.op ?? 'write', path, detail: written.error });
 		return pipeline.finish(opts, { ok: false, code: 'FS_FAILED', detail: written.error }, 1, written.error);
 	}
 	let result = { ok: true, quota: written?.quota ?? usage.quota_of(loaded?.document) };

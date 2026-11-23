@@ -3,3 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 python3 tests/stats/test.py
+python3 tests/stats/quota-retry.py
