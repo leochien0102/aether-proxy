@@ -296,6 +296,8 @@ export const WAN_DNS_RELOAD_TIMEOUT_SECS = 10;
 
 // T9.27 (docs/04 process model): fallback cleanup waits for the supervisor, not just its lock.
 export const DAEMON_PID_FILE = 'daemon.pid';
+// T16.59 (docs/04): dedicated per-run_dir instance lock held for the full daemon lifecycle.
+export const DAEMON_LOCK_FILE = 'daemon.lock';
 
 // T9.28 (docs/03 optional direct foreign DNS diagnostics).
 export const DNS_TEST_TIMEOUT_MS = 2000;

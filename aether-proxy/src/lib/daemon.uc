@@ -1255,6 +1255,30 @@ function run(args) {
 	let opts = resolved_opts(parsed.opts);
 	let ctx = make_context(opts, []);
 	setup_log(ctx);
+	// Acquire the per-instance lock before any shared state/PID write or startup step.
+	// Never unlink this lock file; closing/unlocking on exit or process death releases it.
+	let instance_lock_path = `${run_dir(ctx)}/${C.DAEMON_LOCK_FILE}`;
+	let instance_lock = sys.lock(instance_lock_path);
+	if (instance_lock == null) {
+		let detail = sys.error() ?? 'unknown error';
+		// ucode's fs.error() only exposes text (no numeric errno). Separate setup failures
+		// (mkdir/open -> exit 1) from flock(LOCK_EX|LOCK_NB) failures on a valid handle (BUSY -> exit 3).
+		if (sys.lock_retryable()) {
+			log.event('warn', 'BUSY', { holder: 'daemon' });
+			warn(`daemon: busy (${detail})\n`);
+			return 3;
+		}
+		log.event('error', 'START_FAILED', { step: 'instance_lock', detail });
+		warn(`daemon: cannot acquire instance lock: ${detail}\n`);
+		return 1;
+	}
+	function release_instance_lock() {
+		if (instance_lock != null) {
+			instance_lock.lock('u');
+			instance_lock.close();
+			instance_lock = null;
+		}
+	};
 	let daemon_started_at = time();
 	ctx.started_at = daemon_started_at;
 	let recovered = state.usage_today_of(state.read(run_dir(ctx)), daemon_started_at);
@@ -1266,20 +1290,24 @@ function run(args) {
 		dns_tier: raw.get(C.UCI_PACKAGE, 'dns', 'direct_dns_enabled') == '1' ? 'T2' : 'T1',
 		node_id: raw.get(C.UCI_PACKAGE, 'main', 'node'), mode: raw.get(C.UCI_PACKAGE, 'main', 'mode'),
 		degraded_mode: null, degraded_since: null });
-	if (!early.ok)
+	if (!early.ok) {
+		release_instance_lock();
 		return 1;
+	}
 	let pid = fs.readlink(`${C.PROC_DIR}/self`);
 	let pid_file = `${run_dir(ctx)}/${C.DAEMON_PID_FILE}`;
 	if (pid == null || !sys.write_atomic(pid_file, `${pid}\n`)) {
 		// docs/04: without a pid file cleanup --wait cannot see us, so do not start.
 		log.event('error', 'FS_FAILED', { op: 'write', path: pid_file,
 			detail: pid == null ? (fs.error() ?? 'cannot read own pid') : sys.error() });
+		release_instance_lock();
 		return 1;
 	}
 	if (!uloop.init()) {
 		event_failure(ctx, 'uloop_init', 'cannot initialize uloop');
 		if (!fs.unlink(pid_file))
 			log.event('error', 'FS_FAILED', { op: 'unlink', path: pid_file, detail: fs.error() ?? 'unknown error' });
+		release_instance_lock();
 		return 1;
 	}
 	let pending = { stop: false, reload: false, tick: false, xray_restart: false };
@@ -1649,6 +1677,7 @@ function run(args) {
 			handler.delete();
 	uloop.done();
 	ctx.retired_intervals = [];
+	release_instance_lock();
 	return ctx.bootstrap_cleanup_failed ? 1 : exit_code;
 };
 

@@ -246,7 +246,11 @@ function mkdir_p(path) {
 		}
 
 		if (!fs.mkdir(cur)) {
-			last_error = `mkdir ${cur}: ${fs_err()}`;
+			let detail = fs_err();
+			let existing = fs.stat(cur);
+			if (existing != null && existing.type == 'directory')
+				continue;
+			last_error = `mkdir ${cur}: ${detail}`;
 			return null;
 		}
 	}

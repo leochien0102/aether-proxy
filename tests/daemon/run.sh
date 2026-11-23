@@ -25,6 +25,7 @@ python3 "$ROOT/tests/daemon/start-stop.py" || exit 1
 python3 "$ROOT/tests/daemon/stop-state.py" || exit 1
 python3 "$ROOT/tests/daemon/stop-during-xray-restart.py" || exit 1
 python3 "$ROOT/tests/daemon/pending-requests.py" || exit 1
+python3 "$ROOT/tests/daemon/instance-owner.py" || exit 1
 python3 "$ROOT/tests/daemon/usage-persist.py" || exit 1
 python3 "$ROOT/tests/daemon/usage-lifecycle.py" || exit 1
 python3 "$ROOT/tests/daemon/stopping-unit.py" || exit 1
