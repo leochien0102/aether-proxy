@@ -371,7 +371,7 @@ def scenario_duplicate_while_running(base, binaries):
 
 		calls_before = len(f.call_lines())
 		xray_before = list(f.xray_starts())
-		busy_before = sum(1 for e in f.events() if e.get('code') == 'BUSY')
+		events_before = len(f.events())
 
 		with SnapshotWatcher(f.run) as watcher:
 			contender = f.run_contender('contender', timeout=4.0)
@@ -379,14 +379,25 @@ def scenario_duplicate_while_running(base, binaries):
 		new_calls = f.call_lines()[calls_before:]
 		mutating = [line for line in new_calls if is_mutating_call(line)]
 		xray_after = list(f.xray_starts())
-		busy_after = sum(1 for e in f.events() if e.get('code') == 'BUSY')
+		new_events = f.events()[events_before:]
+		lock_fail_events = [
+			e for e in new_events
+			if e.get('code') == 'START_FAILED'
+			and e.get('args', {}).get('step') == 'instance_lock'
+			and isinstance(e.get('args', {}).get('detail'), str)
+			and len(e.get('args', {}).get('detail', '').strip()) > 0
+		]
+		busy_events = [e for e in new_events if e.get('code') == 'BUSY']
 
-		check('S1 contender exits BUSY (3) quickly without timeout',
+		check('S1 contender exits 3 quickly without timeout',
 			(not contender['timed_out']) and contender['rc'] == 3,
 			f'rc={contender["rc"]} timed_out={contender["timed_out"]} stderr={contender["stderr"]!r}')
-		check('S1 contender emitted BUSY event',
-			busy_after >= busy_before + 1,
-			f'busy_before={busy_before} busy_after={busy_after}')
+		check('S1 contender records instance_lock START_FAILED with raw detail (no BUSY holder claim)',
+			len(lock_fail_events) == 1
+			and len(busy_events) == 0
+			and 'instance lock not acquired:' in contender['stderr']
+			and lock_fail_events[0]['args']['detail'] in contender['stderr'],
+			f'lock_fail_events={lock_fail_events} busy_events={busy_events} stderr={contender["stderr"]!r}')
 		check('S1 owner daemon.pid never overwritten or deleted during contention',
 			(not watcher.pid_missing) and watcher.pids_seen == {owner_pid} and f.read_pidfile('daemon.pid') == owner_pid,
 			f'pids_seen={watcher.pids_seen} missing={watcher.pid_missing} final={f.read_pidfile("daemon.pid")} contender={contender["pid"]}')
@@ -668,7 +679,7 @@ def scenario_sigkill_takeover(base, binaries):
 			wait_for(lambda: f.state().get('state') == 'running', successor,
 				timeout=10.0, label='S6 successor dataplane recovery')
 			new_xray = f.read_pidfile('xray.pid')
-			check('S6 dataplane recovered with fresh xray child',
+			check('S6 successor reaches running with fresh xray child',
 				new_xray is not None and new_xray != old_xray and pid_alive(new_xray),
 				f'old_xray={old_xray} new_xray={new_xray}')
 			successor.terminate()

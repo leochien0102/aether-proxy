@@ -1262,14 +1262,15 @@ function run(args) {
 	if (instance_lock == null) {
 		let detail = sys.error() ?? 'unknown error';
 		// ucode's fs.error() only exposes text (no numeric errno). Separate setup failures
-		// (mkdir/open -> exit 1) from flock(LOCK_EX|LOCK_NB) failures on a valid handle (BUSY -> exit 3).
+		// (mkdir/open -> exit 1) from non-blocking flock failures on a valid handle (exit 3),
+		// without claiming a known holder or matching strerror text.
 		if (sys.lock_retryable()) {
-			log.event('warn', 'BUSY', { holder: 'daemon' });
-			warn(`daemon: busy (${detail})\n`);
+			log.event('warn', 'START_FAILED', { step: 'instance_lock', detail });
+			warn(`daemon: instance lock not acquired: ${detail}\n`);
 			return 3;
 		}
 		log.event('error', 'START_FAILED', { step: 'instance_lock', detail });
-		warn(`daemon: cannot acquire instance lock: ${detail}\n`);
+		warn(`daemon: cannot establish instance lock: ${detail}\n`);
 		return 1;
 	}
 	function release_instance_lock() {
