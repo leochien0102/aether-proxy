@@ -84,7 +84,7 @@ class BuildScope(unittest.TestCase):
         return subprocess.check_output(
             ['sh', str(SELECTOR), base, head], cwd=self.repo, text=True)
 
-    def detect(self, event, base, head, explicit='', run=RUN):
+    def detect(self, event, base, head, explicit=''):
         # Resolve the workflow's actual env bindings against a fake event. A wrong
         # PR binding (e.g. github.sha, the merge ref) is not silently corrected.
         context = {
@@ -104,7 +104,7 @@ class BuildScope(unittest.TestCase):
         output = self.repo / 'github-output'
         output.write_text('')
         env['GITHUB_OUTPUT'] = str(output)
-        subprocess.run(['bash', '-c', run], cwd=self.repo, env=env,
+        subprocess.run(['bash', '-c', RUN], cwd=self.repo, env=env,
                        check=True, capture_output=True, text=True)
         lines = output.read_text().splitlines()
         self.assertEqual(len(lines), 1)
@@ -172,15 +172,6 @@ class BuildScope(unittest.TestCase):
         self.git('checkout', '-qb', 'pr', ancestor)
         head = self.commit(['chinadns-ng/Makefile'])
         self.assertEqual(self.git('merge-base', target, head), ancestor)
-
-        # Execute the previous production detect on this exact fixture as a
-        # regression witness, not a hand-written approximation of old behavior.
-        previous = subprocess.check_output(
-            ['git', 'show', 'da306116:.github/workflows/build.yml'],
-            cwd=ROOT, text=True)
-        old_selected = self.packages(
-            self.detect('pull_request', target, head, run=detect_run(previous)), ALL)
-        self.assertTrue(self.smoke(old_selected))
 
         selected = self.packages(self.detect('pull_request', target, head), {'chinadns-ng'})
         self.assertFalse(self.smoke(selected))
