@@ -290,15 +290,27 @@ function child_options(ctx, name, argv) {
 };
 
 function restart_xray(ctx, children, service_state, done) {
+	if (ctx.stopping_requested) {
+		done(null);
+		return;
+	}
 	let binary = service_state.components?.[C.XRAY_COMPONENT]?.path ??
 		(ctx.bin_dir ? `${ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
 	let config_path = `${run_dir(ctx)}/${C.DAEMON_CURRENT_DIR}/${C.ARTIFACT_FILES.xray}`;
 	let start_again = () => {
+		if (ctx.stopping_requested) {
+			done(null);
+			return;
+		}
 		children.xray = child_options(ctx, C.XRAY_COMPONENT, [ binary, 'run', '-c', config_path ]);
 		children.xray.start();
 		let ready = xray_ready.published(ctx, children.xray);
 		if (!ready.ok) {
-			done(ready.detail);
+			done(ready.cancelled && ctx.stopping_requested ? null : ready.detail);
+			return;
+		}
+		if (ctx.stopping_requested) {
+			done(null);
 			return;
 		}
 		service_state.components[C.XRAY_COMPONENT] = {
@@ -1399,6 +1411,8 @@ function run(args) {
 							event_failure(ctx, 'sigusr2', error);
 						else if (!ctx.stopping_requested)
 							tick();
+						if (ctx.stopping_requested)
+							uloop.end();
 					});
 				}
 				continue;
