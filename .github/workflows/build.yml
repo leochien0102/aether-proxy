@@ -63,7 +63,11 @@ jobs:
           elif [ "${GITHUB_EVENT_NAME}" = push ]; then
             packages=$(sh tools/ci/changed-components.sh "$BEFORE" "$SHA")
           elif [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
-            packages=$(sh tools/ci/changed-components.sh "$PR_BASE" "$PR_HEAD")
+            if ! pr_merge_base=$(git merge-base "$PR_BASE" "$PR_HEAD"); then
+              echo "::error::Unable to determine PR merge-base ($PR_BASE, $PR_HEAD)" >&2
+              exit 1
+            fi
+            packages=$(sh tools/ci/changed-components.sh "$pr_merge_base" "$PR_HEAD")
           else
             packages="aether-proxy luci-app-aether-proxy aether-xray chinadns-ng aether-dns"
           fi

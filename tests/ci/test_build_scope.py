@@ -31,11 +31,16 @@ def block(text, name, indent):
 
 ON = block(WORKFLOW, 'on', 0)
 DETECT = block(block(WORKFLOW, 'jobs', 0), 'detect', 2)
-# A literal block has a "|" value, unlike the mapping blocks above.
-RUN_MATCH = re.search(r'^        run: \|\n((?:^          .*\n|^\n)+)', DETECT, re.MULTILINE)
-if RUN_MATCH is None:
-    raise AssertionError('detect must expose its shell run block')
-RUN = textwrap.dedent(RUN_MATCH[1])
+def detect_run(workflow):
+    detect = block(block(workflow, 'jobs', 0), 'detect', 2)
+    # A literal block has a "|" value, unlike the mapping blocks above.
+    match = re.search(r'^        run: \|\n((?:^          .*\n|^\n)+)', detect, re.MULTILINE)
+    if match is None:
+        raise AssertionError('detect must expose its shell run block')
+    return textwrap.dedent(match[1])
+
+
+RUN = detect_run(WORKFLOW)
 ENV = block(DETECT, 'env', 8)
 ENV_BINDINGS = dict(re.findall(r'^          (\w+): (.+)$', ENV, re.MULTILINE))
 SMOKE = block(block(WORKFLOW, 'jobs', 0), 'smoke', 2)
@@ -62,7 +67,9 @@ class BuildScope(unittest.TestCase):
             target = self.repo / path
             target.parent.mkdir(parents=True, exist_ok=True)
             with target.open('a') as stream:
-                stream.write('\n# changed\n')
+                # Distinct payloads prevent Git rename detection from folding two
+                # independently added package files into one destination path.
+                stream.write(f'\n# changed {path}\n')
         self.git('add', '.')
         self.git('commit', '-qm', 'fixture')
         return self.git('rev-parse', 'HEAD')
@@ -77,7 +84,7 @@ class BuildScope(unittest.TestCase):
         return subprocess.check_output(
             ['sh', str(SELECTOR), base, head], cwd=self.repo, text=True)
 
-    def detect(self, event, base, head, explicit=''):
+    def detect(self, event, base, head, explicit='', run=RUN):
         # Resolve the workflow's actual env bindings against a fake event. A wrong
         # PR binding (e.g. github.sha, the merge ref) is not silently corrected.
         context = {
@@ -97,7 +104,7 @@ class BuildScope(unittest.TestCase):
         output = self.repo / 'github-output'
         output.write_text('')
         env['GITHUB_OUTPUT'] = str(output)
-        subprocess.run(['bash', '-c', RUN], cwd=self.repo, env=env,
+        subprocess.run(['bash', '-c', run], cwd=self.repo, env=env,
                        check=True, capture_output=True, text=True)
         lines = output.read_text().splitlines()
         self.assertEqual(len(lines), 1)
@@ -157,6 +164,44 @@ class BuildScope(unittest.TestCase):
         self.packages(self.select(base, head), expected)
         for event in ('push', 'pull_request'):
             self.packages(self.detect(event, base, head), expected)
+
+    def test_diverged_pr_uses_merge_base_not_target_tip(self):
+        ancestor = self.base
+        self.git('checkout', '-qb', 'target')
+        target = self.commit(['aether-proxy/Makefile'])
+        self.git('checkout', '-qb', 'pr', ancestor)
+        head = self.commit(['chinadns-ng/Makefile'])
+        self.assertEqual(self.git('merge-base', target, head), ancestor)
+
+        # Execute the previous production detect on this exact fixture as a
+        # regression witness, not a hand-written approximation of old behavior.
+        previous = subprocess.check_output(
+            ['git', 'show', 'da306116:.github/workflows/build.yml'],
+            cwd=ROOT, text=True)
+        old_selected = self.packages(
+            self.detect('pull_request', target, head, run=detect_run(previous)), ALL)
+        self.assertTrue(self.smoke(old_selected))
+
+        selected = self.packages(self.detect('pull_request', target, head), {'chinadns-ng'})
+        self.assertFalse(self.smoke(selected))
+        # Push retains endpoint semantics, even with these divergent endpoints.
+        self.packages(self.detect('push', target, head), ALL)
+
+    def test_pr_merge_base_failure_is_fatal(self):
+        # Existing objects but unrelated roots: merge-base exits 1. Never let the
+        # selector's diff fallback quietly reduce this to the HEAD-only change.
+        self.git('checkout', '-q', '--orphan', 'unrelated')
+        self.git('rm', '-rf', '.')
+        head = self.commit(['chinadns-ng/Makefile'])
+        with self.assertRaises(subprocess.CalledProcessError) as error:
+            self.detect('pull_request', self.base, head)
+        self.assertIn('::error::Unable to determine PR merge-base', error.exception.stderr)
+        self.assertEqual((self.repo / 'github-output').read_text(), '')
+        # Missing objects fail explicitly too, rather than running the selector.
+        with self.assertRaises(subprocess.CalledProcessError) as error:
+            self.detect('pull_request', 'f' * 40, head)
+        self.assertIn('::error::Unable to determine PR merge-base', error.exception.stderr)
+        self.assertEqual((self.repo / 'github-output').read_text(), '')
 
     def test_explicit_inputs_and_empty_defaults(self):
         head = self.commit(['aether-proxy/Makefile'])
