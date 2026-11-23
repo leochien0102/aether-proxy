@@ -14,6 +14,9 @@ on:
       - 'tests/**'
       - 'tools/**'
       - '.github/workflows/test.yml'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/release-component.yml'
+      - '.github/workflows/release-assets.yml'
   pull_request:
     paths:
       - 'aether-proxy/**'
@@ -24,12 +27,44 @@ on:
       - 'tests/**'
       - 'tools/**'
       - '.github/workflows/test.yml'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/release-component.yml'
+      - '.github/workflows/release-assets.yml'
 
 jobs:
   host-tests:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout paired channel contracts
+        uses: actions/checkout@v4
+        with:
+          repository: leochien0102/aether-proxy-channel
+          ref: b064da02c5fc50a6fb71338ae8b19c420c121e08
+          path: .ci-channel
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install CI contract test dependencies
+        run: python3 -m pip install PyYAML
+
+      - name: Run CI contract tests
+        env:
+          CHANNEL_WORKTREE: ${{ github.workspace }}/.ci-channel
+        run: |
+          set -euo pipefail
+          test -d "$CHANNEL_WORKTREE"
+          test "$(git -C "$CHANNEL_WORKTREE" rev-parse HEAD)" = b064da02c5fc50a6fb71338ae8b19c420c121e08
+          test -f "$CHANNEL_WORKTREE/.github/workflows/publish-channel.yml"
+          python3 tests/ci/test_build_scope.py
+          python3 tests/ci/test_component_assets.py
+          python3 tests/ci/test_release_paths.py
 
       # bootstrap.sh itself needs only git, cmake, make, gcc and pkg-config; it
       # builds json-c from source when the system lacks it. Installing the
