@@ -704,8 +704,9 @@ function flush_usage(daemon, completed_day) {
 	return written;
 };
 
-// Only confirmed sidecar contention gets forty event-loop slices of at most
-// 50ms. Parse/write/open/permission failures cannot heal by waiting for a lock.
+// Only flock failure after obtaining a handle gets forty event-loop slices of
+// at most 50ms. This is a stage-based wait policy, not proof of contention;
+// mkdir/open/read/parse/write failures return without lifecycle retries.
 function drain_usage(daemon) {
 	let result = flush_usage(daemon);
 	for (let attempt = 0; !result.ok && result.retryable === true && attempt < 40; attempt++) {

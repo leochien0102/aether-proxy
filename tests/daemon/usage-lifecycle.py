@@ -6,6 +6,8 @@ Only private module copies are instrumented: sampling inputs and write/lock
 observations. No test calls monitor.flush_usage/pause_usage/stop_usage or retries
 usage.flush. Quota writers call the real usage.set_quota in separate processes;
 the write barrier is after read/merge, while the real sidecar flock is held.
+Explicit policy cases alone replace a valid usage-sidecar handle's lock method
+and diagnostic; they test stage-based retries, not a real kernel error.
 """
 from datetime import datetime, timezone
 import argparse
@@ -25,7 +27,8 @@ PARSER = argparse.ArgumentParser(description=__doc__)
 PARSER.add_argument('--source', type=Path, default=ROOT)
 PARSER.add_argument('--case', choices=['term', 'recovery', 'recovery-failure', 'reload', 'reload-short',
                                        'reload-stop', 'reload-stop-failure', 'parse-failure',
-                                       'lock-error', 'cross-day', 'clean'])
+                                       'lock-error', 'lock-policy', 'reload-stop-lock-policy',
+                                       'cross-day', 'clean'])
 ARGS = PARSER.parse_args()
 SOURCE = ARGS.source.resolve()
 UCODE = ROOT / 'tests/host/prefix/bin/ucode'
@@ -90,8 +93,9 @@ class Pipe:
         os.close(self.fd)
 
 
-# Private sys hook observes writes and lock acquisition failures. It does not
-# alter flock semantics, atomic write return values, or daemon retry decisions.
+# Private sys hook observes writes and lock acquisition failures. Except in the
+# explicitly labelled policy cases below, it does not alter flock semantics.
+# Atomic write return values and daemon retry decisions are never replaced.
 SYS_HOOK = r'''
 function lifecycle_event(value) {
     let f = fs.open(getenv('LIFECYCLE_EVENTS'), 'w');
@@ -147,6 +151,19 @@ class Fixture:
                             SYS_HOOK + '\nfunction write_atomic(path, content, metadata) {')
         text = replace_once(text, 'function write_atomic(path, content, metadata) {',
                             'function write_atomic(path, content, metadata) {' + WRITE_HOOK)
+        # Policy-only substitution occurs after the real open/null check. Only
+        # the daemon's usage sidecar is affected, never service/quota locks.
+        text = replace_once(text, "if (!fp.lock('xn')) {", r'''
+    if (path == getenv('LIFECYCLE_USAGE') + '.lock' &&
+        getenv('LIFECYCLE_ROLE') == 'daemon' && getenv('LIFECYCLE_LOCK_DIAGNOSTIC')) {
+        let real = fp;
+        fp = { lock: () => false, close: () => real.close() };
+    }
+    if (!fp.lock('xn')) {''')
+        text = replace_once(text, "if (!fp.lock('xn')) {\n\t\tlet detail = fs_err();",
+                            "if (!fp.lock('xn')) {\n\t\tlet detail = (path == getenv('LIFECYCLE_USAGE') + '.lock' &&\n"
+                            "            getenv('LIFECYCLE_ROLE') == 'daemon' ?\n"
+                            "            getenv('LIFECYCLE_LOCK_DIAGNOSTIC') : null) ?? fs_err();")
         text = replace_once(text, "if (!fp.lock('xn')) {", "if (!fp.lock('xn')) {\n"
                             "        if (path == getenv('LIFECYCLE_USAGE') + '.lock')\n"
                             "            lifecycle_event({ kind: 'lock-failed', role: getenv('LIFECYCLE_ROLE') });")
@@ -462,6 +479,59 @@ def nonretryable_failure(f, corrupt=False):
     print(f'EVIDENCE usage-lifecycle: {op} failure flushes=1 elapsed={elapsed:.3f}s', flush=True)
 
 
+def lock_failure_policy(f, hup=False):
+    # POLICY TEST: a test double fails lock() on an actually opened handle.
+    # This is deliberately not a reproduction of a kernel/errno failure, and
+    # the arbitrary non-English diagnostic makes text-based classification fail.
+    diagnostic = '锁阶段策略替身：任意诊断，不表示内核错误'
+    f.env['LIFECYCLE_LOCK_DIAGNOSTIC'] = diagnostic
+    writer = f.writer()
+    f.unlock(writer)
+    child = f.start()
+    f.sample(child, 150, 40)
+    f.sample(child, 200, 60, next_day=True)
+    f.sample(child, 207, 63)
+    before = f.usage.read_bytes()
+    flushes = f.flush_count()
+    started = time.monotonic()
+    f.request_stop(child, hup)
+    child.wait(timeout=8)
+    elapsed = time.monotonic() - started
+    attempts = f.flush_count() - flushes
+    check('POLICY: post-open lock failure retries exactly 41 lifecycle flushes',
+          attempts == 41, {'flushes': attempts, 'elapsed': elapsed})
+    check('POLICY: post-open lock failure stop is bounded and clean',
+          elapsed < 7 and child.returncode == 0 and f.state().get('state') == 'stopped',
+          {'elapsed': elapsed, 'returncode': child.returncode, 'state': f.state()})
+    events = [json.loads(line) for line in (f.run / 'events.jsonl').read_text().splitlines()]
+    detail = f'lock {f.usage}.lock: {diagnostic}'
+    check('POLICY: original non-English lock diagnostic is preserved exactly', any(
+        event.get('code') == 'FS_FAILED' and event.get('args', {}).get('op') == 'lock'
+        and event['args'].get('detail') == detail for event in events), events)
+    check('POLICY: failed lock leaves ledger byte-for-byte intact', f.usage.read_bytes() == before)
+    pending = json.loads(f.pending.read_text())
+    expected = {DAY: totals(200, 60, 2), NEXT: totals(7, 3, 1)}
+    check('POLICY: pending contains exact completed/current counters and no quota snapshot',
+          pending == {'schema': 1, 'days': expected, 'updated_at': EPOCH + 86400}, pending)
+    check('POLICY: pending is private and atomic',
+          f.pending.stat().st_mode & 0o777 == 0o600
+          and not list(f.run.glob('usage-pending.json.tmp.*')))
+    check('POLICY: stop event exposes pending recovery path', any(
+        event.get('code') == 'SERVICE_STOPPED'
+        and event.get('args', {}).get('usage_pending') == str(f.pending) for event in events), events)
+    del f.env['LIFECYCLE_LOCK_DIAGNOSTIC']
+    f.set_enabled(True)
+    child = f.start()
+    wait_for(lambda: f.document()['days'] == expected and not f.pending.exists(), child)
+    f.assert_days(expected)
+    f.stop(child)
+    f.assert_days(expected)
+    check('POLICY: recovered shutdown leaves no pending snapshot', not f.pending.exists())
+    print(f'EVIDENCE usage-lifecycle POLICY: {"HUP" if hup else "TERM"} '
+          f'post-open lock failure flushes={attempts} elapsed={elapsed:.3f}s '
+          f'diagnostic={diagnostic} pending={json.dumps(pending, sort_keys=True)}', flush=True)
+
+
 def cross_day(f):
     child = f.start()
     f.sample(child, 150, 40)
@@ -503,7 +573,10 @@ def main():
                 ('reload-stop', lambda f: recovery(f, hup=True)),
                 ('reload-stop-failure', lambda f: recovery_failure(f, hup=True)),
                 ('parse-failure', lambda f: nonretryable_failure(f, corrupt=True)),
-                ('lock-error', nonretryable_failure), ('cross-day', cross_day), ('clean', clean)]:
+                ('lock-error', nonretryable_failure),
+                ('lock-policy', lock_failure_policy),
+                ('reload-stop-lock-policy', lambda f: lock_failure_policy(f, hup=True)),
+                ('cross-day', cross_day), ('clean', clean)]:
             if ARGS.case and name != ARGS.case:
                 continue
             fixture = Fixture(base, name)

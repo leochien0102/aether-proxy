@@ -7,7 +7,7 @@ import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 
 let last_error = null;
-let last_lock_contended = false;
+let last_lock_retryable = false;
 let run_seq = 0;
 
 // fs.open() and fs.popen() failures do not always set fs.error() in ucode 2025.07.18
@@ -257,7 +257,7 @@ function mkdir_p(path) {
 
 // Opens and holds a non-blocking exclusive flock. Closing the returned handle releases it.
 function lock(path) {
-	last_lock_contended = false;
+	last_lock_retryable = false;
 	let parent = substr(path, 0, rindex(path, '/'));
 	if (parent != '' && !mkdir_p(parent))
 		return null;
@@ -272,9 +272,10 @@ function lock(path) {
 
 	if (!fp.lock('xn')) {
 		let detail = fs_err();
-		// The pinned fs API exposes strerror(), not errno. Only Linux flock's
-		// EAGAIN identifies contention; open/mkdir/permission errors never do.
-		last_lock_contended = detail == 'Resource temporarily unavailable';
+		// Retry policy follows the failure stage, not errno or diagnostic text.
+		// A valid handle's flock failure gets a bounded retry budget, even if
+		// the underlying cause is permanent. This does not establish contention.
+		last_lock_retryable = true;
 		last_error = `lock ${path}: ${detail}`;
 		fp.close();
 		return null;
@@ -318,8 +319,9 @@ function error() {
 }
 
 // Read immediately after a failed lock(); later lock calls reset this flag.
-function lock_contended() {
-	return last_lock_contended;
+// True means the failure stage permits bounded retries, not proven contention.
+function lock_retryable() {
+	return last_lock_retryable;
 }
 
-export { run, write_atomic, mkdir_p, lock, lock_contended, clean_tmp_files, error };
+export { run, write_atomic, mkdir_p, lock, lock_retryable, clean_tmp_files, error };

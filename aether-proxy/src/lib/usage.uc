@@ -257,11 +257,12 @@ function write_document(path, document) {
 // All writers share a stable sidecar, never the inode replaced by rename. Lock
 // acquisition is non-blocking (bounded wait of zero); callers retain pending data
 // and retry on the next flush/command. Never unlink this lock file.
+// retryable denotes a stage-based bounded-wait policy, not an errno diagnosis.
 function transaction(path, merge) {
 	let held = sys.lock(`${path}.lock`);
 	if (held == null)
 		return { ok: false, error: sys.error() ?? 'usage lock failed', op: 'lock',
-			retryable: sys.lock_contended() };
+			retryable: sys.lock_retryable() };
 	let result;
 	try {
 		let loaded = load(path);
