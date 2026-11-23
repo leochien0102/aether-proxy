@@ -19,10 +19,12 @@ define Build/Prepare/luci-app-aether-proxy
 		$(PKG_BUILD_DIR)/htdocs/luci-static/resources/aether-proxy/build.json
 endef
 
-# docs/10: refresh plugin methods without interrupting the running update transaction.
+# docs/10: refresh plugin methods and LuCI caches without interrupting the running update transaction.
 define Package/luci-app-aether-proxy/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
+rm -f /tmp/luci-indexcache.*
+rm -rf /tmp/luci-modulecache/
 if [ -x /etc/init.d/rpcd ]; then
 	/etc/init.d/rpcd reload || echo "luci-app-aether-proxy: rpcd reload failed (rc=$$?)" >&2
 fi
