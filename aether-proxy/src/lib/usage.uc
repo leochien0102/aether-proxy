@@ -260,7 +260,8 @@ function write_document(path, document) {
 function transaction(path, merge) {
 	let held = sys.lock(`${path}.lock`);
 	if (held == null)
-		return { ok: false, error: sys.error() ?? 'usage lock failed', op: 'lock' };
+		return { ok: false, error: sys.error() ?? 'usage lock failed', op: 'lock',
+			retryable: sys.lock_contended() };
 	let result;
 	try {
 		let loaded = load(path);

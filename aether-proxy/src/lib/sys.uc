@@ -7,6 +7,7 @@ import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 
 let last_error = null;
+let last_lock_contended = false;
 let run_seq = 0;
 
 // fs.open() and fs.popen() failures do not always set fs.error() in ucode 2025.07.18
@@ -256,6 +257,7 @@ function mkdir_p(path) {
 
 // Opens and holds a non-blocking exclusive flock. Closing the returned handle releases it.
 function lock(path) {
+	last_lock_contended = false;
 	let parent = substr(path, 0, rindex(path, '/'));
 	if (parent != '' && !mkdir_p(parent))
 		return null;
@@ -269,7 +271,11 @@ function lock(path) {
 	}
 
 	if (!fp.lock('xn')) {
-		last_error = `lock ${path}: ${fs_err()}`;
+		let detail = fs_err();
+		// The pinned fs API exposes strerror(), not errno. Only Linux flock's
+		// EAGAIN identifies contention; open/mkdir/permission errors never do.
+		last_lock_contended = detail == 'Resource temporarily unavailable';
+		last_error = `lock ${path}: ${detail}`;
 		fp.close();
 		return null;
 	}
@@ -311,4 +317,9 @@ function error() {
 	return last_error;
 }
 
-export { run, write_atomic, mkdir_p, lock, clean_tmp_files, error };
+// Read immediately after a failed lock(); later lock calls reset this flag.
+function lock_contended() {
+	return last_lock_contended;
+}
+
+export { run, write_atomic, mkdir_p, lock, lock_contended, clean_tmp_files, error };
