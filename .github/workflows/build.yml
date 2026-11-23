@@ -12,6 +12,7 @@ on:
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
+      - 'tools/ci/**'
       - 'tests/ci/smoke*'
       - 'tests/fixtures/sample/**'
   pull_request:
@@ -22,6 +23,7 @@ on:
       - 'aether-proxy/**'
       - 'luci-app-aether-proxy/**'
       - '.github/workflows/build.yml'
+      - 'tools/ci/**'
       - 'tests/ci/smoke*'
       - 'tests/fixtures/sample/**'
   workflow_dispatch:
@@ -52,12 +54,20 @@ jobs:
           INPUT: ${{ inputs.components }}
           BEFORE: ${{ github.event.before }}
           SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
           if [ -n "${INPUT:-}" ]; then
             packages="$INPUT"
           elif [ "${GITHUB_EVENT_NAME}" = push ]; then
             packages=$(sh tools/ci/changed-components.sh "$BEFORE" "$SHA")
+          elif [ "${GITHUB_EVENT_NAME}" = pull_request ]; then
+            if ! pr_merge_base=$(git merge-base "$PR_BASE" "$PR_HEAD"); then
+              echo "::error::Unable to determine PR merge-base ($PR_BASE, $PR_HEAD)" >&2
+              exit 1
+            fi
+            packages=$(sh tools/ci/changed-components.sh "$pr_merge_base" "$PR_HEAD")
           else
             packages="aether-proxy luci-app-aether-proxy aether-xray chinadns-ng aether-dns"
           fi
