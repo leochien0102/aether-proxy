@@ -61,7 +61,7 @@ def exercise(work, mode):
 	root.mkdir()
 	bin_dir = root / 'bin'
 	bin_dir.mkdir()
-	for tool in ('sh', 'bash', 'mktemp', 'rm', 'kill'):
+	for tool in ('sh', 'bash', 'mktemp', 'mv', 'rm', 'kill'):
 		(bin_dir / tool).symlink_to(shutil.which(tool))
 	# PATH really has no mkfifo in fallback mode; no failing fake mkfifo is substituted.
 	if mode not in ('missing', 'nofilter'):
@@ -157,9 +157,13 @@ def verify_output(root, mode, fifo, filter_pids, out, err):
 		check(sum('dropped 1 lines between' in line for line in lines) == 2 and
 			sum('dropped 380 lines between' in line for line in lines) == 2,
 			'crash: both sessions report first drop and all 380 dropped lines')
-		row = json.loads(fifo.with_name(NAME + '.logstats').read_text())
+		stats_file = fifo.with_name(NAME + '.logstats')
+		row = json.loads(stats_file.read_text())
 		check(row['name'] == NAME and row['accepted'] == 120 and row['dropped'] == 380,
 			'crash: stats path with shell metacharacters holds latest session counts')
+		check(stat.S_IMODE(stats_file.stat().st_mode) == 0o600 and
+			not list(fifo.parent.glob('.logstats.*')),
+			'crash: stats file keeps 0600 permissions and leaves no temp files')
 	else:
 		check(not crashes, f'{mode}: active stop emits no CHILD_CRASHED')
 		want = [f'launch-1 line-{i}' for i in ((0, 2) if mode in ('missing', 'nofilter') else (0, 1, 2))]

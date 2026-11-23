@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 """T9.7: deterministic quota, byte preservation and unbuffered FIFO-reader tests (docs/09)."""
+import ctypes
+import json
 import os
 from pathlib import Path
 import select
 import shutil
+import stat
+import struct
 import subprocess
+import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
-FILTER = ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk'
+FILTER = Path(os.environ.get('AETHER_PROXY_TEST_LOGFILTER',
+	ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk'))
 ENV = dict(os.environ, TZ='UTC')
 
 
@@ -250,14 +257,288 @@ def exercise_yield(awk):
 		f'{label}: unrecognized timestamp shapes are untouched')
 
 
+class StatsWatch:
+	"""Count kernel-level writes/renames to a stats filename without coalescing."""
+
+	IN_CLOSE_WRITE = 0x00000008
+	IN_OPEN = 0x00000020
+	IN_MOVED_TO = 0x00000080
+	IN_Q_OVERFLOW = 0x00004000
+	IN_NONBLOCK = 0x00000800
+
+	def __init__(self, path):
+		self.path = Path(path)
+		self.libc = ctypes.CDLL('libc.so.6', use_errno=True)
+		self.fd = self.libc.inotify_init1(self.IN_NONBLOCK)
+		if self.fd < 0:
+			raise OSError(ctypes.get_errno(), 'inotify_init1 failed')
+		mask = self.IN_OPEN | self.IN_CLOSE_WRITE | self.IN_MOVED_TO
+		if self.libc.inotify_add_watch(self.fd, str(self.path.parent).encode(), mask) < 0:
+			os.close(self.fd)
+			raise OSError(ctypes.get_errno(), 'inotify_add_watch failed')
+		self.close_writes = 0
+		self.moved_tos = 0
+		self.overflow = False
+
+	def drain(self):
+		while True:
+			try:
+				buf = os.read(self.fd, 65536)
+			except BlockingIOError:
+				break
+			if not buf:
+				break
+			off = 0
+			while off < len(buf):
+				_, mask, _, nlen = struct.unpack_from('iIII', buf, off)
+				off += 16
+				name = buf[off:off + nlen].rstrip(b'\0').decode('utf-8', 'surrogateescape')
+				off += nlen
+				if mask & self.IN_Q_OVERFLOW:
+					self.overflow = True
+				if name == self.path.name:
+					if mask & self.IN_CLOSE_WRITE:
+						self.close_writes += 1
+					if mask & self.IN_MOVED_TO:
+						self.moved_tos += 1
+		return self.close_writes, self.moved_tos
+
+	def total(self):
+		cw, mt = self.drain()
+		return cw + mt
+
+	def close(self):
+		if self.fd >= 0:
+			os.close(self.fd)
+			self.fd = -1
+
+	def __enter__(self):
+		return self
+
+	def __exit__(self, *args):
+		self.close()
+
+
+def wait_stats(path, expected, timeout=3.0):
+	deadline = time.monotonic() + timeout
+	last = None
+	while time.monotonic() < deadline:
+		try:
+			last = json.loads(path.read_text())
+			if last == expected:
+				return last
+		except (FileNotFoundError, json.JSONDecodeError):
+			pass
+		time.sleep(0.01)
+	raise AssertionError(f'{path} did not reach {expected}; last={last}')
+
+
+def wait_stdout_lines(proc, count, timeout=3.0):
+	data = b''
+	deadline = time.monotonic() + timeout
+	while data.count(b'\n') < count:
+		rem = deadline - time.monotonic()
+		if rem <= 0 or not select.select([proc.stdout], [], [], rem)[0]:
+			raise AssertionError(f'timed out waiting for {count} stdout lines; got {data!r}')
+		chunk = os.read(proc.stdout.fileno(), 65536)
+		if not chunk:
+			raise AssertionError(f'EOF before {count} stdout lines; got {data!r}')
+		data += chunk
+	return data.decode().splitlines()
+
+
+def snapshot(name, accepted, dropped, first=None, last=None):
+	return dict(name=name, accepted=accepted, dropped=dropped, first_drop=first, last_drop=last,
+		second_limit=20, minute_limit=120)
+
+
+def exercise_stats(awk):
+	"""T16.60: bounded writer calls under drop burst, atomic snapshot replacement, failure safety."""
+	label = ' '.join(awk)
+
+	def run_burst(count):
+		with tempfile.TemporaryDirectory(prefix='logfilter-burst-') as tmp:
+			stats = Path(tmp) / 'fixture.logstats'
+			argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+				'-v', 'name=fixture', '-v', f'stats={stats}', '-f', str(FILTER)]
+			lines = [f'105 burst-{i}' for i in range(count)]
+			with StatsWatch(stats) as watch:
+				p = subprocess.run(argv, input='\n'.join(lines) + '\n', text=True,
+					capture_output=True, env=ENV, check=True)
+				cw, mt = watch.drain()
+				check(not watch.overflow, f'{label}: inotify did not overflow ({count} lines)')
+			check(not p.stderr, f'{label}: burst ({count}) emits no filter diagnostics')
+			want_out = [f'burst-{i}' for i in range(20)] + [
+				summary(1, '00:01:45', '00:01:45', 'burst-20'),
+				summary(count - 20, '00:01:45', '00:01:45', 'burst-20'),
+			]
+			check(p.stdout.splitlines() == want_out, f'{label}: burst ({count}) preserves summaries and order')
+			row = json.loads(stats.read_text())
+			check(row == snapshot('fixture', 20, count - 20, 105, 105),
+				f'{label}: burst ({count}) EOF stats exact')
+			check(cw == 0 and mt == 4,
+				f'{label}: burst ({count}) bounded atomic writes (IN_CLOSE_WRITE={cw}, IN_MOVED_TO={mt})')
+			check(stat.S_IMODE(stats.stat().st_mode) == 0o600,
+				f'{label}: burst ({count}) stats file keeps 0600 permissions')
+			leftovers = [f.name for f in Path(tmp).iterdir() if f.name != stats.name]
+			check(not leftovers, f'{label}: burst ({count}) leaves no temp files')
+
+	run_burst(500)
+	run_burst(1000)
+
+	# Live progression: first drop visible before EOF, sustained drops refresh at 5s,
+	# silence adds no writes, and old/new readers observe complete atomic snapshots.
+	with tempfile.TemporaryDirectory(prefix='logfilter-live-') as tmp:
+		stats = Path(tmp) / 'fixture.logstats'
+		argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+			'-v', 'name=fixture', '-v', f'stats={stats}', '-f', str(FILTER)]
+		with StatsWatch(stats) as watch:
+			p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+				stderr=subprocess.PIPE, env=ENV)
+			try:
+				wait_stats(stats, snapshot('fixture', 0, 0))
+				# Exhaust rolling 60s minute quota (120) at t=100 so drops from t=105..111 stay one streak.
+				p.stdin.write(('\n'.join(f'100 fill-{i}' for i in range(120)) + '\n').encode())
+				p.stdin.flush()
+				out = wait_stdout_lines(p, 120)
+				check(out == [f'fill-{i}' for i in range(120)], f'{label}: live fill lines forwarded')
+				wait_stats(stats, snapshot('fixture', 101, 0))
+
+				# Hold an open FD to the old snapshot before triggering first drop.
+				old_fp = stats.open('rb')
+				old_ino = os.fstat(old_fp.fileno()).st_ino
+				try:
+					p.stdin.write(b'105 first-drop\n')
+					p.stdin.flush()
+					check(wait_stdout_lines(p, 1) == [summary(1, '00:01:45', '00:01:45', 'first-drop')],
+						f'{label}: first drop summary emitted before EOF')
+					wait_stats(stats, snapshot('fixture', 120, 1, 105, 105))
+					new_ino = stats.stat().st_ino
+					check(new_ino != old_ino, f'{label}: atomic replace swaps stats inode')
+					check(json.loads(old_fp.read().decode()) == snapshot('fixture', 101, 0),
+						f'{label}: pre-existing reader still sees complete old snapshot')
+					check(json.loads(stats.read_text()) == snapshot('fixture', 120, 1, 105, 105),
+						f'{label}: fresh reader sees complete new snapshot')
+				finally:
+					old_fp.close()
+
+				cw_before, mt_before = watch.drain()
+				# 50 more drops across t=105..109 (< 5s from 105) must not publish, then t=110 publishes once.
+				sustained = [f'105 extra-{i}' for i in range(40)] + [f'{106 + i // 3} mid-{i}' for i in range(10)]
+				sustained.append('110 five-sec-drop')
+				p.stdin.write(('\n'.join(sustained) + '\n').encode())
+				p.stdin.flush()
+				wait_stats(stats, snapshot('fixture', 120, 52, 105, 110))
+				cw_after, mt_after = watch.drain()
+				check(cw_after == 0 and mt_after - mt_before == 1,
+					f'{label}: 50 sub-5s drops add 0 writes and 5s drop adds exactly 1 write')
+
+				# Silence (no input) adds no background writes; EOF flushes remaining 10 drops once.
+				p.stdin.write(('\n'.join(f'111 tail-{i}' for i in range(10)) + '\n').encode())
+				p.stdin.flush()
+				p.stdin.close()
+				tail_out = p.stdout.read().decode().splitlines()
+				p.wait(timeout=3)
+				check(p.returncode == 0 and not p.stderr.read(), f'{label}: live stats filter exits cleanly')
+				check(tail_out == [summary(62, '00:01:45', '00:01:51', 'first-drop')],
+					f'{label}: EOF summarizes full sustained drop streak')
+				check(json.loads(stats.read_text()) == snapshot('fixture', 120, 62, 105, 111),
+					f'{label}: EOF stats total exact after sustained drops')
+				cw_end, mt_end = watch.drain()
+				check(cw_end == 0 and mt_end - mt_after == 1,
+					f'{label}: EOF adds exactly 1 final atomic write')
+				check(not [f.name for f in Path(tmp).iterdir() if f.name != stats.name],
+					f'{label}: live stats run leaves no temp files')
+			finally:
+				if p.poll() is None:
+					p.kill()
+					p.wait(timeout=3)
+
+	# Unsafe targets (symlink, directory) and metacharacter paths.
+	with tempfile.TemporaryDirectory(prefix="logfilter-neg-' ") as tmp:
+		base = Path(tmp)
+		target = base / 'target.txt'
+		target.write_text('KEEP\n')
+		sym = base / 'sym.logstats'
+		sym.symlink_to(target)
+		argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+			'-v', 'name=fixture', '-v', f'stats={sym}', '-f', str(FILTER)]
+		lines = [f'105 s-{i}' for i in range(25)]
+		p = subprocess.run(argv, input='\n'.join(lines) + '\n', text=True,
+			capture_output=True, env=ENV, check=True)
+		check(target.read_text() == 'KEEP\n' and sym.is_symlink(),
+			f'{label}: symlink stats target rejected without modifying referent')
+		check(p.stdout.splitlines() == [f's-{i}' for i in range(20)] + [
+			summary(1, '00:01:45', '00:01:45', 's-20'),
+			summary(5, '00:01:45', '00:01:45', 's-20'),
+		], f'{label}: symlink rejection does not interrupt log forwarding')
+		check(not [f.name for f in base.iterdir() if f.name not in ('target.txt', 'sym.logstats')],
+			f'{label}: symlink rejection leaves no temp files')
+
+		dir_target = base / 'dir.logstats'
+		dir_target.mkdir()
+		argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+			'-v', 'name=fixture', '-v', f'stats={dir_target}', '-f', str(FILTER)]
+		p = subprocess.run(argv, input='100 ok\n', text=True, capture_output=True, env=ENV, check=True)
+		check(dir_target.is_dir() and not list(dir_target.iterdir()) and p.stdout == 'ok\n',
+			f'{label}: directory stats target rejected and log forwarded')
+
+		meta_stats = base / 'quote \' $(touch SENTINEL).logstats'
+		argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+			'-v', 'name=fixture', '-v', f'stats={meta_stats}', '-f', str(FILTER)]
+		p = subprocess.run(argv, input='100 meta-ok\n', text=True, capture_output=True, env=ENV, check=True)
+		check(not p.stderr and p.stdout == 'meta-ok\n' and not (base / 'SENTINEL').exists(),
+			f'{label}: metacharacters in stats path stay literal')
+		check(json.loads(meta_stats.read_text()) == snapshot('fixture', 1, 0),
+			f'{label}: metacharacter stats path published atomically')
+
+	# Mid-session mv failure: preserves existing readable stats, cleans temp file, keeps forwarding.
+	with tempfile.TemporaryDirectory(prefix='logfilter-fail-') as tmp:
+		base = Path(tmp)
+		bin_dir = base / 'bin'
+		bin_dir.mkdir()
+		mv_count = base / 'mv-count'
+		mv_wrap = bin_dir / 'mv'
+		mv_wrap.write_text(
+			'#!/bin/sh\n'
+			f'c=$(cat "{mv_count}" 2>/dev/null || echo 0)\n'
+			'c=$((c + 1))\n'
+			f'printf "%s" "$c" > "{mv_count}"\n'
+			'if [ "$c" -eq 3 ]; then exit 1; fi\n'
+			f'exec "{shutil.which("mv")}" "$@"\n'
+		)
+		mv_wrap.chmod(0o755)
+		stats = base / 'fixture.logstats'
+		env_fail = dict(ENV, PATH=f'{bin_dir}:{ENV.get("PATH", "")}')
+		argv = awk + ['-v', 'test_clock=1', '-v', 'test_start=100',
+			'-v', 'name=fixture', '-v', f'stats={stats}', '-f', str(FILTER)]
+		# Call 1: BEGIN (0,0); Call 2: line 0 accepted (1,0); Call 3: first drop at 105 -> mv fails!
+		lines = [f'105 fail-{i}' for i in range(25)] + ['106 recovered']
+		p = subprocess.run(argv, input='\n'.join(lines) + '\n', text=True,
+			capture_output=True, env=env_fail, check=True)
+		check(p.stdout.splitlines() == [f'fail-{i}' for i in range(20)] + [
+			summary(1, '00:01:45', '00:01:45', 'fail-20'),
+			summary(5, '00:01:45', '00:01:45', 'fail-20'),
+			'recovered',
+		], f'{label}: mid-session publish failure does not break forwarding, recovery or EOF')
+		check(json.loads(stats.read_text()) == snapshot('fixture', 1, 0),
+			f'{label}: mid-session publish failure preserves previous readable snapshot')
+		check(mv_count.read_text() == '3',
+			f'{label}: publish failure disables further stats writes for the session')
+		leftovers = [f.name for f in base.iterdir() if f.name not in ('bin', 'mv-count', stats.name)]
+		check(not leftovers, f'{label}: failed mv cleans up its temporary file')
+
+
 if __name__ == '__main__':
 	exercise(['awk'])
 	exercise_dedup(['awk'])
 	exercise_yield(['awk'])
+	exercise_stats(['awk'])
 	if shutil.which('busybox'):
 		exercise(['busybox', 'awk'])
 		exercise_dedup(['busybox', 'awk'])
 		exercise_yield(['busybox', 'awk'])
+		exercise_stats(['busybox', 'awk'])
 	else:
 		print('WARN  BusyBox unavailable; native awk covered, firmware awk requires six-rootfs CI')
 	print('logfilter: all assertions passed')
