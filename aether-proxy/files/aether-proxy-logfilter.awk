@@ -13,10 +13,16 @@ BEGIN {
 		"[0-9][0-9]:[0-9][0-9]:[0-9][0-9]([.][0-9]+)?"
 	if (stats != "") {
 		# A failed awk redirection is fatal. Let a shell consume the JSON before trying
-		# to write it, so stats I/O errors cannot close the child's log FIFO (SIGPIPE).
-		stats_writer = "set -- " shell_quote(stats) "; IFS= read -r line && " \
-			"{ [ ! -L \"$1\" ] && { [ ! -e \"$1\" ] || [ -f \"$1\" ]; } && " \
-			"{ umask 077; printf '%s\\n' \"$line\" > \"$1\"; }; }"
+		# to publish it, so stats I/O errors cannot close the child's log FIFO (SIGPIPE).
+		stats_writer = "set -- " shell_quote(stats) "; IFS= read -r line || exit 1; " \
+			"[ ! -L \"$1\" ] || exit 1; " \
+			"[ ! -e \"$1\" ] || [ -f \"$1\" ] || exit 1; " \
+			"case \"$1\" in */*) dir=${1%/*}; [ -n \"$dir\" ] || dir=/ ;; *) dir=. ;; esac; " \
+			"case \"$dir\" in -*) dir=\"./$dir\" ;; esac; " \
+			"umask 077; " \
+			"tmp=$(mktemp \"$dir/.logstats.XXXXXX\") || exit 1; " \
+			"if printf '%s\\n' \"$line\" > \"$tmp\" && mv -f -- \"$tmp\" \"$1\"; then exit 0; fi; " \
+			"rm -f -- \"$tmp\"; exit 1"
 		for (i = 1; i < 32; i++)
 			json_control[sprintf("%c", i)] = sprintf("\\u%04x", i)
 		stats_name = json_string(name)
@@ -50,6 +56,7 @@ function write_stats() {
 		stats = ""
 	last_stats_write = now
 	last_stats_accepted = total_accepted
+	stats_dirty = 0
 }
 
 function summary() {
@@ -92,7 +99,7 @@ function repeat_summary(    i, message, emitted) {
 	}
 	# Like rate-limit summaries, repetition summaries sit outside the output quota.
 	fflush()
-	if (emitted)
+	if (emitted && stats_dirty)
 		write_stats()
 }
 
@@ -187,6 +194,7 @@ function duplicate(message) {
 		accepted[now]++
 		minute_count++
 		total_accepted++
+		stats_dirty = 1
 		if (total_accepted == 1 || now - last_stats_write >= 5 || total_accepted - last_stats_accepted >= 50)
 			write_stats()
 		next
@@ -199,14 +207,16 @@ function duplicate(message) {
 		session_first_drop = now
 	last_drop = now
 	total_dropped++
+	stats_dirty = 1
 	if (++dropped == 1)
 		summary()
-	else
+	else if (now - last_stats_write >= 5)
 		write_stats()
 }
 
 END {
 	finish_drops()
 	repeat_summary()
-	write_stats()
+	if (stats_dirty)
+		write_stats()
 }

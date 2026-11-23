@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """T16.36: public CLI and live filter (wall clock, no EOF until after first notice)."""
+import ctypes
 import json
 import os
 from pathlib import Path
 import select
 import shlex
+import struct
 import subprocess
 import tempfile
 import time
@@ -117,6 +119,30 @@ def live_accepted(run_dir):
 
 def stats_boundaries(run_dir):
 	path = run_dir / 'fixture.logstats'
+	libc = ctypes.CDLL('libc.so.6', use_errno=True)
+	ifd = libc.inotify_init1(0x00000800)  # IN_NONBLOCK
+	assert ifd >= 0
+	assert libc.inotify_add_watch(ifd, str(run_dir).encode(), 0x00000008 | 0x00000020 | 0x00000080) >= 0
+
+	def drain_writes():
+		writes = 0
+		while True:
+			try:
+				buf = os.read(ifd, 65536)
+			except BlockingIOError:
+				break
+			if not buf:
+				break
+			off = 0
+			while off < len(buf):
+				_, mask, _, nlen = struct.unpack_from('iIII', buf, off)
+				off += 16
+				name = buf[off:off + nlen].rstrip(b'\0').decode('utf-8', 'surrogateescape')
+				off += nlen
+				if name == path.name and (mask & (0x00000008 | 0x00000080)):
+					writes += 1
+		return writes
+
 	argv = [*AWK, '-v', 'test_clock=1', '-v', 'name=fixture', '-v', f'stats={path}',
 		'-f', str(ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk')]
 	with subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL) as proc:
@@ -131,12 +157,26 @@ def stats_boundaries(run_dir):
 			advance(['104 not yet', '105 five seconds'], 53)
 			advance([f'105 live {i}' for i in range(19)] + ['105 first drop'], 72, 1, 105, 105)
 			advance(['106 turn'] + [f'106 other {i}' for i in range(20)], 92, 2, 105, 106)
-			advance(['106 another drop'], 92, 3, 105, 106)
+			# Exhaust remaining 28 minute-quota slots so drops from t=108..114 stay in one streak.
+			advance([f'107 fill-a {i}' for i in range(20)] + [f'108 fill-b {i}' for i in range(8)] +
+				['108 streak first'], 120, 3, 105, 108)
+			drain_writes()
+			# Same-second and sub-5s drops are consumed without extra publishes; 5s drop publishes once.
+			advance(['108 another drop', '109 sub-5s drop', '112 four-sec drop', '113 five-sec drop'],
+				120, 7, 105, 113)
+			assert drain_writes() == 1, 'sub-5s drops must not publish; 5s sustained drop publishes once'
 			assert proc.poll() is None
-			print('PASS stats refresh after 50 accepted rows, 5 seconds, and every drop (before EOF)')
-		finally:
+			proc.stdin.write(b'114 eof drop\n')
+			proc.stdin.flush()
 			proc.stdin.close()
-			proc.wait(timeout=3)
+			assert proc.wait(timeout=3) == 0
+			assert json.loads(path.read_text()) == snapshot('fixture', 120, 8, 105, 114)
+			print('PASS stats refresh after 50 accepted rows, 5 seconds, first drop, 5s sustained drop, and EOF')
+		finally:
+			os.close(ifd)
+			if proc.poll() is None:
+				proc.stdin.close()
+				proc.wait(timeout=3)
 
 
 with tempfile.TemporaryDirectory(prefix='log-stats-live-') as tmp:
