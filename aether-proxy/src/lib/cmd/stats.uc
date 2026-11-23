@@ -166,7 +166,7 @@ function history_cmd(opts, limit, args) {
 }
 
 function warn_load(loaded, path, opts) {
-	if (loaded.error != null) {
+	if (loaded?.error != null) {
 		log.set_run_dir(pipeline.run_dir(opts));
 		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
 	}

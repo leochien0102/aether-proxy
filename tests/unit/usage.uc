@@ -151,8 +151,17 @@ const T124_CASES = [
 		state: { day: '2026-10-22', tx: 5, rx: 6, observed: 7, healthy: 8,
 			days: { '2026-10-21': { tx: 2, rx: 3, observed: 4, healthy: 4 } } },
 		expect: { '2026-10-20': { tx: 9, rx: 9, observed: 9, healthy: 9 },
-			'2026-10-21': { tx: 2, rx: 3, observed: 4, healthy: 4 },
+			'2026-10-21': { tx: 9, rx: 9, observed: 9, healthy: 9 },
 			'2026-10-22': { tx: 5, rx: 6, observed: 7, healthy: 8 } }
+	},
+	{
+		name: 'T16.50 completed days merge each field monotonically on every retry',
+		run: 'collect',
+		previous: { '2026-10-21': { tx: 90, rx: 3, observed: 60, healthy: 4 } },
+		state: { day: '2026-10-22', tx: 5, rx: 6, observed: 7, healthy: 7,
+			days: { '2026-10-21': { tx: 2, rx: 80, observed: 40, healthy: 30 } } },
+		expect: { '2026-10-21': { tx: 90, rx: 80, observed: 60, healthy: 30 },
+			'2026-10-22': { tx: 5, rx: 6, observed: 7, healthy: 7 } }
 	},
 	{
 		name: 'T16.47 collect preserves larger persisted totals and still drops future dates',
@@ -414,6 +423,7 @@ export function run(c) {
 		fs.unlink(blocked);
 		let second = usage.write(`${blocked}/usage.json`, {}, 1790000000);
 		fs.unlink(`${blocked}/usage.json`);
+		fs.unlink(`${blocked}/usage.json.lock`);
 		fs.rmdir(blocked);
 		return { first_error: first.ok == false && first.error != null, second_ok: second.ok == true };
 	}

@@ -182,8 +182,8 @@ export function parse_quota(raw) {
 // load(path) -> { days, error, op, updated_at, document? }. The raw valid document
 // is retained for quota/unknown-field-preserving writes (T16.2). A missing file is an empty history
 // without an error. A corrupt or unreadable file is an empty history plus the failure
-// detail — the caller warns once and leaves the file in place for the next successful
-// write to overwrite it (docs §5). Entries without four non-negative numbers, or under a
+// detail — writers leave it in place until the read failure is resolved. Entries
+// without four non-negative numbers, or under a
 // non-date key, are ignored; unknown fields of a kept entry are preserved, and a
 // healthy share above observed is clamped back into range. `updated_at` (T12.5, read
 // only) is the document's wall-clock write time as a non-negative number, and null
@@ -217,7 +217,8 @@ export function load(path) {
 
 // collect(state, previous) -> the day map to persist, or null while the sampler never
 // held a live day (this run has nothing to add, so the file is left alone). This run's
-// completed days override the previous map for their date. The live day is written
+// completed days merge monotonically with the previous map for their date.
+// The live day is written
 // even when empty (docs §3), but cannot shrink an already persisted total.
 // Dates after the live day (a clock that jumped forward
 // and back) are dropped rather than rewritten, and the map keeps the last
@@ -228,7 +229,7 @@ export function collect(state, previous) {
 	let days = { ...(previous ?? {}) };
 	for (let date, entry in state.days)
 		if (valid_entry(entry))
-			days[date] = { ...entry };
+			days[date] = { ...entry, ...max_day(entry, valid_entry(previous?.[date]) ? previous[date] : null) };
 	for (let date in days)
 		if (date > state.day)
 			delete days[date];
@@ -253,18 +254,58 @@ function write_document(path, document) {
 	return { ok: true, error: null };
 };
 
-// The caller may pass its just-reloaded document so monitor can also warn once on read
-// errors. No cached document is used: CLI edits since the previous flush must survive.
+// All writers share a stable sidecar, never the inode replaced by rename. Lock
+// acquisition is non-blocking (bounded wait of zero); callers retain pending data
+// and retry on the next flush/command. Never unlink this lock file.
+function transaction(path, merge) {
+	let held = sys.lock(`${path}.lock`);
+	if (held == null)
+		return { ok: false, error: sys.error() ?? 'usage lock failed', op: 'lock' };
+	let result;
+	try {
+		let loaded = load(path);
+		if (loaded.error != null)
+			result = { ok: false, error: loaded.error, op: loaded.op, loaded };
+		else {
+			let document = merge(loaded);
+			result = document == null ? { ok: true, error: null }
+				: { ...write_document(path, document), days: document.days };
+			result.loaded = loaded;
+		}
+	}
+	catch (e) {
+		result = { ok: false, error: `${e}`, op: 'write' };
+	}
+	held.close();
+	return result;
+};
+
+// Low-level day-map writer: even legacy callers cannot supply a stale quota
+// document. The optional fourth argument is intentionally no longer trusted.
 export function write(path, days, now, document) {
-	let previous = document ?? load(path).document ?? {};
-	return write_document(path, { schema: 1, ...previous, updated_at: now, days });
+	return transaction(path, loaded => ({ schema: 1, ...(loaded.document ?? {}),
+		updated_at: now, days }));
+};
+
+// The monitor's entire read/merge/replace transaction lives here, not in its
+// caller. Both persisted and cached totals are floors, independently per field.
+export function flush(path, state, previous, now) {
+	if (state?.day == null)
+		return { ok: true, error: null };
+	return transaction(path, loaded => {
+		let floors = { ...loaded.days };
+		for (let date, entry in (previous ?? {}))
+			if (valid_entry(entry))
+				floors[date] = { ...entry, ...max_day(entry, floors[date]) };
+		let days = collect(state, floors);
+		return { schema: 1, ...(loaded.document ?? {}), updated_at: now, days };
+	});
 };
 
 // Quota changes do not touch history or its update timestamp and never reload UCI.
 export function set_quota(path, bytes, now) {
-	let loaded = load(path);
 	let quota = { bytes, set_at: bytes == null ? null : now };
-	let document = { schema: 1, days: {}, ...(loaded.document ?? {}), quota };
-	let result = write_document(path, document);
-	return { ...result, quota, loaded };
+	let result = transaction(path, loaded => ({ schema: 1, days: {},
+		...(loaded.document ?? {}), quota }));
+	return { ...result, quota };
 };

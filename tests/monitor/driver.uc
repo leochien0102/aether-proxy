@@ -973,8 +973,8 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 			'heatmap-persist: the retried write leaves no residue');
 	}
 	else {
-		// heatmap-corrupt: an unparsable file is an empty history with exactly one warn,
-		// never deleted; the next successful write overwrites it (docs §5).
+		// T16.50: an unreadable document cannot be replaced with an empty quota.
+		// Keep pending totals and retry only after the bad document is repaired.
 		sys.mkdir_p(usage_dir);
 		check(write(usage_file, 'not json at all'), 'heatmap-corrupt: the corrupt seed is in place');
 		usage.sample(d.usage, { tx: 1000, rx: 2000, now: noon_before(1), elapsed: 0, cap: 60,
@@ -984,16 +984,22 @@ else if (scenario == 'heatmap-persist' || scenario == 'heatmap-corrupt' || scena
 		monitor.flush_usage(d);
 		check(count(events(), 'FS_FAILED') == 1 && count(events(), usage_file) == 1,
 			'heatmap-corrupt: the corrupt file warns exactly once', events());
-		let data = json(fs.readfile(usage_file));
-		check(data.schema == 1 && data.days[date_of(noon_before(1))]?.tx == 100,
-			'heatmap-corrupt: the flush overwrites the corrupt file with the live history', sprintf('%.J', data));
+		check(fs.readfile(usage_file) == 'not json at all' && d.usage_days == null,
+			'heatmap-corrupt: failed read keeps the old file and watermark');
+		check(d.usage.tx == 100, 'heatmap-corrupt: failed read retains pending bytes');
 		usage.sample(d.usage, { tx: 1200, rx: 2200, now: noon_before(1) + 60, elapsed: 30, cap: 60,
 			state: 'running', proxy_ok: true });
 		monitor.flush_usage(d);
 		check(count(events(), 'FS_FAILED') == 1,
 			'heatmap-corrupt: the cached empty history does not warn again', events());
-		check(json(fs.readfile(usage_file)).days[date_of(noon_before(1))]?.tx == 200,
-			'heatmap-corrupt: accumulation continues on the empty history', sprintf('%.J', data));
+		check(fs.readfile(usage_file) == 'not json at all' && d.usage.tx == 200,
+			'heatmap-corrupt: another failed read retains all pending bytes');
+		check(write(usage_file, '{"schema":1,"days":{},"quota":{"bytes":100000000000,"set_at":17}}'),
+			'heatmap-corrupt: repair the document explicitly');
+		monitor.flush_usage(d);
+		let data = json(fs.readfile(usage_file));
+		check(data.days[date_of(noon_before(1))]?.tx == 200 && data.quota.bytes == 100000000000,
+			'heatmap-corrupt: repair allows retry without losing pending bytes or quota', sprintf('%.J', data));
 	}
 	no_external_children(d);
 }

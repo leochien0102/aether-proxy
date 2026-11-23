@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """T12.4 integration: usage.json persistence on a real clean stop (docs/b25-heatmap.md §5).
 
-A closed switch must leave the file untouched; a corrupt file must warn once and be
-overwritten by the stop flush; a blocked target must not break the stop. Cross-day
+A closed switch must leave the file untouched; a corrupt file must warn once and
+stay untouched until explicitly repaired (T16.50); a blocked target must not break the stop. Cross-day
 write and 90-day trim are driver/unit-covered (fake clock); this file pins the
 daemon stop path, the file mode and the real event stream.
 """
@@ -161,16 +161,31 @@ with tempfile.TemporaryDirectory(prefix='.usage-persist-', dir=ROOT / 'tests/dae
 	run_and_stop(off)
 	check('off: a closed switch leaves usage.json untouched', off.usage.read_text() == SEED)
 
-	# Scenario 3: a corrupt file warns once and is overwritten by the stop flush.
+	# Scenario 3: a corrupt file warns once and cannot be silently replaced.
 	corrupt = Fixture('corrupt', HEATMAP_ON)
 	corrupt.usage.write_text('{not json')
 	run_and_stop(corrupt)
 	events = usage_events(corrupt)
 	check('corrupt: the unparsable file warns exactly once',
 		len(events) == 1 and events[0]['level'] == 'warn', json.dumps(events))
+	check('corrupt: the stop flush preserves the unreadable file byte for byte',
+		corrupt.usage.read_text() == '{not json')
+	repaired = json.loads(SEED)
+	repaired['quota'] = {'bytes': 100000000000, 'set_at': 17}
+	corrupt.usage.write_text(json.dumps(repaired))
+	# Recover a known live accumulator from tmpfs on this run, independently of
+	# the repaired on-disk history. No probe interval or timing sleep is needed.
+	from datetime import date
+	accumulated = {'tx': 150, 'rx': 40, 'observed': 45, 'healthy': 20}
+	runtime = corrupt.state()
+	runtime['usage_today'] = dict(accumulated, date=date.today().isoformat(), at=int(time.time()))
+	(corrupt.run / 'state.json').write_text(json.dumps(runtime))
+	run_and_stop(corrupt)
 	document = json.loads(corrupt.usage.read_text())
-	check('corrupt: the stop flush overwrites the corrupt file',
-		document.get('schema') == 1 and today_entry(document) is not None)
+	check('corrupt: explicit repair permits a later stop flush with quota and history intact',
+		document.get('schema') == 1 and today_entry(document) == accumulated
+		and document['quota'] == repaired['quota']
+		and document['days']['2026-01-01'] == repaired['days']['2026-01-01'])
 
 	# Scenario 4: a blocked target must not delete it nor break the stop.
 	blocked = Fixture('blocked', HEATMAP_ON)

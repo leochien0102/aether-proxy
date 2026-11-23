@@ -655,33 +655,23 @@ function flush_usage(daemon, completed_day) {
 	if (daemon?.snapshot?.stats?.heatmap_enabled !== true)
 		return;
 	let path = usage_path(daemon);
-	// Reload every time: quota or today's published floor may have changed.
-	let loaded = usage.load(path);
+	let written = usage.flush(path, daemon.usage, daemon.usage_days, time());
+	let loaded = written.loaded;
 	let warned_read = false;
-	// Preserve the existing once-only read warning and retry cache. Do not log the
-	// same failed flush twice when its read already reported the filesystem problem.
-	if (loaded.error != null && !daemon.usage_warned) {
+	if (loaded?.error != null && !daemon.usage_warned) {
 		daemon.usage_warned = true;
 		warned_read = true;
 		log.set_run_dir(run_dir(daemon));
 		log.event('warn', 'FS_FAILED', { op: loaded.op, path, detail: loaded.error });
 	}
-	let previous = { ...(daemon.usage_days ?? {}), ...loaded.days };
-	// On rollover, the just-finalized accumulator has moved out of the live slot.
-	// Protect that day's floor here; collect's merge for other dates is unchanged.
-	if (completed_day != null && previous[completed_day] != null)
-		daemon.usage.days[completed_day] = usage.max_day(daemon.usage.days[completed_day], previous[completed_day]);
-	let days = usage.collect(daemon.usage, previous);
-	if (days == null)
-		return;
-	let written = usage.write(path, days, time(), loaded.document ?? {});
 	if (!written.ok) {
 		log.set_run_dir(run_dir(daemon));
-		if (!warned_read)
-			log.event('warn', 'FS_FAILED', { op: 'write', path, detail: written.error });
+		if (!warned_read && loaded?.error == null)
+			log.event('warn', 'FS_FAILED', { op: written.op ?? 'write', path, detail: written.error });
 		return;
 	}
-	daemon.usage_days = days;
+	if (written.days != null)
+		daemon.usage_days = written.days;
 };
 
 function pause_usage(daemon) {

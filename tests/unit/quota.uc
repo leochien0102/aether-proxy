@@ -56,5 +56,6 @@ export function run(c) {
 		mode: (fs.stat(path).mode & 511) == 384
 	};
 	fs.unlink(path);
+	fs.unlink(`${path}.lock`);
 	return out;
 };
