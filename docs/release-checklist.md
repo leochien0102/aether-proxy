@@ -99,14 +99,29 @@ gh workflow run publish-channel.yml -R leochien0102/aether-proxy-channel --ref m
 
 ## 组件发布（与应用解耦）
 
-**xray 核心**（`aether-xray`）只受上游版本驱动，不升应用版本：
+此入口只发布本仓 Makefile 生成的 **OpenWrt 包**，不发布上游裸二进制，不走应用正式版的 18 件组装链。
+现有组件/tag 映射保持不变：`aether-xray` → `xray-v<版本>`、`aether-dns` → `dns-v<版本>`、
+`chinadns-ng` → `chinadns-ng-v<版本>`（版本均含 `-rN`）。
 
-- [ ] 只改 `aether-xray/Makefile` 的 `PKG_VERSION` 与源码 `PKG_HASH`（必要时 `GO_TOOLCHAIN_VERSION`）；
-- [ ] 推送后等门禁 `build` 成功（含 smoke 的 `xray run -test`）；
-- [ ] 更新通道 `AETHER_PROXY_REF` 到该提交，并 `workflow_dispatch` `packages`、`components` 填 `aether-xray`
-      （只构建该组件，其余条目由 `--keep-missing` 保留）；
-- [ ] 核对清单：`aether-xray` 版本/哈希已更新、`previous` 正确，**应用版本不变**；
-- [ ] 设备在更新页只会看到 `aether-xray` 有更新。
+- **xray 核心**：`aether-xray/Makefile` 从上游源码构建；只受上游版本驱动，不升应用版本。
+- **DNS 引擎**：上游 DNS 仓库发布裸二进制（也有供人工下载的包）；本仓 `aether-dns/Makefile`
+  下载哈希钉定的裸二进制并生成本仓 OpenWrt 包。`dns-v…` 仅表示这些包，不新增 DNS 上游发布入口。
+- **ChinaDNS-NG**：`chinadns-ng/Makefile` 将上游哈希钉定的静态二进制打包；现有组件入口可发布这些包，
+  不改变设备端手动安装/更新的策略。
 
-**DNS 引擎**（`aether-dns`）：由 DNS 仓库发布；proxy 的 `aether-dns/Makefile` 按架构下载裸二进制，
-通道 `packages` 重新构建后清单更新，同样不升应用版本。
+发布核对：
+
+- [ ] 按组件更新本仓 Makefile 的版本与来源哈希（xray 必要时同步 Go 工具链），不要升应用版本。
+- [ ] 使用代码仓库 `release-component.yml`，输入单个组件及 Makefile 对应的 `<ver>-rN`。
+      它调用现有 `build.yml` 的组件构建；组件-only 构建不保证运行应用 smoke，不宣称 dataplane 验证。
+- [ ] 下载必须保留 `packages-<SDK>-<package_arch>` 目录；`24.10.8/IPK`、`25.12.5/APK`
+      各有 `x86_64`、`aarch64_generic`，四槽每槽恰一件包。生产入口
+      `tools/release/collect_component.py` 读取包内名称、版本、架构并核对槽位与格式，拒绝缺件、重复及输出名碰撞。
+- [ ] 最终 IPK 为 `<组件>_<版本>_<架构>.ipk`，APK 为 `<组件>-<版本>_<架构>.apk`；
+      架构只出现一次。四件全部通过后原子生成 `assets/`，内含四包及逐件验算的 `SHA256SUMS`。
+      不覆盖已有输出目录，也不覆盖已有同 tag Release。
+- [ ] 通道只拉取此正式组件 Release 已发布字节并验哈希，用 `--keep-missing` 保留其它条目；
+      不为组件通道更新重编包，不把通道 ref 当成组件字节来源。
+- [ ] 核对版本/哈希、`previous` 和设备更新策略，**应用版本不变**。
+
+离线收集回归：`python3 tests/ci/test_component_assets.py`（不下载 SDK、不创建 Release）。

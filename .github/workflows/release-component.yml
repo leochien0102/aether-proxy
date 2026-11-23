@@ -58,28 +58,15 @@ jobs:
         with:
           pattern: packages-*
           path: artifacts
-          merge-multiple: true
+          merge-multiple: false
 
       - name: Collect the component assets and checksums
         run: |
           set -euo pipefail
-          mkdir -p assets
-          shopt -s nullglob
-          for dir in artifacts/packages-*; do
-            arch=${dir##*-}
-            for file in "$dir"/${COMPONENT}_*.ipk "$dir"/${COMPONENT}-*.apk; do
-              [ -e "$file" ] || continue
-              base=${file##*/}
-              case "$base" in
-                # ipk already ends with _<arch>; apk carries no architecture, so add it once.
-                *.ipk) name=$base ;;
-                *.apk) name="${base%.apk}_${arch}.apk" ;;
-              esac
-              cp "$file" "assets/$name"
-            done
-          done
-          [ "$(ls assets | wc -l)" -gt 0 ] || { echo "::error::no $COMPONENT packages in the build output"; exit 1; }
-          ( cd assets && sha256sum -- * > SHA256SUMS )
+          python3 tools/release/collect_component.py \
+            --artifacts artifacts --output assets \
+            --component "$COMPONENT" --version "$VERSION"
+          ( cd assets && sha256sum --check SHA256SUMS )
           cat assets/SHA256SUMS
 
       - name: Create the component release
