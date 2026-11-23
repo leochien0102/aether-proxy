@@ -704,10 +704,11 @@ function flush_usage(daemon, completed_day) {
 	return written;
 };
 
-// Lifecycle retries are bounded by forty event-loop slices of at most 50ms.
+// Only confirmed sidecar contention gets forty event-loop slices of at most
+// 50ms. Parse/write/open/permission failures cannot heal by waiting for a lock.
 function drain_usage(daemon) {
 	let result = flush_usage(daemon);
-	for (let attempt = 0; !result.ok && attempt < 40; attempt++) {
+	for (let attempt = 0; !result.ok && result.retryable === true && attempt < 40; attempt++) {
 		let wake = uloop.timer(50, () => uloop.end());
 		if (wake == null)
 			break;

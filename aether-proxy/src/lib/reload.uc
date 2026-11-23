@@ -434,9 +434,11 @@ function run_candidate(daemon, started_ms, transaction) {
 		transaction.loaded = loaded;
 	}
 	let snapshot = loaded.snapshot;
-	// Drain before any candidate runtime/state publication. Failure leaves the
-	// enabled owner and its pending accumulators intact; a later reload can retry.
-	if (daemon.snapshot.stats?.heatmap_enabled === true && snapshot.stats?.heatmap_enabled !== true) {
+	// Only a continuing service must reject heatmap disable on drain failure.
+	// A disabled service goes through changed.stop -> stop_usage(), retaining the
+	// old enabled usage owner for the final checkpoint or recovery snapshot.
+	if (snapshot.main.enabled === true && daemon.snapshot.stats?.heatmap_enabled === true &&
+	    snapshot.stats?.heatmap_enabled !== true) {
 		let drained = monitor.drain_usage(daemon.usage_owner ?? daemon);
 		// The bounded drain pumps signals. TERM wins before candidate side effects.
 		if (daemon.ctx.stopping_requested)

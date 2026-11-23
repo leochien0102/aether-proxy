@@ -23,7 +23,9 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 PARSER = argparse.ArgumentParser(description=__doc__)
 PARSER.add_argument('--source', type=Path, default=ROOT)
-PARSER.add_argument('--case', choices=['term', 'recovery', 'recovery-failure', 'reload', 'reload-short', 'cross-day', 'clean'])
+PARSER.add_argument('--case', choices=['term', 'recovery', 'recovery-failure', 'reload', 'reload-short',
+                                       'reload-stop', 'reload-stop-failure', 'parse-failure',
+                                       'lock-error', 'cross-day', 'clean'])
 ARGS = PARSER.parse_args()
 SOURCE = ARGS.source.resolve()
 UCODE = ROOT / 'tests/host/prefix/bin/ucode'
@@ -149,6 +151,12 @@ class Fixture:
                             "        if (path == getenv('LIFECYCLE_USAGE') + '.lock')\n"
                             "            lifecycle_event({ kind: 'lock-failed', role: getenv('LIFECYCLE_ROLE') });")
         sysfile.write_text(text)
+        usage = self.modules / 'usage.uc'
+        text = replace_once(usage.read_text(), 'export function flush(path, state, previous, now) {',
+                            '''export function flush(path, state, previous, now) {
+    let observation = fs.open(getenv('LIFECYCLE_FLUSHES'), 'a');
+    observation.write('flush\\n'); observation.close();''')
+        usage.write_text(text)
         monitor = self.modules / 'monitor.uc'
         text = monitor.read_text()
         # Replace only usage's clock sources; real shutdown retry deadlines remain real.
@@ -185,7 +193,7 @@ function lifecycle_observe(daemon) {
                         AETHER_PROXY_TEST_LOGFILTER=str(ROOT / 'aether-proxy/files/aether-proxy-logfilter.awk'),
                         LIFECYCLE_USAGE=str(self.usage), LIFECYCLE_EVENTS=str(self.events.path),
                         LIFECYCLE_INPUT=str(self.input.path), LIFECYCLE_RELEASE=str(self.release.path),
-                        LIFECYCLE_ROLE='daemon')
+                        LIFECYCLE_ROLE='daemon', LIFECYCLE_FLUSHES=str(self.root / 'flushes'))
         self.command = [str(UCODE), '-L', str(self.root / 'modules/*.uc'), '-S',
                         str(SOURCE / 'aether-proxy/src/aether-proxy'), '--', 'daemon',
                         '--sys-root', str(self.root), '--bin-dir', str(base / 'bin'),
@@ -196,8 +204,19 @@ function lifecycle_observe(daemon) {
         self.mono = 0
         self.now = EPOCH
 
-    def set_enabled(self, enabled):
-        (self.conf / 'aetherproxy').write_text(self.config + (ON if enabled else ''))
+    def set_enabled(self, enabled, main_enabled=True):
+        config = self.config if main_enabled else replace_once(
+            self.config, "option enabled '1'", "option enabled '0'")
+        (self.conf / 'aetherproxy').write_text(config + (ON if enabled else ''))
+
+    def flush_count(self):
+        path = self.root / 'flushes'
+        return len(path.read_text().splitlines()) if path.exists() else 0
+
+    def request_stop(self, child, hup=False):
+        if hup:
+            self.set_enabled(False, main_enabled=False)
+        child.send_signal(signal.SIGHUP if hup else signal.SIGTERM)
 
     def state(self):
         path = self.run / 'state.json'
@@ -305,20 +324,25 @@ def term(f):
     check('successful TERM leaves no recovery file', not f.pending.exists())
 
 
-def recovery(f):
+def recovery(f, hup=False):
     child = f.start()
     f.sample(child, 150, 40)
     writer = f.writer()
     f.sample(child, 200, 60, next_day=True)
+    f.sample(child, 207, 63)
     started = time.monotonic()
-    f.stop(child)
+    f.request_stop(child, hup)
+    child.wait(timeout=8)
+    check('HUP main+heatmap disable exits cleanly' if hup else 'real TERM exits cleanly',
+          child.returncode == 0 and f.state().get('state') == 'stopped', f.state())
+    check('quota writer remains locked through daemon exit', writer.poll() is None)
     elapsed = time.monotonic() - started
     check('persistent contention stop is bounded (2s budget plus teardown)', elapsed < 7, elapsed)
-    check('failed TERM atomically preserves pending state', f.pending.is_file())
+    check('contended stop atomically preserves pending state', f.pending.is_file())
     pending = json.loads(f.pending.read_text())
     check('pending contains exact completed day and current day (no quota snapshot)',
           pending.get('schema') == 1 and pending.get('days') == {
-              DAY: totals(200, 60, 2), NEXT: totals(0, 0, 0)}
+              DAY: totals(200, 60, 2), NEXT: totals(7, 3, 1)}
           and 'quota' not in pending, pending)
     check('pending has private mode 0600', f.pending.stat().st_mode & 0o777 == 0o600)
     stopped = [json.loads(line) for line in (f.run / 'events.jsonl').read_text().splitlines()
@@ -327,15 +351,16 @@ def recovery(f):
           stopped[-1]['args'].get('usage_pending') == str(f.pending), stopped)
     check('no atomic pending residue', not list(f.run.glob('usage-pending.json.tmp.*')))
     f.unlock(writer)
+    f.set_enabled(True)
     child = f.start()
     wait_for(lambda: f.document()['days'].get(DAY) == totals(200, 60, 2), child)
-    f.assert_days({DAY: totals(200, 60, 2), NEXT: totals(0, 0, 0)})
+    f.assert_days({DAY: totals(200, 60, 2), NEXT: totals(7, 3, 1)})
     wait_for(lambda: not f.pending.exists(), child)
     f.stop(child)
-    f.assert_days({DAY: totals(200, 60, 2), NEXT: totals(0, 0, 0)})
+    f.assert_days({DAY: totals(200, 60, 2), NEXT: totals(7, 3, 1)})
 
 
-def recovery_failure(f):
+def recovery_failure(f, hup=False):
     child = f.start()
     f.sample(child, 150, 40)
     writer = f.writer()
@@ -343,8 +368,9 @@ def recovery_failure(f):
     # Actual exclusive-create failure; no mocked sys.write_atomic return value.
     collision = f.run / f'usage-pending.json.tmp.{child.pid}'
     collision.mkdir()
-    child.terminate()
+    f.request_stop(child, hup)
     child.wait(timeout=8)
+    check('quota writer remains locked through failed recovery exit', writer.poll() is None)
     check('recovery write failure causes observable nonzero exit', child.returncode != 0)
     events = [json.loads(line) for line in (f.run / 'events.jsonl').read_text().splitlines()]
     check('recovery write failure emits FS_FAILED usage_recovery', any(
@@ -370,7 +396,9 @@ def reload(f):
         event.get('code') == 'START_FAILED' and event.get('args', {}).get('step') == 'reload:usage_flush'
         for event in events), events)
     # Successful sampling proves the active old snapshot is still enabled.
-    f.sample(child, 175, 50)
+    sampled = f.sample(child, 175, 50)
+    check('failed heatmap-only disable continues sampling the old enabled snapshot',
+          sampled['usage']['tx'] == 175 and sampled['usage']['rx'] == 50, sampled)
     f.unlock(writer)
     old_reload = f.state()['last_reload']
     child.send_signal(signal.SIGHUP)
@@ -400,6 +428,38 @@ def reload_short(f):
     f.stop(child)
     check('successful disable leaves no dirty TERM rewrite',
           f.usage.read_bytes() == before and f.usage.stat().st_ino == identity)
+
+
+def nonretryable_failure(f, corrupt=False):
+    child = f.start()
+    f.sample(child, 150, 40)
+    if corrupt:
+        # Real malformed ledger input, not an injected usage.flush failure.
+        f.usage.write_text('{broken JSON\n')
+    else:
+        # Opening a directory as the sidecar fails with EISDIR, not EAGAIN.
+        # chmod would not reliably fail when this host test runs as root.
+        lock = Path(str(f.usage) + '.lock')
+        lock.unlink(missing_ok=True)
+        lock.mkdir()
+    before = f.usage.read_bytes()
+    flushes = f.flush_count()
+    started = time.monotonic()
+    f.stop(child)
+    elapsed = time.monotonic() - started
+    check('nonretryable failure makes exactly one lifecycle flush (no 2s retry loop)',
+          f.flush_count() - flushes == 1,
+          {'flushes': f.flush_count() - flushes, 'elapsed': elapsed})
+    events = [json.loads(line) for line in (f.run / 'events.jsonl').read_text().splitlines()]
+    op = 'parse' if corrupt else 'lock'
+    check('real IO failure reports FS_FAILED ' + op, any(
+        event.get('code') == 'FS_FAILED' and event.get('args', {}).get('op') == op
+        for event in events), events)
+    check('nonretryable failure preserves ledger byte-for-byte', f.usage.read_bytes() == before)
+    pending = json.loads(f.pending.read_text())
+    check('nonretryable failure still preserves exact pending counters',
+          pending.get('days') == {DAY: totals(150, 40, 1)}, pending)
+    print(f'EVIDENCE usage-lifecycle: {op} failure flushes=1 elapsed={elapsed:.3f}s', flush=True)
 
 
 def cross_day(f):
@@ -437,7 +497,13 @@ def main():
             (base / 'base' / (name + '.txt')).write_text('example.com\n')
         (base / 'base/chnroute4.txt').write_text('1.0.0.0/8\n')
         (base / 'base/gfw_static4.txt').write_text('91.108.4.0/22\n')
-        for name, scenario in [('term', term), ('recovery', recovery), ('recovery-failure', recovery_failure), ('reload', reload), ('reload-short', reload_short), ('cross-day', cross_day), ('clean', clean)]:
+        for name, scenario in [
+                ('term', term), ('recovery', recovery), ('recovery-failure', recovery_failure),
+                ('reload', reload), ('reload-short', reload_short),
+                ('reload-stop', lambda f: recovery(f, hup=True)),
+                ('reload-stop-failure', lambda f: recovery_failure(f, hup=True)),
+                ('parse-failure', lambda f: nonretryable_failure(f, corrupt=True)),
+                ('lock-error', nonretryable_failure), ('cross-day', cross_day), ('clean', clean)]:
             if ARGS.case and name != ARGS.case:
                 continue
             fixture = Fixture(base, name)
