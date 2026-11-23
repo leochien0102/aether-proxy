@@ -60,6 +60,22 @@ fi
 # T16.11 / T16.61: inspect the shipped hooks, then run them in an isolated root.
 # Replacing absolute /etc/init.d/rpcd and /tmp/ paths keeps these tests away from
 # host services and real /tmp caches.
+prepare_isolated_hook() {
+	local hook="$1" body="$2" hook_root="$3" out_script="$4"
+	local hook_rpcd="$hook_root/etc/init.d/rpcd"
+	local hook_tmp="$hook_root/tmp"
+	local isolated stripped
+	mkdir -p "$hook_root/etc/init.d" "$hook_tmp"
+	isolated="${body//\/tmp\//$hook_tmp\/}"
+	isolated="${isolated//\/etc\/init.d\/rpcd/$hook_rpcd}"
+	stripped="${isolated//"$hook_root"/__ISOLATED_ROOT__}"
+	if printf '%s\n' "$stripped" | grep -qE '(^|[[:space:]"'"'"'])/(tmp|etc)/'; then
+		printf 'refusing to execute %s: unrewritten host /tmp or /etc path detected\n' "$hook" >&2
+		return 1
+	fi
+	printf '%s\n' "$isolated" >"$out_script"
+}
+
 LUCI_MAKEFILE="${AETHER_PROXY_TEST_LUCI_MAKEFILE:-$ROOT/luci-app-aether-proxy/Makefile}"
 for hook in postinst postrm; do
 	body="$(awk -v hook="$hook" '
@@ -79,16 +95,13 @@ for hook in postinst postrm; do
 	hook_root="$T/root-$hook"
 	hook_rpcd="$hook_root/etc/init.d/rpcd"
 	hook_tmp="$hook_root/tmp"
-	mkdir -p "$hook_root/etc/init.d" "$hook_tmp"
-	isolated="${body//\/tmp\//$hook_tmp\/}"
-	isolated="${isolated//\/etc\/init.d\/rpcd/$hook_rpcd}"
-	stripped="${isolated//"$hook_root"/__ISOLATED_ROOT__}"
-	if printf '%s\n' "$stripped" | grep -qE '(^|[[:space:]"'"'"'])/(tmp|etc)/'; then
-		bad "T16.61 $hook isolated script contains no unrewritten host /tmp or /etc paths"
-	else
+	rm -f "$T/$hook" "$T/isolate.err"
+	if prepare_isolated_hook "$hook" "$body" "$hook_root" "$T/$hook" 2>"$T/isolate.err"; then
 		ok "T16.61 $hook isolated script contains no unrewritten host /tmp or /etc paths"
+	else
+		bad "T16.61 $hook isolated script contains no unrewritten host /tmp or /etc paths" "$(cat "$T/isolate.err")"
+		continue
 	fi
-	printf '%s\n' "$isolated" >"$T/$hook"
 	printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\nexit 7\n' "$T/reload.log" >"$hook_rpcd"
 	chmod +x "$hook_rpcd"
 	rm -f "$T/reload.log"
@@ -189,6 +202,34 @@ for hook in postinst postrm; do
 		bad "T16.11 $hook skips missing rpcd silently"
 	fi
 done
+
+# T16.61 negative counterexample: a mock hook containing an unrewritten host path
+# literal (/etc/init.d/other) and a non-destructive sentinel write into $T.
+# Must emit a clear error, exit non-zero, and stop before executing the hook.
+neg_sentinel="$T/neg-executed.sentinel"
+neg_body="$(cat <<'EOF'
+#!/bin/sh
+: "/etc/init.d/other"
+printf 'executed\n' >"$T1661_NEG_SENTINEL"
+exit 0
+EOF
+)"
+neg_rc=0
+if (
+	prepare_isolated_hook "postinst-negative" "$neg_body" "$T/root-neg" "$T/neg-hook" &&
+		T1661_NEG_SENTINEL="$neg_sentinel" IPKG_INSTROOT= sh "$T/neg-hook"
+) >"$T/neg.out" 2>"$T/neg.err"; then
+	neg_rc=0
+else
+	neg_rc=$?
+fi
+if [ "$neg_rc" -ne 0 ] &&
+	grep -q 'refusing to execute postinst-negative: unrewritten host /tmp or /etc path detected' "$T/neg.err" &&
+	[ ! -e "$T/neg-hook" ] && [ ! -e "$neg_sentinel" ]; then
+	ok "T16.61 isolation guard aborts before executing hook with unrewritten host path"
+else
+	bad "T16.61 isolation guard aborts before executing hook with unrewritten host path" "rc=$neg_rc err=$(cat "$T/neg.err")"
+fi
 
 echo
 echo "$pass passed, $fail failed"
