@@ -12,10 +12,10 @@ for manager in opkg apk; do
 				backend|app|download-fails|install-fails)
 					printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/luci-app-aether-proxy"
 					rm "$UPDATE_PACKAGE_STATE_DIR/luci-i18n-aether-proxy-zh-cn" ;;
-				both-backend|both-app|backend-newer)
+				asset-group-backend|asset-group-app|metadata-group-backend|metadata-group-app|both-backend|both-app|backend-newer)
 					printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/luci-app-aether-proxy"
 					printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/luci-i18n-aether-proxy-zh-cn" ;;
-				only-language-backend|only-language-app|language|language-download-fails|language-install-fails)
+				asset-language|metadata-language|only-language-backend|only-language-app|language|language-download-fails|language-install-fails)
 					printf '0.1.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/luci-i18n-aether-proxy-zh-cn" ;;
 				language-newer) printf '0.3.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/luci-i18n-aether-proxy-zh-cn" ;;
 				language-missing) rm "$UPDATE_PACKAGE_STATE_DIR/luci-i18n-aether-proxy-zh-cn" ;;
@@ -27,6 +27,27 @@ for manager in opkg apk; do
 			if [ "$scenario" = backend-newer ]; then
 				printf '0.3.0-r1\n' > "$UPDATE_PACKAGE_STATE_DIR/aether-proxy"
 			fi
+			case "$scenario" in
+				asset-*|metadata-*)
+					python3 - "$T" "$scenario" <<'PYASSET'
+import json, sys
+from pathlib import Path
+for channel in ('ch1', 'ch2'):
+    path = Path(sys.argv[1]) / channel / 'manifest.json'
+    manifest = json.loads(path.read_text())
+    current = manifest['packages']['luci-i18n-aether-proxy-zh-cn']['current']
+    if sys.argv[2].startswith('asset-'):
+        current['assets'] = {'mips_24kc': current['assets']['aarch64_generic']}
+    else:
+        for formats in current['assets'].values():
+            for asset in formats.values():
+                asset.pop('sha256')
+    path.write_text(json.dumps(manifest))
+PYASSET
+					for channel in ch1 ch2; do
+						"$USIGN" -S -m "$T/$channel/manifest.json" -s "$T/sec"
+					done ;;
+			esac
 			if [ "$mode" = compatibility ]; then
 				python3 - "$T" <<'PY'
 import json, sys
@@ -103,6 +124,12 @@ install-fails|luci-app-aether-proxy
 language-download-fails|luci-i18n-aether-proxy-zh-cn
 language-install-fails|luci-i18n-aether-proxy-zh-cn
 query-fails|aether-proxy
+asset-group-backend|aether-proxy
+asset-group-app|luci-app-aether-proxy
+asset-language|luci-i18n-aether-proxy-zh-cn
+metadata-group-backend|aether-proxy
+metadata-group-app|luci-app-aether-proxy
+metadata-language|luci-i18n-aether-proxy-zh-cn
 TERMINAL_CASES
 	done
 	if [ "$manager" = apk ]; then rm "$T/bin/apk"; fi

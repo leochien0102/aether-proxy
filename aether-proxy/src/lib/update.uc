@@ -1015,8 +1015,14 @@ function companion_candidate(ctx, selected, plat, name) {
 	let installed = installed_version(ctx, plat.pm, name);
 	if (!installed.ok)
 		return { ok: false, code: 'CMD_FAILED', detail: installed.detail };
+	// Eligibility is independent of asset usability: a terminal must not call a
+	// declared newer version "up to date" just because its asset is unusable.
+	let available = selected.manifest.packages?.[name]?.current?.version;
+	let needed = installed.version != null && type(available) == 'string'
+		&& version_newer(available, installed.version);
 	let asset = package_asset(selected.manifest, name, plat.arch, plat.pm, false);
-	return { ok: true, asset: installed.version != null && asset != null
+	// Keep the ordinary optional-companion skip policy unchanged.
+	return { ok: true, needed, asset: installed.version != null && asset != null
 		&& version_newer(asset.version, installed.version) ? asset : null };
 }
 
@@ -1083,6 +1089,10 @@ function terminal_companions(opts, ctx, selected, plat, name, together, version)
 		let candidate = companion_candidate(ctx, selected, plat, companion);
 		if (!candidate.ok)
 			return group_failure(candidate.code, candidate.detail);
+		if (candidate.needed && candidate.asset == null) {
+			log.event('error', 'ARCH_UNSUPPORTED', { arch: plat.arch });
+			return group_failure('ARCH_UNSUPPORTED', `no ${plat.pm} asset for ${companion} on ${plat.arch}`);
+		}
 		if (candidate.asset != null)
 			pending = candidate.asset;
 	}

@@ -42,6 +42,12 @@ if compatibility:
         candidates = []
     elif not group:
         candidates = [language] if before.get(language) == '0.1.0-r1' else []
+unusable_asset = scenario.startswith(('asset-', 'metadata-'))
+# Ordinary groups keep skipping optional companions with unusable assets.
+# Compatibility terminals must preflight every needed companion before any install.
+asset_failure = unusable_asset and (compatibility or not group)
+if unusable_asset:
+    candidates = [] if asset_failure else [p for p in candidates if p != language]
 noop = compatibility and not candidates
 failed = next((p for p in candidates if scenario.endswith('-fails') and
                p == (language if scenario.startswith('language-') else app)), None)
@@ -91,6 +97,15 @@ if scenario == 'query-fails':
                            detail=f'{manager} exited 7: fixture query failure: {app}',
                            companions={app: 'skipped' if compatibility else 'failed', language: 'skipped'})
 
+if asset_failure:
+    failed = language
+    expected_result = dict(ok=False, package=backend if compatibility else language,
+                           **{'from': None}, to=None, rolled_back=False,
+                           code='ARCH_UNSUPPORTED',
+                           detail=f'no {manager} asset for {language} on aarch64_generic')
+    if compatibility:
+        expected_result['companions'] = {app: 'skipped', language: 'skipped'}
+
 errors = []
 
 
@@ -110,11 +125,14 @@ events = [json.loads(line) for line in (root / 'run/events.jsonl').read_text().s
 check('installed events', [(e['args']['package'], e['args']['version'])
                            for e in events if e['code'] == 'UPDATE_INSTALLED'], installed_events)
 check('rollback events', [e for e in events if e['code'] == 'UPDATE_ROLLED_BACK'], [])
-if failed and group and not (compatibility and scenario == 'query-fails'):
+if failed and group and not asset_failure and not (compatibility and scenario == 'query-fails'):
     check('visible companion failure event', any(
         e['code'] == 'CMD_FAILED' and e['args'].get('cmd') == f'update package {failed}'
         and e['args'].get('rc') == 1 and e['args'].get('stderr') == expected_result['detail']
         for e in events), True)
+if asset_failure:
+    check('visible asset failure event', any(e['code'] == 'ARCH_UNSUPPORTED'
+          and e['args'].get('arch') == 'aarch64_generic' for e in events), True)
 check('download residue', sorted(p.name for p in (root / 'root/tmp/aether-proxy-dl').glob('*')
                                 if p.suffix in ('.ipk', '.apk', '.part')), [])
 if errors:
