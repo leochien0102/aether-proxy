@@ -1282,24 +1282,35 @@ function run(args) {
 			log.event('error', 'FS_FAILED', { op: 'unlink', path: pid_file, detail: fs.error() ?? 'unknown error' });
 		return 1;
 	}
-	let signal = null, stopping = false;
+	let pending = { stop: false, reload: false, tick: false, xray_restart: false };
+	let stopping = false;
 	let reload_started_ms = null;
 	let signals = {};
 	let monitor_daemon = null;
 	let tick = () => monitor_daemon == null ? null : monitor.tick(monitor_daemon);
-	let on_signal = () => signal == 'stop';
+	let on_signal = () => pending.stop;
+	function has_pending_control() {
+		return pending.reload || pending.xray_restart || pending.tick;
+	};
+	function clear_non_stop_pending() {
+		pending.reload = false;
+		pending.tick = false;
+		pending.xray_restart = false;
+		reload_started_ms = null;
+	};
 	for (let item in [ [ 'SIGTERM', 'stop' ], [ 'SIGINT', 'stop' ], [ 'SIGHUP', 'reload' ], [ 'SIGUSR1', 'tick' ], [ 'SIGUSR2', 'xray_restart' ] ]) {
 		let name = item[0], kind = item[1];
 		signals[kind + name] = uloop.signal(name, () => {
 			if (kind == 'stop') {
 				// TERM wins over a queued HUP/USR signal, including inside readiness waits.
 				write_stopping(ctx);
-				signal = 'stop';
+				pending.stop = true;
+				clear_non_stop_pending();
 			}
-			else if (!ctx.stopping_requested && signal == null) {
-				signal = kind;
-				if (kind == 'reload')
+			else if (!ctx.stopping_requested && !pending.stop) {
+				if (kind == 'reload' && !pending.reload)
 					reload_started_ms = monotonic_ms();
+				pending[kind] = true;
 			}
 			uloop.end();
 		});
@@ -1347,7 +1358,7 @@ function run(args) {
 		// Drain a TERM queued during post-commit frozen-file cleanup before
 		// creating schedulers or issuing the initial successful-route probe.
 		uloop.run(1);
-		if (ctx.stopping_requested) {
+		if (ctx.stopping_requested || pending.stop) {
 			let errors = shutdown(ctx, children, true);
 			if (length(errors))
 				event_failure(ctx, 'stop', join('; ', errors));
@@ -1398,37 +1409,20 @@ function run(args) {
 
 		// Startup has released its lock: do not leave DNS on direct upstreams for a
 		// full non-running interval before the first probe (03/04).
-		if (signal != 'stop')
+		if (!ctx.stopping_requested && !pending.stop)
 			tick();
-		while (signal != 'stop') {
-			if (signal == 'xray_restart') {
-				signal = null;
-				if (monitor_daemon.machine.state != 'failsafe') {
-					monitor_daemon.busy = true;
-					restart_xray(ctx, children, monitor_daemon.state, error => {
-						monitor_daemon.busy = false;
-						if (error != null)
-							event_failure(ctx, 'sigusr2', error);
-						else if (!ctx.stopping_requested)
-							tick();
-						if (ctx.stopping_requested)
-							uloop.end();
-					});
-				}
-				continue;
-			}
-			if (signal == 'tick') {
-				signal = null;
-				tick();
-				continue;
-			}
-			if (signal == 'reload') {
-				let started_ms = reload_started_ms;
-				signal = null;
-				while (monitor_daemon?.busy)
+		while (!ctx.stopping_requested && !pending.stop) {
+			if (monitor_daemon?.busy) {
+				if (has_pending_control())
 					uloop.run(C.DAEMON_POLL_MS);
-				if (ctx.stopping_requested)
-					break;
+				else
+					uloop.run();
+				continue;
+			}
+			if (pending.reload) {
+				let started_ms = reload_started_ms;
+				pending.reload = false;
+				reload_started_ms = null;
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
 				let old_node = monitor_daemon.snapshot.main.node;
@@ -1445,6 +1439,7 @@ function run(args) {
 					monitor_daemon.state.last_reload = changed.last_reload;
 				if (changed.stop) {
 					stopping = true;
+					clear_non_stop_pending();
 					cancel_subscription_timer();
 					// The sampled days must reach usage.json before teardown discards them (T12.4).
 					if (!monitor.stop_usage(monitor_daemon).ok)
@@ -1474,17 +1469,38 @@ function run(args) {
 						changed.snapshot.subscriptions, subscription_jitter);
 					// docs/10 Dashboard part 2: measure the new route after it is fully applied.
 					// Unrelated reloads must not add probes to the periodic monitor schedule.
-					if (old_node != changed.snapshot.main.node || old_ip != changed.state.node_ip)
+					if (!ctx.stopping_requested && !pending.stop &&
+					    (old_node != changed.snapshot.main.node || old_ip != changed.state.node_ip))
 						tick();
 				}
 				continue;
 			}
-			signal = null;
+			if (pending.xray_restart) {
+				pending.xray_restart = false;
+				if (monitor_daemon.machine.state != 'failsafe') {
+					monitor_daemon.busy = true;
+					restart_xray(ctx, children, monitor_daemon.state, error => {
+						monitor_daemon.busy = false;
+						if (error != null)
+							event_failure(ctx, 'sigusr2', error);
+						else if (!ctx.stopping_requested && !pending.stop)
+							tick();
+						if (ctx.stopping_requested || pending.stop || has_pending_control())
+							uloop.end();
+					});
+				}
+				continue;
+			}
+			if (pending.tick) {
+				pending.tick = false;
+				tick();
+				continue;
+			}
 			uloop.run();
 		}
 		cancel_subscription_timer();
 
-		if (signal == 'stop' && !stopping) {
+		if ((pending.stop || ctx.stopping_requested) && !stopping) {
 			while (monitor_daemon?.busy)
 				uloop.run(C.DAEMON_POLL_MS);
 			stopping = true;
@@ -1532,21 +1548,20 @@ function run(args) {
 	function wait_retry(delay) {
 		let due = false, timer = null;
 		timer = uloop.timer(delay * 1000, () => { due = true; timer = null; uloop.end(); });
-		while (!due && signal != 'stop' && signal != 'reload') {
-			if (signal == 'tick') {
-				signal = null;
-				continue;
-			}
-			signal = null;
+		while (!due && !pending.stop && !pending.reload) {
+			pending.tick = false;
+			pending.xray_restart = false;
 			uloop.run();
 		}
 		if (timer != null)
 			timer.cancel();
-		if (signal == 'stop')
+		if (pending.stop)
 			return 'stop';
-		if (signal == 'reload')
+		if (pending.reload) {
+			clear_non_stop_pending();
 			return 'reload';
-		return due ? 'retry' : signal;
+		}
+		return 'retry';
 	};
 
 	while (!finished) {
@@ -1564,7 +1579,7 @@ function run(args) {
 			finished = true;
 			continue;
 		}
-		if (result.interrupted && signal == 'stop') {
+		if (result.interrupted && (pending.stop || ctx.stopping_requested)) {
 			let errors = shutdown(ctx, children, true);
 			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
@@ -1572,7 +1587,7 @@ function run(args) {
 			finished = true;
 			continue;
 		}
-		if (signal == 'stop') {
+		if (pending.stop || ctx.stopping_requested) {
 			let errors = shutdown(ctx, children, true);
 			pipeline.prune_frozen(ctx, null);
 			if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
@@ -1583,29 +1598,29 @@ function run(args) {
 		save_start_failure(result);
 		if (result.step == 'config') {
 			retry_index = 0;
-			if (signal == 'reload') {
-				signal = null;
+			if (pending.reload) {
+				clear_non_stop_pending();
 				continue;
 			}
-			while (signal != 'stop' && signal != 'reload') {
-				if (signal == 'tick') { signal = null; continue; }
-				signal = null;
+			while (!pending.stop && !pending.reload) {
+				pending.tick = false;
+				pending.xray_restart = false;
 				uloop.run();
 			}
-			if (signal == 'stop') {
+			if (pending.stop) {
 				let errors = shutdown(ctx, { xray: null, dns: null }, true);
 				if (length(errors)) event_failure(ctx, 'stop', join('; ', errors));
 				exit_code = 0;
 				finished = true;
 			}
 			else {
-				signal = null;
+				clear_non_stop_pending();
 				retry_index = 0;
 			}
 			continue;
 		}
-		if (signal == 'reload') {
-			signal = null;
+		if (pending.reload) {
+			clear_non_stop_pending();
 			retry_index = 0;
 			continue;
 		}
