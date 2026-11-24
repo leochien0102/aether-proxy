@@ -385,16 +385,25 @@ def test_hup_inflight_rejects_cleanup(base, bin_dir):
 		check('dir-a: follow-up HUP succeeds after race', st2.get('mode') == 'gfw' and st2.get('last_reload', {}).get('ok') is True, f'state={st2!r}')
 
 
+def reload_lock_events(fixture, start_index=0):
+	return [
+		e for e in fixture.events()[start_index:]
+		if e.get('code') == 'START_FAILED' and e.get('args', {}).get('step') == 'reload:lock'
+	]
+
+
 def test_external_lock_blocks_hup_then_retry_succeeds(base, bin_dir):
-	"""Direction B: external flock holder blocks HUP with no data-plane side effects; new HUP succeeds after unlock."""
+	"""Direction B: external flock holder blocks HUP with no state RMW or data-plane side effects;
+	later lock-held tick merges last_reload safely, and new HUP succeeds after unlock."""
 	f = Fixture(base, 'dir-b-external-lock', bin_dir, mode='gfw')
 	with f.daemon() as proc:
 		wait_for(lambda: f.state().get('state') == 'running', proc, label='running', detail_fn=f.debug_summary)
 		xray_pid = read_pid(f.root / 'xray.pid')
 		dns_pid = read_pid(f.root / 'chinadns.pid')
 		current_nft_before = (f.run / 'current/aether-proxy.nft').read_text()
+		state_bytes_before = f.state_file.read_bytes()
 		floor = f.state().get('last_reload', {}).get('at', 0)
-		busy_before = len([e for e in f.events() if e.get('code') == 'BUSY'])
+		events_before = len(f.events())
 		applied_before = len([e for e in f.events() if e.get('code') == 'RELOAD_APPLIED'])
 
 		with hold_flock_exclusive(f.lock_file):
@@ -402,23 +411,30 @@ def test_external_lock_blocks_hup_then_retry_succeeds(base, bin_dir):
 			f.write_uci(mode='global')
 			proc.send_signal(signal.SIGHUP)
 			wait_for(
-				lambda: f.state().get('last_reload', {}).get('at', 0) > floor,
-				proc, label='busy HUP last_reload feedback', detail_fn=f.debug_summary,
+				lambda: len(reload_lock_events(f, events_before)) > 0,
+				proc, label='busy HUP reload:lock warn event', detail_fn=f.debug_summary,
 			)
-			st = f.state()
-			lr = st.get('last_reload', {})
+			lock_ev = reload_lock_events(f, events_before)[0]
+			new_events = f.events()[events_before:]
 			new_calls = f.calls()[calls_before:]
-			busy_after = [e for e in f.events() if e.get('code') == 'BUSY']
 			applied_after = [e for e in f.events() if e.get('code') == 'RELOAD_APPLIED']
 
-			check('dir-b: busy HUP records last_reload.ok=False', lr.get('ok') is False, f'last_reload={lr!r}')
-			check('dir-b: busy HUP leaves target_node/target_mode null',
-				lr.get('target_node') is None and lr.get('target_mode') is None, f'last_reload={lr!r}')
-			check('dir-b: busy HUP emits BUSY warn event',
-				len(busy_after) > busy_before and any(e.get('args', {}).get('holder') == 'reload' for e in busy_after[busy_before:]),
-				f'busy_events={busy_after[busy_before:]!r}')
+			check('dir-b: flock failure emits warn START_FAILED step=reload:lock',
+				lock_ev.get('level') == 'warn' and lock_ev.get('args', {}).get('step') == 'reload:lock',
+				f'event={lock_ev!r}')
+			check('dir-b: flock failure preserves original lock detail',
+				isinstance(lock_ev.get('args', {}).get('detail'), str)
+				and lock_ev['args']['detail'].startswith('lock ')
+				and str(f.lock_file) in lock_ev['args']['detail'],
+				f'event={lock_ev!r}')
+			check('dir-b: flock failure does not claim a guessed reload holder',
+				not any(e.get('code') == 'BUSY' and e.get('args', {}).get('holder') == 'reload' for e in new_events),
+				f'new_events={new_events!r}')
 			check('dir-b: busy HUP does not emit RELOAD_APPLIED', len(applied_after) == applied_before)
-			check('dir-b: busy HUP keeps old mode=gfw', st.get('mode') == 'gfw' and st.get('state') == 'running', f'state={st!r}')
+			check('dir-b: busy HUP does not read-modify-write state.json while unlocked',
+				f.state_file.read_bytes() == state_bytes_before,
+				f'state={f.state()!r}')
+			check('dir-b: busy HUP keeps old mode=gfw', f.state().get('mode') == 'gfw' and f.state().get('state') == 'running', f'state={f.state()!r}')
 			check('dir-b: busy HUP makes zero data-plane stub calls', len(new_calls) == 0, f'new_calls={new_calls!r}')
 			check('dir-b: busy HUP leaves current/aether-proxy.nft untouched',
 				(f.run / 'current/aether-proxy.nft').read_text() == current_nft_before)
@@ -426,9 +442,21 @@ def test_external_lock_blocks_hup_then_retry_succeeds(base, bin_dir):
 				read_pid(f.root / 'xray.pid') == xray_pid and read_pid(f.root / 'chinadns.pid') == dns_pid
 				and pid_alive(xray_pid) and pid_alive(dns_pid))
 
-		# External lock is now released; a new HUP must succeed.
+		# External lock is now released. A lock-held monitor tick (SIGUSR1) may safely merge last_reload.
 		check('dir-b: C.LOCK_FILE free after external holder releases', try_flock_exclusive(f.lock_file))
-		busy_at = f.state()['last_reload']['at']
+		proc.send_signal(signal.SIGUSR1)
+		wait_for(
+			lambda: f.state().get('last_reload', {}).get('at', 0) > floor and try_flock_exclusive(f.lock_file),
+			proc, label='lock-held monitor tick merges failed last_reload', detail_fn=f.debug_summary,
+		)
+		lr = f.state().get('last_reload', {})
+		check('dir-b: lock-held tick merges failed last_reload with original detail',
+			lr.get('ok') is False and lr.get('target_node') is None and lr.get('target_mode') is None
+			and isinstance(lr.get('error'), str) and lr['error'].startswith('lock '),
+			f'last_reload={lr!r}')
+
+		# A new HUP after unlock must succeed.
+		busy_at = lr['at']
 		proc.send_signal(signal.SIGHUP)
 		wait_for(
 			lambda: f.state().get('last_reload', {}).get('at', 0) > busy_at,
@@ -439,6 +467,121 @@ def test_external_lock_blocks_hup_then_retry_succeeds(base, bin_dir):
 			st2.get('mode') == 'global' and st2.get('last_reload', {}).get('ok') is True, f'state={st2!r}')
 		wait_for(lambda: try_flock_exclusive(f.lock_file), proc, timeout=3.0, label='dir-b lock release', detail_fn=f.debug_summary)
 		check('dir-b: C.LOCK_FILE released after recovery HUP', try_flock_exclusive(f.lock_file))
+
+
+def test_failed_hup_preserves_other_holder_state(base, bin_dir):
+	"""Another holder's newly published state.json must never be reverted/overwritten by a failed HUP."""
+	f = Fixture(base, 'preserve-other-holder-state', bin_dir, mode='gfw')
+	with f.daemon() as proc:
+		wait_for(lambda: f.state().get('state') == 'running', proc, label='running', detail_fn=f.debug_summary)
+		events_before = len(f.events())
+
+		with hold_flock_exclusive(f.lock_file):
+			# Simulate another lock-holding transaction (e.g. cleanup) publishing a fresh state.json.
+			other_state = {
+				'state': 'stopped',
+				'since': 1795500001,
+				'dns_tier': 'T2',
+				'dns_failsafe': False,
+				'degraded_mode': None,
+				'degraded_since': None,
+				'other_holder_marker': 't16.68-barrier',
+			}
+			other_bytes = (json.dumps(other_state) + '\n').encode('utf-8')
+			tmp_state = f.state_file.with_suffix('.tmp')
+			tmp_state.write_bytes(other_bytes)
+			tmp_state.replace(f.state_file)
+			calls_before = len(f.calls())
+
+			f.write_uci(mode='global')
+			proc.send_signal(signal.SIGHUP)
+			wait_for(
+				lambda: len(reload_lock_events(f, events_before)) > 0,
+				proc, label='failed HUP reload:lock event while other holder holds lock', detail_fn=f.debug_summary,
+			)
+			check('preserve-state: other holder state.json preserved byte-for-byte',
+				f.state_file.read_bytes() == other_bytes,
+				f'actual={f.state()!r}')
+			check('preserve-state: failed HUP made zero data-plane stub calls',
+				len(f.calls()[calls_before:]) == 0,
+				f'new_calls={f.calls()[calls_before:]!r}')
+
+		# After releasing the lock, a new HUP must succeed cleanly.
+		proc.send_signal(signal.SIGHUP)
+		wait_for(
+			lambda: f.state().get('mode') == 'global' and f.state().get('last_reload', {}).get('ok') is True,
+			proc, label='post-release HUP completion', detail_fn=f.debug_summary,
+		)
+		st = f.state()
+		check('preserve-state: new HUP succeeds after other holder releases lock',
+			st.get('mode') == 'global' and st.get('last_reload', {}).get('ok') is True, f'state={st!r}')
+		wait_for(lambda: try_flock_exclusive(f.lock_file), proc, timeout=3.0, label='preserve-state lock release', detail_fn=f.debug_summary)
+		check('preserve-state: C.LOCK_FILE released after recovery HUP', try_flock_exclusive(f.lock_file))
+
+
+def test_lock_open_failure_distinguished_then_recovers(base, bin_dir):
+	"""When C.LOCK_FILE cannot be opened (EISDIR), HUP reports error with original detail,
+	never claims a known holder, leaves state/data-plane untouched, and recovers once cleared."""
+	f = Fixture(base, 'lock-open-failure', bin_dir, mode='gfw')
+	with f.daemon() as proc:
+		wait_for(lambda: f.state().get('state') == 'running', proc, label='running', detail_fn=f.debug_summary)
+		xray_pid = read_pid(f.root / 'xray.pid')
+		dns_pid = read_pid(f.root / 'chinadns.pid')
+		current_nft_before = (f.run / 'current/aether-proxy.nft').read_text()
+		state_bytes_before = f.state_file.read_bytes()
+		floor = f.state().get('last_reload', {}).get('at', 0)
+		events_before = len(f.events())
+
+		# Replace C.LOCK_FILE with a directory so fs.open(..., 'ae') fails with EISDIR (even as root).
+		f.lock_file.unlink(missing_ok=True)
+		f.lock_file.mkdir()
+		try:
+			calls_before = len(f.calls())
+			f.write_uci(mode='global')
+			proc.send_signal(signal.SIGHUP)
+			wait_for(
+				lambda: len(reload_lock_events(f, events_before)) > 0,
+				proc, label='open-failure HUP reload:lock error event', detail_fn=f.debug_summary,
+			)
+			lock_ev = reload_lock_events(f, events_before)[0]
+			new_events = f.events()[events_before:]
+			new_calls = f.calls()[calls_before:]
+
+			check('open-fail: open failure emits error (not warn) START_FAILED step=reload:lock',
+				lock_ev.get('level') == 'error' and lock_ev.get('args', {}).get('step') == 'reload:lock',
+				f'event={lock_ev!r}')
+			check('open-fail: open failure preserves original open lock detail',
+				isinstance(lock_ev.get('args', {}).get('detail'), str)
+				and lock_ev['args']['detail'].startswith('open lock ')
+				and str(f.lock_file) in lock_ev['args']['detail'],
+				f'event={lock_ev!r}')
+			check('open-fail: open failure does not emit BUSY with guessed holder',
+				not any(e.get('code') == 'BUSY' and e.get('args', {}).get('holder') == 'reload' for e in new_events),
+				f'new_events={new_events!r}')
+			check('open-fail: state.json untouched byte-for-byte on open failure',
+				f.state_file.read_bytes() == state_bytes_before,
+				f'state={f.state()!r}')
+			check('open-fail: zero data-plane stub calls on open failure',
+				len(new_calls) == 0, f'new_calls={new_calls!r}')
+			check('open-fail: current/aether-proxy.nft and child PIDs unchanged',
+				(f.run / 'current/aether-proxy.nft').read_text() == current_nft_before
+				and read_pid(f.root / 'xray.pid') == xray_pid
+				and read_pid(f.root / 'chinadns.pid') == dns_pid)
+		finally:
+			if f.lock_file.is_dir():
+				f.lock_file.rmdir()
+
+		# Once the open fault is cleared, a new HUP must succeed.
+		proc.send_signal(signal.SIGHUP)
+		wait_for(
+			lambda: f.state().get('mode') == 'global' and f.state().get('last_reload', {}).get('ok') is True,
+			proc, label='post-open-fault HUP completion', detail_fn=f.debug_summary,
+		)
+		st2 = f.state()
+		check('open-fail: new HUP succeeds after open fault is cleared',
+			st2.get('mode') == 'global' and st2.get('last_reload', {}).get('ok') is True, f'state={st2!r}')
+		wait_for(lambda: try_flock_exclusive(f.lock_file), proc, timeout=3.0, label='open-fail lock release', detail_fn=f.debug_summary)
+		check('open-fail: C.LOCK_FILE released after recovery HUP', try_flock_exclusive(f.lock_file))
 
 
 def test_lock_held_during_rollback(base, bin_dir):
@@ -567,6 +710,8 @@ def main():
 		for fn in (
 			test_hup_inflight_rejects_cleanup,
 			test_external_lock_blocks_hup_then_retry_succeeds,
+			test_failed_hup_preserves_other_holder_state,
+			test_lock_open_failure_distinguished_then_recovers,
 			test_lock_held_during_rollback,
 			test_hup_disable_holds_lock_through_shutdown,
 			test_monitor_reload_no_self_deadlock,

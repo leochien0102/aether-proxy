@@ -1459,27 +1459,25 @@ function run(args) {
 				// monitor.uc already holds this lock when calling reload.run_live().
 				let reload_lock = sys.lock(root_path(opts, C.LOCK_FILE));
 				if (reload_lock == null) {
-					let detail = sys.error() ?? 'operation lock busy';
+					let detail = sys.error() ?? 'unknown error';
 					setup_log(ctx);
-					log.event('warn', 'BUSY', { holder: 'reload' });
+					// Separate mkdir/open setup failures (error) from flock failures on a valid
+					// handle (warn) without matching strerror text or claiming a known holder.
+					// Never read-modify-write state.json without holding C.LOCK_FILE; keep
+					// last_reload in memory so only a later lock-held publication can merge it.
+					log.event(sys.lock_retryable() ? 'warn' : 'error', 'START_FAILED', {
+						step: 'reload:lock',
+						detail
+					});
 					if (!ctx.stopping_requested) {
 						let stamp = clock();
-						let last_reload = {
+						monitor_daemon.state.last_reload = {
 							at: stamp[0] + stamp[1] / 1000000000.0,
 							target_node: null,
 							target_mode: null,
 							ok: false,
-							error: `BUSY: ${detail}`
+							error: detail
 						};
-						let current = state.read(run_dir(ctx));
-						if (current == null)
-							log.event('error', 'FS_FAILED', { op: 'read', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
-								detail: state.error() ?? 'unknown error' });
-						else if (!state.write(run_dir(ctx), { ...current, last_reload }))
-							log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
-								detail: state.error() ?? 'unknown error' });
-						else
-							monitor_daemon.state.last_reload = last_reload;
 					}
 					continue;
 				}

@@ -262,7 +262,7 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 | dnsmasq 片段 | 重启 dnsmasq |
 | 启用状态变为关闭 | 等同 `stop` |
 
-**操作锁互斥（T16.68，M2）**：外部 `SIGHUP` 在 `daemon.uc` 的 `pending.reload` 入口非阻塞获取全局操作锁 `/var/lock/aether-proxy.lock`（与独立 `cleanup`、启动流程和 `monitor` 周期共用），并在整个重载事务（含动作失败回滚，以及 `enabled=0` 触发 `stop` 的 `stop_usage` 与 `shutdown` 清理）完成后显式解锁关闭；`monitor` 调用 `reload.run_live()` 时已由 `monitor.tick()` 持锁，不在 `reload.uc` 内递归取锁。若外部 HUP 取锁失败，不修改活动数据面或子进程，记 warn `BUSY {holder: reload}` 并按既有 `last_reload` 语义写入失败完成记录（`ok: false`、`target_node/target_mode: null`、`error: "BUSY: ..."`；停止意图已置位时不覆写 `stopping`），不新增排队或重试循环；持锁方释放后由调用方重新发起 `SIGHUP` / `aether-proxy reload` 即可。
+**操作锁互斥（T16.68，M2）**：外部 `SIGHUP` 在 `daemon.uc` 的 `pending.reload` 入口非阻塞获取全局操作锁 `/var/lock/aether-proxy.lock`（与独立 `cleanup`、启动流程和 `monitor` 周期共用），并在整个重载事务（含动作失败回滚，以及 `enabled=0` 触发 `stop` 的 `stop_usage` 与 `shutdown` 清理）完成后显式解锁关闭；`monitor` 调用 `reload.run_live()` 时已由 `monitor.tick()` 持锁，不在 `reload.uc` 内递归取锁。若外部 HUP 未取得 `C.LOCK_FILE`，不修改活动数据面或子进程，也**不读改写共享 `state.json`**（防止覆盖另一持锁事务发布的新状态）；按 `sys.lock_retryable()` 区分阶段而非匹配 `strerror` 文本——有效句柄上非阻塞 `flock` 失败记 `warn` 级别 `START_FAILED {step: reload:lock, detail}`，`mkdir`/`open` 失败记 `error` 级别 `START_FAILED {step: reload:lock, detail}`，均保留原始 `detail`、不猜测或谎报持有者。未置位停止意图时仅在内存中记录失败 `last_reload`，由后续持锁发布点（如持锁的 `monitor.tick()` `persist_state()`）安全合并；不新增排队或重试循环，锁释放或故障解除后由调用方重新发起 `SIGHUP` / `aether-proxy reload` 即可。
 
 **比对的是输出而不是输入**：生成器自身升级后输出变了，也会被检测到（避免 ssr-plus U8 那类问题）。
 
