@@ -869,8 +869,11 @@ function start_sequence(ctx, opts, signal_pending) {
 	step_started = monotonic_ms();
 	let state_result = write_state(ctx, initial_state);
 	record_step(ctx, 'state_write', step_started);
-	if (!state_result.ok)
+	if (!state_result.ok) {
+		locked.lock('u');
+		locked.close();
 		return { ok: false, code: 1, step: 'state', detail: state_result.detail, children };
+	}
 	setup_log(ctx);
 	log.event('notice', 'SERVICE_STARTED', {
 		mode: snapshot.main.mode,
