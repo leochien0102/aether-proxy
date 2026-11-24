@@ -192,12 +192,12 @@ function runtime_for(daemon, tier, node_ip, restored) {
 	};
 };
 
-function render(daemon, runtime) {
+function render(daemon, runtime, only) {
 	// Recovery is not a config apply: disk may already contain an unvalidated next generation.
 	// Keep data, paths and the WAN observation paired with the running snapshot.
 	if (daemon.applied_context == null)
 		return { ok: false, detail: 'missing applied render context' };
-	return pipeline.render(daemon.applied_context, runtime);
+	return pipeline.render(daemon.applied_context, runtime, only);
 };
 
 function load_restored_sets(daemon) {
@@ -481,7 +481,28 @@ function update_node_ip(daemon, machine, done) {
 		finish(null);
 		return;
 	}
+	let old_ip = machine.node_ip;
 	let had_xray = daemon.children.xray != null;
+	function restore_nft_live() {
+		// Re-render old_ip with the pre-refresh dynamic sets into staging so kernel
+		// nft retains live gfw4/udirect4/uproxy4 elements while current/ keeps old bytes.
+		let rb_built = render(daemon, runtime_for(daemon, machine.dns_tier, old_ip, restored.sets), 'nft');
+		if (!rb_built.ok)
+			return { ok: false, detail: rb_built.detail };
+		let clean_rb = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
+		if (clean_rb.code != 0)
+			return { ok: false, detail: `cannot prepare rollback staging ${stage}: ${clean_rb.stderr}` };
+		if (!sys.mkdir_p(stage))
+			return { ok: false, detail: `cannot create rollback staging ${stage}: ${sys.error()}` };
+		if (!sys.write_atomic(stage_nft, rb_built.artifacts.nft)) {
+			let detail = `cannot stage rollback nft: ${sys.error()}`;
+			discard_stage();
+			return { ok: false, detail };
+		}
+		let rb_nft = apply.nft_load(daemon.ctx, stage_nft);
+		discard_stage();
+		return rb_nft;
+	};
 	function rollback_refresh(cause) {
 		if (daemon.ctx.stopping_requested) {
 			finish(null);
@@ -489,12 +510,10 @@ function update_node_ip(daemon, machine, done) {
 		}
 		let rb = restore_files(true, true);
 		let rb_errors = rb.errors;
-		if (rb.nft_ok) {
-			let rb_nft = apply.nft_load(daemon.ctx, nft_path);
-			if (!rb_nft.ok) {
-				log_failure(daemon, 'rollback_nft', rb_nft.detail);
-				push(rb_errors, `rollback_nft: ${rb_nft.detail}`);
-			}
+		let rb_nft = restore_nft_live();
+		if (!rb_nft.ok) {
+			log_failure(daemon, 'rollback_nft', rb_nft.detail);
+			push(rb_errors, `rollback_nft: ${rb_nft.detail}`);
 		}
 		if (daemon.ctx.stopping_requested) {
 			finish(null);
@@ -538,7 +557,6 @@ function update_node_ip(daemon, machine, done) {
 				finish(combine_error(cause, rb_errors));
 			});
 	};
-	let old_ip = machine.node_ip;
 	restart_child(daemon, 'xray', C.XRAY_COMPONENT,
 		[ binary, 'run', '-c', xray_path ], error => {
 			if (daemon.ctx.stopping_requested) {

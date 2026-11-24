@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -277,10 +278,14 @@ exec "$(dirname "$0")/xray-original" "$@"
 
 	def wait_running(self):
 		ok = wait_for(
-			lambda: self.state().get('state') == 'running' and self.state().get('node_ip') == self.old_ip,
+			lambda: self.state().get('state') == 'running'
+			and self.state().get('node_ip') == self.old_ip
+			and lock_is_free(self.root / 'var/lock/aether-proxy.lock'),
 			timeout=10,
 		)
 		assert ok, f'daemon did not reach running: state={self.state()}'
+		# Yield briefly past finish_tick's unlock -> daemon.busy=false assignment.
+		time.sleep(0.03)
 
 	@contextlib.contextmanager
 	def daemon(self):
@@ -313,13 +318,33 @@ exec "$(dirname "$0")/xray-original" "$@"
 				      f'{self.base.name}: daemon exits cleanly (rc={proc.returncode}, stderr={stderr!r})')
 
 
+def nft_set_contains(nft_text, set_name, ip):
+	"""Check whether a specific nft set block contains the given IPv4 element."""
+	marker = f'set {set_name} {{'
+	start = nft_text.find(marker)
+	if start < 0:
+		return False
+	end = nft_text.find('\n\t}', start)
+	block = nft_text[start:end if end >= 0 else len(nft_text)]
+	return ip in block
+
+
 def assert_restored(f, label, old_nft, old_xray, old_loaded_nft, old_active_xray,
-                    expect_nft_loads=None, expect_xray_starts=None):
+                    expect_nft_loads=None, expect_xray_starts=None, dynamic_gfw4_ip=None):
 	check(f.nft_bytes() == old_nft, f'{label}: current/aether-proxy.nft bytes match old')
 	check(f.xray_bytes() == old_xray, f'{label}: current/xray.json bytes match old')
-	check(f.loaded_nft_bytes() == old_loaded_nft and f.old_ip.encode() in f.loaded_nft_bytes()
-	      and f.new_ip.encode() not in f.loaded_nft_bytes(),
-	      f'{label}: actual loaded nft matches old IP')
+	loaded_nft = f.loaded_nft_bytes()
+	loaded_text = loaded_nft.decode()
+	if dynamic_gfw4_ip is not None:
+		check(nft_set_contains(loaded_text, 'node_ip4', f.old_ip)
+		      and f.new_ip.encode() not in loaded_nft,
+		      f'{label}: runtime loaded nft restores old node_ip4 without new IP')
+		check(nft_set_contains(loaded_text, 'gfw4', dynamic_gfw4_ip),
+		      f'{label}: runtime loaded nft preserves pre-refresh gfw4 dynamic set ({dynamic_gfw4_ip})')
+	else:
+		check(loaded_nft == old_loaded_nft and f.old_ip.encode() in loaded_nft
+		      and f.new_ip.encode() not in loaded_nft,
+		      f'{label}: actual loaded nft matches old IP')
 	check(f.active_xray_bytes() == old_active_xray and f.old_ip.encode() in f.active_xray_bytes()
 	      and f.new_ip.encode() not in f.active_xray_bytes(),
 	      f'{label}: actual running Xray config matches old IP')
@@ -371,8 +396,18 @@ def main():
 	with socket.socket() as listener:
 		listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		listener.bind(('0.0.0.0', 0))
-		listener.listen(16)
+		listener.listen(64)
 		port = listener.getsockname()[1]
+
+		def drain_accepts():
+			while True:
+				try:
+					conn, _ = listener.accept()
+				except OSError:
+					break
+				conn.close()
+
+		threading.Thread(target=drain_accepts, daemon=True).start()
 
 		with tempfile.TemporaryDirectory(prefix='.t1669-', dir=ROOT / 'tests/monitor') as tmp:
 			base = pathlib.Path(tmp)
@@ -484,6 +519,34 @@ def main():
 				          for e in f.events('START_FAILED')),
 				      'xray-ready-fail: START_FAILED mentions readiness timeout')
 				verify_followup_success(f, child, 'xray-ready-fail')
+
+			# 5b. Xray readiness failure with live runtime gfw4 dynamic set not in old current/aether-proxy.nft
+			f = Fixture(base, 'xray-ready-dynamic-sets', old_ip, new_ip, port)
+			with f.daemon() as child:
+				f.wait_running()
+				dyn_ip = '198.51.100.77'
+				old_nft, old_xray = f.nft_bytes(), f.xray_bytes()
+				old_loaded, old_active = f.loaded_nft_bytes(), f.active_xray_bytes()
+				check(dyn_ip.encode() not in old_nft,
+				      'xray-ready-dynamic-sets: precondition old current/aether-proxy.nft does not contain dynamic IP')
+				# Simulate live gfw4 dynamic element learned at runtime before refresh.
+				(f.root / 'gfw4-elem').write_text(json.dumps([dyn_ip]) + '\n')
+				loads0, starts0 = f.nft_loads(), f.xray_starts()
+				(f.root / 'xray-missing-once').write_text('31082\n')
+				f.trigger_refresh(child, new_ip)
+				wait_for(lambda: len(f.probes_log()) >= 1 and lock_is_free(f.root / 'var/lock/aether-proxy.lock'),
+				         timeout=15)
+				assert_restored(f, 'xray-ready-dynamic-sets', old_nft, old_xray, old_loaded, old_active,
+				                expect_nft_loads=loads0 + 2, expect_xray_starts=starts0 + 2,
+				                dynamic_gfw4_ip=dyn_ip)
+				check(not (f.run / 'staging').exists(),
+				      'xray-ready-dynamic-sets: staging cleaned up after dynamic-set rollback')
+				check(any('not ready' in str(e.get('args', {}).get('detail', ''))
+				          for e in f.events('START_FAILED')),
+				      'xray-ready-dynamic-sets: START_FAILED mentions readiness timeout')
+				verify_followup_success(f, child, 'xray-ready-dynamic-sets')
+				check(nft_set_contains(f.loaded_nft_bytes().decode(), 'gfw4', dyn_ip),
+				      'xray-ready-dynamic-sets: followup refresh also retains gfw4 dynamic IP')
 
 			# 6. Rollback failure (forward Xray crash + rollback nft load fails)
 			f = Fixture(base, 'rollback-nft-fail', old_ip, new_ip, port)
