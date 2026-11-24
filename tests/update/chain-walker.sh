@@ -72,6 +72,8 @@ for path in proxy companion; do
 	"$UCODE" "$ROOT/tests/update/walker-postdownload.uc" -- "$ROOT/aether-proxy/src/lib/update.uc" "$T" "$path"
 	expect "M4-07 $path post-download admission exit" 0 "$?"
 done
+"$UCODE" "$ROOT/tests/update/walker-outcome.uc" -- "$ROOT/aether-proxy/src/lib/update.uc" "$T"
+expect 'T16.76 post-transaction outcome preservation exit' 0 "$?"
 for manager in opkg apk; do
 	if [ "$manager" = apk ]; then
 		apk_metadata_manager

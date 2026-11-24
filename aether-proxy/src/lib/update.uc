@@ -1431,8 +1431,10 @@ export function package_update(opts, name, previous) {
 	chain_deadline = now[0] + now[1] / 1000000000.0 + C.JOB_TIMEOUT_SECS;
 	if (inherited != null)
 		chain_deadline = min(chain_deadline, +inherited);
-	if (budget_left() <= 0)
+	if (budget_left() <= 0) {
+		chain_deadline = null;
 		return incomplete();
+	}
 	let selected = fetch_manifest(opts);
 	let before = getenv('AETHER_PROXY_CHAIN_FROM');
 	if (selected.ok && before != null) {
@@ -1443,9 +1445,9 @@ export function package_update(opts, name, previous) {
 		if (!installed.ok || type(installed.version) != 'string' || !version_newer(installed.version, before))
 			return group_failure('BRIDGE_UNAVAILABLE', 'installed backend did not strictly advance');
 	}
+	// Budget gates admission; once package_update_selected() returns, preserve the
+	// completed success or failure (and rollback details) even if the deadline passed.
 	let result = package_update_selected(opts, name, previous, selected);
-	if (budget_left() <= 0)
-		result = incomplete();
 	chain_deadline = null;
 	return result;
 };
