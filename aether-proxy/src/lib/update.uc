@@ -673,16 +673,89 @@ function set_data_failure(result, name, detail) {
 	log.event('error', 'UPDATE_VERIFY_FAILED', { item: name });
 }
 
-function file_sha256_from_text(text, dir, name) {
-	let path = `${dir}/data-${name}.plain`;
-	if (!sys.write_atomic(path, text))
-		return null;
-	let hash = file_sha256(path);
-	if (!fs.unlink(path)) {
-		let detail = fs_error();
-		log.event('error', 'FS_FAILED', { op: 'unlink', path, detail });
+// Stream-decompress one rule-data gzip asset to `dst` while capping output at
+// `max_bytes` (reading at most `max_bytes + 1` bytes to distinguish exact limit
+// from overflow). Terminates and reaps gunzip immediately on overflow or signal,
+// never capturing unbounded stdout in sys.run or leaving temp artifacts behind.
+const GUNZIP_BOUNDED_SCRIPT = join('\n', [
+	'src=$1; dst=$2; limit=$3; cap=$((limit + 1));',
+	'fifo=$dst.fifo; helper=$dst.err; gpid=; hpid=;',
+	'reap_child() {',
+	'  p=$1;',
+	'  [ -n "$p" ] || return 0;',
+	'  if kill -0 "$p" 2>>"$helper"; then',
+	'    kill -TERM "$p" 2>>"$helper";',
+	'    kill -KILL "$p" 2>>"$helper";',
+	'  fi;',
+	'  wait "$p" 2>>"$helper";',
+	'}',
+	'cleanup_abort() {',
+	'  reap_child "$hpid";',
+	'  reap_child "$gpid";',
+	'  rm -f "$fifo" "$dst" "$helper";',
+	'}',
+	'trap \'cleanup_abort; exit 143\' TERM INT HUP;',
+	'rm -f "$fifo" "$dst" "$helper";',
+	': >"$helper";',
+	'mkfifo -m 0600 "$fifo" || { rm -f "$helper"; exit 1; };',
+	'( exec gunzip -c "$src" >"$fifo" ) & gpid=$!;',
+	'( exec head -c "$cap" <"$fifo" >"$dst" ) & hpid=$!;',
+	'wait "$hpid"; hrc=$?; hpid=;',
+	'if [ "$hrc" -ne 0 ]; then',
+	'  reap_child "$gpid"; gpid=;',
+	'  rm -f "$fifo" "$dst" "$helper";',
+	'  exit "$hrc";',
+	'fi;',
+	'size=$(wc -c < "$dst");',
+	'if [ "$size" -gt "$limit" ]; then',
+	'  reap_child "$gpid"; gpid=;',
+	'  rm -f "$fifo" "$dst" "$helper";',
+	'  printf "LIMIT_EXCEEDED\\n";',
+	'  printf "decompressed size exceeds limit of %s bytes\\n" "$limit" >&2;',
+	'  exit 27;',
+	'fi;',
+	'wait "$gpid"; grc=$?; gpid=;',
+	'rm -f "$fifo" "$helper";',
+	'if [ "$grc" -ne 0 ]; then',
+	'  rm -f "$dst";',
+	'  exit "$grc";',
+	'fi;',
+	'exit 0'
+]);
+
+function decompress_data_file(src, dst, max_bytes) {
+	let fifo = `${dst}.fifo`;
+	let helper = `${dst}.err`;
+	for (let path in [ dst, fifo, helper ]) {
+		if (unlink_file(path) == null)
+			return { ok: false, detail: `cannot remove stale temp file ${path}: ${fs_error()}` };
 	}
-	return hash;
+	let gunzip = sys.run(
+		[ 'sh', '-c', GUNZIP_BOUNDED_SCRIPT, 'sh', src, dst, `${max_bytes}` ],
+		{ timeout: C.UPDATE_COMMAND_TIMEOUT_SECS }
+	);
+	for (let path in [ fifo, helper ]) {
+		if (unlink_file(path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path, detail: fs_error() });
+	}
+	if (gunzip.code != 0) {
+		if (unlink_file(dst) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: dst, detail: fs_error() });
+		if (trim(gunzip.stdout) == 'LIMIT_EXCEEDED')
+			return { ok: false, detail: `decompressed size exceeds ${max_bytes} bytes` };
+		if (gunzip.timed_out)
+			return { ok: false, detail: `gunzip timed out after ${C.UPDATE_COMMAND_TIMEOUT_SECS}s` };
+		return { ok: false, detail: `gunzip exited ${gunzip.code}: ${trim(gunzip.stderr)}` };
+	}
+	let st = fs.stat(dst);
+	if (st == null || st.type != 'file' || st.size > max_bytes) {
+		if (unlink_file(dst) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: dst, detail: fs_error() });
+		if (st != null && st.size > max_bytes)
+			return { ok: false, detail: `decompressed size exceeds ${max_bytes} bytes` };
+		return { ok: false, detail: `decompressed file missing or invalid: ${fs_error()}` };
+	}
+	return { ok: true, size: st.size };
 }
 
 function update_data_item(opts, ctx, base_urls, name, item) {
@@ -705,18 +778,30 @@ function update_data_item(opts, ctx, base_urls, name, item) {
 	let downloaded = download_asset(opts, base_urls, item, `data-${name}.txt.gz`);
 	if (!downloaded.ok)
 		return { ok: false, detail: downloaded.detail ?? downloaded.code ?? 'asset download failed' };
-	let gunzip = sys.run([ 'gunzip', '-c', downloaded.path ], { timeout: C.UPDATE_COMMAND_TIMEOUT_SECS });
-	if (gunzip.code != 0) {
+	let plain_path = `${ctx.download_dir}/data-${name}.plain`;
+	let decompressed = decompress_data_file(downloaded.path, plain_path, C.UPDATE_DATA_MAX_BYTES);
+	if (!decompressed.ok) {
 		if (unlink_file(downloaded.path) == null)
 			log.event('error', 'FS_FAILED', { op: 'unlink', path: downloaded.path, detail: fs_error() });
-		return { ok: false, detail: `gunzip exited ${gunzip.code}: ${trim(gunzip.stderr)}` };
+		return { ok: false, detail: decompressed.detail };
 	}
-	if (unlink_file(downloaded.path) == null)
+	if (unlink_file(downloaded.path) == null) {
+		if (unlink_file(plain_path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: plain_path, detail: fs_error() });
 		return { ok: false, detail: `cannot remove downloaded data asset ${downloaded.path}: ${fs_error()}` };
-	let content = gunzip.stdout;
-	let actual_hash = file_sha256_from_text(content, ctx.download_dir, name);
-	if (actual_hash == null || actual_hash != lc(item.content_sha256))
+	}
+	let actual_hash = file_sha256(plain_path);
+	if (actual_hash == null || actual_hash != lc(item.content_sha256)) {
+		if (unlink_file(plain_path) == null)
+			log.event('error', 'FS_FAILED', { op: 'unlink', path: plain_path, detail: fs_error() });
 		return { ok: false, detail: 'decompressed content sha256 mismatch' };
+	}
+	let content = fs.readfile(plain_path);
+	let read_err = content == null ? fs_error() : null;
+	if (unlink_file(plain_path) == null)
+		log.event('error', 'FS_FAILED', { op: 'unlink', path: plain_path, detail: fs_error() });
+	if (content == null)
+		return { ok: false, detail: `cannot read decompressed data ${plain_path}: ${read_err}` };
 	let count = line_count(content);
 	if (count * 100 < item.lines * C.UPDATE_DATA_MIN_PERCENT)
 		return { ok: false, detail: `line count ${count} is below ${C.UPDATE_DATA_MIN_PERCENT}% of ${item.lines}` };

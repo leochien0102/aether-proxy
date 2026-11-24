@@ -200,6 +200,10 @@ export const UPDATE_SIGUSR2 = 12;
 // T7.5 (signed rule-data updates).
 export const DATA_UPDATE_ITEMS = [ 'gfwlist', 'chnlist', 'apple', 'chnroute4', 'gfw_static4' ];
 export const UPDATE_DATA_MIN_PERCENT = 90;
+// T16.78 (M11): hard cap on decompressed plaintext bytes per rule-data item.
+// Largest packaged baseline (chnlist.txt) is 1,391,361 bytes (~1.33 MiB); 8 MiB
+// gives ~6x growth headroom while bounding tmpfs and ucode memory during update.
+export const UPDATE_DATA_MAX_BYTES = 8 * 1024 * 1024;
 
 // Default update channel (05 `channel_urls`, 08 "发布仓库").
 export const CHANNEL_DEFAULT_URL = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
