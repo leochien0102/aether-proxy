@@ -109,10 +109,12 @@ rs_check_no_temp_residue() {
 }
 
 rs_run_in_session() {
-	local out_file=$1 rc_file=$2 sid_file=$3
-	setsid -w bash -c '
+	local out_file=$1 rc_file=$2 sid_file=$3 path_prefix=${4:-} outer_limit=${5:-60}
+	local run_path=$PATH
+	[ -n "$path_prefix" ] && run_path="$path_prefix:$PATH"
+	timeout -k 5 "$outer_limit" setsid -w bash -c '
 		printf "%s\n" "$$" > "$3"
-		LD_LIBRARY_PATH="'"$ROOT"'/tests/host/prefix/lib" \
+		PATH="$4" LD_LIBRARY_PATH="'"$ROOT"'/tests/host/prefix/lib" \
 			"'"$ROOT"'/tests/host/prefix/bin/ucode" \
 			-L "'"$ROOT"'/tests/host/modules/*.uc" \
 			-L "'"$ROOT"'/tests/host/modules/*/*.uc" \
@@ -121,14 +123,32 @@ rs_run_in_session() {
 			--sys-root "'"$T"'/root" --bin-dir "'"$T"'/bin" \
 			> "$1" 2>"'"$T"'/stderr"
 		printf "%s\n" "$?" > "$2"
-	' _ "$out_file" "$rc_file" "$sid_file"
+	' _ "$out_file" "$rc_file" "$sid_file" "$run_path"
+}
+
+rs_session_pids() {
+	local sid=$1
+	[ -n "$sid" ] || return 0
+	ps -e -o pid=,sid=,comm= | awk -v s="$sid" '$2 == s { print $1 }'
 }
 
 rs_check_no_child_residue() {
 	local label=$1 sid=$2
-	local left
-	left=$(ps -o pid=,sid=,comm= | awk -v s="$sid" '$2 == s && ($3 == "gunzip" || $3 == "gzip" || $3 == "head") { print $1 }' | wc -l)
-	expect "T16.78 $label leaves no gunzip/head child processes" 0 "$left"
+	local pids count
+	pids=$(rs_session_pids "$sid")
+	count=$(printf '%s\n' "$pids" | awk 'NF { c++ } END { print c + 0 }')
+	expect "T16.78 $label leaves no session child processes" 0 "$count"
+}
+
+rs_reap_session_fallback() {
+	local sid=$1 extra_pid=${2:-}
+	local p
+	if [ -n "$extra_pid" ] && kill -0 "$extra_pid" 2>/dev/null; then
+		kill -KILL "$extra_pid" 2>/dev/null || true
+	fi
+	for p in $(rs_session_pids "$sid"); do
+		kill -KILL "$p" 2>/dev/null || true
+	done
 }
 
 rs_seed_old_rule() {
@@ -151,6 +171,37 @@ rs_check_old_unchanged() {
 rs_saved_state=''
 [ -f "$T/run/state.json" ] && rs_saved_state=$(cat "$T/run/state.json")
 printf '{"state":"running"}\n' > "$T/run/state.json"
+
+# 0. Positive control: residue check must observe a live child in an independent
+# setsid session regardless of process name, and report 0 only after reaping it.
+rs_pos_sid_file="$RS_SNAP/pos.sid"
+rs_pos_pid_file="$RS_SNAP/pos.pid"
+rm -f "$rs_pos_sid_file" "$rs_pos_pid_file"
+setsid bash -c '
+	printf "%s\n" "$$" > "$1"
+	printf "%s\n" "$$" > "$2"
+	exec sleep 60
+' _ "$rs_pos_sid_file" "$rs_pos_pid_file" &
+rs_pos_bg=$!
+PIDS+=("$rs_pos_bg")
+for _ in {1..100}; do
+	[ -s "$rs_pos_pid_file" ] && break
+	sleep 0.05
+done
+rs_pos_sid=$(cat "$rs_pos_sid_file" 2>/dev/null || true)
+rs_pos_pid=$(cat "$rs_pos_pid_file" 2>/dev/null || true)
+rs_pos_live=$(rs_session_pids "$rs_pos_sid")
+if [ -n "$rs_pos_pid" ] && printf '%s\n' "$rs_pos_live" | grep -qx "$rs_pos_pid"; then
+	ok 'T16.78 residue check positive control detects live independent-session child'
+else
+	bad 'T16.78 residue check positive control detects live independent-session child' \
+		"sid=$rs_pos_sid pid=$rs_pos_pid seen=$rs_pos_live"
+fi
+if [ -n "$rs_pos_pid" ]; then
+	kill -KILL "$rs_pos_pid" 2>/dev/null || true
+fi
+wait "$rs_pos_bg" 2>/dev/null || true
+rs_check_no_child_residue 'positive control after reap' "$rs_pos_sid"
 
 # 1. Normal real-gzip rule data updates cleanly
 rs_seed_old_rule
@@ -235,6 +286,47 @@ rs_check_old_unchanged 'invalid gzip'
 [ ! -s "$UPDATE_INIT_CALLS" ] && ok 'T16.78 invalid gzip does not reload' || bad 'T16.78 invalid gzip does not reload'
 rs_check_no_temp_residue 'invalid gzip'
 rs_check_no_child_residue 'invalid gzip' "$(cat "$RS_SNAP/badgz.sid")"
+
+# 7. Deterministic timeout via real `update data` entry point: harmless blocking
+# gunzip stub records its PID and sleeps; production timeout (35s) must abort,
+# reap gunzip + head, clean temp files, and leave old rule/hash untouched.
+RS_TIMEOUT_BIN="$RS_SNAP/timeout-bin"
+mkdir -p "$RS_TIMEOUT_BIN"
+cat > "$RS_TIMEOUT_BIN/gunzip" <<'SHIM'
+#!/bin/sh
+printf '%s\n' "$$" > "$T1678_TIMEOUT_GUNZIP_PID"
+exec sleep 120
+SHIM
+chmod +x "$RS_TIMEOUT_BIN/gunzip"
+rs_seed_old_rule
+rs_make_manifest normal
+: > "$UPDATE_INIT_CALLS"
+: > "$T/run/events.jsonl"
+rm -f "$RS_SNAP/timeout.out" "$RS_SNAP/timeout.rc" "$RS_SNAP/timeout.sid" "$RS_SNAP/timeout-gunzip.pid"
+T1678_TIMEOUT_GUNZIP_PID="$RS_SNAP/timeout-gunzip.pid" \
+	rs_run_in_session "$RS_SNAP/timeout.out" "$RS_SNAP/timeout.rc" "$RS_SNAP/timeout.sid" "$RS_TIMEOUT_BIN" 55
+rs_timeout_outer_rc=$?
+rs_timeout_sid=$(cat "$RS_SNAP/timeout.sid" 2>/dev/null || true)
+rs_timeout_gpid=$(cat "$RS_SNAP/timeout-gunzip.pid" 2>/dev/null || true)
+expect 'T16.78 timeout case finishes within outer guard (not outer-killed)' 0 "$rs_timeout_outer_rc"
+expect 'T16.78 timeout case exits 1' 1 "$(cat "$RS_SNAP/timeout.rc" 2>/dev/null || echo missing)"
+[ -n "$rs_timeout_gpid" ] && ok 'T16.78 timeout stub recorded gunzip PID' || bad 'T16.78 timeout stub recorded gunzip PID'
+expect 'T16.78 timeout case reports gunzip timeout' \
+	'gunzip timed out after 35s' "$(get "$(cat "$RS_SNAP/timeout.out" 2>/dev/null || echo '{}')" failed.chnroute4)"
+grep -q '"code": "UPDATE_VERIFY_FAILED"' "$T/run/events.jsonl" \
+	&& ok 'T16.78 timeout case logs UPDATE_VERIFY_FAILED' \
+	|| bad 'T16.78 timeout case logs UPDATE_VERIFY_FAILED'
+rs_check_old_unchanged 'timeout'
+[ ! -s "$UPDATE_INIT_CALLS" ] && ok 'T16.78 timeout case does not reload' || bad 'T16.78 timeout case does not reload'
+rs_check_no_temp_residue 'timeout'
+if [ -n "$rs_timeout_gpid" ] && ! kill -0 "$rs_timeout_gpid" 2>/dev/null; then
+	ok 'T16.78 timeout gunzip PID was terminated and reaped'
+else
+	bad 'T16.78 timeout gunzip PID was terminated and reaped' "pid=$rs_timeout_gpid"
+fi
+rs_check_no_child_residue 'timeout' "$rs_timeout_sid"
+# Fallback cleanup only after assertions, so a failed test never pollutes the host.
+rs_reap_session_fallback "$rs_timeout_sid" "$rs_timeout_gpid"
 
 if [ -n "$rs_saved_state" ]; then
 	printf '%s\n' "$rs_saved_state" > "$T/run/state.json"
