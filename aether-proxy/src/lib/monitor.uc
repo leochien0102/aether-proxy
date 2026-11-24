@@ -167,9 +167,13 @@ function supervisor_for(daemon, key, name, argv) {
 function restart_child(daemon, key, name, argv, done) {
 	let old = daemon.children[key];
 	function start_again() {
+		if (daemon.ctx.stopping_requested) {
+			done(null);
+			return;
+		}
 		let child = supervisor_for(daemon, key, name, argv);
-		if (child.pid() == null)
-			done(`cannot start ${name}`);
+		if (child.pid() == null || child.error() != null)
+			done(child.error() ?? `cannot start ${name}`);
 		else
 			done(null);
 	};
@@ -242,7 +246,7 @@ function action_set_tier(daemon, tier, done) {
 		(daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/${C.CHINADNS_COMPONENT}` : C.CHINADNS_COMPONENT);
 	restart_child(daemon, 'dns', C.CHINADNS_COMPONENT,
 		[ bin, '-C', path ], error => {
-			if (error != null) {
+			if (daemon.ctx.stopping_requested || error != null) {
 				done(error);
 				return;
 			}
@@ -349,6 +353,10 @@ function update_node_ip(daemon, machine, done) {
 		finish(null);
 		return;
 	}
+	if (daemon.ctx.stopping_requested) {
+		finish(null);
+		return;
+	}
 	let restored = load_restored_sets(daemon);
 	if (!restored.ok) {
 		finish(restored.detail);
@@ -362,36 +370,198 @@ function update_node_ip(daemon, machine, done) {
 	}
 	let nft_path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.nft}`;
 	let xray_path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.xray}`;
-	if (!sys.write_atomic(nft_path, built.artifacts.nft) || !sys.write_atomic(xray_path, built.artifacts.xray)) {
-		finish(`cannot stage node IP update: ${sys.error()}`);
+	// Snapshot the active files before touching current/ so any publish or apply failure
+	// restores only the resources that actually changed (docs/04, T16.69).
+	let old_nft = fs.readfile(nft_path);
+	if (old_nft == null) {
+		finish(`cannot read current nft ${nft_path}: ${fs.error() ?? 'unknown error'}`);
+		return;
+	}
+	let old_xray = fs.readfile(xray_path);
+	if (old_xray == null) {
+		finish(`cannot read current xray ${xray_path}: ${fs.error() ?? 'unknown error'}`);
+		return;
+	}
+	let stage = `${run_dir(daemon)}/${C.STAGING_SUBDIR}`;
+	let stage_nft = `${stage}/${C.ARTIFACT_FILES.nft}`;
+	let stage_xray = `${stage}/${C.ARTIFACT_FILES.xray}`;
+	function discard_stage() {
+		let rm = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
+		if (rm.code != 0)
+			log_failure(daemon, 'discard_staging', `rm -rf ${stage} failed (${rm.code}): ${rm.stderr}`);
+	};
+	let clean = sys.run([ 'rm', '-rf', stage ], { timeout: 10 });
+	if (clean.code != 0) {
+		finish(`cannot prepare staging ${stage}: ${clean.stderr}`);
+		return;
+	}
+	if (!sys.mkdir_p(stage)) {
+		finish(`cannot create staging ${stage}: ${sys.error()}`);
+		return;
+	}
+	if (!sys.write_atomic(stage_nft, built.artifacts.nft)) {
+		let detail = `cannot stage candidate nft: ${sys.error()}`;
+		discard_stage();
+		finish(detail);
+		return;
+	}
+	if (!sys.write_atomic(stage_xray, built.artifacts.xray)) {
+		let detail = `cannot stage candidate xray: ${sys.error()}`;
+		discard_stage();
+		finish(detail);
+		return;
+	}
+	let nft_check = run(daemon.ctx, 'nft', [ '-c', '-f', stage_nft ], 10, true);
+	if (nft_check.code != 0) {
+		discard_stage();
+		finish(`nft -c -f failed (${nft_check.code}): ${nft_check.stderr}`);
 		return;
 	}
 	let binary = daemon.state.components?.[C.XRAY_COMPONENT]?.path ??
 		(daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/${C.XRAY_COMPONENT}` : C.XRAY_COMPONENT);
-	let test = sys.run([ binary, 'run', '-test', '-c', xray_path ], { timeout: 10, quiet: true });
+	let test = sys.run([ binary, 'run', '-test', '-c', stage_xray ], { timeout: 10, quiet: true });
 	if (test.code != 0) {
+		discard_stage();
 		finish(`xray run -test failed (${test.code}): ${test.stderr}`);
 		return;
 	}
-	let loaded = load_nft(daemon, nft_path, restored);
-	if (!loaded.ok) {
-		finish(loaded.detail);
+	if (daemon.ctx.stopping_requested) {
+		discard_stage();
+		finish(null);
 		return;
 	}
+	function combine_error(cause, rb_errors) {
+		return length(rb_errors) ? `${cause}; ${join('; ', rb_errors)}` : cause;
+	};
+	function restore_files(restore_nft, restore_xray) {
+		let errors = [], nft_ok = !restore_nft, xray_ok = !restore_xray;
+		if (restore_nft) {
+			if (sys.write_atomic(nft_path, old_nft))
+				nft_ok = true;
+			else {
+				let detail = `cannot restore ${nft_path}: ${sys.error()}`;
+				log_failure(daemon, 'rollback_current', detail);
+				push(errors, `rollback_current_nft: ${detail}`);
+			}
+		}
+		if (restore_xray) {
+			if (sys.write_atomic(xray_path, old_xray))
+				xray_ok = true;
+			else {
+				let detail = `cannot restore ${xray_path}: ${sys.error()}`;
+				log_failure(daemon, 'rollback_current', detail);
+				push(errors, `rollback_current_xray: ${detail}`);
+			}
+		}
+		return { errors, nft_ok, xray_ok };
+	};
+	if (!sys.write_atomic(nft_path, built.artifacts.nft)) {
+		let detail = `cannot publish node IP nft: ${sys.error()}`;
+		discard_stage();
+		finish(detail);
+		return;
+	}
+	if (!sys.write_atomic(xray_path, built.artifacts.xray)) {
+		let cause = `cannot publish node IP xray: ${sys.error()}`;
+		discard_stage();
+		let rb = restore_files(true, false);
+		finish(combine_error(cause, rb.errors));
+		return;
+	}
+	discard_stage();
+	// Retain sets.save until Xray is ready and the refresh commits.
+	let loaded = apply.nft_load(daemon.ctx, nft_path);
+	if (!loaded.ok) {
+		// nft -f is atomic: only the two published current/ files changed.
+		let rb = restore_files(true, true);
+		finish(combine_error(loaded.detail, rb.errors));
+		return;
+	}
+	if (daemon.ctx.stopping_requested) {
+		finish(null);
+		return;
+	}
+	let had_xray = daemon.children.xray != null;
+	function rollback_refresh(cause) {
+		if (daemon.ctx.stopping_requested) {
+			finish(null);
+			return;
+		}
+		let rb = restore_files(true, true);
+		let rb_errors = rb.errors;
+		if (rb.nft_ok) {
+			let rb_nft = apply.nft_load(daemon.ctx, nft_path);
+			if (!rb_nft.ok) {
+				log_failure(daemon, 'rollback_nft', rb_nft.detail);
+				push(rb_errors, `rollback_nft: ${rb_nft.detail}`);
+			}
+		}
+		if (daemon.ctx.stopping_requested) {
+			finish(null);
+			return;
+		}
+		if (!rb.xray_ok) {
+			finish(combine_error(cause, rb_errors));
+			return;
+		}
+		if (!had_xray) {
+			let created = daemon.children.xray;
+			if (created != null) {
+				daemon.children.xray = null;
+				created.stop(() => finish(daemon.ctx.stopping_requested ? null : combine_error(cause, rb_errors)));
+			}
+			else
+				finish(combine_error(cause, rb_errors));
+			return;
+		}
+		restart_child(daemon, 'xray', C.XRAY_COMPONENT,
+			[ binary, 'run', '-c', xray_path ], rb_err => {
+				if (daemon.ctx.stopping_requested) {
+					finish(null);
+					return;
+				}
+				if (rb_err != null) {
+					log_failure(daemon, 'rollback_xray', rb_err);
+					push(rb_errors, `rollback_xray: ${rb_err}`);
+					finish(combine_error(cause, rb_errors));
+					return;
+				}
+				let rb_ready = xray_ready.published(daemon.ctx, daemon.children.xray);
+				if (daemon.ctx.stopping_requested) {
+					finish(null);
+					return;
+				}
+				if (!rb_ready.ok) {
+					log_failure(daemon, 'rollback_xray', rb_ready.detail);
+					push(rb_errors, `rollback_xray: ${rb_ready.detail}`);
+				}
+				finish(combine_error(cause, rb_errors));
+			});
+	};
 	let old_ip = machine.node_ip;
 	restart_child(daemon, 'xray', C.XRAY_COMPONENT,
 		[ binary, 'run', '-c', xray_path ], error => {
+			if (daemon.ctx.stopping_requested) {
+				finish(null);
+				return;
+			}
 			if (error != null) {
-				finish(error);
+				rollback_refresh(error);
 				return;
 			}
 			// This action already owns busy and the monitor lock, so pumping uloop while
 			// waiting cannot observe our own restart as an unrelated Xray outage.
 			let ready = xray_ready.published(daemon.ctx, daemon.children.xray);
-			if (!ready.ok) {
-				finish(ready.detail);
+			if (daemon.ctx.stopping_requested) {
+				finish(null);
 				return;
 			}
+			if (!ready.ok) {
+				rollback_refresh(ready.detail);
+				return;
+			}
+			if (restored.from_save)
+				apply.sets_remove(daemon.ctx);
 			action = 'switch';
 			machine.node_probe_failures = 0;
 			machine.node_probe_retry_at = null;

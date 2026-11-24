@@ -330,7 +330,7 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
    置 `dns_failsafe=true`，记 ERR `DNS_DOWN_FAILSAFE`。端口恢复后重新写入片段，清除标志。
 4. **代理健康检测**（[07](07-probe.md)）：根据连续成功/失败的次数在 `running` ↔ `degraded` 之间切换，并驱动 DNS 级别（[03](03-dns.md)）与分流降级（[02](02-dataplane.md)「节点不健康时的分流降级」：判为不健康且 `degrade_gfw=1` → 临时按仅被墙分流；恢复健康 → 还原）。
 5. **DNS 级别探测**：仅在 T2/T3 下执行（[03](03-dns.md)）。
-6. **节点 IP 刷新**：距上次超过 10 分钟，或本轮转入 `PROXY_UNHEALTHY`，就重新解析（[03](03-dns.md)）；两次刷新尝试至少间隔 60 秒，防抖字段仅保存在机器状态，daemon 重启时重置。新 IP 须先通过节点端口的 3 秒 TCP 探测，才进入集合导出、渲染写入与 Xray 重启；失败记 warn `NODE_IP_UNREACHABLE` 并正常结束刷新，不切 IP、不触发动作错误重试。
+6. **节点 IP 刷新**：距上次超过 10 分钟，或本轮转入 `PROXY_UNHEALTHY`，就重新解析（[03](03-dns.md)）；两次刷新尝试至少间隔 60 秒，防抖字段仅保存在机器状态，daemon 重启时重置。新 IP 须先通过节点端口的 3 秒 TCP 探测，失败记 warn `NODE_IP_UNREACHABLE` 并正常结束刷新，不切 IP、不触发动作错误重试。探测通过后，复用已持有的 monitor 操作锁（不二次取锁）在 `staging/` 写入候选 `aether-proxy.nft` 与 `xray.json` 并先通过 `nft -c -f` 与 `xray run -test` 校验，再发布到 `current/`、加载 nft 并重启 Xray 等待 `xray_ready.published` 就绪；只有新 Xray 就绪才删除待恢复 `sets.save`、更新运行态 `node_ip`/LKG 并发布 `NODE_IP_CHANGED`。可恢复失败仅回滚已实际改变的资源（候选写入/校验失败不触碰 `current/`、nft 与 Xray；发布第二份失败回滚首份；`nft -f` 失败还原两份 `current/` 文件；Xray 启动或就绪失败则还原 `current/`、重载旧 nft 并重启旧 Xray 等就绪），回滚自身失败单独记 `monitor:rollback_*` 并在错误详情中与原错同时可见、不报切换成功。在途收到 `SIGTERM` 时立即停止优先，不拉起新子进程也不复活退出中的子进程，按所有出口正常释放 `busy` 与操作锁。不承诺进程崩溃时的跨资源原子性。
 
 7. **节点故障自动切换（T16.21，默认关闭）**：仅 `sub.failover=1` 且当前节点在
    `main.failover_nodes` 名单内、未停用时，每轮用 `node_reachable(state.node_ip, port)` 做独立的 3 秒 TCP 探测。
