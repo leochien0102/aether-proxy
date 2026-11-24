@@ -189,6 +189,10 @@ msgid "During monitoring: {step}"
 msgstr "监控时{step}"
 
 msgctxt "aether-proxy"
+msgid "Acquire instance lock"
+msgstr "获取实例锁"
+
+msgctxt "aether-proxy"
 msgid "Acquire lock"
 msgstr "获取锁"
 

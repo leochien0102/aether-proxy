@@ -95,6 +95,7 @@ const MODES = {
 /* Failure steps, not SERVICE_STARTED timing keys: keep unknown values intact
  * so newer backends remain diagnosable by older pages. */
 const START_STEPS = {
+	instance_lock: _('Acquire instance lock', 'aether-proxy'),
 	lock: _('Acquire lock', 'aether-proxy'),
 	config: _('Read configuration', 'aether-proxy'),
 	precheck: _('Precheck', 'aether-proxy'),

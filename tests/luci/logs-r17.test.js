@@ -82,6 +82,7 @@ for (const name of ['ss_spec', 'ss_spec_mangle']) {
 
 // T15.11: current literal failures must match exactly; historical logs remain supported separately.
 const CURRENT_STEPS = {
+	instance_lock: '获取实例锁',
 	lock: '获取锁', config: '读取配置', precheck: '预检', component_version: '组件版本', signal: '处理停止信号',
 	wait_network: '等待网络', render: '生成配置', cleanup: '清理旧状态', publish: '发布配置',
 	hash: '计算配置哈希', bootstrap: '引导节点解析', bootstrap_stop: '停止私有引导 DNS',
@@ -130,6 +131,15 @@ test('T10.60 scenario 3: detail formats conflict lists, missing entries, checks 
 			'启动失败（预检）：' + expected);
 });
 
+test('T16.62: START_FAILED instance_lock translates stage and keeps raw detail', () => {
+	for (const detail of ['Resource temporarily unavailable', 'Is a directory']) {
+		const args = Object.freeze({ step: 'instance_lock', detail });
+		const row = logs.events({ ok: true, events: [event('START_FAILED', args)] }).rows[0];
+		assert.equal(row.text, '启动失败（获取实例锁）：' + detail);
+		assert.equal(row.title, JSON.stringify(args));
+	}
+});
+
 function descendants(node) {
 	return [node].concat((node.childNodes || []).flatMap(descendants));
 }
@@ -172,7 +182,7 @@ function checkStepTranslations(source) {
 test('T10.60 scenario 4: every literal daemon failure step has a Chinese translation', () => {
 	const source = fs.readFileSync(path.join(ROOT, 'aether-proxy/src/lib/daemon.uc'), 'utf8');
 	checkStepTranslations(source);
-	assert.equal(daemonSteps(source).size, 31, 'current daemon literal failure set has exactly 31 steps');
+	assert.equal(daemonSteps(source).size, 32, 'current daemon literal failure set has exactly 32 steps');
 	assert.deepEqual([...daemonSteps(source)].sort(), Object.keys(CURRENT_STEPS).sort());
 	for (const step of Object.keys(HISTORICAL_STEPS))
 		assert.ok(!daemonSteps(source).has(step), 'historical step is not a current literal failure: ' + step);
@@ -192,6 +202,8 @@ test('T10.60 scenarios 1-3: English text and translated placeholder composition 
 			'Precheck failed: Missing xray');
 		assert.equal(english.message(event('START_FAILED', { step: 'reload:precheck', detail: 'conflict:ss_spec' })),
 			'Start failed (During reload: Precheck): Conflict with ShadowSocksR Plus+');
+		assert.equal(english.message(event('START_FAILED', { step: 'instance_lock', detail: 'Resource temporarily unavailable' })),
+			'Start failed (Acquire instance lock): Resource temporarily unavailable');
 	} finally {
 		globalThis._ = translate;
 	}
