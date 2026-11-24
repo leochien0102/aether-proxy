@@ -12,9 +12,20 @@ mkdir -p "$PROTO_BIN" "$T/root/proc/net"
 cat > "$PROTO_BIN/curl" <<'SHIM'
 #!/usr/bin/env python3
 import json, os, sys
+
+argv = ['curl'] + sys.argv[1:]
 with open(os.environ['PROTO_CURL_LOG'], 'a', encoding='utf-8') as fh:
-    fh.write(json.dumps(['curl'] + sys.argv[1:]) + '\n')
-os.execv(os.environ['PROTO_REAL_CURL'], ['curl'] + sys.argv[1:])
+    fh.write(json.dumps(argv) + '\n')
+
+if '-x' in sys.argv[1:]:
+    sys.stderr.write('curl: (7) proxy connect refused (injected by T16.77 test shim)\n')
+    sys.exit(7)
+
+env = {
+    k: v for k, v in os.environ.items()
+    if k.lower() not in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')
+}
+os.execve(os.environ['PROTO_REAL_CURL'], argv, env)
 SHIM
 chmod +x "$PROTO_BIN/curl"
 
