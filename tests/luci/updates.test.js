@@ -12,7 +12,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { loadModule, parsePo, element } = require('./loader');
+const { loadModule, parsePo, element, isElement, htmlWriteMark, htmlWritesSince } = require('./loader');
 const { descendants } = require('./button-layout');
 const { renderList, parseList } = require('./dynamic-list');
 const ROOT = path.resolve(__dirname, '../..');
@@ -1090,4 +1090,175 @@ test('M4-02b S4: pending failed and missing component rows retain existing wordi
 			{ name: 'DNS 引擎', version: '未知', path: '–', note: '' }
 		]);
 	}
+});
+
+test('T16.63: status row error text with angle brackets and ampersands renders as plain text', async () => {
+	const h = load_view();
+	await h.page.render();
+	const cases = [
+		{
+			status: { ok: false, code: 'UPDATE_FETCH_FAILED', detail: 'mirror <primary & backup> returned 502 & <retry>' },
+			expected: '连不上发布通道：mirror <primary & backup> returned 502 & <retry>'
+		},
+		{
+			status: { ok: false, code: 'ERR<1&2>', detail: 'a < b & c > d' },
+			expected: 'ERR<1&2>：a < b & c > d'
+		}
+	];
+	for (const { status: reply, expected } of cases) {
+		const mark = htmlWriteMark();
+		h.page.status = reply;
+		h.page.show_inventory();
+		const statusRow = h.page.inventory.children[0].children[1];
+		const errorSpan = statusRow.children.at(-2);
+		assert.equal(errorSpan.tag, 'span');
+		assert.equal(errorSpan.scalarHtml, false, 'error span must not use innerHTML path');
+		assert.deepEqual(errorSpan.html, []);
+		assert.equal(errorSpan.childNodes.length, 1);
+		assert.equal(errorSpan.childNodes[0].tag, '#text');
+		assert.equal(errorSpan.childNodes[0].text, expected);
+		assert.equal(errorSpan.textContent, expected);
+		assert.deepEqual(descendants(errorSpan).slice(1).filter(isElement), [],
+			'error text must not generate any child elements');
+		assert.deepEqual(
+			htmlWritesSince(mark).filter(value => value.includes(reply.detail) || value.includes(reply.code)),
+			[],
+			'external error text must never be written via innerHTML');
+	}
+});
+
+test('T16.63: same-source status values along the status row and inventory stay plain text', async () => {
+	const detail = 'range <1 & 2>';
+	const s = {
+		updates_available: {
+			arch: 'arch<test&1>',
+			checked: 100,
+			url: 'https://channel.example/stable/',
+			packages: {
+				'aether-xray': { ...entry, installed: '1.0<a&b>', available: '2.0<c&d>', previous: '0.9<e&f>', asset: null }
+			}
+		},
+		components: {
+			xray: { version: 'v<1&2>', path: '/usr/bin/<xray&alt>' },
+			dns: { version: 'd<3&4>', path: '/usr/bin/<dns&alt>', engine: 'aether-dns' }
+		}
+	};
+	const h = await ready_view(s);
+	h.ap.run_job = async () => ({ state: 'failed', result: { ok: false, code: 'UPDATE_VERIFY_FAILED', detail } });
+	const mark = htmlWriteMark();
+	await h.page.run('update_check');
+	assert.equal(h.page.summary.childNodes.length, 1);
+	assert.equal(h.page.summary.childNodes[0].tag, '#text');
+	assert.equal(h.page.summary.textContent, '校验失败：' + detail);
+	assert.deepEqual(descendants(h.page.summary).slice(1).filter(isElement), []);
+	const renderedText = text(h.page.inventory);
+	for (const sample of ['1.0<a&b>', '2.0<c&d>', '0.9<e&f>', 'arch<test&1>', 'v<1&2>', '/usr/bin/<xray&alt>', detail])
+		assert.ok(renderedText.includes(sample), 'plain text preserved: ' + sample);
+	assert.deepEqual(
+		htmlWritesSince(mark).filter(value => value.includes('<') || value.includes('&')),
+		[],
+		'no external value containing < or & may hit innerHTML');
+});
+
+test('T16.63: channel link renders only for valid absolute http/https URLs without orphan separators', async () => {
+	const h = load_view();
+	await h.page.render();
+	const row = () => h.page.inventory.children[0].children[1];
+	const statusSpan = () => row().children[0];
+	const links = () => descendants(row()).filter(n => n.tag === 'a');
+
+	for (const [raw, expectedHref] of [
+		['http://channel.example/stable/', 'http://channel.example/stable/'],
+		['https://channel.example:8443/path?a=1&b=2', 'https://channel.example:8443/path?a=1&b=2'],
+		['http://127.0.0.1:8080/mirror', 'http://127.0.0.1:8080/mirror']
+	]) {
+		const mark = htmlWriteMark();
+		h.page.status = { updates_available: { arch: 'test_arch', checked: 100, url: raw, packages: {} } };
+		h.page.show_inventory();
+		assert.equal(links().length, 1, 'valid URL produces one link: ' + raw);
+		const a = links()[0];
+		assert.equal(text(a), '通道地址');
+		assert.equal(a.href, expectedHref);
+		assert.equal(a.target, '_blank');
+		assert.equal(a.rel, 'noopener noreferrer');
+		assert.equal(a.title, expectedHref);
+		assert.equal(a.scalarHtml, false);
+		assert.equal(a.childNodes.length, 1);
+		assert.equal(a.childNodes[0].tag, '#text');
+		assert.match(text(statusSpan()), /^上次检查: .+ · 通道地址$/);
+		assert.deepEqual(htmlWritesSince(mark).filter(v => v.includes('通道地址')), []);
+	}
+
+	const rejected = [
+		undefined,
+		null,
+		'',
+		'–',
+		'/relative/channel',
+		'./channel',
+		'//channel.example/stable',
+		'channel.example/stable',
+		'http://',
+		'https:///path',
+		'https://\\path',
+		'http:channel.example',
+		'http://exa mple.com/',
+		'ftp://channel.example/stable',
+		'file:///tmp/channel',
+		'data:text/plain,channel',
+		'mailto:ops@example.com',
+		'javascript:void(0)'
+	];
+	for (const bad of rejected) {
+		h.page.status = { updates_available: { arch: 'test_arch', checked: 100, url: bad, packages: {} } };
+		h.page.show_inventory();
+		assert.equal(links().length, 0, 'invalid URL must not render a link: ' + JSON.stringify(bad));
+		assert.ok(!text(statusSpan()).includes(' · '),
+			'invalid URL must not leave an orphan separator: ' + JSON.stringify(bad));
+		assert.ok(!text(statusSpan()).includes('通道地址'),
+			'invalid URL must not render link text: ' + JSON.stringify(bad));
+	}
+});
+
+test('T16.63: refreshing from a valid channel URL to an invalid or missing URL removes both link and separator', async () => {
+	const h = await ready_view({
+		updates_available: { arch: 'test_arch', checked: 100, url: 'https://channel.example/stable/', packages: {} }
+	});
+	const row = () => h.page.inventory.children[0].children[1];
+	const statusSpan = () => row().children[0];
+	const links = () => descendants(row()).filter(n => n.tag === 'a');
+
+	assert.equal(links().length, 1);
+	assert.equal(links()[0].href, 'https://channel.example/stable/');
+	assert.equal(links()[0].target, '_blank');
+	assert.equal(links()[0].rel, 'noopener noreferrer');
+	assert.match(text(statusSpan()), / · 通道地址$/);
+
+	// Refresh via an update_check job returning an invalid URL.
+	h.ap.call = async () => ({
+		updates_available: { arch: 'test_arch', checked: 120, url: 'ftp://channel.example/legacy', packages: {} }
+	});
+	await h.page.run('update_check');
+	assert.equal(links().length, 0);
+	assert.ok(!text(statusSpan()).includes(' · '));
+	assert.ok(!text(statusSpan()).includes('通道地址'));
+
+	// Refresh to a valid http URL, then to a missing URL.
+	h.ap.call = async () => ({
+		updates_available: { arch: 'test_arch', checked: 130, url: 'http://mirror.example/channel/', packages: {} }
+	});
+	await h.page.run('update_check');
+	assert.equal(links().length, 1);
+	assert.equal(links()[0].href, 'http://mirror.example/channel/');
+	assert.equal(links()[0].target, '_blank');
+	assert.equal(links()[0].rel, 'noopener noreferrer');
+	assert.match(text(statusSpan()), / · 通道地址$/);
+
+	h.ap.call = async () => ({
+		updates_available: { arch: 'test_arch', checked: 140, packages: {} }
+	});
+	await h.page.run('update_check');
+	assert.equal(links().length, 0);
+	assert.ok(!text(statusSpan()).includes(' · '));
+	assert.ok(!text(statusSpan()).includes('通道地址'));
 });

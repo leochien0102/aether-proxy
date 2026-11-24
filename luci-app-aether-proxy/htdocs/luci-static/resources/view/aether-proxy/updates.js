@@ -110,8 +110,19 @@ return view.extend({
 				]);
 			})
 		]);
+		const channelUrl = (value => {
+			if (typeof value !== 'string' || !/^https?:\/\/[^/\\\s]/i.test(value))
+				return null;
+			try {
+				const parsed = new URL(value);
+				return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname ? parsed.href : null;
+			}
+			catch (e) {
+				return null;
+			}
+		})(vm.url);
 		const link = (url, text) =>
-			E('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url }, text);
+			E('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url }, [ text ]);
 		this.summary.hidden = !this.summary.textContent;
 		this.progress.hidden = !this.busy;
 		const statusRow = E('div', { class: 'aether-update-status',
@@ -119,11 +130,11 @@ return view.extend({
 			E('span', { style: 'min-width:0' }, [
 				_('Last checked', 'aether-proxy'), ': ',
 				this.status === undefined ? _('Not checked yet', 'aether-proxy') : vm.checked,
-				...(vm.url !== '–' ? [ ' · ', link(vm.url, _('Channel address', 'aether-proxy')) ] : []),
+				...(channelUrl ? [ ' · ', link(channelUrl, _('Channel address', 'aether-proxy')) ] : []),
 			]),
 			this.summary,
 			this.progress,
-			...(vm.error ? [ E('span', { style: 'min-width:0; overflow-wrap:anywhere' }, vm.error) ] : []),
+			...(vm.error ? [ E('span', { style: 'min-width:0; overflow-wrap:anywhere' }, [ vm.error ]) ] : []),
 			E('div', { style: 'display:flex; flex-wrap:wrap; align-items:center; min-width:0; gap:0.5em 1em; margin-inline-start:auto' },
 				[ check ])
 		]);
