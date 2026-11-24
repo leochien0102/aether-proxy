@@ -19,7 +19,7 @@ import * as check from 'aetherproxy.cmd.check';
 import * as components from 'aetherproxy.cmd.components';
 
 const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--mode <mode>] [--port-scope <all|common|common_extra>]';
-const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global> [--port-scope <all|common|common_extra>]';
+const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global> [--port-scope <all|common|common_extra>] | mode use --port-scope <all|common|common_extra>';
 const MODES = filter(schema.SCHEMA.main, field => field.name == 'mode')[0].enum;
 const PORT_SCOPES = filter(schema.SCHEMA.main, field => field.name == 'port_scope')[0].enum;
 // Match the node_import RPC boundary (docs/10); these are input limits, not system paths.
@@ -155,7 +155,8 @@ function selection_locked(opts, id, mode, port_scope) {
 	let previous_port_scope = cursor.get(C.UCI_PACKAGE, 'main', 'port_scope');
 	let effective_port_scope = previous_port_scope ?? 'all';
 	opts.selection_status = { committed: false,
-		previous: id != null ? previous_node : previous_mode, previous_mode,
+		previous: id != null ? previous_node : (mode != null ? previous_mode : effective_port_scope),
+		previous_mode,
 		...(port_scope != null ? { previous_port_scope: effective_port_scope } : {}) };
 	let ctx = { root, opts: sub.absolute_options(opts) };
 	let node_changed = id != null && previous_node != id;
@@ -164,7 +165,9 @@ function selection_locked(opts, id, mode, port_scope) {
 	// Keep every legacy field and human message; integrity fields are additive.
 	let value = id != null
 		? { ok: true, node: id, previous: previous_node, reload: false }
-		: { ok: true, mode, previous: previous_mode, reload: false };
+		: (mode != null
+			? { ok: true, mode, previous: previous_mode, reload: false }
+			: { ok: true, port_scope, previous: effective_port_scope, reload: false });
 	value.previous_mode = previous_mode;
 	value.committed = true;
 	if (id != null && mode != null)
@@ -173,7 +176,7 @@ function selection_locked(opts, id, mode, port_scope) {
 		value.port_scope = port_scope;
 		value.previous_port_scope = effective_port_scope;
 	}
-	let selection = id ?? mode;
+	let selection = id ?? mode ?? port_scope;
 	if (!node_changed && !mode_changed && !scope_changed) {
 		let validated = sub.load_committed_config(ctx, original);
 		if (!validated.ok)
@@ -261,10 +264,13 @@ function parse_node(opts, line) {
 export function run_mode(args) {
 	let parsed = parse_args(args, false, true);
 	let opts = parsed.opts ?? { json: index(args, '--json') >= 0 };
-	if (parsed.error || parsed.positional[0] != 'use' || length(parsed.positional) != 2)
+	let with_mode = !parsed.error && parsed.positional[0] == 'use' && length(parsed.positional) == 2;
+	let scope_only = !parsed.error && parsed.positional[0] == 'use' && length(parsed.positional) == 1
+		&& parsed.opts?.port_scope != null;
+	if (parsed.error || (!with_mode && !scope_only))
 		return pipeline.finish(opts,
-			{ ok: false, code: 'USAGE', detail: parsed.error ?? 'expected `mode use <mode>`' }, 2, MODE_USAGE);
-	return use_selection(opts, null, parsed.positional[1], parsed.opts.port_scope);
+			{ ok: false, code: 'USAGE', detail: parsed.error ?? 'expected `mode use <mode>` or `mode use --port-scope <scope>`' }, 2, MODE_USAGE);
+	return use_selection(opts, null, with_mode ? parsed.positional[1] : null, parsed.opts.port_scope);
 };
 
 export function run(args) {

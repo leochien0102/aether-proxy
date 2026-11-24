@@ -842,7 +842,7 @@ return baseclass.extend({
 			return { method: 'mode_use', params, kind: change_scope ? 'mode_scope' : 'mode' };
 		}
 		if (change_scope)
-			return { method: 'node_use', params: { id: node, port_scope }, kind: 'scope' };
+			return { method: 'mode_use', params: { port_scope }, kind: 'scope' };
 		return null;
 	},
 

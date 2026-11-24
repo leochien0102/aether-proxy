@@ -103,8 +103,8 @@ function createFixture(opts = {}) {
 	const initialState = opts.state ?? 'running';
 	fs.writeFileSync(statePath, JSON.stringify({
 		state: initialState,
-		node_id: N1,
-		mode: 'bypass_cn',
+		node_id: opts.running_node ?? N1,
+		mode: opts.running_mode ?? 'bypass_cn',
 		since: 1000
 	}) + '\n');
 
@@ -278,7 +278,7 @@ print(sprintf('%.J', reply), '\\n');
 	};
 }
 
-async function mountOverview(fx) {
+async function mountOverview(fx, opts = {}) {
 	let stagedInMem = [];
 	const metrics = { uciSetCalls: [], uciSaveCalls: 0, uiApplyCalls: 0, rpcCalls: [] };
 	const timers = [];
@@ -365,6 +365,8 @@ async function mountOverview(fx) {
 					return fx.callRpcd(method, params);
 				if (method === 'probe_sites')
 					return { ok: true, sites: [{ name: 'google', label: 'Google' }] };
+				if (method === 'events')
+					return { ok: true, events: opts.events ?? [] };
 				return { ok: true, events: [] };
 			}
 		}
@@ -685,6 +687,115 @@ test('T16.70: disabled/stopped service commits changes without starting or reloa
 		assert.equal(fx.daemonSeen().length, 0, 'stopped service must not reload or start');
 		assert.equal(fx.draftsIntact(), true);
 		assert.equal(page.switchSession?.phase, 'success');
+	}
+	finally {
+		fx.cleanup();
+	}
+});
+
+test('T16.70 rework: committed N1 vs running N2 blocks Apply while external switch is pending without failure reason', async () => {
+	const fx = createFixture({ running_node: N2 });
+	try {
+		const { page, metrics } = await mountOverview(fx, { events: [] });
+		const beforeBytes = fs.readFileSync(fx.configPath);
+		assert.equal(page.vm.switch_busy, true, 'mismatch without failure event must keep switch_busy');
+		assert.equal(page.portScopeSelect.disabled, true, 'port scope selector must be disabled while busy');
+		const applyBtn = all(page.nodeControl, 'button')[0];
+		assert.equal(applyBtn.disabled, true, 'Apply button must be blocked while switch_busy');
+
+		await applyBtn.attrs.click();
+		assert.equal(metrics.rpcCalls.filter(([m]) => m === 'node_use' || m === 'mode_use').length, 0);
+		assert.equal(Buffer.compare(fs.readFileSync(fx.configPath), beforeBytes), 0);
+		assert.equal(fx.daemonSeen().length, 0);
+		assert.equal(fx.draftsIntact(), true);
+	}
+	finally {
+		fx.cleanup();
+	}
+});
+
+test('T16.70 rework: committed N1 vs running N2 scope-only via real Apply button keeps committed N1 and mode untouched', async () => {
+	const fx = createFixture({ running_node: N2 });
+	try {
+		const priorFailure = [{ ts: 1005, code: 'START_FAILED', args: { step: 'reload:actions', detail: 'prior reload failed' } }];
+		const { page, metrics } = await mountOverview(fx, { events: priorFailure });
+		assert.equal(page.vm.switch_busy, false, 'settled failure reason must allow Apply without bypassing UI');
+		assert.equal(page.nodeSelect.value, N2, 'UI shows running node N2');
+
+		page.portScopeSelect.value = 'common';
+		page.portScopeSelect.attrs.change();
+		const applyBtn = all(page.nodeControl, 'button')[0];
+		assert.equal(applyBtn.disabled, false, 'Apply button must be enabled for scope-only change');
+
+		await applyBtn.attrs.click();
+		if (page.switchSession && page.switchSession.phase === 'switching')
+			await page.pollSwitch(page.switchSession);
+
+		const switchRpcs = metrics.rpcCalls.filter(([m]) => m === 'node_use' || m === 'mode_use');
+		assert.deepEqual(switchRpcs, [['mode_use', { port_scope: 'common' }]],
+			'scope-only must not borrow running node or mode');
+
+		const committed = fx.readCommitted();
+		assert.equal(committed.node, N1, 'committed node must remain N1');
+		assert.equal(committed.mode, 'bypass_cn', 'committed mode must remain unchanged');
+		assert.equal(committed.port_scope, 'common', 'committed port_scope must be common');
+
+		const seen = fx.daemonSeen();
+		assert.equal(seen.length, 1, 'running daemon must receive exactly one reload');
+		assert.equal(seen[0].node, N1);
+		assert.equal(seen[0].mode, 'bypass_cn');
+		assert.equal(seen[0].port_scope, 'common');
+		assert.equal(seen[0].nft_has_common_ports, true);
+
+		assert.equal(fx.draftsIntact(), true, 'unrelated LuCI session drafts must remain untouched');
+		assert.equal(metrics.uciSaveCalls, 0);
+		assert.equal(metrics.uiApplyCalls, 0);
+		assert.equal(page.switchSession?.phase, 'success');
+	}
+	finally {
+		fx.cleanup();
+	}
+});
+
+test('T16.70 rework: committed N1 vs running N2 scope-only rollback restores only port_scope without writing node or mode', async () => {
+	const fx = createFixture({ running_node: N2 });
+	try {
+		fx.setFault({ daemon_fail_count: 1 });
+		const priorFailure = [{ ts: 1005, code: 'START_FAILED', args: { step: 'reload:actions', detail: 'prior reload failed' } }];
+		const { page, metrics } = await mountOverview(fx, { events: priorFailure });
+		assert.equal(page.vm.switch_busy, false);
+
+		page.portScopeSelect.value = 'common';
+		page.portScopeSelect.attrs.change();
+		const applyBtn = all(page.nodeControl, 'button')[0];
+		assert.equal(applyBtn.disabled, false);
+
+		await applyBtn.attrs.click();
+		assert.equal(page.switchSession?.phase, 'rolling-back');
+		await page.pollSwitch(page.switchSession);
+		assert.equal(page.switchSession?.phase, 'rolled-back');
+
+		const switchRpcs = metrics.rpcCalls.filter(([m]) => m === 'node_use' || m === 'mode_use');
+		assert.deepEqual(switchRpcs, [
+			['mode_use', { port_scope: 'common' }],
+			['mode_use', { port_scope: 'all' }]
+		], 'forward and rollback RPCs must only pass port_scope');
+
+		const committed = fx.readCommitted();
+		assert.equal(committed.node, N1, 'committed node must remain N1 after rollback');
+		assert.equal(committed.mode, 'bypass_cn', 'committed mode must remain unchanged after rollback');
+		assert.equal(committed.port_scope, 'all', 'port_scope must be restored to all');
+
+		const seen = fx.daemonSeen();
+		assert.equal(seen.length, 2, 'forward failed reload + rollback reload');
+		assert.equal(seen[0].ok, false);
+		assert.equal(seen[0].node, N1);
+		assert.equal(seen[0].port_scope, 'common');
+		assert.equal(seen[1].ok, true);
+		assert.equal(seen[1].node, N1);
+		assert.equal(seen[1].mode, 'bypass_cn');
+		assert.equal(seen[1].port_scope, 'all');
+		assert.equal(fx.draftsIntact(), true);
 	}
 	finally {
 		fx.cleanup();

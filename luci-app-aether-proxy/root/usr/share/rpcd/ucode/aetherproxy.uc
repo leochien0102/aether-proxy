@@ -220,12 +220,16 @@ const methods = {
 	mode_use: {
 		call: function(req) {
 			let mode = req?.args?.mode;
-			if (!valid_mode(mode))
-				return usage(`mode must be one of ${join('|', MODES)}`);
 			let port_scope = req?.args?.port_scope;
+			if (mode == null && port_scope == null)
+				return usage(`mode must be one of ${join('|', MODES)}`);
+			if (mode != null && !valid_mode(mode))
+				return usage(`mode must be one of ${join('|', MODES)}`);
 			if (port_scope != null && !valid_port_scope(port_scope))
 				return usage(`port_scope must be one of ${join('|', PORT_SCOPES)}`);
-			let argv = [ 'mode', 'use', mode ];
+			let argv = [ 'mode', 'use' ];
+			if (mode != null)
+				push(argv, mode);
 			if (port_scope != null)
 				push(argv, '--port-scope', port_scope);
 			return call_cli(argv, DEFAULT_TIMEOUT_SECS);

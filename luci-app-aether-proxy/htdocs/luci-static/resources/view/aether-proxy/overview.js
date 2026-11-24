@@ -712,7 +712,9 @@ return view.extend({
 			port_scope, current_scope);
 		if (!request)
 			return;
-		const session = this.beginSwitch(node, mode || this.currentMode, request.kind, target_scope);
+		const target_node = request.kind === 'scope' ? (this.currentNode || node) : node;
+		const target_mode = request.kind === 'scope' ? (this.currentMode || mode) : (mode || this.currentMode);
+		const session = this.beginSwitch(target_node, target_mode, request.kind, target_scope);
 		this.nodeEdited = this.modeEdited = this.portScopeEdited = false;
 		try {
 			if (this.configRequest)
@@ -951,7 +953,8 @@ return view.extend({
 			/* TODO(design): node_use cannot restore an unset node/mode. Do not invent
 			   an old value or issue a partial restore when the API cannot express it. */
 			const restore_scope = ['scope', 'node_scope', 'mode_scope', 'all'].includes(session.kind);
-			const uses_mode = session.kind === 'mode' || session.kind === 'mode_scope';
+			const scope_only = session.kind === 'scope';
+			const uses_mode = scope_only || session.kind === 'mode' || session.kind === 'mode_scope';
 			const needs_mode = !['scope', 'node_scope'].includes(session.kind);
 			if ((needs_mode && !reply.previous_mode) || (!uses_mode && !reply.previous)
 				|| (restore_scope && !reply.previous_port_scope)) {
@@ -961,12 +964,14 @@ return view.extend({
 				return;
 			}
 			const method = uses_mode ? 'mode_use' : 'node_use';
-			const params = method === 'mode_use'
-				? { mode: reply.previous_mode }
-				: (needs_mode ? { id: reply.previous, mode: reply.previous_mode } : { id: reply.previous });
+			const params = scope_only
+				? { port_scope: reply.previous_port_scope }
+				: (method === 'mode_use'
+					? { mode: reply.previous_mode }
+					: (needs_mode ? { id: reply.previous, mode: reply.previous_mode } : { id: reply.previous }));
 			if (restore_scope)
 				params.port_scope = reply.previous_port_scope;
-			session.node = method === 'mode_use' ? session.node : reply.previous;
+			session.node = uses_mode ? session.node : reply.previous;
 			if (needs_mode)
 				session.mode = reply.previous_mode;
 			if (restore_scope)

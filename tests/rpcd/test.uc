@@ -1005,7 +1005,10 @@ function scenario_mode_use() {
 				argv: [ 'node', 'use', node_id(1), '--mode', 'gfw', '--port-scope', scope, '--json' ] },
 			{ name: `mode_use ${scope}`, method: 'mode_use',
 				args: { mode: 'gfw', port_scope: scope, ubus_rpc_session: 'token' },
-				argv: [ 'mode', 'use', 'gfw', '--port-scope', scope, '--json' ] }
+				argv: [ 'mode', 'use', 'gfw', '--port-scope', scope, '--json' ] },
+			{ name: `mode_use scope-only ${scope}`, method: 'mode_use',
+				args: { port_scope: scope, ubus_rpc_session: 'token' },
+				argv: [ 'mode', 'use', '--port-scope', scope, '--json' ] }
 		]) {
 			let argv_of = watch_cli();
 			let r = methods[c.method].call({ args: c.args });

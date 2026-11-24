@@ -200,6 +200,16 @@ check('T16.70 node use three-way: commits node, mode, and port_scope once, one r
       and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
 
 reset()
+reply = ap('mode', 'use', '--port-scope', 'common', real=True)
+check('T16.70 mode use scope-only: commits only port_scope without node or mode, one reload',
+      reply == dict(ok=True, port_scope='common', previous='all', previous_mode='bypass_cn',
+                    previous_port_scope='all', reload=True, committed=True)
+      and "\toption port_scope 'common'\n" in CONFIG.read_text()
+      and f"\toption node '{IDS[0]}'\n" in CONFIG.read_text()
+      and "\toption mode 'bypass_cn'\n" in CONFIG.read_text()
+      and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
+
+reset()
 reply = ap('mode', 'use', 'global', '--port-scope', 'common', real=True)
 check('T16.70 mode use with port-scope: commits mode and port_scope once, one reload',
       reply == dict(ok=True, mode='global', previous='bypass_cn', previous_mode='bypass_cn',
