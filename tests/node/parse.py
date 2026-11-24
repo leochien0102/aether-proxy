@@ -214,3 +214,61 @@ for proto, variants in T1664_GROUPS:
     check(f'T16.64 node import {proto}: type=raw with trailing slash deduplicates against type=tcp',
           first['ok'] and not first['duplicate']
           and second['ok'] and second['duplicate'] and second['node'] == first['node'])
+
+# T16.65: VMess gRPC end-to-end import -> UCI -> config.load() -> render/outbound.uc
+# verifies serviceName and three-state multiMode (true / false / omitted) across all layers.
+RENDER_OUTBOUND = '''
+import * as uci from 'uci';
+import * as config from 'aetherproxy.config';
+import * as outbound from 'aetherproxy.render.outbound';
+let loaded = config.load(uci.cursor(ARGV[0]));
+if (!loaded.ok) {
+	print(sprintf('%.J', { ok: false, errors: loaded.errors }));
+	exit(0);
+}
+let node = loaded.snapshot.nodes[ARGV[1]];
+print(sprintf('%.J', { ok: true, node, outbound: outbound.build_outbound(node, null) }));
+'''
+
+
+def vmess_grpc_uri(**extra):
+    payload = dict(
+        ps='vm-grpc', add='grpc.example.com', port='443',
+        id='11111111-2222-4333-8444-555555555555', aid=0, scy='auto',
+        net='grpc', tls='tls', sni='grpc.example.com', **extra
+    )
+    return 'vmess://' + base64.b64encode(json.dumps(payload).encode()).decode()
+
+
+T1665_STATES = [
+    ('true', dict(serviceName='edge.grpc.svc', multiMode=True), '1', True,
+     dict(serviceName='edge.grpc.svc', multiMode=True)),
+    ('false', dict(serviceName='edge.grpc.svc', multiMode=False), '0', False,
+     dict(serviceName='edge.grpc.svc', multiMode=False)),
+    ('unset', dict(serviceName='edge.grpc.svc'), None, None,
+     dict(serviceName='edge.grpc.svc')),
+]
+for state_name, fields, want_uci, want_norm, want_grpc in T1665_STATES:
+    CONFIG.write_text(BASE)
+    imported = ap('import', vmess_grpc_uri(**fields))
+    nid = imported['node']
+    raw_uci = options(uc(READ_NODES, CONF)[nid])
+    rendered = uc(RENDER_OUTBOUND, CONF, nid)
+    check(f'T16.65 node import {state_name}: UCI service_name and grpc_multi_mode',
+          raw_uci.get('service_name') == 'edge.grpc.svc'
+          and (raw_uci.get('grpc_multi_mode') == want_uci if want_uci is not None
+               else 'grpc_multi_mode' not in raw_uci))
+    check(f'T16.65 config.load {state_name}: normalized snapshot preserves three-state bool',
+          rendered['ok']
+          and rendered['node'].get('service_name') == 'edge.grpc.svc'
+          and (rendered['node'].get('grpc_multi_mode') is want_norm if want_norm is not None
+               else 'grpc_multi_mode' not in rendered['node']))
+    ss = rendered['outbound']['streamSettings']
+    check(f'T16.65 render outbound {state_name}: grpcSettings matches contract',
+          ss['network'] == 'grpc' and ss['grpcSettings'] == want_grpc)
+
+CONFIG.write_text(BASE)
+svc_a = ap('import', vmess_grpc_uri(serviceName='svc.a', multiMode=True))
+svc_b = ap('import', vmess_grpc_uri(serviceName='svc.b', multiMode=True))
+check('T16.65 node import: distinct VMess gRPC serviceName values do not collide',
+      svc_a['ok'] and svc_b['ok'] and not svc_b['duplicate'] and svc_a['node'] != svc_b['node'])

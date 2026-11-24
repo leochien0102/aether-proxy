@@ -450,6 +450,77 @@ for (let pair in [
 ])
 	push(cases, { name: 'T16.64 ' + pair[0], fn: 'line', input: pair[1], expect: { skip: pair[2] } });
 
+// T16.65: VMess base64 JSON net=grpc preserves serviceName and three-state multiMode.
+const VMESS_GRPC_BASE = {
+	ps: 'vm-grpc', add: 'grpc.example.com', port: '443', id: UUID, aid: 0,
+	scy: 'auto', net: 'grpc', tls: 'tls', sni: 'grpc.example.com'
+};
+const VMESS_GRPC_EXPECT_BASE = {
+	protocol: 'vmess', address: 'grpc.example.com', port: 443, uuid: UUID, label: 'vm-grpc',
+	method: 'auto', transport: 'grpc', security: 'tls', sni: 'grpc.example.com'
+};
+function vmess_uri(obj) {
+	return 'vmess://' + b64enc(sprintf('%.J', obj));
+}
+
+for (let item in [
+	[ 'multiMode bool true', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: true },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '1' } ],
+	[ 'multiMode string true', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'true' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '1' } ],
+	[ 'multiMode string 1', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: '1' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '1' } ],
+	[ 'multiMode bool false', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: false },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '0' } ],
+	[ 'multiMode string false', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'false' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '0' } ],
+	[ 'multiMode string 0', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: '0' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc', grpc_multi_mode: '0' } ],
+	[ 'multiMode omitted', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc' } ],
+	[ 'multiMode null', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: null },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc' } ],
+	[ 'multiMode empty string', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: '' },
+		{ ...VMESS_GRPC_EXPECT_BASE, service_name: 'edge.grpc.svc' } ],
+	[ 'serviceName empty string with multiMode true', { ...VMESS_GRPC_BASE, serviceName: '', multiMode: true },
+		{ ...VMESS_GRPC_EXPECT_BASE, grpc_multi_mode: '1' } ],
+	[ 'serviceName null with multiMode false', { ...VMESS_GRPC_BASE, serviceName: null, multiMode: false },
+		{ ...VMESS_GRPC_EXPECT_BASE, grpc_multi_mode: '0' } ],
+	[ 'serviceName and multiMode omitted', { ...VMESS_GRPC_BASE },
+		{ ...VMESS_GRPC_EXPECT_BASE } ],
+	[ 'path and type not guessed as gRPC dialect', { ...VMESS_GRPC_BASE, path: '/legacy', type: 'none' },
+		{ ...VMESS_GRPC_EXPECT_BASE, path: '/legacy', header_type: 'none' } ],
+	[ 'non-grpc vmess ignores serviceName and multiMode',
+		{ ...VMESS_JSON, net: 'ws', path: '/ws', serviceName: 'ignored.svc', multiMode: true },
+		{
+			protocol: 'vmess', address: 'vm.example.com', port: 443, uuid: UUID, label: 'v2rayN',
+			method: 'auto', transport: 'ws', security: 'tls', header_type: 'none', path: '/ws',
+			sni: 'vm.example.com', fingerprint: 'chrome', alpn: [ 'h2' ]
+		} ]
+])
+	push(cases, { name: 'T16.65 vmess grpc ' + item[0], fn: 'line', input: vmess_uri(item[1]), expect: { node: item[2] } });
+
+for (let bad in [
+	[ 'multiMode yes', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'yes' } ],
+	[ 'multiMode no', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'no' } ],
+	[ 'multiMode on', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'on' } ],
+	[ 'multiMode multi', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'multi' } ],
+	[ 'multiMode gun', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'gun' } ],
+	[ 'multiMode uppercase TRUE', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'TRUE' } ],
+	[ 'multiMode uppercase FALSE', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'FALSE' } ],
+	[ 'multiMode bogus string', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 'bogus' } ],
+	[ 'multiMode string 2', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: '2' } ],
+	[ 'multiMode int 1', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 1 } ],
+	[ 'multiMode int 0', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: 0 } ],
+	[ 'multiMode array', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: [] } ],
+	[ 'multiMode object', { ...VMESS_GRPC_BASE, serviceName: 'edge.grpc.svc', multiMode: {} } ],
+	[ 'serviceName bool', { ...VMESS_GRPC_BASE, serviceName: true } ],
+	[ 'serviceName int', { ...VMESS_GRPC_BASE, serviceName: 123 } ],
+	[ 'serviceName array', { ...VMESS_GRPC_BASE, serviceName: [] } ],
+	[ 'serviceName object', { ...VMESS_GRPC_BASE, serviceName: {} } ]
+])
+	push(cases, { name: 'T16.65 vmess grpc invalid ' + bad[0], fn: 'line', input: vmess_uri(bad[1]), expect: { skip: 'invalid_value' } });
+
 export function run(c) {
 	return c.fn == 'line' ? uri.parse_line(c.input) : uri.parse_body(c.input);
 };

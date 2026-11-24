@@ -271,6 +271,16 @@ function json_object(text) {
 	return type(value) == 'object' ? value : null;
 }
 
+// Only explicit JSON booleans or lowercase string booleans/0/1 are accepted so
+// non-empty invalid strings can never coerce to true.
+function parse_vmess_bool(value) {
+	if (value === true || value === 'true' || value === '1')
+		return '1';
+	if (value === false || value === 'false' || value === '0')
+		return '0';
+	return null;
+}
+
 function parse_vmess(payload, label) {
 	let decoded = decode_base64(payload);
 	if (decoded == null)
@@ -318,6 +328,20 @@ function parse_vmess(payload, label) {
 		node.fingerprint = `${data.fp}`;
 	if (data.alpn != null && data.alpn != '')
 		node.alpn = split(`${data.alpn}`, ',');
+
+	if (net == 'grpc') {
+		if (data.serviceName != null && data.serviceName !== '') {
+			if (type(data.serviceName) != 'string')
+				return skipped('invalid_value');
+			node.service_name = data.serviceName;
+		}
+		if (data.multiMode != null && data.multiMode !== '') {
+			let multi = parse_vmess_bool(data.multiMode);
+			if (multi == null)
+				return skipped('invalid_value');
+			node.grpc_multi_mode = multi;
+		}
+	}
 
 	return finish_node(node, []);
 }
