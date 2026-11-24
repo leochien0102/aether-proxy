@@ -448,6 +448,7 @@ done
 # T9.29 reuses the signed manifests, package-manager stubs and restart fixture above.
 source "$ROOT/tests/update/package-policy.sh"
 source "$ROOT/tests/update/update-together.sh"
+source "$ROOT/tests/update/terminal-companions.sh"
 source "$ROOT/tests/update/aether-xray.sh"
 
 # Invalid hashes and unsupported architectures never reach the package manager.

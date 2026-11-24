@@ -27,6 +27,7 @@ let function_end = mode == 'proxy' ? 'update_companion' : 'update_together';
 let factory = loadstring('(function(' + join(', ', dependencies) + ') { '
 	+ helper('budget_left', 'run') + helper('group_failure', 'fs_error')
 	+ helper('fs_error', 'system_path') + helper('unlink_file', 'asset_filename')
+	+ (mode == 'companion' ? helper('companion_candidate', 'update_companion') : '')
 	+ helper(function_name, function_end)
 	+ ` return { call: ${function_name}, ready: budget_ready, left: budget_left }; })`)();
 
