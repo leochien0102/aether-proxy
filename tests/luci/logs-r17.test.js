@@ -81,7 +81,7 @@ for (const name of ['ss_spec', 'ss_spec_mangle']) {
 }
 
 // T15.11: current literal failures must match exactly; historical logs remain supported separately.
-const CURRENT_STEPS = {
+const BASE_STEPS = {
 	instance_lock: '获取实例锁',
 	lock: '获取锁', config: '读取配置', precheck: '预检', component_version: '组件版本', signal: '处理停止信号',
 	wait_network: '等待网络', render: '生成配置', cleanup: '清理旧状态', publish: '发布配置',
@@ -95,8 +95,13 @@ const CURRENT_STEPS = {
 	subscription_schedule: '调度订阅更新', sigusr2: '收到信号后重启 Xray',
 	reload_stop: '为重载停止服务', stop: '停止服务'
 };
+const CURRENT_STEPS = {
+	...BASE_STEPS,
+	'reload:lock': '重载时获取锁',
+	reload_unlock: '重载时释放锁'
+};
 const HISTORICAL_STEPS = { chinadns_start: '启动 chinadns-ng' };
-for (const [step, expected] of Object.entries({ ...CURRENT_STEPS, ...HISTORICAL_STEPS })) {
+for (const [step, expected] of Object.entries({ ...BASE_STEPS, ...HISTORICAL_STEPS })) {
 	test('T10.60 scenario 3: START_FAILED translates ' + step + ' and reload/monitor prefixes with raw hover', () => {
 		for (const [prefix, context] of [['', ''], ['reload:', '重载时'], ['monitor:', '监控时']]) {
 			const args = Object.freeze({ step: prefix + step, detail: 'conflict:ss_spec' });
@@ -137,6 +142,20 @@ test('T16.62: START_FAILED instance_lock translates stage and keeps raw detail',
 		const row = logs.events({ ok: true, events: [event('START_FAILED', args)] }).rows[0];
 		assert.equal(row.text, '启动失败（获取实例锁）：' + detail);
 		assert.equal(row.title, JSON.stringify(args));
+	}
+});
+
+test('T16.71: START_FAILED reload:lock and reload_unlock compose existing translations and keep raw detail', () => {
+	for (const [step, label, detail] of [
+		['reload:lock', '重载时获取锁', 'lock /var/lock/aether-proxy.lock: Resource temporarily unavailable'],
+		['reload:lock', '重载时获取锁', 'open lock /var/lock/aether-proxy.lock: Is a directory'],
+		['reload_unlock', '重载时释放锁', 'Bad file descriptor']
+	]) {
+		const args = Object.freeze({ step, detail });
+		const row = logs.events({ ok: true, events: [event('START_FAILED', args)] }).rows[0];
+		assert.equal(row.text, '启动失败（' + label + '）：' + detail);
+		assert.equal(row.title, JSON.stringify(args));
+		assert.deepEqual(args, { step, detail });
 	}
 });
 
@@ -182,12 +201,12 @@ function checkStepTranslations(source) {
 test('T10.60 scenario 4: every literal daemon failure step has a Chinese translation', () => {
 	const source = fs.readFileSync(path.join(ROOT, 'aether-proxy/src/lib/daemon.uc'), 'utf8');
 	checkStepTranslations(source);
-	assert.equal(daemonSteps(source).size, 32, 'current daemon literal failure set has exactly 32 steps');
+	assert.equal(daemonSteps(source).size, 34, 'current daemon literal failure set has exactly 34 steps');
 	assert.deepEqual([...daemonSteps(source)].sort(), Object.keys(CURRENT_STEPS).sort());
 	for (const step of Object.keys(HISTORICAL_STEPS))
 		assert.ok(!daemonSteps(source).has(step), 'historical step is not a current literal failure: ' + step);
-	for (const added of ["return { step: 'new_step' };", "event_failure(ctx, 'new_step', 'test');"])
-		assert.throws(() => checkStepTranslations(source + '\n' + added), /missing translation: new_step/);
+	for (const added of ["return { step: 'new_step' };", "event_failure(ctx, 'new_step', 'test');", "return { step: 'reload:new_step' };"])
+		assert.throws(() => checkStepTranslations(source + '\n' + added), /missing translation: (?:reload:)?new_step/);
 });
 
 test('T10.60 scenarios 1-3: English text and translated placeholder composition stay coherent', () => {
@@ -202,6 +221,10 @@ test('T10.60 scenarios 1-3: English text and translated placeholder composition 
 			'Precheck failed: Missing xray');
 		assert.equal(english.message(event('START_FAILED', { step: 'reload:precheck', detail: 'conflict:ss_spec' })),
 			'Start failed (During reload: Precheck): Conflict with ShadowSocksR Plus+');
+		assert.equal(english.message(event('START_FAILED', { step: 'reload:lock', detail: 'lock /var/lock/aether-proxy.lock: Resource temporarily unavailable' })),
+			'Start failed (During reload: Acquire lock): lock /var/lock/aether-proxy.lock: Resource temporarily unavailable');
+		assert.equal(english.message(event('START_FAILED', { step: 'reload_unlock', detail: 'Bad file descriptor' })),
+			'Start failed (During reload: Release lock): Bad file descriptor');
 		assert.equal(english.message(event('START_FAILED', { step: 'instance_lock', detail: 'Resource temporarily unavailable' })),
 			'Start failed (Acquire instance lock): Resource temporarily unavailable');
 	} finally {

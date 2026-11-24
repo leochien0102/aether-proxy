@@ -164,8 +164,9 @@ function precheck_missing(value) {
 function start_step(value) {
 	if (typeof value !== 'string')
 		return value_text(value);
-	const prefixed = /^(reload|monitor):(.+)$/.exec(value);
-	const step = prefixed ? prefixed[2] : value;
+	const normalized = value === 'reload_unlock' ? 'reload:lock_release' : value;
+	const prefixed = /^(reload|monitor):(.+)$/.exec(normalized);
+	const step = prefixed ? prefixed[2] : normalized;
 	if (!Object.prototype.hasOwnProperty.call(START_STEPS, step))
 		return value;
 	if (!prefixed)
