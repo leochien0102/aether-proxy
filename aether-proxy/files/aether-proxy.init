@@ -63,8 +63,7 @@ restart() {
 		return 1
 	}
 	intent_tmp="$_AETHER_PROXY_RESTART_INTENT.$$"
-	umask 077
-	if ! printf 'restart\n' > "$intent_tmp" || ! mv -f "$intent_tmp" "$_AETHER_PROXY_RESTART_INTENT"; then
+	if ! (umask 077 && printf 'restart\n' > "$intent_tmp" && mv -f "$intent_tmp" "$_AETHER_PROXY_RESTART_INTENT"); then
 		logger -t aether-proxy "cannot write $_AETHER_PROXY_RESTART_INTENT"
 		rm -f "$intent_tmp" || logger -t aether-proxy "cannot remove $intent_tmp"
 		return 1

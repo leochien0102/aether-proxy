@@ -396,6 +396,135 @@ cmp -s "$HANDOFF" "$F/handoff.expected" && [ ! -s "$F/log" ] \
 expect "T15.1 R5 stopped without intent: ordinary disable adds no dnsmasq restart" \
 	"$((residue_restarts + 1))" "$(cat "$F/dns-count")"
 
+# T16.66: restart() must publish its 0600 intent file before stop without leaking umask 077
+# to stop, start, or the caller shell on either success or publish-failure paths.
+U="$T/t1666-umask"
+mkdir -p "$U/ok-run" "$U/mv-fail-run" "$U/write-fail-run"
+
+# Success path: non-default umask 0027 must survive into stop, start, and after restart returns.
+(
+	umask 0027
+	orig_umask=$(umask)
+	export AETHER_PROXY_RUN_DIR="$U/ok-run"
+	export PROCD_LOG="$U/ok.log"
+	: > "$PROCD_LOG"
+	config_load() { return 0; }
+	config_get_bool() { printf -v "$1" '%s' 1; }
+	logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
+	stop() {
+		printf 'stop-umask %s\n' "$(umask)" >> "$PROCD_LOG"
+		if [ -f "$_AETHER_PROXY_RESTART_INTENT" ]; then
+			printf 'stop-intent-exists yes\n' >> "$PROCD_LOG"
+			printf 'stop-intent-mode %s\n' "$(stat -c '%04a' "$_AETHER_PROXY_RESTART_INTENT")" >> "$PROCD_LOG"
+			cp "$_AETHER_PROXY_RESTART_INTENT" "$U/ok-intent-snapshot"
+		else
+			printf 'stop-intent-exists no\n' >> "$PROCD_LOG"
+		fi
+		return 0
+	}
+	start() {
+		printf 'start-umask %s\n' "$(umask)" >> "$PROCD_LOG"
+		return 0
+	}
+	. "$INIT"
+	restart
+	rc=$?
+	printf 'orig-umask %s\n' "$orig_umask" >> "$PROCD_LOG"
+	printf 'after-umask %s\n' "$(umask)" >> "$PROCD_LOG"
+	exit "$rc"
+); rc=$?
+expect "T16.66 success: restart exits 0" 0 "$rc"
+grep -Fxq 'stop-intent-exists yes' "$U/ok.log" \
+	&& ok "T16.66 success: intent file is visible at stop entry" \
+	|| bad "T16.66 success: intent file is visible at stop entry"
+grep -Fxq 'stop-intent-mode 0600' "$U/ok.log" \
+	&& ok "T16.66 success: intent file has 0600 permissions" \
+	|| bad "T16.66 success: intent file has 0600 permissions"
+printf 'restart\n' | cmp -s - "$U/ok-intent-snapshot" \
+	&& ok "T16.66 success: intent file content is exact" \
+	|| bad "T16.66 success: intent file content is exact"
+grep -Fxq 'stop-umask 0027' "$U/ok.log" \
+	&& ok "T16.66 success: stop observes caller's original umask 0027" \
+	|| bad "T16.66 success: stop observes caller's original umask 0027" "$(grep '^stop-umask ' "$U/ok.log")"
+grep -Fxq 'start-umask 0027' "$U/ok.log" \
+	&& ok "T16.66 success: start observes caller's original umask 0027" \
+	|| bad "T16.66 success: start observes caller's original umask 0027" "$(grep '^start-umask ' "$U/ok.log")"
+grep -Fxq 'after-umask 0027' "$U/ok.log" \
+	&& ok "T16.66 success: caller umask 0027 is unchanged after restart" \
+	|| bad "T16.66 success: caller umask 0027 is unchanged after restart" "$(grep '^after-umask ' "$U/ok.log")"
+[ -z "$(find "$U/ok-run" -maxdepth 1 -name 'restart-intent.*')" ] \
+	&& ok "T16.66 success: no leftover temp intent file" \
+	|| bad "T16.66 success: no leftover temp intent file"
+
+# Rename failure path: temp file is created with 0600, mv fails, temp file is cleaned up,
+# stop/start are not called, and caller's non-default umask 0027 is preserved.
+(
+	umask 0027
+	export AETHER_PROXY_RUN_DIR="$U/mv-fail-run"
+	export PROCD_LOG="$U/mv-fail.log"
+	: > "$PROCD_LOG"
+	config_load() { return 0; }
+	config_get_bool() { printf -v "$1" '%s' 1; }
+	logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
+	mv() {
+		printf 'mv-called\n' >> "$PROCD_LOG"
+		if [ -f "$2" ]; then
+			printf 'tmp-mode %s\n' "$(stat -c '%04a' "$2")" >> "$PROCD_LOG"
+		fi
+		return 1
+	}
+	stop() { printf 'stop-called\n' >> "$PROCD_LOG"; return 0; }
+	start() { printf 'start-called\n' >> "$PROCD_LOG"; return 0; }
+	. "$INIT"
+	restart
+	rc=$?
+	printf 'after-umask %s\n' "$(umask)" >> "$PROCD_LOG"
+	exit "$rc"
+); rc=$?
+expect "T16.66 rename failure: restart returns 1" 1 "$rc"
+grep -Fxq 'mv-called' "$U/mv-fail.log" && grep -Fxq 'tmp-mode 0600' "$U/mv-fail.log" \
+	&& ok "T16.66 rename failure: temp file created with 0600 before rename failed" \
+	|| bad "T16.66 rename failure: temp file created with 0600 before rename failed"
+! grep -Fxq 'stop-called' "$U/mv-fail.log" && ! grep -Fxq 'start-called' "$U/mv-fail.log" \
+	&& ok "T16.66 rename failure: stop and start are not invoked" \
+	|| bad "T16.66 rename failure: stop and start are not invoked"
+[ ! -e "$U/mv-fail-run/restart-intent" ] && [ -z "$(find "$U/mv-fail-run" -maxdepth 1 -name 'restart-intent.*')" ] \
+	&& ok "T16.66 rename failure: temp file cleaned up and no intent published" \
+	|| bad "T16.66 rename failure: temp file cleaned up and no intent published"
+grep -Fxq 'after-umask 0027' "$U/mv-fail.log" \
+	&& ok "T16.66 rename failure: caller umask 0027 is unchanged" \
+	|| bad "T16.66 rename failure: caller umask 0027 is unchanged" "$(grep '^after-umask ' "$U/mv-fail.log")"
+
+# Write failure path: pre-existing directory at temp path blocks redirection even as root;
+# stop/start are not called and caller's non-default umask 0007 is preserved.
+(
+	umask 0007
+	export AETHER_PROXY_RUN_DIR="$U/write-fail-run"
+	export PROCD_LOG="$U/write-fail.log"
+	: > "$PROCD_LOG"
+	mkdir -p "$U/write-fail-run/restart-intent.$$"
+	config_load() { return 0; }
+	config_get_bool() { printf -v "$1" '%s' 1; }
+	logger() { printf 'logger %s\n' "$*" >> "$PROCD_LOG"; }
+	stop() { printf 'stop-called\n' >> "$PROCD_LOG"; return 0; }
+	start() { printf 'start-called\n' >> "$PROCD_LOG"; return 0; }
+	. "$INIT"
+	restart 2>"$U/write-fail.err"
+	rc=$?
+	printf 'after-umask %s\n' "$(umask)" >> "$PROCD_LOG"
+	exit "$rc"
+); rc=$?
+expect "T16.66 write failure: restart returns 1" 1 "$rc"
+! grep -Fxq 'stop-called' "$U/write-fail.log" && ! grep -Fxq 'start-called' "$U/write-fail.log" \
+	&& ok "T16.66 write failure: stop and start are not invoked" \
+	|| bad "T16.66 write failure: stop and start are not invoked"
+[ ! -e "$U/write-fail-run/restart-intent" ] \
+	&& ok "T16.66 write failure: no intent published" \
+	|| bad "T16.66 write failure: no intent published"
+grep -Fxq 'after-umask 0007' "$U/write-fail.log" \
+	&& ok "T16.66 write failure: caller umask 0007 is unchanged" \
+	|| bad "T16.66 write failure: caller umask 0007 is unchanged" "$(grep '^after-umask ' "$U/write-fail.log")"
+
 # Preserve the original monitor-wakeup cases; DNS synchronization is an independent
 # background call, including on LAN. Only the harness waits for its logging substitute.
 run_hotplug() {
