@@ -86,11 +86,13 @@ function curl(ctx, url, output, max_size, via_proxy) {
 	let bin = 'curl';
 	// GitHub release downloads answer 302 to a storage host; without --location curl saves the
 	// redirect body and exits 0, and every manifest would look like a bad signature.
+	// Restrict initial requests and every redirect to HTTP(S), and separate the URL with `--`.
 	let argv = [ bin, '--fail', '--silent', '--show-error', '--location', '--max-redirs', '5',
+		'--proto', '=http,https', '--proto-redir', '=http,https',
 		'--max-time', `${C.UPDATE_DOWNLOAD_MAX_SECS}`, '--max-filesize', `${max_size}` ];
 	if (via_proxy)
 		push(argv, '-x', `http://${C.HTTP_LISTEN}:${C.HTTP_PORT}`);
-	push(argv, '-o', output, url);
+	push(argv, '-o', output, '--', url);
 	let result = run(argv, { timeout: C.UPDATE_COMMAND_TIMEOUT_SECS, quiet: true });
 	if (result.code != 0)
 		log.event('error', 'CMD_FAILED', { cmd: join(' ', argv), rc: result.code, stderr: trim(result.stderr) });

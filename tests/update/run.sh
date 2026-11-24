@@ -1157,5 +1157,6 @@ source "$ROOT/tests/update/bridge-chain.sh"
 source "$ROOT/tests/update/prerequisite.sh"
 source "$ROOT/tests/update/chain-walker.sh"
 source "$ROOT/tests/update/events.sh"
+source "$ROOT/tests/update/protocol-policy.sh"
 
 echo "update: $pass passed, $fail failed"; [ "$fail" -eq 0 ]
