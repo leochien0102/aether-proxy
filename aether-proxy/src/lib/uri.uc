@@ -115,6 +115,7 @@ function parse_fragment(text) {
 }
 
 function parse_authority(authority) {
+	authority = replace(authority, /\/$/, '');
 	if (substr(authority, 0, 1) == '[')
 		return { skip: 'ipv6_address' };
 
@@ -139,6 +140,7 @@ function parse_authority(authority) {
 
 function transport(value) {
 	switch (value) {
+	case 'raw':
 	case 'tcp': return 'raw';
 	case 'ws':
 	case 'grpc':
@@ -352,7 +354,6 @@ function parse_ss(payload, label) {
 	if (credentials == null)
 		return skipped('malformed');
 
-	authority = replace(authority, /\/$/, '');
 	let endpoint = parse_authority(authority);
 	if (endpoint?.skip != null)
 		return skipped(endpoint.skip);
@@ -428,7 +429,7 @@ function parse_new_protocol(scheme, payload) {
 	let user = has_user ? url_decode(authority[0]) : null;
 	if (has_user && user == null)
 		return skipped('malformed');
-	let endpoint = parse_authority(replace(has_user ? authority[1] : authority[0], /\/$/, ''));
+	let endpoint = parse_authority(has_user ? authority[1] : authority[0]);
 	if (endpoint?.skip != null)
 		return skipped(endpoint.skip);
 	if (endpoint == null)

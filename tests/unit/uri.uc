@@ -359,6 +359,97 @@ for (let input in [ mixed, b64enc(mixed) ])
 	push(cases, { name: 'new protocols mixed subscription ' + (input == mixed ? 'plain' : 'base64'), fn: 'body', input,
 		expect: { ok: true, nodes: mixed_nodes, skipped: { missing_field: 1 }, warnings: [], error: null } });
 
+// T16.64: equivalent standard share links (type=raw/tcp and optional single empty path /).
+const T1664_VLESS_NODE = {
+	protocol: 'vless', address: '203.0.113.20', port: 443, uuid: UUID, label: 'vless 标签',
+	transport: 'raw', security: 'reality', encryption: 'none', flow: 'xtls-rprx-vision',
+	sni: 'edge.example.com', reality_pbk: REALITY_KEY, reality_sid: 'abcd', reality_spx: '/edge/path'
+};
+for (let variant in [
+	[ 'type=tcp no slash', '' , 'tcp' ],
+	[ 'type=tcp trailing slash', '/', 'tcp' ],
+	[ 'type=raw no slash', '', 'raw' ],
+	[ 'type=raw trailing slash', '/', 'raw' ]
+])
+	push(cases, {
+		name: 'T16.64 vless equivalent ' + variant[0], fn: 'line',
+		input: `vless://${UUID}@203.0.113.20:443${variant[1]}?type=${variant[2]}&security=reality&flow=xtls-rprx-vision`
+			+ `&sni=edge.example.com&pbk=${REALITY_KEY}&sid=abcd&spx=%2Fedge%2Fpath#vless%20%E6%A0%87%E7%AD%BE`,
+		expect: { node: T1664_VLESS_NODE }
+	});
+
+const T1664_VLESS_WS_NODE = {
+	protocol: 'vless', address: 'ws.example.com', port: 443, uuid: UUID, label: 'ws tag',
+	transport: 'ws', security: 'tls', encryption: 'none', host: 'cdn.example.com', path: '/ws/v1'
+};
+for (let slash in [ '', '/' ])
+	push(cases, {
+		name: 'T16.64 vless ws encoded query path ' + (slash == '' ? 'no slash' : 'trailing slash'), fn: 'line',
+		input: `vless://${UUID}@ws.example.com:443${slash}?type=ws&security=tls&host=cdn.example.com&path=%2Fws%2Fv1#ws%20tag`,
+		expect: { node: T1664_VLESS_WS_NODE }
+	});
+
+const T1664_TROJAN_NODE = {
+	protocol: 'trojan', address: 'tj.example.com', port: 443, password: 'secret-pass', label: 'trojan 标签',
+	transport: 'raw', security: 'tls', sni: 'tj.example.com', alpn: [ 'h2', 'http/1.1' ]
+};
+for (let variant in [
+	[ 'type=tcp no slash', '', 'tcp' ],
+	[ 'type=tcp trailing slash', '/', 'tcp' ],
+	[ 'type=raw no slash', '', 'raw' ],
+	[ 'type=raw trailing slash', '/', 'raw' ]
+])
+	push(cases, {
+		name: 'T16.64 trojan equivalent ' + variant[0], fn: 'line',
+		input: `trojan://secret-pass@tj.example.com:443${variant[1]}?type=${variant[2]}&security=tls`
+			+ '&sni=tj.example.com&alpn=h2,http%2F1.1#trojan%20%E6%A0%87%E7%AD%BE',
+		expect: { node: T1664_TROJAN_NODE }
+	});
+push(cases, {
+	name: 'T16.64 trojan bare trailing slash preserves fragment', fn: 'line',
+	input: 'trojan://secret-pass@tj.example.com:443/#bare%20tag',
+	expect: { node: {
+		protocol: 'trojan', address: 'tj.example.com', port: 443, password: 'secret-pass',
+		label: 'bare tag', transport: 'raw', security: 'tls'
+	} }
+});
+
+// Shared transport() caller scope: VMess net=raw normalizes to transport=raw like net=tcp.
+const VMESS_RAW_URI = 'vmess://' + b64enc(sprintf('%.J', { ...VMESS_JSON, net: 'raw' }));
+push(cases, {
+	name: 'T16.64 vmess net=raw normalizes to transport=raw', fn: 'line', input: VMESS_RAW_URI,
+	expect: { node: {
+		protocol: 'vmess', address: 'vm.example.com', port: 443, uuid: UUID, label: 'v2rayN',
+		method: 'auto', transport: 'raw', security: 'tls', header_type: 'none',
+		sni: 'vm.example.com', fingerprint: 'chrome', alpn: [ 'h2' ]
+	} }
+});
+
+// Negative and boundary cases: reject unknown transport, non-empty path, double slash, invalid ports.
+for (let pair in [
+	[ 'vless unknown transport quic', `vless://${UUID}@203.0.113.20:443/?type=quic&security=tls#bad`, 'unsupported_transport' ],
+	[ 'vless unknown transport uppercase RAW', `vless://${UUID}@203.0.113.20:443/?type=RAW&security=tls#bad`, 'unsupported_transport' ],
+	[ 'trojan unknown transport kcp', 'trojan://secret-pass@tj.example.com:443/?type=kcp#bad', 'unsupported_transport' ],
+	[ 'vless non-empty path with query', `vless://${UUID}@203.0.113.20:443/extra?type=raw&security=tls#bad`, 'malformed' ],
+	[ 'vless non-empty path with trailing slash', `vless://${UUID}@203.0.113.20:443/extra/?type=raw&security=tls#bad`, 'malformed' ],
+	[ 'trojan non-empty path with query', 'trojan://secret-pass@tj.example.com:443/extra?type=tcp#bad', 'malformed' ],
+	[ 'trojan non-empty path without query', 'trojan://secret-pass@tj.example.com:443/extra#bad', 'malformed' ],
+	[ 'vless double slash with query', `vless://${UUID}@203.0.113.20:443//?type=raw&security=tls#bad`, 'malformed' ],
+	[ 'vless double slash without query', `vless://${UUID}@203.0.113.20:443//#bad`, 'malformed' ],
+	[ 'trojan double slash with query', 'trojan://secret-pass@tj.example.com:443//?type=tcp#bad', 'malformed' ],
+	[ 'trojan double slash without query', 'trojan://secret-pass@tj.example.com:443//#bad', 'malformed' ],
+	[ 'vless port 0 with trailing slash', `vless://${UUID}@203.0.113.20:0/?type=raw&security=tls`, 'malformed' ],
+	[ 'vless port 65536 with trailing slash', `vless://${UUID}@203.0.113.20:65536/?type=raw&security=tls`, 'malformed' ],
+	[ 'vless non-numeric port with trailing slash', `vless://${UUID}@203.0.113.20:abc/?type=raw&security=tls`, 'malformed' ],
+	[ 'trojan port 0 with trailing slash', 'trojan://secret-pass@tj.example.com:0/?type=raw', 'malformed' ],
+	[ 'trojan port 65536 with trailing slash', 'trojan://secret-pass@tj.example.com:65536/?type=raw', 'malformed' ],
+	[ 'trojan empty port with trailing slash', 'trojan://secret-pass@tj.example.com:/?type=raw', 'malformed' ],
+	[ 'trojan missing port with trailing slash', 'trojan://secret-pass@tj.example.com/?type=raw', 'malformed' ],
+	[ 'ss double slash still rejected', `ss://${SS_USER}@ss.example:8388//#bad`, 'malformed' ],
+	[ 'hy2 double slash still rejected', 'hy2://auth@h.example:443//?sni=h.example#bad', 'malformed' ]
+])
+	push(cases, { name: 'T16.64 ' + pair[0], fn: 'line', input: pair[1], expect: { skip: pair[2] } });
+
 export function run(c) {
 	return c.fn == 'line' ? uri.parse_line(c.input) : uri.parse_body(c.input);
 };

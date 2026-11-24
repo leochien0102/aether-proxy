@@ -183,3 +183,34 @@ check('node parse absent config directory: succeeds without resolving it', ap('p
 check('node parse default context: succeeds without host configuration', ap('parse', uri, context=False)['ok'])
 check('node parse without --json: documented success object', ap('parse', uri, json_output=False)['ok'])
 check('node parse missing argument: USAGE', ap('parse', rc=2)['code'] == 'USAGE')
+
+# T16.64: actual node import entry point produces identical UCI options and
+# deduplicates equivalent type=tcp/raw and optional single empty path / links.
+CONF.mkdir(parents=True, exist_ok=True)
+T1664_GROUPS = [
+    ('vless', [
+        f"vless://11111111-2222-4333-8444-555555555555@203.0.113.20:443{slash}?type={net}"
+        "&security=reality&flow=xtls-rprx-vision&sni=edge.example.com"
+        "&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&sid=abcd&spx=%2Fedge%2Fpath#vless%20%E6%A0%87%E7%AD%BE"
+        for slash in ('', '/') for net in ('tcp', 'raw')
+    ]),
+    ('trojan', [
+        f"trojan://secret-pass@tj.example.com:443{slash}?type={net}"
+        "&security=tls&sni=tj.example.com&alpn=h2,http%2F1.1#trojan%20%E6%A0%87%E7%AD%BE"
+        for slash in ('', '/') for net in ('tcp', 'raw')
+    ]),
+]
+for proto, variants in T1664_GROUPS:
+    committed_all = []
+    for variant in variants:
+        CONFIG.write_text(BASE)
+        imported = ap('import', variant)
+        committed_all.append(options(uc(READ_NODES, CONF)[imported['node']]))
+    check(f'T16.64 node import {proto}: all 4 equivalent variants commit identical UCI options',
+          all(item == committed_all[0] for item in committed_all[1:]))
+    CONFIG.write_text(BASE)
+    first = ap('import', variants[0])
+    second = ap('import', variants[-1])
+    check(f'T16.64 node import {proto}: type=raw with trailing slash deduplicates against type=tcp',
+          first['ok'] and not first['duplicate']
+          and second['ok'] and second['duplicate'] and second['node'] == first['node'])
