@@ -2128,8 +2128,8 @@ test('T10.17 scenario 1: load reads only UCI and never starts RPC or polling', a
 	assert.deepEqual(uciOps, [ [ 'load', 'aetherproxy' ] ]);
 	assert.deepEqual(calls, []);
 	assert.deepEqual(polls, []);
-	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: '1', enabled: true,
-		heatmap: undefined });
+	assert.deepEqual(data, { labels: { n_a: 'Alpha', n_b: 'Beta' }, node: 'n_a', mode: '1', port_scope: '1',
+		enabled: true, heatmap: undefined });
 });
 
 test('T10.17 scenario 2: all RPCs pending still renders complete placeholders and safe UCI controls', async () => {
@@ -2872,11 +2872,8 @@ async function modePage(options = {}) {
 					for (const [name, label] of [['n_a', 'Alpha'], ['n_b', 'Beta']])
 						cb({ '.name': name, label });
 			},
-			set: (...args) => {
-				assert.deepEqual(args, ['aetherproxy', 'main', 'port_scope', 'all']);
-				order.push('set-scope');
-			},
-			save: async () => { order.push('save'); },
+			set: () => assert.fail('overview apply must not stage UCI session changes'),
+			save: () => assert.fail('overview apply must not save UCI session changes'),
 			changes: () => assert.fail('node/mode apply must not read staged session changes')
 		},
 		ui: {
@@ -2965,7 +2962,7 @@ for (const [kind, node, mode, expected] of [
 		assert.equal(h.calls.length, 1, 'duplicate click does not write twice');
 		resolve({ ok: true, committed: true, previous: 'n_a', previous_mode: 'bypass_cn', reload: true });
 		await pending;
-		assert.deepEqual(h.order, ['set-scope', 'save', expected[0], 'unload', 'load', 'status']);
+		assert.deepEqual(h.order, [expected[0], 'unload', 'load', 'status']);
 		assert.equal(page.vm.switch_busy, true, 'RPC returns before the reload takes effect');
 		assert.deepEqual(h.calls.filter(([method]) => ['node_use', 'mode_use'].includes(method)), [expected]);
 		const banner = kind === 'both' ? '正在切换到「Beta」，默认模式「全局（所有流量走代理）」…'
@@ -4256,15 +4253,17 @@ function scopeControls(page) {
 		{ value: 'n_b', text: 'B' }] });
 }
 
-test('M4-09 P6 port scope three-way selection saves and applies independently of node RPC', async () => {
+test('M4-09 P6 / T16.70 port scope three-way selection applies via restricted switch transaction without uci.save/apply', async () => {
 	for (const scope of ['all', 'common', 'common_extra']) {
 		const calls = [];
 		const page = loadView({
-			uci: { get: () => scope === 'all' ? 'common' : 'all', changes: async () => ({}),
-				set: (...args) => calls.push(['set', ...args]), save: async () => calls.push(['save']) },
-			ui: { changes: { apply: checked => calls.push(['apply', checked]) } }
+			uci: { get: () => scope === 'all' ? 'common' : 'all',
+				changes: () => assert.fail('scope-only must not read session changes'),
+				set: () => assert.fail('scope-only must not stage via uci.set'),
+				save: () => assert.fail('scope-only must not stage via uci.save') },
+			ui: { changes: { apply: () => assert.fail('scope-only must not call ui.changes.apply') } }
 		});
-		page.handleNode = () => assert.fail('scope-only must not switch');
+		page.handleNode = async (...args) => calls.push(['switch', ...args]);
 		const root = scopeControls(page);
 		const select = page.portScopeSelect;
 		assert.deepEqual(select.children.map(o => o.attrs.value), ['all', 'common', 'common_extra']);
@@ -4275,7 +4274,7 @@ test('M4-09 P6 port scope three-way selection saves and applies independently of
 		const button = findAll(root, 'button')[0];
 		assert.equal(button.disabled, false);
 		await button.attrs.click();
-		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', scope], ['save'], ['apply', true]]);
+		assert.deepEqual(calls, [['switch', 'n_a', 'global', scope]]);
 	}
 });
 
@@ -4295,13 +4294,13 @@ test('M4-09 P6 switching disables the new scope selector and apply button', () =
 	}
 });
 
-test('M4-14 node or mode changes await scope save before switch without extra apply', async () => {
+test('M4-14 / T16.70 node or mode changes pass port_scope to handleNode without uci.save or extra apply', async () => {
 	for (const change of ['node', 'mode', 'both']) {
 		const calls = [];
-		let finishSave;
 		const page = loadView({
-			uci: { get: () => 'all', set: (...args) => calls.push(['set', ...args]),
-				save: () => { calls.push(['save']); return new Promise(resolve => { finishSave = resolve; }); } },
+			uci: { get: () => 'all',
+				set: () => assert.fail('switch must not call uci.set'),
+				save: () => assert.fail('switch must not call uci.save') },
 			ui: { changes: { apply: () => assert.fail('switch must not apply twice') } }
 		});
 		page.handleNode = async (...args) => calls.push(['switch', ...args]);
@@ -4310,29 +4309,21 @@ test('M4-14 node or mode changes await scope save before switch without extra ap
 		page.modeSelect.value = change === 'node' ? 'global' : 'gfw';
 		page.portScopeSelect.value = 'common_extra';
 		page.updateNodeButton();
-		const pending = findAll(root, 'button')[0].attrs.click();
-		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', 'common_extra'], ['save']]);
-		finishSave();
-		await pending;
-		assert.deepEqual(calls, [['set', 'aetherproxy', 'main', 'port_scope', 'common_extra'], ['save'],
-			['switch', page.nodeSelect.value, page.modeSelect.value]]);
+		await findAll(root, 'button')[0].attrs.click();
+		assert.deepEqual(calls, [['switch', page.nodeSelect.value, page.modeSelect.value, 'common_extra']]);
 	}
 });
 
-test('M4-14 unchanged controls do not save or apply and save failure prevents switching', async () => {
+test('M4-14 / T16.70 unchanged controls keep Apply disabled and make no UCI or RPC calls', async () => {
 	const calls = [];
 	const page = loadView({ uci: { get: () => 'all',
-		set: () => calls.push('set'), save: async () => { throw new Error('save failed'); } } });
-	page.handleNode = () => assert.fail('failed save must not switch');
+		set: () => calls.push('set'), save: async () => calls.push('save') } });
+	page.handleNode = () => assert.fail('unchanged controls must not switch');
 	const root = scopeControls(page);
 	const button = findAll(root, 'button')[0];
 	assert.equal(button.disabled, true);
 	await button.attrs.click();
 	assert.deepEqual(calls, []);
-	page.nodeSelect.value = 'n_b';
-	page.updateNodeButton();
-	await assert.rejects(button.attrs.click(), /save failed/);
-	assert.deepEqual(calls, ['set']);
 });
 
 

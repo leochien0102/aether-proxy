@@ -92,6 +92,7 @@ return view.extend({
 				labels: labels,
 				node: uci.get('aetherproxy', 'main', 'node'),
 				mode: uci.get('aetherproxy', 'main', 'mode') || 'bypass_cn',
+				port_scope: uci.get('aetherproxy', 'main', 'port_scope') || 'all',
 				enabled: uci.get('aetherproxy', 'main', 'enabled') === '1',
 				heatmap: uci.get('aetherproxy', 'stats', 'heatmap_enabled')
 			};
@@ -390,6 +391,7 @@ return view.extend({
 			if (read !== this.acceptedRead || this.enabling || this.switching)
 				return;
 			const unchanged = this.currentNode === data.node && this.currentMode === data.mode
+				&& (this.currentPortScope || 'all') === (data.port_scope || 'all')
 				&& this.enabled === data.enabled && this.heatmapCfg === data.heatmap
 				&& JSON.stringify(this.labels) === JSON.stringify(data.labels);
 			if (unchanged)
@@ -397,6 +399,7 @@ return view.extend({
 			this.labels = data.labels;
 			this.currentNode = data.node;
 			this.currentMode = data.mode;
+			this.currentPortScope = data.port_scope || 'all';
 			this.enabled = data.enabled;
 			const heatmapWas = this.heatmapCfg;
 			this.heatmapCfg = data.heatmap;
@@ -700,14 +703,17 @@ return view.extend({
 		this.poller = !this.initialReading && interval ? ap.poll(() => this.fetchRefresh(), interval) : null;
 	},
 
-	handleNode: async function(node, mode) {
+	handleNode: async function(node, mode, port_scope) {
 		if (this.switching || this.enabling || this.startup || this.localSwitchBusy())
 			return;
-		const request = model.switch_request(node, mode, this.vm?.current_node, this.vm?.current_mode);
+		const current_scope = this.currentPortScope || 'all';
+		const target_scope = port_scope ?? current_scope;
+		const request = model.switch_request(node, mode, this.vm?.current_node, this.vm?.current_mode,
+			port_scope, current_scope);
 		if (!request)
 			return;
-		const session = this.beginSwitch(node, mode || this.currentMode, request.kind);
-		this.nodeEdited = this.modeEdited = false;
+		const session = this.beginSwitch(node, mode || this.currentMode, request.kind, target_scope);
+		this.nodeEdited = this.modeEdited = this.portScopeEdited = false;
 		try {
 			if (this.configRequest)
 				await this.configRequest;
@@ -751,10 +757,12 @@ return view.extend({
 
 	/* T10.71 / handoff §2.2: only Apply creates a session. External changes keep
 	   the ordinary banner. Session identity fences every late RPC and timer. */
-	beginSwitch: function(node, mode, kind) {
-		const session = { node, mode, kind, phase: 'switching', started: Date.now() / 1000,
-			from: this.switchLabels(this.vm?.current_node, this.vm?.current_mode),
-			to: this.switchLabels(node, mode),
+	beginSwitch: function(node, mode, kind, port_scope) {
+		const current_scope = this.currentPortScope || 'all';
+		const target_scope = port_scope ?? current_scope;
+		const session = { node, mode, port_scope: target_scope, kind, phase: 'switching', started: Date.now() / 1000,
+			from: this.switchLabels(this.vm?.current_node, this.vm?.current_mode, current_scope),
+			to: this.switchLabels(node, mode, target_scope),
 			baseline: JSON.stringify(this.status?.last_reload) };
 		this.switchSession = session;
 		this.switching = true;
@@ -798,10 +806,11 @@ return view.extend({
 	},
 
 	/* T10.74: capture labels before refreshes can replace the node/name table. */
-	switchLabels: function(node, mode) {
+	switchLabels: function(node, mode, port_scope) {
 		return {
 			node: this.labels?.[node] || node || _('Not selected', 'aether-proxy'),
-			mode: model.mode_text(mode)
+			mode: model.mode_text(mode),
+			port_scope: model.port_scope_text(port_scope)
 		};
 	},
 
@@ -810,6 +819,15 @@ return view.extend({
 			return switchFormat(_('mode “%s”', 'aether-proxy'), labels.mode);
 		if (kind === 'both')
 			return switchFormat(_('node “%s” (mode “%s”)', 'aether-proxy'), labels.node, labels.mode);
+		if (kind === 'scope')
+			return switchFormat(_('port scope “%s”', 'aether-proxy'), labels.port_scope);
+		if (kind === 'node_scope')
+			return switchFormat(_('node “%s” (port scope “%s”)', 'aether-proxy'), labels.node, labels.port_scope);
+		if (kind === 'mode_scope')
+			return switchFormat(_('mode “%s” (port scope “%s”)', 'aether-proxy'), labels.mode, labels.port_scope);
+		if (kind === 'all')
+			return switchFormat(_('node “%s” (mode “%s”, port scope “%s”)', 'aether-proxy'),
+				labels.node, labels.mode, labels.port_scope);
 		return switchFormat(_('“%s”', 'aether-proxy'), labels.node);
 	},
 
@@ -875,6 +893,7 @@ return view.extend({
 			return;
 		this.currentNode = data.node;
 		this.currentMode = data.mode;
+		this.currentPortScope = data.port_scope || 'all';
 		this.labels = data.labels;
 		this.enabled = data.enabled;
 		this.heatmapCfg = data.heatmap;
@@ -914,14 +933,16 @@ return view.extend({
 		if (!this.switchActive(session) || session.phase === 'rolling-back')
 			return;
 		/* The rollback target comes from the committed reply, not a possibly stale runtime.
-		   Keep session.node/mode unchanged until the existing UCI ownership check passes. */
-		session.to = this.switchLabels(session.reply?.previous, session.reply?.previous_mode);
+		   Keep session.node/mode/port_scope unchanged until the existing UCI ownership check passes. */
+		session.to = this.switchLabels(session.reply?.previous, session.reply?.previous_mode,
+			session.reply?.previous_port_scope ?? session.port_scope);
 		this.switchPhase(session, 'rolling-back');
 		try {
 			await this.readSwitchConfig(session);
 			if (!this.switchActive(session))
 				return;
-			if (this.currentNode !== session.node || this.currentMode !== session.mode) {
+			if (this.currentNode !== session.node || this.currentMode !== session.mode
+				|| (this.currentPortScope || 'all') !== session.port_scope) {
 				this.switchPhase(session, 'rollback-failed',
 					_('Settings changed in another page; they were not overwritten.', 'aether-proxy'));
 				return;
@@ -929,17 +950,27 @@ return view.extend({
 			const reply = session.reply;
 			/* TODO(design): node_use cannot restore an unset node/mode. Do not invent
 			   an old value or issue a partial restore when the API cannot express it. */
-			if (!reply.previous_mode || (session.kind !== 'mode' && !reply.previous)) {
+			const restore_scope = ['scope', 'node_scope', 'mode_scope', 'all'].includes(session.kind);
+			const uses_mode = session.kind === 'mode' || session.kind === 'mode_scope';
+			const needs_mode = !['scope', 'node_scope'].includes(session.kind);
+			if ((needs_mode && !reply.previous_mode) || (!uses_mode && !reply.previous)
+				|| (restore_scope && !reply.previous_port_scope)) {
 				this.switchPhase(session, 'rollback-failed',
 					_('Previous settings cannot be restored automatically. Check the overview or logs.',
 						'aether-proxy'));
 				return;
 			}
-			const method = session.kind === 'mode' ? 'mode_use' : 'node_use';
-			const params = method === 'mode_use' ? { mode: reply.previous_mode }
-				: { id: reply.previous, mode: reply.previous_mode };
+			const method = uses_mode ? 'mode_use' : 'node_use';
+			const params = method === 'mode_use'
+				? { mode: reply.previous_mode }
+				: (needs_mode ? { id: reply.previous, mode: reply.previous_mode } : { id: reply.previous });
+			if (restore_scope)
+				params.port_scope = reply.previous_port_scope;
 			session.node = method === 'mode_use' ? session.node : reply.previous;
-			session.mode = reply.previous_mode;
+			if (needs_mode)
+				session.mode = reply.previous_mode;
+			if (restore_scope)
+				session.port_scope = reply.previous_port_scope;
 			session.started = Date.now() / 1000;
 			session.baseline = JSON.stringify(this.status?.last_reload);
 			const restored = await ap.call(method, params);
@@ -1117,9 +1148,8 @@ return view.extend({
 		]);
 	},
 
-	// This is a UCI setting, not part of the atomic node/mode CLI contract.
-	portScopeControls: function() {
-		const current = uci.get('aetherproxy', 'main', 'port_scope') || 'all';
+	portScopeControls: function(selected_scope) {
+		const current = selected_scope ?? this.currentPortScope ?? (uci.get('aetherproxy', 'main', 'port_scope') || 'all');
 		const select = E('select', { style: 'width:auto; min-width:0', 'aria-label': _('Port scope', 'aether-proxy') }, [
 			E('option', { value: 'all' }, _('All ports', 'aether-proxy')),
 			E('option', { value: 'common' }, _('Common ports', 'aether-proxy')),
@@ -1127,7 +1157,10 @@ return view.extend({
 		]);
 		select.value = current;
 		this.portScopeSelect = select;
-		select.addEventListener('change', () => this.updateNodeButton?.());
+		select.addEventListener('change', () => {
+			this.portScopeEdited = select.value !== this.controlPortScope;
+			this.updateNodeButton?.();
+		});
 		return E('label', { style: 'display:flex; align-items:center; gap:0.5em; min-width:0' }, [
 			E('span', { style: 'flex-shrink:0' }, [
 				_('Port scope', 'aether-proxy'),
@@ -1160,24 +1193,12 @@ return view.extend({
 			nodes.value = selected.node;
 		this.nodeSelect = nodes;
 		this.modeSelect = modes;
-		const scope = this.portScopeControls();
+		const scope = this.portScopeControls(selected.port_scope);
 		const button = E('button', {
 			'class': 'cbi-button cbi-button-apply', click: async () => {
 				if (button.disabled)
 					return;
-				const request = model.switch_request(nodes.value, modes.value, current, vm.current_mode);
-				if (!request) {
-					const staged = model.staged_confirmation(await uci.changes());
-					if (staged && !await ap.confirm(staged))
-						return;
-				}
-				uci.set('aetherproxy', 'main', 'port_scope', this.portScopeSelect.value);
-				await uci.save();
-				/* The switch reload reads the saved scope; a second apply would reload twice. */
-				if (request)
-					await this.handleNode(nodes.value, modes.value);
-				else
-					await ui.changes.apply(true);
+				await this.handleNode(nodes.value, modes.value, this.portScopeSelect.value);
 			}
 		}, _('Apply', 'aether-proxy'));
 		const update = this.updateNodeButton = () => {
@@ -1190,8 +1211,9 @@ return view.extend({
 			this.enableInput.disabled = !!this.switching || (!this.enabled && !this.currentNode);
 			this.enableControl.title = !this.currentNode && this.vm.disabled_notice
 				? this.vm.disabled_notice.text : this.vm.enabled_note;
-			button.disabled = busy || (!model.switch_request(nodes.value, modes.value, current, vm.current_mode)
-				&& this.portScopeSelect.value === (uci.get('aetherproxy', 'main', 'port_scope') || 'all'));
+			const current_scope = this.currentPortScope || (uci.get('aetherproxy', 'main', 'port_scope') || 'all');
+			button.disabled = busy || !model.switch_request(nodes.value, modes.value, current, vm.current_mode,
+				this.portScopeSelect.value, current_scope);
 			nodes.title = this.vm.switch_title ?? this.labels[nodes.value] ?? nodes.value;
 			for (const control of [modes, button])
 				control.title = this.vm.switch_title ?? '';
@@ -1373,6 +1395,7 @@ return view.extend({
 		this.labels = data.labels;
 		this.currentNode = data.node;
 		this.currentMode = data.mode;
+		this.currentPortScope = data.port_scope || 'all';
 		this.enabled = data.enabled;
 		this.initialReading = true;
 
@@ -1445,7 +1468,9 @@ return view.extend({
 		/* Rebase current labels and guards, but keep each independently edited
 		   dropdown even when an external change moves the effective settings. */
 		const labels = JSON.stringify(vm.node_options);
-		const changed = this.controlNode !== vm.current_node || this.controlMode !== vm.current_mode;
+		const current_scope = this.currentPortScope || 'all';
+		const changed = this.controlNode !== vm.current_node || this.controlMode !== vm.current_mode
+			|| this.controlPortScope !== current_scope;
 		if (!this.nodeControl || changed || this.controlLabels !== labels) {
 			const selected = {};
 			if (!this.switching) {
@@ -1453,10 +1478,13 @@ return view.extend({
 					selected.node = this.nodeSelect.value;
 				if (this.modeEdited && this.modeSelect)
 					selected.mode = this.modeSelect.value;
+				if (this.portScopeEdited && this.portScopeSelect)
+					selected.port_scope = this.portScopeSelect.value;
 			}
 			this.nodeControl = vm.node_options.length ? this.nodeControls(vm, selected) : null;
 			this.controlNode = vm.current_node;
 			this.controlMode = vm.current_mode;
+			this.controlPortScope = current_scope;
 			this.controlLabels = labels;
 		}
 		this.updateNodeButton?.();

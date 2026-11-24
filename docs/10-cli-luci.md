@@ -372,6 +372,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 - 已提交且重载失败 → `rolling-back`；仅使用返回的 `previous` / `previous_mode`。回滚前重新读 UCI，节点/模式不是本次目标时不覆盖。回滚调用 `node_use` / `mode_use`，并等待自己的 reload 结果；成功 → `rolled-back`，2 秒关闭；失败 → `rollback-failed`，可关闭、保留横幅。
 - 60 秒期限独立于 RPC/轮询。超时可关闭并保留横幅，不根据超时猜测失败、不盲目回滚；关闭后恢复动作。当前 RPC 无法恢复未设置的旧节点/模式时保守报回滚失败，不猜旧值。页面关闭或断网不保证恢复。
 - 每次 reload 完成在 `state.json` 发布 `last_reload { at, target_node, target_mode, ok, error }`。`at` 为含小数的 Unix 秒；失败 `error` 为非空诊断字符串，成功为 null。页面只接受开始之后、target 两项匹配的本次结果，且仅 `ok === true` 判成功；既有记录、失败的 status 读取均不算成功。读配置前已失败时 target 无法确定，写 null，页面保守超时。运行态字段不被 completion 替换。
+- **端口范围纳入一次应用事务（T16.70）**：`node use <id> [--mode <mode>] [--port-scope <all|common|common_extra>]` 与 `mode use <mode> [--port-scope <all|common|common_extra>]`（及对应 rpcd `node_use` / `mode_use` 的可选 `port_scope` 参数）在同一次隔离暂存与原子发布中仅写入实际变化的 `main.node`、`main.mode`、`main.port_scope`，未变化字段不额外写入，运行中仅重载一次，不触碰、不提交也不清理无关 LuCI 会话草稿。概览页「应用」不再调用 `uci.set`/`uci.save`/`ui.changes.apply(true)`；带 `port_scope` 调用返回 `port_scope` 与 `previous_port_scope`（原值未设置时按默认 `all` 返回），失败回滚前同步校验三项归属并按返回旧值恢复；不传 `port_scope` 时保持原有 CLI/RPC 返回结构完全兼容。
 
 ### 节点页（2026-10-16 定，T8.5；T10.71 移除切换入口）
 

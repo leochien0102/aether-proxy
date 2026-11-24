@@ -459,6 +459,12 @@ const MODE_TEXT = {
 	global: _('Global (all traffic through proxy)', 'aether-proxy')
 };
 
+const PORT_SCOPE_TEXT = {
+	all: _('All ports', 'aether-proxy'),
+	common: _('Common ports', 'aether-proxy'),
+	common_extra: _('Common and extra ports', 'aether-proxy')
+};
+
 /* Degradation is a runtime routing override, not an unapplied default-mode
    change. Keep its warning separate from switch_pending and both selectors. */
 function degradation_notice(status, now) {
@@ -712,10 +718,14 @@ return baseclass.extend({
 		const failures = {
 			node: _('Switching nodes failed (%s)', 'aether-proxy'),
 			mode: _('Switching default mode failed (%s)', 'aether-proxy'),
-			both: _('Switching node and default mode failed (%s)', 'aether-proxy')
+			both: _('Switching node and default mode failed (%s)', 'aether-proxy'),
+			scope: _('Switching port scope failed (%s)', 'aether-proxy'),
+			node_scope: _('Switching settings failed (%s)', 'aether-proxy'),
+			mode_scope: _('Switching settings failed (%s)', 'aether-proxy'),
+			all: _('Switching settings failed (%s)', 'aether-proxy')
 		};
 		if (reply?.ok !== true)
-			return fmt(failures[kind], reply?.code ?? 'RPC_FAILED')
+			return fmt(failures[kind] ?? failures.all, reply?.code ?? 'RPC_FAILED')
 				+ (reply?.detail ? ': ' + reply.detail : '');
 		if (reply.reload === false && status?.ok !== false
 			&& ['stopped', 'error'].includes(status?.state))
@@ -730,6 +740,10 @@ return baseclass.extend({
 
 	mode_text: function(mode) {
 		return MODE_TEXT[mode] || mode || _('Not selected', 'aether-proxy');
+	},
+
+	port_scope_text: function(scope) {
+		return PORT_SCOPE_TEXT[scope] || scope || PORT_SCOPE_TEXT.all;
 	},
 
 	mode_options: function() {
@@ -806,15 +820,30 @@ return baseclass.extend({
 	},
 
 	/* Compare with effective values, not UCI: a failed reload leaves UCI ahead. */
-	switch_request: function(node, mode, current_node, current_mode) {
+	switch_request: function(node, mode, current_node, current_mode, port_scope, current_port_scope) {
 		if (!node)
 			return null;
 		const change_node = node !== current_node;
 		const change_mode = !!MODE_TEXT[mode] && mode !== current_mode;
-		if (change_node)
-			return { method: 'node_use', params: change_mode ? { id: node, mode } : { id: node },
-				kind: change_mode ? 'both' : 'node' };
-		return change_mode ? { method: 'mode_use', params: { mode }, kind: 'mode' } : null;
+		const change_scope = !!PORT_SCOPE_TEXT[port_scope] && port_scope !== (current_port_scope || 'all');
+		if (change_node) {
+			const params = { id: node };
+			if (change_mode)
+				params.mode = mode;
+			if (change_scope)
+				params.port_scope = port_scope;
+			const kind = change_mode ? (change_scope ? 'all' : 'both') : (change_scope ? 'node_scope' : 'node');
+			return { method: 'node_use', params, kind };
+		}
+		if (change_mode) {
+			const params = { mode };
+			if (change_scope)
+				params.port_scope = port_scope;
+			return { method: 'mode_use', params, kind: change_scope ? 'mode_scope' : 'mode' };
+		}
+		if (change_scope)
+			return { method: 'node_use', params: { id: node, port_scope }, kind: 'scope' };
+		return null;
 	},
 
 	/* A previous reload (including the same target) is not evidence for this request.

@@ -33,8 +33,8 @@ Commands:
   sub status         read subscription update records
   sub update         download and atomically apply subscriptions
   node import <uri>  import a share-link URI as a manual node
-  node use <id> [--mode <mode>] select the current node and optionally default mode
-  mode use <mode>    select the default mode (gfw|bypass_cn|global)
+  node use <id> [--mode <mode>] [--port-scope <scope>] select node, mode and/or port scope
+  mode use <mode> [--port-scope <scope>] select default mode and/or port scope
   dns sync-wan      reload when the applied ISP DNS has changed
   custom get|set     read or validate-and-save a custom list file
   log [options]      read recent tagged lines from logd

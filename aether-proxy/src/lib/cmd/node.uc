@@ -18,15 +18,16 @@ import * as xray from 'aetherproxy.render.xray';
 import * as check from 'aetherproxy.cmd.check';
 import * as components from 'aetherproxy.cmd.components';
 
-const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--mode <mode>]';
-const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global>';
+const USAGE = 'Usage: aether-proxy node parse <uri> | node import <uri> | node use <id> [--mode <mode>] [--port-scope <all|common|common_extra>]';
+const MODE_USAGE = 'Usage: aether-proxy mode use <gfw|bypass_cn|global> [--port-scope <all|common|common_extra>]';
 const MODES = filter(schema.SCHEMA.main, field => field.name == 'mode')[0].enum;
+const PORT_SCOPES = filter(schema.SCHEMA.main, field => field.name == 'port_scope')[0].enum;
 // Match the node_import RPC boundary (docs/10); these are input limits, not system paths.
 const URI_MAX_BYTES = 4096;
 const URI_SCHEME_RE = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const CONTEXT_OPTIONS = { '--confdir': 'confdir', '--run-dir': 'run_dir', '--sys-root': 'sys_root' };
 
-function parse_args(args, allow_mode) {
+function parse_args(args, allow_mode, allow_port_scope) {
 	let opts = {}, positional = [];
 
 	for (let i = 0; i < length(args); i++) {
@@ -37,13 +38,15 @@ function parse_args(args, allow_mode) {
 			continue;
 		}
 
-		let key = arg == '--mode' && allow_mode ? 'mode' : CONTEXT_OPTIONS[arg];
+		let key = arg == '--mode' && allow_mode ? 'mode'
+			: (arg == '--port-scope' && allow_port_scope ? 'port_scope' : CONTEXT_OPTIONS[arg]);
 		if (key != null) {
-			if (i + 1 >= length(args) || (key == 'mode' && substr(args[i + 1], 0, 1) == '-'))
+			let selection_opt = key == 'mode' || key == 'port_scope';
+			if (i + 1 >= length(args) || (selection_opt && substr(args[i + 1], 0, 1) == '-'))
 				return { error: `option ${arg} needs a value` };
-			// docs/10: a repeated --mode is ambiguous, so reject it before any write.
-			if (key == 'mode' && opts.mode != null)
-				return { error: 'option --mode may only be given once' };
+			// docs/10: a repeated selection option is ambiguous, so reject it before any write.
+			if (selection_opt && opts[key] != null)
+				return { error: `option ${arg} may only be given once` };
 			opts[key] = args[++i];
 			continue;
 		}
@@ -76,7 +79,7 @@ function use_failure(opts, code, detail, op) {
 
 // Preflight the committed package plus the requested selection, never rpcd's
 // staged deltas or daemon-owned artifacts (docs/10 "切换节点", review Q5).
-function preflight_selection(cursor, opts, root, id, mode) {
+function preflight_selection(cursor, opts, root, id, mode, port_scope) {
 	let binary = check.find_component(C.XRAY_COMPONENT, cursor.get(C.UCI_PACKAGE, 'main', 'xray_bin'), opts);
 	if (binary == null || components.read_component_version(binary.path, 'version', C.COMPONENTS_TIMEOUT_SECS) == null)
 		return null;
@@ -85,6 +88,8 @@ function preflight_selection(cursor, opts, root, id, mode) {
 	raw.main.node = id;
 	if (mode != null)
 		raw.main.mode = mode;
+	if (port_scope != null)
+		raw.main.port_scope = port_scope;
 	let validated = config.normalize(raw);
 	if (!validated.ok)
 		return { code: 'CONFIG_INVALID', detail: sprintf('%.J', validated.errors) };
@@ -124,8 +129,8 @@ function preflight_selection(cursor, opts, root, id, mode) {
 }
 
 // Both entry points use this transaction and reload path. Validate all requested
-// values before touching UCI, so an invalid mode can never partially select a node.
-function selection_locked(opts, id, mode) {
+// values before touching UCI, so an invalid mode or scope can never partially select a node.
+function selection_locked(opts, id, mode, port_scope) {
 	let root = replace(opts.sys_root ?? '', /\/$/, '');
 	let confdir = fs.realpath(opts.confdir ?? (root + C.CONFIG_DIR));
 	if (confdir == null)
@@ -147,11 +152,15 @@ function selection_locked(opts, id, mode) {
 
 	let previous_node = cursor.get(C.UCI_PACKAGE, 'main', 'node');
 	let previous_mode = cursor.get(C.UCI_PACKAGE, 'main', 'mode');
+	let previous_port_scope = cursor.get(C.UCI_PACKAGE, 'main', 'port_scope');
+	let effective_port_scope = previous_port_scope ?? 'all';
 	opts.selection_status = { committed: false,
-		previous: id != null ? previous_node : previous_mode, previous_mode };
+		previous: id != null ? previous_node : previous_mode, previous_mode,
+		...(port_scope != null ? { previous_port_scope: effective_port_scope } : {}) };
 	let ctx = { root, opts: sub.absolute_options(opts) };
 	let node_changed = id != null && previous_node != id;
 	let mode_changed = mode != null && previous_mode != mode;
+	let scope_changed = port_scope != null && effective_port_scope != port_scope;
 	// Keep every legacy field and human message; integrity fields are additive.
 	let value = id != null
 		? { ok: true, node: id, previous: previous_node, reload: false }
@@ -160,8 +169,12 @@ function selection_locked(opts, id, mode) {
 	value.committed = true;
 	if (id != null && mode != null)
 		value.mode = mode;
+	if (port_scope != null) {
+		value.port_scope = port_scope;
+		value.previous_port_scope = effective_port_scope;
+	}
 	let selection = id ?? mode;
-	if (!node_changed && !mode_changed) {
+	if (!node_changed && !mode_changed && !scope_changed) {
 		let validated = sub.load_committed_config(ctx, original);
 		if (!validated.ok)
 			return use_failure(opts, 'CONFIG_INVALID', sprintf('%.J', validated.errors));
@@ -179,6 +192,8 @@ function selection_locked(opts, id, mode) {
 		push(changes, { op: 'set', section: 'main', option: 'node', value: id });
 	if (mode_changed)
 		push(changes, { op: 'set', section: 'main', option: 'mode', value: mode });
+	if (scope_changed)
+		push(changes, { op: 'set', section: 'main', option: 'port_scope', value: port_scope });
 	let staged = sub.stage_package(ctx, original, C.SUB_TEMP_PACKAGE, { changes });
 	if (!staged.ok)
 		return use_failure(opts, 'FS_FAILED', staged.detail, 'uci-commit');
@@ -186,7 +201,7 @@ function selection_locked(opts, id, mode) {
 	if (!validated.ok)
 		return use_failure(opts, 'CONFIG_INVALID', sprintf('%.J', validated.errors));
 	if (node_changed) {
-		let failure = preflight_selection(cursor, opts, root, id, mode);
+		let failure = preflight_selection(cursor, opts, root, id, mode, port_scope);
 		if (failure != null)
 			return use_failure(opts, failure.code, failure.detail);
 	}
@@ -213,17 +228,19 @@ function selection_locked(opts, id, mode) {
 
 // Shared by node, mode and caller-driven rollback. No global/sub lock is acquired
 // here; all paths release config before triggering a daemon action.
-function use_selection(opts, id, mode) {
+function use_selection(opts, id, mode, port_scope) {
 	if (id != null && match(id, schema.NODE_NAME_RE) == null)
 		return use_failure(opts, 'USAGE', 'invalid node ID');
 	if (mode != null && index(MODES, mode) < 0)
 		return use_failure(opts, 'USAGE', `mode must be one of ${join('|', MODES)}`);
+	if (port_scope != null && index(PORT_SCOPES, port_scope) < 0)
+		return use_failure(opts, 'USAGE', `port_scope must be one of ${join('|', PORT_SCOPES)}`);
 	let root = replace(opts.sys_root ?? '', /\/$/, '');
 	let lock = sys.lock(root + C.CONFIG_LOCK_FILE);
 	if (lock == null)
 		return use_failure(opts, 'BUSY', sys.error());
 	opts.config_lock = lock;
-	let result = selection_locked(opts, id, mode);
+	let result = selection_locked(opts, id, mode, port_scope);
 	if (opts.config_lock != null)
 		opts.config_lock.close();
 	return result;
@@ -242,16 +259,16 @@ function parse_node(opts, line) {
 }
 
 export function run_mode(args) {
-	let parsed = parse_args(args, false);
+	let parsed = parse_args(args, false, true);
 	let opts = parsed.opts ?? { json: index(args, '--json') >= 0 };
 	if (parsed.error || parsed.positional[0] != 'use' || length(parsed.positional) != 2)
 		return pipeline.finish(opts,
 			{ ok: false, code: 'USAGE', detail: parsed.error ?? 'expected `mode use <mode>`' }, 2, MODE_USAGE);
-	return use_selection(opts, null, parsed.positional[1]);
+	return use_selection(opts, null, parsed.positional[1], parsed.opts.port_scope);
 };
 
 export function run(args) {
-	let parsed = parse_args(args, true);
+	let parsed = parse_args(args, true, true);
 	if (parsed.error)
 		return pipeline.finish({ json: index(args, '--json') >= 0 },
 			{ ok: false, code: 'USAGE', detail: parsed.error }, 2,
@@ -260,11 +277,14 @@ export function run(args) {
 	if (parsed.opts.mode != null && parsed.positional[0] != 'use')
 		return use_failure(parsed.opts, 'USAGE', '--mode is only valid with node use');
 
+	if (parsed.opts.port_scope != null && parsed.positional[0] != 'use')
+		return use_failure(parsed.opts, 'USAGE', '--port-scope is only valid with node use');
+
 	if (parsed.positional[0] == 'parse' && length(parsed.positional) == 2)
 		return parse_node(parsed.opts, parsed.positional[1]);
 
 	if (parsed.positional[0] == 'use' && length(parsed.positional) == 2)
-		return use_selection(parsed.opts, parsed.positional[1], parsed.opts.mode);
+		return use_selection(parsed.opts, parsed.positional[1], parsed.opts.mode, parsed.opts.port_scope);
 
 	if (parsed.positional[0] != 'import' || length(parsed.positional) != 2)
 		return pipeline.finish(parsed.opts, { ok: false, code: 'USAGE', detail: 'expected `node import <uri>`' }, 2,

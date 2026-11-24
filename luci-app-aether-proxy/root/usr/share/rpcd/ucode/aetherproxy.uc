@@ -36,9 +36,14 @@ const HISTORY_DAYS_MAX = C.USAGE_DAYS_KEEP;
 
 const SERVICE_ACTIONS = [ 'start', 'stop', 'restart' ];
 const MODES = filter(schema.SCHEMA.main, field => field.name == 'mode')[0].enum;
+const PORT_SCOPES = filter(schema.SCHEMA.main, field => field.name == 'port_scope')[0].enum;
 
 function valid_mode(mode) {
 	return type(mode) == 'string' && index(MODES, mode) >= 0;
+}
+
+function valid_port_scope(scope) {
+	return type(scope) == 'string' && index(PORT_SCOPES, scope) >= 0;
 }
 
 // docs/10 "service": restarting can outlast any RPC timeout (procd waits for
@@ -189,7 +194,7 @@ const methods = {
 		args: {}
 	},
 
-	// T9.10: these remain thin forwards; site membership is checked by the CLI.
+	// T9.10 / T16.70: thin forwards; site membership and extra_ports are checked by the CLI.
 	node_use: {
 		call: function(req) {
 			let id = req?.args?.id;
@@ -198,23 +203,34 @@ const methods = {
 			let mode = req?.args?.mode;
 			if (mode != null && !valid_mode(mode))
 				return usage(`mode must be one of ${join('|', MODES)}`);
+			let port_scope = req?.args?.port_scope;
+			if (port_scope != null && !valid_port_scope(port_scope))
+				return usage(`port_scope must be one of ${join('|', PORT_SCOPES)}`);
 			let argv = [ 'node', 'use', id ];
 			if (mode != null)
 				push(argv, '--mode', mode);
+			if (port_scope != null)
+				push(argv, '--port-scope', port_scope);
 			return call_cli(argv, C.NODE_USE_TIMEOUT_SECS);
 		},
-		args: { id: '', mode: '' }
+		args: { id: '', mode: '', port_scope: '' }
 	},
 
-	// T9.20: session metadata is ignored, just as for node_use.
+	// T9.20 / T16.70: session metadata is ignored, just as for node_use.
 	mode_use: {
 		call: function(req) {
 			let mode = req?.args?.mode;
 			if (!valid_mode(mode))
 				return usage(`mode must be one of ${join('|', MODES)}`);
-			return call_cli([ 'mode', 'use', mode ], DEFAULT_TIMEOUT_SECS);
+			let port_scope = req?.args?.port_scope;
+			if (port_scope != null && !valid_port_scope(port_scope))
+				return usage(`port_scope must be one of ${join('|', PORT_SCOPES)}`);
+			let argv = [ 'mode', 'use', mode ];
+			if (port_scope != null)
+				push(argv, '--port-scope', port_scope);
+			return call_cli(argv, DEFAULT_TIMEOUT_SECS);
 		},
-		args: { mode: '' }
+		args: { mode: '', port_scope: '' }
 	},
 
 	probe_url: {

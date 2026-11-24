@@ -3009,3 +3009,27 @@ msgstr "节点故障自动切换：{from} → {to}（{ip}，原因：{reason}）
 msgctxt "aether-proxy"
 msgid "Node failover failed: {reason}"
 msgstr "节点故障自动切换失败：{reason}"
+
+msgctxt "aether-proxy"
+msgid "Switching port scope failed (%s)"
+msgstr "切换端口范围失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "Switching settings failed (%s)"
+msgstr "切换设置失败（%s）"
+
+msgctxt "aether-proxy"
+msgid "port scope “%s”"
+msgstr "端口范围「%s」"
+
+msgctxt "aether-proxy"
+msgid "node “%s” (port scope “%s”)"
+msgstr "节点「%s」（端口范围「%s」）"
+
+msgctxt "aether-proxy"
+msgid "mode “%s” (port scope “%s”)"
+msgstr "模式「%s」（端口范围「%s」）"
+
+msgctxt "aether-proxy"
+msgid "node “%s” (mode “%s”, port scope “%s”)"
+msgstr "节点「%s」（模式「%s」，端口范围「%s」）"

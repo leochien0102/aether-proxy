@@ -177,3 +177,59 @@ check('legacy node use human same output unchanged',
 check('legacy node use human changed output unchanged',
       ap('node', 'use', IDS[1], human=True, real=True) == f'selected {IDS[1]}\n')
 check('selection outcomes never append events', not (RUN / 'events.jsonl').exists())
+
+# T16.70: --port-scope in shared node/mode transaction (atomic, no extra writes, drafts intact).
+reset()
+reply = ap('node', 'use', IDS[0], '--port-scope', 'common', real=True)
+check('T16.70 node use scope-only: commits only port_scope, one reload, session unchanged',
+      reply == dict(ok=True, node=IDS[0], previous=IDS[0], previous_mode='bypass_cn',
+                    port_scope='common', previous_port_scope='all', reload=True, committed=True)
+      and "\toption port_scope 'common'\n" in CONFIG.read_text()
+      and f"\toption node '{IDS[0]}'\n" in CONFIG.read_text()
+      and "\toption mode 'bypass_cn'\n" in CONFIG.read_text()
+      and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
+
+reset()
+reply = ap('node', 'use', IDS[1], '--mode', 'gfw', '--port-scope', 'common_extra', real=True)
+check('T16.70 node use three-way: commits node, mode, and port_scope once, one reload, session unchanged',
+      reply == dict(ok=True, node=IDS[1], mode='gfw', previous=IDS[0], previous_mode='bypass_cn',
+                    port_scope='common_extra', previous_port_scope='all', reload=True, committed=True)
+      and "\toption port_scope 'common_extra'\n" in CONFIG.read_text()
+      and f"\toption node '{IDS[1]}'\n" in CONFIG.read_text()
+      and "\toption mode 'gfw'\n" in CONFIG.read_text()
+      and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
+
+reset()
+reply = ap('mode', 'use', 'global', '--port-scope', 'common', real=True)
+check('T16.70 mode use with port-scope: commits mode and port_scope once, one reload',
+      reply == dict(ok=True, mode='global', previous='bypass_cn', previous_mode='bypass_cn',
+                    port_scope='common', previous_port_scope='all', reload=True, committed=True)
+      and "\toption port_scope 'common'\n" in CONFIG.read_text()
+      and "\toption mode 'global'\n" in CONFIG.read_text()
+      and CALLS.read_text() == 'reload\n' and (SESSION / 'aetherproxy').read_bytes() == delta)
+
+reset()
+stamp = (CONFIG.stat().st_ino, CONFIG.stat().st_mtime_ns)
+reply = ap('node', 'use', IDS[0], '--port-scope', 'all', real=True)
+check('T16.70 port-scope same as default all when unset: no write, no reload',
+      reply == dict(ok=True, node=IDS[0], previous=IDS[0], previous_mode='bypass_cn',
+                    port_scope='all', previous_port_scope='all', reload=False, committed=True)
+      and CONFIG.read_bytes() == BASE and stamp == (CONFIG.stat().st_ino, CONFIG.stat().st_mtime_ns)
+      and CALLS.read_text() == '')
+
+for bad_args in [
+    ('node', 'use', IDS[1], '--port-scope'),
+    ('node', 'use', IDS[1], '--port-scope', 'common', '--port-scope', 'all'),
+    ('node', 'use', IDS[1], '--port-scope', 'bogus'),
+    ('mode', 'use', 'gfw', '--port-scope', 'bogus'),
+    ('mode', 'use', 'gfw', '--port-scope', 'all', '--port-scope', 'common'),
+    ('node', 'parse', 'trojan://pw@host:443', '--port-scope', 'common'),
+    ('node', 'import', 'trojan://pw@host:443', '--port-scope', 'common'),
+]:
+    reset()
+    stamp = CONFIG.stat().st_mtime_ns
+    reply = ap(*bad_args, rc=2, real=True)
+    check('T16.70 invalid ' + repr(bad_args) + ': USAGE without write or reload',
+          reply['ok'] is False and reply['code'] == 'USAGE'
+          and CONFIG.read_bytes() == BASE and CONFIG.stat().st_mtime_ns == stamp
+          and CALLS.read_text() == '')

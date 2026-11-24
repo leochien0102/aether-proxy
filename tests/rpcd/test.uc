@@ -881,7 +881,7 @@ function scenario_node_probe() {
 		let r = methods[c.method].call({ args: c.args });
 		check(`T9.10 ${c.method}: valid args forwarded and CLI object preserved`,
 			deep_eq(argv_of(), c.argv) && deep_eq(r, { ok: true, preserved: [ 1, 2 ] }), show(r));
-		let expected_args = { node_use: { id: '', mode: '' }, probe_url: { site: '' }, probe_sites: {} };
+		let expected_args = { node_use: { id: '', mode: '', port_scope: '' }, probe_url: { site: '' }, probe_sites: {} };
 		check(`T9.10 ${c.method}: declared args policy matches examples`,
 			deep_eq(methods[c.method].args, expected_args[c.method]), show(methods[c.method].args));
 	}
@@ -993,7 +993,34 @@ function scenario_mode_use() {
 	let r = methods.mode_use.call({ args: { ubus_rpc_session: 'token' } });
 	check('T9.20 mode_use missing mode: USAGE without execution',
 		r.code == 'USAGE' && argv_of() == null, show(r));
-	check('T9.20 mode_use declares mode string', deep_eq(methods.mode_use.args, { mode: '' }));
+	check('T9.20 / T16.70 mode_use declares mode and port_scope strings',
+		deep_eq(methods.mode_use.args, { mode: '', port_scope: '' }));
+	for (let scope in [ 'all', 'common', 'common_extra' ]) {
+		for (let c in [
+			{ name: `node_use ${scope}`, method: 'node_use',
+				args: { id: node_id(1), port_scope: scope, ubus_rpc_session: 'token' },
+				argv: [ 'node', 'use', node_id(1), '--port-scope', scope, '--json' ] },
+			{ name: `node_use mode+${scope}`, method: 'node_use',
+				args: { id: node_id(1), mode: 'gfw', port_scope: scope, ubus_rpc_session: 'token' },
+				argv: [ 'node', 'use', node_id(1), '--mode', 'gfw', '--port-scope', scope, '--json' ] },
+			{ name: `mode_use ${scope}`, method: 'mode_use',
+				args: { mode: 'gfw', port_scope: scope, ubus_rpc_session: 'token' },
+				argv: [ 'mode', 'use', 'gfw', '--port-scope', scope, '--json' ] }
+		]) {
+			let argv_of = watch_cli();
+			let r = methods[c.method].call({ args: c.args });
+			check(`T16.70 ${c.name}: exact argv and unchanged JSON`,
+				deep_eq(argv_of(), c.argv) && deep_eq(r, data), show(r));
+		}
+	}
+	for (let scope in [ 'foo', 'ALL', '', '--json', 'all;reboot', 1, true, [], {} ]) {
+		for (let method in [ 'mode_use', 'node_use' ]) {
+			let argv_of = watch_cli();
+			let r = methods[method].call({ args: { id: node_id(1), mode: 'gfw', port_scope: scope, ubus_rpc_session: 'token' } });
+			check(`T16.70 ${method} invalid port_scope ${show(scope)}: USAGE without execution`,
+				r.ok === false && r.code == 'USAGE' && argv_of() == null, show(r));
+		}
+	}
 	let src = replace(plugin_src, "import * as sys from 'aetherproxy.sys';",
 		"const sys = { run: (argv, opts) => ({ stdout: sprintf('%J', { timeout: opts.timeout }) }) };");
 	let instrumented = loadstring(src)().aetherproxy;
