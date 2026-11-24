@@ -1455,6 +1455,42 @@ function run(args) {
 				let started_ms = reload_started_ms;
 				pending.reload = false;
 				reload_started_ms = null;
+				// External SIGHUP shares C.LOCK_FILE with standalone cleanup and monitor ticks;
+				// monitor.uc already holds this lock when calling reload.run_live().
+				let reload_lock = sys.lock(root_path(opts, C.LOCK_FILE));
+				if (reload_lock == null) {
+					let detail = sys.error() ?? 'operation lock busy';
+					setup_log(ctx);
+					log.event('warn', 'BUSY', { holder: 'reload' });
+					if (!ctx.stopping_requested) {
+						let stamp = clock();
+						let last_reload = {
+							at: stamp[0] + stamp[1] / 1000000000.0,
+							target_node: null,
+							target_mode: null,
+							ok: false,
+							error: `BUSY: ${detail}`
+						};
+						let current = state.read(run_dir(ctx));
+						if (current == null)
+							log.event('error', 'FS_FAILED', { op: 'read', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
+								detail: state.error() ?? 'unknown error' });
+						else if (!state.write(run_dir(ctx), { ...current, last_reload }))
+							log.event('error', 'FS_FAILED', { op: 'write', path: `${run_dir(ctx)}/${C.STATE_FILE}`,
+								detail: state.error() ?? 'unknown error' });
+						else
+							monitor_daemon.state.last_reload = last_reload;
+					}
+					continue;
+				}
+				function release_reload_lock() {
+					if (reload_lock != null) {
+						if (!reload_lock.lock('u'))
+							event_failure(ctx, 'reload_unlock', fs.error() ?? 'unknown error');
+						reload_lock.close();
+						reload_lock = null;
+					}
+				};
 				let base = { ...monitor_daemon.state, dns_tier: monitor_daemon.machine.dns_tier,
 					node_ip: monitor_daemon.machine.node_ip ?? monitor_daemon.state.node_ip };
 				let old_node = monitor_daemon.snapshot.main.node;
@@ -1465,7 +1501,6 @@ function run(args) {
 				let changed = reload.run_live({ ctx, opts, snapshot: monitor_daemon.snapshot,
 					applied_context: monitor_daemon.applied_context, state: base, children,
 					usage_owner: monitor_daemon }, started_ms);
-				monitor_daemon.busy = false;
 				// Keep failed reload completion across subsequent monitor state writes (T10.71).
 				if (changed.last_reload != null)
 					monitor_daemon.state.last_reload = changed.last_reload;
@@ -1479,9 +1514,12 @@ function run(args) {
 					let stop_errors = shutdown(ctx, children, true);
 					if (length(stop_errors))
 						event_failure(ctx, 'reload_stop', join('; ', stop_errors));
+					release_reload_lock();
+					monitor_daemon.busy = false;
 					finished = true;
 					break;
 				}
+				let probe_new_route = false;
 				if (changed.ok) {
 					let old_log_level = result.snapshot.main.log_level;
 					result.snapshot = changed.snapshot;
@@ -1499,12 +1537,14 @@ function run(args) {
 					monitor_daemon.machine.degraded_since = changed.state.degraded_since;
 					subscription_jitter = reconcile_subscription_jitter(ctx,
 						changed.snapshot.subscriptions, subscription_jitter);
-					// docs/10 Dashboard part 2: measure the new route after it is fully applied.
-					// Unrelated reloads must not add probes to the periodic monitor schedule.
-					if (!ctx.stopping_requested && !pending.stop &&
-					    (old_node != changed.snapshot.main.node || old_ip != changed.state.node_ip))
-						tick();
+					probe_new_route = old_node != changed.snapshot.main.node || old_ip != changed.state.node_ip;
 				}
+				release_reload_lock();
+				monitor_daemon.busy = false;
+				// docs/10 Dashboard part 2: measure the new route after it is fully applied
+				// and the operation lock has been released so monitor.tick() can acquire it.
+				if (probe_new_route && !ctx.stopping_requested && !pending.stop)
+					tick();
 				continue;
 			}
 			if (pending.xray_restart) {

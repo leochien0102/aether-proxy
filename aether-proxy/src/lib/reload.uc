@@ -670,8 +670,8 @@ function run(daemon, started_ms) {
 	return result.cancelled ? result : record_reload(daemon, result, transaction.target);
 };
 
-// Both user and monitor reloads compare installed outputs. The caller owns busy and,
-// for monitor actions, the global lock; do not recursively acquire that same flock.
+// Both user and monitor reloads compare installed outputs. The caller owns busy and
+// the global operation lock; do not recursively acquire that same flock.
 function run_live(daemon, started_ms, degradation_request) {
 	let live = apply.artifact_hashes(daemon.ctx, `${run_dir(daemon)}/${C.DAEMON_CURRENT_DIR}`);
 	if (!live.ok) {

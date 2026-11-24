@@ -34,6 +34,7 @@ python3 "$ROOT/tests/daemon/engine-selection.py" || exit 1
 python3 "$ROOT/tests/daemon/missing-events.py" || exit 1
 python3 "$ROOT/tests/daemon/config-recovery.py" || exit 1
 python3 "$ROOT/tests/daemon/startup-state-lock.py" || exit 1
+python3 "$ROOT/tests/daemon/hup-cleanup-lock.py" || exit 1
 T="$(mktemp -d)"
 QUIET="$T/cleanup.stderr"
 DAEMON_PID=''

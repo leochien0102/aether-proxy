@@ -262,6 +262,8 @@ check 失败时只写一行 syslog、不记事件，概览页的「切换未生�
 | dnsmasq 片段 | 重启 dnsmasq |
 | 启用状态变为关闭 | 等同 `stop` |
 
+**操作锁互斥（T16.68，M2）**：外部 `SIGHUP` 在 `daemon.uc` 的 `pending.reload` 入口非阻塞获取全局操作锁 `/var/lock/aether-proxy.lock`（与独立 `cleanup`、启动流程和 `monitor` 周期共用），并在整个重载事务（含动作失败回滚，以及 `enabled=0` 触发 `stop` 的 `stop_usage` 与 `shutdown` 清理）完成后显式解锁关闭；`monitor` 调用 `reload.run_live()` 时已由 `monitor.tick()` 持锁，不在 `reload.uc` 内递归取锁。若外部 HUP 取锁失败，不修改活动数据面或子进程，记 warn `BUSY {holder: reload}` 并按既有 `last_reload` 语义写入失败完成记录（`ok: false`、`target_node/target_mode: null`、`error: "BUSY: ..."`；停止意图已置位时不覆写 `stopping`），不新增排队或重试循环；持锁方释放后由调用方重新发起 `SIGHUP` / `aether-proxy reload` 即可。
+
 **比对的是输出而不是输入**：生成器自身升级后输出变了，也会被检测到（避免 ssr-plus U8 那类问题）。
 
 **已应用上下文与冻结名单（2026-10-30，T9.43）**：启动或重载完整成功时，把 chinadns-ng / dnsmasq 会按路径打开的六份名单（gfwlist、chnlist、apple、proxy_domain、direct_domain、boot）复制到 `run_dir/applied/<generation>/`（0700）；本次渲染与之后 monitor 的恢复/重建都只用这些副本，不再读原始路径。代标识是「来源路径 + 内容哈希」manifest 的 SHA-256，来源与内容都没变时复用。失败的重载/校验/动作回滚删除候选代、不动当前代；成功后切换并清理旧代。CLI `check`/`render` 仍用原始路径，不做冻结。
