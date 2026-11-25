@@ -1,0 +1,58 @@
+{
+  "verified": true,
+  "ipk": "/tmp/T16.105-build/production/luci-app-aether-proxy_1.2.2-r10_all.ipk",
+  "ipk_sha256": "328c24c2a190b25467dd7985c8f23036e122578e48816e87d0b214aaaea4996b",
+  "generator_sha256": "bf5717774bfd541f3bc2ee91a57956bd2f771483e49b9354f98bb6cb9de619fb",
+  "makefile_sha256": "ddb56f703c0468c2c3672b3ffa090fd3f3f6e5edde76887206b937b9fb37ec33",
+  "resource_sha256": "4e57e7af9229a043823f4ad1065bef997b121187d24ecdef932af75c780c5158",
+  "source_files": {
+    "0.6.2.md": "d0e46909c575928f05bf58b10905a5c4399b27f153410e20afabed3f14f5751c",
+    "0.6.3-r6.md": "df4ee6f273c7136270738d7dfc3db4b78b1bfac477b61c33ea9e31162a6ed6e5",
+    "0.6.3-r7.md": "1a171e86a5b1a5f32c46704e49093e2572e1b20253ddec4e26d80af498164238",
+    "0.6.3.md": "2e7fb3e9938b656eee12801c0b30cd53e1d8f3d712717b3805f93c7ed425bf80",
+    "0.7.0-r1.md": "061d5107208b0a354e4a3173fb7adaebdef639adadf889b94cdb4e70c4d8259d",
+    "1.0.0-r1.md": "7e3bbf07b2f2d59f2da8aae474c859feccc8d26eefa37883e2a125fb3e4adf22",
+    "1.1.0-r1.md": "5e9d52085a33dd4176a2bd5cdeffa935464a9b8ca98fc562982f62b33546ecab",
+    "1.1.1-r1.md": "f8730aaabd09fe8ce62f2d15b9742ab6eb46af447dc86ccead1ba398468016a7",
+    "1.1.2-r1.md": "7bdc8dc19521b549b84d7a00ac61396311cf0176d1c6310d4d0fb2f6728d25f8",
+    "1.1.3-r1.md": "6ae9560690eab10f5624f70f6418a3a7e173cad55fe8ab70eaf092fee1e4a6cb",
+    "1.2.0-r1.md": "8639ee463bcb86bc57d0e54fdce890606eda84597c70aeb560239b382c45533e",
+    "1.2.0-r2.md": "e52b0c44b4a817d74e24ace4a534439b5f5c6ab7df5161fafffb4185df141d70",
+    "1.2.0-r3.md": "1a5c2c72351af4cf8e67679608f5ff8622576f56d6e8f0a04e40cf307aec1a56",
+    "1.2.0-r4.md": "b37f04532f71135d8339ae171489ae36869e723f060aa10647a9610b6baddc89",
+    "1.2.1-r1.md": "1c3cdc60b4a5f8ad95befc67d6239a4a9d43d087ca5a3b5c84ddbb828ea8d06d",
+    "1.2.2-r1.md": "ef8f08276b7b3a562c8979753186253263cfe30772adb18dfbf74429ca8b8b34",
+    "1.2.2-r10.md": "97b4785b5b44ea0948fb249cfab5a88911101cc2b0dc7ebae7ac71e08b8fef45",
+    "1.2.2-r2.md": "a5cf5b679186879a51fccd094cecb75a2dd6a70ac365166a660363be50cdcca9",
+    "1.2.2-r3.md": "9035aa126f602d461851e620d339d8838c4158c26bb7caf1aa57a8031c09e73f",
+    "1.2.2-r4.md": "6dd1ca4a6fc7502a6bc6d5b963ae520c2da8a7d47ca636be40c065be5a12849f",
+    "1.2.2-r5.md": "5b0b1f8c8a18d2c5d2a26a49d00b4648980f21021f957ad2549e4cfb0b73bd05",
+    "1.2.2-r6.md": "5c4deebb063c15590cd14bd58a4cc3ce089acc2a13b5e6fe704c26c5a7987885",
+    "1.2.2-r7.md": "c794bfeff3cbb804c6beaad921d45d0b04679c3458404a7735dc4d495af80ab1",
+    "1.2.2-r8.md": "bba29058e6ea2f3e2aa9f74e527b8ad5e82f4e369f9426f9ef5fc87f42faca7b",
+    "1.2.2-r9.md": "bf553f05e6638442d6e944d5e1bc508a7955dd6f909af5b422d3498303c668e5",
+    "1.3.0-r1.md": "d458fb0a830398b001acb27ff8491ea97bc2a8baf74c8136030012f1532fc72c"
+  },
+  "entries": [
+    {
+      "version": "1.2.2-r10",
+      "changes": [],
+      "notes": []
+    },
+    {
+      "version": "1.2.2-r9",
+      "changes": [],
+      "notes": []
+    },
+    {
+      "version": "1.2.2-r8",
+      "changes": [],
+      "notes": []
+    },
+    {
+      "version": "1.2.2-r7",
+      "changes": [],
+      "notes": []
+    }
+  ]
+}

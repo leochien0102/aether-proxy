@@ -27,6 +27,8 @@ String.prototype.format = function(...args) {
 };
 const model = loadModule(path.join(RES, 'aether-proxy/model/updates.js'),
 	{ baseclass: { extend: o => o } }, { window: {}, document: {} });
+const changelog = loadModule(path.join(RES, 'aether-proxy/changelog.js'),
+	{ baseclass: { extend: o => o } }, { window: {}, document: {} });
 const names = [ 'aether-xray', 'aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn' ];
 const entry = { installed: '2', available: '3', previous: '1', asset: 'x.ipk', newer: true };
 function status(p = entry) {
@@ -197,7 +199,8 @@ async () => {
 	const page = loadModule(path.join(RES, 'view/aether-proxy/updates.js'), {
 		view: { extend: o => o }, form: {}, uci: {},
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
-		'aether-proxy.common': ap, 'aether-proxy.model.updates': model
+		'aether-proxy.common': ap, 'aether-proxy.model.updates': model,
+		'aether-proxy.changelog': changelog
 	}, { window: {}, document: {} });
 	page.status = status();
 	page.inventory = E('div');
@@ -299,6 +302,7 @@ function load_view(config = {}) {
 		view: { extend: o => o }, form,
 		ui: { createHandlerFn: (self, fn) => fn.bind(self) },
 		'aether-proxy.model.updates': model,
+		'aether-proxy.changelog': changelog,
 		'aether-proxy.common': ap
 	}, { window: { setTimeout: (fn, delay) => { timers.push({ fn, delay }); } }, document: {} });
 	return { page, calls, loads, timers, maps, jobs, ap, confirmations, writes,
@@ -472,7 +476,9 @@ test('T10.16 updates scenario 2: complete form and disabled inventory render bef
 	const h = load_view();
 	const root = await h.page.render();
 	assert.deepEqual(h.calls, [], 'RPC must wait until render resolves');
-	assert.equal(root.children.length, 2);
+	assert.equal(root.children.length, 3);
+	assert.equal(root.children[2].tag, 'details');
+	assert.ok(!root.children[2].attrs.open, 'version history starts collapsed');
 	assert.equal(root.children[0], h.maps[0].node);
 	assert.equal(root.children[1], h.page.inventory);
 	assert.ok(descendants(h.page.inventory).includes(h.page.summary), 'summary slot exists before status resolves');
@@ -691,6 +697,31 @@ async function ready_view(s = all_packages_status()) {
 	h.ap.call = async (method, params) => method === 'status' ? s : call(method, params);
 	return h;
 }
+test('T16.105 only real application updates link the exact target beside unchanged buttons', async () => {
+	for (const [version, newer, bridge, expected] of [
+		['1.3.0-r1', true, false, '1.3.0-r1'],
+		['1.3.0-r1', false, false, null],
+		['Latest', true, false, null],
+		['1.3.0-r1/evil', true, false, null],
+		['1.4.0-r1', true, true, '1.3.0-r2']
+	]) {
+		const s = all_packages_status();
+		for (const p of Object.values(s.updates_available.packages))
+			Object.assign(p, { available: version, newer });
+		const p = s.updates_available.packages['aether-proxy'];
+		if (bridge) Object.assign(p, { bridge_required: true, next_step: { version: '1.3.0-r2' }, steps_remaining: 2 });
+		const h = await ready_view(s);
+		const links = descendants(h.page.inventory).filter(n => n.tag === 'a' && n.href?.includes('/releases/tag/'));
+		assert.equal(links.length, expected ? 1 : 0);
+		if (expected) {
+			assert.equal(links[0].href, 'https://github.com/leochien0102/aether-proxy/releases/tag/v' + expected);
+			assert.match(links[0].attrs.style, /display:block/);
+			assert.match(links[0].attrs.style, /white-space:normal/);
+			assert.ok(!h.page.jobButtons.includes(links[0]));
+		}
+	}
+});
+
 function rollback_button(h, name) {
 	const table = descendants(h.page.inventory).find(node => node.tag == 'table');
 	const row = table.children.find(node => text(node.children[0]) == name);

@@ -1,0 +1,49 @@
+make: Entering directory '/tmp/T16.105-build/sdk/package/luci-app-aether-proxy'
+rm -rf /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy
+/tmp/T16.105-build/sdk/scripts/ipkg-remove luci-app-aether-proxy /tmp/T16.105-build/sdk/bin/targets/x86/64/packages/luci-app-aether-proxy_1.2.2-r10_all.ipk
+removed '/tmp/T16.105-build/sdk/bin/targets/x86/64/packages/luci-app-aether-proxy_1.2.2-r10_all.ipk'
+rm -f /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/stamp/.luci-app-aether-proxy_installed
+rm -f /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/packages/luci-app-aether-proxy.list
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.prepared_9de0d6b1bdc7884a0b3fa8ff1cea6feb_18f1e190c5d53547fed41a3eaa76e9e9_check
+for d in luasrc ucode htdocs root src; do if [ -d ./$d ]; then mkdir -p /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/$d; cp -fpR ./$d/* /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/$d/; fi; done
+python3 /tmp/T16.105-build/sdk/package/luci-app-aether-proxy/tools/build-changelog.py /tmp/T16.105-build/sdk/package/luci-app-aether-proxy/../docs/releases /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/changelog.js
+sed -i 's|@@VERSION@@|1.2.2-r10|g' /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/build.json
+true
+[ ! -d ./src/ ] || cp -fpR ./src/. /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.prepared_9de0d6b1bdc7884a0b3fa8ff1cea6feb_18f1e190c5d53547fed41a3eaa76e9e9
+rm -f /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.configured_*
+rm -f /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/stamp/.luci-app-aether-proxy_installed
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.configured_811dc2f0ccfbe4b68a068320f8578dbe
+rm -f /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.built
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.built_check
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.built
+rm -rf /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy.installed /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy
+mkdir -p /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy
+install -d -m0755 /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/www
+cp -pR /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/htdocs/* /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/www/
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/www/ -type f -name '*.js' | while read src; do if jsmin < "$src" > "$src.o"; then mv "$src.o" "$src"; fi; done
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/www/ -type f -name '*.css' | while read src; do if csstidy "$src" --template=highest --remove_last_semicolon=true "$src.o"; then mv "$src.o" "$src"; fi; done
+install -d -m0755 /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/
+cp -pR /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/root/* /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/
+touch /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy.installed
+mkdir -p /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/root-x86/stamp
+SHELL= flock /tmp/T16.105-build/sdk/tmp/.root-copy.flock -c 'cp -fpR /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.pkgdir/luci-app-aether-proxy/. /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/root-x86/'
+touch /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/root-x86/stamp/.luci-app-aether-proxy_installed
+rm -rf /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy
+mkdir -p /tmp/T16.105-build/sdk/bin/targets/x86/64/packages /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy /tmp/T16.105-build/sdk/staging_dir/target-x86_64_musl/pkginfo
+install -d -m0755 /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/www
+cp -pR /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/htdocs/* /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/www/
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/www/ -type f -name '*.js' | while read src; do if jsmin < "$src" > "$src.o"; then mv "$src.o" "$src"; fi; done
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/www/ -type f -name '*.css' | while read src; do if csstidy "$src" --template=highest --remove_last_semicolon=true "$src.o"; then mv "$src.o" "$src"; fi; done
+install -d -m0755 /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/
+cp -pR /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/root/* /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy -name 'CVS' -o -name '.svn' -o -name '.#*' -o -name '*~'| xargs -r rm -rf
+export CROSS="x86_64-openwrt-linux-musl-"   ; NM="x86_64-openwrt-linux-musl-nm" STRIP="/tmp/T16.105-build/sdk/staging_dir/host/bin/sstrip -z" STRIP_KMOD="/tmp/T16.105-build/sdk/scripts/strip-kmod.sh" PATCHELF="/tmp/T16.105-build/sdk/staging_dir/host/bin/patchelf" /tmp/T16.105-build/sdk/scripts/rstrip.sh /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy
+install -d -m0755 /tmp/T16.105-build/sdk/bin/targets/x86/64/packages
+mkdir -p /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/CONTROL
+(cd /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy/CONTROL; ( echo "$CONTROL"; printf "Description: "; echo "$DESCRIPTION" | sed -e 's,^[[:space:]]*, ,g'; ) > control; chmod 644 control; ( echo "#!/bin/sh"; echo "[ \"\${IPKG_NO_SCRIPT}\" = \"1\" ] && exit 0"; echo "[ -s "\${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0"; echo ". \${IPKG_INSTROOT}/lib/functions.sh"; echo "default_postinst \$0 \$@"; ) > postinst; ( echo "#!/bin/sh"; echo "[ -s "\${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0"; echo ". \${IPKG_INSTROOT}/lib/functions.sh"; echo "default_prerm \$0 \$@"; ) > prerm; chmod 0755 postinst prerm; echo "$V_Package_luci_app_aether_proxy_postinst" > postinst-pkg; chmod 0755 postinst-pkg; echo "$V_Package_luci_app_aether_proxy_postrm" > postrm; chmod 0755 postrm; )
+/tmp/T16.105-build/sdk/staging_dir/host/bin/fakeroot /tmp/T16.105-build/sdk/staging_dir/host/bin/bash /tmp/T16.105-build/sdk/scripts/ipkg-build -m "" /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy /tmp/T16.105-build/sdk/bin/targets/x86/64/packages
+Packaged contents of /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/ipkg-all/luci-app-aether-proxy into /tmp/T16.105-build/sdk/bin/targets/x86/64/packages/luci-app-aether-proxy_1.2.2-r10_all.ipk
+touch -r /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.built /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy/.autoremove 2>/dev/null >/dev/null
+find /tmp/T16.105-build/sdk/build_dir/target-x86_64_musl/luci-app-aether-proxy -mindepth 1 -maxdepth 1 -not '(' -type f -and -name '.*' -and -size 0 ')' -and -not -name '.pkgdir'  -print0 | xargs -r -0 rm -rf
+make: Leaving directory '/tmp/T16.105-build/sdk/package/luci-app-aether-proxy'

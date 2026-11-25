@@ -1,0 +1,12 @@
+== branch HEAD vs 43e2269c: 1 commit(s), 26 file(s)
+PASS  tests/run.uc: 1646 passed, 0 failed, 0 skipped
+PASS  tests/cli/run.sh: 225 passed, 0 failed
+WARN  xray -test skipped (set CI_TOOLS_DIR to a directory holding xray-<ver>/xray to run it)
+PASS  changed .uc files compile/load
+PASS  no swallowed errors in added code
+PASS  no system()/popen() outside sys.uc
+WARN  docs/ changed (only spike cards may change docs; explain in the report)
+      docs/release-checklist.md
+PASS  no attribution trailers in commits
+PASS  report present: reports/T16.105.md
+== 0 FAIL, 2 WARN

@@ -5,6 +5,7 @@
 'require ui';
 'require aether-proxy.common as ap';
 'require aether-proxy.model.updates as model';
+'require aether-proxy.changelog as changelog';
 
 /* Update inventory, job controls and policy form (docs/10 "更新页").
  * Defer the initial status read until render returns (docs/10 "其余页面先出页面").
@@ -102,6 +103,14 @@ return view.extend({
 				if (row.rollback)
 					actions.push(this.package_button(row, row.rollback_label, true));
 				jobButtons.push(...actions);
+				const target = this.status?.updates_available?.packages?.['aether-proxy'];
+				const releaseUrl = row.name == 'aether-proxy' && target?.newer === true &&
+					target.installed != null && target.installed !== row.available ?
+					changelog.url(row.available) : null;
+				if (releaseUrl)
+					actions.push(E('a', { href: releaseUrl, target: '_blank', rel: 'noopener noreferrer',
+						style: 'display:block; margin-top:0.5em; white-space:normal; overflow-wrap:anywhere' },
+						_('Target release notes (online)', 'aether-proxy')));
 				return E('tr', { class: 'tr' }, [
 					/* Version strings come from the signed manifest, not from this page. */
 					...[ row.name, row.installed, row.available, row.previous, row.status ]
@@ -155,12 +164,18 @@ return view.extend({
 				[ row.name, ': ', row.version, ' — ', row.path, ' ', row.note ])),
 			stacked: true
 		}));
+		const installed = this.status?.updates_available?.packages?.['aether-proxy']?.installed;
+		this.changelogBody?.replaceChildren(changelog.render(installed));
 		this.jobButtons = jobButtons;
 	},
 	render: function() {
 		this.status = undefined;
 		this.busy = false;
 		this.inventory = E('div');
+		this.changelogBody = E('div');
+		const history = E('details', { class: 'cbi-section' }, [
+			E('summary', {}, _('Version changes', 'aether-proxy')), this.changelogBody
+		]);
 		this.summary = E('span', { role: 'status', style: 'min-width:0; overflow-wrap:anywhere' });
 		this.progress = E('span');
 		this.show_inventory();
@@ -191,7 +206,7 @@ return view.extend({
 			data_hour: '4', data_minute: '30', channel_urls: [option.placeholder]
 		});
 		return map.render().then(node => {
-			const root = E('div', {}, [ node, this.inventory ]);
+			const root = E('div', {}, [ node, this.inventory, history ]);
 			// A new turn lets LuCI display the complete page before starting RPC.
 			window.setTimeout(() => {
 				ap.call('status').then(status => {

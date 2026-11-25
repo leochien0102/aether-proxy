@@ -355,8 +355,9 @@ test('T10.12 scenario 6: source placeholders and prepare hook stamp both package
 		fs.mkdirSync(resources, { recursive: true });
 		fs.copyFileSync(COMMON, path.join(resources, 'common.js'));
 		fs.copyFileSync(build, path.join(resources, 'build.json'));
+		fs.copyFileSync(path.join(HTDOCS, 'aether-proxy', 'changelog.js'), path.join(resources, 'changelog.js'));
 		const driver = path.join(dir, 'Makefile');
-		fs.writeFileSync(driver, 'PKG_BUILD_DIR:=' + dir + '\n'
+		fs.writeFileSync(driver, 'CURDIR:=' + APP + '\nPKG_BUILD_DIR:=' + dir + '\n'
 			+ 'PKG_VERSION:=1.2.3\nPKG_RELEASE:=42\n' + hook + '\n'
 			+ 'prepare:\n\t$(Build/Prepare/luci-app-aether-proxy)\n');
 		execFileSync('make', [ '--no-print-directory', '-f', driver, 'prepare' ], { cwd: dir });

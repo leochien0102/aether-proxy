@@ -3037,3 +3037,39 @@ msgstr "模式「%s」（端口范围「%s」）"
 msgctxt "aether-proxy"
 msgid "node “%s” (mode “%s”, port scope “%s”)"
 msgstr "节点「%s」（模式「%s」，端口范围「%s」）"
+
+msgctxt "aether-proxy"
+msgid "Installed application version"
+msgstr "已安装的应用版本"
+
+msgctxt "aether-proxy"
+msgid "Bundled summaries are available offline. Release links require internet access."
+msgstr "随包摘要可离线阅读；正式 Release 链接需要联网。"
+
+msgctxt "aether-proxy"
+msgid "No bundled summary for the installed application version."
+msgstr "随包数据没有当前已安装应用版本的摘要。"
+
+msgctxt "aether-proxy"
+msgid "Main changes"
+msgstr "主要变化"
+
+msgctxt "aether-proxy"
+msgid "No bundled summary for this version."
+msgstr "此版本没有随包摘要。"
+
+msgctxt "aether-proxy"
+msgid "Upgrade notes"
+msgstr "升级须知"
+
+msgctxt "aether-proxy"
+msgid "Formal release (online)"
+msgstr "正式 Release（联网）"
+
+msgctxt "aether-proxy"
+msgid "Target release notes (online)"
+msgstr "目标版本说明（联网）"
+
+msgctxt "aether-proxy"
+msgid "Version changes"
+msgstr "版本变更"

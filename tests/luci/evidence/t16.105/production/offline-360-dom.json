@@ -1,0 +1,25 @@
+{
+  "requests": 0,
+  "width": 360,
+  "scrollWidth": 360,
+  "button": {
+    "x": 18,
+    "y": 521.203125,
+    "width": 68,
+    "height": 24
+  },
+  "link": {
+    "x": 18,
+    "y": 552.203125,
+    "width": 324,
+    "height": 19
+  },
+  "links": [
+    "https://github.com/leochien0102/aether-proxy/releases/tag/v1.3.0-r1",
+    "https://github.com/leochien0102/aether-proxy/releases/tag/v1.2.2-r10",
+    "https://github.com/leochien0102/aether-proxy/releases/tag/v1.2.2-r9",
+    "https://github.com/leochien0102/aether-proxy/releases/tag/v1.2.2-r8",
+    "https://github.com/leochien0102/aether-proxy/releases/tag/v1.2.2-r7"
+  ],
+  "text": "更新策略（表单桩）\n组件更新\n如需安装其他版本：从发布页下载对应版本的三个包，在系统的『软件包』页面上传安装，或用 opkg install。降级前注意：新版本的设置旧版本可能不认识，必要时先恢复默认配置。\n上次检查: 尚未检查\n检查更新\naether-xray\n1.2.2-r10\n1.3.0-r1\n–\n有更新\n立即更新\naether-proxy\n1.2.2-r10\n1.3.0-r1\n–\n有更新\n立即更新\n目标版本说明（联网）\nluci-app-aether-proxy\n1.2.2-r10\n1.3.0-r1\n–\n有更新\n立即更新\nluci-i18n-aether-proxy-zh-cn\n–\n–\n–\n通道中没有\n运行中的组件\n\nxray: 未知 — –\n\nDNS 引擎: 未知 — –\n\n版本变更\n\n已安装的应用版本: 1.2.2-r10\n\n随包摘要可离线阅读；正式 Release 链接需要联网。\n\n1.2.2-r10\n\n此版本没有随包摘要。\n\n正式 Release（联网）\n1.2.2-r9\n1.2.2-r8\n1.2.2-r7"
+}

@@ -149,6 +149,10 @@ function loadModule(file, modules, env) {
 			return loadModule(require('node:path').resolve(__dirname,
 				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/form-defaults.js'),
 			{ baseclass: { extend: object => object } }, env);
+		if (r.name == 'aether-proxy.changelog' && !(r.name in modules))
+			return loadModule(require('node:path').resolve(__dirname,
+				'../../luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/changelog.js'),
+			{ baseclass: { extend: object => object } }, env);
 		/* Node-only tests stub subscription loading/rendering, not the shared
 		 * modal guard. Exercise the shipped guard rather than a no-op copy. */
 		if (r.name == 'aether-proxy.subscriptions-block' && modules[r.name] && !modules[r.name].required_options) {
