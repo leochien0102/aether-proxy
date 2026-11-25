@@ -613,6 +613,45 @@ push(cases, {
 	expect: { ok: false, nodes: [], skipped: { malformed: 2 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
 });
 
+// T16.86 rework: only CR in an actual CRLF pair is a line delimiter; a bare CR at EOF
+// belongs to the last line and must be rejected in both plaintext and Base64 bodies.
+const T1686_SECOND_URI = `vless://${UUID}@second.example:443?security=tls#second`;
+for (let variant in [
+	[ 'no trailing EOL', T1686_GOOD_URI ],
+	[ 'trailing LF', T1686_GOOD_URI + '\n' ],
+	[ 'trailing CRLF', T1686_GOOD_URI + '\r\n' ]
+]) {
+	push(cases, {
+		name: 'T16.86 plaintext ' + variant[0] + ' accepted', fn: 'body',
+		input: variant[1],
+		expect: { ok: true, nodes: [ T1686_GOOD_NODE ], skipped: {}, warnings: [], error: null }
+	});
+	push(cases, {
+		name: 'T16.86 base64 ' + variant[0] + ' accepted', fn: 'body',
+		input: b64enc(variant[1]),
+		expect: { ok: true, nodes: [ T1686_GOOD_NODE ], skipped: {}, warnings: [], error: null }
+	});
+}
+for (let variant in [
+	[ 'plaintext sole node with EOF bare CR', T1686_GOOD_URI + '\r' ],
+	[ 'base64 sole node with EOF bare CR', b64enc(T1686_GOOD_URI + '\r') ]
+])
+	push(cases, {
+		name: 'T16.86 ' + variant[0] + ' fails with SUB_NO_VALID_NODES', fn: 'body',
+		input: variant[1],
+		expect: { ok: false, nodes: [], skipped: { malformed: 1 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
+	});
+for (let variant in [
+	[ 'plaintext CRLF valid line + EOF bare CR last line', T1686_GOOD_URI + '\r\n' + T1686_SECOND_URI + '\r' ],
+	[ 'plaintext LF valid line + EOF bare CR last line', T1686_GOOD_URI + '\n' + T1686_SECOND_URI + '\r' ],
+	[ 'base64 CRLF valid line + EOF bare CR last line', b64enc(T1686_GOOD_URI + '\r\n' + T1686_SECOND_URI + '\r') ]
+])
+	push(cases, {
+		name: 'T16.86 ' + variant[0] + ' skips only bad last line', fn: 'body',
+		input: variant[1],
+		expect: { ok: true, nodes: [ T1686_GOOD_NODE ], skipped: { malformed: 1 }, warnings: [], error: null }
+	});
+
 export function run(c) {
 	return c.fn == 'line' ? uri.parse_line(c.input) : uri.parse_body(c.input);
 };

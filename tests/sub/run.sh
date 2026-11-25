@@ -915,5 +915,55 @@ cmp -s "$T/t1686-allbad.before" "$R/etc/config/aetherproxy" \
 	&& ok 'T16.86 all-control-char output never echoes credentials' \
 	|| bad 'T16.86 all-control-char output never echoes credentials'
 
+# T16.86 rework: bare CR at EOF without LF is rejected as node content (not stripped)
+# in both plaintext and Base64 subscriptions, while valid preceding lines still publish.
+python3 - "$T/t1686-eofcr-only-plain.txt" "$T/t1686-eofcr-only-b64.txt" \
+	"$T/t1686-eofcr-mixed-plain.txt" "$T/t1686-eofcr-mixed-b64.txt" <<'PY'
+import base64, sys
+only_plain, only_b64, mixed_plain, mixed_b64 = sys.argv[1:5]
+uuid = "11111111-2222-4333-8444-555555555555"
+good = f"vless://{uuid}@t1686-eofcr-good.example:443?security=tls#%E4%B8%AD%E6%96%87%20%E6%AD%A3%E5%B8%B8"
+bad_eof_cr = f"vless://{uuid}@t1686-bad-eofcr.example:443?security=tls#t1686-secret-eofcr\r"
+only_bytes = bad_eof_cr.encode("utf-8")
+mixed_bytes = (good + "\r\n" + bad_eof_cr).encode("utf-8")
+for path, data in [
+    (only_plain, only_bytes),
+    (only_b64, base64.b64encode(only_bytes)),
+    (mixed_plain, mixed_bytes),
+    (mixed_b64, base64.b64encode(mixed_bytes)),
+]:
+    with open(path, "wb") as f:
+        f.write(data)
+PY
+
+cp "$R/etc/config/aetherproxy" "$T/t1686-eofcr.before"
+: > "$R/calls.log"
+for kind in plain b64; do
+	BODY="$T/t1686-eofcr-only-$kind.txt"
+	out=$(ap --json s_00000001 2>"$T/t1686-eofcr-only-$kind.stderr"); rc=$?
+	expect "T16.86 sole EOF bare CR ($kind) exits nonzero" 1 "$rc"
+	expect "T16.86 sole EOF bare CR ($kind) reports SUB_NO_VALID_NODES" SUB_NO_VALID_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+	expect "T16.86 sole EOF bare CR ($kind) skips malformed=1" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+	cmp -s "$T/t1686-eofcr.before" "$R/etc/config/aetherproxy" \
+		&& ok "T16.86 sole EOF bare CR ($kind) preserves UCI bytes" \
+		|| bad "T16.86 sole EOF bare CR ($kind) preserves UCI bytes"
+	! grep -q '^init reload$' "$R/calls.log" \
+		&& ok "T16.86 sole EOF bare CR ($kind) does not reload daemon" \
+		|| bad "T16.86 sole EOF bare CR ($kind) does not reload daemon"
+done
+
+for kind in plain b64; do
+	BODY="$T/t1686-eofcr-mixed-$kind.txt"
+	out=$(ap --json s_00000001 2>"$T/t1686-eofcr-mixed-$kind.stderr"); rc=$?
+	expect "T16.86 valid + EOF bare CR last line ($kind) succeeds" 0 "$rc"
+	expect "T16.86 valid + EOF bare CR last line ($kind) skips malformed=1" 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+	has_line "$R/etc/config/aetherproxy" "option address 't1686-eofcr-good.example'" \
+		&& ok "T16.86 valid + EOF bare CR last line ($kind) publishes valid first node" \
+		|| bad "T16.86 valid + EOF bare CR last line ($kind) publishes valid first node"
+	! grep -Eq 't1686-bad-eofcr|t1686-secret-eofcr' "$R/etc/config/aetherproxy" "$R/var/run/aether-proxy/events.jsonl" "$R/etc/aether-proxy/state/sub.json" \
+		&& ok "T16.86 valid + EOF bare CR last line ($kind) never writes or leaks bad last line" \
+		|| bad "T16.86 valid + EOF bare CR last line ($kind) never writes or leaks bad last line"
+done
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

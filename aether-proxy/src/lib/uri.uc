@@ -598,13 +598,22 @@ function strip_trailing_cr(line) {
 	return n > 0 && ord(line, n - 1) == 0x0d ? substr(line, 0, n - 1) : line;
 }
 
+// Split on LF and strip CR only when it immediately preceded an LF (actual CRLF).
+// A trailing bare CR at EOF is not a line delimiter and stays part of the last line.
+function split_crlf_lines(text) {
+	let lines = split(text, '\n');
+	let last = length(lines) - 1;
+	for (let i = 0; i < last; i++)
+		lines[i] = strip_trailing_cr(lines[i]);
+	return lines;
+}
+
 function is_clash_yaml(text) {
 	if (type(text) != 'string')
 		return false;
 
 	let seen_non_empty = false;
-	for (let raw in split(text, '\n')) {
-		let line = strip_trailing_cr(raw);
+	for (let line in split_crlf_lines(text)) {
 		if (!seen_non_empty) {
 			let trimmed = trim(line, ' \t');
 			if (trimmed == '')
@@ -624,8 +633,8 @@ function is_clash_yaml(text) {
 function decode_subscription(text) {
 	let raw = text ?? '';
 	let first = null;
-	for (let raw_line in split(raw, '\n')) {
-		let line = trim(strip_trailing_cr(raw_line), ' \t');
+	for (let raw_line in split_crlf_lines(raw)) {
+		let line = trim(raw_line, ' \t');
 		if (line != '') {
 			first = line;
 			break;
@@ -662,8 +671,7 @@ export function parse_body(text) {
 		return { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_FORMAT_UNSUPPORTED' };
 
 	let nodes = [], skipped_counts = {}, warnings = [];
-	for (let raw_line in split(body, '\n')) {
-		let line = strip_trailing_cr(raw_line);
+	for (let line in split_crlf_lines(body)) {
 		if (trim(line, ' \t') == '')
 			continue;
 
