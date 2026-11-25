@@ -1,0 +1,17 @@
+✔ T16.105 build extracts only dated user sections, numeric order and optional notes (31.476081ms)
+✔ T16.105 recent history is bounded to eight numerically sorted versions (27.106357ms)
+✔ T16.105 production history stays bounded, numerically descending and excludes unpublished entries (25.529257ms)
+▶ T16.105 same isolated release transitions from draft to published by changing only its status marker
+  ✔ draft state: excluded; r10 precedes r9 (0.415545ms)
+  ✔ published state: included at the correct position with both expected sections; r10 precedes r9 (0.340246ms)
+✔ T16.105 same isolated release transitions from draft to published by changing only its status marker (47.847599ms)
+✔ T16.105 offline DOM uses text, expands exact installed version only, never substitutes latest (26.128919ms)
+✔ T16.105 exact official release URL validates the full version (24.571511ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 245.372456

@@ -23,7 +23,7 @@ function generated(t, real = false, extra = 0) {
 		for (const [ver, body] of [
 			['2.0.0-r9', '发布日期：2026-11-22\n\n## 主要变化\n\n- optional notes absent'],
 			['2.0.0-r10', '发布日期：2026-11-23\n\n## 主要变化\n\n- <img src=x onerror=alert(1)> & **text**\n  continuation\n\n## 升级须知\n\n- upgrade action\n\n## 维护者核对\n\nprivate internal text'],
-			['3.0.0-r1', '状态：未发布\n发布日期：2026-11-24\n\n## 主要变化\n\n- draft secret'],
+			['3.0.0-r1', '状态：未发布\n\n## 主要变化\n\n- draft secret\n\n## 升级须知\n\n- fixture upgrade note'],
 			['1.2.2-r10', '发布日期：2026-11-22\n\n## 变化\n\n- do not guess legacy prose'],
 			['4.0.0-r1', '## 主要变化\n\n- undated secret']
 		]) fs.writeFileSync(path.join(docs, ver + '.md'), '# ' + ver + '\n\n' + body + '\n');
@@ -31,11 +31,14 @@ function generated(t, real = false, extra = 0) {
 	for (let revision = 1; revision <= extra; revision++)
 		fs.writeFileSync(path.join(docs, `5.0.0-r${revision}.md`), '发布日期：2026-11-22\n\n## 主要变化\n\n- bounded history');
 	const module = path.join(tmp, 'changelog.js');
-	fs.copyFileSync(source, module);
-	const run = spawnSync('python3', [path.join(pkg, 'tools/build-changelog.py'),
-		real ? path.join(root, 'docs/releases') : docs, module], { encoding: 'utf8' });
-	assert.equal(run.status, 0, run.stderr);
-	return { module, data: loadModule(module, { baseclass: { extend: o => o } }, { window: {}, document: {} }) };
+	const regenerate = () => {
+		fs.copyFileSync(source, module);
+		const run = spawnSync('python3', [path.join(pkg, 'tools/build-changelog.py'),
+			real ? path.join(root, 'docs/releases') : docs, module], { encoding: 'utf8' });
+		assert.equal(run.status, 0, run.stderr);
+		return loadModule(module, { baseclass: { extend: o => o } }, { window: {}, document: {} });
+	};
+	return { module, docs, data: regenerate(), regenerate };
 }
 
 test('T16.105 build extracts only dated user sections, numeric order and optional notes', t => {
@@ -54,11 +57,42 @@ test('T16.105 recent history is bounded to eight numerically sorted versions', t
 	assert.deepEqual(data.releases.map(r => r.version), Array.from({ length: 8 }, (_, i) => `5.0.0-r${12 - i}`));
 });
 
-test('T16.105 production excludes real draft, bounds recent entries and keeps r10 before r9', t => {
+test('T16.105 production history stays bounded, numerically descending and excludes unpublished entries', t => {
 	const { data } = generated(t, true);
-	assert.ok(data.releases.length > 0 && data.releases.length <= 8);
-	assert.deepEqual(data.releases.slice(0, 2).map(r => r.version), ['1.2.2-r10', '1.2.2-r9']);
-	assert.ok(!data.releases.some(r => r.version === '1.3.0-r1'));
+	const versions = data.releases.map(r => r.version);
+	assert.ok(versions.length <= 8);
+	assert.deepEqual(versions, [...versions].sort((a, b) => {
+		const left = a.match(/\d+/g).map(Number);
+		const right = b.match(/\d+/g).map(Number);
+		for (let i = 0; i < left.length; i++)
+			if (left[i] !== right[i]) return right[i] - left[i];
+		return 0;
+	}));
+	const docs = path.join(root, 'docs/releases');
+	for (const file of fs.readdirSync(docs).filter(f => f.endsWith('.md'))) {
+		const header = fs.readFileSync(path.join(docs, file), 'utf8').split('\n## ', 1)[0];
+		if (header.includes('未发布'))
+			assert.ok(!versions.includes(path.basename(file, '.md')), `${file} must not ship while unpublished`);
+	}
+});
+
+test('T16.105 same isolated release transitions from draft to published by changing only its status marker', async t => {
+	const fixture = generated(t);
+	const draft = path.join(fixture.docs, '3.0.0-r1.md');
+	const before = fs.readFileSync(draft, 'utf8');
+	await t.test('draft state: excluded; r10 precedes r9', () => {
+		assert.deepEqual(fixture.data.releases.map(r => r.version), ['2.0.0-r10', '2.0.0-r9', '1.2.2-r10']);
+		assert.doesNotMatch(fs.readFileSync(fixture.module, 'utf8'), /draft secret|fixture upgrade note/);
+	});
+	fs.writeFileSync(draft, before.replace('状态：未发布', '发布日期：2026-11-24'));
+	const published = fixture.regenerate();
+	await t.test('published state: included at the correct position with both expected sections; r10 precedes r9', () => {
+		assert.deepEqual(published.releases.map(r => r.version),
+			['3.0.0-r1', '2.0.0-r10', '2.0.0-r9', '1.2.2-r10']);
+		assert.deepEqual(published.releases[0].changes, ['draft secret']);
+		assert.deepEqual(published.releases[0].notes, ['fixture upgrade note']);
+		assert.deepEqual(published.releases.slice(1), fixture.data.releases);
+	});
 });
 
 test('T16.105 offline DOM uses text, expands exact installed version only, never substitutes latest', t => {
