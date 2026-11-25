@@ -31,10 +31,11 @@ on:
       - '.github/workflows/release-component.yml'
       - '.github/workflows/release-assets.yml'
 
+permissions:
+  contents: read
+
 jobs:
   host-tests:
-    permissions:
-      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

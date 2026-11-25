@@ -373,5 +373,58 @@ class ReconcilePublishedBytes(unittest.TestCase):
         self.assertEqual(self.fetched, [self.manifest_source.as_uri()])
 
 
+def effective_permissions(workflow, job_name):
+    job = workflow['jobs'][job_name]
+    return job['permissions'] if 'permissions' in job else workflow.get('permissions')
+
+
+class WorkflowPermissions(unittest.TestCase):
+    READ_ONLY = {'contents': 'read'}
+    RELEASE_WRITE = {'contents': 'write'}
+
+    def assert_read_only_workflow(self, workflow, expected_jobs):
+        self.assertEqual(workflow.get('permissions'), self.READ_ONLY)
+        self.assertEqual(set(workflow['jobs']), set(expected_jobs))
+        for job_name in workflow['jobs']:
+            self.assertEqual(effective_permissions(workflow, job_name), self.READ_ONLY, job_name)
+
+    def assert_component_release_workflow(self, workflow):
+        self.assertEqual(workflow.get('permissions'), self.READ_ONLY)
+        self.assertEqual(set(workflow['jobs']), {'build', 'release'})
+        self.assertEqual(effective_permissions(workflow, 'build'), self.READ_ONLY)
+        self.assertEqual(effective_permissions(workflow, 'release'), self.RELEASE_WRITE)
+
+    def test_build_and_test_workflows_are_read_only(self):
+        self.assert_read_only_workflow(
+            load(ROOT / '.github/workflows/build.yml'),
+            {'detect', 'packages', 'smoke'},
+        )
+        self.assert_read_only_workflow(
+            load(ROOT / '.github/workflows/test.yml'),
+            {'host-tests', 'validate-xray', 'validate-nft', 'validate-chinadns'},
+        )
+
+    def test_release_component_limits_write_to_release_job(self):
+        self.assert_component_release_workflow(
+            load(ROOT / '.github/workflows/release-component.yml')
+        )
+
+    def test_overbroad_permissions_fail_contract(self):
+        build_with_write = load(ROOT / '.github/workflows/build.yml')
+        build_with_write['jobs']['packages']['permissions'] = {'contents': 'write'}
+        with self.assertRaises(AssertionError):
+            self.assert_read_only_workflow(build_with_write, {'detect', 'packages', 'smoke'})
+
+        build_without_top = load(ROOT / '.github/workflows/build.yml')
+        del build_without_top['permissions']
+        with self.assertRaises(AssertionError):
+            self.assert_read_only_workflow(build_without_top, {'detect', 'packages', 'smoke'})
+
+        component_with_top_write = load(ROOT / '.github/workflows/release-component.yml')
+        component_with_top_write['permissions'] = {'contents': 'write'}
+        with self.assertRaises(AssertionError):
+            self.assert_component_release_workflow(component_with_top_write)
+
+
 if __name__ == '__main__':
     unittest.main()
