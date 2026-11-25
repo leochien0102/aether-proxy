@@ -212,6 +212,8 @@ function execute_action(daemon, action, artifacts, components) {
 	if (action == 'restart_chinadns') {
 		if (daemon.children.dns != null)
 			wait_stopped(daemon.children.dns);
+		if (daemon.ctx.stopping_requested)
+			return { ok: false, detail: 'formal DNS readiness cancelled' };
 		let bin = components[C.CHINADNS_COMPONENT].path;
 		let error = start_child(daemon, 'dns', supervise.dns_name(bin),
 			[ bin, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
@@ -271,6 +273,8 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 		}
 		else if (action == 'restart_chinadns') {
 			if (daemon.children.dns != null) wait_stopped(daemon.children.dns);
+			if (daemon.ctx.stopping_requested)
+				continue;
 			let bin = old_components[C.CHINADNS_COMPONENT].path;
 			let err = start_child(daemon, 'dns', supervise.dns_name(bin),
 				[ bin, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);

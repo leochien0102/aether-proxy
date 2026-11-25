@@ -521,6 +521,7 @@ def scenario_sigterm_cancels_dns_wait(base):
     f = ReloadFixture(base, 'sigterm-cancels-dns-wait')
     with f.daemon() as proc:
         f.wait_running()
+        old_conf = (f.run / 'current/chinadns.conf').read_bytes()
         applied_before = len(f.events('RELOAD_APPLIED'))
         offset = len(f.calls())
         gate = f.root / 'term-gate'
@@ -535,12 +536,20 @@ def scenario_sigterm_cancels_dns_wait(base):
         proc.wait(timeout=4)
         elapsed = time.monotonic() - started
         after_calls = f.calls()[offset:]
+        dns_starts = [l for l in after_calls if l.startswith('chinadns-ng -C ')]
+        dns_forks = [l for l in after_calls if l.startswith('dns-forked ')]
         check(elapsed < 3.5,
               f'T16.91 cancel: SIGTERM cancels DNS readiness wait promptly ({elapsed:.2f}s)')
+        check(len(dns_starts) == 1 and len(dns_forks) == 1,
+              'T16.91 cancel: no second DNS start after forward start when SIGTERM cancels wait',
+              '\n'.join(after_calls))
+        check((f.run / 'current/chinadns.conf').read_bytes() == old_conf,
+              'T16.91 cancel: previous chinadns.conf is still restored on stop-cancelled reload')
         check('killall -HUP dnsmasq' not in after_calls,
               'T16.91 cancel: no dnsmasq HUP when SIGTERM cancels DNS wait')
         check(len(f.events('RELOAD_APPLIED')) == applied_before,
               'T16.91 cancel: no RELOAD_APPLIED when SIGTERM cancels DNS wait')
+        print('TRACE T16.91 cancel calls:', [l for l in after_calls if l.startswith(('chinadns-ng ', 'dns-', 'killall -HUP', 'dnsmasq '))], flush=True)
 
 
 def main():
