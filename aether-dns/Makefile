@@ -7,16 +7,16 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aether-dns
-PKG_VERSION:=1.0.2
+PKG_VERSION:=1.0.3
 PKG_RELEASE:=1
 
 # ARCH is the CPU architecture, while release assets use the package architecture.
 ifeq ($(ARCH),aarch64)
   AETHER_DNS_ARCH:=aarch64_generic
-  PKG_HASH:=9c21f7d9d35a2b9784719bebb17f88dce3fcba0b446acb06bb38cbec4c95e223
+  PKG_HASH:=eeb62668587214bcc97bf3a231309fc4bcf2e3b3b5c2062859202470e7042710
 else ifeq ($(ARCH),x86_64)
   AETHER_DNS_ARCH:=x86_64
-  PKG_HASH:=d7ad176292664bb5f4d070d3d3ed98b483c2403fc6ef87efa1ff1e0483a499eb
+  PKG_HASH:=d15231df4f015a1c4b7f76d56f07008bed174f49af27b89d7845d34a54db914a
 else
   AETHER_DNS_ARCH:=unsupported
   PKG_HASH:=skip
