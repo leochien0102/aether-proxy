@@ -246,8 +246,23 @@ function action_set_tier(daemon, tier, done) {
 		(daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/${C.CHINADNS_COMPONENT}` : C.CHINADNS_COMPONENT);
 	restart_child(daemon, 'dns', C.CHINADNS_COMPONENT,
 		[ bin, '-C', path ], error => {
-			if (daemon.ctx.stopping_requested || error != null) {
+			if (daemon.ctx.stopping_requested) {
+				done(null);
+				return;
+			}
+			if (error != null) {
 				done(error);
+				return;
+			}
+			// This action already owns busy and the monitor lock; wait for the newly
+			// started DNS child's published UDP/TCP listeners before notifying dnsmasq.
+			let ready = xray_ready.published_dns(daemon.ctx, daemon.children.dns);
+			if (daemon.ctx.stopping_requested) {
+				done(null);
+				return;
+			}
+			if (!ready.ok) {
+				done(ready.detail);
 				return;
 			}
 			// Clear dnsmasq's cache too: polluted fallback answers must not outlive a tier change
