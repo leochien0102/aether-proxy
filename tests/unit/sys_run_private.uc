@@ -42,6 +42,11 @@ export const cases = [
 		name: 'cleanup removes only owned files and preserves sibling sentinels',
 		expect: 'PASS',
 		kind: 'sentinels'
+	},
+	{
+		name: 'existing same-name sandbox directory with sentinel is preserved on collision',
+		expect: 'PASS',
+		kind: 'sandbox_collision'
 	}
 ];
 
@@ -49,31 +54,65 @@ function failed(detail) {
 	return 'FAIL: ' + detail;
 }
 
-function with_sandbox(tag, fn) {
-	let pid = fs.readlink('/proc/self') ?? 'x';
-	let base = `/tmp/aether-proxy-t1683-${tag}-${pid}`;
-	sys.run([ 'rm', '-rf', base ], { quiet: true });
-	if (!fs.mkdir(base, 0700))
-		die(`cannot create sandbox ${base}: ${fs.error() ?? 'unknown error'}`);
-	let tmp_root = `${base}/tmp`;
-	if (!fs.mkdir(tmp_root, 0700))
-		die(`cannot create tmp_root ${tmp_root}: ${fs.error() ?? 'unknown error'}`);
+function random_hex(n) {
+	let fp = fs.open('/dev/urandom', 'r');
+	if (fp == null)
+		die(`cannot open /dev/urandom: ${fs.error() ?? 'unknown error'}`);
+	let bytes = fp.read(n);
+	let rerr = fs.error();
+	let closed = fp.close();
+	if (!closed || bytes == null || length(bytes) != n)
+		die(`cannot read /dev/urandom: ${rerr ?? fs.error() ?? 'unknown error'}`);
+	let out = '';
+	for (let i = 0; i < n; i++)
+		out += sprintf('%02x', ord(bytes, i));
+	return out;
+}
+
+// Exclusively create a 0700 directory without ever deleting a pre-existing path.
+// Tries `preferred` first, then appends random suffixes on EEXIST. Only removes
+// the directory after confirming this invocation created it.
+function with_exclusive_dir(preferred, fn) {
+	let dir = null;
+	for (let attempt = 0; attempt < 16; attempt++) {
+		let candidate = attempt == 0 ? preferred : `${preferred}.${random_hex(6)}`;
+		if (fs.mkdir(candidate, 0700)) {
+			dir = candidate;
+			break;
+		}
+		let err = fs.error() ?? 'unknown error';
+		if (err != 'File exists')
+			die(`cannot create sandbox ${candidate}: ${err}`);
+	}
+	if (dir == null)
+		die(`cannot exclusively create sandbox near ${preferred}: too many collisions`);
 
 	let res = null;
 	let err = null;
 	try {
-		res = fn({ base, tmp_root });
+		res = fn(dir);
 	}
 	catch (e) {
 		err = e;
 	}
-	let ro = `${base}/ro-tmp`;
+	let ro = `${dir}/ro-tmp`;
 	if (fs.lstat(ro) != null)
 		fs.chmod(ro, 0700);
-	sys.run([ 'rm', '-rf', base ], { quiet: true });
+	sys.run([ 'rm', '-rf', dir ], { quiet: true });
 	if (err != null)
 		die(`${err}`);
 	return res;
+}
+
+function with_sandbox(tag, fn) {
+	let pid = fs.readlink('/proc/self') ?? 'x';
+	let preferred = `/tmp/aether-proxy-t1683-${tag}-${pid}`;
+	return with_exclusive_dir(preferred, base => {
+		let tmp_root = `${base}/tmp`;
+		if (!fs.mkdir(tmp_root, 0700))
+			die(`cannot create tmp_root ${tmp_root}: ${fs.error() ?? 'unknown error'}`);
+		return fn({ base, tmp_root });
+	});
 }
 
 function build_modules(base, tmp_dir) {
@@ -411,6 +450,55 @@ function sentinels_case() {
 	});
 }
 
+function sandbox_collision_case() {
+	return with_sandbox('collision', sb => {
+		let existing = `${sb.base}/same-name-dir`;
+		let sentinel_path = `${existing}/sentinel.txt`;
+		let sentinel_body = 'pre-existing-sentinel-must-survive\n';
+		if (!fs.mkdir(existing, 0700) || fs.writefile(sentinel_path, sentinel_body) == null)
+			return failed('cannot prepare pre-existing colliding directory');
+
+		let chosen = null;
+		let inner_err = with_exclusive_dir(existing, dir => {
+			chosen = dir;
+			if (dir == existing)
+				return 'allocator reused pre-existing directory';
+			let st = fs.stat(dir);
+			if (st == null || st.type != 'directory' || (st.mode & 0777) != 0700)
+				return `allocated dir not 0700: ${sprintf('%.J', st)}`;
+			if (fs.readfile(sentinel_path) != sentinel_body)
+				return 'pre-existing sentinel vanished during allocation';
+
+			let tmp_root = `${dir}/tmp`;
+			if (!fs.mkdir(tmp_root, 0700))
+				return `cannot create ${tmp_root}`;
+			let mod_root = build_modules(dir, tmp_root);
+			let uc = "import * as sys from 'aetherproxy.sys'; " +
+				"let r = sys.run([ 'sh', '-c', 'printf ok-col; printf err-col >&2' ], { quiet: true }); " +
+				"print(sprintf('%.J', r));";
+			let child = run_isolated_ucode(mod_root, uc, '0000');
+			if (child.code != 0)
+				return `isolated ucode failed: ${sprintf('%.J', child)}`;
+			let r = json(child.stdout);
+			if (r.code != 0 || r.timed_out || r.stdout != 'ok-col' || r.stderr != 'err-col')
+				return `unexpected sys.run result: ${sprintf('%.J', r)}`;
+			return null;
+		});
+
+		if (inner_err != null)
+			return failed(inner_err);
+		if (chosen == null || fs.lstat(chosen) != null)
+			return failed(`newly allocated dir ${chosen} was not cleaned up`);
+		if (fs.lstat(existing)?.type != 'directory')
+			return failed('pre-existing colliding directory was removed');
+		let survived = fs.readfile(sentinel_path);
+		if (survived != sentinel_body)
+			return failed(`pre-existing sentinel altered: ${sprintf('%.J', survived)}`);
+
+		return 'PASS';
+	});
+}
+
 export function run(c) {
 	if (c.kind == 'inflight')
 		return inflight_case(c.with_timeout);
@@ -422,5 +510,7 @@ export function run(c) {
 		return mkdir_fail_case();
 	if (c.kind == 'sentinels')
 		return sentinels_case();
+	if (c.kind == 'sandbox_collision')
+		return sandbox_collision_case();
 	return failed('unknown test kind');
 };
