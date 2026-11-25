@@ -453,6 +453,10 @@ msgid "Subscription {sub} format unsupported: {detail}"
 msgstr "订阅 {sub} 格式不支持：{detail}"
 
 msgctxt "aether-proxy"
+msgid "Subscription {sub} exceeds node limit: {detail}"
+msgstr "订阅 {sub} 节点数超限：{detail}"
+
+msgctxt "aether-proxy"
 msgid "Subscription {sub} apply invalid: {detail}"
 msgstr "订阅 {sub} 应用无效：{detail}"
 

@@ -60,6 +60,7 @@ const TEMPLATES = {
 	SUB_FETCH_FAILED: _('Subscription {sub} fetch failed: {detail}', 'aether-proxy'),
 	SUB_DECODE_FAILED: _('Subscription {sub} decode failed: {detail}', 'aether-proxy'),
 	SUB_FORMAT_UNSUPPORTED: _('Subscription {sub} format unsupported: {detail}', 'aether-proxy'),
+	SUB_TOO_MANY_NODES: _('Subscription {sub} exceeds node limit: {detail}', 'aether-proxy'),
 	SUB_APPLY_INVALID: _('Subscription {sub} apply invalid: {detail}', 'aether-proxy'),
 	SUB_PROXY_UNAVAILABLE: _('Subscription {sub} proxy unavailable: {detail}', 'aether-proxy'),
 	SUB_SHRANK: _('Subscription {sub} shrank from {old} to {new}', 'aether-proxy'),

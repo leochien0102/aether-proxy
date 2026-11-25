@@ -44,6 +44,8 @@ const CASES = [
 	['SUB_FETCH_FAILED', { sub: 's_a', detail: 'offline' }, '订阅 $sub 获取失败：offline'],
 	['SUB_DECODE_FAILED', { sub: 's_a', detail: 'invalid' }, '订阅 $sub 解码失败：invalid'],
 	['SUB_FORMAT_UNSUPPORTED', { sub: 's_a', detail: 'yaml' }, '订阅 $sub 格式不支持：yaml'],
+	['SUB_TOO_MANY_NODES', { sub: 's_a', detail: 'subscription exceeds maximum of 1024 nodes' },
+		'订阅 $sub 节点数超限：subscription exceeds maximum of 1024 nodes'],
 	['SUB_APPLY_INVALID', { sub: 's_a', detail: 'bad' }, '订阅 $sub 应用无效：bad'],
 	['SUB_PROXY_UNAVAILABLE', { sub: 's_a', detail: 'stopped' }, '订阅 $sub 代理不可用：stopped'],
 	['SUB_SHRANK', { sub: 's_a', old: 10, new: 2 }, '订阅 $sub 从 10 个节点缩减至 2 个'],
