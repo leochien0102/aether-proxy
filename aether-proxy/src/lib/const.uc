@@ -422,3 +422,7 @@ export const NODE_FAILOVER_CANDIDATE_SECS = 1800;
 // T16.85 (M13 part 1): hard cap on parsed candidate nodes per subscription body
 // before strong-key deduplication (distinct from NODE_FAILOVER_MAX_NODES).
 export const SUB_MAX_NODES = 1024;
+
+// T16.87 (M13 part 3): per-URI byte budget on the shared parser path (16 KiB).
+// Applies to each raw non-empty node line after line-delimiter removal, not to a full subscription body.
+export const URI_MAX_BYTES = 16384;

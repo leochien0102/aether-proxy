@@ -965,5 +965,110 @@ for kind in plain b64; do
 		|| bad "T16.86 valid + EOF bare CR last line ($kind) never writes or leaks bad last line"
 done
 
+# ---- T16.87: per-URI 16 KiB byte limit in subscriptions (without capping total body at 16 KiB) ----
+make_root "$T/root-t1687"
+write_config
+python3 - "$T/t1687-mixed-plain.txt" "$T/t1687-mixed-b64.txt" \
+	"$T/t1687-allbad-plain.txt" "$T/t1687-allbad-b64.txt" \
+	"$T/t1687-bulk-plain.txt" "$T/t1687-bulk-b64.txt" <<'PY'
+import base64, sys
+mixed_plain, mixed_b64, allbad_plain, allbad_b64, bulk_plain, bulk_b64 = sys.argv[1:7]
+uuid = "11111111-2222-4333-8444-555555555555"
+
+def ascii_uri(n, host):
+    p = f"vless://{uuid}@{host}:443?security=tls#"
+    return p + "a" * (n - len(p.encode("utf-8")))
+
+def utf8_uri(n, host):
+    p = f"vless://{uuid}@{host}:443?security=tls#🌟"
+    rem = n - len(p.encode("utf-8"))
+    return p + "中" * (rem // 3) + "a" * (rem % 3)
+
+def padded_uri(n, host):
+    return "  " + ascii_uri(n - 4, host) + "  "
+
+def wrap_b64(raw_bytes):
+    enc = base64.b64encode(raw_bytes).decode("ascii")
+    return ("\r\n".join(enc[i:i + 76] for i in range(0, len(enc), 76)) + "\r\n").encode("ascii")
+
+good_before = f"vless://{uuid}@t1687-before.example:443?security=tls#before"
+good_exact = ascii_uri(16384, "t1687-exact16384.example")
+good_after = f"vless://{uuid}@t1687-after.example:443?security=tls#after"
+bad_lines = [
+    ascii_uri(16385, "t1687-secret-ascii.example"),
+    utf8_uri(16385, "t1687-secret-utf8.example"),
+    padded_uri(16385, "t1687-secret-padded.example"),
+]
+
+mixed_bytes = ("\r\n".join([good_before, bad_lines[0], good_exact, bad_lines[1], bad_lines[2], good_after]) + "\r\n").encode("utf-8")
+allbad_bytes = ("\r\n".join(bad_lines) + "\r\n").encode("utf-8")
+bulk_lines = [
+    f"vless://{uuid}@t1687-bulk-{i}.example.com:443?security=tls&sni=t1687-bulk-{i}.example.com#Bulk-{i}"
+    for i in range(1, 261)
+]
+bulk_bytes = ("\n".join(bulk_lines) + "\n").encode("utf-8")
+assert len(bulk_bytes) > 16384, len(bulk_bytes)
+
+for path, data in [
+    (mixed_plain, mixed_bytes),
+    (mixed_b64, wrap_b64(mixed_bytes)),
+    (allbad_plain, allbad_bytes),
+    (allbad_b64, wrap_b64(allbad_bytes)),
+    (bulk_plain, bulk_bytes),
+    (bulk_b64, wrap_b64(bulk_bytes)),
+]:
+    with open(path, "wb") as f:
+        f.write(data)
+PY
+
+for kind in plain b64; do
+	BODY="$T/t1687-mixed-$kind.txt"
+	out=$(ap --json s_00000001 2>"$T/t1687-mixed-$kind.stderr"); rc=$?
+	expect "T16.87 mixed ($kind) subscription succeeds" 0 "$rc"
+	expect "T16.87 mixed ($kind) skips all 3 oversized lines" 3 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+	has_line "$R/etc/config/aetherproxy" "option address 't1687-before.example'" \
+		&& ok "T16.87 mixed ($kind) publishes valid neighbor before oversized line" \
+		|| bad "T16.87 mixed ($kind) publishes valid neighbor before oversized line"
+	has_line "$R/etc/config/aetherproxy" "option address 't1687-exact16384.example'" \
+		&& ok "T16.87 mixed ($kind) publishes exact 16384-byte URI" \
+		|| bad "T16.87 mixed ($kind) publishes exact 16384-byte URI"
+	has_line "$R/etc/config/aetherproxy" "option address 't1687-after.example'" \
+		&& ok "T16.87 mixed ($kind) publishes valid neighbor after oversized line" \
+		|| bad "T16.87 mixed ($kind) publishes valid neighbor after oversized line"
+	! grep -Eq 't1687-secret-' "$R/etc/config/aetherproxy" "$R/var/run/aether-proxy/events.jsonl" "$R/etc/aether-proxy/state/sub.json" \
+		&& ok "T16.87 mixed ($kind) never writes or leaks oversized line credentials" \
+		|| bad "T16.87 mixed ($kind) never writes or leaks oversized line credentials"
+done
+
+cp "$R/etc/config/aetherproxy" "$T/t1687-allbad.before"
+: > "$R/calls.log"
+for kind in plain b64; do
+	BODY="$T/t1687-allbad-$kind.txt"
+	out=$(ap --json s_00000001 2>"$T/t1687-allbad-$kind.stderr"); rc=$?
+	expect "T16.87 all-oversized ($kind) exits nonzero" 1 "$rc"
+	expect "T16.87 all-oversized ($kind) reports SUB_NO_VALID_NODES" SUB_NO_VALID_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+	expect "T16.87 all-oversized ($kind) skips malformed=3" 3 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+	cmp -s "$T/t1687-allbad.before" "$R/etc/config/aetherproxy" \
+		&& ok "T16.87 all-oversized ($kind) preserves UCI bytes" \
+		|| bad "T16.87 all-oversized ($kind) preserves UCI bytes"
+	! grep -q '^init reload$' "$R/calls.log" \
+		&& ok "T16.87 all-oversized ($kind) does not reload daemon" \
+		|| bad "T16.87 all-oversized ($kind) does not reload daemon"
+	! printf '%s\n' "$out" | grep -Eq 't1687-secret-' \
+		&& ok "T16.87 all-oversized ($kind) output never echoes oversized input" \
+		|| bad "T16.87 all-oversized ($kind) output never echoes oversized input"
+done
+
+for kind in plain b64; do
+	BODY="$T/t1687-bulk-$kind.txt"
+	out=$(ap --json s_00000001 2>"$T/t1687-bulk-$kind.stderr"); rc=$?
+	expect "T16.87 >16 KiB total subscription of short valid lines ($kind) succeeds" 0 "$rc"
+	expect "T16.87 >16 KiB total subscription ($kind) records all 260 nodes" 260 \
+		"$(jget s_00000001.nodes < "$R/etc/aether-proxy/state/sub.json")"
+	has_line "$R/etc/config/aetherproxy" "option address 't1687-bulk-260.example.com'" \
+		&& ok "T16.87 >16 KiB total subscription ($kind) publishes 260th node" \
+		|| bad "T16.87 >16 KiB total subscription ($kind) publishes 260th node"
+done
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

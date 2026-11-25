@@ -566,7 +566,11 @@ function parse_new_protocol(scheme, payload) {
 }
 
 export function parse_line(line) {
-	line = trim(line ?? '', ' ');
+	let raw = line ?? '';
+	if (type(raw) != 'string' || length(raw) > C.URI_MAX_BYTES)
+		return skipped('malformed');
+
+	line = trim(raw, ' ');
 	if (line == '' || has_control_chars(line))
 		return skipped('malformed');
 
@@ -675,7 +679,7 @@ export function parse_body(text) {
 		if (trim(line, ' \t') == '')
 			continue;
 
-		let result = parse_line(trim(line, ' '));
+		let result = parse_line(line);
 		if (result.node != null) {
 			if (length(nodes) >= C.SUB_MAX_NODES)
 				return {

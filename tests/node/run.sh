@@ -527,5 +527,68 @@ grep -Fq "option label '中文 节点'" "$R/etc/config/aetherproxy" \
 	&& ok "T16.86 legal Chinese+space label written to UCI" \
 	|| bad "T16.86 legal Chinese+space label written to UCI"
 
+# T16.87: per-URI 16 KiB (16384-byte) limit on manual node import:
+# 16383/16384 bytes (including UTF-8 and space-padded non-empty lines) succeed;
+# 16385 bytes fail with CONFIG_INVALID/malformed without touching UCI or leaking credentials.
+make_root "$T/t1687"
+write_base_config
+python3 - "$T/t1687-uris" <<'PY'
+import os, sys
+out_dir = sys.argv[1]
+os.makedirs(out_dir, exist_ok=True)
+uuid = "11111111-2222-4333-8444-555555555555"
+
+def write_u(name, text):
+    with open(os.path.join(out_dir, name), "wb") as f:
+        f.write(text.encode("utf-8"))
+
+def ascii_uri(n, host):
+    p = f"vless://{uuid}@{host}:443?security=tls#"
+    return p + "a" * (n - len(p.encode("utf-8")))
+
+def utf8_uri(n, host):
+    p = f"vless://{uuid}@{host}:443?security=tls#🌟"
+    rem = n - len(p.encode("utf-8"))
+    return p + "中" * (rem // 3) + "a" * (rem % 3)
+
+def padded_uri(n, host):
+    return "  " + ascii_uri(n - 4, host) + "  "
+
+write_u("ascii-16383", ascii_uri(16383, "t1687-a16383.example"))
+write_u("ascii-16384", ascii_uri(16384, "t1687-a16384.example"))
+write_u("ascii-16385", ascii_uri(16385, "t1687-secret-a16385.example"))
+write_u("utf8-16384", utf8_uri(16384, "t1687-u16384.example"))
+write_u("utf8-16385", utf8_uri(16385, "t1687-secret-u16385.example"))
+write_u("padded-16384", padded_uri(16384, "t1687-p16384.example"))
+write_u("padded-16385", padded_uri(16385, "t1687-secret-p16385.example"))
+PY
+
+cp "$R/etc/config/aetherproxy" "$T/t1687.before"
+for name in ascii-16385 utf8-16385 padded-16385; do
+	uri_val="$(cat "$T/t1687-uris/$name")"
+	out="$(ap node import "$uri_val" --json $(import_opts) 2>"$T/t1687-$name.stderr")"; rc=$?
+	expect "T16.87 node import $name: exit code 2" 2 "$rc"
+	expect "T16.87 node import $name: code CONFIG_INVALID" CONFIG_INVALID "$(echo "$out" | jget code)"
+	expect "T16.87 node import $name: detail malformed" malformed "$(echo "$out" | jget detail)"
+	[ ! -s "$T/t1687-$name.stderr" ] && ok "T16.87 node import $name: stderr empty" \
+		|| bad "T16.87 node import $name: stderr empty" "$(cat "$T/t1687-$name.stderr")"
+	! printf '%s\n' "$out" | grep -Eq 't1687-secret|11111111-2222-4333-8444-555555555555' \
+		&& ok "T16.87 node import $name: output never echoes credentials" \
+		|| bad "T16.87 node import $name: output never echoes credentials" "$out"
+	cmp -s "$T/t1687.before" "$R/etc/config/aetherproxy" \
+		&& ok "T16.87 node import $name: UCI unchanged" \
+		|| bad "T16.87 node import $name: UCI unchanged"
+done
+
+for name in ascii-16383 ascii-16384 utf8-16384 padded-16384; do
+	uri_val="$(cat "$T/t1687-uris/$name")"
+	out="$(ap node import "$uri_val" --json $(import_opts) 2>"$T/t1687-$name.stderr")"; rc=$?
+	expect "T16.87 node import $name: exit code 0" 0 "$rc"
+	expect "T16.87 node import $name: ok true" true "$(echo "$out" | jget ok)"
+	[ ! -s "$T/t1687-$name.stderr" ] && ok "T16.87 node import $name: stderr empty" \
+		|| bad "T16.87 node import $name: stderr empty" "$(cat "$T/t1687-$name.stderr")"
+done
+expect "T16.87 node import: four compliant boundary nodes written to UCI" 4 "$(node_sections)"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
