@@ -65,12 +65,12 @@ export const cases = [
 		kind: 'timer_early_runner_running'
 	},
 	{
-		name: 'sleep started before PID published when timer exits early (stage 1)',
+		name: 'stage 1 publisher blocked on FIFO when timer exits (never unlocked)',
 		expect: 'PASS',
 		kind: 'pre_publish_sleep_timer_exit'
 	},
 	{
-		name: 'grace sleep started before PID published when timer exits early (stage 2)',
+		name: 'stage 2 grace publisher blocked on FIFO when timer exits (never unlocked)',
 		expect: 'PASS',
 		kind: 'pre_publish_grace_timer_exit'
 	}
@@ -637,42 +637,63 @@ function timer_early_runner_running_case() {
 	});
 }
 
-// Deterministic pre-publish early exit for stage 1 sleep:
-// Replaces $d/sleep with a FIFO after initial empty creation, so if timer spawns sleep
-// before publishing its PID, timer blocks on $d/sleep while sleep is ALREADY running.
-// The sleep shim never waits for $d/sleep to be non-empty: it immediately SIGKILLs
-// $PPID (timer) and stays alive via `exec /bin/sleep 30`.
+// Independent observer helper: waits until a process whose cmdline contains `target_path`
+// is actually blocked in kernel `wait_for_partner` (open(FIFO, O_WRONLY) with no reader),
+// records publisher & timer PIDs to `reached_file`, SIGKILLs timer (ppid), and exits.
+// Crucially: NEVER opens the FIFO to unblock it; sys.run itself must converge and reap.
+function write_observer_script(sb, name) {
+	let path = `${sb.base}/${name}`;
+	write_exec(path, join('\n', [
+		`#!${REAL_SH}`,
+		'target="$1"; reached="$2"; drain_once="$3"',
+		'if [ "$drain_once" = "1" ]; then cat "$target" >/dev/null 2>&1; fi',
+		'i=0',
+		'while [ "$i" -lt 400 ]; do',
+		'  for p in /proc/[0-9]*; do',
+		'    pid=${p#/proc/}',
+		'    [ "$pid" = "$$" ] && continue',
+		'    wchan=$(cat "$p/wchan" 2>/dev/null || true)',
+		'    [ "$wchan" = "wait_for_partner" ] || continue',
+		'    cmd=$(tr "\\0" " " <"$p/cmdline" 2>/dev/null || true)',
+		'    case "$cmd" in',
+		'      *"$target"*)',
+		'        stat=$(cat "$p/stat" 2>/dev/null || true)',
+		'        rest=${stat##*) }',
+		'        set -- $rest',
+		'        ppid=$2',
+		'        if [ -n "$ppid" ] && [ "$ppid" -gt 1 ]; then',
+		'          printf "%s %s\\n" "$pid" "$ppid" >"$reached"',
+		'          kill -KILL "$ppid" 2>/dev/null',
+		'          exit 0',
+		'        fi',
+		'        ;;',
+		'    esac',
+		'  done',
+		`  ${REAL_SLEEP} 0.01`,
+		'  i=$((i + 1))',
+		'done',
+		'exit 1'
+	]) + '\n');
+	return path;
+}
+
+// Stage 1 publisher blocks forever on FIFO $d/sleep (never unlocked by fixture).
+// Independent observer confirms publisher reached `wait_for_partner` and SIGKILLs timer.
 function pre_publish_sleep_timer_exit_case() {
 	return with_sandbox('prepub-s1', sb => {
-		let killed_flag = `${sb.base}/s1.killed`;
-		let killed_once = `${sb.base}/s1.once`;
+		let reached = `${sb.base}/s1.reached`;
+		let obs_sh = write_observer_script(sb, 'obs-s1.sh');
 		write_exec(`${sb.bin_dir}/sh`, join('\n', [
 			`#!${REAL_SH}`,
 			'if [ "$1" = "-c" ] && [ "$3" = "sh" ] && [ -d "$4" ]; then',
 			'  case "$4" in',
 			`    ${sb.tmp_root}/aether-proxy-run.*)`,
 			'      mkfifo -m 0600 "$4/sleep"',
-			'      (',
-			'        # Drain the initial empty creation (`wr "$sleeper" ""`), then hold.',
-			'        cat "$4/sleep" >/dev/null 2>&1',
-			`        i=0; while [ ! -f ${sprintf("'%s'", killed_flag)} ] && [ "$i" -lt 25 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
-			`        if [ ! -f ${sprintf("'%s'", killed_flag)} ]; then cat "$4/sleep" >/dev/null 2>&1; fi`,
-			'      ) </dev/null >/dev/null 2>&1 &',
+			`      setsid ${sprintf("'%s'", obs_sh)} "$4/sleep" ${sprintf("'%s'", reached)} 1 </dev/null >/dev/null 2>&1 &`,
 			'      ;;',
 			'  esac',
 			'fi',
 			`exec ${REAL_SH} "$@"`
-		]) + '\n');
-
-		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
-			`#!${REAL_SH}`,
-			`if [ ! -f ${sprintf("'%s'", killed_once)} ]; then`,
-			`  : >${sprintf("'%s'", killed_once)}`,
-			'  kill -KILL "$PPID" 2>/dev/null',
-			`  : >${sprintf("'%s'", killed_flag)}`,
-			`  exec ${REAL_SLEEP} 30`,
-			'fi',
-			`exec ${REAL_SLEEP} "$@"`
 		]) + '\n');
 
 		let obs = run_isolated_case(sb, {
@@ -684,45 +705,34 @@ function pre_publish_sleep_timer_exit_case() {
 		let err = check_common_invariants('pre_publish_sleep_timer_exit', obs);
 		if (err)
 			return err;
+		if (fs.lstat(reached) == null)
+			return failed('observer did not confirm stage 1 publisher blocked at fault point');
 		let r = obs.result;
 		if (r.code != -1 || r.timed_out || r.stderr == '' || obs.elapsed >= 3.0)
-			return failed(`expected bounded pre-publish handshake error: ${sprintf('%.J', obs)}`);
+			return failed(`expected bounded stage 1 blocked-publisher error: ${sprintf('%.J', obs)}`);
 		return 'PASS';
 	});
 }
 
-// Deterministic pre-publish early exit for stage 2 grace sleep:
-// Stage 1 sleep shim replaces $d/grace with a FIFO before exiting 0 so stage 2 blocks
-// on $d/grace. Stage 2 sleep shim never waits for $d/grace to be non-empty: it
-// immediately SIGKILLs $PPID (timer) and stays alive via `exec /bin/sleep 30`.
+// Stage 2 grace publisher blocks forever on FIFO $d/grace (never unlocked by fixture).
+// Stage 1 sleep shim plants FIFO $d/grace, launches independent observer, and exits 0;
+// observer confirms stage 2 publisher reached `wait_for_partner` and SIGKILLs timer.
 function pre_publish_grace_timer_exit_case() {
 	return with_sandbox('prepub-s2', sb => {
 		let stage1_seen = `${sb.base}/s1.seen`;
-		let timer_pid_file = `${sb.base}/timer.pid`;
-		let killed_flag = `${sb.base}/s2.killed`;
-		let killed_once = `${sb.base}/s2.once`;
+		let reached = `${sb.base}/s2.reached`;
+		let obs_sh = write_observer_script(sb, 'obs-s2.sh');
 		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
 			`#!${REAL_SH}`,
 			`if [ ! -f ${sprintf("'%s'", stage1_seen)} ]; then`,
 			`  : >${sprintf("'%s'", stage1_seen)}`,
-			`  printf "%s" "$PPID" >${sprintf("'%s'", timer_pid_file)}`,
 			'  d=$(dirname "$(readlink -f "/proc/$PPID/fd/2" 2>/dev/null)")',
 			'  if [ -d "$d" ] && [ -e "$d/grace" ]; then',
 			'    rm -f "$d/grace"',
 			'    mkfifo -m 0600 "$d/grace"',
-			'    (',
-			`      i=0; while [ ! -f ${sprintf("'%s'", killed_flag)} ] && [ "$i" -lt 40 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
-			`      if [ ! -f ${sprintf("'%s'", killed_flag)} ]; then cat "$d/grace" >/dev/null 2>&1; fi`,
-			'    ) </dev/null >/dev/null 2>&1 &',
+			`    setsid ${sprintf("'%s'", obs_sh)} "$d/grace" ${sprintf("'%s'", reached)} 0 </dev/null >/dev/null 2>&1 &`,
 			'  fi',
 			'  exit 0',
-			'fi',
-			`tpid=$(cat ${sprintf("'%s'", timer_pid_file)} 2>/dev/null)`,
-			`if [ -n "$tpid" ] && [ "$PPID" = "$tpid" ] && [ ! -f ${sprintf("'%s'", killed_once)} ]; then`,
-			`  : >${sprintf("'%s'", killed_once)}`,
-			'  kill -KILL "$PPID" 2>/dev/null',
-			`  : >${sprintf("'%s'", killed_flag)}`,
-			`  exec ${REAL_SLEEP} 30`,
 			'fi',
 			`exec ${REAL_SLEEP} "$@"`
 		]) + '\n');
@@ -736,9 +746,11 @@ function pre_publish_grace_timer_exit_case() {
 		let err = check_common_invariants('pre_publish_grace_timer_exit', obs);
 		if (err)
 			return err;
+		if (fs.lstat(reached) == null)
+			return failed('observer did not confirm stage 2 grace publisher blocked at fault point');
 		let r = obs.result;
 		if (r.code != -1 || r.timed_out || r.stderr == '' || obs.elapsed >= 3.5)
-			return failed(`expected bounded grace pre-publish handshake error: ${sprintf('%.J', obs)}`);
+			return failed(`expected bounded stage 2 blocked-publisher error: ${sprintf('%.J', obs)}`);
 		return 'PASS';
 	});
 }
