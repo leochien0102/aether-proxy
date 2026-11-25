@@ -661,8 +661,11 @@ function start_sequence(ctx, opts, signal_pending) {
 	record_step(ctx, 'render_validate', step_started);
 	if (!valid.ok) {
 		locked.close();
-		if (valid.code == 'PRECHECK_FAILED')
+		if (valid.code == 'PRECHECK_FAILED') {
+			setup_log(ctx);
 			log.event('error', 'PRECHECK_FAILED', { missing: valid.missing });
+			return { ok: false, code: 1, step: 'precheck', detail: valid.detail, missing: valid.missing, untouched: true };
+		}
 		return { ok: false, code: 1, step: 'render', detail: valid.detail, artifact: valid.artifact };
 	}
 

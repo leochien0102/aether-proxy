@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -53,7 +54,8 @@ printf 'engine-start {engine_name} %s %s\\n' "$$" "$*" >> "$STUB_LOG"
 	candidate.replace(path)
 
 
-def write_config(f, *, china_dns, direct_dns, direct_dns_enabled=False, chinadns_bin=None, mode='bypass_cn'):
+def write_config(f, *, china_dns, direct_dns, direct_dns_enabled=False, chinadns_bin=None, mode='bypass_cn',
+	boot_check_targets=None, boot_wait_timeout=None):
 	lines = [
 		"config main 'main'",
 		"\toption enabled '1'",
@@ -61,6 +63,10 @@ def write_config(f, *, china_dns, direct_dns, direct_dns_enabled=False, chinadns
 		"\toption node 'n_00000000000000000000000000000001'",
 		"\tlist lan_ifaces 'br-lan'",
 	]
+	if boot_wait_timeout is not None:
+		lines.append(f"\toption boot_wait_timeout '{boot_wait_timeout}'")
+	for target in (boot_check_targets or []):
+		lines.append(f"\tlist boot_check_targets '{target}'")
 	if chinadns_bin is not None:
 		lines.append(f"\toption chinadns_bin '{chinadns_bin}'")
 	lines += [
@@ -371,14 +377,132 @@ def scenario_live_reload_engine_switch(base):
 			f'state={st3}')
 
 
+def scenario_boot_wait_config_change(base):
+	# 6. Real --boot with synchronous barrier: valid config passes initial precheck,
+	#    config mutates to aether-dns + TLS during wait_network, then network is released.
+	#    Must reject untouched without running rollback/cleanup or publishing candidate.
+	f = gate.Fixture(base, 'boot-wait-aether-tls', 'chinadns-ng', '2025.08.09')
+	install_engine(f.bin / 'aether-dns', 'aether-dns', '1.0.0')
+
+	# Wrap ip stub to expose a deterministic barrier on `-4 route show default`.
+	ip_bin = f.bin / 'ip'
+	ip_orig = f.bin / 'ip-original'
+	ip_bin.rename(ip_orig)
+	ip_bin.write_text('''#!/bin/sh
+case " $* " in
+	*" -4 route show default "*)
+		if [ -f "$SYSROOT/boot-barrier-armed" ] && [ ! -f "$SYSROOT/boot-barrier-released" ]; then
+			touch "$SYSROOT/boot-barrier-entered"
+			i=0
+			while [ ! -f "$SYSROOT/boot-barrier-released" ] && [ "$i" -lt 400 ]; do
+				sleep 0.01
+				i=$((i + 1))
+			done
+		fi
+		;;
+esac
+exec "$(dirname "$0")/ip-original" "$@"
+''')
+	ip_bin.chmod(0o755)
+
+	# Pre-populate observable old system state BEFORE starting daemon --boot.
+	(f.root / 'nft-table').write_text('preexisting-table\n')
+	(f.root / 'tmp/dnsmasq.d/aether-proxy.conf').write_text('preexisting-dnsmasq\n')
+	(f.root / 'ip-rules').write_text('900: from all fwmark 0x80000/0x80000 lookup 233\n')
+	(f.root / 'ip-routes').write_text('local default dev lo table 233\n')
+	(f.run / 'current').mkdir(parents=True, exist_ok=True)
+	(f.run / 'current/chinadns.conf').write_text('preexisting-current\n')
+	(f.root / 'boot-barrier-armed').touch()
+
+	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	sock.bind(('127.0.0.1', 0))
+	sock.listen(4)
+	port = sock.getsockname()[1]
+	try:
+		write_config(f, china_dns=['114.114.114.114'], direct_dns=['tcp://9.9.9.9'],
+			direct_dns_enabled=False, boot_check_targets=[f'127.0.0.1:{port}'], boot_wait_timeout=20)
+
+		with f.daemon(boot=True) as child:
+			# Wait until daemon --boot passes initial precheck and enters wait_network barrier.
+			deadline = time.monotonic() + 10
+			while time.monotonic() < deadline and not (f.root / 'boot-barrier-entered').exists():
+				if child.poll() is not None:
+					raise AssertionError((child.returncode, (f.root / 'stderr').read_text()))
+				time.sleep(0.01)
+			check('boot-wait: passed initial precheck and entered wait_network barrier',
+				(f.root / 'boot-barrier-entered').exists() and f.state().get('waiting_network') is True,
+				f'state={f.state()}')
+
+			# Mutate config to aether-dns + unsupported tls:// during wait_network, then release network.
+			write_config(f, china_dns=['tls://dns.alidns.com@223.5.5.5'], direct_dns=['tcp://9.9.9.9'],
+				direct_dns_enabled=False, boot_check_targets=[f'127.0.0.1:{port}'], boot_wait_timeout=20)
+			(f.root / 'boot-barrier-released').touch()
+
+			f.wait_started(child)
+			st = f.state()
+			events = f.events()
+			calls = f.calls.read_text()
+
+			check('boot-wait: rejected in error state at precheck step',
+				st.get('state') == 'error' and st.get('failed_step') == 'precheck',
+				f'state={st}')
+			check('boot-wait: PRECHECK_FAILED and START_FAILED preserve engine, field and upstream diagnostic',
+				any(e.get('code') == 'PRECHECK_FAILED'
+					and 'dns_upstream:aether-dns:dns.china_dns' in (e.get('args', {}).get('missing') or [])
+					for e in events)
+				and any(e.get('code') == 'START_FAILED'
+					and 'aether-dns' in (e.get('args', {}).get('detail') or '')
+					and 'dns.china_dns' in (e.get('args', {}).get('detail') or '')
+					and 'tls://dns.alidns.com@223.5.5.5' in (e.get('args', {}).get('detail') or '')
+					for e in events),
+				f'events={events}')
+			check('boot-wait: preexisting old system state untouched (not deleted by rollback)',
+				(f.root / 'nft-table').exists() and (f.root / 'nft-table').read_text() == 'preexisting-table\n'
+				and (f.root / 'tmp/dnsmasq.d/aether-proxy.conf').exists()
+				and (f.root / 'tmp/dnsmasq.d/aether-proxy.conf').read_text() == 'preexisting-dnsmasq\n'
+				and (f.root / 'ip-rules').read_text() == '900: from all fwmark 0x80000/0x80000 lookup 233\n'
+				and (f.root / 'ip-routes').read_text() == 'local default dev lo table 233\n',
+				f'nft={(f.root / "nft-table").exists()} dnsmasq={(f.root / "tmp/dnsmasq.d/aether-proxy.conf").exists()} '
+				f'rules={(f.root / "ip-rules").read_text()!r} routes={(f.root / "ip-routes").read_text()!r}')
+			check('boot-wait: no rollback or cleanup commands executed',
+				'nft delete' not in calls and 'ip rule del' not in calls
+				and 'ip route flush' not in calls and 'dnsmasq ' not in calls,
+				f'calls={calls}')
+			check('boot-wait: candidate not published and no child processes started',
+				(f.run / 'current/chinadns.conf').read_text() == 'preexisting-current\n'
+				and 'engine-start' not in calls and 'xray run -c' not in calls
+				and not (f.root / 'chinadns.pid').exists() and not (f.root / 'xray.pid').exists(),
+				f'current={(f.run / "current/chinadns.conf").read_text()!r} calls={calls}')
+
+			# Restore valid config and send SIGHUP -> retries and starts running cleanly.
+			write_config(f, china_dns=['114.114.114.114'], direct_dns=['tcp://9.9.9.9'],
+				direct_dns_enabled=False, boot_check_targets=[f'127.0.0.1:{port}'], boot_wait_timeout=20)
+			child.send_signal(signal.SIGHUP)
+			deadline = time.monotonic() + 15
+			while time.monotonic() < deadline and f.state().get('state') != 'running':
+				if child.poll() is not None:
+					raise AssertionError((child.returncode, (f.root / 'stderr').read_text()))
+				time.sleep(0.03)
+			check('boot-wait: recovers to running after config fix + SIGHUP',
+				f.state().get('state') == 'running'
+				and f.state().get('components', {}).get('dns', {}).get('engine') == 'aether-dns'
+				and '114.114.114.114' in (f.run / 'current/chinadns.conf').read_text(),
+				f'state={f.state()}')
+	finally:
+		sock.close()
+
+
 def main():
+	boot_only = '--boot-only' in sys.argv
 	with tempfile.TemporaryDirectory(prefix='.engine-upstream-', dir=ROOT / 'tests/daemon') as temp:
 		base = Path(temp)
-		scenario_aether_dns_tls_cold(base)
-		scenario_aether_dns_supported_and_unused_direct(base)
-		scenario_chinadns_ng_tls_allowed(base)
-		scenario_live_reload_same_engine(base)
-		scenario_live_reload_engine_switch(base)
+		if not boot_only:
+			scenario_aether_dns_tls_cold(base)
+			scenario_aether_dns_supported_and_unused_direct(base)
+			scenario_chinadns_ng_tls_allowed(base)
+			scenario_live_reload_same_engine(base)
+			scenario_live_reload_engine_switch(base)
+		scenario_boot_wait_config_change(base)
 	print(f'T16.82 engine upstream compat: {passed} passed, {failed} failed', flush=True)
 	return 1 if failed else 0
 
