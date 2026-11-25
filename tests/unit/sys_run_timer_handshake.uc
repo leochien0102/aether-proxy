@@ -63,6 +63,16 @@ export const cases = [
 		name: 'timer exits early while runner is still running',
 		expect: 'PASS',
 		kind: 'timer_early_runner_running'
+	},
+	{
+		name: 'sleep started before PID published when timer exits early (stage 1)',
+		expect: 'PASS',
+		kind: 'pre_publish_sleep_timer_exit'
+	},
+	{
+		name: 'grace sleep started before PID published when timer exits early (stage 2)',
+		expect: 'PASS',
+		kind: 'pre_publish_grace_timer_exit'
 	}
 ];
 
@@ -627,6 +637,112 @@ function timer_early_runner_running_case() {
 	});
 }
 
+// Deterministic pre-publish early exit for stage 1 sleep:
+// Replaces $d/sleep with a FIFO after initial empty creation, so if timer spawns sleep
+// before publishing its PID, timer blocks on $d/sleep while sleep is ALREADY running.
+// The sleep shim never waits for $d/sleep to be non-empty: it immediately SIGKILLs
+// $PPID (timer) and stays alive via `exec /bin/sleep 30`.
+function pre_publish_sleep_timer_exit_case() {
+	return with_sandbox('prepub-s1', sb => {
+		let killed_flag = `${sb.base}/s1.killed`;
+		let killed_once = `${sb.base}/s1.once`;
+		write_exec(`${sb.bin_dir}/sh`, join('\n', [
+			`#!${REAL_SH}`,
+			'if [ "$1" = "-c" ] && [ "$3" = "sh" ] && [ -d "$4" ]; then',
+			'  case "$4" in',
+			`    ${sb.tmp_root}/aether-proxy-run.*)`,
+			'      mkfifo -m 0600 "$4/sleep"',
+			'      (',
+			'        # Drain the initial empty creation (`wr "$sleeper" ""`), then hold.',
+			'        cat "$4/sleep" >/dev/null 2>&1',
+			`        i=0; while [ ! -f ${sprintf("'%s'", killed_flag)} ] && [ "$i" -lt 25 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
+			`        if [ ! -f ${sprintf("'%s'", killed_flag)} ]; then cat "$4/sleep" >/dev/null 2>&1; fi`,
+			'      ) </dev/null >/dev/null 2>&1 &',
+			'      ;;',
+			'  esac',
+			'fi',
+			`exec ${REAL_SH} "$@"`
+		]) + '\n');
+
+		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
+			`#!${REAL_SH}`,
+			`if [ ! -f ${sprintf("'%s'", killed_once)} ]; then`,
+			`  : >${sprintf("'%s'", killed_once)}`,
+			'  kill -KILL "$PPID" 2>/dev/null',
+			`  : >${sprintf("'%s'", killed_flag)}`,
+			`  exec ${REAL_SLEEP} 30`,
+			'fi',
+			`exec ${REAL_SLEEP} "$@"`
+		]) + '\n');
+
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', `exec ${REAL_SLEEP} 30` ],
+			opts: { timeout: 20, quiet: true },
+			use_bin: true,
+			guard_s: 6
+		});
+		let err = check_common_invariants('pre_publish_sleep_timer_exit', obs);
+		if (err)
+			return err;
+		let r = obs.result;
+		if (r.code != -1 || r.timed_out || r.stderr == '' || obs.elapsed >= 3.0)
+			return failed(`expected bounded pre-publish handshake error: ${sprintf('%.J', obs)}`);
+		return 'PASS';
+	});
+}
+
+// Deterministic pre-publish early exit for stage 2 grace sleep:
+// Stage 1 sleep shim replaces $d/grace with a FIFO before exiting 0 so stage 2 blocks
+// on $d/grace. Stage 2 sleep shim never waits for $d/grace to be non-empty: it
+// immediately SIGKILLs $PPID (timer) and stays alive via `exec /bin/sleep 30`.
+function pre_publish_grace_timer_exit_case() {
+	return with_sandbox('prepub-s2', sb => {
+		let stage1_seen = `${sb.base}/s1.seen`;
+		let timer_pid_file = `${sb.base}/timer.pid`;
+		let killed_flag = `${sb.base}/s2.killed`;
+		let killed_once = `${sb.base}/s2.once`;
+		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
+			`#!${REAL_SH}`,
+			`if [ ! -f ${sprintf("'%s'", stage1_seen)} ]; then`,
+			`  : >${sprintf("'%s'", stage1_seen)}`,
+			`  printf "%s" "$PPID" >${sprintf("'%s'", timer_pid_file)}`,
+			'  d=$(dirname "$(readlink -f "/proc/$PPID/fd/2" 2>/dev/null)")',
+			'  if [ -d "$d" ] && [ -e "$d/grace" ]; then',
+			'    rm -f "$d/grace"',
+			'    mkfifo -m 0600 "$d/grace"',
+			'    (',
+			`      i=0; while [ ! -f ${sprintf("'%s'", killed_flag)} ] && [ "$i" -lt 40 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
+			`      if [ ! -f ${sprintf("'%s'", killed_flag)} ]; then cat "$d/grace" >/dev/null 2>&1; fi`,
+			'    ) </dev/null >/dev/null 2>&1 &',
+			'  fi',
+			'  exit 0',
+			'fi',
+			`tpid=$(cat ${sprintf("'%s'", timer_pid_file)} 2>/dev/null)`,
+			`if [ -n "$tpid" ] && [ "$PPID" = "$tpid" ] && [ ! -f ${sprintf("'%s'", killed_once)} ]; then`,
+			`  : >${sprintf("'%s'", killed_once)}`,
+			'  kill -KILL "$PPID" 2>/dev/null',
+			`  : >${sprintf("'%s'", killed_flag)}`,
+			`  exec ${REAL_SLEEP} 30`,
+			'fi',
+			`exec ${REAL_SLEEP} "$@"`
+		]) + '\n');
+
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', `trap '' TERM; exec ${REAL_SLEEP} 30` ],
+			opts: { timeout: 1, quiet: true },
+			use_bin: true,
+			guard_s: 6
+		});
+		let err = check_common_invariants('pre_publish_grace_timer_exit', obs);
+		if (err)
+			return err;
+		let r = obs.result;
+		if (r.code != -1 || r.timed_out || r.stderr == '' || obs.elapsed >= 3.5)
+			return failed(`expected bounded grace pre-publish handshake error: ${sprintf('%.J', obs)}`);
+		return 'PASS';
+	});
+}
+
 export function run(c) {
 	if (c.kind == 'normal_fast')
 		return normal_fast_case();
@@ -648,5 +764,9 @@ export function run(c) {
 		return timer_early_runner_done_case();
 	if (c.kind == 'timer_early_runner_running')
 		return timer_early_runner_running_case();
+	if (c.kind == 'pre_publish_sleep_timer_exit')
+		return pre_publish_sleep_timer_exit_case();
+	if (c.kind == 'pre_publish_grace_timer_exit')
+		return pre_publish_grace_timer_exit_case();
 	return failed('unknown test kind');
 };
