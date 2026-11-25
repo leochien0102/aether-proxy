@@ -874,5 +874,11 @@ else
 	bad 'T10.71 real monitor failure completions survive persist_state'
 fi
 
+if python3 "$ROOT/tests/reload/dns-ready.py"; then
+	ok 'T16.91 real reload waits for formal DNS readiness (forward and rollback)'
+else
+	bad 'T16.91 real reload waits for formal DNS readiness (forward and rollback)'
+fi
+
 echo "reload: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

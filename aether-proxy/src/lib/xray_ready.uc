@@ -327,3 +327,54 @@ export function published(ctx, child, on_signal) {
 		fs.readfile(`${dir}/${C.ARTIFACT_FILES.xray}`));
 	return result.ok ? wait(ctx, child, result.required, on_signal) : result;
 };
+
+export function dns_requirements(chinadns_text) {
+	if (type(chinadns_text) != 'string')
+		return failure('missing published DNS artifact');
+	let address = null, port = null;
+	for (let line in split(chinadns_text, '\n')) {
+		let value = trim(replace(line, /(^|[[:space:]]+)#.*$/, ''));
+		if (value == '')
+			continue;
+		let addr = match(value, /^bind-addr[[:space:]]+(.+)$/);
+		if (addr != null) {
+			let candidate = trim(addr[1]);
+			if (address != null)
+				return failure('duplicate DNS bind-addr directive');
+			if (net.address_hex(candidate) == null)
+				return failure(`invalid DNS bind-addr: ${candidate}`);
+			address = candidate;
+			continue;
+		}
+		if (match(value, /^bind-addr($|[[:space:]])/) != null)
+			return failure('empty DNS bind-addr directive');
+		let bind_port = match(value, /^bind-port[[:space:]]+(.+)$/);
+		if (bind_port != null) {
+			let raw = trim(bind_port[1]);
+			if (port != null)
+				return failure('duplicate DNS bind-port directive');
+			if (match(raw, /^[1-9][0-9]*$/) == null || +raw > 65535)
+				return failure(`invalid DNS bind-port: ${raw}`);
+			port = +raw;
+			continue;
+		}
+		if (match(value, /^bind-port($|[[:space:]])/) != null)
+			return failure('empty DNS bind-port directive');
+	}
+	if (address == null)
+		return failure('missing DNS bind-addr directive');
+	if (port == null)
+		return failure('missing DNS bind-port directive');
+	return {
+		ok: true,
+		required: map([ 'udp', 'tcp' ], protocol => ({ address, port, protocol, role: 'dns' }))
+	};
+};
+
+// Formal DNS readiness for reload forward/rollback: read current/chinadns.conf afresh
+// so each generation checks its own published or restored bind-addr and bind-port.
+export function published_dns(ctx, child, on_signal) {
+	let dir = replace(ctx.root ?? '', /\/$/, '') + (ctx.run_dir ?? C.RUN_DIR) + '/' + C.DAEMON_CURRENT_DIR;
+	let result = dns_requirements(fs.readfile(`${dir}/${C.ARTIFACT_FILES.chinadns}`));
+	return result.ok ? wait(ctx, child, result.required, on_signal, { label: 'formal DNS' }) : result;
+};

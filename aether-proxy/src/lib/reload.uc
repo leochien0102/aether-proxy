@@ -181,9 +181,15 @@ function start_child(daemon, key, name, argv) {
 	if (child.pid() == null)
 		return `cannot start ${name}`;
 	// Forward and rollback restarts have the same readiness contract as startup.
-	// Returning at fork time would count the planned gap in the post-reload probe.
+	// Returning at fork time would count the planned gap in the post-reload probe
+	// or HUP dnsmasq before formal DNS is listening.
 	if (key == 'xray') {
 		let ready = xray_ready.published(daemon.ctx, child);
+		if (!ready.ok)
+			return ready.detail;
+	}
+	if (key == 'dns') {
+		let ready = xray_ready.published_dns(daemon.ctx, child);
 		if (!ready.ok)
 			return ready.detail;
 	}
@@ -268,7 +274,10 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 			let bin = old_components[C.CHINADNS_COMPONENT].path;
 			let err = start_child(daemon, 'dns', supervise.dns_name(bin),
 				[ bin, '-C', `${current}/${C.ARTIFACT_FILES.chinadns}` ]);
-			if (err != null) log_failure(daemon, 'rollback_chinadns', err);
+			if (err != null) {
+				log_failure(daemon, 'rollback_chinadns', err);
+				push(errors, `rollback_chinadns: ${err}`);
+			}
 			else {
 				let hup = apply.dnsmasq_hup(daemon.ctx);
 				if (!hup.ok) log_failure(daemon, 'rollback_dnsmasq_hup', hup.detail);
