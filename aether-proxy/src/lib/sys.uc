@@ -8,7 +8,6 @@ import * as log from 'aetherproxy.log';
 
 let last_error = null;
 let last_lock_retryable = false;
-let run_seq = 0;
 
 // fs.open() and fs.popen() failures do not always set fs.error() in ucode 2025.07.18
 // (verified on the pinned build), so never print it bare.
@@ -17,18 +16,20 @@ function fs_err() {
 }
 
 // Runs inside `sh -c`. Needs a wrapper because ucode has no way to capture stdout and
-// stderr separately: stderr goes to a mktemp file, and the exit code, timeout flag, and
-// that file's path are appended to stdout after a marker line. argv arrives as "$@", so
-// nothing from the caller is ever interpolated into the script text.
+// stderr separately: all per-invocation files (stdout, stderr, wrapper diagnostics,
+// and timer handshake files) live inside a 0700 private directory created by run()
+// before spawning `sh`. argv arrives as "$@", so nothing from the caller is ever
+// interpolated into the script text.
 const WRAPPER = join(' ', [
-	'e=$(mktemp ' + C.TMP_DIR + '/aether-proxy-sys.XXXXXX) ||',
-	'{ printf "\\n@@AP-RC@@ 125 - false -\\n"; exit 125; };',
-	'helper=$e.wrapper; : >"$helper"; exec 2>>"$helper";',
-	'timeout=$1; shift; timer=-;',
+	'd=$1; timeout=$2; shift 2;',
+	'exec >"$d/stdout" || exit 125;',
+	'e=$d/stderr; : >"$e" || exit 125;',
+	'helper=$d/wrapper; : >"$helper" || exit 125; exec 2>>"$helper";',
+	'timer=-;',
 	'if [ "$timeout" = "-" ]; then',
 	'  "$@" </dev/null 2>"$e"; rc=$?; timed=false;',
 	'else',
-	'  done=$e.done; timed_file=$e.timeout; sleeper=$e.sleep; grace=$e.grace;',
+	'  done=$d/done; timed_file=$d/timeout; sleeper=$d/sleep; grace=$d/grace;',
 	'  : >"$sleeper"; : >"$grace";',
 	'  ( exec "$@" </dev/null 2>>"$e" ) 2>>"$helper" & runner=$!;',
 	// Cancel the sleeps with KILL, not the timer shell with TERM: rc.common may have
@@ -59,9 +60,54 @@ const WRAPPER = join(' ', [
 	'  ""|Terminated|Killed|*"can\'t kill pid"*|*"No such process"*) ;;',
 	'  *) printf "%s\\n" "$line" >>"$e" ;; esac; done <"$helper";',
 	'rm -f "$helper" 2>>"$e";',
-	'printf "\\n@@AP-RC@@ %s %s %s\\n" "$rc" "$e" "$timed"'
+	'printf "\\n@@AP-RC@@ %s %s\\n" "$rc" "$timed"'
 ]);
 const MARKER = "\n@@AP-RC@@ ";
+const RUN_FILES = [ 'stdout', 'stderr', 'wrapper', 'done', 'timeout', 'sleep', 'grace' ];
+
+function random_hex(n) {
+	let fp = fs.open(C.RANDOM_DEVICE, 'r');
+	if (fp == null)
+		return { ok: false, error: `open ${C.RANDOM_DEVICE}: ${fs_err()}` };
+	let bytes = fp.read(n);
+	let rerr = fs.error();
+	let closed = fp.close();
+	if (!closed || bytes == null || length(bytes) != n)
+		return { ok: false, error: `read ${C.RANDOM_DEVICE}: ${rerr ?? fs_err()}` };
+	let out = '';
+	for (let i = 0; i < n; i++)
+		out += sprintf('%02x', ord(bytes, i));
+	return { ok: true, hex: out };
+}
+
+function create_run_dir() {
+	for (let attempt = 0; attempt < 8; attempt++) {
+		let rnd = random_hex(12);
+		if (!rnd.ok)
+			return rnd;
+		let path = `${C.TMP_DIR}/aether-proxy-run.${rnd.hex}`;
+		// Exclusive 0700 mkdir keeps capture files inaccessible to other users even under
+		// a loose caller umask, without mutating the umask inherited by the target command.
+		if (fs.mkdir(path, 0700))
+			return { ok: true, path };
+		let err = fs_err();
+		if (err != 'File exists')
+			return { ok: false, error: `cannot create ${path}: ${err}` };
+	}
+	return { ok: false, error: `cannot create private temp dir in ${C.TMP_DIR}: too many collisions` };
+}
+
+function cleanup_run_dir(dir) {
+	let errors = [];
+	for (let name in RUN_FILES) {
+		let path = `${dir}/${name}`;
+		if (fs.lstat(path) != null && !fs.unlink(path))
+			push(errors, `cannot remove ${path}: ${fs_err()}`);
+	}
+	if (!fs.rmdir(dir))
+		push(errors, `cannot remove ${dir}: ${fs_err()}`);
+	return errors;
+}
 
 // Keep logged stderr bounded without losing the original command's captured stderr.
 function first_line(s, max) {
@@ -100,52 +146,54 @@ function run(argv, opts) {
 
 	let timeout = opts.timeout == null ? '-' : `${opts.timeout}`;
 	let res = { code: -1, stdout: '', stderr: '', timed_out: false };
-	// The wrapper writes to a file, not a pipe: uloop's SIGCHLD handler has no SA_RESTART,
-	// so a supervised child exiting mid-read cut popen() reads short (EINTR) and the
-	// result was lost. system() retries waitpid() on EINTR and leaves SIGCHLD alone.
-	run_seq++;
-	let out_path = `${C.TMP_DIR}/aether-proxy-run.${fs.readlink('/proc/self') ?? 'x'}.${run_seq}`;
-	let wrc = system([ 'sh', '-c', 'exec >"$1" || exit 125; shift; ' + WRAPPER, 'sh', out_path, timeout, ...args ]);
-	let text = fs.readfile(out_path);
-
-	if (text != null && !fs.unlink(out_path))
-		res.stderr = `(cannot remove ${out_path}: ${fs_err()})`;
-
-	if (text == null) {
-		res.stderr = `wrapper produced no result (sh exit ${wrc})`;
+	// The wrapper writes to files inside a per-call private dir, not a pipe: uloop's
+	// SIGCHLD handler has no SA_RESTART, so a supervised child exiting mid-read cut
+	// popen() reads short (EINTR) and the result was lost. system() retries waitpid()
+	// on EINTR and leaves SIGCHLD alone.
+	let created = create_run_dir();
+	if (!created.ok) {
+		res.stderr = created.error;
 	}
 	else {
-		// The leading newline sidesteps rindex() failing to report a match at offset 0
-		// (seen on the pinned ucode build) when the command printed nothing.
-		let out = '\n' + text;
-		let pos = rindex(out, MARKER);
+		let dir = created.path;
+		let out_path = `${dir}/stdout`;
+		let err_path = `${dir}/stderr`;
+		let wrc = system([ 'sh', '-c', WRAPPER, 'sh', dir, timeout, ...args ]);
+		let text = fs.readfile(out_path);
 
-		if (pos < 0) {
-			res.stdout = substr(out, 1);
+		if (text == null) {
 			res.stderr = `wrapper produced no result (sh exit ${wrc})`;
 		}
 		else {
-			let m = match(substr(out, pos + length(MARKER)), /^([0-9]+) ([^ ]+) (true|false)\n$/);
+			// The leading newline sidesteps rindex() failing to report a match at offset 0
+			// (seen on the pinned ucode build) when the command printed nothing.
+			let out = '\n' + text;
+			let pos = rindex(out, MARKER);
 
-			res.stdout = substr(out, 1, pos - 1);
-
-			if (m) {
-				res.code = +m[1];
-				res.timed_out = m[3] == 'true';
-
-				if (m[2] == '-') {
-					res.stderr = 'mktemp failed';
-				}
-				else {
-					res.stderr = fs.readfile(m[2]) ?? `cannot read ${m[2]}: ${fs_err()}`;
-
-					if (!fs.unlink(m[2]))
-						res.stderr += `\n(cannot remove ${m[2]}: ${fs_err()})`;
-				}
+			if (pos < 0) {
+				res.stdout = substr(out, 1);
+				res.stderr = `wrapper produced no result (sh exit ${wrc})`;
 			}
 			else {
-				res.stderr = 'wrapper result unparsable';
+				let m = match(substr(out, pos + length(MARKER)), /^([0-9]+) (true|false)\n$/);
+
+				res.stdout = substr(out, 1, pos - 1);
+
+				if (m) {
+					res.code = +m[1];
+					res.timed_out = m[2] == 'true';
+					res.stderr = fs.readfile(err_path) ?? `cannot read ${err_path}: ${fs_err()}`;
+				}
+				else {
+					res.stderr = 'wrapper result unparsable';
+				}
 			}
+		}
+
+		let cleanup_errors = cleanup_run_dir(dir);
+		if (length(cleanup_errors)) {
+			let note = `(${join('; ', cleanup_errors)})`;
+			res.stderr = res.stderr == '' ? note : `${res.stderr}\n${note}`;
 		}
 	}
 
