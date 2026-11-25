@@ -34,6 +34,7 @@ const EVENTS = {
 	IPV6_PRESENT: 'warn',
 	SUB_UPDATED: 'notice',
 	SUB_FETCH_FAILED: 'error', SUB_DECODE_FAILED: 'error', SUB_FORMAT_UNSUPPORTED: 'error',
+	SUB_TOO_MANY_NODES: 'error',
 	SUB_APPLY_INVALID: 'error', SUB_PROXY_UNAVAILABLE: 'error',
 	SUB_SHRANK: 'warn',
 	UPDATE_AVAILABLE: 'notice',

@@ -631,10 +631,14 @@ function render_current_node(ctx, content) {
 function error_for_parse(parsed) {
 	if (parsed.error == 'SUB_NO_VALID_NODES')
 		return { code: parsed.error, detail: 'subscription contains no valid nodes' };
+	if (parsed.error == 'SUB_TOO_MANY_NODES')
+		return { code: parsed.error, detail: `subscription exceeds maximum of ${C.SUB_MAX_NODES} nodes` };
 	if (parsed.error == 'SUB_FORMAT_UNSUPPORTED')
 		return { code: parsed.error, detail: 'Clash YAML subscriptions are not supported' };
 	if (parsed.error == 'SUB_DECODE_FAILED')
 		return { code: parsed.error, detail: 'subscription body could not be decoded' };
+	if (!parsed?.ok)
+		return { code: 'SUB_APPLY_INVALID', detail: `subscription parse failed: ${parsed?.error ?? 'unknown error'}` };
 	return null;
 }
 

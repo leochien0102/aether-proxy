@@ -418,3 +418,7 @@ export const NODE_FAILOVER_MAX_NODES = 64;
 export const NODE_FAILOVER_FAILURES = 3;
 export const NODE_FAILOVER_COOLDOWN_SECS = 600;
 export const NODE_FAILOVER_CANDIDATE_SECS = 1800;
+
+// T16.85 (M13 part 1): hard cap on parsed candidate nodes per subscription body
+// before strong-key deduplication (distinct from NODE_FAILOVER_MAX_NODES).
+export const SUB_MAX_NODES = 1024;

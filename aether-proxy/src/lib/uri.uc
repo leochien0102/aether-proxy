@@ -3,6 +3,7 @@
 // Parses supported subscription URI formats without performing I/O (docs/06 "URI 格式").
 // Optional sharing parameters follow docs/05 "config node" (T9.14).
 
+import * as C from 'aetherproxy.const';
 import * as config from 'aetherproxy.config';
 
 function skipped(reason) {
@@ -568,6 +569,13 @@ function increment(counts, reason) {
 	counts[reason] = (counts[reason] ?? 0) + 1;
 }
 
+function sorted_counts(counts) {
+	let out = {};
+	for (let reason in sort(keys(counts)))
+		out[reason] = counts[reason];
+	return out;
+}
+
 export function parse_body(text) {
 	let raw = replace(trim(text ?? ''), /\r\n/g, '\n');
 	if (substr(raw, 0, 8) == 'proxies:' || index(raw, '\nproxies:') >= 0)
@@ -589,6 +597,11 @@ export function parse_body(text) {
 
 		let result = parse_line(line);
 		if (result.node != null) {
+			if (length(nodes) >= C.SUB_MAX_NODES)
+				return {
+					ok: false, nodes: [], skipped: sorted_counts(skipped_counts),
+					warnings: [], error: 'SUB_TOO_MANY_NODES'
+				};
 			// Strong-key deduplication happens later, in sub.plan (06 step 1).
 			push(nodes, result.node);
 			for (let warning in (result.warnings ?? []))
@@ -599,9 +612,7 @@ export function parse_body(text) {
 		}
 	}
 
-	let skipped = {};
-	for (let reason in sort(keys(skipped_counts)))
-		skipped[reason] = skipped_counts[reason];
+	let skipped = sorted_counts(skipped_counts);
 
 	if (!length(nodes))
 		return { ok: false, nodes, skipped, warnings, error: 'SUB_NO_VALID_NODES' };

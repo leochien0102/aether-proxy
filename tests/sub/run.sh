@@ -708,5 +708,148 @@ expect 'T16.21 duplicate import succeeds' 0 "$rc"
 expect 'T16.21 duplicate import is recognized' true "$(printf '%s\n' "$out" | jget duplicate)"
 expect 'T16.21 duplicate import does not repeat entry' "$manual" "$(roster)"
 
+# T16.85: subscription candidate limit (1024 allowed, 1025 fails without touching UCI).
+make_root "$T/root-t1685"
+cat > "$R/etc/config/aetherproxy" <<'EOF'
+config global 'main'
+	option enabled '1'
+	option mode 'gfw'
+	option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	list failover_nodes 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	list failover_nodes 'n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+config subscription 's_00000001'
+	option enabled '1'
+	option name 'first'
+	option url 'https://sub-a.example/list'
+	option fetch_via 'direct'
+
+config subscription 's_00000002'
+	option enabled '1'
+	option name 'second'
+	option url 'https://sub-b.example/list'
+	option fetch_via 'direct'
+
+config node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+	option label 'Edge One'
+	option source 's_00000001'
+	option protocol 'vless'
+	option address 'edge.example.com'
+	option port '443'
+	option uuid '11111111-2222-4333-8444-555555555555'
+	option transport 'ws'
+	option security 'tls'
+	option encryption 'none'
+	option sni 'edge.example.com'
+	option path '/ws'
+	option host 'cdn.example.com'
+
+config node 'n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+	option label 'Edge Two'
+	option source 's_00000001'
+	option protocol 'vless'
+	option address 'edge2.example.com'
+	option port '443'
+	option uuid '22222222-2222-4333-8444-555555555555'
+	option transport 'ws'
+	option security 'tls'
+	option encryption 'none'
+	option sni 'edge2.example.com'
+	option path '/ws'
+	option host 'cdn2.example.com'
+EOF
+printf '{"s_00000001":{"last_attempt":1000,"last_ok":1000,"nodes":2,"skipped":{},"error":null}}\n' > "$R/etc/aether-proxy/state/sub.json"
+printf '{"state":"running"}\n' > "$R/var/run/aether-proxy/state.json"
+
+python3 - "$T/t1685-1025-plain.txt" "$T/t1685-1025-b64.txt" "$T/t1685-1024-valid.txt" <<'PY'
+import base64, sys
+plain_1025, b64_1025, valid_1024 = sys.argv[1:4]
+lines = [
+    f"trojan://secret-pass-t1685-{i}@limit-{i}.example:443#secret-label-t1685-{i}"
+    for i in range(1, 1026)
+]
+body_1025 = "\n".join(lines) + "\n"
+with open(plain_1025, "w", encoding="utf-8") as f:
+    f.write(body_1025)
+with open(b64_1025, "w", encoding="utf-8") as f:
+    f.write(base64.b64encode(body_1025.encode("utf-8")).decode("ascii") + "\n")
+valid_lines = [
+    "vless://11111111-2222-4333-8444-555555555555@edge.example.com:443?type=ws&security=tls&sni=edge.example.com&path=%2Fws&host=cdn.example.com#Edge%20One",
+    "vless://33333333-2222-4333-8444-555555555555@edge3.example.com:443?type=ws&security=tls&sni=edge3.example.com&path=%2Fws&host=cdn3.example.com#Edge%20Three",
+]
+valid_lines.extend([valid_lines[1]] * 1022)
+with open(valid_1024, "w", encoding="utf-8") as f:
+    f.write("\n".join(valid_lines) + "\n")
+PY
+
+cp "$R/etc/config/aetherproxy" "$T/t1685.before"
+BODY="$T/t1685-1025-plain.txt"
+out_human=$(ap s_00000001 2>&1); rc=$?
+expect 'T16.85 1025-node plaintext update exits nonzero' 1 "$rc"
+printf '%s\n' "$out_human" | grep -Fq 'SUB_TOO_MANY_NODES' \
+	&& ok 'T16.85 human output reports SUB_TOO_MANY_NODES' \
+	|| bad 'T16.85 human output reports SUB_TOO_MANY_NODES' "$out_human"
+! printf '%s\n' "$out_human" | grep -Eq 'secret-pass-t1685|secret-label-t1685|limit-[0-9]+\.example' \
+	&& ok 'T16.85 human output does not echo raw URI or credentials' \
+	|| bad 'T16.85 human output does not echo raw URI or credentials' "$out_human"
+cmp -s "$T/t1685.before" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.85 1025-node plaintext preserves UCI bytes' \
+	|| bad 'T16.85 1025-node plaintext preserves UCI bytes'
+
+out=$(ap --json s_00000001 2>"$T/t1685-json.stderr"); rc=$?
+expect 'T16.85 1025-node JSON update exits nonzero' 1 "$rc"
+expect 'T16.85 1025-node JSON reports SUB_TOO_MANY_NODES' SUB_TOO_MANY_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+expect 'T16.85 1025-node JSON adds zero nodes' 0 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+expect 'T16.85 status record records SUB_TOO_MANY_NODES' SUB_TOO_MANY_NODES "$(jget s_00000001.error < "$R/etc/aether-proxy/state/sub.json")"
+expect 'T16.85 status record preserves prior last_ok' 1000 "$(jget s_00000001.last_ok < "$R/etc/aether-proxy/state/sub.json")"
+expect 'T16.85 status record preserves existing node count' 2 "$(jget s_00000001.nodes < "$R/etc/aether-proxy/state/sub.json")"
+has_line "$R/var/run/aether-proxy/events.jsonl" '"code": "SUB_TOO_MANY_NODES"' \
+	&& ok 'T16.85 events log records SUB_TOO_MANY_NODES' \
+	|| bad 'T16.85 events log records SUB_TOO_MANY_NODES'
+! grep -Eq 'secret-pass-t1685|secret-label-t1685|limit-[0-9]+\.example' "$R/var/run/aether-proxy/events.jsonl" "$R/etc/aether-proxy/state/sub.json" \
+	&& ok 'T16.85 events and status files never echo raw URI or credentials' \
+	|| bad 'T16.85 events and status files never echo raw URI or credentials'
+! grep -q '^init reload$' "$R/calls.log" \
+	&& ok 'T16.85 rejected over-limit update does not reload daemon' \
+	|| bad 'T16.85 rejected over-limit update does not reload daemon'
+cmp -s "$T/t1685.before" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.85 1025-node JSON preserves UCI bytes, current node, and failover roster' \
+	|| bad 'T16.85 1025-node JSON preserves UCI bytes, current node, and failover roster'
+
+BODY="$T/t1685-1025-b64.txt"
+out=$(ap --json s_00000001 2>"$T/t1685-b64.stderr"); rc=$?
+expect 'T16.85 1025-node Base64 update exits nonzero' 1 "$rc"
+expect 'T16.85 1025-node Base64 reports SUB_TOO_MANY_NODES' SUB_TOO_MANY_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+cmp -s "$T/t1685.before" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.85 1025-node Base64 preserves UCI bytes' \
+	|| bad 'T16.85 1025-node Base64 preserves UCI bytes'
+
+# Neighboring valid subscription still publishes while s_00000001 fails with SUB_TOO_MANY_NODES.
+BODY="$T/t1685-1025-plain.txt"
+STUB_CURL_BODY_ALT="$FIX/one-node.txt"
+out=$(ap --json 2>"$T/t1685-multi.stderr"); rc=$?
+unset STUB_CURL_BODY_ALT
+expect 'T16.85 multi-sub with one over-limit exits nonzero' 1 "$rc"
+expect 'T16.85 over-limit subscription fails cleanly' SUB_TOO_MANY_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+expect 'T16.85 neighboring valid subscription succeeds' true "$(printf '%s\n' "$out" | jget subs.s_00000002.ok)"
+expect 'T16.85 neighboring valid subscription adds its node' 1 "$(printf '%s\n' "$out" | jget subs.s_00000002.added)"
+has_line "$R/etc/config/aetherproxy" "option source 's_00000002'" \
+	&& ok 'T16.85 neighboring valid subscription publishes to UCI' \
+	|| bad 'T16.85 neighboring valid subscription publishes to UCI'
+has_line "$R/etc/config/aetherproxy" "option node 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'" \
+	&& expect 'T16.85 existing failover roster stays intact after over-limit failure' 'n_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa n_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' "$(roster)" \
+	|| bad 'T16.85 current node stays intact after over-limit failure'
+
+# Subsequent valid 1024-candidate update on s_00000001 succeeds and publishes.
+BODY="$T/t1685-1024-valid.txt"
+out=$(ap --json s_00000001 2>"$T/t1685-1024.stderr"); rc=$?
+expect 'T16.85 valid 1024-candidate update succeeds' 0 "$rc"
+expect 'T16.85 valid 1024-candidate update adds deduplicated new node' 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+expect 'T16.85 valid 1024-candidate update deduplicates repeated candidates' 1022 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.duplicate)"
+expect 'T16.85 valid update clears error in status record' '<missing>' "$(jget s_00000001.error < "$R/etc/aether-proxy/state/sub.json")"
+has_line "$R/etc/config/aetherproxy" "option address 'edge3.example.com'" \
+	&& ok 'T16.85 valid 1024-candidate update publishes new node to UCI' \
+	|| bad 'T16.85 valid 1024-candidate update publishes new node to UCI'
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
