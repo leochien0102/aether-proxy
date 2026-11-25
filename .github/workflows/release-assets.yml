@@ -34,7 +34,7 @@ jobs:
       TAG: ${{ inputs.tag || github.ref_name }}
       DRY_RUN: ${{ inputs.dry_run || false }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: workflow-source
           persist-credentials: false
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+$ ]] || { echo 'Expected a formal vVERSION-rN tag' >&2; exit 1; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ env.TAG }}
           path: release-source
@@ -70,7 +70,7 @@ jobs:
           set -euo pipefail
           python3 workflow-source/tools/release/gate.py --sha "$BUILD_SHA" --repo "$GH_REPO" \
             | tee -a "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: steps.route.outputs.mode == 'direct'
         with:
           github-token: ${{ github.token }}
