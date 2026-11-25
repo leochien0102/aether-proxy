@@ -122,6 +122,8 @@ monitor 节点 IP 刷新与 SIGUSR2 替代 child 共用。门失败走原失败�
 
 **组件最低版本闸门（2026-10-30，T9.44）**：第 3 步发现组件后、第 4 步等待网络之前，若版本可识别且低于 Xray 的 `XRAY_MIN_VERSION`，或被选中 DNS 引擎的下限（M4-03a：`aether-dns` 为 `AETHER_DNS_MIN_VERSION=1.0.0`，`chinadns-ng` 为 `CHINADNS_MIN_VERSION=2025.08.09`；自定义路径 engine 未知则不设下限、信息性放行），记 error `COMPONENT_TOO_OLD {component, version, min}`，`failed_step=component_version`，不执行后续步骤；版本取不到（null、坏 banner、命令失败）按上文允许启动、不记事件。`check` 用同一比较器只给 `COMPONENT_TOO_OLD` warning，不失败。
 
+**DNS 引擎上游兼容性前置检查（2026-11-25，T16.82）**：`check.precheck` 按本次实际解析出的候选 DNS 引擎判断（不按已运行的旧引擎猜）；当候选引擎为 `aether-dns` 且实际交给 DNS 引擎的上游（`dns.china_dns`，或 `direct_dns_enabled=1` 时的 `dns.direct_dns`）含 `tls://` 时，以 `PRECHECK_FAILED`（项 `dns_upstream:aether-dns:<field>`，附带引擎与配置项诊断）提前拒绝。冷启动在第 3 步（及 `--boot` 刷新配置后的 `validate_render`）拒绝且 `untouched`、保留重试/SIGHUP 恢复；重载在 `validate()` 阶段拒绝，不停止旧子进程、不启动新子进程、不替换 `current/` 或活动配置、不发 `RELOAD_APPLIED`，`last_reload` 记录失败诊断，纠正后可正常重载。
+
 **与其他代理插件的冲突**（第 3 步的一部分；2026-10-24 定，r15 窗口：ssr-plus 被 `reload_config` 重新拉起，aether-proxy 每次启动都 `PRECHECK_FAILED conflict:ss_spec`，页面只写「启动失败，详见日志页」）。
 这些插件都接管 dnsmasq 与透明代理规则，同一时间只能有一个在运行。下表的名字已按各插件源码核实（2026-10-24：fw876/helloworld、Openwrt-Passwall/openwrt-passwall 与 openwrt-passwall2、immortalwrt/homeproxy、vernesong/OpenClash、nikkinikki-org/OpenWrt-nikki 的 master/main 分支）：
 

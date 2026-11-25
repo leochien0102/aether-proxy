@@ -17,6 +17,7 @@ LAN 客户端 ─53─▶ dnsmasq（系统实例）─▶ chinadns-ng 127.0.0.1:
 
 - 同一组内的多个上游**并发查询、取最先到达的应答**，没有顺序回退。
 - 上游写法 `proto://[host@]ip[#port]`，`tls://` 即 DoT（需要 wolfssl 构建，helloworld 打包的正是该版本）。
+  - **引擎上游兼容性前置检查（2026-11-25，T16.82）**：通用配置语法继续允许 `tls://`（供 `chinadns-ng` 使用），不做协议降级；当候选 DNS 引擎解析为 `aether-dns` 时，`check.precheck` 与启动/重载校验在任何停止旧子进程或接管系统前检查**实际会交给 DNS 引擎的上游**（`dns.china_dns`，以及仅在 `dns.direct_dns_enabled=1` 时的 `dns.direct_dns`），若含 `tls://` 则以 `PRECHECK_FAILED`（项 `dns_upstream:aether-dns:<field>`）提前拒绝。`direct_dns_enabled=0` 时 `dns.direct_dns` 不下发给 DNS 引擎，不误拒；`chinadns-ng` 与未知自定义路径不拒绝合法 `tls://`。
 - `tag:none`（不在任何列表中的域名）会同时查询 china 组和 trust 组，china 组应答的 IP 在 `ipset-name4` 中就采用它，否则采用 trust 组的应答。
 - 最多 6 个自定义组，**后声明的优先级高**；nft 集合名写作 `inet@aetherproxy@<set>`。
 - `no-ipv6` 不带参数时过滤全部 AAAA；`filter-qtype 65` 过滤 HTTPS 记录。

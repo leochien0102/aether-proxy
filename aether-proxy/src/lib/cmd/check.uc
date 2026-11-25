@@ -62,6 +62,29 @@ function precheck_ruleset() {
 	]);
 }
 
+// Reject DNS upstreams known to be unsupported by the selected engine before any takeover/reload.
+// Only inspect upstreams actually handed to the DNS engine (chinadns.uc / bootstrap.uc).
+export function dns_upstream_issues(snapshot, path) {
+	let engine = component_id.engine(path);
+	if (engine != C.AETHER_DNS_COMPONENT)
+		return [];
+	let dns = snapshot?.dns ?? {};
+	let checks = [ [ 'dns.china_dns', dns.china_dns ] ];
+	if (dns.direct_dns_enabled == true)
+		push(checks, [ 'dns.direct_dns', dns.direct_dns ]);
+	let issues = [];
+	for (let entry in checks) {
+		let field = entry[0];
+		let unsupported = filter(entry[1] ?? [], u => type(u) == 'string' && lc(substr(u, 0, 6)) == 'tls://');
+		if (length(unsupported))
+			push(issues, {
+				item: `dns_upstream:${engine}:${field}`,
+				detail: `${engine} does not support tls:// upstream in ${field}: ${join(', ', unsupported)}`
+			});
+	}
+	return issues;
+};
+
 // Everything that talks to the live system lives here so that --no-precheck can skip it.
 // Returns { items: [ { item, ok, detail? } ], components: { <name>: { found, path?, source? } } }.
 // Read-only apart from a scratch file inside the staging directory.
@@ -115,6 +138,11 @@ function precheck(snapshot, staging, options) {
 		let found = find_component(name, snapshot.main[key], options);
 
 		components[name] = found ? { found: true, ...found } : { found: false };
+	}
+
+	if (components[C.CHINADNS_COMPONENT]?.found) {
+		for (let issue in dns_upstream_issues(snapshot, components[C.CHINADNS_COMPONENT].path))
+			add(issue.item, false, issue.detail);
 	}
 
 	return { items, components };

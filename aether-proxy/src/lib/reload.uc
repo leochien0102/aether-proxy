@@ -143,12 +143,16 @@ function validate(daemon, snapshot, stage, validate_xray, detail) {
 	let started = monotonic_ms();
 	let pre = check.precheck(snapshot, stage, { sys_root: daemon.ctx.root, bin_dir: daemon.ctx.bin_dir });
 	record_detail(detail, 'precheck', started);
-	let missing = map(filter(pre.items, item => !item.ok), item => item.item);
+	let failed = filter(pre.items, item => !item.ok);
+	let missing = map(failed, item => item.item);
+	let messages = map(failed, item => item.detail ?? item.item);
 	for (let name in [ C.XRAY_COMPONENT, C.CHINADNS_COMPONENT ])
-		if (!pre.components[name]?.found)
+		if (!pre.components[name]?.found) {
 			push(missing, `component:${name}`);
+			push(messages, `${name} missing`);
+		}
 	if (length(missing))
-		return { ok: false, code: 'PRECHECK_FAILED', missing };
+		return { ok: false, code: 'PRECHECK_FAILED', missing, message: join('; ', messages) };
 	let components = pre.components;
 	let nft = validate_nft(daemon, stage, detail);
 	if (!nft.ok)

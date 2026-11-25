@@ -255,6 +255,11 @@ function write_artifacts(dir, artifacts) {
 };
 
 function validate_render(ctx, snapshot, staging, components) {
+	let dns_issues = check.dns_upstream_issues(snapshot, components[C.CHINADNS_COMPONENT]?.path);
+	if (length(dns_issues))
+		return { ok: false, code: 'PRECHECK_FAILED',
+			missing: map(dns_issues, i => i.item),
+			detail: join('; ', map(dns_issues, i => i.detail)) };
 	let nft = run_command(ctx, 'nft', [ '-c', '-f', `${staging}/${C.ARTIFACT_FILES.nft}` ], 10, true);
 	if (nft.code != 0)
 		return { ok: false, code: 'RENDER_INVALID', artifact: 'nft', detail: `nft -c -f failed (${nft.code}): ${nft.stderr}` };
