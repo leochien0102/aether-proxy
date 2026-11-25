@@ -25,6 +25,8 @@ SOURCES = {
     "telegram-cidr.txt": "https://core.telegram.org/resources/cidr.txt",
 }
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_STATIC_SOURCE_PATH = Path(__file__).with_name("gfw_static4.src.txt")
 STATIC_SOURCE_REPO_PATH = "tools/data/gfw_static4.src.txt"
 STATIC_REFERENCE_SOURCE = "telegram-cidr.txt"
 STATIC_SOURCE_LICENSE = (
@@ -243,9 +245,20 @@ def validate_outputs(
             raise ValueError(f"gfw_static4.txt: must cover {address}")
 
 
+def describe_static_source(static_path: Path) -> tuple[str, str]:
+    resolved = static_path.resolve()
+    try:
+        rel = resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return static_path.name, "N/A (local file input)"
+    return rel, "N/A (local repo input)"
+
+
 def render_sources(
     raw: dict[str, bytes], static_source: bytes, metadata: dict[str, dict[str, str]],
     outputs: dict[str, list[str]], skipped: dict[str, int],
+    static_source_label: str = "inline static_source",
+    static_downloaded_label: str = "N/A (local input)",
 ) -> str:
     rows = [
         "# Rule-data baseline sources",
@@ -262,8 +275,8 @@ def render_sources(
         )
     static_checksum = hashlib.sha256(static_source).hexdigest()
     rows.append(
-        f"| `gfw_static4.txt` | `{STATIC_SOURCE_REPO_PATH}` (+ built-in `PUBLIC_DNS4`) | "
-        f"N/A (local repo input) | `{static_checksum}` | "
+        f"| `gfw_static4.txt` | `{static_source_label}` (+ built-in `PUBLIC_DNS4`) | "
+        f"{static_downloaded_label} | `{static_checksum}` | "
         f"{STATIC_SOURCE_LICENSE} | {len(outputs['gfw_static4.txt'])} |"
     )
     ref_timestamp = metadata[STATIC_REFERENCE_SOURCE]["downloaded_at"]
@@ -277,7 +290,7 @@ def render_sources(
             "|---|---|---|---|---|",
             f"| `gfw_static4.txt` | {SOURCES[STATIC_REFERENCE_SOURCE]} | {ref_timestamp} | `{ref_checksum}` | "
             f"Upstream reference only; not read as build input (`gfw_static4.txt` is built from "
-            f"`{STATIC_SOURCE_REPO_PATH}` + built-in `PUBLIC_DNS4`) |",
+            f"`{static_source_label}` + built-in `PUBLIC_DNS4`) |",
             "",
             "## gfwlist skipped-entry counts",
             "",
@@ -294,6 +307,8 @@ def render_sources(
 def build_outputs(
     raw: dict[str, bytes], static_source: bytes, metadata: dict[str, dict[str, str]],
     minimums: dict[str, int] | None = None,
+    static_source_label: str = "inline static_source",
+    static_downloaded_label: str = "N/A (local input)",
 ) -> dict[str, bytes]:
     try:
         decoded = base64.b64decode(raw["gfwlist.b64"]).decode("utf-8", "replace")
@@ -313,7 +328,11 @@ def build_outputs(
         name: ("\n".join(lines) + "\n").encode("utf-8")
         for name, lines in outputs.items()
     }
-    files["SOURCES.md"] = render_sources(raw, static_source, metadata, outputs, skipped).encode("utf-8")
+    files["SOURCES.md"] = render_sources(
+        raw, static_source, metadata, outputs, skipped,
+        static_source_label=static_source_label,
+        static_downloaded_label=static_downloaded_label,
+    ).encode("utf-8")
     return files
 
 
@@ -350,8 +369,14 @@ def download_source(name: str, url: str, cache: Path | None) -> tuple[bytes, dic
 def write_baseline(
     out_dir: Path, raw: dict[str, bytes], static_source: bytes,
     metadata: dict[str, dict[str, str]],
+    static_source_label: str = "inline static_source",
+    static_downloaded_label: str = "N/A (local input)",
 ) -> dict[str, bytes]:
-    generated = build_outputs(raw, static_source, metadata)
+    generated = build_outputs(
+        raw, static_source, metadata,
+        static_source_label=static_source_label,
+        static_downloaded_label=static_downloaded_label,
+    )
     out_dir.mkdir(parents=True, exist_ok=True)
     for filename, content in generated.items():
         (out_dir / filename).write_bytes(content)
@@ -367,9 +392,14 @@ def build_to_dir(out_dir: Path, static_path: Path, cache_dir: Path | None) -> di
     if not static_path.is_file():
         raise RuntimeError(f"required static source file is missing: {static_path}")
     static_source = static_path.read_bytes()
+    static_source_label, static_downloaded_label = describe_static_source(static_path)
 
     # All parsing and sanity checks complete before the output directory is created.
-    generated = write_baseline(out_dir, raw, static_source, metadata)
+    generated = write_baseline(
+        out_dir, raw, static_source, metadata,
+        static_source_label=static_source_label,
+        static_downloaded_label=static_downloaded_label,
+    )
     return {
         filename: content.count(b"\n")
         for filename, content in generated.items()
@@ -383,9 +413,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache", type=Path, help="cache directory for upstream raw files")
     args = parser.parse_args(argv)
 
-    static_path = Path(__file__).with_name("gfw_static4.src.txt")
     try:
-        counts = build_to_dir(args.out, static_path, args.cache)
+        counts = build_to_dir(args.out, DEFAULT_STATIC_SOURCE_PATH, args.cache)
     except (OSError, UnicodeError, ValueError, RuntimeError, KeyError, json.JSONDecodeError) as exc:
         print(f"data build failed: {exc}", file=sys.stderr)
         return 1

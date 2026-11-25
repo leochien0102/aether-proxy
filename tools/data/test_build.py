@@ -292,12 +292,11 @@ class StaticSourceProvenanceTests(unittest.TestCase):
         }
 
     def run_offline_build(
-        self, root: Path, label: str, static_bytes: bytes,
+        self, root: Path, label: str, static_path: Path,
         telegram_bytes: bytes, telegram_timestamp: str,
     ) -> tuple[dict[str, int], dict[str, bytes], dict[str, list[str]], dict[str, list[str]]]:
         cache_dir = root / f"cache-{label}"
         out_dir = root / f"out-{label}"
-        static_path = root / f"static-{label}.src.txt"
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         raw = {**self.base_raw, "telegram-cidr.txt": telegram_bytes}
@@ -308,7 +307,6 @@ class StaticSourceProvenanceTests(unittest.TestCase):
                 json.dumps({"downloaded_at": timestamps[name]}, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
-        static_path.write_bytes(static_bytes)
 
         counts = build.build_to_dir(out_dir, static_path, cache_dir)
         files = {path.name: path.read_bytes() for path in sorted(out_dir.iterdir())}
@@ -316,7 +314,10 @@ class StaticSourceProvenanceTests(unittest.TestCase):
         return counts, files, actual, reference
 
     def test_changing_reference_leaves_static_output_and_input_hash_unchanged(self):
-        local_bytes = b"# local static fixture\n198.51.100.0/24\n"
+        root_repo = Path(__file__).resolve().parents[2]
+        default_static_path = build.DEFAULT_STATIC_SOURCE_PATH
+        default_static_bytes = default_static_path.read_bytes()
+        packaged_static = (root_repo / "aether-proxy/files/data/gfw_static4.txt").read_bytes()
         ref_a = b"91.108.4.0/22\n"
         ref_b = b"91.108.4.0/22\n149.154.160.0/20\n"
         ts_a = "2026-10-01T00:00:05+00:00"
@@ -325,33 +326,39 @@ class StaticSourceProvenanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             counts_a, files_a, actual_a, ref_rows_a = self.run_offline_build(
-                root, "ref-a", local_bytes, ref_a, ts_a,
+                root, "ref-a", default_static_path, ref_a, ts_a,
             )
             counts_b, files_b, actual_b, ref_rows_b = self.run_offline_build(
-                root, "ref-b", local_bytes, ref_b, ts_b,
+                root, "ref-b", default_static_path, ref_b, ts_b,
             )
 
-        local_sha = f"`{hashlib.sha256(local_bytes).hexdigest()}`"
+        local_sha = f"`{hashlib.sha256(default_static_bytes).hexdigest()}`"
         ref_a_sha = f"`{hashlib.sha256(ref_a).hexdigest()}`"
         ref_b_sha = f"`{hashlib.sha256(ref_b).hexdigest()}`"
 
         self.assertEqual(files_a["gfw_static4.txt"], files_b["gfw_static4.txt"])
-        self.assertEqual(counts_a["gfw_static4.txt"], 9)
-        self.assertEqual(counts_b["gfw_static4.txt"], 9)
+        self.assertEqual(files_a["gfw_static4.txt"], packaged_static)
+        self.assertEqual(counts_a["gfw_static4.txt"], 15)
+        self.assertEqual(counts_b["gfw_static4.txt"], 15)
 
         self.assertEqual(actual_a["gfw_static4.txt"], actual_b["gfw_static4.txt"])
-        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", actual_a["gfw_static4.txt"][0])
+        self.assertEqual(
+            actual_a["gfw_static4.txt"][0],
+            f"`{build.STATIC_SOURCE_REPO_PATH}` (+ built-in `PUBLIC_DNS4`)",
+        )
         self.assertNotIn(build.SOURCES["telegram-cidr.txt"], actual_a["gfw_static4.txt"][0])
         self.assertEqual(actual_a["gfw_static4.txt"][1], "N/A (local repo input)")
         self.assertEqual(actual_a["gfw_static4.txt"][2], local_sha)
-        self.assertEqual(actual_a["gfw_static4.txt"][4], "9")
+        self.assertEqual(actual_a["gfw_static4.txt"][4], "15")
 
         self.assertEqual(ref_rows_a["gfw_static4.txt"][0], build.SOURCES["telegram-cidr.txt"])
         self.assertEqual(ref_rows_a["gfw_static4.txt"][1], ts_a)
         self.assertEqual(ref_rows_a["gfw_static4.txt"][2], ref_a_sha)
+        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", ref_rows_a["gfw_static4.txt"][3])
         self.assertEqual(ref_rows_b["gfw_static4.txt"][0], build.SOURCES["telegram-cidr.txt"])
         self.assertEqual(ref_rows_b["gfw_static4.txt"][1], ts_b)
         self.assertEqual(ref_rows_b["gfw_static4.txt"][2], ref_b_sha)
+        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", ref_rows_b["gfw_static4.txt"][3])
         self.assertNotEqual(ref_rows_a["gfw_static4.txt"][2], ref_rows_b["gfw_static4.txt"][2])
 
         for name, (source, license_name) in build.OUTPUT_SOURCES.items():
@@ -369,19 +376,31 @@ class StaticSourceProvenanceTests(unittest.TestCase):
             )
 
     def test_changing_local_input_updates_rules_lines_and_input_hash_only(self):
-        local_a = b"# local static fixture\n198.51.100.0/24\n"
-        local_b = b"# local static fixture\n198.51.100.0/24\n203.0.113.0/24\n"
+        local_a = b"# local static fixture alpha\n198.51.100.0/24\n"
+        local_b = b"# local static fixture beta\n198.51.100.0/24\n203.0.113.0/24\n"
         ref_bytes = b"91.108.4.0/22\n"
         ref_ts = "2026-10-01T00:00:05+00:00"
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
+            path_a = root / "custom-alpha.src.txt"
+            path_b = root / "custom-beta.src.txt"
+            path_a.write_bytes(local_a)
+            path_b.write_bytes(local_b)
+
             counts_a, files_a, actual_a, ref_rows_a = self.run_offline_build(
-                root, "local-a", local_a, ref_bytes, ref_ts,
+                root, "local-a", path_a, ref_bytes, ref_ts,
             )
             counts_b, files_b, actual_b, ref_rows_b = self.run_offline_build(
-                root, "local-b", local_b, ref_bytes, ref_ts,
+                root, "local-b", path_b, ref_bytes, ref_ts,
             )
+
+            sources_a = files_a["SOURCES.md"].decode("utf-8")
+            sources_b = files_b["SOURCES.md"].decode("utf-8")
+            self.assertNotIn(str(root), sources_a)
+            self.assertNotIn(str(root), sources_b)
+            self.assertNotIn(build.STATIC_SOURCE_REPO_PATH, sources_a)
+            self.assertNotIn(build.STATIC_SOURCE_REPO_PATH, sources_b)
 
         self.assertNotEqual(files_a["gfw_static4.txt"], files_b["gfw_static4.txt"])
         self.assertNotIn(b"203.0.113.0/24\n", files_a["gfw_static4.txt"])
@@ -389,14 +408,29 @@ class StaticSourceProvenanceTests(unittest.TestCase):
         self.assertEqual(counts_a["gfw_static4.txt"], 9)
         self.assertEqual(counts_b["gfw_static4.txt"], 10)
 
+        self.assertEqual(
+            actual_a["gfw_static4.txt"][0],
+            "`custom-alpha.src.txt` (+ built-in `PUBLIC_DNS4`)",
+        )
+        self.assertEqual(actual_a["gfw_static4.txt"][1], "N/A (local file input)")
         self.assertEqual(actual_a["gfw_static4.txt"][2], f"`{hashlib.sha256(local_a).hexdigest()}`")
-        self.assertEqual(actual_b["gfw_static4.txt"][2], f"`{hashlib.sha256(local_b).hexdigest()}`")
-        self.assertNotEqual(actual_a["gfw_static4.txt"][2], actual_b["gfw_static4.txt"][2])
         self.assertEqual(actual_a["gfw_static4.txt"][4], "9")
-        self.assertEqual(actual_b["gfw_static4.txt"][4], "10")
 
-        self.assertEqual(ref_rows_a["gfw_static4.txt"], ref_rows_b["gfw_static4.txt"])
+        self.assertEqual(
+            actual_b["gfw_static4.txt"][0],
+            "`custom-beta.src.txt` (+ built-in `PUBLIC_DNS4`)",
+        )
+        self.assertEqual(actual_b["gfw_static4.txt"][1], "N/A (local file input)")
+        self.assertEqual(actual_b["gfw_static4.txt"][2], f"`{hashlib.sha256(local_b).hexdigest()}`")
+        self.assertEqual(actual_b["gfw_static4.txt"][4], "10")
+        self.assertNotEqual(actual_a["gfw_static4.txt"][2], actual_b["gfw_static4.txt"][2])
+
+        self.assertEqual(ref_rows_a["gfw_static4.txt"][:3], ref_rows_b["gfw_static4.txt"][:3])
         self.assertEqual(ref_rows_a["gfw_static4.txt"][2], f"`{hashlib.sha256(ref_bytes).hexdigest()}`")
+        self.assertIn("`custom-alpha.src.txt`", ref_rows_a["gfw_static4.txt"][3])
+        self.assertIn("`custom-beta.src.txt`", ref_rows_b["gfw_static4.txt"][3])
+        self.assertNotIn(build.STATIC_SOURCE_REPO_PATH, ref_rows_a["gfw_static4.txt"][3])
+        self.assertNotIn(build.STATIC_SOURCE_REPO_PATH, ref_rows_b["gfw_static4.txt"][3])
 
         for name, (source, license_name) in build.OUTPUT_SOURCES.items():
             self.assertEqual(files_a[name], files_b[name])
@@ -418,11 +452,24 @@ class StaticSourceProvenanceTests(unittest.TestCase):
         sources_md = (data_dir / "SOURCES.md").read_text(encoding="utf-8")
         actual, reference = parse_sources_md(sources_md)
 
-        static_src = (Path(__file__).with_name("gfw_static4.src.txt")).read_bytes()
+        static_src = build.DEFAULT_STATIC_SOURCE_PATH.read_bytes()
         static_sha = f"`{hashlib.sha256(static_src).hexdigest()}`"
-        static_lines = len((data_dir / "gfw_static4.txt").read_text(encoding="utf-8").splitlines())
+        packaged_static = (data_dir / "gfw_static4.txt").read_bytes()
+        static_lines = len(packaged_static.decode("utf-8").splitlines())
 
-        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", actual["gfw_static4.txt"][0])
+        with tempfile.TemporaryDirectory() as temp:
+            counts, files, _, _ = self.run_offline_build(
+                Path(temp), "packaged", build.DEFAULT_STATIC_SOURCE_PATH,
+                b"91.108.4.0/22\n", "2026-10-14T09:39:09+00:00",
+            )
+        self.assertEqual(files["gfw_static4.txt"], packaged_static)
+        self.assertEqual(counts["gfw_static4.txt"], 15)
+        self.assertEqual(static_lines, 15)
+
+        self.assertEqual(
+            actual["gfw_static4.txt"][0],
+            f"`{build.STATIC_SOURCE_REPO_PATH}` (+ built-in `PUBLIC_DNS4`)",
+        )
         self.assertNotIn(build.SOURCES["telegram-cidr.txt"], actual["gfw_static4.txt"][0])
         self.assertEqual(actual["gfw_static4.txt"][1], "N/A (local repo input)")
         self.assertEqual(actual["gfw_static4.txt"][2], static_sha)
@@ -434,6 +481,7 @@ class StaticSourceProvenanceTests(unittest.TestCase):
             reference["gfw_static4.txt"][2],
             "`3ecd072cedf72eceee6961b18a51e37f905d5ce4a656a5d24cf5fea63e6ec651`",
         )
+        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", reference["gfw_static4.txt"][3])
 
         for name in build.OUTPUT_SOURCES:
             expected_lines = len((data_dir / name).read_text(encoding="utf-8").splitlines())
