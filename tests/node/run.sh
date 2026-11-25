@@ -483,5 +483,49 @@ out="$(ap node parse 'vmess://'$(printf '%s' '{"a":1' | base64 -w0) --json 2>"$T
 expect "T9.42 truncated vmess JSON: exit code 2" 2 "$rc"
 expect "T9.42 truncated vmess JSON: code CONFIG_INVALID" CONFIG_INVALID "$(echo "$out" | jget code)"
 
+# T16.86: reject ASCII C0/DEL control characters at node parse/import without writing UCI
+# or echoing credentials; preserve legal Chinese + space labels.
+make_root "$T/t1686"
+write_base_config
+cp "$R/etc/config/aetherproxy" "$T/t1686.before"
+T1686_VMESS_NUL="vmess://$(printf '%s' '{"ps":"t1686-secret-label\u0000evil","add":"t1686-secret.example","port":"443","id":"11111111-2222-4333-8444-555555555555","aid":0,"scy":"auto","net":"tcp","tls":"tls"}' | base64 -w0)"
+for pair in \
+	"pct-nul|vless://11111111-2222-4333-8444-555555555555@t1686-secret.example:443?security=tls#good%00evil" \
+	"pct-crlf|trojan://t1686-secret-pass%0d%0a@t1686-secret.example:443?security=tls#ok" \
+	"pct-del|vless://11111111-2222-4333-8444-555555555555@t1686-secret.example:443?security=tls#del%7ftag" \
+	"ss-nul-method|ss://aes-128-gcm%00evil:t1686-secret-pass@t1686-secret.example:8388#ok" \
+	"vmess-nul|$T1686_VMESS_NUL"; do
+	label="${pair%%|*}"
+	bad_uri="${pair#*|}"
+	for cmd in parse import; do
+		out="$(ap node "$cmd" "$bad_uri" --json $(import_opts) 2>"$T/t1686-$cmd-$label.stderr")"; rc=$?
+		expect "T16.86 node $cmd $label: exit code 2" 2 "$rc"
+		expect "T16.86 node $cmd $label: code CONFIG_INVALID" CONFIG_INVALID "$(echo "$out" | jget code)"
+		expect "T16.86 node $cmd $label: detail malformed" malformed "$(echo "$out" | jget detail)"
+		[ ! -s "$T/t1686-$cmd-$label.stderr" ] && ok "T16.86 node $cmd $label: stderr empty" \
+			|| bad "T16.86 node $cmd $label: stderr empty" "$(cat "$T/t1686-$cmd-$label.stderr")"
+		! printf '%s\n' "$out" | grep -Eq 't1686-secret|11111111-2222-4333-8444-555555555555' \
+			&& ok "T16.86 node $cmd $label: output never echoes credentials" \
+			|| bad "T16.86 node $cmd $label: output never echoes credentials" "$out"
+		cmp -s "$T/t1686.before" "$R/etc/config/aetherproxy" \
+			&& ok "T16.86 node $cmd $label: UCI unchanged" \
+			|| bad "T16.86 node $cmd $label: UCI unchanged"
+	done
+done
+out_human="$(ap node import 'trojan://t1686-secret-pass%0a@t1686-secret.example:443?security=tls#ok' $(import_opts) 2>&1)"; rc=$?
+expect "T16.86 node import human error: exit code 2" 2 "$rc"
+! printf '%s\n' "$out_human" | grep -Fq 't1686-secret' \
+	&& ok "T16.86 node import human error: never echoes credentials" \
+	|| bad "T16.86 node import human error: never echoes credentials" "$out_human"
+cmp -s "$T/t1686.before" "$R/etc/config/aetherproxy" \
+	&& ok "T16.86 node import human error: UCI unchanged" \
+	|| bad "T16.86 node import human error: UCI unchanged"
+out="$(ap node import 'vless://aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee@zh-space.example:443?security=tls#%E4%B8%AD%E6%96%87%20%E8%8A%82%E7%82%B9' --json $(import_opts) 2>"$T/t1686-zh.stderr")"; rc=$?
+expect "T16.86 legal Chinese+space node import: exit code 0" 0 "$rc"
+expect "T16.86 legal Chinese+space node import: ok true" true "$(echo "$out" | jget ok)"
+grep -Fq "option label '中文 节点'" "$R/etc/config/aetherproxy" \
+	&& ok "T16.86 legal Chinese+space label written to UCI" \
+	|| bad "T16.86 legal Chinese+space label written to UCI"
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

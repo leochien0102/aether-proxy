@@ -10,6 +10,39 @@ function skipped(reason) {
 	return { skip: reason };
 }
 
+// Byte-level scan: ucode's POSIX regex helpers stop at NUL, so match() cannot
+// detect NUL or any control byte after NUL. UTF-8 multi-byte bytes are >= 0x80.
+function has_control_chars(value) {
+	if (type(value) != 'string')
+		return false;
+
+	for (let i = 0; i < length(value); i++) {
+		let b = ord(value, i);
+		if (b < 0x20 || b == 0x7f)
+			return true;
+	}
+
+	return false;
+}
+
+function value_has_control_chars(value) {
+	if (type(value) == 'string')
+		return has_control_chars(value);
+	if (type(value) == 'array') {
+		for (let item in value)
+			if (value_has_control_chars(item))
+				return true;
+	}
+	return false;
+}
+
+function node_has_control_chars(node) {
+	for (let field, value in node)
+		if (value_has_control_chars(value))
+			return true;
+	return false;
+}
+
 function url_decode(value) {
 	let out = '';
 
@@ -17,6 +50,9 @@ function url_decode(value) {
 		let c = substr(value, i, 1);
 
 		if (c != '%') {
+			let b = ord(c, 0);
+			if (b < 0x20 || b == 0x7f)
+				return null;
 			out += c;
 			continue;
 		}
@@ -29,6 +65,10 @@ function url_decode(value) {
 		if (byte == null)
 			return null;
 
+		let b = ord(byte, 0);
+		if (b < 0x20 || b == 0x7f)
+			return null;
+
 		out += byte;
 		i += 2;
 	}
@@ -37,6 +77,9 @@ function url_decode(value) {
 }
 
 function decode_base64(value) {
+	if (type(value) != 'string' || index(value, '\x00') >= 0)
+		return null;
+
 	let input = replace(value, /[[:space:]]/g, '');
 
 	if (!length(input) || match(input, /^[A-Za-z0-9+\/_-]*={0,2}$/) == null)
@@ -228,6 +271,9 @@ function validation_skip(node) {
 }
 
 function finish_node(node, warnings) {
+	if (node_has_control_chars(node))
+		return skipped('malformed');
+
 	let reason = validation_skip(node);
 	if (reason != null)
 		return skipped(reason);
@@ -240,6 +286,9 @@ function finish_node(node, warnings) {
 }
 
 function split_userpass(decoded) {
+	if (has_control_chars(decoded))
+		return null;
+
 	let pair = split_once(decoded, ':');
 	if (pair[1] == null || pair[0] == '')
 		return null;
@@ -284,7 +333,7 @@ function parse_vmess_bool(value) {
 
 function parse_vmess(payload, label) {
 	let decoded = decode_base64(payload);
-	if (decoded == null)
+	if (decoded == null || index(decoded, '\x00') >= 0)
 		return skipped('malformed');
 
 	let data = json_object(decoded);
@@ -296,7 +345,7 @@ function parse_vmess(payload, label) {
 
 	let address = data.add == null ? null : `${data.add}`;
 	let port = data.port == null ? null : `${data.port}`;
-	if (address == null || port == null || match(port, /^[0-9]+$/) == null)
+	if (address == null || port == null || has_control_chars(port) || match(port, /^[0-9]+$/) == null)
 		return skipped('malformed');
 
 	let security = data.tls == 'tls' ? 'tls' : (data.tls == '' || data.tls == null ? 'none' : null);
@@ -367,7 +416,7 @@ function parse_ss(payload, label) {
 	}
 	else {
 		let decoded = decode_base64(query_parts[0]);
-		if (decoded == null)
+		if (decoded == null || has_control_chars(decoded))
 			return skipped('malformed');
 		let split_at = last_index(decoded, '@');
 		if (split_at < 0)
@@ -474,7 +523,7 @@ function parse_new_protocol(scheme, payload) {
 			// URL escapes before Base64, including escaped Base64 padding.
 			if (index(user, ':') < 0)
 				user = decode_base64(user);
-			if (user == null)
+			if (user == null || has_control_chars(user))
 				return skipped('malformed');
 			let credentials = split_once(user, ':');
 			if (credentials[1] == null)
@@ -517,8 +566,8 @@ function parse_new_protocol(scheme, payload) {
 }
 
 export function parse_line(line) {
-	line = trim(line ?? '');
-	if (line == '')
+	line = trim(line ?? '', ' ');
+	if (line == '' || has_control_chars(line))
 		return skipped('malformed');
 
 	let scheme_parts = split_once(line, '://');
@@ -544,14 +593,39 @@ export function parse_line(line) {
 	return skipped('unsupported_scheme');
 };
 
-function decode_subscription(text) {
-	let body = trim(text ?? '');
-	if (body == '')
-		return null;
+function strip_trailing_cr(line) {
+	let n = length(line);
+	return n > 0 && ord(line, n - 1) == 0x0d ? substr(line, 0, n - 1) : line;
+}
 
+function is_clash_yaml(text) {
+	if (type(text) != 'string')
+		return false;
+
+	let seen_non_empty = false;
+	for (let raw in split(text, '\n')) {
+		let line = strip_trailing_cr(raw);
+		if (!seen_non_empty) {
+			let trimmed = trim(line, ' \t');
+			if (trimmed == '')
+				continue;
+			seen_non_empty = true;
+			if (substr(trimmed, 0, 8) == 'proxies:')
+				return true;
+			continue;
+		}
+		if (substr(line, 0, 8) == 'proxies:')
+			return true;
+	}
+
+	return false;
+}
+
+function decode_subscription(text) {
+	let raw = text ?? '';
 	let first = null;
-	for (let line in split(body, '\n')) {
-		line = trim(line);
+	for (let raw_line in split(raw, '\n')) {
+		let line = trim(strip_trailing_cr(raw_line), ' \t');
 		if (line != '') {
 			first = line;
 			break;
@@ -560,9 +634,9 @@ function decode_subscription(text) {
 	if (first == null)
 		return null;
 	if (index(first, '://') >= 0)
-		return replace(body, /\r\n/g, '\n');
+		return raw;
 
-	return decode_base64(body);
+	return decode_base64(raw);
 }
 
 function increment(counts, reason) {
@@ -577,25 +651,23 @@ function sorted_counts(counts) {
 }
 
 export function parse_body(text) {
-	let raw = replace(trim(text ?? ''), /\r\n/g, '\n');
-	if (substr(raw, 0, 8) == 'proxies:' || index(raw, '\nproxies:') >= 0)
+	if (is_clash_yaml(text ?? ''))
 		return { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_FORMAT_UNSUPPORTED' };
 
 	let body = decode_subscription(text);
 	if (body == null)
 		return { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_DECODE_FAILED' };
 
-	body = replace(body, /\r\n/g, '\n');
-	if (substr(body, 0, 8) == 'proxies:' || index(body, '\nproxies:') >= 0)
+	if (is_clash_yaml(body))
 		return { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_FORMAT_UNSUPPORTED' };
 
 	let nodes = [], skipped_counts = {}, warnings = [];
-	for (let line in split(body, '\n')) {
-		line = trim(line);
-		if (line == '')
+	for (let raw_line in split(body, '\n')) {
+		let line = strip_trailing_cr(raw_line);
+		if (trim(line, ' \t') == '')
 			continue;
 
-		let result = parse_line(line);
+		let result = parse_line(trim(line, ' '));
 		if (result.node != null) {
 			if (length(nodes) >= C.SUB_MAX_NODES)
 				return {

@@ -851,5 +851,69 @@ has_line "$R/etc/config/aetherproxy" "option address 'edge3.example.com'" \
 	&& ok 'T16.85 valid 1024-candidate update publishes new node to UCI' \
 	|| bad 'T16.85 valid 1024-candidate update publishes new node to UCI'
 
+# ---- T16.86: control-character rejection in subscription import ----
+python3 - "$T/t1686-mixed-crlf.txt" "$T/t1686-mixed-b64.txt" "$T/t1686-all-bad.txt" <<'PY'
+import base64, sys
+mixed_crlf, mixed_b64, all_bad = sys.argv[1:4]
+uuid = "11111111-2222-4333-8444-555555555555"
+vmess_bad = "vmess://" + base64.b64encode(
+    ('{"ps":"t1686-secret-vm\\u0000evil","add":"t1686-bad-vm.example","port":"443",'
+     f'"id":"{uuid}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}}').encode()
+).decode()
+good_line = f"vless://{uuid}@t1686-good.example:443?security=tls#%E4%B8%AD%E6%96%87%20%E8%AE%A2%E9%98%85"
+bad_lines = [
+    f"vless://{uuid}@t1686-bad-nul.example:443?security=tls#t1686-secret-nul\x00tail",
+    "trojan://t1686-secret-pw%0d%0a@t1686-bad-crlf.example:443?security=tls#bad",
+    f"vless://{uuid}@t1686-bad-del.example:443?security=tls#del%7ftag",
+    vmess_bad,
+]
+mixed_bytes = ("\r\n".join(bad_lines + [good_line]) + "\r\n").encode("utf-8")
+with open(mixed_crlf, "wb") as f:
+    f.write(mixed_bytes)
+encoded = base64.b64encode(mixed_bytes).decode("ascii")
+wrapped = "\r\n".join(encoded[i:i + 64] for i in range(0, len(encoded), 64)) + "\r\n"
+with open(mixed_b64, "wb") as f:
+    f.write(wrapped.encode("ascii"))
+with open(all_bad, "wb") as f:
+    f.write(("\r\n".join(bad_lines) + "\r\n").encode("utf-8"))
+PY
+
+BODY="$T/t1686-mixed-crlf.txt"
+out=$(ap --json s_00000001 2>"$T/t1686-mixed-crlf.stderr"); rc=$?
+expect 'T16.86 mixed CRLF subscription succeeds' 0 "$rc"
+expect 'T16.86 mixed CRLF skips all 4 control-char lines' 4 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+expect 'T16.86 mixed CRLF publishes adjacent valid node' 1 "$(printf '%s\n' "$out" | jget subs.s_00000001.added)"
+has_line "$R/etc/config/aetherproxy" "option address 't1686-good.example'" \
+	&& ok 'T16.86 mixed CRLF writes adjacent valid node address' \
+	|| bad 'T16.86 mixed CRLF writes adjacent valid node address'
+has_line "$R/etc/config/aetherproxy" "option label '中文 订阅'" \
+	&& ok 'T16.86 mixed CRLF preserves Chinese+space label' \
+	|| bad 'T16.86 mixed CRLF preserves Chinese+space label'
+! grep -Eq 't1686-secret|t1686-bad-' "$R/etc/config/aetherproxy" "$R/var/run/aether-proxy/events.jsonl" "$R/etc/aether-proxy/state/sub.json" \
+	&& ok 'T16.86 mixed CRLF never writes or leaks bad-node credentials' \
+	|| bad 'T16.86 mixed CRLF never writes or leaks bad-node credentials'
+
+BODY="$T/t1686-mixed-b64.txt"
+out=$(ap --json s_00000001 2>"$T/t1686-mixed-b64.stderr"); rc=$?
+expect 'T16.86 wrapped Base64 mixed subscription succeeds' 0 "$rc"
+expect 'T16.86 wrapped Base64 skips all 4 control-char lines' 4 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+
+cp "$R/etc/config/aetherproxy" "$T/t1686-allbad.before"
+: > "$R/calls.log"
+BODY="$T/t1686-all-bad.txt"
+out=$(ap --json s_00000001 2>"$T/t1686-allbad.stderr"); rc=$?
+expect 'T16.86 all-control-char subscription exits nonzero' 1 "$rc"
+expect 'T16.86 all-control-char subscription reports SUB_NO_VALID_NODES' SUB_NO_VALID_NODES "$(printf '%s\n' "$out" | jget subs.s_00000001.code)"
+expect 'T16.86 all-control-char subscription counts all malformed skips' 4 "$(printf '%s\n' "$out" | jget subs.s_00000001.skipped.malformed)"
+cmp -s "$T/t1686-allbad.before" "$R/etc/config/aetherproxy" \
+	&& ok 'T16.86 all-control-char subscription preserves UCI bytes' \
+	|| bad 'T16.86 all-control-char subscription preserves UCI bytes'
+! grep -q '^init reload$' "$R/calls.log" \
+	&& ok 'T16.86 all-control-char subscription does not reload daemon' \
+	|| bad 'T16.86 all-control-char subscription does not reload daemon'
+! printf '%s\n' "$out" | grep -Eq 't1686-secret|t1686-bad-' \
+	&& ok 'T16.86 all-control-char output never echoes credentials' \
+	|| bad 'T16.86 all-control-char output never echoes credentials'
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

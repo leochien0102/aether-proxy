@@ -521,6 +521,98 @@ for (let bad in [
 ])
 	push(cases, { name: 'T16.65 vmess grpc invalid ' + bad[0], fn: 'line', input: vmess_uri(bad[1]), expect: { skip: 'invalid_value' } });
 
+// T16.86: reject ASCII C0 (0x00-0x1f) and DEL (0x7f) in node string fields across
+// raw bytes, percent-decoding, Base64 payloads, and VMess JSON escapes without silent truncation.
+const T1686_VMESS_BASE = `{"ps":"ok","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`;
+for (let bad in [
+	[ 'vless %00 in label', `vless://${UUID}@edge.example:443?security=tls#good%00evil` ],
+	[ 'vless %00 in address', `vless://${UUID}@edge.example%00.evil:443?security=tls#ok` ],
+	[ 'vless %00 in ws path', `vless://${UUID}@edge.example:443?type=ws&security=tls&path=%2Fws%00evil#ok` ],
+	[ 'vless %00 in reality pbk', `vless://${UUID}@edge.example:443?security=reality&sni=edge.example&pbk=${REALITY_KEY}%00evil` ],
+	[ 'vless %00 in alpn', `vless://${UUID}@edge.example:443?security=tls&alpn=h2,http/1.1%00evil#ok` ],
+	[ 'trojan %00 in password', 'trojan://sec%00ret@edge.example:443?security=tls#ok' ],
+	[ 'ss %00 in method not truncated by lc', 'ss://aes-128-gcm%00evil:pw@ss.example:8388#ok' ],
+	[ 'hy2 %00 in auth', 'hy2://auth%00evil@h.example:443/?sni=h.example#ok' ],
+	[ 'wireguard %00 in label', WG_URI + '#wg%00evil' ],
+	[ 'vless encoded LF in label', `vless://${UUID}@edge.example:443?security=tls#line1%0aline2` ],
+	[ 'vless encoded CRLF in ws path', `vless://${UUID}@edge.example:443?type=ws&security=tls&path=%2Fws%0d%0aX-Injected:1#ok` ],
+	[ 'trojan encoded CR in password', 'trojan://sec%0dret@edge.example:443?security=tls#ok' ],
+	[ 'vless encoded DEL in label', `vless://${UUID}@edge.example:443?security=tls#del%7ftag` ],
+	[ 'vless encoded TAB in label', `vless://${UUID}@edge.example:443?security=tls#tab%09tag` ],
+	[ 'vless encoded US 0x1f in sni', `vless://${UUID}@edge.example:443?security=tls&sni=edge.example%1f#ok` ],
+	[ 'vless encoded SOH 0x01 in host', `vless://${UUID}@edge.example:443?type=ws&security=tls&host=cdn%01.example#ok` ],
+	[ 'vless encoded LF in xhttp extra', `vless://${UUID}@xh.example:443?type=xhttp&security=tls&extra=%7B%22a%22%3A%22b%0Ac%22%7D` ],
+	[ 'raw TAB in label', `vless://${UUID}@edge.example:443?security=tls#raw\ttab` ],
+	[ 'raw DEL in label', `vless://${UUID}@edge.example:443?security=tls#raw\x7fdel` ],
+	[ 'raw LF in label', `vless://${UUID}@edge.example:443?security=tls#raw\nlf` ],
+	[ 'raw trailing CR', `vless://${UUID}@edge.example:443?security=tls#ok\r` ],
+	[ 'raw trailing LF', `vless://${UUID}@edge.example:443?security=tls#ok\n` ],
+	[ 'raw trailing TAB', `vless://${UUID}@edge.example:443?security=tls#ok\t` ],
+	[ 'vmess JSON \\u0000 in ps', 'vmess://' + b64enc(`{"ps":"ok\\u0000evil","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`) ],
+	[ 'vmess JSON \\u0000 in add', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com\\u0000.evil","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`) ],
+	[ 'vmess JSON \\u0000 in port', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com","port":"443\\u0000evil","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`) ],
+	[ 'vmess JSON \\n in ps', 'vmess://' + b64enc(`{"ps":"ok\\nevil","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`) ],
+	[ 'vmess JSON \\r in path', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"ws","path":"/ws\\revil","tls":"tls"}`) ],
+	[ 'vmess JSON \\t in sni', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","sni":"vm\\t.example","tls":"tls"}`) ],
+	[ 'vmess JSON \\u001f in alpn', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","alpn":"h2,http/1.1\\u001f","tls":"tls"}`) ],
+	[ 'vmess JSON \\u007f in serviceName', 'vmess://' + b64enc(`{"ps":"ok","add":"vm.example.com","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"grpc","serviceName":"svc\\u007fname","tls":"tls"}`) ],
+	[ 'vmess raw NUL inside decoded JSON', 'vmess://' + b64enc(T1686_VMESS_BASE + '\x00trailing') ],
+	[ 'ss base64 userinfo with NUL', 'ss://' + b64enc('aes-128-gcm:pw\x00evil') + '@ss.example:8388#ok' ],
+	[ 'ss base64 userinfo with LF', 'ss://' + b64enc('aes-128-gcm:pw\nevil') + '@ss.example:8388#ok' ],
+	[ 'ss old base64 format with DEL', 'ss://' + b64enc('aes-128-gcm:pw\x7f@old-ss.example:8388') + '#ok' ],
+	[ 'socks5 base64 userinfo with NUL', 'socks5://' + b64enc('user:pw\x00evil') + '@proxy.example:1080#ok' ],
+	[ 'http base64 userinfo with CR', 'http://' + b64enc('user:pw\revil') + '@proxy.example:8080#ok' ]
+])
+	push(cases, { name: 'T16.86 reject ' + bad[0], fn: 'line', input: bad[1], expect: { skip: 'malformed' } });
+
+const T1686_GOOD_URI = `vless://${UUID}@good.example:443?security=tls#%E4%B8%AD%E6%96%87%20%E8%8A%82%E7%82%B9%F0%9F%8C%9F`;
+const T1686_GOOD_NODE = {
+	protocol: 'vless', address: 'good.example', port: 443, uuid: UUID,
+	label: '中文 节点🌟', transport: 'raw', security: 'tls', encryption: 'none'
+};
+push(cases, {
+	name: 'T16.86 preserve Chinese label and ordinary spaces', fn: 'line',
+	input: T1686_GOOD_URI,
+	expect: { node: T1686_GOOD_NODE }
+});
+push(cases, {
+	name: 'T16.86 preserve pretty-printed VMess JSON with Chinese label and space', fn: 'line',
+	input: 'vmess://' + b64enc(`{\n\t"ps": "中文 VMess 节点",\n\t"add": "vm.example.com",\n\t"port": "443",\n\t"id": "${UUID}",\n\t"aid": 0,\n\t"scy": "auto",\n\t"net": "tcp",\n\t"tls": "tls"\n}`),
+	expect: { node: {
+		protocol: 'vmess', address: 'vm.example.com', port: 443, uuid: UUID,
+		label: '中文 VMess 节点', method: 'auto', transport: 'raw', security: 'tls'
+	} }
+});
+const T1686_MIXED_CRLF = join('\r\n', [
+	`vless://${UUID}@bad-nul.example:443?security=tls#bad\x00tail`,
+	`trojan://pw%0d%0a@bad-crlf.example:443?security=tls#bad`,
+	'vmess://' + b64enc(`{"ps":"bad\\u007f","add":"bad.example","port":"443","id":"${UUID}","aid":0,"scy":"auto","net":"tcp","tls":"tls"}`),
+	T1686_GOOD_URI,
+	''
+]);
+push(cases, {
+	name: 'T16.86 mixed CRLF plaintext skips control-char lines without truncating adjacent valid node', fn: 'body',
+	input: T1686_MIXED_CRLF,
+	expect: { ok: true, nodes: [ T1686_GOOD_NODE ], skipped: { malformed: 3 }, warnings: [], error: null }
+});
+const T1686_B64_MIXED = b64enc(T1686_MIXED_CRLF);
+const T1686_B64_WRAPPED = substr(T1686_B64_MIXED, 0, 64) + '\r\n' + substr(T1686_B64_MIXED, 64, 64) + '\n' + substr(T1686_B64_MIXED, 128);
+push(cases, {
+	name: 'T16.86 wrapped Base64 body preserves line breaks and skips control-char entries', fn: 'body',
+	input: T1686_B64_WRAPPED,
+	expect: { ok: true, nodes: [ T1686_GOOD_NODE ], skipped: { malformed: 3 }, warnings: [], error: null }
+});
+push(cases, {
+	name: 'T16.86 Base64 body with embedded NUL fails decoding instead of truncating', fn: 'body',
+	input: b64enc(T1686_GOOD_URI + '\n') + '\x00GARBAGE',
+	expect: { ok: false, nodes: [], skipped: {}, warnings: [], error: 'SUB_DECODE_FAILED' }
+});
+push(cases, {
+	name: 'T16.86 all-control-char subscription fails with SUB_NO_VALID_NODES', fn: 'body',
+	input: `vless://${UUID}@bad.example:443?security=tls#bad%00tag\r\ntrojan://pw%7f@bad2.example:443?security=tls#bad2\r\n`,
+	expect: { ok: false, nodes: [], skipped: { malformed: 2 }, warnings: [], error: 'SUB_NO_VALID_NODES' }
+});
+
 export function run(c) {
 	return c.fn == 'line' ? uri.parse_line(c.input) : uri.parse_body(c.input);
 };
