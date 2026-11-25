@@ -1,7 +1,9 @@
 """Exercise rule-data conversion and the docs/08 sanity checks without downloads."""
 
 import base64
+import hashlib
 import ipaddress
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -237,6 +239,205 @@ class OutputSafetyTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "gfwlist.txt"):
                 build.write_baseline(output, raw, b"10.0.0.0/8\n", metadata)
             self.assertFalse(output.exists())
+
+
+def parse_sources_md(text: str) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    actual: dict[str, list[str]] = {}
+    reference: dict[str, list[str]] = {}
+    section = "actual"
+    for line in text.splitlines():
+        if line.startswith("## Upstream reference"):
+            section = "reference"
+            continue
+        if line.startswith("## "):
+            section = "other"
+            continue
+        if not line.startswith("| `"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        key = cells[0].strip("`")
+        if section == "actual":
+            actual[key] = cells[1:]
+        elif section == "reference":
+            reference[key] = cells[1:]
+    return actual, reference
+
+
+class StaticSourceProvenanceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        gfw_lines = ["google.com"] + [f"gfw{index}.example" for index in range(2999)]
+        china_lines = ["server=/baidu.com/114.114.114.114"] + [
+            f"server=/cn{index}.example/114.114.114.114" for index in range(49999)
+        ]
+        apple_lines = [f"server=/cdn{index}.apple.com/114.114.114.114" for index in range(50)]
+        apnic_lines = [
+            "apnic|CN|ipv4|114.114.114.114|1|20260101|allocated",
+            "apnic|CN|ipv4|223.5.5.5|1|20260101|allocated",
+        ] + [
+            f"apnic|CN|ipv4|{ipaddress.IPv4Address(0x0A000000 + index * 2)}|1|20260101|allocated"
+            for index in range(3000)
+        ]
+        cls.base_raw = {
+            "gfwlist.b64": base64.b64encode(("\n".join(gfw_lines) + "\n").encode("ascii")),
+            "china-domains.conf": ("\n".join(china_lines) + "\n").encode("ascii"),
+            "apple-domains.conf": ("\n".join(apple_lines) + "\n").encode("ascii"),
+            "delegated-apnic-latest": ("\n".join(apnic_lines) + "\n").encode("ascii"),
+        }
+        cls.base_timestamps = {
+            "gfwlist.b64": "2026-10-01T00:00:01+00:00",
+            "china-domains.conf": "2026-10-01T00:00:02+00:00",
+            "apple-domains.conf": "2026-10-01T00:00:03+00:00",
+            "delegated-apnic-latest": "2026-10-01T00:00:04+00:00",
+        }
+
+    def run_offline_build(
+        self, root: Path, label: str, static_bytes: bytes,
+        telegram_bytes: bytes, telegram_timestamp: str,
+    ) -> tuple[dict[str, int], dict[str, bytes], dict[str, list[str]], dict[str, list[str]]]:
+        cache_dir = root / f"cache-{label}"
+        out_dir = root / f"out-{label}"
+        static_path = root / f"static-{label}.src.txt"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        raw = {**self.base_raw, "telegram-cidr.txt": telegram_bytes}
+        timestamps = {**self.base_timestamps, "telegram-cidr.txt": telegram_timestamp}
+        for name, content in raw.items():
+            (cache_dir / name).write_bytes(content)
+            (cache_dir / f"{name}.json").write_text(
+                json.dumps({"downloaded_at": timestamps[name]}, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        static_path.write_bytes(static_bytes)
+
+        counts = build.build_to_dir(out_dir, static_path, cache_dir)
+        files = {path.name: path.read_bytes() for path in sorted(out_dir.iterdir())}
+        actual, reference = parse_sources_md(files["SOURCES.md"].decode("utf-8"))
+        return counts, files, actual, reference
+
+    def test_changing_reference_leaves_static_output_and_input_hash_unchanged(self):
+        local_bytes = b"# local static fixture\n198.51.100.0/24\n"
+        ref_a = b"91.108.4.0/22\n"
+        ref_b = b"91.108.4.0/22\n149.154.160.0/20\n"
+        ts_a = "2026-10-01T00:00:05+00:00"
+        ts_b = "2026-10-02T12:34:56+00:00"
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            counts_a, files_a, actual_a, ref_rows_a = self.run_offline_build(
+                root, "ref-a", local_bytes, ref_a, ts_a,
+            )
+            counts_b, files_b, actual_b, ref_rows_b = self.run_offline_build(
+                root, "ref-b", local_bytes, ref_b, ts_b,
+            )
+
+        local_sha = f"`{hashlib.sha256(local_bytes).hexdigest()}`"
+        ref_a_sha = f"`{hashlib.sha256(ref_a).hexdigest()}`"
+        ref_b_sha = f"`{hashlib.sha256(ref_b).hexdigest()}`"
+
+        self.assertEqual(files_a["gfw_static4.txt"], files_b["gfw_static4.txt"])
+        self.assertEqual(counts_a["gfw_static4.txt"], 9)
+        self.assertEqual(counts_b["gfw_static4.txt"], 9)
+
+        self.assertEqual(actual_a["gfw_static4.txt"], actual_b["gfw_static4.txt"])
+        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", actual_a["gfw_static4.txt"][0])
+        self.assertNotIn(build.SOURCES["telegram-cidr.txt"], actual_a["gfw_static4.txt"][0])
+        self.assertEqual(actual_a["gfw_static4.txt"][1], "N/A (local repo input)")
+        self.assertEqual(actual_a["gfw_static4.txt"][2], local_sha)
+        self.assertEqual(actual_a["gfw_static4.txt"][4], "9")
+
+        self.assertEqual(ref_rows_a["gfw_static4.txt"][0], build.SOURCES["telegram-cidr.txt"])
+        self.assertEqual(ref_rows_a["gfw_static4.txt"][1], ts_a)
+        self.assertEqual(ref_rows_a["gfw_static4.txt"][2], ref_a_sha)
+        self.assertEqual(ref_rows_b["gfw_static4.txt"][0], build.SOURCES["telegram-cidr.txt"])
+        self.assertEqual(ref_rows_b["gfw_static4.txt"][1], ts_b)
+        self.assertEqual(ref_rows_b["gfw_static4.txt"][2], ref_b_sha)
+        self.assertNotEqual(ref_rows_a["gfw_static4.txt"][2], ref_rows_b["gfw_static4.txt"][2])
+
+        for name, (source, license_name) in build.OUTPUT_SOURCES.items():
+            self.assertEqual(files_a[name], files_b[name])
+            self.assertEqual(actual_a[name], actual_b[name])
+            self.assertEqual(
+                actual_a[name],
+                [
+                    build.SOURCES[source],
+                    self.base_timestamps[source],
+                    f"`{hashlib.sha256(self.base_raw[source]).hexdigest()}`",
+                    license_name,
+                    str(counts_a[name]),
+                ],
+            )
+
+    def test_changing_local_input_updates_rules_lines_and_input_hash_only(self):
+        local_a = b"# local static fixture\n198.51.100.0/24\n"
+        local_b = b"# local static fixture\n198.51.100.0/24\n203.0.113.0/24\n"
+        ref_bytes = b"91.108.4.0/22\n"
+        ref_ts = "2026-10-01T00:00:05+00:00"
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            counts_a, files_a, actual_a, ref_rows_a = self.run_offline_build(
+                root, "local-a", local_a, ref_bytes, ref_ts,
+            )
+            counts_b, files_b, actual_b, ref_rows_b = self.run_offline_build(
+                root, "local-b", local_b, ref_bytes, ref_ts,
+            )
+
+        self.assertNotEqual(files_a["gfw_static4.txt"], files_b["gfw_static4.txt"])
+        self.assertNotIn(b"203.0.113.0/24\n", files_a["gfw_static4.txt"])
+        self.assertIn(b"203.0.113.0/24\n", files_b["gfw_static4.txt"])
+        self.assertEqual(counts_a["gfw_static4.txt"], 9)
+        self.assertEqual(counts_b["gfw_static4.txt"], 10)
+
+        self.assertEqual(actual_a["gfw_static4.txt"][2], f"`{hashlib.sha256(local_a).hexdigest()}`")
+        self.assertEqual(actual_b["gfw_static4.txt"][2], f"`{hashlib.sha256(local_b).hexdigest()}`")
+        self.assertNotEqual(actual_a["gfw_static4.txt"][2], actual_b["gfw_static4.txt"][2])
+        self.assertEqual(actual_a["gfw_static4.txt"][4], "9")
+        self.assertEqual(actual_b["gfw_static4.txt"][4], "10")
+
+        self.assertEqual(ref_rows_a["gfw_static4.txt"], ref_rows_b["gfw_static4.txt"])
+        self.assertEqual(ref_rows_a["gfw_static4.txt"][2], f"`{hashlib.sha256(ref_bytes).hexdigest()}`")
+
+        for name, (source, license_name) in build.OUTPUT_SOURCES.items():
+            self.assertEqual(files_a[name], files_b[name])
+            self.assertEqual(actual_a[name], actual_b[name])
+            self.assertEqual(
+                actual_a[name],
+                [
+                    build.SOURCES[source],
+                    self.base_timestamps[source],
+                    f"`{hashlib.sha256(self.base_raw[source]).hexdigest()}`",
+                    license_name,
+                    str(counts_a[name]),
+                ],
+            )
+
+    def test_packaged_sources_md_matches_static_input_and_baseline(self):
+        root = Path(__file__).resolve().parents[2]
+        data_dir = root / "aether-proxy/files/data"
+        sources_md = (data_dir / "SOURCES.md").read_text(encoding="utf-8")
+        actual, reference = parse_sources_md(sources_md)
+
+        static_src = (Path(__file__).with_name("gfw_static4.src.txt")).read_bytes()
+        static_sha = f"`{hashlib.sha256(static_src).hexdigest()}`"
+        static_lines = len((data_dir / "gfw_static4.txt").read_text(encoding="utf-8").splitlines())
+
+        self.assertIn(f"`{build.STATIC_SOURCE_REPO_PATH}`", actual["gfw_static4.txt"][0])
+        self.assertNotIn(build.SOURCES["telegram-cidr.txt"], actual["gfw_static4.txt"][0])
+        self.assertEqual(actual["gfw_static4.txt"][1], "N/A (local repo input)")
+        self.assertEqual(actual["gfw_static4.txt"][2], static_sha)
+        self.assertEqual(actual["gfw_static4.txt"][4], str(static_lines))
+
+        self.assertEqual(reference["gfw_static4.txt"][0], build.SOURCES["telegram-cidr.txt"])
+        self.assertEqual(reference["gfw_static4.txt"][1], "2026-10-14T09:39:09+00:00")
+        self.assertEqual(
+            reference["gfw_static4.txt"][2],
+            "`3ecd072cedf72eceee6961b18a51e37f905d5ce4a656a5d24cf5fea63e6ec651`",
+        )
+
+        for name in build.OUTPUT_SOURCES:
+            expected_lines = len((data_dir / name).read_text(encoding="utf-8").splitlines())
+            self.assertEqual(actual[name][4], str(expected_lines))
 
 
 if __name__ == "__main__":

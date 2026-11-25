@@ -25,6 +25,12 @@ SOURCES = {
     "telegram-cidr.txt": "https://core.telegram.org/resources/cidr.txt",
 }
 
+STATIC_SOURCE_REPO_PATH = "tools/data/gfw_static4.src.txt"
+STATIC_REFERENCE_SOURCE = "telegram-cidr.txt"
+STATIC_SOURCE_LICENSE = (
+    "Factual IP address list; redistribution with packages allowed by docs/08-updates.md"
+)
+
 OUTPUT_SOURCES = {
     "gfwlist.txt": ("gfwlist.b64", "LGPL-2.1"),
     "chnlist.txt": ("china-domains.conf", "WTFPL"),
@@ -32,10 +38,6 @@ OUTPUT_SOURCES = {
     "chnroute4.txt": (
         "delegated-apnic-latest",
         "Public registration data; redistribution with packages allowed by docs/08-updates.md",
-    ),
-    "gfw_static4.txt": (
-        "telegram-cidr.txt",
-        "Factual IP address list; redistribution with packages allowed by docs/08-updates.md",
     ),
 }
 
@@ -242,13 +244,13 @@ def validate_outputs(
 
 
 def render_sources(
-    raw: dict[str, bytes], metadata: dict[str, dict[str, str]],
+    raw: dict[str, bytes], static_source: bytes, metadata: dict[str, dict[str, str]],
     outputs: dict[str, list[str]], skipped: dict[str, int],
 ) -> str:
     rows = [
         "# Rule-data baseline sources",
         "",
-        "| Output | Upstream URL | Downloaded (UTC) | Raw SHA-256 | License / terms | Generated lines |",
+        "| Output | Actual input | Downloaded (UTC) | Input SHA-256 | License / terms | Generated lines |",
         "|---|---|---|---|---|---:|",
     ]
     for output, (source, license_name) in OUTPUT_SOURCES.items():
@@ -258,7 +260,29 @@ def render_sources(
             f"| `{output}` | {SOURCES[source]} | {timestamp} | `{checksum}` | "
             f"{license_name} | {len(outputs[output])} |"
         )
-    rows.extend(["", "## gfwlist skipped-entry counts", ""])
+    static_checksum = hashlib.sha256(static_source).hexdigest()
+    rows.append(
+        f"| `gfw_static4.txt` | `{STATIC_SOURCE_REPO_PATH}` (+ built-in `PUBLIC_DNS4`) | "
+        f"N/A (local repo input) | `{static_checksum}` | "
+        f"{STATIC_SOURCE_LICENSE} | {len(outputs['gfw_static4.txt'])} |"
+    )
+    ref_timestamp = metadata[STATIC_REFERENCE_SOURCE]["downloaded_at"]
+    ref_checksum = hashlib.sha256(raw[STATIC_REFERENCE_SOURCE]).hexdigest()
+    rows.extend(
+        [
+            "",
+            "## Upstream reference (not direct build input)",
+            "",
+            "| Output | Reference URL | Downloaded (UTC) | Reference SHA-256 | Note |",
+            "|---|---|---|---|---|",
+            f"| `gfw_static4.txt` | {SOURCES[STATIC_REFERENCE_SOURCE]} | {ref_timestamp} | `{ref_checksum}` | "
+            f"Upstream reference only; not read as build input (`gfw_static4.txt` is built from "
+            f"`{STATIC_SOURCE_REPO_PATH}` + built-in `PUBLIC_DNS4`) |",
+            "",
+            "## gfwlist skipped-entry counts",
+            "",
+        ]
+    )
     if skipped:
         rows.extend(f"- `{reason}`: {count}" for reason, count in sorted(skipped.items()))
     else:
@@ -289,7 +313,7 @@ def build_outputs(
         name: ("\n".join(lines) + "\n").encode("utf-8")
         for name, lines in outputs.items()
     }
-    files["SOURCES.md"] = render_sources(raw, metadata, outputs, skipped).encode("utf-8")
+    files["SOURCES.md"] = render_sources(raw, static_source, metadata, outputs, skipped).encode("utf-8")
     return files
 
 
