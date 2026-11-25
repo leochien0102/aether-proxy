@@ -73,6 +73,11 @@ export const cases = [
 		name: 'stage 2 grace publisher blocked on FIFO when timer exits (never unlocked)',
 		expect: 'PASS',
 		kind: 'pre_publish_grace_timer_exit'
+	},
+	{
+		name: 'no grace needed: runner finishes normally while grace path is unread FIFO',
+		expect: 'PASS',
+		kind: 'no_grace_needed_fifo_no_reader'
 	}
 ];
 
@@ -488,26 +493,31 @@ function first_pid_runner_running_case() {
 function grace_pid_runner_done_case() {
 	return with_sandbox('grace-done', sb => {
 		let grace_locked = `${sb.base}/grace.locked`;
+		let stage1_seen = `${sb.base}/stage1.seen`;
 		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
 			`#!${REAL_SH}`,
-			'd=$(dirname "$(readlink -f "/proc/$PPID/fd/2" 2>/dev/null)")',
-			'if [ -d "$d" ] && [ -f "$d/grace" ]; then',
-			'  i=0; while [ ! -s "$d/sleep" ] && [ "$i" -lt 200 ]; do /bin/sleep 0.01; i=$((i + 1)); done',
-			'  chmod 0400 "$d/grace"',
-			`  : >${sprintf("'%s'", grace_locked)}`,
+			`if [ ! -f ${sprintf("'%s'", stage1_seen)} ]; then`,
+			`  : >${sprintf("'%s'", stage1_seen)}`,
+			'  d=$(dirname "$(readlink -f "/proc/$PPID/fd/2" 2>/dev/null)")',
+			'  if [ -d "$d" ] && [ -f "$d/grace" ]; then',
+			'    i=0; while [ ! -s "$d/sleep" ] && [ "$i" -lt 200 ]; do /bin/sleep 0.01; i=$((i + 1)); done',
+			'    chmod 0400 "$d/grace"',
+			`    : >${sprintf("'%s'", grace_locked)}`,
+			'  fi',
+			'  exit 0',
 			'fi',
 			`exec ${REAL_SLEEP} "$@"`
 		]) + '\n');
 
 		let runner_sh = join('\n', [
+			`trap '${REAL_SLEEP} 0.05; printf done-after-grace-lock; exit 0' TERM`,
 			`i=0; while [ ! -f ${sprintf("'%s'", grace_locked)} ] && [ "$i" -lt 300 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
-			'printf done-after-grace-lock'
+			`while :; do ${REAL_SLEEP} 0.05; done`
 		]);
 		let obs = run_isolated_case(sb, {
 			argv: [ REAL_SH, '-c', runner_sh ],
-			opts: { timeout: 20, quiet: true },
+			opts: { timeout: 1, quiet: true },
 			use_bin: true,
-			ignore_term: true,
 			guard_s: 6
 		});
 		let err = check_common_invariants('grace_pid_runner_done', obs);
@@ -755,6 +765,46 @@ function pre_publish_grace_timer_exit_case() {
 	});
 }
 
+// No grace needed: stage 1 is established, $d/grace is replaced with a FIFO that has
+// no reader (fixture never opens it and never kills timer), and runner finishes normally.
+// Production code must return the original command's result promptly without touching $d/grace.
+function no_grace_needed_fifo_no_reader_case() {
+	return with_sandbox('nograce-fifo', sb => {
+		let fifo_ready = `${sb.base}/grace.fifo.ready`;
+		write_exec(`${sb.bin_dir}/sleep`, join('\n', [
+			`#!${REAL_SH}`,
+			'd=$(dirname "$(readlink -f "/proc/$PPID/fd/2" 2>/dev/null)")',
+			'if [ -d "$d" ] && [ -e "$d/grace" ]; then',
+			'  i=0; while [ ! -s "$d/sleep" ] && [ "$i" -lt 200 ]; do /bin/sleep 0.01; i=$((i + 1)); done',
+			'  rm -f "$d/grace"',
+			'  mkfifo -m 0600 "$d/grace"',
+			`  : >${sprintf("'%s'", fifo_ready)}`,
+			'fi',
+			`exec ${REAL_SLEEP} "$@"`
+		]) + '\n');
+
+		let runner_sh = join('\n', [
+			`i=0; while [ ! -f ${sprintf("'%s'", fifo_ready)} ] && [ "$i" -lt 300 ]; do ${REAL_SLEEP} 0.01; i=$((i + 1)); done`,
+			'printf orig-out; printf orig-err >&2; exit 7'
+		]);
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', runner_sh ],
+			opts: { timeout: 20, quiet: true },
+			use_bin: true,
+			guard_s: 6
+		});
+		let err = check_common_invariants('no_grace_needed_fifo_no_reader', obs);
+		if (err)
+			return err;
+		if (fs.lstat(fifo_ready) == null)
+			return failed('stage 1 did not establish unread grace FIFO');
+		let r = obs.result;
+		if (r.code != 7 || r.timed_out || r.stdout != 'orig-out' || r.stderr != 'orig-err' || obs.elapsed >= 2.0)
+			return failed(`expected prompt original command result without grace write: ${sprintf('%.J', obs)}`);
+		return 'PASS';
+	});
+}
+
 export function run(c) {
 	if (c.kind == 'normal_fast')
 		return normal_fast_case();
@@ -780,5 +830,7 @@ export function run(c) {
 		return pre_publish_sleep_timer_exit_case();
 	if (c.kind == 'pre_publish_grace_timer_exit')
 		return pre_publish_grace_timer_exit_case();
+	if (c.kind == 'no_grace_needed_fifo_no_reader')
+		return no_grace_needed_fifo_no_reader_case();
 	return failed('unknown test kind');
 };
