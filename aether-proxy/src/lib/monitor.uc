@@ -437,7 +437,7 @@ function update_node_ip(daemon, machine, done) {
 	let test = sys.run([ binary, 'run', '-test', '-c', stage_xray ], { timeout: 10, quiet: true });
 	if (test.code != 0) {
 		discard_stage();
-		finish(`xray run -test failed (${test.code}): ${test.stderr}`);
+		finish(`xray run -test failed (${test.code}): ${pipeline.xray_validation_detail(daemon.snapshot, test)}`);
 		return;
 	}
 	if (daemon.ctx.stopping_requested) {

@@ -230,7 +230,7 @@ function check_staged(opts, res, staging) {
 		validation.xray = { ok: r.code == 0, path: xr.path };
 
 		if (r.code != 0)
-			push(errors, { item: 'xray', code: 'failed', detail: trim(r.stderr) || trim(r.stdout) });
+			push(errors, { item: 'xray', code: 'failed', detail: pipeline.xray_validation_detail(res.snapshot, r) });
 	}
 
 	result.validation = validation;

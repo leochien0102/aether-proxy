@@ -112,7 +112,7 @@ function preflight_selection(cursor, opts, root, id, mode, port_scope) {
 			let result = sys.run([ binary.path, 'run', '-test', '-c', path ],
 				{ timeout: C.NODE_USE_TEST_TIMEOUT_SECS, quiet: true });
 			if (result.code != 0) {
-				let detail = trim(result.stderr) || trim(result.stdout) || 'Xray configuration test failed';
+				let detail = pipeline.xray_validation_detail(validated.snapshot, result) || 'Xray configuration test failed';
 				failure = { code: 'CONFIG_INVALID', detail: `xray run -test: exit ${result.code}: `
 					+ substr(detail, -C.NODE_USE_ERROR_BYTES) };
 			}

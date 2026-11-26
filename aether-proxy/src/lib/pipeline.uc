@@ -18,6 +18,14 @@ import * as chinadns from 'aetherproxy.render.chinadns';
 import * as dnsmasq from 'aetherproxy.render.dnsmasq';
 import * as xray from 'aetherproxy.render.xray';
 
+// Engine errors can quote parsed accounts, including escaped forms. Do not publish them.
+export function xray_validation_detail(snapshot, result) {
+	for (let field in [ 'socks_username', 'socks_password', 'http_username', 'http_password' ])
+		if (snapshot?.main?.[field] != null && snapshot.main[field] != '')
+			return `Xray validation failed (exit ${result.code}); engine output withheld for explicit proxy credentials`;
+	return trim(result.stderr ?? '') || trim(result.stdout ?? '');
+};
+
 const RENDERERS = { nft, chinadns, dnsmasq, xray };
 
 // Value options (test-only ones included, docs/10 "仅供测试的选项") -> key in the result.

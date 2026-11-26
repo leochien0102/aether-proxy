@@ -15,6 +15,10 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `extra_ports` | 字符串 | 空 | 仅 `common_extra` 校验并生效；逗号分隔端口或 `a-b`（1–65535，a ≤ b），去重后最多 64 项；区间展开后与常用端口取并集。其余两档保留但忽略，不报错。高级页始终可见，仅 common_extra 可编辑；基础描述只讲格式「逗号分隔端口或区间，范围 1–65535，去重后最多 64 项。」；其余两档置灰时追加「当前端口范围为『<当前档位名>』，切换到『常用 + 补充端口』后生效。」 |
 | `node` | 节点段名 | — | 当前节点。为空则无法启用 |
 | `failover_nodes` | 节点 ID 列表 | 空 | 自动切换参与名单。去空、按首次出现顺序去重，最多 64 项；不存在的节点 ID 不生效。「节点与订阅」页的订阅列、订阅编辑框和节点列均编辑此名单，随页脚保存并应用 |
+| `socks_enabled` / `http_enabled` | bool | `0`（未设置不进入快照） | 独立启用本机 SOCKS5 / HTTP 显式 TCP 代理；仅监听 `127.0.0.1`，不提供 UDP、LAN/WAN、TLS 到代理或 LuCI。仍受服务总开关控制 |
+| `socks_port` / `http_port` | int，1–65535 | 空 | 对应入站启用时必填；双开端口不得相同，不得占用 53、31053、31080–31083 内部监听端口 |
+| `socks_username` / `socks_password` | 字符串 | 空 | SOCKS5 独立入站认证；开启必须成对非空，各 1–255 字节，无 C0/DEL 控制字符；不借用上游凭据 |
+| `http_username` / `http_password` | 字符串 | 空 | HTTP 独立入站认证，同上；用户名不能含冒号。支持 HTTP 转发及 CONNECT 到 HTTPS 目标，不是 TLS 到代理 |
 | `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名）。名称 1–15 字节，不含双引号和 C0/DEL 控制字节；反斜线按字面保留（2026-10-30，T9.45） |
 | `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略：跟随默认模式 / 直连（[02](02-dataplane.md)） |
 | `quic_block` | bool | `1` | 代理目标的 UDP 443 拒绝（非游戏模式主机） |
@@ -29,6 +33,8 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `boot_wait_timeout` | int 秒，0–600 | `120` | 0 = 开机不等待 |
 | `boot_check_targets` | list `ip:port` | `223.5.5.5:53` `114.114.114.114:53` | |
 | `xray_bin` / `chinadns_bin` | 路径 | 空 | 高级选项：显式指定二进制；`xray_bin` 留空时先找 `/usr/bin/aether-xray`，再回退 `/usr/bin/xray`（B24，2026-10-31）。显式路径不可执行时不回退，报告组件缺失；`chinadns_bin` 用于固定引擎或救急，留空按 `/usr/bin/aether-dns` → PATH `chinadns-ng` 的存在性选择，启动失败不回退（M4-03a） |
+
+显式入站标签为 `explicit-socks` / `explicit-http`，始终路由到当前 `proxy` 出站，不随透明代理分流或 `fail_open` 直连。无节点沿用拒绝启动路径。内部 `31081` 诊断 HTTP 口保持原状，不是用户入站。配置和渲染文件包含认证信息，应仅由管理员读取；daemon/check 等使用的原子写入器以 `0600` 创建渲染文件。`render xray`（包括 `--json`）是原始配置导出，按现有接口保留凭据，不可作为公开诊断附件；校验诊断在存在入站凭据时不转发 Xray 原始输出。HTTP Basic 与 SOCKS 用户名密码本身不提供链路加密，本卡仅允许 loopback。
 
 ## `config dns 'dns'`
 

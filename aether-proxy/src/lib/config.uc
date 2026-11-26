@@ -200,6 +200,15 @@ function default_of(f, proto) {
 	return f.type == 'list' ? slice(f.default) : f.default;
 }
 
+function inbound_credential_ok(value) {
+	if (type(value) != 'string' || length(value) < 1 || length(value) > 255)
+		return false;
+	for (let i = 0; i < length(value); i++)
+		if (ord(value, i) < 32 || ord(value, i) == 127)
+			return false;
+	return true;
+}
+
 // Returns the normalized value for one field; appends to `errors` on failure (the returned
 // value is then only a placeholder). `proto` is the node protocol, or null.
 function normalize_field(f, raw, field, proto, errors) {
@@ -264,6 +273,16 @@ function normalize_field(f, raw, field, proto, errors) {
 			push(errors, { field, code: 'required', detail: `${f.name} is required` });
 
 		return default_of(f, proto);
+	}
+
+	// Never interpolate explicit inbound credentials into validation diagnostics.
+	if (match(field, /^main\.(socks|http)_(username|password)$/)) {
+		if (!inbound_credential_ok(v)
+			|| (f.name == 'http_username' && index(v, ':') >= 0)) {
+			push(errors, { field, code: 'invalid_value', detail: 'must be 1–255 bytes without controls (HTTP username also excludes colon)' });
+			return null;
+		}
+		return v;
 	}
 
 	// Authentication is an opaque string; never echo malformed values into diagnostics.
@@ -598,6 +617,24 @@ export function validate_node(node) {
 	return errors;
 };
 
+function check_explicit_proxy(main, errors) {
+	let used = {};
+	let reserved = [ C.DNS_PORT, C.CHINADNS_PORT, C.TPROXY_PORT, C.HTTP_PORT, ...C.DNS_TUNNEL_PORTS ];
+	for (let protocol in [ 'socks', 'http' ]) {
+		if (main[protocol + '_enabled'] != true)
+			continue;
+		for (let suffix in [ 'port', 'username', 'password' ]) {
+			let name = protocol + '_' + suffix;
+			if (main[name] == null)
+				push(errors, { field: 'main.' + name, code: 'required', detail: 'required when inbound is enabled' });
+		}
+		let port = main[protocol + '_port'];
+		if (port != null && (index(reserved, port) >= 0 || used['' + port]))
+			push(errors, { field: 'main.' + protocol + '_port', code: 'port_conflict', detail: 'conflicts with an internal or enabled explicit listener' });
+		used['' + port] = true;
+	}
+}
+
 function check_main(snap, errors, warnings) {
 	let m = snap.main;
 
@@ -676,6 +713,7 @@ export function normalize(raw) {
 	for (let name, n in snap.nodes)
 		check_node(n, `node.${name}`, errors);
 
+	check_explicit_proxy(snap.main, errors);
 	check_main(snap, errors, warnings);
 
 	if (length(errors))

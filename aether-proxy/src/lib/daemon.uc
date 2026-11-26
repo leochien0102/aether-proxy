@@ -265,7 +265,7 @@ function validate_render(ctx, snapshot, staging, components) {
 		return { ok: false, code: 'RENDER_INVALID', artifact: 'nft', detail: `nft -c -f failed (${nft.code}): ${nft.stderr}` };
 	let xray = sys.run([ components[C.XRAY_COMPONENT].path, 'run', '-test', '-c', `${staging}/${C.ARTIFACT_FILES.xray}` ], { timeout: 10, quiet: true });
 	if (xray.code != 0)
-		return { ok: false, code: 'RENDER_INVALID', artifact: 'xray', detail: `xray run -test failed (${xray.code}): ${xray.stderr}` };
+		return { ok: false, code: 'RENDER_INVALID', artifact: 'xray', detail: `xray run -test failed (${xray.code}): ${pipeline.xray_validation_detail(snapshot, xray)}` };
 	return { ok: true };
 };
 
@@ -750,7 +750,7 @@ function start_sequence(ctx, opts, signal_pending) {
 		if (test.code != 0) {
 			record_step(ctx, 'xray_render_validate', step_started);
 			locked.close();
-			return { ok: false, code: 1, step: 'xray_test', detail: `xray run -test failed (${test.code}): ${test.stderr}`, children };
+			return { ok: false, code: 1, step: 'xray_test', detail: `xray run -test failed (${test.code}): ${pipeline.xray_validation_detail(snapshot, test)}`, children };
 		}
 		record_step(ctx, 'xray_render_validate', step_started);
 	}

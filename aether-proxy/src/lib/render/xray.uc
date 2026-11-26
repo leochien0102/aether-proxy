@@ -41,6 +41,19 @@ export function build(snapshot, ctx) {
 	push(inbounds, { tag: C.HTTP_IN_TAG, listen: C.HTTP_LISTEN, port: C.HTTP_PORT, protocol: 'http', settings: {} });
 	push(tags, C.HTTP_IN_TAG);
 
+	for (let protocol in [ 'socks', 'http' ]) {
+		if (main[protocol + '_enabled'] != true)
+			continue;
+		let tag = 'explicit-' + protocol;
+		let settings = { accounts: [ { user: main[protocol + '_username'], pass: main[protocol + '_password'] } ] };
+		if (protocol == 'socks') {
+			settings.auth = 'password';
+			settings.udp = false;
+		}
+		push(inbounds, { tag, listen: C.HTTP_LISTEN, port: main[protocol + '_port'], protocol, settings });
+		push(tags, tag);
+	}
+
 	let outbounds = [];
 
 	// A missing node means "do not start Xray" (docs/06); rendering still must not throw.

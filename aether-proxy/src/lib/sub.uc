@@ -624,7 +624,7 @@ function render_current_node(ctx, content) {
 		return { ok: false, detail: `write ${config_path}: ${sys.error()}` };
 	let checked = sys.run([ xray, 'run', '-test', '-c', config_path ], { timeout: 10, quiet: true });
 	if (checked.code != 0)
-		return { ok: false, detail: `xray run -test exited ${checked.code}: ${trim(checked.stderr)}` };
+		return { ok: false, detail: `xray run -test exited ${checked.code}: ${pipeline.xray_validation_detail(rendered.snapshot, checked)}` };
 	return { ok: true, snapshot: rendered.snapshot };
 }
 

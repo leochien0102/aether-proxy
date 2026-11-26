@@ -162,7 +162,7 @@ function validate(daemon, snapshot, stage, validate_xray, detail) {
 		let xray = sys.run([ components[C.XRAY_COMPONENT].path, 'run', '-test', '-c', `${stage}/${C.ARTIFACT_FILES.xray}` ], { timeout: 10, quiet: true });
 		record_detail(detail, 'xray_test', started);
 		if (xray.code != 0)
-			return { ok: false, code: 'RENDER_INVALID', detail: `xray run -test failed (${xray.code}): ${xray.stderr}`, artifact: 'xray' };
+			return { ok: false, code: 'RENDER_INVALID', detail: `xray run -test failed (${xray.code}): ${pipeline.xray_validation_detail(snapshot, xray)}`, artifact: 'xray' };
 	}
 	return { ok: true, components: pre.components };
 };
