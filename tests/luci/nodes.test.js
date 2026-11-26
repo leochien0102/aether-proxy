@@ -323,7 +323,7 @@ test('row 「检测」 click sends only that node id to probe_nodes', async () =
 });
 
 /* T10.79: column text and severity share parsing; refresh clears stale colors. */
-test('T10.79: node latency boundaries, invalid values, pending and failures', () => {
+test('T16.106: node TCP latency boundaries, invalid values, pending and failures', () => {
 	const model = loadModule(MODEL, { baseclass: { extend: o => o } }, {});
 	const view = loadNodesView([], { sections: [section('n_test')] });
 	const span = element('span', {});
@@ -331,12 +331,12 @@ test('T10.79: node latency boundaries, invalid values, pending and failures', ()
 	const colors = { ok: 'color:var(--success-color-high, #2f855a)',
 		warn: 'color:var(--warning-color, #b7791f)', error: 'color:var(--error-color-high, #c53030)', neutral: '' };
 	const cases = [];
-	for (const [ms, level] of [[0, 'ok'], [100, 'ok'], [200, 'ok'], [201, 'warn'],
-		[800, 'warn'], [801, 'error'], [2000, 'error'], [undefined, 'neutral'],
+	for (const [ms, level] of [[0, 'ok'], [99, 'ok'], [100, 'warn'], [199, 'warn'], [200, 'error'], [201, 'error'],
+		[800, 'error'], [801, 'error'], [2000, 'error'], [undefined, 'neutral'],
 		[null, 'neutral'], [-1, 'neutral'], ['100', 'neutral'], [NaN, 'neutral'], [Infinity, 'neutral']])
 		cases.push([{ ok: true, nodes: { n_test: { ok: 3, median_ms: ms } } }, [], level, tr('%s ms (%s/3)', ms ?? '?', 3)]);
 	for (const error of ['resolve_failed', 'timeout', 'refused', 'unreachable', 'other'])
-		cases.push([{ ok: true, nodes: { n_test: { ok: 0, median_ms: 100, error } } }, [], 'error', tr({
+		cases.push([{ ok: true, nodes: { n_test: { ok: 0, median_ms: 200, error } } }, [], 'error', tr({
 			resolve_failed: 'Resolve failed', timeout: 'Timed out', refused: 'Connection refused', unreachable: 'Unreachable', other: 'Other error'
 		}[error])]);
 	cases.push([{ ok: false }, [], 'error', tr('Reading failed')],
@@ -359,4 +359,21 @@ test('T10.79: node latency boundaries, invalid values, pending and failures', ()
 		assert.equal(span.attrs.style, colors[level]);
 		assert.equal(span.children.map(child => child.textContent ?? child).join(''), text);
 	}
+});
+
+test('T16.106: the same 200 ms is red for node TCP, green for automatic/manual Overview', () => {
+	const modules = { baseclass: { extend: o => o } };
+	const nodes = loadModule(MODEL, modules, {});
+	modules['aether-proxy.model.conflicts'] = loadModule(path.join(RES, 'aether-proxy', 'model', 'conflicts.js'), modules, {});
+	modules['aether-proxy.model.logs'] = loadModule(path.join(RES, 'aether-proxy', 'model', 'logs.js'), modules, {});
+	const overview = loadModule(path.join(RES, 'aether-proxy', 'model', 'overview.js'), modules, {});
+	const ms = 200;
+	const now = 1700000000;
+	const status = { ok: true, state: 'running', last_probe: { ok: true, latency_ms: ms, at: now } };
+	const results = { ok: true, nodes: { n_test: { ok: 3, median_ms: ms } } };
+	assert.equal(nodes.build([section('n_test')], null, [], results, []).rows[0].probe_level, 'error');
+	assert.equal(overview.build(status, {}, {}, now).probe_level, 'ok');
+	const manual = overview.manual_probe({ ok: true, latency_ms: ms }, 'GitHub', status, now);
+	assert.equal(manual.probe_level, 'ok');
+	assert.equal(overview.build(status, {}, {}, now, true, null, null, null, manual).probe_level, 'ok');
 });

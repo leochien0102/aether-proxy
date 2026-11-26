@@ -114,7 +114,7 @@ function probe_fields(id, results, local_pending) {
 
 	if ((res.ok ?? 0) > 0)
 		return { text: fmt(_('%s ms (%s/3)', 'aether-proxy'), res.median_ms ?? '?', res.ok),
-			level: latency.level(res.median_ms) };
+			level: latency.tcp_level(res.median_ms) };
 
 	const text = PROBE_ERROR_TEXT[res.error];
 
