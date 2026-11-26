@@ -1,0 +1,7 @@
+PASS Advanced Save stages both protocols without applying
+PASS before-apply: clicked native indicator on fresh system/reboot page; ordinary fields readable
+OBSERVED exposed credential field count=4 (values not exported)
+PASS Native modal Save & Apply uses original values for all four credentials in fixture
+PASS before-revert: clicked native indicator on fresh system/reboot page; ordinary fields readable
+PASS Native modal Revert discards staged replacements and preserves applied originals
+PASS Native indicator gone after revert and full reload
