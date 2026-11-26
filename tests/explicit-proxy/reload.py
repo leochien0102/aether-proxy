@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 
+from network import LAN, HEX_LAN, lan_network, live_ip_fixture
 from acceptance import (ROOT, BODY, check, discover_xray, free_port, listeners,
                         write_uci, target_server, curl, xray_process)
 
@@ -34,14 +35,15 @@ class Fixture(dns.ReloadFixture):
         self.probes = self.base / 'ready-probes.jsonl'
         self.env['XRAY_LOCATION_ASSET'] = str(self.base / 'empty-assets')
         (self.base / 'empty-assets').mkdir()
-        # Only Xray is native. DNS, nft, ip, dnsmasq and all other system effects
-        # remain the existing rooted daemon fixtures, never host commands.
+        # Xray and read-only namespace address queries are native. DNS, nft,
+        # routing mutations and dnsmasq remain rooted daemon fixtures.
         (self.bin / 'xray').unlink()
         (self.bin / 'xray').symlink_to(binary)
         # The existing monitor reads the global tcp6 table for TPROXY health.
         # Native read-only data replaces the shell Xray stub's synthetic row.
         (self.root / 'proc/net/tcp6').symlink_to('/proc/net/tcp6')
         self.configure(set())
+        live_ip_fixture(self.bin / 'ip')
         ready = self.modules / 'xray_ready.uc'
         # Rooted artifacts remain real production renders. Only the observation
         # context changes to native /proc + socket_diag for this real child.
@@ -178,12 +180,12 @@ uloop.done();
             check(('explicit-' + protocol in tags) == (protocol in enabled),
                   'published inbound enable mismatch')
             bound = [host for host, port in actual if port == self.ports[protocol]]
-            check(bound == (['0100007F'] if protocol in enabled else []),
-                  'explicit listener is not child-owned exact loopback/disabled')
+            check(bound == ([HEX_LAN] if protocol in enabled else []),
+                  'explicit listener is not child-owned exact LAN IP/disabled')
             if protocol not in enabled:
                 with socket.socket() as sock:
                     sock.settimeout(0.5)
-                    check(sock.connect_ex(('127.0.0.1', self.ports[protocol])) != 0,
+                    check(sock.connect_ex((LAN, self.ports[protocol])) != 0,
                           'disabled explicit port remains connectable')
             else:
                 result = curl(target, 'http', protocol, self.ports[protocol], self.accounts[protocol])
@@ -227,20 +229,20 @@ def real_transactions(base, binary, ports, accounts, target):
             # A separate foreign process must survive forward failure + rollback.
             occupier_code = ('import socket,sys; s=socket.socket(); '
                              's.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); '
-                             's.bind(("127.0.0.1",int(sys.argv[1]))); s.listen(); '
+                             f's.bind(("{LAN}",int(sys.argv[1]))); s.listen(); '
                              'print("ready",flush=True); sys.stdin.read()')
             occupier = subprocess.Popen([sys.executable, '-c', occupier_code, str(ports[added])],
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.DEVNULL)
             try:
                 check(occupier.stdout.readline() == b'ready\n', 'foreign occupier failed to bind')
-                check(listeners(occupier.pid) == [('0100007F', ports[added])],
+                check(listeners(occupier.pid) == [(HEX_LAN, ports[added])],
                       'foreign process does not own occupied port')
                 socket_ids = {os.readlink(fd) for fd in Path(f'/proc/{occupier.pid}/fd').iterdir()
                               if os.readlink(fd).startswith('socket:[')}
                 f.reload(child, {'http', 'socks'}, ok=False)
                 check(occupier.poll() is None and
-                      listeners(occupier.pid) == [('0100007F', ports[added])] and
+                      listeners(occupier.pid) == [(HEX_LAN, ports[added])] and
                       socket_ids == {os.readlink(fd)
                                      for fd in Path(f'/proc/{occupier.pid}/fd').iterdir()
                                      if os.readlink(fd).startswith('socket:[')},
@@ -253,7 +255,7 @@ def real_transactions(base, binary, ports, accounts, target):
                 check(f.events('START_FAILED'), 'failed reload did not emit failure event')
                 # The added port is deliberately still foreign-owned.
                 pid = f.xray_pid()
-                check(('0100007F', ports[existing]) in listeners(pid) and
+                check((HEX_LAN, ports[existing]) in listeners(pid) and
                       all(port != ports[added] for _, port in listeners(pid)),
                       'rollback listener ownership incorrect')
                 result = curl(target, 'http', existing, ports[existing], accounts[existing])
@@ -361,7 +363,8 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        with lan_network():
+            main()
     except (AssertionError, OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
         print('FAIL explicit-proxy reload:', str(error) if isinstance(error, AssertionError)
               else type(error).__name__ + ' (details withheld)', file=sys.stderr)

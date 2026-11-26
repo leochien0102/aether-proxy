@@ -50,7 +50,7 @@ export function build(snapshot, ctx) {
 			settings.auth = 'password';
 			settings.udp = false;
 		}
-		push(inbounds, { tag, listen: C.HTTP_LISTEN, port: main[protocol + '_port'], protocol, settings });
+		push(inbounds, { tag, listen: main[protocol + '_listen'], port: main[protocol + '_port'], protocol, settings });
 		push(tags, tag);
 	}
 

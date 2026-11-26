@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 import * as sys from 'aetherproxy.sys';
+import * as net from 'aetherproxy.net';
 import * as pipeline from 'aetherproxy.pipeline';
 import * as component_version from 'aetherproxy.component_version';
 import * as component_id from 'aetherproxy.component_id';
@@ -130,6 +131,41 @@ function precheck(snapshot, staging, options) {
 		let ok = index(ifname, '/') < 0 && fs.stat(prefix + C.SYS_CLASS_NET + '/' + ifname) != null;
 
 		add('lan_iface:' + ifname, ok, `interface ${ifname} does not exist`);
+	}
+
+	// Shared by CLI, startup and reload, before any old service is replaced.
+	let explicit = filter([ 'socks', 'http' ], p => snapshot.main[p + '_enabled'] == true);
+	if (length(explicit)) {
+		let addresses = {};
+		let complete = true;
+		for (let ifname in (snapshot.main.lan_ifaces ?? [])) {
+			if (fs.stat(prefix + C.SYS_CLASS_NET + '/' + ifname) == null) {
+				complete = false;
+				continue;
+			}
+			let result = sys.run([ ip_bin, '-j', '-4', 'addr', 'show', 'dev', ifname ], { timeout: 5, quiet: true });
+			let rows;
+			try { rows = json(result.stdout); }
+			catch (e) { rows = null; }
+			if (result.code != 0 || type(rows) != 'array' || !length(rows)) {
+				complete = false;
+				continue;
+			}
+			for (let row in rows) {
+				if (type(row) != 'object' || row.ifname != ifname || type(row.addr_info) != 'array') {
+					complete = false;
+					continue;
+				}
+				for (let addr in row.addr_info)
+					if (type(addr) == 'object' && addr.family == 'inet' && net.explicit_ipv4(addr.local) != null)
+						addresses[addr.local] = true;
+			}
+		}
+		for (let protocol in explicit) {
+			let address = snapshot.main[protocol + '_listen'];
+			add('explicit_listen:' + protocol, complete && net.explicit_ipv4(address) != null && addresses[address] == true,
+				'listen address must belong to a local main.lan_ifaces interface (IPv4 address query must succeed)');
+		}
 	}
 
 	let components = {};

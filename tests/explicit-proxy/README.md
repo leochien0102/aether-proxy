@@ -1,176 +1,122 @@
-# Offline real-Xray explicit-proxy acceptance
+# Explicit proxy acceptance: isolated LAN and real Xray
 
-This test uses **real UCI parsing, `config.load()`, the production Xray renderer,
-the real CLI, and real Xray processes**. It never patches production modules or
-filters out the existing transparent/DNS/diagnostic inbounds. No network downloads,
-router, firewall changes, external DNS, or public target service are needed.
+## Primary acceptance (T16.110)
 
-## Run
+From the repository root, run:
 
-Prerequisites: Linux `/proc`, Python 3.8+, curl with SOCKS5/HTTP proxy support,
-OpenSSL, the host ucode/UCI modules (`tests/host/bootstrap.sh`), and a real ELF Xray.
-The unmodified transparent inbound needs the host's transparent-socket privileges;
-on this host, run with `sudo -n`. Fixed production ports 31080–31083 must be free;
-all explicit, upstream, and target ports are dynamically allocated on loopback.
-Concurrent runs in the same network namespace are not supported.
+```sh
+sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.11.9/xray \
+  python3 -B tests/explicit-proxy/lan.py
+```
 
-From the repository root:
+Prerequisites: Linux network/mount namespace privileges, `unshare`, `nsenter`,
+`ip`, Python 3.8+, curl with SOCKS5/HTTP support, OpenSSL, and bootstrapped host
+ucode/UCI (`tests/host/bootstrap.sh`). The primary suite requires real ELF Xray
+**26.11.9**; no downloads, skips or shell Xray substitutes are allowed. Missing
+privileges/tools or failed assertions exit nonzero.
+
+`network.py` first re-execs the test inside `unshare --net --mount --propagation
+private` and refuses network changes if it is still in the original network
+namespace. An independent client network namespace is kept alive by a child
+process (no named netns or `/run/netns` mount). A real veth connects server
+`br-lan`, `192.0.2.1/24`, to client `lan-client`, `192.0.2.2/24`. There is no
+default route, external DNS, internet dependency or host firewall/interface/route
+change. Namespace processes are terminated on exit. The production transparent,
+DNS and diagnostic inbounds are retained, not filtered out.
+
+The client runs actual curl via `nsenter -t CLIENT_PID -n`. Targets are offline
+HTTP and self-signed HTTPS servers bound to **server loopback**, unreachable from
+the client directly (negative control). The production daemon-owned Xray listens
+on the configured LAN address; another real authenticated Xray SOCKS server is
+the selected upstream. Therefore successful responses require the explicit
+frontend and the configured upstream. The client has no transparent interception.
+
+Assertions:
+
+- Double off → SOCKS only → both → HTTP only → both → SOCKS retained → double off
+  → HTTP for rollback. Each successful reload replaces the daemon-owned Xray
+  generation and publishes exactly one `RELOAD_APPLIED` with `last_reload.ok`.
+- SOCKS5 HTTP and TLS, HTTP forward GET and HTTP CONNECT/TLS return the exact
+  offline body. Missing credentials, wrong username and wrong password fail for
+  both protocols and both targets with **zero target TCP accepts**. Disabled
+  listeners are also exercised from the client.
+- `/proc/<pid>/fd` socket inodes and that process's TCP tables prove each enabled
+  explicit port belongs to the current daemon-owned Xray at **exactly
+  `192.0.2.1`**, with no extra loopback, wildcard or IPv6 binding at that port.
+  Internal legacy loopback inbounds are not forbidden or changed.
+- Reloads with empty/malformed/wildcard/loopback/IPv6 addresses, a nonlocal LAN
+  subnet address, and an address actually local on **another interface** fail.
+  Published config bytes/render hashes and running state survive; authenticated
+  HTTP forward and CONNECT/TLS still work from the LAN client.
+- A different process (the test controller) occupies the newly added SOCKS port.
+  Reload fails without disturbing its socket inode/binding. The rolled-back
+  Xray does not own that port, and prior authenticated HTTP and CONNECT remain
+  usable. Stopping the selected upstream then makes real requests fail with
+  zero target accepts: there is no direct fallback.
+- Explicit-only successful/failed reloads preserve nft artifact bytes and do not
+  add nft load/delete or fw4 command calls. Non-explicit Xray inbounds, outbounds
+  and routing (excluding only explicit inbound tags) remain identical. `nft -c`
+  prechecks may occur. This is
+  **rooted command-fixture evidence, not real firewall testing**.
+
+### Real network versus rooted fixture boundaries
+
+`lan.py` reuses `reload.py`'s `Fixture`, which in turn reuses
+`tests/reload/dns-ready.py`'s rooted production-daemon fixture. UCI parsing,
+production rendering/validation, daemon SIGHUP transactions, rollback, Xray,
+sockets, veth/network namespaces, curl requests and target TCP accepts are real.
+DNS readiness, dnsmasq, routing and nft side effects remain rooted fixtures.
+
+The fake `ip` executable delegates **only** the read-only production query
+`ip -j -4 addr show dev br-lan` to the native ip binary inside the server network
+namespace. Thus live LAN-address validation sees the actual namespace interface
+and addresses, not canned address claims; all mutating routing commands retain
+the rooted stub. A temporary module copy changes only the native observation
+context of Xray readiness (`published()` passes `root: ''` to `wait()`) so the
+production ownership/generation/socket predicates inspect real child `/proc` and
+socket-diag. The fixture monitor's TCP6 table links to namespace `/proc/net/tcp6`.
+Formal DNS still uses synthetic readiness. No production source is edited by the
+suite. Do not describe this as real OpenWrt/fw4/DNS/transparent-traffic evidence.
+
+Credentials are random per run, sent to curl on stdin (not argv), and never
+printed. Runtime logs/events/state are checked for all credential sentinels.
+Secret-bearing UCI/configs are private temporary files removed on exit.
+
+## Compatibility suites
+
+These run sequentially as below; each real-Xray test now creates its own disposable
+network namespaces and sets explicit `main.socks_listen` / `main.http_listen` to
+`192.0.2.1`, with `main.lan_ifaces=br-lan`. No implicit `127.0.0.1` default remains.
 
 ```sh
 sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.11.9/xray \
   python3 -B tests/explicit-proxy/acceptance.py
-
-# Also verified against the older real engine, without changing the config:
-sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.9.30/xray \
-  python3 -B tests/explicit-proxy/acceptance.py
-```
-
-`acceptance.py` is executable. Without `XRAY_BIN`, it checks PATH, then existing
-`/tmp/ci-tools/xray-*/xray` and `/workspace/openwrt/ci-spike/tools/xray-*/xray`.
-Shell-script stubs are rejected. Missing tools, unavailable privileges, occupied
-ports, validation errors, and failed assertions exit nonzero; there are no silent
-skips or automatic downloads. Select the intended engine explicitly for repeatable
-CI runs.
-
-## Real daemon/reload regression (T16.108)
-
-Run **sequentially**, not concurrently with `acceptance.py` or another real-Xray
-suite (the unchanged production inbounds share fixed ports):
-
-```sh
-sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.3.27/xray \
+sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.11.9/xray \
   python3 -B tests/explicit-proxy/reload.py
-```
-
-`reload.py` reuses `acceptance.py` traffic/process helpers and
-`tests/reload/dns-ready.py`'s rooted daemon fixture. It drives the production
-UCI loader, renderer, validation, daemon, SIGHUP reload transaction, and rollback;
-it does not call the renderer directly or replace the rendered config. The real
-Xray child retains all transparent, DNS, and diagnostic inbounds. The local
-upstream is another real authenticated Xray SOCKS proxy, with a local HTTP target.
-No router, public network, host firewall, route, or interface changes are made:
-DNS, nft, ip, dnsmasq and other system commands stay rooted fixtures.
-
-**Native observation boundary:** rooted readiness deliberately refuses native
-IPv6 dual-stack evidence. In a temporary module copy only, an exactly matched,
-single `published()` call passes `root: ''` to the existing Xray `wait()` function,
-after reading the real published artifacts from the fixture root. Thus the
-unchanged readiness predicates read genuine child `/proc`, ownership/generation,
-native ELF identity, and socket-diag evidence. Formal DNS retains rooted readiness.
-The fixture monitor's global `tcp6` file is a read-only link to `/proc/net/tcp6`,
-replacing the shell Xray stub's synthetic TPROXY health row. No production source
-file is edited. All instrumentation anchors require exactly one source match.
-
-Evidence is deliberately split:
-
-- **Real Xray:** double-off → HTTP → both → SOCKS → double-off, proving a new
-  daemon-owned Xray generation, enabled sockets at exactly `127.0.0.1`, disabled
-  sockets absent and unconnectable, authenticated HTTP traffic through each
-  enabled frontend, and rejection of unauthenticated traffic. Each successful
-  reload records `last_reload.ok` and exactly one new `RELOAD_APPLIED`.
-- **Real Xray failures:** HTTP → add occupied SOCKS and SOCKS → add occupied HTTP.
-  A separate process owns the proposed port before reload and retains the same
-  PID/socket inode/binding afterward. Reload records failure, publishes no
-  `RELOAD_APPLIED`, restores the previous config bytes and render hashes, stays
-  running, emits a failure event, and serves authenticated traffic through the
-  restored proxy. Runtime output/logs/events/state are checked for all random
-  credential sentinels without dumping secret-bearing output.
-- **Labelled proc-visibility fault fixture, not delayed real socket creation:**
-  an additional temporary snapshot-I/O hook hides explicit-port rows from the
-  otherwise genuine `/proc` snapshot. It does not replace requirements, ownership
-  checks, readiness predicates, result, or timeout. Startup with HTTP and reload
-  to both first use a separate, unmodified native gate to prove every required
-  non-explicit socket is ready for the same Xray generation. Only the three
-  explicit not-ready daemon evaluations after that observation count; generation
-  identity must remain unchanged. Neither startup nor reload success may be published; removing
-  the barrier allows success and real authenticated requests. Polling sleeps only
-  schedule observations; no fixed sleep is evidence of non-publication.
-- **Mutation sensitivity:** a separate temporary module copy removes only the
-  explicit-requirements loop (the original omission). It starts double-off
-  normally, then reloads to HTTP behind the same visibility barrier. Premature
-  `RELOAD_APPLIED` must be detected as the expected assertion failure. Unrelated
-  failures are not accepted as proof of sensitivity.
-
-Validated locally against the minimum real engine **26.3.27**, followed by all
-five `acceptance.py` cases and all eight `diagnostics.py` cases. These tests do
-not claim live-device/firewall or real delayed-bind evidence.
-
-## Offline diagnostic regressions (no real Xray or root required)
-
-With Python 3.8+ and the host ucode/UCI modules already bootstrapped, run from the
-repository root:
-
-```sh
 python3 -B tests/explicit-proxy/diagnostics.py
 ```
 
-This separate eight-case suite drives the actual `check --json` CLI with private
-`nft`, `ip`, ChinaDNS-NG, and malicious Xray validator stubs plus a fake `br-lan`
-sysroot. The validator reads the production-rendered enabled SOCKS/HTTP accounts,
-verifies their exact values (including quotes, apostrophes, and backslashes),
-emits raw and JSON-escaped credentials to **both stdout and stderr**, and exits 1.
-For disabled-but-retained main credentials, which are absent from rendered accounts,
-it verifies that absence and emits environment-provided sentinels instead.
+- `acceptance.py`: omitted/off/SOCKS/HTTP/both real UCI → loader → renderer,
+  compares CLI render bytes, validates and runs complete real Xray configs;
+  checks normalized flags, original diagnostic inbound, exact LAN bindings,
+  auth/HTTP/TLS/upstream-down and target accept counts. It also requires production
+  `sys.write_atomic()` mode **0600** under umask 000 and no CLI runtime artifacts.
+  Its request generator is in the **server namespace**, not the independent LAN
+  client; use `lan.py` for real remote-client evidence.
+- `reload.py`: real daemon reload/occupied-port rollback regression, with native
+  Xray socket observation. Its requests are also from the server namespace.
+  Additional **labelled proc-visibility fault fixtures** hide explicit-port rows
+  from snapshots; repeated not-ready evaluations must block startup/reload
+  publication until released. A temporary mutation removing only the explicit
+  requirements loop must be rejected as premature `RELOAD_APPLIED`. These cases
+  are fault-fixture/mutation sensitivity, **not real delayed socket binding**.
+- `diagnostics.py`: rootless, offline eight-case CLI diagnostic regression using
+  malicious validator and canned LAN-address JSON. Enabled and disabled-retained
+  credentials (quotes/backslashes included) must not leak raw or repeatedly
+  JSON-escaped through check/node selection replies, stderr or events. Four missing
+  credential cases must fail before validator execution. **No real engine or
+  network evidence is claimed by this suite.**
 
-Both cases must return `RENDER_INVALID` (exit 4), preserve a useful generic Xray
-failure, and expose no raw or repeatedly JSON-escaped credentials in the reply,
-stderr, or `events.jsonl`. The same malicious validator also exercises actual
-`node use --json` preflight for both cases: selection must fail with
-`CONFIG_INVALID`, leave configuration/state/event history unchanged, and clean
-its scratch directory without exposing credentials. Four more `check --json`
-cases omit each SOCKS/HTTP username/password in turn and require secret-free
-`CONFIG_INVALID` diagnostics (exit 2) without invoking the validator.
-
-No network, engine downloads, listeners, root privileges, or live firewall changes
-are used. All stubs, UCI packages, artifacts, and logs live in a private temporary
-directory removed on exit. This is a CLI diagnostic regression test, not a real
-engine acceptance test or daemon/reload/subscription/monitor lifecycle test.
-
-## Acceptance matrix
-
-Each case writes a private real UCI package, loads it through `render.uc`, compares
-the resulting bytes with `aether-proxy render xray`, validates the complete output
-with `xray run -test`, and starts that complete config in real Xray:
-
-| UCI case | Explicit listeners |
-| --- | --- |
-| Fields omitted | Neither; no new fields in the normalized legacy snapshot |
-| Both booleans false | Neither; rendered config identical to omitted case |
-| SOCKS enabled | SOCKS only |
-| HTTP enabled | HTTP only |
-| Both enabled | SOCKS and HTTP |
-
-The test checks normalized enabled values are booleans; configured ports and tags
-are preserved; each enabled inbound routes to `proxy`; and the original unauthenticated
-`http-in` at `127.0.0.1:31081` remains unchanged. `/proc/<xray-pid>/fd` socket inodes
-and TCP tables verify that the **actual** enabled explicit listeners bind only
-`127.0.0.1`, and disabled explicit listeners do not exist.
-
-Traffic uses a second real Xray as an authenticated local SOCKS upstream, then a
-local HTTP target or a self-signed TLS target. For every enabled frontend:
-
-- Correct credentials deliver the expected body over HTTP and HTTPS: SOCKS5
-  authentication/tunneling, HTTP proxy GET, and HTTP CONNECT with TLS all work.
-- Missing credentials, wrong username, and wrong password fail for both targets.
-- After stopping and waiting for the upstream process, correct-auth requests fail
-  through every enabled frontend for both targets (no direct/freedom fallback).
-- Every denied, disabled-listener, and upstream-down request causes **zero TCP
-  accepts at either target**, not merely zero successful HTTP responses.
-- Direct requests before and after the failure tests prove both targets are live.
-
-Credentials are randomly generated per run. They are sent to curl over stdin,
-never command-line arguments, and captured subprocess output is never printed.
-All temporary UCI, certificate, and Xray files are removed; Xray processes and
-local target threads are stopped on exit.
-
-## Artifact permissions and boundaries
-
-`render.uc` writes the rendered Xray config with production `sys.write_atomic()`
-(the daemon's artifact-writing helper). Even with caller umask `000`, the test
-requires mode `0600`. CLI output must exactly match that private artifact, have no
-stderr, and create no runtime/log directory. The CLI intentionally prints the
-requested secret-bearing artifact to stdout; callers must protect redirections.
-This is not a daemon lifecycle/check-staging permission test, a CLI status/dump
-redaction audit, or an OpenWrt firewall/TPROXY traffic test.
-
-Validated locally: Xray **26.11.9** and **26.9.30**, all five cases passed on each.
+All runtime prerequisites fail closed rather than silently skipping. `XRAY_BIN`
+selects an existing executable; fallback discovery checks PATH and local CI tool
+caches, rejecting non-ELF stubs. Use the explicit 26.11.9 path for reproducibility.

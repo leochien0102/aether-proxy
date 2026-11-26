@@ -44,7 +44,7 @@ export function requirements(chinadns_text, xray_artifact) {
 		if (!length(explicit))
 			continue;
 		let inbound = explicit[0];
-		if (length(explicit) != 1 || inbound.protocol != protocol || inbound.listen != '127.0.0.1' ||
+		if (length(explicit) != 1 || inbound.protocol != protocol || net.explicit_ipv4(inbound.listen) == null ||
 		    type(inbound.port) != 'int' || inbound.port < 1 || inbound.port > 65535)
 			return failure('invalid explicit proxy inbound');
 		push(required, { address: inbound.listen, port: inbound.port, protocol: 'tcp', role: 'explicit' });
@@ -230,7 +230,7 @@ function satisfied(ctx, requirement, rows, owned, deadline, little_endian, stopp
 			continue;
 		if (row.protocol == 'udp' && !udp_inbound(row))
 			continue;
-		// Explicit proxies must bind the configured loopback, not a broader wildcard.
+		// Explicit proxies must bind the configured IPv4, not a broader wildcard.
 		if (requirement.role == 'explicit') {
 			if (row.address == wanted)
 				return true;

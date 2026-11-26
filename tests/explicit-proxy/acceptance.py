@@ -17,6 +17,8 @@ import tempfile
 import threading
 import time
 
+from network import LAN, IFACE, HEX_LAN, lan_network
+
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 UCODE = ROOT / 'tests/host/ucode'
@@ -160,7 +162,8 @@ def target_server(tls=None):
         thread.join(timeout=4)
 
 
-def curl(target, scheme, protocol=None, port=None, credentials=None):
+def curl(target, scheme, protocol=None, port=None, credentials=None,
+         proxy_host=LAN, prefix=()):
     # stdin keeps credentials out of process argv and diagnostic output. Disable all
     # ambient proxy configuration and loopback NO_PROXY exemptions explicitly.
     options = ['silent', 'show-error', 'fail', 'insecure', 'max-time = 3',
@@ -168,12 +171,12 @@ def curl(target, scheme, protocol=None, port=None, credentials=None):
                f'url = "{scheme}://127.0.0.1:{target.server_port}/acceptance"']
     if protocol:
         proxy_scheme = 'socks5h' if protocol == 'socks' else 'http'
-        options.append(f'proxy = "{proxy_scheme}://127.0.0.1:{port}"')
+        options.append(f'proxy = "{proxy_scheme}://{proxy_host}:{port}"')
     else:
         options.append('proxy = ""')
     if credentials:
         options.append(f'proxy-user = "{credentials[0]}:{credentials[1]}"')
-    return subprocess.run(['curl', '-q', '--config', '-'], input='\n'.join(options).encode(),
+    return subprocess.run([*prefix, 'curl', '-q', '--config', '-'], input='\n'.join(options).encode(),
                           capture_output=True, timeout=6)
 
 
@@ -194,14 +197,17 @@ def assert_request(targets, scheme, protocol, port, credentials, success, label)
     check(after == expected, label + ': unexpected target TCP accepts')
 
 
-def write_uci(confdir, enabled, ports, accounts, upstream_port, upstream_account):
+def write_uci(confdir, enabled, ports, accounts, upstream_port, upstream_account,
+              listen=LAN, lan_iface=IFACE):
     lines = ["config main 'main'", " option enabled '1'", f" option node '{NODE}'",
-             " option sniffing '0'", " option xray_log_level 'error'"]
+             " option sniffing '0'", " option xray_log_level 'error'",
+             f" list lan_ifaces '{lan_iface}'"]
     if enabled is not None:
         for protocol in ('socks', 'http'):
             lines.append(f" option {protocol}_enabled '{int(protocol in enabled)}'")
             if protocol in enabled:
-                lines += [f" option {protocol}_port '{ports[protocol]}'",
+                lines += [f" option {protocol}_listen '{listen}'",
+                          f" option {protocol}_port '{ports[protocol]}'",
                           f" option {protocol}_username '{accounts[protocol][0]}'",
                           f" option {protocol}_password '{accounts[protocol][1]}'"]
     lines += ["config dns 'dns'", " list china_dns '127.0.0.1'",
@@ -313,7 +319,7 @@ def main():
                 if protocol not in active:
                     continue
                 inbound = inbound_by_tag[tag]
-                check(inbound['listen'] == '127.0.0.1' and inbound['port'] == ports[protocol]
+                check(inbound['listen'] == LAN and inbound['port'] == ports[protocol]
                       and inbound['protocol'] == protocol, name + ': explicit inbound binding')
                 routes = [rule for rule in config['routing']['rules'] if tag in rule.get('inboundTag', [])]
                 check(routes and all(rule.get('outboundTag') == 'proxy' for rule in routes),
@@ -323,8 +329,8 @@ def main():
                 actual = listeners(child.pid)
                 for protocol in ('socks', 'http'):
                     bound = [host for host, port in actual if port == ports[protocol]]
-                    check(bound == (['0100007F'] if protocol in active else []),
-                          name + ': actual listener is not loopback-only or disabled')
+                    check(bound == ([HEX_LAN] if protocol in active else []),
+                          name + ': actual listener is not exact LAN IP or disabled')
                 # With both disabled, no request may reach either explicit port.
                 for protocol in {'socks', 'http'} - active:
                     for scheme in targets:
@@ -348,14 +354,15 @@ def main():
                 # Targets remain directly reachable: failure must not be a dead target.
                 for scheme in targets:
                     assert_request(targets, scheme, None, None, None, True, name + ': direct control')
-            print('PASS', name + ': UCI/CLI/render, Xray config/runtime, loopback/auth/fail-closed', flush=True)
+            print('PASS', name + ': UCI/CLI/render, Xray config/runtime, LAN binding/auth/fail-closed', flush=True)
         print('PASS offline acceptance: HTTP + TLS via SOCKS5 and HTTP/CONNECT; '
               'unauthorized/upstream-down/disabled requests made zero target TCP accepts', flush=True)
 
 
 if __name__ == '__main__':
     try:
-        main()
+        with lan_network():
+            main()
     except (AssertionError, OSError, subprocess.SubprocessError, ValueError, KeyError) as error:
         # No tracebacks, subprocess argv or captured output containing secrets.
         print('FAIL explicit-proxy:', str(error) if isinstance(error, AssertionError)

@@ -56,7 +56,8 @@ def write_config(confdir, enabled, accounts, missing=None):
              " list lan_ifaces 'br-lan'"]
     for protocol, (username, password) in accounts.items():
         lines += [f" option {protocol}_enabled '{int(enabled)}'",
-                  f" option {protocol}_port '{32180 if protocol == 'socks' else 32181}'"]
+                  f" option {protocol}_port '{32180 if protocol == 'socks' else 32181}'",
+                  f" option {protocol}_listen '192.0.2.1'"]
         for field, value in (('username', username), ('password', password)):
             if f'{protocol}_{field}' != missing:
                 lines.append(f' option {protocol}_{field} {uci_quote(value)}')
@@ -188,7 +189,10 @@ def main():
         sysroot = work / 'root'
         (sysroot / 'sys/class/net/br-lan').mkdir(parents=True)
         stubs = {'nft': '#!/bin/sh\n[ -s "$3" ]\n',
-                 'ip': '#!/bin/sh\necho "Usage: ip rule [ fwmark FWMARK[/MASK] ]"\n',
+                 'ip': '#!/bin/sh\nif [ "$1" = "-j" ]; then\n'
+                       ' echo \'[ {"ifname":"br-lan","addr_info":'
+                       '[{"family":"inet","local":"192.0.2.1"}]} ]\'\n'
+                       'else echo "Usage: ip rule [ fwmark FWMARK[/MASK] ]"; fi\n',
                  'chinadns-ng': '#!/bin/sh\nexit 0\n',
                  'xray': '#!' + sys.executable + '\n' + VALIDATOR}
         for name, content in stubs.items():

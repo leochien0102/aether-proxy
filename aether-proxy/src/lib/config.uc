@@ -8,7 +8,7 @@
 
 import * as C from 'aetherproxy.const';
 import * as node_failover from 'aetherproxy.node_failover';
-import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
+import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts, explicit_ipv4 } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, FINGERPRINTS, XHTTP_MODES,
 	SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
@@ -623,11 +623,14 @@ function check_explicit_proxy(main, errors) {
 	for (let protocol in [ 'socks', 'http' ]) {
 		if (main[protocol + '_enabled'] != true)
 			continue;
-		for (let suffix in [ 'port', 'username', 'password' ]) {
+		for (let suffix in [ 'listen', 'port', 'username', 'password' ]) {
 			let name = protocol + '_' + suffix;
 			if (main[name] == null)
 				push(errors, { field: 'main.' + name, code: 'required', detail: 'required when inbound is enabled' });
 		}
+		let listen = main[protocol + '_listen'];
+		if (listen != null && explicit_ipv4(listen) == null)
+			push(errors, { field: 'main.' + protocol + '_listen', code: 'invalid_ipv4', detail: 'expected a concrete non-loopback unicast IPv4 address' });
 		let port = main[protocol + '_port'];
 		if (port != null && (index(reserved, port) >= 0 || used['' + port]))
 			push(errors, { field: 'main.' + protocol + '_port', code: 'port_conflict', detail: 'conflicts with an internal or enabled explicit listener' });

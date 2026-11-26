@@ -3,12 +3,12 @@
 import * as config from 'aetherproxy.config';
 import * as xray from 'aetherproxy.render.xray';
 
-const AUTH = { socks_enabled: '1', socks_port: '41080', socks_username: 'local-user', socks_password: 'local-secret',
-	http_enabled: '1', http_port: '41081', http_username: 'http-user', http_password: 'http-secret' };
+const AUTH = { socks_enabled: '1', socks_listen: '192.0.2.1', socks_port: '41080', socks_username: 'local-user', socks_password: 'local-secret',
+	http_enabled: '1', http_listen: '198.51.100.1', http_port: '41081', http_username: 'http-user', http_password: 'http-secret' };
 
 export const cases = [
 	{ name: 'legacy snapshot and listeners unchanged', legacy: true, expect: true },
-	{ name: 'independent authenticated TCP loopback inbounds route proxy', render: true, expect: true },
+	{ name: 'independent authenticated TCP LAN inbounds route proxy', render: true, expect: true },
 	{ name: 'only SOCKS enabled', render: true, change: { http_enabled: '0' }, expect: true },
 	{ name: 'only HTTP enabled', render: true, change: { socks_enabled: '0' }, expect: true },
 	{ name: 'both explicitly disabled', render: true, change: { socks_enabled: '0', http_enabled: '0' }, expect: true },
@@ -29,6 +29,16 @@ export const cases = [
 	{ name: 'overlong SOCKS secret rejected', change: { socks_password: sprintf('%0256d', 0) }, invalid: true, expect: true },
 	{ name: 'enabled service missing node still rejected', change: { enabled: '1' }, expect: ['main.node:required'] }
 ];
+for (let proto in ['socks', 'http']) {
+	for (let listen in [ '', '0.0.0.0', '0.1.2.3', '127.0.0.1', '127.1.2.3', '224.0.0.1', '239.1.2.3',
+		'255.255.255.255', '::1', '::', 'localhost', '192.0.2.1/24', '192.0.2.256', '192.00.2.1' ]) {
+		let change = {}; change[proto + '_listen'] = listen;
+		push(cases, { name: proto + ' rejects listen ' + listen, change,
+			expect: ['main.' + proto + '_listen:' + (listen == '' ? 'required' : 'invalid_ipv4')] });
+	}
+	let change = {}; change[proto + '_enabled'] = '0'; change[proto + '_listen'] = 'not-an-address';
+	push(cases, { name: proto + ' disabled listen not used', change, render: true, expect: true });
+}
 for (let port in [53, 31053, 31080, 31081, 31082, 31083])
 	for (let proto in ['socks', 'http']) {
 		let change = {}; change[proto + '_port'] = '' + port;
@@ -41,6 +51,7 @@ export function run(c) {
 		return !result.ok && index(sprintf('%.J', result), 'local-secret') < 0 && index(sprintf('%.J', result), 'http-secret') < 0;
 	if (c.legacy)
 		return result.ok && !('socks_enabled' in result.snapshot.main) && !('http_enabled' in result.snapshot.main)
+			&& !('socks_listen' in result.snapshot.main) && !('http_listen' in result.snapshot.main)
 			&& length(xray.build(result.snapshot, {}).inbounds) == 4;
 	if (!c.render)
 		return map(result.errors ?? [], e => e.field + ':' + e.code);
@@ -54,7 +65,7 @@ export function run(c) {
 		if (!main[proto + '_enabled']) continue;
 		count++;
 		let i = filter(explicit, i => i.tag == 'explicit-' + proto)[0];
-		if (i?.listen != '127.0.0.1' || i.port != main[proto + '_port'] || i.protocol != proto
+		if (i?.listen != main[proto + '_listen'] || i.port != main[proto + '_port'] || i.protocol != proto
 			|| i.settings.accounts[0].user != main[proto + '_username'] || i.settings.accounts[0].pass != main[proto + '_password']) return false;
 		if (proto == 'socks' && (i.settings.auth != 'password' || i.settings.udp != false)) return false;
 		if (length(filter(built.routing.rules, r => r.outboundTag == 'proxy' && index(r.inboundTag, i.tag) >= 0)) != 1) return false;

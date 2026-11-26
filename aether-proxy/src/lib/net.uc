@@ -21,6 +21,14 @@ export function ipv4(s) {
 	return s;
 };
 
+// Explicit user inbounds must never fall back to wildcard or loopback.
+export function explicit_ipv4(s) {
+	if (type(s) != 'string' || ipv4(s) == null)
+		return null;
+	let first = +split(s, '.')[0];
+	return first > 0 && first != 127 && first < 224 ? s : null;
+};
+
 // docs/05 trust_dns allows only a fixed port-53 IPv4 target, not the broader
 // chinadns upstream grammar. Share parsing so validation and both renderers agree.
 export function trust_dns_parts(s) {
