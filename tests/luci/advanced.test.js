@@ -294,6 +294,8 @@ function build_form() {
 			this.description = description;
 			this.ucisection = null;
 			this.validate = null;
+			this.depends = () => this;
+			this.formvalue = () => '';
 			this.value = () => this;
 			created.push(this);
 		}
@@ -408,11 +410,12 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const section = state.map.sections[0];
 	assert.equal(section.kind, 'NamedSection');
 	assert.equal(section.section, 'main');
-	assert.deepEqual(section.tabs, [ 'intercept', 'log', 'boot', 'components', 'experimental' ]);
+	assert.deepEqual(section.tabs, [ 'intercept', 'explicit', 'log', 'boot', 'components', 'experimental' ]);
 
 	const expected = {
 		intercept: [ 'lan_ifaces', 'extra_ports', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 			'fail_open', 'degrade_gfw', 'sniffing' ],
+		explicit: ['socks', 'http'].flatMap(p => ['enabled', 'listen', 'port', 'username', 'password'].map(s => p + '_' + s)),
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
 			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],
@@ -446,6 +449,10 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	   absent, otherwise a checked-by-default switch would look disabled. */
 	assert.deepEqual(lan.default, [ 'br-lan' ]);
 	for (const o of created) {
+		if (/^(socks|http)_enabled$/.test(o.field)) {
+			assert.equal(o.default, '0');
+			continue;
+		}
 		if (o.field === 'extra_ports') {
 			assert.equal(o.placeholder, '');
 			assert.equal(o.default, undefined);
@@ -474,12 +481,12 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 			continue; // This field retains its dedicated port/range validator.
 		calls.length = 0;
 		assert.equal(o.validate('main', 'SAMPLE'), true);
-		assert.deepEqual(calls, [ [ o.field, 'SAMPLE' ] ], o.field + ': validator calls the model');
+		assert.deepEqual(calls.map(args => args.slice(0, 2)), [ [ o.field, 'SAMPLE' ] ], o.field + ': validator calls the model');
 	}
 
 	const source = fs.readFileSync(VIEW, 'utf8');
 	assert.match(source, /new form\.Map\('aetherproxy'/);
-	assert.equal((source.match(/s\.tab\(/g) ?? []).length, 5, 'five tabs');
+	assert.equal((source.match(/s\.tab\(/g) ?? []).length, 6, 'six tabs');
 	assert.doesNotMatch(source, /rpc\.declare|cbi-button-reset|innerHTML/);
 	assert.doesNotMatch(source, /\.depends\s*=/);
 
@@ -766,7 +773,7 @@ test('T16.4 view: experimental tab follows components, has notice and exactly on
 	}, { window: {}, document: {} });
 	await view.render();
 	const section = state.map.sections[0];
-	assert.deepEqual(section.tabs, ['intercept', 'log', 'boot', 'components', 'experimental']);
+	assert.deepEqual(section.tabs, ['intercept', 'explicit', 'log', 'boot', 'components', 'experimental']);
 	assert.deepEqual(section.tabDetails.experimental, {
 		title: '实验性功能',
 		description: '以下功能仍在验证中，可能随版本变化或移除；默认全部关闭，关闭时界面与正式版一致。'

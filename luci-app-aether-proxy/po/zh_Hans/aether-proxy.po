@@ -3073,3 +3073,35 @@ msgstr "目标版本说明（联网）"
 msgctxt "aether-proxy"
 msgid "Version changes"
 msgstr "版本变更"
+
+msgctxt "aether-proxy"
+msgid "LAN explicit proxy"
+msgstr "LAN 显式代理"
+
+msgctxt "aether-proxy"
+msgid "Clients must explicitly configure the router LAN IPv4 address and port. HTTP supports CONNECT to HTTPS destinations, not TLS to the proxy. Use only on controlled networks; reachability is determined by the existing firewall."
+msgstr "客户端需主动填写路由器 LAN IPv4 地址和端口。HTTP 支持通过 CONNECT 访问 HTTPS 目标，并非到代理的 TLS。仅供受控网络使用；网络可达性由现有防火墙决定。"
+
+msgctxt "aether-proxy"
+msgid "Enable %s proxy"
+msgstr "启用 %s 代理"
+
+msgctxt "aether-proxy"
+msgid "LAN IPv4 address"
+msgstr "LAN IPv4 地址"
+
+msgctxt "aether-proxy"
+msgid "Required when this proxy is enabled."
+msgstr "启用此代理时必填。"
+
+msgctxt "aether-proxy"
+msgid "Enter a concrete non-loopback unicast LAN IPv4 address."
+msgstr "请输入具体的非回环单播 LAN IPv4 地址。"
+
+msgctxt "aether-proxy"
+msgid "Port conflicts with an internal or enabled explicit listener."
+msgstr "端口与内部监听或已启用的显式代理监听冲突。"
+
+msgctxt "aether-proxy"
+msgid "Use 1–255 bytes without control characters; HTTP usernames cannot contain a colon."
+msgstr "请输入 1–255 字节且不含控制字符的内容；HTTP 用户名不能含冒号。"

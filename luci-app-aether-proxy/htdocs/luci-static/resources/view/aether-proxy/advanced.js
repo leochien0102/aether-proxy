@@ -12,7 +12,7 @@
  *
  * The fields come from four UCI sections: `main` (interception, logging, boot
  * wait), `probe` (health checks), `dns` (dnsmasq_instance) and `stats` (B25
- * usage heatmap). The five tabs
+ * usage heatmap). The tabs
  * are declared on one NamedSection for `main`; options that belong to another
  * section set LuCI's per-option `ucisection` override (form.js: load/write/
  * remove all honour it), so they still read and save the right section.
@@ -59,6 +59,8 @@ return view.extend({
 		});
 
 		s.tab('intercept', _('Interception', 'aether-proxy'));
+		s.tab('explicit', _('LAN explicit proxy', 'aether-proxy'),
+			_('Clients must explicitly configure the router LAN IPv4 address and port. HTTP supports CONNECT to HTTPS destinations, not TLS to the proxy. Use only on controlled networks; reachability is determined by the existing firewall.', 'aether-proxy'));
 		s.tab('log', _('Logging', 'aether-proxy'));
 		s.tab('boot', _('Boot and health checks', 'aether-proxy'));
 		s.tab('components', _('Components and DNS instance', 'aether-proxy'));
@@ -107,6 +109,32 @@ return view.extend({
 		option(s, 'intercept', form.Flag, 'degrade_gfw',
 			_('Proxy only blocked sites when the node is unavailable', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'sniffing', _('Sniffing', 'aether-proxy'));
+
+		for (const protocol of [ 'socks', 'http' ]) {
+			const label = protocol == 'socks' ? 'SOCKS5' : 'HTTP';
+			o = option(s, 'explicit', form.Flag, protocol + '_enabled',
+				_('Enable %s proxy', 'aether-proxy').format(label));
+			o.default = '0';
+			o.rmempty = false;
+			for (const [suffix, title] of [
+				[ 'listen', _('LAN IPv4 address', 'aether-proxy') ],
+				[ 'port', _('Port', 'aether-proxy') ],
+				[ 'username', _('Username', 'aether-proxy') ],
+				[ 'password', _('Password', 'aether-proxy') ]
+			]) {
+				const field = protocol + '_' + suffix;
+				o = option(s, 'explicit', form.Value, field, label + ' — ' + title);
+				o.depends(protocol + '_enabled', '1');
+				o.rmempty = false;
+				o.password = suffix == 'password';
+				o.validate = function(section_id, value) {
+					const values = Object.fromEntries(s.children
+						.filter(child => /^(socks|http)_/.test(child.option))
+						.map(child => [child.option, child.formvalue(section_id)]));
+					return model.validate(field, value, values);
+				};
+			}
+		}
 
 		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level', 'aether-proxy'));
 		model.log_level_choices().forEach((c) => o.value(c.value, c.label, c.description));

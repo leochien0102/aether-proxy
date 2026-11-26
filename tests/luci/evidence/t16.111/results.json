@@ -1,0 +1,265 @@
+{
+  "boundary": "Offline UI only; fixture UCI writes are not backend/schema/firewall/listener verification. Save & Apply is present but not executed.",
+  "checks": [
+    "bootstrap-dark: defaults both off, dependent fields hidden, standard footer",
+    "bootstrap-dark: untouched save does not backfill explicit defaults",
+    "bootstrap-dark: rejected socks_listen case 1",
+    "bootstrap-dark: rejected socks_listen case 2",
+    "bootstrap-dark: rejected socks_listen case 3",
+    "bootstrap-dark: rejected socks_port case 4",
+    "bootstrap-dark: rejected socks_port case 5",
+    "bootstrap-dark: rejected socks_port case 6",
+    "bootstrap-dark: rejected http_port case 7",
+    "bootstrap-dark: rejected http_username case 8",
+    "bootstrap-dark: rejected socks_password case 9",
+    "bootstrap-dark: rejected http_password case 10",
+    "bootstrap-dark: rejected socks_username case 11",
+    "bootstrap-dark: valid Save persisted independent 10 main fields; invalid Save made no RPC writes",
+    "bootstrap-dark: Changes modal redacts all four credentials; original changes identity and values preserved",
+    "bootstrap-dark: Reset restores saved fields and flags",
+    "bootstrap-dark: socks-only Save persists flags and hides the other protocol",
+    "bootstrap-dark: http-only Save persists flags and hides the other protocol",
+    "bootstrap-dark: closing only SOCKS5 from both-on preserves HTTP enabled",
+    "bootstrap-dark: RPC failure surfaced without fixture mutation; disable Save writes both zero",
+    "argon-light: defaults both off, dependent fields hidden, standard footer",
+    "argon-light: untouched save does not backfill explicit defaults",
+    "argon-light: rejected socks_listen case 1",
+    "argon-light: rejected socks_listen case 2",
+    "argon-light: rejected socks_listen case 3",
+    "argon-light: rejected socks_port case 4",
+    "argon-light: rejected socks_port case 5",
+    "argon-light: rejected socks_port case 6",
+    "argon-light: rejected http_port case 7",
+    "argon-light: rejected http_username case 8",
+    "argon-light: rejected socks_password case 9",
+    "argon-light: rejected http_password case 10",
+    "argon-light: rejected socks_username case 11",
+    "argon-light: valid Save persisted independent 10 main fields; invalid Save made no RPC writes",
+    "argon-light: Changes modal redacts all four credentials; original changes identity and values preserved",
+    "argon-light: Reset restores saved fields and flags",
+    "argon-light: socks-only Save persists flags and hides the other protocol",
+    "argon-light: http-only Save persists flags and hides the other protocol",
+    "argon-light: closing only SOCKS5 from both-on preserves HTTP enabled",
+    "argon-light: RPC failure surfaced without fixture mutation; disable Save writes both zero"
+  ],
+  "writes": [
+    {
+      "theme": "bootstrap-dark",
+      "calls": [
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "http_listen",
+            "http_password",
+            "http_port",
+            "http_username",
+            "socks_enabled",
+            "socks_listen",
+            "socks_password",
+            "socks_port",
+            "socks_username"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_port"
+          ],
+          "result": "rejected"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        }
+      ]
+    },
+    {
+      "theme": "argon-light",
+      "calls": [
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "http_listen",
+            "http_password",
+            "http_port",
+            "http_username",
+            "socks_enabled",
+            "socks_listen",
+            "socks_password",
+            "socks_port",
+            "socks_username"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "socks_port"
+          ],
+          "result": "rejected"
+        },
+        {
+          "section": "main",
+          "fields": [
+            "http_enabled",
+            "socks_enabled"
+          ],
+          "result": "accepted"
+        }
+      ]
+    }
+  ],
+  "rpc": [
+    {
+      "theme": "bootstrap-dark",
+      "methods": [
+        "luci-rpc.getBoardJSON",
+        "luci-rpc.getHostHints",
+        "luci-rpc.getNetworkDevices",
+        "luci.getFeatures",
+        "network.get_proto_handlers",
+        "network.interface.dump",
+        "session.access",
+        "uci.changes",
+        "uci.get",
+        "uci.set"
+      ]
+    },
+    {
+      "theme": "argon-light",
+      "methods": [
+        "luci-rpc.getBoardJSON",
+        "luci-rpc.getHostHints",
+        "luci-rpc.getNetworkDevices",
+        "luci.getFeatures",
+        "network.get_proto_handlers",
+        "network.interface.dump",
+        "session.access",
+        "uci.changes",
+        "uci.get",
+        "uci.set"
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "theme": "bootstrap-dark",
+      "currentApp": [
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/view/aether-proxy/advanced.js"
+      ]
+    },
+    {
+      "theme": "argon-light",
+      "currentApp": [
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/view/aether-proxy/advanced.js"
+      ]
+    }
+  ],
+  "screenshots": [
+    "bootstrap-dark-default-off.png",
+    "bootstrap-dark-both-enabled.png",
+    "bootstrap-dark-port-conflict.png",
+    "bootstrap-dark-credential-validation.png",
+    "bootstrap-dark-validation-save-error.png",
+    "bootstrap-dark-changes-redacted.png",
+    "bootstrap-dark-socks-only-saved.png",
+    "bootstrap-dark-http-only-saved.png",
+    "bootstrap-dark-both-enabled-360.png",
+    "bootstrap-dark-rpc-save-error.png",
+    "argon-light-default-off.png",
+    "argon-light-both-enabled.png",
+    "argon-light-port-conflict.png",
+    "argon-light-credential-validation.png",
+    "argon-light-validation-save-error.png",
+    "argon-light-changes-redacted.png",
+    "argon-light-socks-only-saved.png",
+    "argon-light-http-only-saved.png",
+    "argon-light-both-enabled-360.png",
+    "argon-light-rpc-save-error.png"
+  ]
+}

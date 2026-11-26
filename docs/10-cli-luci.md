@@ -577,7 +577,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
 ### 高级页（2026-10-16 定，T8.11b）
 
 `form.Map('aetherproxy')`，模型 `model/advanced.js`。字段以 [05](05-config.md) 为准，校验规则以 `lib/schema.uc` 与 `lib/config.uc` 为准（页面做与命令行**相同规则**的预检，理由同访问控制页；
-测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分五个标签（`s.tab`）：
+测试逐个与 `check --no-precheck` 交叉核对）。不改命令行与 rpcd。分六个标签（`s.tab`）：
 
 - **拦截**（`main` 段）：`lan_ifaces`（LuCI `tools.widgets` 的 `DeviceSelect`，`multiple`，至少一个；说明「拦截哪些入接口，通常是 br-lan」）、
   `quic_block`、`dns_hijack`、`ipv6_filter`、`filter_https_rr`、`fail_open`、`degrade_gfw`（2026-10-27 加，T10.68，见「B19」）、`sniffing`（`Flag`，默认值按 05）。每个开关一句说明，取自 05 的「说明」列；另外：
@@ -585,6 +585,7 @@ r8 窗口（2026-10-20）中概览页组件两行一直「–」、更新页「�
   - `fail_open`：「关闭后，Xray 不可用时被代理的流量会中断，而不是改为直连」；
   - `dns_hijack`：「关闭后，自己指定了 DNS 的设备会绕过分流」；
   - `ipv6_filter`：「所有 AAAA 查询返回空结果，让设备只用 IPv4 访问；LAN 侧的 IPv6 地址分配不受影响」（03「IPv6」）。
+- **LAN 显式代理**（T16.111，`main` 段）：SOCKS5 / HTTP 分别使用已有 `socks_*` / `http_*` 的 `enabled`、`listen`、`port`、`username`、`password`。默认双关，不改不补写；启用后显示对应必填项，关闭只写本协议开关，保留地址、端口和凭据。密码用原生遮蔽输入框，变更摘要遮蔽两协议的用户名与密码。客户端主动填写路由器 LAN IPv4 和端口；HTTP 支持 CONNECT 到 HTTPS 目标，并非到代理的 TLS。仅供受控网络使用，可达性由现有防火墙决定。页面校验格式、凭据字节数和端口冲突，本机地址归属仍由后端判定；保存、应用、重置与错误提示沿用 LuCI 页脚，不新增 RPC、网络枚举或后端事务。
 - **日志**：`log_level`（`error` 错误、`warn` 警告、`notice` 通知（默认）、`info` 信息、`debug` 调试；选 `debug` 时说明中带上 09「logd 容量」的提示）、`xray_log_level`（`error`、`warning`（默认）、`info`、`debug`）。
 - **开机与检测**：`boot_wait_timeout`（0–600 秒，0 = 不等待）、`boot_check_targets`（`DynamicList`，`IPv4:端口`）；`probe` 段的 `url`（与更新页 `channel_urls` 相同的 URL 规则）、
   `expect_code`（100–599）、`timeout`、`fail_threshold`、`recover_threshold`、`node_timeout`、`node_concurrency`（都是不小于 1 的整数，与命令行一致，不另加上限）。

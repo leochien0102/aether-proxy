@@ -19,6 +19,22 @@
 
 var SCRIPT_VERSION = '@@VERSION@@';
 
+/* SDK change summaries are unmasked even for password widgets. Sanitize only
+ * the synchronous renderer's copy; apply/revert and UCI keep the real values. */
+if (ui.changes?.displayChanges) {
+	const displayChanges = ui.changes.displayChanges;
+	ui.changes.displayChanges = function() {
+		const changes = this.changes;
+		if (!changes?.aetherproxy)
+			return displayChanges.apply(this, arguments);
+		this.changes = { ...changes, aetherproxy: changes.aetherproxy.map(change =>
+			change[1] === 'main' && /^(socks|http)_(username|password)$/.test(change[2]) && change.length === 4
+				? [ ...change.slice(0, 3), '********' ] : change) };
+		try { return displayChanges.apply(this, arguments); }
+		finally { this.changes = changes; }
+	};
+}
+
 /* LuCI caches the module instance: run once here, not on each ap.call or
    construction. Do not block page loading on this best-effort static fetch. */
 function check_script_version() {

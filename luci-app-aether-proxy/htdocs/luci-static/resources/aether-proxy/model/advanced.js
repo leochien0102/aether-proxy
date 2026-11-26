@@ -149,7 +149,41 @@ function list_ok(value, check) {
 	return items.every(check);
 }
 
-function validate(field, value) {
+/* Explicit listeners use the existing main.* fields; messages never include input. */
+function explicit_error(field, value, values) {
+	const [protocol, suffix] = field.split('_');
+	if (suffix == 'enabled')
+		return value === '0' || value === '1' || value == null || value === '' ? true : _('Enter 0 or 1.', 'aether-proxy');
+	if (value == null || value === '')
+		return values?.[protocol + '_enabled'] === '1' ? _('Required when this proxy is enabled.', 'aether-proxy') : true;
+	if (suffix == 'listen') {
+		const first = Number(String(value).split('.')[0]);
+		return ipv4(value) && first > 0 && first != 127 && first < 224 ? true :
+			_('Enter a concrete non-loopback unicast LAN IPv4 address.', 'aether-proxy');
+	}
+	if (suffix == 'port') {
+		const result = int_error({ min: 1, max: 65535 }, value);
+		if (result !== true)
+			return result;
+		const other = protocol == 'socks' ? 'http' : 'socks';
+		return values?.[protocol + '_enabled'] !== '1' ||
+			(![53, 31053, 31080, 31081, 31082, 31083].includes(Number(value)) &&
+			(values?.[other + '_enabled'] !== '1' || Number(value) != Number(values?.[other + '_port']))) ? true :
+			_('Port conflicts with an internal or enabled explicit listener.', 'aether-proxy');
+	}
+	// encodeURIComponent counts UTF-8 bytes without exposing credentials in errors.
+	let bytes;
+	try { bytes = encodeURIComponent(value).replace(/%[0-9A-F]{2}|[^%]/g, 'x').length; }
+	catch (e) { return _('Use 1–255 bytes without control characters; HTTP usernames cannot contain a colon.', 'aether-proxy'); }
+	return bytes >= 1 && bytes <= 255 && !/[\x00-\x1f\x7f]/.test(value) &&
+		!(field == 'http_username' && value.includes(':')) ? true :
+		_('Use 1–255 bytes without control characters; HTTP usernames cannot contain a colon.', 'aether-proxy');
+}
+
+function validate(field, value, values) {
+	if (/^(socks|http)_(enabled|listen|port|username|password)$/.test(field))
+		return explicit_error(field, value, values);
+
 	/* Absent options fall back to the schema default, so they are never an
 	   error (docs/10 「高级页」: 留空的可选字段不报错). */
 	if (value == null || value === '')

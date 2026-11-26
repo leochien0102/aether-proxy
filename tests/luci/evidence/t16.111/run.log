@@ -1,0 +1,40 @@
+PASS bootstrap-dark: defaults both off, dependent fields hidden, standard footer
+PASS bootstrap-dark: untouched save does not backfill explicit defaults
+PASS bootstrap-dark: rejected socks_listen case 1
+PASS bootstrap-dark: rejected socks_listen case 2
+PASS bootstrap-dark: rejected socks_listen case 3
+PASS bootstrap-dark: rejected socks_port case 4
+PASS bootstrap-dark: rejected socks_port case 5
+PASS bootstrap-dark: rejected socks_port case 6
+PASS bootstrap-dark: rejected http_port case 7
+PASS bootstrap-dark: rejected http_username case 8
+PASS bootstrap-dark: rejected socks_password case 9
+PASS bootstrap-dark: rejected http_password case 10
+PASS bootstrap-dark: rejected socks_username case 11
+PASS bootstrap-dark: valid Save persisted independent 10 main fields; invalid Save made no RPC writes
+PASS bootstrap-dark: Changes modal redacts all four credentials; original changes identity and values preserved
+PASS bootstrap-dark: Reset restores saved fields and flags
+PASS bootstrap-dark: socks-only Save persists flags and hides the other protocol
+PASS bootstrap-dark: http-only Save persists flags and hides the other protocol
+PASS bootstrap-dark: closing only SOCKS5 from both-on preserves HTTP enabled
+PASS bootstrap-dark: RPC failure surfaced without fixture mutation; disable Save writes both zero
+PASS argon-light: defaults both off, dependent fields hidden, standard footer
+PASS argon-light: untouched save does not backfill explicit defaults
+PASS argon-light: rejected socks_listen case 1
+PASS argon-light: rejected socks_listen case 2
+PASS argon-light: rejected socks_listen case 3
+PASS argon-light: rejected socks_port case 4
+PASS argon-light: rejected socks_port case 5
+PASS argon-light: rejected socks_port case 6
+PASS argon-light: rejected http_port case 7
+PASS argon-light: rejected http_username case 8
+PASS argon-light: rejected socks_password case 9
+PASS argon-light: rejected http_password case 10
+PASS argon-light: rejected socks_username case 11
+PASS argon-light: valid Save persisted independent 10 main fields; invalid Save made no RPC writes
+PASS argon-light: Changes modal redacts all four credentials; original changes identity and values preserved
+PASS argon-light: Reset restores saved fields and flags
+PASS argon-light: socks-only Save persists flags and hides the other protocol
+PASS argon-light: http-only Save persists flags and hides the other protocol
+PASS argon-light: closing only SOCKS5 from both-on preserves HTTP enabled
+PASS argon-light: RPC failure surfaced without fixture mutation; disable Save writes both zero

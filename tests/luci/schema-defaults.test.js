@@ -152,7 +152,9 @@ function check_options(h, page) {
 		if (option.kind == h.form.Flag && typeof field.default == 'boolean')
 			assert.ok(Object.hasOwn(option, 'default'), label + ': Flag must declare its default');
 		const protocol = option.option === 'method_vmess' ? 'vmess' : null;
-		const effectiveDefault = protocol ? field.proto_default[protocol] : field.default;
+		// Explicit listeners omit unset flags from snapshots, but display off in LuCI.
+		const explicitOff = section === 'main' && /^(socks|http)_enabled$/.test(field.name);
+		const effectiveDefault = explicitOff ? false : protocol ? field.proto_default[protocol] : field.default;
 		if (Object.hasOwn(option, 'default'))
 			assert.deepEqual(option.default, widget_default(effectiveDefault), label + ': default differs from schema');
 		/* A list whose empty value means "use the backend default" shows it as a
