@@ -256,13 +256,18 @@ function publish_stage(daemon, stage, current, previous) {
 function rollback_actions(daemon, done_actions, previous, current, had_current, old_artifacts, old_components) {
 	let errors = [];
 	let restore_error = restore_current(daemon, previous, current, had_current);
-	if (restore_error != null)
+	if (restore_error != null) {
 		log_failure(daemon, 'rollback_current', restore_error);
+		push(errors, `rollback_current: ${restore_error}`);
+	}
 	for (let i = length(done_actions) - 1; i >= 0; i--) {
 		let action = done_actions[i];
 		if (action == 'nft_replace') {
 			let r = apply.nft_load(daemon.ctx, `${current}/${C.ARTIFACT_FILES.nft}`);
-			if (!r.ok) log_failure(daemon, 'rollback_nft', r.detail);
+			if (!r.ok) {
+				log_failure(daemon, 'rollback_nft', r.detail);
+				push(errors, `rollback_nft: ${r.detail}`);
+			}
 		}
 		else if (action == 'restart_xray') {
 			if (daemon.children.xray != null) wait_stopped(daemon.children.xray);
@@ -288,12 +293,18 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 			}
 			else {
 				let hup = apply.dnsmasq_hup(daemon.ctx);
-				if (!hup.ok) log_failure(daemon, 'rollback_dnsmasq_hup', hup.detail);
+				if (!hup.ok) {
+					log_failure(daemon, 'rollback_dnsmasq_hup', hup.detail);
+					push(errors, `rollback_dnsmasq_hup: ${hup.detail}`);
+				}
 			}
 		}
 		else if (action == 'dnsmasq_restart') {
 			let r = apply.dnsmasq_install(daemon.ctx, old_artifacts.dnsmasq);
-			if (!r.ok) log_failure(daemon, 'rollback_dnsmasq', r.detail);
+			if (!r.ok) {
+				log_failure(daemon, 'rollback_dnsmasq', r.detail);
+				push(errors, `rollback_dnsmasq: ${r.detail}`);
+			}
 		}
 	}
 	return join('; ', errors);

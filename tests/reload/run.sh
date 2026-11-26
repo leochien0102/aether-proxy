@@ -765,6 +765,21 @@ sed -i -e "s/option mode 'gfw'/option mode 'bypass_cn'/" \
 	-e "s/option address 'node.example.com'/option address 'unverified-action.example'/" "$T/conf/aetherproxy"
 kill -HUP "$DAEMON_PID"
 assert_failed START_FAILED action-failure
+if python3 - "$SYSROOT/var/run/aether-proxy/state.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+last = json.loads(Path(sys.argv[1]).read_text())['last_reload']
+assert last['ok'] is False, last
+assert last['error'].startswith('nft_replace: '), last
+assert '; rollback_nft: nft -f ' in last['error'], last
+PY
+then
+	ok 'HUP persistent nft failure publishes forward and rollback errors'
+else
+	bad 'HUP persistent nft failure publishes forward and rollback errors'
+fi
 grep 'START_FAILED' "$EVENTS" | grep -Fq '"step": "reload:actions"' \
 	&& ok 'T9.8 action failure retains reload step prefix' || bad 'T9.8 action failure retains reload step prefix'
 rm "$SYSROOT/nft-load-fail"
@@ -942,6 +957,12 @@ if python3 "$ROOT/tests/reload/dns-ready.py"; then
 	ok 'T16.91 real reload waits for formal DNS readiness (forward and rollback)'
 else
 	bad 'T16.91 real reload waits for formal DNS readiness (forward and rollback)'
+fi
+
+if python3 "$ROOT/tests/reload/rollback-errors.py"; then
+	ok 'HUP rollback errors retain all primitive failures and clear on subsequent success'
+else
+	bad 'HUP rollback errors retain all primitive failures and clear on subsequent success'
 fi
 
 echo "reload: $pass passed, $fail failed"
