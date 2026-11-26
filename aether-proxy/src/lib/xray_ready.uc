@@ -39,6 +39,16 @@ export function requirements(chinadns_text, xray_artifact) {
 	if (length(tproxy) != 1 || !valid_inbound(tproxy[0]) || index(networks(tproxy[0]), 'tcp') < 0)
 		return failure('missing or invalid TPROXY inbound');
 	let required = [ { address: tproxy[0].listen, port: tproxy[0].port, protocol: 'tcp', role: 'tproxy' } ];
+	for (let protocol in [ 'socks', 'http' ]) {
+		let explicit = filter(xray.inbounds, inbound => inbound.tag == 'explicit-' + protocol);
+		if (!length(explicit))
+			continue;
+		let inbound = explicit[0];
+		if (length(explicit) != 1 || inbound.protocol != protocol || inbound.listen != '127.0.0.1' ||
+		    type(inbound.port) != 'int' || inbound.port < 1 || inbound.port > 65535)
+			return failure('invalid explicit proxy inbound');
+		push(required, { address: inbound.listen, port: inbound.port, protocol: 'tcp', role: 'explicit' });
+	}
 	let tunnels = filter(xray.inbounds, inbound => index(inbound.tag ?? '', C.DNS_IN_TAG_PREFIX) == 0);
 	for (let inbound in tunnels)
 		if (!valid_inbound(inbound))
@@ -220,6 +230,12 @@ function satisfied(ctx, requirement, rows, owned, deadline, little_endian, stopp
 			continue;
 		if (row.protocol == 'udp' && !udp_inbound(row))
 			continue;
+		// Explicit proxies must bind the configured loopback, not a broader wildcard.
+		if (requirement.role == 'explicit') {
+			if (row.address == wanted)
+				return true;
+			continue;
+		}
 		let wildcard = row.ipv6 ? '00000000000000000000000000000000' : '00000000';
 		if (length(wanted) == length(row.address)) {
 			if (row.address == wanted || row.address == wildcard)

@@ -10,6 +10,8 @@ export const cases = [
 	{ name: 'W1 renderer references single TCP UDP and mixed tuples without unused ports',
 		kind: 'references', expect: 'PASS' },
 	{ name: 'W2 T2 T3 only require TPROXY and broken artifacts fail closed', kind: 'tiers', expect: 'PASS' },
+	{ name: 'T16.108 explicit proxy requirements follow published independent inbounds', kind: 'explicit', expect: 'PASS' },
+	{ name: 'T16.108 malformed duplicate or nonloopback explicit inbounds fail closed', kind: 'explicit-invalid', expect: 'PASS' },
 	{ name: 'W4 pure tcp6 udp6 states addresses and malformed rows', kind: 'tables', expect: 'PASS' },
 	{ name: 'A3 explicit endian IPv4 IPv6 LE BE and invalid parameter rejection', kind: 'endian', expect: 'PASS' }
 ];
@@ -20,6 +22,41 @@ function snapshot(trust) {
 };
 
 export function run(c) {
+	if (c.kind == 'explicit' || c.kind == 'explicit-invalid') {
+		let s = snapshot([ 'tcp://8.8.8.8' ]), ctx = { runtime: { dns_tier: 'T2' } };
+		if (c.kind == 'explicit') {
+			for (let flags in [ [ false, false ], [ false, true ], [ true, true ], [ true, false ] ]) {
+				s.main = { socks_enabled: flags[0], socks_port: 42001, socks_username: 'test', socks_password: 'test',
+					http_enabled: flags[1], http_port: 42002, http_username: 'test', http_password: 'test' };
+				let result = ready.requirements(chinadns.render(s, ctx), xray.render(s, ctx));
+				if (!result.ok || length(result.required) != 1 + int(flags[0]) + int(flags[1]))
+					return 'explicit requirement count mismatch';
+				let wanted = [ 42001, 42002 ];
+				for (let i = 0; i < 2; i++) {
+					let found = filter(result.required, r => r.port == wanted[i] && r.address == '127.0.0.1' &&
+						r.protocol == 'tcp' && r.role == 'explicit');
+					if (length(found) != int(flags[i]))
+						return 'explicit requirement tuple mismatch';
+				}
+			}
+			return 'PASS';
+		}
+		for (let protocol in [ 'socks', 'http' ]) {
+			let inbound = { tag: 'explicit-' + protocol, protocol, listen: '127.0.0.1', port: 42001 };
+			for (let bad in [ { protocol: 'tunnel' }, { listen: '0.0.0.0' }, { listen: '::' },
+				{ listen: '192.0.2.1' }, { listen: null }, { port: 0 }, { port: 65536 }, { port: '42001' } ]) {
+				let built = xray.build(s, ctx);
+				push(built.inbounds, { ...inbound, ...bad });
+				if (ready.requirements(chinadns.render(s, ctx), sprintf('%.J', built)).ok)
+					return 'invalid explicit inbound accepted';
+			}
+			let built = xray.build(s, ctx);
+			push(built.inbounds, inbound, inbound);
+			if (ready.requirements(chinadns.render(s, ctx), sprintf('%.J', built)).ok)
+				return 'duplicate explicit inbound accepted';
+		}
+		return 'PASS';
+	}
 	if (c.kind == 'references') {
 		for (let trust in [ [ 'tcp://8.8.8.8' ], [ 'udp://8.8.8.8' ],
 			[ 'udp://8.8.8.8', 'tcp://1.1.1.1' ], [ 'tcp://8.8.8.8', 'udp://1.1.1.1' ] ]) {

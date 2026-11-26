@@ -32,6 +32,69 @@ ports, validation errors, and failed assertions exit nonzero; there are no silen
 skips or automatic downloads. Select the intended engine explicitly for repeatable
 CI runs.
 
+## Real daemon/reload regression (T16.108)
+
+Run **sequentially**, not concurrently with `acceptance.py` or another real-Xray
+suite (the unchanged production inbounds share fixed ports):
+
+```sh
+sudo -n env XRAY_BIN=/workspace/openwrt/ci-spike/tools/xray-26.3.27/xray \
+  python3 -B tests/explicit-proxy/reload.py
+```
+
+`reload.py` reuses `acceptance.py` traffic/process helpers and
+`tests/reload/dns-ready.py`'s rooted daemon fixture. It drives the production
+UCI loader, renderer, validation, daemon, SIGHUP reload transaction, and rollback;
+it does not call the renderer directly or replace the rendered config. The real
+Xray child retains all transparent, DNS, and diagnostic inbounds. The local
+upstream is another real authenticated Xray SOCKS proxy, with a local HTTP target.
+No router, public network, host firewall, route, or interface changes are made:
+DNS, nft, ip, dnsmasq and other system commands stay rooted fixtures.
+
+**Native observation boundary:** rooted readiness deliberately refuses native
+IPv6 dual-stack evidence. In a temporary module copy only, an exactly matched,
+single `published()` call passes `root: ''` to the existing Xray `wait()` function,
+after reading the real published artifacts from the fixture root. Thus the
+unchanged readiness predicates read genuine child `/proc`, ownership/generation,
+native ELF identity, and socket-diag evidence. Formal DNS retains rooted readiness.
+The fixture monitor's global `tcp6` file is a read-only link to `/proc/net/tcp6`,
+replacing the shell Xray stub's synthetic TPROXY health row. No production source
+file is edited. All instrumentation anchors require exactly one source match.
+
+Evidence is deliberately split:
+
+- **Real Xray:** double-off → HTTP → both → SOCKS → double-off, proving a new
+  daemon-owned Xray generation, enabled sockets at exactly `127.0.0.1`, disabled
+  sockets absent and unconnectable, authenticated HTTP traffic through each
+  enabled frontend, and rejection of unauthenticated traffic. Each successful
+  reload records `last_reload.ok` and exactly one new `RELOAD_APPLIED`.
+- **Real Xray failures:** HTTP → add occupied SOCKS and SOCKS → add occupied HTTP.
+  A separate process owns the proposed port before reload and retains the same
+  PID/socket inode/binding afterward. Reload records failure, publishes no
+  `RELOAD_APPLIED`, restores the previous config bytes and render hashes, stays
+  running, emits a failure event, and serves authenticated traffic through the
+  restored proxy. Runtime output/logs/events/state are checked for all random
+  credential sentinels without dumping secret-bearing output.
+- **Labelled proc-visibility fault fixture, not delayed real socket creation:**
+  an additional temporary snapshot-I/O hook hides explicit-port rows from the
+  otherwise genuine `/proc` snapshot. It does not replace requirements, ownership
+  checks, readiness predicates, result, or timeout. Startup with HTTP and reload
+  to both first use a separate, unmodified native gate to prove every required
+  non-explicit socket is ready for the same Xray generation. Only the three
+  explicit not-ready daemon evaluations after that observation count; generation
+  identity must remain unchanged. Neither startup nor reload success may be published; removing
+  the barrier allows success and real authenticated requests. Polling sleeps only
+  schedule observations; no fixed sleep is evidence of non-publication.
+- **Mutation sensitivity:** a separate temporary module copy removes only the
+  explicit-requirements loop (the original omission). It starts double-off
+  normally, then reloads to HTTP behind the same visibility barrier. Premature
+  `RELOAD_APPLIED` must be detected as the expected assertion failure. Unrelated
+  failures are not accepted as proof of sensitivity.
+
+Validated locally against the minimum real engine **26.3.27**, followed by all
+five `acceptance.py` cases and all eight `diagnostics.py` cases. These tests do
+not claim live-device/firewall or real delayed-bind evidence.
+
 ## Offline diagnostic regressions (no real Xray or root required)
 
 With Python 3.8+ and the host ucode/UCI modules already bootstrapped, run from the

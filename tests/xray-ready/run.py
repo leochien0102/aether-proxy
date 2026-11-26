@@ -134,6 +134,20 @@ def main(tmp):
     check(pure.returncode == 0, 'W1/W2/W4 actual renderer reference and pure socket parser contracts')
     print(pure.stdout, end='')
 
+    explicit = endpoint(role='explicit')
+    with listener(tmp, [explicit]) as child:
+        check(run(tmp, child.pid, [explicit])['ok'],
+              'T16.108 real owned exact loopback explicit listener is ready')
+    for address in ('0.0.0.0', '::', '127.0.0.2'):
+        with listener(tmp, [dict(explicit, address=address, v6only=0)]) as child:
+            check(not run(tmp, child.pid, [explicit], cancel_ms=250)['ok'],
+                  f'T16.108 real owned explicit {address} cannot replace exact configured loopback')
+    with listener(tmp, [explicit]) as occupier, listener(tmp, []) as child:
+        check(not run(tmp, child.pid, [explicit], cancel_ms=250)['ok'],
+              'T16.108 real foreign explicit listener cannot satisfy new child')
+        check(occupier.poll() is None and run(tmp, occupier.pid, [explicit])['ok'],
+              'T16.108 real foreign explicit listener survives rejection')
+
     for protocol in ('tcp', 'udp'):
         tproxy, dns = endpoint(role='tproxy'), endpoint(protocol)
         with listener(tmp, [tproxy, dict(dns, delay=0.4)]) as child:
