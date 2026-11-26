@@ -384,7 +384,8 @@ def verify_followup_success(f, child, label):
 	      f'{label}: exactly one NODE_IP_CHANGED emitted')
 	check(len(f.probes_log()) > probes_before and f.probes_log()[-1].get('action') == 'switch',
 	      f'{label}: node-probe.log records switch')
-	check(lock_is_free(f.root / 'var/lock/aether-proxy.lock'),
+	# finish_tick publishes state.json before it unlocks; publication is not a release barrier.
+	check(wait_for(lambda: lock_is_free(f.root / 'var/lock/aether-proxy.lock'), timeout=10),
 	      f'{label}: C.LOCK_FILE released after followup')
 
 
