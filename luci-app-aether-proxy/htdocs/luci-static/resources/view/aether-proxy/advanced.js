@@ -127,11 +127,12 @@ return view.extend({
 		const enabled = () => values().socks_enabled === '1' || values().http_enabled === '1';
 		const resolved = () => {
 			const v = values();
-			if (v.proxy_username || v.proxy_password)
-				return [v.proxy_username || '', v.proxy_password || ''];
+			// An explicit old source selects the whole pair, not pieces of new input.
 			if (v._proxy_credential_source === 'socks' || v._proxy_credential_source === 'http')
 				return ['username', 'password'].map(key => main()[v._proxy_credential_source + '_' + key] || '');
-			return model.credentials(main()).conflict ? null : ['', ''];
+			if (model.credentials(main()).conflict && !(v.proxy_username && v.proxy_password))
+				return null;
+			return [v.proxy_username || '', v.proxy_password || ''];
 		};
 		const addressError = () => !enabled() ||
 			(addresses.length === 1 || (addresses.length > 1 && addresses.includes(values().proxy_address))) ? true :

@@ -1,0 +1,143 @@
+{
+  "boundary": "Offline SDK UI + in-memory HTTP/ubus fixtures only; no device, real apply, or raw credentials exported.",
+  "checks": [
+    "Partial new username: failed Save is read-only, socks resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new username / socks: native Revert restores exact original configuration",
+    "Partial new username: failed Save is read-only, http resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new username / http: native Revert restores exact original configuration",
+    "Partial new username: failed Save is read-only, complete resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new username / complete: native Revert restores exact original configuration",
+    "Partial new password: failed Save is read-only, socks resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new password / socks: native Revert restores exact original configuration",
+    "Partial new password: failed Save is read-only, http resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new password / http: native Revert restores exact original configuration",
+    "Partial new password: failed Save is read-only, complete resolves using one complete pair",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Partial new password / complete: native Revert restores exact original configuration"
+  ],
+  "navigations": [
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "advanced"
+    },
+    {
+      "page": "unrelated"
+    },
+    {
+      "page": "advanced"
+    }
+  ],
+  "summaries": [
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    }
+  ],
+  "writes": [
+    {
+      "section": "main",
+      "fields": [
+        "proxy_username"
+      ]
+    }
+  ],
+  "credentialMigration": "PASS",
+  "globalSummaryRedaction": "NOT_ASSESSED"
+}

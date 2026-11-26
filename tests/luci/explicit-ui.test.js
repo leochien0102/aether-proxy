@@ -143,6 +143,43 @@ test('T16.112: choosing either complete old source or entering a new pair resolv
 	}
 });
 
+test('T16.112 rework: either partial shared field keeps conflict; whole-source choice or complete replacement resolves it', async () => {
+	for (const key of ['username', 'password']) {
+		const field = 'proxy_' + key;
+		const original = { ...legacy, socks_enabled: '1', [field]: shared[field] };
+		const state = model().credentials(original);
+		assert.equal(state.conflict, true);
+		assert.deepEqual(state.pair, [original.proxy_username || '', original.proxy_password || '']);
+		for (const source of ['socks', 'http', '']) {
+			const h = await page(original);
+			assert.ok(get(h, '_proxy_credential_source'), 'partial shared values do not hide source choice');
+			assert.deepEqual(h.calls, [], 'loading is read-only');
+			await assert.rejects(h.parse(), /Legacy proxy credentials differ/);
+			assert.deepEqual(h.calls, [], 'failed save writes nothing');
+			assert.deepEqual(h.data.main, original, 'failed save retains both old pairs and partial new input');
+			if (source) input(h, '_proxy_credential_source', source);
+			else input(h, key === 'username' ? 'proxy_password' : 'proxy_username',
+				shared[key === 'username' ? 'proxy_password' : 'proxy_username']);
+			await h.parse();
+			const expected = source ? [legacy[source + '_username'], legacy[source + '_password']] :
+				[shared.proxy_username, shared.proxy_password];
+			const staged = { ...original };
+			for (const [op, config, section, f, value] of h.calls) {
+				if (op === 'set') staged[f] = value;
+				else if (op === 'unset') delete staged[f];
+			}
+			assert.ok(staged.proxy_username === expected[0] && staged.proxy_password === expected[1],
+				'entire selected pair wins; sources are never spliced');
+			assert.ok(Object.keys(legacy).every(f => staged[f] == null), 'valid save removes old fields');
+			// Native reload after Revert reads the original committed fixture, not staged migration.
+			const reverted = await page(original);
+			assert.deepEqual(reverted.calls, []);
+			assert.equal(model().credentials(reverted.data.main).conflict, true);
+			assert.deepEqual(reverted.data.main, original);
+		}
+	}
+});
+
 test('T16.112: partial replacement/source, credential errors or another tab failure never migrate', async () => {
 	for (const bad of ['incomplete', 'source-partial', 'username', 'password', 'other-tab']) {
 		const old = bad === 'source-partial' ? { socks_username: 'fixture-partial', http_username: 'fixture-other' } : legacy;
@@ -182,7 +219,7 @@ test('T16.112: common username/password byte limits, required fields and enabled
 test('T16.112: partial new credentials never borrow old values, and closed proxies retain shared credentials', async () => {
 	const h = await page({ ...legacy, proxy_username: shared.proxy_username, socks_enabled: '1' });
 	assert.equal(get(h, 'proxy_password').formvalue('main'), '');
-	await assert.rejects(h.parse(), /Required/); assert.deepEqual(migrationCalls(h), []);
+	await assert.rejects(h.parse(), /Legacy proxy credentials differ/); assert.deepEqual(migrationCalls(h), []);
 	const closed = await page({ ...shared, socks_enabled: '1' });
 	input(closed, 'socks_enabled', '0'); await closed.parse();
 	assert.deepEqual(migrationCalls(closed), []);

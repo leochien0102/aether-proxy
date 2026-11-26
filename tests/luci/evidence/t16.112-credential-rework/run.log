@@ -1,0 +1,18 @@
+PASS Partial new username: failed Save is read-only, socks resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new username / socks: native Revert restores exact original configuration
+PASS Partial new username: failed Save is read-only, http resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new username / http: native Revert restores exact original configuration
+PASS Partial new username: failed Save is read-only, complete resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new username / complete: native Revert restores exact original configuration
+PASS Partial new password: failed Save is read-only, socks resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new password / socks: native Revert restores exact original configuration
+PASS Partial new password: failed Save is read-only, http resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new password / http: native Revert restores exact original configuration
+PASS Partial new password: failed Save is read-only, complete resolves using one complete pair
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Partial new password / complete: native Revert restores exact original configuration

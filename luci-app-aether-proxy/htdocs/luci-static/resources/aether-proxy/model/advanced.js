@@ -153,11 +153,11 @@ function list_ok(value, check) {
 function credentials(main) {
 	const pair = prefix => [main?.[prefix + '_username'] || '', main?.[prefix + '_password'] || ''];
 	const shared = pair('proxy'), socks = pair('socks'), http = pair('http');
-	if (shared.some(Boolean))
+	if (shared.every(Boolean))
 		return { pair: shared, conflict: false };
-	if (!socks.some(Boolean) || !http.some(Boolean) || JSON.stringify(socks) == JSON.stringify(http))
-		return { pair: socks.some(Boolean) ? socks : http, conflict: false };
-	return { pair: ['', ''], conflict: true };
+	if (socks.some(Boolean) && http.some(Boolean) && JSON.stringify(socks) != JSON.stringify(http))
+		return { pair: shared, conflict: true };
+	return { pair: shared.some(Boolean) ? shared : socks.some(Boolean) ? socks : http, conflict: false };
 }
 
 /* Explicit listeners use the existing main.* fields; messages never include input. */

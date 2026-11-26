@@ -38,6 +38,7 @@ export const cases = [
 	{ name: 'legacy colon rejected by shared username policy', old: { socks_username: 'local-secret:bad', socks_password: 'local-secret' }, invalid: true, expect: true },
 	{ name: 'new complete pair resolves old conflict even malformed old secret', old: { ...OLD, http_password: ['other-secret'] }, change: AUTH, render: true, expect: true },
 	{ name: 'partial new pair cannot resolve old conflict', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_username: 'new-user' }, expect: ['main.proxy_credentials:migration_conflict'] },
+	{ name: 'password-only new pair cannot resolve old conflict', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_password: 'new-secret' }, expect: ['main.proxy_credentials:migration_conflict'] },
 	{ name: 'partial new pair never combines with old compatible pair', old: OLD, change: { proxy_username: 'new-user' }, expect: ['main.proxy_password:required'] },
 	{ name: 'both disabled allow unresolved legacy conflict', old: { ...OLD, http_password: 'other-secret' }, change: { socks_enabled: '0', http_enabled: '0' }, render: true, expect: true },
 	{ name: 'unresolved renderer fails closed rather than default wildcard', unresolved: true, expect: true }

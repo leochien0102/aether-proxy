@@ -1,7 +1,7 @@
 'use strict';
 /* Real SDK views and native indicator/modal. All transport is intercepted;
  * fixture pending state survives full navigation in the same browser session.
- * NODE_PATH=<playwright modules> node <this file> <SDK root/www> [output dir] [--check-redaction]
+ * NODE_PATH=<playwright modules> node <this file> <SDK root/www> [output dir] [--check-redaction|--credentials-only]
  * Default checks plugin notice and native save/apply/revert semantics.
  * --check-redaction is a separate diagnostic gate, not plugin acceptance.
  */
@@ -13,8 +13,10 @@ const { parsePo } = require('./loader');
 const [www, output] = process.argv.slice(2).filter(a => !a.startsWith('--'));
 assert.ok(www, 'Supply an offline SDK root/www');
 const out = output || path.join(__dirname, 'evidence/t16.112-native-flow');
-assert.ok(process.argv.slice(2).filter(a => a.startsWith('--')).every(a => a === '--check-redaction'), 'Only --check-redaction is supported; historical --expect-leak is not a product gate');
+assert.ok(process.argv.slice(2).filter(a => a.startsWith('--')).every(a => ['--check-redaction', '--credentials-only'].includes(a)), 'Supported flags: --check-redaction, --credentials-only');
 const checkRedaction = process.argv.includes('--check-redaction');
+const credentialsOnly = process.argv.includes('--credentials-only');
+assert.ok(!credentialsOnly || !checkRedaction, 'Credential-only mode does not assess global summary redaction');
 const notice = '点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。';
 const sdk = path.resolve(www, 'luci-static');
 const app = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static');
@@ -152,6 +154,53 @@ const fixtures = {
 			check(stage + ': clicked native indicator on fresh system/reboot page' +
 				(stage === 'legacy-before-revert' ? '; legacy migration summary inspected' : '; ordinary fields readable'));
 			return exposedFields;
+		}
+		if (credentialsOnly) {
+			const old = { socks_enabled: '1', http_enabled: '1', socks_username: 'fictional-migration-socks-user',
+				socks_password: 'fictional-migration-socks-secret', http_username: 'fictional-migration-http-user', http_password: 'fictional-migration-http-secret' };
+			for (const half of ['username', 'password']) {
+				const field = 'proxy_' + half;
+				for (const source of ['socks', 'http', 'complete']) {
+					const original = { ...old, [field]: credentials[field] };
+					let row = await scenario(original, ['192.0.2.1']);
+					const baseline = JSON.stringify(committed);
+					assert.ok(await row('_proxy_credential_source').locator('select').count() === 1, 'Partial shared field keeps conflict choice visible');
+					assert.ok(await row(field).locator('input').first().inputValue() === credentials[field], 'Existing partial new input retained for completion');
+					await page.locator('.cbi-page-actions .cbi-button-save').click();
+					await page.waitForTimeout(150);
+					assert.ok(results.writes.length === 0 && changes.length === 0 && JSON.stringify(pending) === baseline, 'Failed partial Save preserves all old and new values');
+					await page.keyboard.press('Escape');
+					let expected;
+					if (source === 'complete') {
+						const missing = half === 'username' ? 'proxy_password' : 'proxy_username';
+						await row(missing).locator('input').first().fill(credentials[missing]);
+						expected = [credentials.proxy_username, credentials.proxy_password];
+					} else {
+						await row('_proxy_credential_source').locator('select').selectOption(source);
+						assert.ok(await row(field).locator('input').first().inputValue() === credentials[field], 'Old source must override, not erase, residual new input');
+						expected = [old[source + '_username'], old[source + '_password']];
+					}
+					await save();
+					assert.ok(pending.main.proxy_username === expected[0] && pending.main.proxy_password === expected[1], 'Selected whole pair staged without cross-source splicing');
+					assert.ok(['socks', 'http'].every(p => !pending.main[p + '_username'] && !pending.main[p + '_password']), 'Successful migration stages removal of old pairs');
+					assert.ok(JSON.stringify(committed) === baseline && applies === 0, 'Save only stages; original commit remains untouched');
+					check('Partial new ' + half + ': failed Save is read-only, ' + source + ' resolves using one complete pair');
+					await openUnrelatedSummary('legacy-before-revert');
+					await page.locator('#modal_overlay').getByRole('button', { name: 'Revert', exact: true }).click();
+					await page.waitForFunction(() => document.querySelector('#modal_overlay')?.textContent.includes('Changes have been reverted.'));
+					assert.ok(JSON.stringify(pending) === baseline && JSON.stringify(committed) === baseline && changes.length === 0, 'Native Revert restores both old sets and original partial new input');
+					row = await openAdvanced();
+					assert.ok(await row('_proxy_credential_source').locator('select').count() === 1 &&
+						await row(field).locator('input').first().inputValue() === credentials[field], 'After Revert, partial input and unresolved conflict remain');
+					check('Partial new ' + half + ' / ' + source + ': native Revert restores exact original configuration');
+				}
+			}
+			assert.ok(errors.length === 0, 'No unexpected browser errors');
+			results.credentialMigration = 'PASS';
+			results.navigations = results.navigations.map(({ page }) => ({ page }));
+			results.globalSummaryRedaction = 'NOT_ASSESSED';
+			fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 2) + '\n');
+			return;
 		}
 		await saveAdvanced();
 		assert.ok(applies === 0 && reverts === 0 && !committed.main.proxy_password, 'Save did not commit/apply');
