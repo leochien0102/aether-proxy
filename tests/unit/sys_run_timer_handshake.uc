@@ -14,6 +14,20 @@ const REAL_SH = '/bin/sh';
 const REAL_SLEEP = '/bin/sleep';
 
 export const cases = [
+	{ name: 'partial child S frame preserves success', expect: 'PASS', kind: 'partial_frame_s_0' },
+	{ name: 'partial child S frame preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_s_7' },
+	{ name: 'partial child G frame preserves success', expect: 'PASS', kind: 'partial_frame_g_0' },
+	{ name: 'partial child G frame preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_g_7' },
+	{ name: 'partial child S PID preserves success', expect: 'PASS', kind: 'partial_frame_s_0', cut: 'half' },
+	{ name: 'partial child S PID preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_s_7', cut: 'half' },
+	{ name: 'partial child G PID preserves success', expect: 'PASS', kind: 'partial_frame_g_0', cut: 'half' },
+	{ name: 'partial child G PID preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_g_7', cut: 'half' },
+	{ name: 'child S PID without frame suffix preserves success', expect: 'PASS', kind: 'partial_frame_s_0', cut: 'full' },
+	{ name: 'child S PID without frame suffix preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_s_7', cut: 'full' },
+	{ name: 'child G PID without frame suffix preserves success', expect: 'PASS', kind: 'partial_frame_g_0', cut: 'full' },
+	{ name: 'child G PID without frame suffix preserves nonzero exit', expect: 'PASS', kind: 'partial_frame_g_7', cut: 'full' },
+	{ name: 'missing all G frames still fails handshake', expect: 'PASS', kind: 'missing_frame_g' },
+	{ name: 'missing D frame still fails handshake', expect: 'PASS', kind: 'missing_frame_d' },
 	{
 		name: 'normal fast command returns promptly without waiting for timeout',
 		expect: 'PASS',
@@ -805,7 +819,163 @@ function no_grace_needed_fifo_no_reader_case() {
 	});
 }
 
+// Suppress complete events, not pidfile writes: framing must not turn a genuinely
+// missing ownership/completion event into a successful command result.
+function missing_control_frame_case(stage) {
+	return with_sandbox(`missing-${stage}`, sb => {
+		let trace = `${sb.base}/control.trace`;
+		write_exec(`${sb.bin_dir}/sh`, join('\n', [
+			`#!${REAL_SH}`,
+			'if [ "$1" = "-c" ] && [ "$3" = "sh" ]; then',
+			'  script=$2; shift 2',
+			'  case "$2" in',
+			`    '${sb.tmp_root}'/aether-proxy-run.*)`,
+			'      if [ -d "$2" ]; then',
+			"        needle='} | {'; before=${script%%\"$needle\"*}; after=${script#*\"$needle\"};",
+			`        script=$before'} | tee "${trace}" | {'$after;`,
+			'      fi',
+			`      script='printf() { case "$1" in *"${stage} "*) return 0 ;; *) command printf "$@" ;; esac; }; '"$script" ;;`,
+			'  esac',
+			`  exec ${REAL_SH} -c "$script" "$@"`,
+			'fi',
+			`exec ${REAL_SH} "$@"`
+		]) + '\n');
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', 'printf missing-out; printf missing-err >&2; exit 7' ],
+			opts: { timeout: 20, quiet: true },
+			use_bin: true,
+			guard_s: 6
+		});
+		let raw = fs.readfile(trace) ?? '';
+		printf('INFO  missing_frame_%s raw control: %J\n', stage, raw);
+		let err = check_common_invariants(`missing_frame_${stage}`, obs);
+		if (err)
+			return err;
+		let r = obs.result;
+		let diagnostic = stage == 'G' ? 'timer exited without publishing grace pid' : 'timer event stream ended early';
+		if (r.code != -1 || r.timed_out || r.stdout != 'missing-out' || r.stderr != `missing-err${diagnostic}\n`)
+			return failed(`missing ${stage} must remain a handshake error: ${sprintf('%.J', obs)}`);
+		if (match(raw, stage == 'G' ? /G / : /D /))
+			return failed(`fixture failed to suppress ${stage}: ${sprintf('%.J', raw)}`);
+		return 'PASS';
+	});
+}
+
+// Only scheduling is injected: the real controller owns the child before R, then
+// handles R after the child has emitted an incomplete frame. No sleeps race KILL.
+// G is deliberately NOT a real timeout: omit its mark/TERM to check exit fidelity;
+// normal_timeout_* above independently cover the real timeout semantics.
+function partial_control_frame_case(stage, exit_code, cut) {
+	return with_sandbox(`partial-${stage}-${exit_code}-${cut}`, sb => {
+		let owned = `${sb.base}/owned`;
+		let armed = `${sb.base}/armed`;
+		let start = `${sb.base}/start`;
+		let ready = `${sb.base}/ready`;
+		let hold = `${sb.base}/hold`;
+		let trace = `${sb.base}/control.trace`;
+		let mk = sys.run([ 'mkfifo', owned, armed, start, ready, hold ], { quiet: true });
+		if (mk.code != 0)
+			die('cannot create partial-frame handshake FIFOs');
+		let parent_printf = join('\n', [
+			'printf() {',
+			'  command printf "$@" || return;',
+			'  case "$1" in',
+			`    *"${stage} "*) if [ "$2" != "-" ]; then command printf 'owned\\n' >'${owned}'; fi ;;`,
+			`    *"R "*) command printf 'start\\n' >'${start}' ;;`,
+			'  esac;',
+			'};'
+		]);
+		let child_printf = join('\n', [
+			'printf() {',
+			'  case "$1" in',
+			`    *"${stage} "*)`,
+				`      IFS= read -r token <'${owned}';`,
+				`      command printf 'armed\\n' >'${armed}';`,
+				`      IFS= read -r token <'${start}';`,
+				'      frame=$(command printf "$@");',
+				`      command printf '%s' "\${frame%%${stage}*}${stage}";`,
+				...(cut == 'stage' ? [] : [
+					'      pid=$2;',
+					...(cut == 'half' ? [ '      n=$((${#pid} / 2)); pid=$(command printf "%s" "$pid" | cut -c "1-$n");' ] : []),
+					'      command printf " %s" "$pid";'
+				]),
+				`      command printf 'ready\\n' >'${ready}';`,
+				`      IFS= read -r token <'${hold}';`,
+				'      return 125 ;;',
+			'    *) command printf "$@" ;;',
+			'  esac;',
+			'};'
+		]);
+		let target = stage == 'S' ? 'sleep' : 'grace';
+		write_exec(`${sb.bin_dir}/sh`, join('\n', [
+			`#!${REAL_SH}`,
+			'if [ "$1" = "-c" ] && [ "$3" = "sh" ]; then',
+			'  script=$2; shift 2',
+			'  case "$2" in',
+			`    '${sb.tmp_root}'/aether-proxy-run.*/${target})`,
+			`      script='${replace(child_printf, /'/g, "'\\''")}'"$script" ;;`,
+			`    '${sb.tmp_root}'/aether-proxy-run.*)`,
+			`      [ -d "$2" ] || exec ${REAL_SH} -c "$script" "$@"`,
+			'      replace_once() {',
+			'        needle=$1; replacement=$2;',
+			'        case "$script" in *"$needle"*) ;; *) exit 126 ;; esac;',
+			'        before=${script%%"$needle"*}; after=${script#*"$needle"};',
+			'        script=$before$replacement$after;',
+			'      };',
+			`      replace_once 'runner_done=1; rc=$ev_arg;' 'IFS= read -r token <"${ready}"; runner_done=1; rc=$ev_arg;'`,
+			`      replace_once '} | {' '} | tee "${trace}" | {'`,
+			...(stage == 'G' ? [
+				`      replace_once 'wr "$timed_file" ""' ':'`,
+				`      replace_once 'kill -TERM "$runner";' ':;'`
+			] : []),
+			`      script='${replace(parent_printf, /'/g, "'\\''")}'"$script" ;;`,
+			'  esac',
+			`  exec ${REAL_SH} -c "$script" "$@"`,
+			'fi',
+			`exec ${REAL_SH} "$@"`
+		]) + '\n');
+		if (stage == 'G')
+			write_exec(`${sb.bin_dir}/sleep`, `#!${REAL_SH}\nexit 0\n`);
+		let runner = join('\n', [
+			`IFS= read -r token <'${armed}'`,
+			'printf frame-out; printf frame-err >&2;',
+			`exit ${exit_code}`
+		]);
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', runner ],
+			opts: { timeout: 20, quiet: true },
+			use_bin: true,
+			guard_s: 6
+		});
+		let raw = fs.readfile(trace) ?? '';
+		printf('INFO  partial_frame_%s_%d_%s raw control: %J\n', stage, exit_code, cut, raw);
+		let err = check_common_invariants(`partial_frame_${stage}_${exit_code}_${cut}`, obs);
+		if (err)
+			return err;
+		let r = obs.result;
+		if (r.code != exit_code || r.timed_out || r.stdout != 'frame-out' || r.stderr != 'frame-err' || obs.elapsed >= 2.0)
+			return failed(`expected exact original exit/stdout/stderr after partial ${stage}: ${sprintf('%.J', obs)}`);
+		let ownership = match(raw, stage == 'S' ? /S ([0-9]+);?\n/ : /G ([0-9]+);?\n/);
+		if (ownership == null)
+			return failed(`missing parent ${stage} ownership: ${sprintf('%.J', raw)}`);
+		let pid = ownership[1];
+		let partial = stage + (cut == 'stage' ? '' : ' ' + (cut == 'half' ? substr(pid, 0, int(length(pid) / 2)) : pid));
+		let framed = substr(raw, 0, 1) == '\n';
+		let suffix = framed ? ';\n' : '\n';
+		let prefix = framed ? '\n' : '';
+		let next_event = stage == 'S' ? 'G -' : 'D 0';
+		let sequence = `R ${exit_code}${suffix}${prefix}${partial}${prefix}${next_event}${suffix}`;
+		if (index(raw, sequence) < 0 || index(raw, 'D 0' + suffix) < 0)
+			return failed(`missing ordered runner/partial/normal timer completion: ${sprintf('%.J', raw)}`);
+		return 'PASS';
+	});
+}
+
 export function run(c) {
+	if (match(c.kind, /^partial_frame_[sg]_[07]$/))
+		return partial_control_frame_case(index(c.kind, '_s_') >= 0 ? 'S' : 'G', +substr(c.kind, -1), c.cut ?? 'stage');
+	if (c.kind == 'missing_frame_g' || c.kind == 'missing_frame_d')
+		return missing_control_frame_case(c.kind == 'missing_frame_g' ? 'G' : 'D');
 	if (c.kind == 'normal_fast')
 		return normal_fast_case();
 	if (c.kind == 'normal_exit_124')

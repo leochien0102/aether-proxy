@@ -195,7 +195,13 @@ capture="$SYSROOT/first-startup-state.json"
 if [ ! -e "$capture" ]; then
 	cp "$SYSROOT/var/run/aether-proxy/state.json" "$capture" || exit 1
 fi
-exec "$(dirname "$0")/nft-original" "$@"
+"$(dirname "$0")/nft-original" "$@"
+rc=$?
+# Preserve the bytes accepted by the host stub, not just the committed artifact.
+if [ "$rc" -eq 0 ] && [ "$1" = -f ]; then
+	cp "$2" "$SYSROOT/nft-applied.nft" || exit 1
+fi
+exit "$rc"
 EOF
 chmod +x "$T/bin/"*
 cp "$FIX/aetherproxy" "$T/conf/aetherproxy"
@@ -317,6 +323,64 @@ PYTEST
 }
 assert_dns_aliases 'M4-02 startup publishes deep-equal DNS aliases'
 
+
+# T16.113: disable one device under unlisted=direct through real SIGHUP transactions.
+cp "$T/conf/aetherproxy" "$T/before-device-rule.conf"
+reload_checkpoint
+sed -i "/option mode 'gfw'/a\\\toption unlisted_policy 'direct'" "$T/conf/aetherproxy"
+cat >> "$T/conf/aetherproxy" <<'EOF'
+
+config host 't16113_device'
+	option name 'T16.113 device'
+	option enabled '1'
+	list ip '192.0.2.113'
+	list mac '02:00:00:00:01:13'
+	option policy 'proxy'
+EOF
+kill -HUP "$DAEMON_PID"
+assert_completion device-enabled "$NODE_A" gfw true
+assert_applied device-enabled "$NODE_A" "$NODE_A" nft_replace
+cp "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" "$T/device-enabled.nft"
+cp "$SYSROOT/nft-applied.nft" "$T/device-enabled-applied.nft"
+
+reload_checkpoint
+sed -i "/config host 't16113_device'/,\$s/option enabled '1'/option enabled '0'/" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+assert_completion device-disabled "$NODE_A" gfw true
+assert_applied device-disabled "$NODE_A" "$NODE_A" nft_replace
+assert_build_bytes device-disabled '{}'
+cp "$SYSROOT/var/run/aether-proxy/current/aether-proxy.nft" "$T/device-disabled.nft"
+cp "$SYSROOT/nft-applied.nft" "$T/device-disabled-applied.nft"
+cp "$T/conf/aetherproxy" "$T/device-disabled.conf"
+if python3 - "$T" <<'PYTEST'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+config = (root / 'device-disabled.conf').read_text()
+assert "option unlisted_policy 'direct'" in config, config
+assert "option enabled '0'" in config.split("config host 't16113_device'", 1)[1], config
+for phase in ('enabled', 'disabled'):
+    generated = (root / f'device-{phase}.nft').read_bytes()
+    applied = (root / f'device-{phase}-applied.nft').read_bytes()
+    assert generated == applied, phase
+    for device in (b'192.0.2.113', b'02:00:00:00:01:13'):
+        assert (device in generated) == (phase == 'enabled'), (phase, device)
+    print(f'TRACE T16.113 device-{phase}: unlisted=direct generated=applied '
+          f'device_present={phase == "enabled"} artifact={root / f"device-{phase}.nft"} '
+          f'applied={root / f"device-{phase}-applied.nft"}')
+print('TRACE T16.113 disabled success event:', (root / 'device-disabled-event.json').read_text().strip())
+PYTEST
+then
+	ok 'T16.113 direct default disabled device disappears from generated and applied nft rules'
+else
+	bad 'T16.113 direct default disabled device disappears from generated and applied nft rules'
+fi
+
+reload_checkpoint
+cp "$T/before-device-rule.conf" "$T/conf/aetherproxy"
+kill -HUP "$DAEMON_PID"
+assert_completion device-restored "$NODE_A" gfw true
+assert_applied device-restored "$NODE_A" "$NODE_A" nft_replace
 
 # No-change reload still runs prerequisites and nft validation, but neither Xray test nor actions.
 reload_checkpoint
