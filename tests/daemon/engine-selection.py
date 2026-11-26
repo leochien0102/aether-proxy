@@ -26,14 +26,14 @@ def check(name, condition):
 	print('PASS  M4-03a ' + name, flush=True)
 
 
-def engine(path, version):
+def engine(path, version, query_exit=0):
 	# Embed the version in each executable, not a mutable external banner file.
 	body = (ROOT / 'tests/stubs/daemon-bin/chinadns-ng').read_text()
 	prefix = f'''#!/bin/sh
 if [ "$1" = -V ]; then
 	printf 'engine version-query\\n' >> "$STUB_LOG"
 	printf 'Aether-DNS {version}\\n'
-	exit 0
+	exit {query_exit}
 fi
 root=${{2%/var/run/aether-proxy/current/*}}
 printf '{version}\\n' > "$root/engine-version-$$"
@@ -59,12 +59,12 @@ def command_check(f):
 	return json.loads(r.stdout)
 
 
-def wait_reload(f, child, before):
+def wait_reload(f, child, before, expected_ok=True):
 	deadline = time.monotonic() + 15
 	while time.monotonic() < deadline:
 		state = f.state()
 		if state.get('last_reload', {}).get('at', 0) > before:
-			check('reload completed successfully', state['last_reload']['ok'])
+			check('reload completed with expected outcome', state['last_reload']['ok'] is expected_ok)
 			return
 		if child.poll() is not None:
 			raise AssertionError((f.root / 'stderr').read_text())
@@ -218,14 +218,97 @@ def reload_scenarios(base):
 			f.calls.read_text().count('engine version-query') == queries + 1)
 
 
+def reload_gate_scenarios(base):
+	# Keep rendered bytes fixed: both path switches and atomic same-path replacements
+	# must reject known-old candidates before publishing current/ or stopping DNS.
+	for index, (name, version, same_path, rejected, query_exit) in enumerate([
+		('aether-dns', '0.9.9', False, True, 0),
+		('aether-dns', '0.9.9', True, True, 0),
+		('chinadns-ng', '2025.08.08', False, True, 0),
+		('chinadns-ng', '2025.08.08', True, True, 0),
+		('aether-dns', '1.0.0', True, False, 0),
+		('chinadns-ng', '2025.08.09', False, False, 0),
+		('aether-dns', 'garbage', True, False, 0),
+		('chinadns-ng', '', False, False, 0),
+		('aether-dns', '0.9.9', True, False, 7),
+		('custom-dns', '0.0.1', False, False, 0),
+	]):
+		label = f'T16.116 {name} {version!r} same_path={same_path} exit={query_exit}'
+		f = gate.Fixture(base, f'reload-gate-{index}', 'chinadns-ng', '2025.08.09')
+		old_name = name if same_path else ('chinadns-ng' if name == 'aether-dns' else 'aether-dns')
+		old_path = f.bin / old_name
+		old_version = '1.0.1' if old_name == 'aether-dns' else '2025.08.10'
+		engine(old_path, old_version)
+		override(f, old_path)
+		with f.daemon() as child:
+			f.wait_started(child)
+			pid = running_identity(f, old_path, old_version, label + ' baseline')
+			old_components = f.state()['components']
+			current = f.run / 'current'
+			current_inode = current.stat().st_ino
+			artifacts = {p.name: (p.stat().st_ino, p.read_bytes()) for p in current.iterdir() if p.is_file()}
+			path = f.bin / name
+			engine(path, version, query_exit)
+			override(f, path)
+			minimum = '1.0.0' if name == 'aether-dns' else '2025.08.09'
+			# A rejected signature must not be cached: a second attempt must query again.
+			for attempt in range(2 if rejected else 1):
+				before = f.state().get('last_reload', {}).get('at', 0)
+				queries = f.calls.read_text().count('engine version-query')
+				event_count = len(f.events())
+				calls_before = f.calls.read_text()
+				child.send_signal(signal.SIGHUP)
+				wait_reload(f, child, before, expected_ok=not rejected)
+				state = f.state()
+				events = f.events()[event_count:]
+				check(label + f' attempt {attempt} queries candidate once',
+					f.calls.read_text().count('engine version-query') == queries + 1)
+				if rejected:
+					check(label + ' keeps old live DNS process',
+						int((f.root / 'chinadns.pid').read_text()) == pid and Path(f'/proc/{pid}').exists())
+					check(label + ' keeps running component metadata', state['components'] == old_components)
+					check(label + ' keeps current directory and artifacts', current.stat().st_ino == current_inode
+						and {p.name: (p.stat().st_ino, p.read_bytes()) for p in current.iterdir() if p.is_file()} == artifacts)
+					check(label + ' does not start DNS or HUP dnsmasq',
+						f.calls.read_text().count('chinadns-ng -C ') == calls_before.count('chinadns-ng -C ')
+						and f.calls.read_text().count('killall -HUP dnsmasq') == calls_before.count('killall -HUP dnsmasq'))
+					check(label + ' emits no success event', not any(e['code'] == 'RELOAD_APPLIED' for e in events))
+					check(label + ' exposes exact old-version error event', any(e['code'] == 'COMPONENT_TOO_OLD'
+						and e['level'] == 'error' and e['args'] == {'component': 'dns', 'version': version, 'min': minimum}
+						for e in events))
+					check(label + ' exposes completion error', f'dns {version} < {minimum}' in state['last_reload']['error'])
+				else:
+					fresh = int((f.root / 'chinadns.pid').read_text())
+					check(label + ' starts replacement', fresh != pid and not Path(f'/proc/{pid}').exists())
+					check(label + ' publishes candidate identity', state['components']['dns']['path'] == str(path)
+						and state['components']['dns']['version'] == (None if query_exit or not version else version)
+						and state['components']['dns']['engine'] == (None if name == 'custom-dns' else name))
+					check(label + ' keeps aliases equal', state['components']['dns'] == state['components']['chinadns-ng'])
+					check(label + ' applies DNS restart only', [e['args']['actions'] for e in events
+						if e['code'] == 'RELOAD_APPLIED'] == [['restart_chinadns']])
+					check(label + ' has no old-version error', not any(e['code'] == 'COMPONENT_TOO_OLD' for e in events))
+			if not rejected:
+				queries = f.calls.read_text().count('engine version-query')
+				before = f.state()['last_reload']['at']
+				child.send_signal(signal.SIGHUP)
+				wait_reload(f, child, before)
+				check(label + ' unchanged reload skips query and restart',
+					f.calls.read_text().count('engine version-query') == queries
+					and int((f.root / 'chinadns.pid').read_text()) == fresh)
+
+
 def main():
 	with tempfile.TemporaryDirectory(prefix='.engine-selection-', dir=ROOT / 'tests/daemon') as temp:
 		base = Path(temp)
-		gate_scenarios(base)
-		if '--reload-only' not in sys.argv and '--same-path-only' not in sys.argv:
-			selection_scenarios(base)
-		if '--selection-only' not in sys.argv:
-			reload_scenarios(base)
+		if '--reload-gate-only' in sys.argv:
+			reload_gate_scenarios(base)
+		else:
+			gate_scenarios(base)
+			if '--reload-only' not in sys.argv and '--same-path-only' not in sys.argv:
+				selection_scenarios(base)
+			if '--selection-only' not in sys.argv:
+				reload_scenarios(base)
+				reload_gate_scenarios(base)
 	print(f'M4-03a engine selection: {passed} passed, 0 failed', flush=True)
 
 

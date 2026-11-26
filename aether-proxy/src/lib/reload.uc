@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as uloop from 'uloop';
 import * as C from 'aetherproxy.const';
 import * as component_id from 'aetherproxy.component_id';
+import * as component_version from 'aetherproxy.component_version';
 import * as sys from 'aetherproxy.sys';
 import * as log from 'aetherproxy.log';
 import * as state_file from 'aetherproxy.state';
@@ -351,6 +352,17 @@ function resolve_components(daemon, components) {
 			[C.XRAY_COMPONENT]: resolved[C.XRAY_COMPONENT],
 			[C.CHINADNS_COMPONENT]: resolved[C.CHINADNS_COMPONENT]
 		});
+	}
+	// Match startup's known-old policy before publication or stopping the running DNS.
+	// A rejected candidate must not advance the signature cache, so retries recheck it.
+	if (changed) {
+		let version = resolved[C.CHINADNS_COMPONENT].version;
+		let min = component_id.min_version(component_id.engine(dns.path));
+		let order = min == null ? null : component_version.version_cmp(version, min);
+		if (order != null && order < 0) {
+			log.event('error', 'COMPONENT_TOO_OLD', { component: C.DNS_COMPONENT, version, min });
+			return { ok: false, detail: `${C.DNS_COMPONENT} ${version} < ${min}` };
+		}
 	}
 	return { ok: true, components: resolved, signature };
 };
