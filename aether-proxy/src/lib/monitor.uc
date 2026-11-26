@@ -238,12 +238,70 @@ function action_set_tier(daemon, tier, done) {
 		return;
 	}
 	let path = `${current_dir(daemon)}/${C.ARTIFACT_FILES.chinadns}`;
+	// Preserve the running generation, not a re-render of possibly changed inputs.
+	let previous = fs.readfile(path);
+	if (previous == null) {
+		done(`cannot read current DNS ${path}: ${fs.error() ?? 'unknown error'}`);
+		return;
+	}
+	if (daemon.ctx.stopping_requested) {
+		done(null);
+		return;
+	}
 	if (!sys.write_atomic(path, built.artifacts.chinadns)) {
 		done(`cannot write ${path}: ${sys.error()}`);
 		return;
 	}
 	let bin = daemon.state.components?.[C.CHINADNS_COMPONENT]?.path ??
 		(daemon.ctx.bin_dir ? `${daemon.ctx.bin_dir}/${C.CHINADNS_COMPONENT}` : C.CHINADNS_COMPONENT);
+	let hup_attempted = false;
+	function rollback(cause) {
+		function failed(detail) {
+			done(`${cause}; rollback_dns: ${detail}`);
+		};
+		function restore() {
+			if (daemon.ctx.stopping_requested) {
+				done(null);
+				return;
+			}
+			if (!sys.write_atomic(path, previous)) {
+				failed(`cannot restore ${path}: ${sys.error()}`);
+				return;
+			}
+			let child = supervisor_for(daemon, 'dns', C.CHINADNS_COMPONENT, [ bin, '-C', path ]);
+			if (child.pid() == null || child.error() != null) {
+				failed(child.error() ?? `cannot start ${C.CHINADNS_COMPONENT}`);
+				return;
+			}
+			let ready = xray_ready.published_dns(daemon.ctx, child);
+			if (daemon.ctx.stopping_requested) {
+				done(null);
+				return;
+			}
+			if (!ready.ok) {
+				failed(ready.detail);
+				return;
+			}
+			// A failed HUP may have reached dnsmasq; notify again only after recovery is ready.
+			if (hup_attempted) {
+				let hup = apply.dnsmasq_hup(daemon.ctx);
+				if (daemon.ctx.stopping_requested) {
+					done(null);
+					return;
+				}
+				if (!hup.ok) {
+					failed(hup.detail);
+					return;
+				}
+			}
+			done(cause);
+		};
+		// Keep the action's existing lock, and cancel any candidate crash respawn first.
+		if (daemon.ctx.stopping_requested)
+			done(null);
+		else
+			daemon.children.dns.stop(restore);
+	};
 	restart_child(daemon, 'dns', C.CHINADNS_COMPONENT,
 		[ bin, '-C', path ], error => {
 			if (daemon.ctx.stopping_requested) {
@@ -251,7 +309,7 @@ function action_set_tier(daemon, tier, done) {
 				return;
 			}
 			if (error != null) {
-				done(error);
+				rollback(error);
 				return;
 			}
 			// This action already owns busy and the monitor lock; wait for the newly
@@ -262,13 +320,19 @@ function action_set_tier(daemon, tier, done) {
 				return;
 			}
 			if (!ready.ok) {
-				done(ready.detail);
+				rollback(ready.detail);
 				return;
 			}
 			// Clear dnsmasq's cache too: polluted fallback answers must not outlive a tier change
 			// after chinadns-ng has restarted (docs/03「DNS 级别（trust 组上游）」).
+			hup_attempted = true;
 			let hup = apply.dnsmasq_hup(daemon.ctx);
-			done(hup.ok ? null : hup.detail);
+			if (daemon.ctx.stopping_requested)
+				done(null);
+			else if (!hup.ok)
+				rollback(hup.detail);
+			else
+				done(null);
 		});
 };
 

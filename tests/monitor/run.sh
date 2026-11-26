@@ -118,4 +118,5 @@ python3 "$ROOT/tests/monitor/debug-logging.py" || status=1
 python3 "$ROOT/tests/monitor/usage-lock.py" || status=1
 python3 "$ROOT/tests/monitor/node-ip-rollback.py" || status=1
 python3 "$ROOT/tests/monitor/tier-dns-ready.py" || status=1
+python3 "$ROOT/tests/monitor/tier-dns-rollback.py" exit timeout hup hup-both missing-config restore-fail term-forward term-rollback || status=1
 exit "$status"
