@@ -60,7 +60,8 @@ return view.extend({
 
 		s.tab('intercept', _('Interception', 'aether-proxy'));
 		s.tab('explicit', _('LAN explicit proxy', 'aether-proxy'),
-			_('Clients must explicitly configure the router LAN IPv4 address and port. HTTP supports CONNECT to HTTPS destinations, not TLS to the proxy. Use only on controlled networks; reachability is determined by the existing firewall.', 'aether-proxy'));
+			_('Clients must explicitly configure the router LAN IPv4 address and port. HTTP supports CONNECT to HTTPS destinations, not TLS to the proxy. Use only on controlled networks; reachability is determined by the existing firewall.', 'aether-proxy')
+			+ ' ' + _('After clicking Save, anyone authorized to view LuCI Pending Changes may see modified proxy usernames and passwords until you apply or revert the changes.', 'aether-proxy'));
 		s.tab('log', _('Logging', 'aether-proxy'));
 		s.tab('boot', _('Boot and health checks', 'aether-proxy'));
 		s.tab('components', _('Components and DNS instance', 'aether-proxy'));

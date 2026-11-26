@@ -808,3 +808,15 @@ test('T16.4 view: feature metadata drives the Flag declaration', async () => {
 	assert.equal(flags[0].description, feature.description);
 	assert.equal(flags[0].default, feature.default);
 });
+
+
+test('T16.111: shared proxy tab warns about pending credentials before either protocol is enabled', async () => {
+	const { form, state } = build_form();
+	const view = loadModule(VIEW, {
+		view: { extend: o => o }, form, uci: { get: () => 'all' },
+		'tools.widgets': { DeviceSelect: 'DeviceSelect' }, 'aether-proxy.model.advanced': load_model()
+	}, { window: {}, document: {} });
+	await view.render();
+	assert.ok(state.map.sections[0].tabDetails.explicit.description.includes(
+		'点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。'));
+});

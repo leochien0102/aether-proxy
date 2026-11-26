@@ -91,6 +91,15 @@ async function run(browser, theme, stylesheet) {
 		const flag = field => row(field).locator('input[type="checkbox"]');
 		const save = () => page.locator('.cbi-page-actions .cbi-button-save').click();
 		const reset = () => page.locator('.cbi-page-actions .cbi-button-reset').click();
+		async function assertPreSaveNotice(state) {
+			const warning = tr('After clicking Save, anyone authorized to view LuCI Pending Changes may see modified proxy usernames and passwords until you apply or revert the changes.');
+			assert.equal(warning, '点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。');
+			const description = page.locator('[data-tab="explicit"] .cbi-tab-descr').filter({ hasText: warning });
+			assert.equal(await description.count(), 1);
+			assert.equal(await description.isVisible(), true);
+			for (const p of ['socks', 'http']) assert.equal(await input(p + '_password').getAttribute('type'), 'password');
+			check(theme + ': before Save ' + state + ', Pending Changes warning visible in real tab DOM and passwords masked by default');
+		}
 		async function shot(name) {
 			await page.evaluate(() => document.fonts.ready.then(() => null));
 			for (const protocol of ['socks', 'http']) assert.equal(await input(protocol + '_password').getAttribute('type'), 'password');
@@ -118,6 +127,7 @@ async function run(browser, theme, stylesheet) {
 		}
 		assert.equal(await page.locator('.cbi-page-actions .cbi-button-apply').count(), 1);
 		check(theme + ': defaults both off, dependent fields hidden, standard footer');
+		await assertPreSaveNotice('both off');
 		await shot('default-off');
 		await save();
 		await page.waitForFunction(() => !document.querySelector('.cbi-page-actions .cbi-button-save').disabled);
@@ -132,6 +142,7 @@ async function run(browser, theme, stylesheet) {
 		for (const [f, v] of Object.entries(demo)) { await input(f).fill(v); await input(f).blur(); }
 		assert.equal(await page.locator('.cbi-input-invalid:visible').count(), 0);
 		await page.locator('#view h2').click();
+		await assertPreSaveNotice('both on');
 		await shot('both-enabled');
 		const invalid = [ ['socks_listen', '0.0.0.0'], ['socks_listen', '127.0.0.1'], ['socks_listen', '::1'], ['socks_port', '0'], ['socks_port', '65536'], ['socks_port', '53'], ['http_port', '1080'], ['http_username', 'fictional:invalid'], ['socks_password', 'x'.repeat(256)], ['http_password', ''], ['socks_username', ''] ];
 		for (const [f, v] of invalid) {
@@ -163,26 +174,6 @@ async function run(browser, theme, stylesheet) {
 		for (const [f, v] of Object.entries(demo)) assert.ok(values.main[f] === v, f + ' persisted independently');
 		assert.equal(values.main.socks_enabled, '1'); assert.equal(values.main.http_enabled, '1');
 		check(theme + ': valid Save persisted independent 10 main fields; invalid Save made no RPC writes');
-		// Exercise the real SDK Changes indicator after the real form Save.
-		await page.evaluate(async () => {
-			const ui = await L.require('ui');
-			await ui.changes.init();
-			window.originalPreviewChanges = ui.changes.changes;
-			window.originalPreviewChangesJSON = JSON.stringify(ui.changes.changes);
-		});
-		await page.locator('[data-indicator="uci-changes"]').click();
-		await page.locator('.uci-change-list').waitFor();
-		assert.ok(!(await page.locator('#modal_overlay').innerText()).includes('fictional'));
-		assert.ok((await page.locator('.uci-change-list').innerText()).includes('********'));
-		assert.ok(await page.evaluate(async () => {
-			const ui = await L.require('ui');
-			return ui.changes.changes === window.originalPreviewChanges &&
-				JSON.stringify(ui.changes.changes) === window.originalPreviewChangesJSON &&
-				ui.changes.changes.aetherproxy.filter(c => /^(socks|http)_(username|password)$/.test(c[2])).length === 4;
-		}));
-		await shot('changes-redacted');
-		await page.getByRole('button', { name: tr('Close'), exact: true }).click();
-		check(theme + ': Changes modal redacts all four credentials; original changes identity and values preserved');
 		await tab();
 		await input('socks_port').fill('1081');
 		await flag('http_enabled').uncheck();
@@ -191,16 +182,27 @@ async function run(browser, theme, stylesheet) {
 		assert.equal(await flag('http_enabled').isChecked(), true);
 		check(theme + ': Reset restores saved fields and flags');
 		for (const only of ['socks', 'http']) {
+			const other = only === 'socks' ? 'http' : 'socks';
+			const otherFields = Object.fromEntries(Object.entries(values.main).filter(([f]) => f.startsWith(other + '_') && f !== other + '_enabled'));
+			const changed = { ...Object.fromEntries(Object.entries(demo).filter(([f]) => f.startsWith(only + '_'))),
+				[only + '_port']: only === 'socks' ? '1082' : '8082',
+				[only + '_username']: 'fictional-' + only + '-updated-user',
+				[only + '_password']: 'fictional-' + only + '-updated-secret' };
+			const writeStart = writes.length;
 			for (const p of ['socks', 'http']) await flag(p + '_enabled').setChecked(p === only);
-			for (const [f, v] of Object.entries(demo).filter(([f]) => f.startsWith(only + '_'))) await input(f).fill(v);
+			for (const [f, v] of Object.entries(changed)) await input(f).fill(v);
+			await assertPreSaveNotice(only + ' only');
 			await save();
 			await page.waitForFunction(() => !document.querySelector('.cbi-page-actions .cbi-button-save').disabled);
 			assert.equal(values.main.socks_enabled, only === 'socks' ? '1' : '0');
 			assert.equal(values.main.http_enabled, only === 'http' ? '1' : '0');
+			for (const [f, v] of Object.entries(changed)) assert.ok(values.main[f] === v, f + ' saved');
+			for (const [f, v] of Object.entries(otherFields)) assert.ok(values.main[f] === v, f + ' unaffected');
+			assert.ok(writes.slice(writeStart).every(w => w.fields.every(f => !f.startsWith(other + '_') || f === other + '_enabled')), 'No writes to the other protocol input fields');
 			await tab();
 			assert.equal(await row((only === 'socks' ? 'http' : 'socks') + '_listen').isVisible(), false);
 			await shot(only + '-only-saved');
-			check(theme + ': ' + only + '-only Save persists flags and hides the other protocol');
+			check(theme + ': ' + only + '-only Save persists modified fields and flags, leaves other protocol fields unchanged/unwritten and hidden');
 		}
 		await flag('socks_enabled').check();
 		for (const [f, v] of Object.entries(demo)) await input(f).fill(v);

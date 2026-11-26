@@ -117,3 +117,9 @@ test('T16.111: native password masking and no new RPC/summary/footer handlers', 
 	const source = fs.readFileSync(path.join(RES, 'view/aether-proxy/advanced.js'), 'utf8');
 	assert.doesNotMatch(source, /rpc\.declare|ap\.call|console\.|addNotification|handleSave|handleReset/);
 });
+
+
+test('T16.111: plugin leaves native change rendering and session preload untouched', () => {
+	const source = fs.readFileSync(path.join(RES, 'aether-proxy/common.js'), 'utf8');
+	assert.doesNotMatch(source, /displayChanges|setLocalData\(['"]preload/);
+});

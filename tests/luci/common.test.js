@@ -735,32 +735,3 @@ test('T10.12: pending static fetch does not consume either RPC concurrency slot'
 	await flush();
 	assert.deepEqual(env.notifications, []);
 });
-
-test('T16.111: change summary masks inbound credentials without changing apply/revert data', () => {
-	const original = { aetherproxy: [
-		...['socks_username', 'socks_password', 'http_username', 'http_password']
-			.map(field => ['set', 'main', field, 'fixture-' + field]),
-		['set', 'main', 'http_port', '8080'], ['remove', 'main', 'socks_password'],
-		['set', 'other', 'socks_password', 'unrelated-fixture']
-	], network: [['set', 'lan', 'proto', 'static']] };
-	const before = JSON.stringify(original);
-	let fail = false;
-	const changes = { changes: original, displayChanges: function(arg) {
-		assert.equal(arg, 'forwarded');
-		for (const change of this.changes.aetherproxy.slice(0, 4))
-			assert.equal(change[3], '********');
-		assert.deepEqual(this.changes.aetherproxy.slice(4), original.aetherproxy.slice(4));
-		assert.equal(this.changes.network, original.network);
-		if (fail) throw new Error('fixture renderer failure');
-		return 'rendered';
-	} };
-	loadModule(COMMON, { rpc: createRpc(), baseclass: { extend: o => o }, ui: { changes } },
-		{ window: {}, document: createDocument() });
-	assert.equal(changes.displayChanges('forwarded'), 'rendered');
-	assert.equal(changes.changes, original);
-	assert.equal(JSON.stringify(original), before);
-	fail = true;
-	assert.throws(() => changes.displayChanges('forwarded'), /fixture renderer failure/);
-	assert.equal(changes.changes, original);
-	assert.equal(JSON.stringify(original), before);
-});

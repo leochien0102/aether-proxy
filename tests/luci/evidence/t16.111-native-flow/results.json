@@ -1,0 +1,189 @@
+{
+  "boundary": "Offline SDK UI + in-memory HTTP/ubus fixtures only; no device, real apply, or raw credentials exported.",
+  "checks": [
+    "Shared credential notice visible before Save with both protocols off",
+    "Advanced Save stages both protocols without applying",
+    "before-apply: clicked native indicator on fresh system/reboot page; ordinary fields readable",
+    "Native modal Save & Apply uses original values for all four credentials in fixture",
+    "socks-only Save stages its fields without touching the other protocol or applying",
+    "http-only Save stages its fields without touching the other protocol or applying",
+    "before-revert: clicked native indicator on fresh system/reboot page; ordinary fields readable",
+    "Native modal Revert discards staged replacements and preserves applied originals",
+    "Native indicator gone after revert and full reload"
+  ],
+  "navigations": [
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    }
+  ],
+  "summaries": [
+    {
+      "stage": "before-apply",
+      "exposedFields": [
+        "socks_username",
+        "socks_password",
+        "http_username",
+        "http_password"
+      ],
+      "ordinaryFieldsReadable": true,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "before-revert",
+      "exposedFields": [
+        "socks_password",
+        "http_password"
+      ],
+      "ordinaryFieldsReadable": true,
+      "actualModalDOMInspected": true
+    }
+  ],
+  "writes": [
+    {
+      "section": "main",
+      "fields": [
+        "http_enabled",
+        "http_listen",
+        "http_password",
+        "http_port",
+        "http_username",
+        "socks_enabled",
+        "socks_listen",
+        "socks_password",
+        "socks_port",
+        "socks_username"
+      ]
+    },
+    {
+      "section": "main",
+      "fields": [
+        "socks_password",
+        "socks_port"
+      ]
+    },
+    {
+      "section": "main",
+      "fields": [
+        "http_password",
+        "http_port"
+      ]
+    }
+  ],
+  "pluginNoticeAndNativeFlow": "PASS",
+  "globalSummaryRedaction": "PLAINTEXT_OBSERVED_NOT_REDACTED",
+  "redactionClaim": "No global redaction claim; observation is not a required permanent product behavior."
+}

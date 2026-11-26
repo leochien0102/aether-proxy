@@ -1,0 +1,11 @@
+PASS Shared credential notice visible before Save with both protocols off
+PASS Advanced Save stages both protocols without applying
+PASS before-apply: clicked native indicator on fresh system/reboot page; ordinary fields readable
+OBSERVED exposed credential field count=4 (values not exported)
+PASS Native modal Save & Apply uses original values for all four credentials in fixture
+PASS socks-only Save stages its fields without touching the other protocol or applying
+PASS http-only Save stages its fields without touching the other protocol or applying
+PASS before-revert: clicked native indicator on fresh system/reboot page; ordinary fields readable
+PASS Native modal Revert discards staged replacements and preserves applied originals
+PASS Native indicator gone after revert and full reload
+REDACTION DIAGNOSTIC FAIL: fresh unrelated page exposes inbound credentials in actual Changes DOM

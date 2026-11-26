@@ -3105,3 +3105,7 @@ msgstr "端口与内部监听或已启用的显式代理监听冲突。"
 msgctxt "aether-proxy"
 msgid "Use 1–255 bytes without control characters; HTTP usernames cannot contain a colon."
 msgstr "请输入 1–255 字节且不含控制字符的内容；HTTP 用户名不能含冒号。"
+
+msgctxt "aether-proxy"
+msgid "After clicking Save, anyone authorized to view LuCI Pending Changes may see modified proxy usernames and passwords until you apply or revert the changes."
+msgstr "点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。"

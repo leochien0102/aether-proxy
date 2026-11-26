@@ -17,23 +17,23 @@ NODE_PATH=/tmp/t16.23-evidence/node_modules \
 
 ## 已验证
 
-Bootstrap dark / Argon light 均通过，每主题 20 条 PASS，共 40 条。每主题 10 张截图，共 20 张；`results.json` 记录断言摘要、RPC 方法、字段级写入记录（没有值）和实际加载的应用资源路径。
+Bootstrap dark / Argon light 均通过，每主题 23 条 PASS，共 46 条。每主题 9 张截图，共 18 张；`results.json` 记录断言摘要、RPC 方法、字段级写入记录（没有值）和实际加载的应用资源路径。
 
 - 复用 t16.24 的真实 LuCI shell/route 方法，仅加载高级页。应用静态资源优先取当前 worktree；SDK 提供 form、ui、uci、widgets 和主题，不复制/伪造表单 DOM。
 - 默认 SOCKS5 / HTTP 均关闭，8 个从属输入隐藏。未修改直接 Save 不回填这 10 个字段。
-- 只启用 SOCKS5 时 HTTP 输入仍隐藏；双开后填入独立的虚构用户名和密码。两密码 input 均断言 `type=password`。
+- 只启用 SOCKS5 时 HTTP 输入仍隐藏；双开后填入独立的虚构用户名和密码。保存前在双关、双开、仅 SOCKS5、仅 HTTP 四种状态，均断言真实 explicit tab 描述中的准确中文提示可见，两密码 input 默认为 `type=password`：点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。
 - 11 类无效输入：通配/回环/IPv6 监听地址、0/65536 端口、内部保留端口、双协议端口冲突、HTTP 用户名含冒号、超长密码、空密码、空用户名。断言真实 LuCI `.cbi-input-invalid`；凭据错误 tooltip 不回显输入。
 - 无效 Save 显示标准 Save error modal，且没有 UCI 写入；有效 Save 的 10 个 main 字段在 RPC fixture 中逐一校验，凭据独立保存。Reset 恢复已保存端口与开关。
-- **真实表单 Save 后点击原生 Changes 指示器**：modal 无任何虚构凭据，显示 `********`。调用前后 `ui.changes.changes` 对象身份及完整 JSON 内容一致，原始四个凭据变更仍保留。没有修改原生 SDK 或替换 Changes renderer。
-- 只开 SOCKS5 / 只开 HTTP 分别 Save，断言两个开关持久值和另一协议的输入隐藏；从双开单独关闭 HTTP、从双开单独关闭 SOCKS5 均验证另一协议仍启用。
+- 不打开或截图原生 Pending Changes 摘要，不为摘要明文或脱敏行为建立必须永久维持的断言；旧包装专用断言与两张 `changes-redacted` 截图已删除。
+- 只开 SOCKS5 / 只开 HTTP 分别修改端口与虚构用户名、密码后 Save，逐字段验证当前协议持久值，另一协议已有的监听地址、端口、用户名、密码保持原值，且没有这些字段的 UCI 写入；同时断言两个开关持久值和另一协议输入隐藏。从双开单独关闭 HTTP、从双开单独关闭 SOCKS5 均验证另一协议仍启用。
 - 注入一次 `uci.set` ubus code 9，显示标准保存错误且 fixture 原值不变；重新加载后关闭双协议并 Save，两个 enabled 明确为 `0`。
 - 验证期间恰有两个预期 pageerror（无效 Save、注入 RPC 失败）；任何其他 pageerror 或缺失 fixture 均失败。
 
 ## 截图与脱敏
 
-每个主题对应 `default-off`、`both-enabled`、`port-conflict`、`credential-validation`、`validation-save-error`、`changes-redacted`、`socks-only-saved`、`http-only-saved`、`both-enabled-360`、`rpc-save-error`。
+每个主题对应 `default-off`、`both-enabled`、`port-conflict`、`credential-validation`、`validation-save-error`、`socks-only-saved`、`http-only-saved`、`both-enabled-360`、`rpc-save-error`。
 
-截图仅临时替换四个凭据 input 的 DOM 值：用户名为 `[REDACTED]`、密码为统一的虚构占位值并由原生 `type=password` 呈现 bullets；不触发输入事件，截图后在 finally 中还原原值。原生输入框和密码按钮保持可见；密码 input 类型另有自动断言。原值只暂存在页面内存中，不导出或记录。Changes 的星号来自当前 common.js，不是截图替换。日志/results 不输出凭据值，也不保存 HAR、trace、视频、DOM 快照或 RPC 请求体。脚本中的所有凭据均虚构；监听地址使用文档保留网段 192.0.2.0/24。
+截图仅临时替换四个凭据 input 的 DOM 值：用户名为 `[REDACTED]`、密码为统一的虚构占位值并由原生 `type=password` 呈现 bullets；不触发输入事件，截图后在 finally 中还原原值。原生输入框和密码按钮保持可见；密码 input 类型另有自动断言。原值只暂存在页面内存中，不导出或记录。不保存任何含凭据的 Pending Changes 摘要。日志/results 不输出凭据值，也不保存 HAR、trace、视频、DOM 快照或 RPC 请求体。脚本中的所有凭据均虚构；监听地址使用文档保留网段 192.0.2.0/24。
 
 ## 边界
 
