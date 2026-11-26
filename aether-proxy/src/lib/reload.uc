@@ -204,6 +204,8 @@ function execute_action(daemon, action, artifacts, components) {
 	if (action == 'restart_xray') {
 		if (daemon.children.xray != null)
 			wait_stopped(daemon.children.xray);
+		if (daemon.ctx.stopping_requested)
+			return { ok: false, detail: 'Xray readiness cancelled' };
 		let bin = components[C.XRAY_COMPONENT].path;
 		let error = start_child(daemon, 'xray', C.XRAY_COMPONENT,
 			[ bin, 'run', '-c', `${current}/${C.ARTIFACT_FILES.xray}` ]);
@@ -264,6 +266,8 @@ function rollback_actions(daemon, done_actions, previous, current, had_current, 
 		}
 		else if (action == 'restart_xray') {
 			if (daemon.children.xray != null) wait_stopped(daemon.children.xray);
+			if (daemon.ctx.stopping_requested)
+				continue;
 			let err = start_child(daemon, 'xray', C.XRAY_COMPONENT,
 				[ old_components[C.XRAY_COMPONENT].path, 'run', '-c', `${current}/${C.ARTIFACT_FILES.xray}` ]);
 			if (err != null) {

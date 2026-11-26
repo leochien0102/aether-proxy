@@ -127,6 +127,43 @@ class Fixture:
         path = self.root / name
         return len(path.read_text().splitlines()) if path.exists() else 0
 
+    def xray_starts(self):
+        # Count actual supervised runs, never preflight `run -test -c` calls.
+        return [line for line in (self.root / 'calls.log').read_text().splitlines()
+                if line.startswith('xray run -c ')]
+
+    def generations(self, name):
+        path = self.root / ('xray-dns-' + name)
+        return [line.split()[0] for line in path.read_text().splitlines()] if path.exists() else []
+
+    def trace_xray(self):
+        print('TRACE', self.base.name, 'actual starts', len(self.xray_starts()), flush=True)
+        print('\n'.join(self.xray_starts()), flush=True)
+        for name in ('pending', 'published'):
+            path = self.root / ('xray-dns-' + name)
+            print('TRACE', name, path.read_text() if path.exists() else '<absent>', flush=True)
+        state = self.state()
+        print('TRACE final state', state.get('state'), 'last_reload', state.get('last_reload'), flush=True)
+        print('TRACE reload success', self.events('RELOAD_APPLIED'), flush=True)
+
+    def hold_xray_stop(self):
+        # Only this fixture's copy changes. The old real child stays alive inside
+        # its TERM handler until the test observes daemon stopping and releases it.
+        os.mkfifo(self.root / 'xray-stop-release')
+        (self.root / 'hold-xray-stop').touch()
+        path = self.bin / 'xray'
+        source = path.read_text()
+        needle = '\tcleanup() {\n'
+        assert source.count(needle) == 1
+        path.write_text(source.replace(needle, needle + '''
+        if [ -f "$SYSROOT/hold-xray-stop" ]; then
+            rm "$SYSROOT/hold-xray-stop"
+            printf '%s\\n' "$$" > "$SYSROOT/xray-stop-entered"
+            read -r release < "$SYSROOT/xray-stop-release"
+            [ "$release" = release ] || exit 1
+        fi
+'''))
+
     def probes(self):
         return (self.root / 'calls.log').read_text().count('curl ')
 
@@ -300,25 +337,95 @@ def main(base, refresh_target):
               'W9 SIGUSR2 missing DNS real TERM cancels without success probe/state')
 
     for operation in ('monitor', 'reload'):
-        f = Fixture(base, 'cancel-' + operation, node_port=refresh_port if operation == 'monitor' else None)
-        with f.daemon() as child:
-            f.running()
-            f.missing(31082)
-            if operation == 'monitor':
-                (f.root / 'resolve-ip').write_text(f'{refresh_ip}\n')
-                (f.root / 'refresh-now').touch()
-                child.send_signal(signal.SIGUSR1)
-            else:
-                f.configure(('tcp://8.8.8.8',), sniff=True)
-                child.send_signal(signal.SIGHUP)
-            wait_for(lambda: f.count('xray-dns-pending') >= 2)
-            probes = f.probes()
-            at = time.monotonic()
-            child.terminate()
-            child.wait(timeout=3)
-            check(time.monotonic() - at < 2 and not f.events('NODE_IP_CHANGED') and
-                  f.probes() == probes and f.state()['state'] == 'stopped',
-                  f'W8/W9 {operation} missing DNS real TERM cancels without success state/probe')
+        cancel_operation(base, refresh_target, operation)
+    cancel_reload_wait_stopped(base)
+    reload_failure_restores_ready(base)
+
+
+def cancel_operation(base, refresh_target, operation):
+    refresh_ip, refresh_port = refresh_target
+    f = Fixture(base, 'cancel-' + operation, node_port=refresh_port if operation == 'monitor' else None)
+    with f.daemon() as child:
+        f.running()
+        check(len(f.xray_starts()) == 1, f'W8/W9 {operation} starts exactly one initial Xray')
+        f.missing(31082)
+        if operation == 'monitor':
+            (f.root / 'resolve-ip').write_text(f'{refresh_ip}\n')
+            (f.root / 'refresh-now').touch()
+            child.send_signal(signal.SIGUSR1)
+        else:
+            f.configure(('tcp://8.8.8.8',), sniff=True)
+            child.send_signal(signal.SIGHUP)
+        wait_for(lambda: f.count('xray-dns-pending') == 2)
+        check(len(f.xray_starts()) == 2 and len(set(f.generations('pending'))) == 2,
+              f'W8/W9 {operation} TERM targets second Xray pending generation')
+        probes = f.probes()
+        at = time.monotonic()
+        child.terminate()
+        child.wait(timeout=3)
+        elapsed = time.monotonic() - at
+        f.trace_xray()
+        check(elapsed < 2 and not f.events('NODE_IP_CHANGED') and not f.events('RELOAD_APPLIED') and
+              f.probes() == probes and f.state()['state'] == 'stopped',
+              f'W8/W9 {operation} missing DNS real TERM cancels without success state/probe')
+        check(len(f.xray_starts()) == 2,
+              f'W8/W9 {operation} TERM never starts a third Xray for rollback')
+
+
+def cancel_reload_wait_stopped(base):
+    f = Fixture(base, 'cancel-reload-wait-stopped')
+    f.hold_xray_stop()
+    with f.daemon() as child:
+        f.running()
+        old_pid = (f.run / 'xray.pid').read_text().strip()
+        probes = f.probes()
+        f.configure(('tcp://8.8.8.8',), sniff=True)
+        child.send_signal(signal.SIGHUP)
+        wait_for(lambda: (f.root / 'xray-stop-entered').exists())
+        check((f.root / 'xray-stop-entered').read_text().strip() == old_pid and
+              len(f.xray_starts()) == 1 and (f.root / 'proc' / old_pid).exists(),
+              'W8 forward wait_stopped holds the live original Xray before replacement')
+        at = time.monotonic()
+        child.terminate()
+        # Observe actual signal handling, not an assumed scheduling delay.
+        wait_for(lambda: f.state().get('state') == 'stopping', timeout=1)
+        with (f.root / 'xray-stop-release').open('w') as release:
+            release.write('release\n')
+        child.wait(timeout=3)
+        elapsed = time.monotonic() - at
+        f.trace_xray()
+        check(elapsed < 2 and f.state()['state'] == 'stopped' and f.probes() == probes and
+              not f.events('RELOAD_APPLIED') and not f.events('NODE_IP_CHANGED'),
+              'W8 forward wait_stopped TERM exits stopped without success event/probe')
+        check(len(f.xray_starts()) == 1,
+              'W8 forward wait_stopped TERM never starts replacement or rollback Xray')
+
+
+def reload_failure_restores_ready(base):
+    f = Fixture(base, 'reload-failure-restores-ready')
+    with f.daemon() as child:
+        f.running()
+        old_hashes = f.state()['render_hash']
+        probes = f.probes()
+        f.delay()
+        f.missing(31083)
+        f.configure(('udp://8.8.8.8', 'tcp://1.1.1.1'))
+        child.send_signal(signal.SIGHUP)
+        wait_for(lambda: f.count('xray-dns-pending') == 3, timeout=9)
+        check(len(f.xray_starts()) == 3 and len(set(f.generations('pending'))) == 3 and
+              f.state().get('last_reload') is None and f.probes() == probes,
+              'W8 ordinary failed reload waits on third distinct rollback generation readiness')
+        wait_for(lambda: f.state().get('last_reload') is not None, timeout=3)
+        last = f.state()['last_reload']
+        pending = f.generations('pending')
+        published = f.generations('published')
+        rollback_pid = (f.run / 'xray.pid').read_text().strip()
+        f.trace_xray()
+        check(len(f.xray_starts()) == 3 and published == pending and rollback_pid == pending[2] and
+              last['ok'] is False and 'rollback_xray' not in last['error'] and
+              f.state()['render_hash'] == old_hashes and f.state()['state'] == 'running' and
+              not f.events('RELOAD_APPLIED') and f.probes() == probes,
+              'W8 non-TERM failure restores old artifacts with ready distinct third Xray, exactly three starts')
 
 
 if __name__ == '__main__':
