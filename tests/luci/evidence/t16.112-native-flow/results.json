@@ -1,0 +1,391 @@
+{
+  "boundary": "Offline SDK UI + in-memory HTTP/ubus fixtures only; no device, real apply, or raw credentials exported.",
+  "checks": [
+    "Shared credential notice visible before Save with both protocols off",
+    "Advanced Save stages both protocols without applying",
+    "before-apply: clicked native indicator on fresh system/reboot page; ordinary fields readable",
+    "Native modal Save & Apply uses original values for both shared credentials in fixture",
+    "socks-only Save stages its port without touching shared credentials or other protocol",
+    "http-only Save stages its port without touching shared credentials or other protocol",
+    "before-revert: clicked native indicator on fresh system/reboot page; ordinary fields readable",
+    "Native modal Revert discards staged replacements and preserves applied originals",
+    "Native indicator gone after revert and full reload",
+    "No LAN candidates does not block double-off Save",
+    "Status failure leaves unrelated fields and double-off Save usable",
+    "CONFIG_INVALID live LAN candidates allow unrelated configuration repair with proxy still on",
+    "No LAN candidates blocks enabled Save without writes",
+    "Multiple candidates use one native shared selection for both protocols",
+    "Disabling HTTP retains shared credentials; automatic LAN address never stored",
+    "Legacy conflict: open and failed validation preserve both sets without showing passwords",
+    "Explicit legacy source Save stages one shared pair, with no implicit apply",
+    "legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected",
+    "Native Revert restores both distinct legacy credential sets",
+    "Plugin notice and native flow acceptance passed; global summary redaction is assessed separately"
+  ],
+  "navigations": [
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "advanced",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/aether-proxy/advanced.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js",
+        "resources/aether-proxy/common.js",
+        "resources/aether-proxy/form-defaults.js",
+        "resources/tools/widgets.js",
+        "resources/aether-proxy/model/advanced.js",
+        "resources/network.js",
+        "resources/firewall.js",
+        "resources/tools/prng.js",
+        "resources/protocol/none.js",
+        "resources/icons/bridge_disabled.svg"
+      ]
+    },
+    {
+      "page": "unrelated",
+      "assets": [
+        "bootstrap/cascade.css",
+        "resources/cbi.js",
+        "resources/luci.js",
+        "resources/ui.js",
+        "resources/rpc.js",
+        "resources/form.js",
+        "resources/view/system/reboot.js",
+        "resources/validation.js",
+        "resources/uci.js",
+        "resources/fs.js"
+      ]
+    }
+  ],
+  "summaries": [
+    {
+      "stage": "before-apply",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": true,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "before-revert",
+      "exposedFields": [
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": true,
+      "actualModalDOMInspected": true
+    },
+    {
+      "stage": "legacy-before-revert",
+      "exposedFields": [
+        "proxy_username",
+        "proxy_password"
+      ],
+      "ordinaryFieldsReadable": null,
+      "actualModalDOMInspected": true
+    }
+  ],
+  "writes": [
+    {
+      "section": "main",
+      "fields": [
+        "proxy_password",
+        "proxy_username"
+      ]
+    }
+  ],
+  "pluginNoticeAndNativeFlow": "PASS",
+  "globalSummaryRedaction": "PLAINTEXT_OBSERVED_NOT_REDACTED",
+  "redactionClaim": "No global redaction claim; observation is not a required permanent product behavior."
+}

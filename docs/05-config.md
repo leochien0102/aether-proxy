@@ -16,11 +16,11 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 | `node` | 节点段名 | — | 当前节点。为空则无法启用 |
 | `failover_nodes` | 节点 ID 列表 | 空 | 自动切换参与名单。去空、按首次出现顺序去重，最多 64 项；不存在的节点 ID 不生效。「节点与订阅」页的订阅列、订阅编辑框和节点列均编辑此名单，随页脚保存并应用 |
 | `socks_enabled` / `http_enabled` | bool | `0`（未设置不进入快照） | 独立启用供 LAN 客户端主动使用的 SOCKS5 / HTTP 显式 TCP 代理；默认双关，不提供 UDP、TLS 到代理或 LuCI。仍受服务总开关控制 |
-| `socks_listen` / `http_listen` | 字符串 | 空（未设置不进入快照） | 对应入站开启时必填具体 IPv4，拒绝 0/8、127/8、组播和保留地址（≥224/8）、IPv6、域名和 CIDR。启动及重载通过 `ip -j -4 addr show dev <接口>` 校验地址实际属于 `main.lan_ifaces` 中的本机接口；查询失败或地址不存在则拒绝候选配置，不替换旧服务。只监听对应地址，不附带回环或 wildcard 回退 |
-| `socks_port` / `http_port` | int，1–65535 | 空 | 对应入站启用时必填；双开端口不得相同，不得占用 53、31053、31080–31083 内部监听端口 |
-| `socks_username` / `socks_password` | 字符串 | 空 | SOCKS5 独立入站认证；开启必须成对非空，各 1–255 字节，无 C0/DEL 控制字符；不借用上游凭据 |
-| `http_username` / `http_password` | 字符串 | 空 | HTTP 独立入站认证，同上；用户名不能含冒号。支持 HTTP 转发及 CONNECT 到 HTTPS 目标，不是 TLS 到代理 |
-| `lan_ifaces` | list | `br-lan` | 拦截哪些入接口（L3 设备名），并用于校验显式监听地址的本机归属；不代表可信接口或防火墙放行策略。名称 1–15 字节，不含双引号和 C0/DEL 控制字节；反斜线按字面保留（2026-10-30，T9.45） |
+| `proxy_address` | 字符串 | 空 | 两协议共用的候选选择。运行时只从 netifd 逻辑 `lan` 接口当前可用本地 IPv4 中选择：一个候选自动使用，不把自动地址写入 UCI；多个候选时须选一次；非当前候选拒绝。无地址不回退通配地址。旧 `socks_listen` / `http_listen` 不再决定监听 |
+| `socks_port` / `http_port` | int，1–65535 | `1080` / `8080` | 独立端口；双开端口不得相同，不得占用 53、31053、31080–31083 内部监听端口 |
+| `proxy_username` / `proxy_password` | 字符串 | 空 | 两入站强制共用一份认证；任一开启须成对非空，各 1–255 字节，无 C0/DEL 控制字符，用户名不能含冒号。关闭服务不清空共用凭据；不借用上游凭据 |
+| `socks_username` / `socks_password`、`http_username` / `http_password` | 旧兼容字段 | 空 | 仅读取兼容：两套相同或仅一套非空可无歧义沿用；不同则须显式选择旧来源或重新填写完整共用凭据。读取、打开页面、撤销或校验失败不迁移、不写回；成功保存共用凭据后删除旧字段。双关可暂保留冲突旧配置 |
+| `lan_ifaces` | list | `br-lan` | 透明代理拦截哪些入接口（L3 设备名），不再作为显式代理地址来源；不代表可信接口或防火墙放行策略。名称 1–15 字节，不含双引号和 C0/DEL 控制字节；反斜线按字面保留（2026-10-30，T9.45） |
 | `unlisted_policy` | enum(`follow`\|`direct`) | `follow` | 未列出主机的策略：跟随默认模式 / 直连（[02](02-dataplane.md)） |
 | `quic_block` | bool | `1` | 代理目标的 UDP 443 拒绝（非游戏模式主机） |
 | `dns_hijack` | bool | `1` | 劫持 LAN 的 53 端口到路由器（direct 主机除外） |
@@ -37,16 +37,18 @@ UCI 文件 `/etc/config/aetherproxy`。下面是**完整的字段表**，渲染�
 
 显式入站标签为 `explicit-socks` / `explicit-http`，始终路由到当前 `proxy` 出站，不随透明代理分流或 `fail_open` 直连。无节点沿用拒绝启动路径。内部 `31081` 诊断 HTTP 口保持原状，不是用户入站。配置和渲染文件包含认证信息，应仅由管理员读取；daemon/check 等使用的原子写入器以 `0600` 创建渲染文件。`render xray`（包括 `--json`）是原始配置导出，按现有接口保留凭据，不可作为公开诊断附件；校验诊断在存在入站凭据时不转发 Xray 原始输出。HTTP Basic 与 SOCKS 用户名密码本身不提供链路加密，应仅在受控 LAN 使用。网络可达性由现有防火墙决定；本功能不识别可信/访客接口，不增删显式入口 nft 规则，不触发 fw4 reload，不改变透明代理策略。就绪判定要求本代 Xray 实际拥有指定 IPv4 和端口的 exact 监听，端口占用不得误报成功。
 
-已有 T16.107 启用配置升级后也必须明确设置对应 `*_listen`；不再隐式监听回环。下例假定服务总开关与上游节点已配置，且 `192.168.8.1` 实际属于 `br-lan`；示例凭据为占位值，使用前须替换。HTTP 可独立用同名 `http_*` 选项启用；不设置则保持关闭。
+地址来自后端 `network.interface dump` 中精确匹配的逻辑 `lan`，必须在线且具有合格的本地 IPv4；不硬编码设备名，不从默认路由、WAN 或主机提示推断。`status.explicit_lan` 只返回 `{ interface: "lan", addresses: [...] }`，查询失败为空候选且不影响其他状态。表单直接消费后端候选，启动/应用重新查询，不能信任浏览器缓存。双关无需 LAN 在线或填写凭据。多候选选择失效时须重新选择，不自动扩大监听。地址变化后重新应用才能更新监听。
+
+下例假定服务总开关与上游节点已配置，逻辑 LAN 有一个可用 IPv4；示例凭据为占位值，使用前须替换。HTTP 可独立启用，默认关闭。无需填写监听 IP：
 
 ```uci
 config global 'main'
-	list lan_ifaces 'br-lan'
 	option socks_enabled '1'
-	option socks_listen '192.168.8.1'
 	option socks_port '1080'
-	option socks_username 'REPLACE_WITH_USERNAME'
-	option socks_password 'REPLACE_WITH_PASSWORD'
+	option http_enabled '0'
+	option http_port '8080'
+	option proxy_username 'REPLACE_WITH_USERNAME'
+	option proxy_password 'REPLACE_WITH_PASSWORD'
 ```
 
 ## `config dns 'dns'`

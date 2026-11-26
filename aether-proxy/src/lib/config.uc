@@ -8,7 +8,7 @@
 
 import * as C from 'aetherproxy.const';
 import * as node_failover from 'aetherproxy.node_failover';
-import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts, explicit_ipv4 } from 'aetherproxy.net';
+import { ipv4, ip_or_cidr, ip_or_range, domain, ip_key, private_ipv4, trust_dns_parts } from 'aetherproxy.net';
 import { SCHEMA, SS_METHODS, FINGERPRINTS, XHTTP_MODES,
 	SUBSCRIPTION_NAME_RE, NODE_NAME_RE } from 'aetherproxy.schema';
 
@@ -276,10 +276,10 @@ function normalize_field(f, raw, field, proto, errors) {
 	}
 
 	// Never interpolate explicit inbound credentials into validation diagnostics.
-	if (match(field, /^main\.(socks|http)_(username|password)$/)) {
+	if (match(field, /^main\.proxy_(username|password)$/)) {
 		if (!inbound_credential_ok(v)
-			|| (f.name == 'http_username' && index(v, ':') >= 0)) {
-			push(errors, { field, code: 'invalid_value', detail: 'must be 1–255 bytes without controls (HTTP username also excludes colon)' });
+			|| (f.name == 'proxy_username' && index(v, ':') >= 0)) {
+			push(errors, { field, code: 'invalid_value', detail: 'must be 1–255 bytes without controls (username also excludes colon)' });
 			return null;
 		}
 		return v;
@@ -617,20 +617,42 @@ export function validate_node(node) {
 	return errors;
 };
 
+// Resolve only identical legacy pairs or one nonempty pair; never merge partial groups.
+// The copy is normalized below, so reading and validation cannot migrate persisted UCI.
+function explicit_proxy_main(raw, errors) {
+	let main = { ...(raw ?? {}) };
+	if (!unset(main.proxy_username) && !unset(main.proxy_password))
+		return main;
+	let socks = [ unset(main.socks_username) ? null : main.socks_username, unset(main.socks_password) ? null : main.socks_password ];
+	let http = [ unset(main.http_username) ? null : main.http_username, unset(main.http_password) ? null : main.http_password ];
+	let socks_set = !unset(socks[0]) || !unset(socks[1]);
+	let http_set = !unset(http[0]) || !unset(http[1]);
+	if (socks_set && http_set && (socks[0] != http[0] || socks[1] != http[1])) {
+		if (main.socks_enabled == '1' || main.socks_enabled == true || main.http_enabled == '1' || main.http_enabled == true)
+			push(errors, { field: 'main.proxy_credentials', code: 'migration_conflict',
+				detail: 'legacy credential pairs differ; configure a complete shared username and password' });
+		return main;
+	}
+	if (!unset(main.proxy_username) || !unset(main.proxy_password))
+		return main;
+	let pair = socks_set ? socks : http;
+	main.proxy_username = pair[0];
+	main.proxy_password = pair[1];
+	return main;
+}
+
 function check_explicit_proxy(main, errors) {
+	let enabled = main.socks_enabled == true || main.http_enabled == true;
+	if (enabled && !length(filter(errors, e => e.field == 'main.proxy_credentials')))
+		for (let name in [ 'proxy_username', 'proxy_password' ])
+			if (main[name] == null)
+				push(errors, { field: 'main.' + name, code: 'required', detail: 'required when an explicit inbound is enabled' });
 	let used = {};
 	let reserved = [ C.DNS_PORT, C.CHINADNS_PORT, C.TPROXY_PORT, C.HTTP_PORT, ...C.DNS_TUNNEL_PORTS ];
 	for (let protocol in [ 'socks', 'http' ]) {
 		if (main[protocol + '_enabled'] != true)
 			continue;
-		for (let suffix in [ 'listen', 'port', 'username', 'password' ]) {
-			let name = protocol + '_' + suffix;
-			if (main[name] == null)
-				push(errors, { field: 'main.' + name, code: 'required', detail: 'required when inbound is enabled' });
-		}
-		let listen = main[protocol + '_listen'];
-		if (listen != null && explicit_ipv4(listen) == null)
-			push(errors, { field: 'main.' + protocol + '_listen', code: 'invalid_ipv4', detail: 'expected a concrete non-loopback unicast IPv4 address' });
+
 		let port = main[protocol + '_port'];
 		if (port != null && (index(reserved, port) >= 0 || used['' + port]))
 			push(errors, { field: 'main.' + protocol + '_port', code: 'port_conflict', detail: 'conflicts with an internal or enabled explicit listener' });
@@ -680,7 +702,7 @@ export function normalize(raw) {
 	let snap = {};
 
 	for (let s in SINGLETON_SECTIONS)
-		snap[s] = normalize_section(SCHEMA[s], raw[s] ?? {}, s, errors);
+		snap[s] = normalize_section(SCHEMA[s], s == 'main' ? explicit_proxy_main(raw.main, errors) : (raw[s] ?? {}), s, errors);
 
 	snap.hosts = [];
 

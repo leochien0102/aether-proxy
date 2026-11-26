@@ -1,0 +1,21 @@
+PASS Shared credential notice visible before Save with both protocols off
+PASS Advanced Save stages both protocols without applying
+PASS before-apply: clicked native indicator on fresh system/reboot page; ordinary fields readable
+OBSERVED exposed credential field count=2 (values not exported)
+PASS Native modal Save & Apply uses original values for both shared credentials in fixture
+PASS socks-only Save stages its port without touching shared credentials or other protocol
+PASS http-only Save stages its port without touching shared credentials or other protocol
+PASS before-revert: clicked native indicator on fresh system/reboot page; ordinary fields readable
+PASS Native modal Revert discards staged replacements and preserves applied originals
+PASS Native indicator gone after revert and full reload
+PASS No LAN candidates does not block double-off Save
+PASS Status failure leaves unrelated fields and double-off Save usable
+PASS CONFIG_INVALID live LAN candidates allow unrelated configuration repair with proxy still on
+PASS No LAN candidates blocks enabled Save without writes
+PASS Multiple candidates use one native shared selection for both protocols
+PASS Disabling HTTP retains shared credentials; automatic LAN address never stored
+PASS Legacy conflict: open and failed validation preserve both sets without showing passwords
+PASS Explicit legacy source Save stages one shared pair, with no implicit apply
+PASS legacy-before-revert: clicked native indicator on fresh system/reboot page; legacy migration summary inspected
+PASS Native Revert restores both distinct legacy credential sets
+PASS Plugin notice and native flow acceptance passed; global summary redaction is assessed separately

@@ -149,6 +149,17 @@ function list_ok(value, check) {
 	return items.every(check);
 }
 
+/* Legacy pairs are never spliced together or silently preferred. */
+function credentials(main) {
+	const pair = prefix => [main?.[prefix + '_username'] || '', main?.[prefix + '_password'] || ''];
+	const shared = pair('proxy'), socks = pair('socks'), http = pair('http');
+	if (shared.some(Boolean))
+		return { pair: shared, conflict: false };
+	if (!socks.some(Boolean) || !http.some(Boolean) || JSON.stringify(socks) == JSON.stringify(http))
+		return { pair: socks.some(Boolean) ? socks : http, conflict: false };
+	return { pair: ['', ''], conflict: true };
+}
+
 /* Explicit listeners use the existing main.* fields; messages never include input. */
 function explicit_error(field, value, values) {
 	const [protocol, suffix] = field.split('_');
@@ -181,6 +192,10 @@ function explicit_error(field, value, values) {
 }
 
 function validate(field, value, values) {
+	if (/^proxy_(username|password)$/.test(field)) {
+		const enabled = values?.socks_enabled === '1' || values?.http_enabled === '1';
+		return explicit_error(field.replace('proxy_', 'http_'), value, { http_enabled: enabled ? '1' : '0' });
+	}
 	if (/^(socks|http)_(enabled|listen|port|username|password)$/.test(field))
 		return explicit_error(field, value, values);
 
@@ -234,6 +249,7 @@ return baseclass.extend({
 	},
 
 	validate: validate,
+	credentials: credentials,
 
 	default: function(field) {
 		return DEFAULTS[field] ?? null;

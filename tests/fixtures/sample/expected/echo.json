@@ -4,6 +4,8 @@
   "port_scope": "all",
   "extra_ports": "",
   "node": "n_00000000000000000000000000000001",
+  "socks_port": 1080,
+  "http_port": 8080,
   "lan_ifaces": [
     "br-lan"
   ],

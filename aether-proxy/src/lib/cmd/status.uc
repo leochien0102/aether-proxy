@@ -180,19 +180,23 @@ export function run(args) {
 			{ ok: false, code: 'FS_FAILED', detail }, 1, `cannot read status: ${detail}`);
 	}
 
-	// docs/10 「概览页」: status reads the configuration for the notices. A configuration
-	// that fails to load or validate fails the whole call like in `check`; status is
-	// polled every few seconds, so no event is logged for it (the JSON response carries
-	// the errors instead).
-	// TODO(design): docs/10 does not define status behavior for an invalid configuration,
-	// and nothing says whether config.load warnings should surface here; status is polled
-	// every few seconds, so they are neither logged nor returned for now.
+	// Candidates must remain available to repair invalid explicit-proxy configuration.
+	// Notice detection can ignore those fields; neither fallback writes UCI or exposes it.
 	let cursor = uci.cursor(parsed.opts.confdir);
 	let cfg = config.load(cursor);
+	let explicit_lan = pipeline.read_explicit_lan(parsed.opts);
+	if (!cfg.ok && !length(filter(cfg.errors, e => !match(e.field ?? '', /^main\.(socks|http|proxy)_/)))) {
+		let raw = config.read_raw(cursor, C.UCI_PACKAGE);
+		for (let key in keys(raw.main ?? {}))
+			if (match(key, /^(socks|http|proxy)_/))
+				delete raw.main[key];
+		cfg = config.normalize(raw);
+	}
 	if (!cfg.ok)
 		return pipeline.finish(parsed.opts,
-			{ ok: false, code: 'CONFIG_INVALID', detail: `${length(cfg.errors)} configuration error(s)`, errors: cfg.errors },
+			{ ok: false, code: 'CONFIG_INVALID', detail: `${length(cfg.errors)} configuration error(s)`, errors: cfg.errors, explicit_lan },
 			2, pipeline.describe_errors({ code: 'CONFIG_INVALID', detail: 'configuration invalid', errors: cfg.errors }));
+	current.explicit_lan = explicit_lan;
 
 	// Old or stopped state files predate the runtime-only fields (docs/02).
 	if (index(keys(current), 'components') >= 0)

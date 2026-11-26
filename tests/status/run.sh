@@ -38,7 +38,15 @@ cp "$T/bin/xray" "$T/bin-nochinadns/xray"
 # All conflict commands use shared substitutes, never host nft/killall.
 for bin in "$T/bin" "$T/bin-nochinadns"; do
 	cp "$ROOT/tests/stubs/bin/"{common.sh,nft,killall} "$bin/"
+	cat > "$bin/ubus" <<'EOF'
+#!/bin/sh
+[ "$*" = 'call network.interface dump' ] || exit 2
+[ -f "$EXPLICIT_LAN_DUMP" ] || exit 1
+cat "$EXPLICIT_LAN_DUMP"
+exit "${EXPLICIT_LAN_CODE:-0}"
+EOF
 done
+export EXPLICIT_LAN_DUMP="$T/lan-dump.json"
 export STUB_LOG="$T/conflict-calls"
 printf "STUB_LOG='%s'\n" "$STUB_LOG" > "$T/stub.env"
 chmod +x "$T/bin/"* "$T/bin-nochinadns/"*
@@ -243,6 +251,76 @@ out="$(ap "$PATH_BOTH" status --json --confdir "$FIX/t11-err-enabled-no-node" --
 expect "invalid configuration: exit code 2" 2 "$rc"
 expect "invalid configuration: code" "CONFIG_INVALID" "$(echo "$out" | jget code)"
 expect "invalid configuration: error field" "main.node" "$(echo "$out" | jget errors.0.field)"
+
+# T16.112: shared backend LAN candidates stay available for configuration repair.
+R="$T/explicit-status"; SR="$T/explicit-root"
+make_root "$SR"
+mkdir -p "$R" "$T/explicit-conf"
+python3 - "$FIX/sample/aetherproxy" "$T/explicit-conf/aetherproxy" <<'PY'
+import pathlib, sys
+source = pathlib.Path(sys.argv[1]).read_text()
+legacy = "\toption socks_enabled '1'\n\toption http_enabled '1'\n"
+legacy += "\toption socks_username 'fixture-user'\n\toption socks_password 'fixture-old-secret'\n"
+legacy += "\toption http_username 'other-user'\n\toption http_password 'fixture-other-secret'\n"
+pathlib.Path(sys.argv[2]).write_text(source.replace("config main 'main'\n", "config main 'main'\n" + legacy))
+PY
+explicit_status() {
+	ap "$PATH_BOTH" status --json --confdir "$T/explicit-conf" --run-dir "$R" \
+		--sys-root "$SR" --bin-dir "$T/bin" 2>"$T/explicit.stderr"
+}
+cat > "$EXPLICIT_LAN_DUMP" <<'EOF'
+{"interface":[{"interface":"wan","up":true,"ipv4-address":[{"address":"198.51.100.9"}]},
+{"interface":"lan","device":"eth9","up":true,"ipv4-address":[{"address":"192.0.2.1"},
+{"address":"192.0.2.1"},{"address":"192.0.2.2"},{"address":"192.0.2.3","valid_lft":0},
+{"address":"192.0.2.4","valid":false},{"address":"127.0.0.1"},{"address":"224.0.0.1"}]}]}
+EOF
+before=$(sha256sum "$T/explicit-conf/aetherproxy")
+out=$(explicit_status); rc=$?
+expect 'T16.112 legacy conflict status succeeds for repair' 0 "$rc"
+expect 'T16.112 status preserves state during conflict' stopped "$(echo "$out" | jget state)"
+expect 'T16.112 status logical source only' lan "$(echo "$out" | jget explicit_lan.interface)"
+expect 'T16.112 first valid LAN candidate' 192.0.2.1 "$(echo "$out" | jget explicit_lan.addresses.0)"
+expect 'T16.112 deduplicated second LAN candidate' 192.0.2.2 "$(echo "$out" | jget explicit_lan.addresses.1)"
+expect 'T16.112 invalid WAN expired and multicast candidates excluded' '<missing>' "$(echo "$out" | jget explicit_lan.addresses.2)"
+expect 'T16.112 status retains other notices during explicit config conflict' '<missing>' "$(echo "$out" | jget notices.0.code)"
+python3 - "$out" <<'PY'
+import json, sys
+text = sys.argv[1]
+assert all(v not in text for v in ['fixture-user', 'fixture-old-secret', 'other-user', 'fixture-other-secret'])
+value = json.loads(text)
+assert 'proxy_username' not in text and 'proxy_password' not in text
+PY
+expect 'T16.112 status never leaks shared or legacy credentials' 0 "$?"
+expect 'T16.112 status does not migrate UCI' "$before" "$(sha256sum "$T/explicit-conf/aetherproxy")"
+[ ! -e "$R/events.jsonl" ] && ok 'T16.112 status conflict is event-free' || bad 'T16.112 status conflict is event-free'
+reference="$out"
+for kind in failure malformed no-address; do
+	case "$kind" in
+		failure) export EXPLICIT_LAN_CODE=1 ;;
+		malformed) export EXPLICIT_LAN_CODE=0; printf '{\n' > "$EXPLICIT_LAN_DUMP" ;;
+		no-address) printf '{"interface":[]}\n' > "$EXPLICIT_LAN_DUMP" ;;
+	esac
+	out=$(explicit_status); rc=$?
+	expect "T16.112 $kind returns status" 0 "$rc"
+	python3 - "$reference" "$out" <<'PY'
+import json, sys
+expected, actual = map(json.loads, sys.argv[1:])
+expected['explicit_lan']['addresses'] = []
+assert actual == expected
+PY
+	expect "T16.112 $kind only empties candidates" 0 "$?"
+done
+unset EXPLICIT_LAN_CODE
+# Complete new credentials settle migration but no address still must not break status.
+python3 - "$T/explicit-conf/aetherproxy" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(p.read_text().replace("config main 'main'\n", "config main 'main'\n\toption proxy_username 'resolved-user'\n\toption proxy_password 'resolved-secret'\n"))
+PY
+out=$(explicit_status); rc=$?
+expect 'T16.112 enabled with shared credentials and no LAN still reports status' 0 "$rc"
+expect 'T16.112 no LAN candidates with shared credentials' '<missing>' "$(echo "$out" | jget explicit_lan.addresses.0)"
+case "$out" in *resolved-user*|*resolved-secret*) bad 'T16.112 new credentials never returned' ;; *) ok 'T16.112 new credentials never returned' ;; esac
 
 # T9.6: compare the entire status response with the original usable-cache response,
 # not just its notice count. Database times are fixed, independent of the wall clock.

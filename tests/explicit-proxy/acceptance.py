@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 
-from network import LAN, IFACE, HEX_LAN, lan_network
+from network import LAN, IFACE, HEX_LAN, lan_network, ubus_fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -198,18 +198,23 @@ def assert_request(targets, scheme, protocol, port, credentials, success, label)
 
 
 def write_uci(confdir, enabled, ports, accounts, upstream_port, upstream_account,
-              listen=LAN, lan_iface=IFACE):
+              address=None, lan_iface=IFACE, legacy=None, shared=True):
     lines = ["config main 'main'", " option enabled '1'", f" option node '{NODE}'",
              " option sniffing '0'", " option xray_log_level 'error'",
              f" list lan_ifaces '{lan_iface}'"]
+    for index, field in enumerate(('username', 'password')):
+        if shared is True or shared == field:
+            lines.append(f" option proxy_{field} '{accounts['socks'][index]}'")
+    if address is not None:
+        lines.append(f" option proxy_address '{address}'")
     if enabled is not None:
         for protocol in ('socks', 'http'):
-            lines.append(f" option {protocol}_enabled '{int(protocol in enabled)}'")
-            if protocol in enabled:
-                lines += [f" option {protocol}_listen '{listen}'",
-                          f" option {protocol}_port '{ports[protocol]}'",
-                          f" option {protocol}_username '{accounts[protocol][0]}'",
-                          f" option {protocol}_password '{accounts[protocol][1]}'"]
+            lines += [f" option {protocol}_enabled '{int(protocol in enabled)}'",
+                      f" option {protocol}_port '{ports[protocol]}'"]
+    for protocol, pair in (legacy or {}).items():
+        lines += [f" option {protocol}_username '{pair[0]}'",
+                  f" option {protocol}_password '{pair[1]}'",
+                  f" option {protocol}_listen '203.0.113.99'"]
     lines += ["config dns 'dns'", " list china_dns '127.0.0.1'",
               " list trust_dns '127.0.0.1'", f"config node '{NODE}'",
               " option protocol 'socks'", " option address '127.0.0.1'",
@@ -230,7 +235,7 @@ def cli_render(confdir, work):
     command = [str(UCODE), '-S', str(ROOT / 'aether-proxy/src/aether-proxy'), '--',
                'render', 'xray', '--confdir', str(confdir), '--data-dir', str(work / 'data'),
                '--baseline-dir', str(work / 'base'), '--custom-dir', str(work / 'custom'),
-               '--run-dir', str(work / 'cli-run')]
+               '--run-dir', str(work / 'cli-run'), '--bin-dir', str(work / 'bin')]
     result = run(command, 'CLI render')
     check(not result.stderr, 'CLI render wrote unexpected stderr (withheld)')
     check(not (work / 'cli-run').exists(), 'CLI render unexpectedly created runtime/log files')
@@ -257,7 +262,8 @@ def main():
         while len(set(ports.values())) < 3:
             ports = {name: free_port() for name in ('socks', 'http', 'upstream')}
         accounts = {name: (secrets.token_hex(8), secrets.token_hex(16))
-                    for name in ('socks', 'http', 'upstream')}
+                    for name in ('socks', 'upstream')}
+        accounts['http'] = accounts['socks']
         run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
              '-subj', '/CN=localhost', '-keyout', str(work / 'key.pem'),
              '-out', str(work / 'cert.pem')], 'local TLS certificate')
@@ -284,12 +290,15 @@ def main():
             case.mkdir()
             confdir = case / 'config'
             confdir.mkdir()
-            write_uci(confdir, enabled, ports, accounts, ports['upstream'], accounts['upstream'])
+            write_uci(confdir, enabled, ports, accounts, ports['upstream'], accounts['upstream'],
+                      shared=bool(enabled))
+            ubus_fixture(case / 'bin')
+            cli_artifact = cli_render(confdir, case)
             rendered = case / 'xray.json'
             # Deliberately permissive umask: protection must come from sys.write_atomic.
             old_umask = os.umask(0)
             try:
-                result = run([str(UCODE), str(HERE / 'render.uc'), str(confdir), str(rendered)],
+                result = run([str(UCODE), str(HERE / 'render.uc'), str(confdir), str(rendered), str(case)],
                              name + ' UCI loader/render')
             finally:
                 os.umask(old_umask)
@@ -298,11 +307,15 @@ def main():
             config, main_config = loaded['config'], loaded['main']
             check(stat.S_IMODE(rendered.stat().st_mode) == 0o600,
                   name + ': shared atomic writer did not produce mode 0600')
-            check(cli_render(confdir, case) == rendered.read_bytes(), name + ': CLI/render mismatch')
+            check(cli_artifact == rendered.read_bytes(), name + ': CLI/render mismatch')
+            check((case / 'bin/ubus-calls').exists() == bool(enabled),
+                  name + ': double-off queried LAN or active render did not resolve LAN')
             if enabled is None:
                 legacy = config
-                check(not any(key.startswith(('socks_', 'http_')) for key in main_config),
-                      'omitted explicit fields changed the legacy snapshot')
+                check(main_config['socks_port'] == 1080 and main_config['http_port'] == 8080,
+                      'schema explicit port defaults changed')
+                check(not main_config.get('socks_enabled') and not main_config.get('http_enabled'),
+                      'omitted explicit flags did not default off')
             elif not enabled:
                 check(config == legacy, 'both-off render changed legacy output')
             active = enabled or set()

@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 
-from network import LAN, HEX_LAN, lan_network, live_ip_fixture
+from network import LAN, IFACE, HEX_LAN, lan_network, ubus_fixture
 from acceptance import (ROOT, BODY, check, discover_xray, free_port, listeners,
                         write_uci, target_server, curl, xray_process)
 
@@ -35,15 +35,18 @@ class Fixture(dns.ReloadFixture):
         self.probes = self.base / 'ready-probes.jsonl'
         self.env['XRAY_LOCATION_ASSET'] = str(self.base / 'empty-assets')
         (self.base / 'empty-assets').mkdir()
-        # Xray and read-only namespace address queries are native. DNS, nft,
-        # routing mutations and dnsmasq remain rooted daemon fixtures.
+        # Xray/sockets are native; ubus LAN, DNS, nft, routing and dnsmasq
+        # remain explicitly labelled offline/rooted daemon fixtures.
         (self.bin / 'xray').unlink()
         (self.bin / 'xray').symlink_to(binary)
         # The existing monitor reads the global tcp6 table for TPROXY health.
         # Native read-only data replaces the shell Xray stub's synthetic row.
         (self.root / 'proc/net/tcp6').symlink_to('/proc/net/tcp6')
         self.configure(set())
-        live_ip_fixture(self.bin / 'ip')
+        self.lan_state = ubus_fixture(self.bin)
+        (self.root / 'sys/class/net' / IFACE).mkdir(parents=True, exist_ok=True)
+        replace_once(self.root / 'var/etc/dnsmasq.conf.test', 'interface=br-lan',
+                     'interface=' + IFACE)
         ready = self.modules / 'xray_ready.uc'
         # Rooted artifacts remain real production renders. Only the observation
         # context changes to native /proc + socket_diag for this real child.
@@ -196,16 +199,19 @@ uloop.done();
         self.no_secret_logs()
         return pid
 
-    def reload(self, child, enabled, ok=True):
+    def reload(self, child, enabled, ok=True, changed=True):
         before = self.state().get('last_reload')
         applied = len(self.events('RELOAD_APPLIED'))
         self.configure(enabled)
+        uci_before = self.conf.read_bytes()
         child.send_signal(signal.SIGHUP)
         dns.wait_for(lambda: self.state().get('last_reload') != before,
                      timeout=15, label='reload completion')
         check(self.state()['last_reload']['ok'] is ok, 'unexpected reload transaction result')
-        check(len(self.events('RELOAD_APPLIED')) == applied + int(ok),
+        check(len(self.events('RELOAD_APPLIED')) == applied + int(ok and changed),
               'incorrect RELOAD_APPLIED publication')
+        check(self.conf.read_bytes() == uci_before,
+              'reload read/validation silently rewrote UCI credentials or runtime address')
 
 
 def real_transactions(base, binary, ports, accounts, target):
@@ -337,6 +343,7 @@ def main():
     while len(set(ports.values())) < 3:
         ports = {name: free_port() for name in ('socks', 'http', 'upstream')}
     accounts = {name: (secrets.token_hex(8), secrets.token_hex(16)) for name in ports}
+    accounts['http'] = accounts['socks']
     with tempfile.TemporaryDirectory(prefix='aether-explicit-reload-') as temp, ExitStack() as stack:
         base = Path(temp)
         target = stack.enter_context(target_server())

@@ -26,14 +26,14 @@ export function run(c) {
 		let s = snapshot([ 'tcp://8.8.8.8' ]), ctx = { runtime: { dns_tier: 'T2' } };
 		if (c.kind == 'explicit') {
 			for (let flags in [ [ false, false ], [ false, true ], [ true, true ], [ true, false ] ]) {
-				s.main = { socks_enabled: flags[0], socks_listen: '192.0.2.1', socks_port: 42001, socks_username: 'test', socks_password: 'test',
-					http_enabled: flags[1], http_listen: '198.51.100.1', http_port: 42002, http_username: 'test', http_password: 'test' };
+				s.main = { socks_enabled: flags[0], socks_port: 42001, http_enabled: flags[1], http_port: 42002,
+					proxy_listen: '192.0.2.1', proxy_username: 'test', proxy_password: 'test' };
 				let result = ready.requirements(chinadns.render(s, ctx), xray.render(s, ctx));
 				if (!result.ok || length(result.required) != 1 + int(flags[0]) + int(flags[1]))
 					return 'explicit requirement count mismatch';
 				let wanted = [ 42001, 42002 ];
 				for (let i = 0; i < 2; i++) {
-					let found = filter(result.required, r => r.port == wanted[i] && r.address == [ '192.0.2.1', '198.51.100.1' ][i] &&
+					let found = filter(result.required, r => r.port == wanted[i] && r.address == '192.0.2.1' &&
 						r.protocol == 'tcp' && r.role == 'explicit');
 					if (length(found) != int(flags[i]))
 						return 'explicit requirement tuple mismatch';

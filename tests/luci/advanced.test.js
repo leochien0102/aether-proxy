@@ -296,6 +296,7 @@ function build_form() {
 			this.validate = null;
 			this.depends = () => this;
 			this.formvalue = () => '';
+			this.isActive = () => true;
 			this.value = () => this;
 			created.push(this);
 		}
@@ -356,7 +357,7 @@ function build_form() {
 
 	const form = {
 		Map, NamedSection: 'NamedSection', Flag: 'Flag', Value: 'Value', ListValue: 'ListValue',
-		RichListValue: 'RichListValue', DynamicList: 'DynamicList'
+		RichListValue: 'RichListValue', DynamicList: 'DynamicList', DummyValue: 'DummyValue'
 	};
 
 	return { form, state, created };
@@ -383,6 +384,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const calls = [];
 	const spy = {
 		validate: (field, value) => { calls.push([ field, value ]); return true; },
+		credentials: main => real.credentials(main),
 		description: (field) => real.description(field),
 		default: (field) => real.default(field),
 		log_level_choices: () => real.log_level_choices(),
@@ -415,7 +417,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const expected = {
 		intercept: [ 'lan_ifaces', 'extra_ports', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 			'fail_open', 'degrade_gfw', 'sniffing' ],
-		explicit: ['socks', 'http'].flatMap(p => ['enabled', 'listen', 'port', 'username', 'password'].map(s => p + '_' + s)),
+		explicit: ['_proxy_lan', 'socks_enabled', 'socks_port', 'http_enabled', 'http_port', 'proxy_username', 'proxy_password'],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
 			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],
@@ -449,6 +451,10 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	   absent, otherwise a checked-by-default switch would look disabled. */
 	assert.deepEqual(lan.default, [ 'br-lan' ]);
 	for (const o of created) {
+		if (/^(socks|http)_port$/.test(o.field)) {
+			assert.equal(o.default, o.field === 'socks_port' ? '1080' : '8080');
+			continue;
+		}
 		if (/^(socks|http)_enabled$/.test(o.field)) {
 			assert.equal(o.default, '0');
 			continue;
@@ -476,9 +482,10 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	/* Every model-backed option routes its validator through the model with its own field
 	   name — a wrong field name here would silently validate the wrong rule. */
 	for (const o of created) {
+		if (o.field.startsWith('_')) continue; // Read-only presentation has no model validator.
 		assert.equal(typeof o.validate, 'function', o.field + ': has a validator');
-		if (o.field === 'extra_ports')
-			continue; // This field retains its dedicated port/range validator.
+		if (o.field === 'extra_ports' || o.field.startsWith('proxy_'))
+			continue; // Composite credentials are tested against their effective pair in explicit-ui.test.js.
 		calls.length = 0;
 		assert.equal(o.validate('main', 'SAMPLE'), true);
 		assert.deepEqual(calls.map(args => args.slice(0, 2)), [ [ o.field, 'SAMPLE' ] ], o.field + ': validator calls the model');

@@ -1,43 +1,53 @@
 'use strict';
 
 import * as config from 'aetherproxy.config';
+import * as pipeline from 'aetherproxy.pipeline';
 import * as xray from 'aetherproxy.render.xray';
 
-const AUTH = { socks_enabled: '1', socks_listen: '192.0.2.1', socks_port: '41080', socks_username: 'local-user', socks_password: 'local-secret',
-	http_enabled: '1', http_listen: '198.51.100.1', http_port: '41081', http_username: 'http-user', http_password: 'http-secret' };
+const AUTH = { socks_enabled: '1', socks_port: '41080', http_enabled: '1', http_port: '41081',
+	proxy_username: 'local-user', proxy_password: 'local-secret' };
+const OLD = { socks_username: 'local-user', socks_password: 'local-secret', http_username: 'local-user', http_password: 'local-secret' };
 
 export const cases = [
-	{ name: 'legacy snapshot and listeners unchanged', legacy: true, expect: true },
-	{ name: 'independent authenticated TCP LAN inbounds route proxy', render: true, expect: true },
+	{ name: 'legacy disabled snapshot has defaults but no extra listeners', legacy: true, expect: true },
+	{ name: 'shared authenticated TCP LAN inbounds route proxy', render: true, expect: true },
 	{ name: 'only SOCKS enabled', render: true, change: { http_enabled: '0' }, expect: true },
 	{ name: 'only HTTP enabled', render: true, change: { socks_enabled: '0' }, expect: true },
-	{ name: 'both explicitly disabled', render: true, change: { socks_enabled: '0', http_enabled: '0' }, expect: true },
-	{ name: 'missing SOCKS username', change: { socks_username: '' }, expect: ['main.socks_username:required'] },
-	{ name: 'missing SOCKS password', change: { socks_password: '' }, expect: ['main.socks_password:required'] },
-	{ name: 'missing HTTP username', change: { http_username: '' }, expect: ['main.http_username:required'] },
-	{ name: 'missing HTTP password', change: { http_password: '' }, expect: ['main.http_password:required'] },
-	{ name: 'missing SOCKS port', change: { socks_port: '' }, expect: ['main.socks_port:required'] },
-	{ name: 'missing HTTP port', change: { http_port: '' }, expect: ['main.http_port:required'] },
+	{ name: 'both disabled need neither addresses nor credentials', render: true, change: { socks_enabled: '0', http_enabled: '0', proxy_username: '', proxy_password: '' }, expect: true },
+	{ name: 'missing shared username', change: { proxy_username: '' }, expect: ['main.proxy_username:required'] },
+	{ name: 'missing shared password', change: { proxy_password: '' }, expect: ['main.proxy_password:required'] },
+	{ name: 'missing SOCKS port defaults to 1080', change: { socks_port: '' }, defaults: true, expect: true },
+	{ name: 'missing HTTP port defaults to 8080', change: { http_port: '' }, defaults: true, expect: true },
 	{ name: 'enabled ports collide', change: { http_port: '41080' }, expect: ['main.http_port:port_conflict'] },
 	{ name: 'disabled port need not be unique', change: { http_enabled: '0', http_port: '41080' }, expect: [] },
 	{ name: 'invalid port zero', change: { socks_port: '0' }, expect: ['main.socks_port:out_of_range'] },
 	{ name: 'invalid port overflow', change: { http_port: '65536' }, expect: ['main.http_port:out_of_range'] },
 	{ name: 'invalid boolean', change: { socks_enabled: 'yes' }, expect: ['main.socks_enabled:invalid_bool'] },
-	{ name: 'control in secret never echoed', change: { socks_password: 'local-secret\n' }, invalid: true, expect: true },
-	{ name: 'list secret never echoed', change: { http_password: ['http-secret'] }, invalid: true, expect: true },
-	{ name: 'HTTP username colon rejected', change: { http_username: 'local-secret:bad' }, invalid: true, expect: true },
-	{ name: 'overlong SOCKS secret rejected', change: { socks_password: sprintf('%0256d', 0) }, invalid: true, expect: true },
-	{ name: 'enabled service missing node still rejected', change: { enabled: '1' }, expect: ['main.node:required'] }
+	{ name: 'control in secret never echoed', change: { proxy_password: 'local-secret\n' }, invalid: true, expect: true },
+	{ name: 'list secret never echoed', change: { proxy_password: ['local-secret'] }, invalid: true, expect: true },
+	{ name: 'shared username colon rejected for SOCKS too', change: { http_enabled: '0', proxy_username: 'local-secret:bad' }, invalid: true, expect: true },
+	{ name: 'overlong shared secret rejected', change: { proxy_password: sprintf('%0256d', 0) }, invalid: true, expect: true },
+	{ name: 'enabled service missing node still rejected', change: { enabled: '1' }, expect: ['main.node:required'] },
+	{ name: 'identical old pairs inherited without writeback', old: OLD, migration: true, expect: true },
+	{ name: 'single old SOCKS pair inherited', old: { socks_username: 'local-user', socks_password: 'local-secret' }, migration: true, expect: true },
+	{ name: 'single old HTTP pair inherited', old: { http_username: 'local-user', http_password: 'local-secret' }, migration: true, expect: true },
+	{ name: 'different old passwords require explicit resolution', old: { ...OLD, http_password: 'other-secret' }, expect: ['main.proxy_credentials:migration_conflict'] },
+	{ name: 'partial old conflict requires explicit resolution', old: { ...OLD, http_password: '' }, expect: ['main.proxy_credentials:migration_conflict'] },
+	{ name: 'complementary old partial groups never silently merge', old: { socks_username: 'local-user', http_password: 'local-secret' }, expect: ['main.proxy_credentials:migration_conflict'] },
+	{ name: 'single incomplete old pair remains incomplete', old: { socks_username: 'local-user' }, expect: ['main.proxy_password:required'] },
+	{ name: 'legacy colon rejected by shared username policy', old: { socks_username: 'local-secret:bad', socks_password: 'local-secret' }, invalid: true, expect: true },
+	{ name: 'new complete pair resolves old conflict even malformed old secret', old: { ...OLD, http_password: ['other-secret'] }, change: AUTH, render: true, expect: true },
+	{ name: 'partial new pair cannot resolve old conflict', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_username: 'new-user' }, expect: ['main.proxy_credentials:migration_conflict'] },
+	{ name: 'partial new pair never combines with old compatible pair', old: OLD, change: { proxy_username: 'new-user' }, expect: ['main.proxy_password:required'] },
+	{ name: 'both disabled allow unresolved legacy conflict', old: { ...OLD, http_password: 'other-secret' }, change: { socks_enabled: '0', http_enabled: '0' }, render: true, expect: true },
+	{ name: 'unresolved renderer fails closed rather than default wildcard', unresolved: true, expect: true }
 ];
 for (let proto in ['socks', 'http']) {
 	for (let listen in [ '', '0.0.0.0', '0.1.2.3', '127.0.0.1', '127.1.2.3', '224.0.0.1', '239.1.2.3',
 		'255.255.255.255', '::1', '::', 'localhost', '192.0.2.1/24', '192.0.2.256', '192.00.2.1' ]) {
 		let change = {}; change[proto + '_listen'] = listen;
-		push(cases, { name: proto + ' rejects listen ' + listen, change,
-			expect: ['main.' + proto + '_listen:' + (listen == '' ? 'required' : 'invalid_ipv4')] });
+		push(cases, { name: proto + ' ignores legacy listen ' + listen, change, render: true, expect: true });
 	}
-	let change = {}; change[proto + '_enabled'] = '0'; change[proto + '_listen'] = 'not-an-address';
-	push(cases, { name: proto + ' disabled listen not used', change, render: true, expect: true });
 }
 for (let port in [53, 31053, 31080, 31081, 31082, 31083])
 	for (let proto in ['socks', 'http']) {
@@ -46,17 +56,28 @@ for (let port in [53, 31053, 31080, 31081, 31082, 31083])
 	}
 
 export function run(c) {
-	let result = config.normalize({ main: c.legacy ? {} : { ...AUTH, ...(c.change ?? {}) } });
+	let main = c.legacy ? {} : { ...AUTH, ...(c.old ? { proxy_username: null, proxy_password: null, ...c.old } : {}), ...(c.change ?? {}) };
+	let raw = { main }, before = sprintf('%.J', raw);
+	let result = config.normalize(raw);
+	if (sprintf('%.J', raw) != before) return false;
 	if (c.invalid)
-		return !result.ok && index(sprintf('%.J', result), 'local-secret') < 0 && index(sprintf('%.J', result), 'http-secret') < 0;
+		return !result.ok && index(sprintf('%.J', result), 'local-secret') < 0 && index(sprintf('%.J', result), 'other-secret') < 0;
 	if (c.legacy)
 		return result.ok && !('socks_enabled' in result.snapshot.main) && !('http_enabled' in result.snapshot.main)
-			&& !('socks_listen' in result.snapshot.main) && !('http_listen' in result.snapshot.main)
-			&& length(xray.build(result.snapshot, {}).inbounds) == 4;
+			&& !('proxy_listen' in result.snapshot.main) && result.snapshot.main.socks_port == 1080
+			&& result.snapshot.main.http_port == 8080 && length(xray.build(result.snapshot, {}).inbounds) == 4;
+	if (c.defaults)
+		return result.ok && result.snapshot.main[c.change.socks_port != null ? 'socks_port' : 'http_port'] == (c.change.socks_port != null ? 1080 : 8080);
+	if (c.migration)
+		return result.ok && result.snapshot.main.proxy_username == 'local-user' && result.snapshot.main.proxy_password == 'local-secret';
+	if (c.unresolved) {
+		try { xray.build(result.snapshot, {}); } catch (e) { return true; }
+		return false;
+	}
 	if (!c.render)
 		return map(result.errors ?? [], e => e.field + ':' + e.code);
-	if (!result.ok)
-		return false;
+	if (!result.ok) return false;
+	pipeline.resolve_proxy_listen(result.snapshot.main, { addresses: ['192.0.2.1'] });
 	let built = xray.build(result.snapshot, {});
 	let explicit = filter(built.inbounds, i => index(i.tag, 'explicit-') == 0);
 	let count = 0;
@@ -65,8 +86,8 @@ export function run(c) {
 		if (!main[proto + '_enabled']) continue;
 		count++;
 		let i = filter(explicit, i => i.tag == 'explicit-' + proto)[0];
-		if (i?.listen != main[proto + '_listen'] || i.port != main[proto + '_port'] || i.protocol != proto
-			|| i.settings.accounts[0].user != main[proto + '_username'] || i.settings.accounts[0].pass != main[proto + '_password']) return false;
+		if (i?.listen != '192.0.2.1' || i.port != main[proto + '_port'] || i.protocol != proto
+			|| i.settings.accounts[0].user != main.proxy_username || i.settings.accounts[0].pass != main.proxy_password) return false;
 		if (proto == 'socks' && (i.settings.auth != 'password' || i.settings.udp != false)) return false;
 		if (length(filter(built.routing.rules, r => r.outboundTag == 'proxy' && index(r.inboundTag, i.tag) >= 0)) != 1) return false;
 	}

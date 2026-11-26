@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 from acceptance import ROOT, UCODE, NODE, check
+from network import ubus_fixture
 
 
 # The validator must consume the real rendered accounts, not just echo a fixture.
@@ -54,13 +55,12 @@ def uci_quote(value):
 def write_config(confdir, enabled, accounts, missing=None):
     lines = ["config main 'main'", " option enabled '1'", f" option node '{NODE}'",
              " list lan_ifaces 'br-lan'"]
-    for protocol, (username, password) in accounts.items():
+    for protocol in ('socks', 'http'):
         lines += [f" option {protocol}_enabled '{int(enabled)}'",
-                  f" option {protocol}_port '{32180 if protocol == 'socks' else 32181}'",
-                  f" option {protocol}_listen '192.0.2.1'"]
-        for field, value in (('username', username), ('password', password)):
-            if f'{protocol}_{field}' != missing:
-                lines.append(f' option {protocol}_{field} {uci_quote(value)}')
+                  f" option {protocol}_port '{32180 if protocol == 'socks' else 32181}'"]
+    for field, value in zip(('username', 'password'), accounts['socks']):
+        if 'proxy_' + field != missing:
+            lines.append(f' option proxy_{field} {uci_quote(value)}')
     lines += ["config dns 'dns'", " list china_dns '127.0.0.1'",
               " list trust_dns '127.0.0.1'", f"config node '{NODE}'",
               " option protocol 'socks'", " option address '127.0.0.1'",
@@ -154,7 +154,9 @@ def run_node_case(case, env, bin_dir, sysroot, accounts):
     result = subprocess.run([str(UCODE), '-S', str(ROOT / 'aether-proxy/src/aether-proxy'),
                              '--', 'node', 'use', target, '--json',
                              '--confdir', str(case / 'config'), '--run-dir', str(case / 'run'),
-                             '--sys-root', str(sysroot)], env=env, capture_output=True, timeout=30)
+                             '--sys-root', str(sysroot)],
+                            env=dict(env, PATH=str(bin_dir) + ':' + env['PATH']),
+                            capture_output=True, timeout=30)
     label = case.name + ' node-use'
     values = [value for account in accounts.values() for value in account]
     for output in (result.stdout, result.stderr, events_path.read_bytes()):
@@ -179,9 +181,9 @@ def run_node_case(case, env, bin_dir, sysroot, accounts):
 
 def main():
     check(UCODE.is_file(), 'tests/host/ucode unavailable; run tests/host/bootstrap.sh')
-    accounts = {protocol: tuple(secrets.token_hex(12) + suffix
-                               for suffix in ('-user\'"\\tail', '-pass\\"\'end'))
-                for protocol in ('socks', 'http')}
+    account = tuple(secrets.token_hex(12) + suffix
+                    for suffix in ('-user\'"\\tail', '-pass\\"\'end'))
+    accounts = {protocol: account for protocol in ('socks', 'http')}
     with tempfile.TemporaryDirectory(prefix='aether-explicit-diagnostics-') as temp:
         work = Path(temp)
         bin_dir = work / 'bin'
@@ -199,14 +201,14 @@ def main():
             path = bin_dir / name
             path.write_text(content)
             path.chmod(0o700)
+        ubus_fixture(bin_dir)
         for name, enabled in (('enabled-credentials', True), ('disabled-retained-credentials', False)):
             case, env = run_case(work, bin_dir, sysroot, name, enabled, accounts)
             run_node_case(case, env, bin_dir, sysroot, accounts)
-        for protocol in ('socks', 'http'):
-            for field in ('username', 'password'):
-                missing = protocol + '_' + field
-                run_case(work, bin_dir, sysroot, 'missing-' + missing, True, accounts, missing)
-    print('PASS offline diagnostic regressions (8 cases)')
+        for field in ('username', 'password'):
+            missing = 'proxy_' + field
+            run_case(work, bin_dir, sysroot, 'missing-' + missing, True, accounts, missing)
+    print('PASS offline diagnostic regressions (6 cases)')
 
 
 if __name__ == '__main__':

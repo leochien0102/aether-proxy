@@ -568,6 +568,12 @@ export function prepare_config(ctx) {
 		? { ok: false, errors: [ { field: C.UCI_PACKAGE, code: 'read', detail: fs_error() } ] }
 		: load_committed_config(ctx, original);
 	if (!loaded.ok) {
+		// Conflicting legacy credentials require an administrator decision, not recovery.
+		if (length(filter(loaded.errors ?? [], e => e.field == 'main.proxy_credentials' && e.code == 'migration_conflict'))) {
+			lock.close();
+			return { ok: false, code: 'CONFIG_INVALID', errors: loaded.errors,
+				detail: sprintf('%.J', loaded.errors) };
+		}
 		let saved = fs.readfile(backup);
 		let validated = saved == null ? { ok: false } : load_committed_config(ctx, saved);
 		if (!validated.ok) {

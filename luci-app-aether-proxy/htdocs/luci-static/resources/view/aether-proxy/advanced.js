@@ -50,7 +50,15 @@ function option(section, tab, type, field, title, target) {
 }
 
 return view.extend({
-	load: function() { return uci.load('aetherproxy'); },
+	load: function() {
+		return Promise.all([
+			uci.load('aetherproxy'),
+			ap.call('status').then(reply => {
+				// CONFIG_INVALID may still carry live candidates so other fields can be repaired.
+				this.explicitLan = reply?.explicit_lan;
+			}).catch(() => { this.explicitLan = null; })
+		]);
+	},
 	render: function() {
 		const m = new form.Map('aetherproxy', _('Advanced', 'aether-proxy'));
 		const s = m.section(form.NamedSection, 'main', 'global');
@@ -111,30 +119,70 @@ return view.extend({
 			_('Proxy only blocked sites when the node is unavailable', 'aether-proxy'));
 		option(s, 'intercept', form.Flag, 'sniffing', _('Sniffing', 'aether-proxy'));
 
+		// Candidates are already filtered by the backend's logical LAN lookup.
+		const addresses = this.explicitLan?.addresses || [];
+		const main = () => uci.get('aetherproxy', 'main') || {};
+		const inputs = {};
+		const values = () => Object.fromEntries(Object.entries(inputs).map(([key, child]) => [key, child.formvalue('main')]));
+		const enabled = () => values().socks_enabled === '1' || values().http_enabled === '1';
+		const resolved = () => {
+			const v = values();
+			if (v.proxy_username || v.proxy_password)
+				return [v.proxy_username || '', v.proxy_password || ''];
+			if (v._proxy_credential_source === 'socks' || v._proxy_credential_source === 'http')
+				return ['username', 'password'].map(key => main()[v._proxy_credential_source + '_' + key] || '');
+			return model.credentials(main()).conflict ? null : ['', ''];
+		};
+		const addressError = () => !enabled() ||
+			(addresses.length === 1 || (addresses.length > 1 && addresses.includes(values().proxy_address))) ? true :
+			addresses.length ? _('Select one of the current LAN IPv4 addresses.', 'aether-proxy') :
+				_('No usable IPv4 address is available on logical LAN. Disable both proxies or restore LAN connectivity.', 'aether-proxy');
+		const credentialError = () => enabled() && !resolved() ?
+			_('Legacy proxy credentials differ. Choose a source or enter both shared credentials.', 'aether-proxy') : true;
+
+		o = s.taboption('explicit', form.DummyValue, '_proxy_lan', _('LAN address source', 'aether-proxy'));
+		o.cfgvalue = () => _('Logical interface: %s', 'aether-proxy').format(this.explicitLan?.interface || 'lan')
+			+ ' — ' + (addresses.length ? addresses.join(', ') : _('No usable LAN IPv4 address', 'aether-proxy'));
+		if (addresses.length > 1) {
+			o = inputs.proxy_address = s.taboption('explicit', form.ListValue, 'proxy_address', _('LAN IPv4 address', 'aether-proxy'),
+				_('Both proxies use this address. Only current backend LAN candidates can be selected.', 'aether-proxy'));
+			o.value('', _('Select a LAN address', 'aether-proxy'));
+			addresses.forEach(address => o.value(address));
+			o.validate = addressError;
+			o.write = o.remove = function() {};
+		}
 		for (const protocol of [ 'socks', 'http' ]) {
 			const label = protocol == 'socks' ? 'SOCKS5' : 'HTTP';
-			o = option(s, 'explicit', form.Flag, protocol + '_enabled',
+			o = inputs[protocol + '_enabled'] = option(s, 'explicit', form.Flag, protocol + '_enabled',
 				_('Enable %s proxy', 'aether-proxy').format(label));
 			o.default = '0';
 			o.rmempty = false;
-			for (const [suffix, title] of [
-				[ 'listen', _('LAN IPv4 address', 'aether-proxy') ],
-				[ 'port', _('Port', 'aether-proxy') ],
-				[ 'username', _('Username', 'aether-proxy') ],
-				[ 'password', _('Password', 'aether-proxy') ]
-			]) {
-				const field = protocol + '_' + suffix;
-				o = option(s, 'explicit', form.Value, field, label + ' — ' + title);
-				o.depends(protocol + '_enabled', '1');
-				o.rmempty = false;
-				o.password = suffix == 'password';
-				o.validate = function(section_id, value) {
-					const values = Object.fromEntries(s.children
-						.filter(child => /^(socks|http)_/.test(child.option))
-						.map(child => [child.option, child.formvalue(section_id)]));
-					return model.validate(field, value, values);
-				};
-			}
+			o.validate = (section_id, value) => model.validate(protocol + '_enabled', value) !== true ?
+				model.validate(protocol + '_enabled', value) : addressError();
+			o = inputs[protocol + '_port'] = option(s, 'explicit', form.Value, protocol + '_port', label + ' — ' + _('Port', 'aether-proxy'));
+			o.default = protocol == 'socks' ? '1080' : '8080';
+			o.depends(protocol + '_enabled', '1');
+			o.rmempty = false;
+			o.validate = (section_id, value) => model.validate(protocol + '_port', value, values());
+		}
+		if (model.credentials(main()).conflict) {
+			o = inputs._proxy_credential_source = s.taboption('explicit', form.ListValue, '_proxy_credential_source', _('Resolve legacy credentials', 'aether-proxy'),
+				_('The old credential pairs differ and are not displayed. Select a source, or leave it unselected and fill in both shared fields. Nothing is migrated until a valid save.', 'aether-proxy'));
+			o.value('', _('Enter new shared credentials or decide later while both proxies are off', 'aether-proxy'));
+			o.value('socks', _('Use the old SOCKS5 credentials', 'aether-proxy'));
+			o.value('http', _('Use the old HTTP credentials', 'aether-proxy'));
+			o.validate = credentialError;
+			o.parse = () => Promise.resolve();
+		}
+		for (const [index, key, title] of [[0, 'username', _('Shared username', 'aether-proxy')], [1, 'password', _('Shared password', 'aether-proxy')]]) {
+			const field = 'proxy_' + key;
+			o = inputs[field] = s.taboption('explicit', form.Value, field, title,
+				_('Stored once and used by both SOCKS5 and HTTP. Turning a proxy off does not erase these credentials.', 'aether-proxy'));
+			o.password = key == 'password';
+			o.cfgvalue = () => model.credentials(main()).pair[index];
+			o.validate = () => credentialError() !== true ? credentialError() : model.validate(field, resolved()?.[index], values());
+			// Commit the pair and remove legacy fields only after every tab parses.
+			o.write = o.remove = function() {};
 		}
 
 		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level', 'aether-proxy'));
@@ -177,6 +225,36 @@ return view.extend({
 		for (const feature of features)
 			fallbacks[feature.option] = null;
 		form_defaults.section(s, fallbacks);
+		const parse = m.parse;
+		m.parse = function() {
+			// Recheck cross-field state, including optional empty inputs, at save time.
+			for (const child of Object.values(inputs)) {
+				if (child.isActive('main')) {
+					const result = child.validate('main', child.formvalue('main'));
+					if (result !== true)
+						return Promise.reject(new TypeError(result));
+				}
+			}
+			return Promise.resolve(parse.call(this)).then(() => {
+				const pair = resolved();
+				if (pair && pair.every(Boolean)) {
+					for (const [index, key] of [[0, 'username'], [1, 'password']])
+						if (main()['proxy_' + key] !== pair[index])
+							uci.set('aetherproxy', 'main', 'proxy_' + key, pair[index]);
+					for (const protocol of ['socks', 'http'])
+						for (const key of ['username', 'password', 'listen'])
+							if (main()[protocol + '_' + key] != null)
+								uci.unset('aetherproxy', 'main', protocol + '_' + key);
+				}
+				if (addresses.length) {
+					const address = addresses.length > 1 ? values().proxy_address : '';
+					if (address && addresses.includes(address) && address !== main().proxy_address)
+						uci.set('aetherproxy', 'main', 'proxy_address', address);
+					else if (!address && main().proxy_address != null)
+						uci.unset('aetherproxy', 'main', 'proxy_address');
+				}
+			});
+		};
 		return m.render();
 	}
 });

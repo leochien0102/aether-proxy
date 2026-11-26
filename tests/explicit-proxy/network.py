@@ -8,7 +8,7 @@ import sys
 
 LAN = '192.0.2.1'
 CLIENT = '192.0.2.2'
-IFACE = 'br-lan'
+IFACE = 'lan-test'
 HEX_LAN = '010200C0'
 IP = shutil.which('ip') or '/usr/bin/ip'
 
@@ -61,14 +61,28 @@ def lan_network():
         client.wait(timeout=5)
 
 
-def live_ip_fixture(path):
-    """Delegate only read-only address queries; retain rooted routing command stubs."""
-    original = path.with_name('ip-rooted')
-    path.rename(original)
+def lan_dump(addresses=(LAN,), up=True):
+    # Deliberate WAN/default-route decoy: explicit listeners must use logical lan.
+    return {'interface': [
+        {'interface': 'wan', 'up': True, 'l3_device': 'wan-decoy',
+         'route': [{'target': '0.0.0.0', 'mask': 0}],
+         'ipv4-address': [{'address': '198.51.100.1', 'mask': 24}]},
+        {'interface': 'lan', 'up': up, 'l3_device': IFACE,
+         'ipv4-address': [{'address': address, 'mask': 24} for address in addresses]}]}
+
+
+def ubus_fixture(bin_dir, addresses=(LAN,)):
+    """Offline logical-LAN claims; real sockets independently prove actual binds."""
+    bin_dir.mkdir(exist_ok=True)
+    state = bin_dir / 'network-interface.json'
+    state.write_text(json.dumps(lan_dump(addresses)))
+    path = bin_dir / 'ubus'
     path.write_text('#!' + sys.executable + '\n'
-                    'import os, sys\n'
-                    'args = sys.argv[1:]\n'
-                    "if args[:6] == ['-j', '-4', 'addr', 'show', 'dev', 'br-lan'] and len(args) == 6:\n"
-                    f'    os.execv({json.dumps(IP)}, [{json.dumps(IP)}, *args])\n'
-                    f'os.execv({json.dumps(str(original))}, [sys.argv[0], *args])\n')
+                    'from pathlib import Path\nimport sys\n'
+                    "if sys.argv[1:] != ['call', 'network.interface', 'dump']:\n"
+                    '    sys.exit(1)\n'
+                    f'with Path({str(bin_dir / "ubus-calls")!r}).open("a") as calls:\n'
+                    '    calls.write("network.interface dump\\n")\n'
+                    f'print(Path({str(state)!r}).read_text())\n')
     path.chmod(0o755)
+    return state

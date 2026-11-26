@@ -9,117 +9,205 @@ const model = () => loadModule(path.join(RES, 'aether-proxy/model/advanced.js'),
 	{ baseclass: { extend: o => o } }, { window: {}, document: {} });
 const get = (page, field) => page.options.find(o => o.option === field);
 const input = (page, field, value) => { get(page, field).inputs.main = value; };
-function saved(page, protocol, enabled) {
-	for (const [suffix, value] of Object.entries({ enabled, listen: '192.0.2.1',
-		port: protocol === 'socks' ? '1080' : '8080', username: 'demo-' + protocol, password: 'fixture-' + protocol })) {
-		page.setSaved('main', protocol + '_' + suffix, value);
-		input(page, protocol + '_' + suffix, value);
-	}
-}
-function onlyProtocol(page, protocol) {
-	assert.ok(page.calls.length);
-	assert.ok(page.calls.every(c => c[2] === 'main' && c[3].startsWith(protocol + '_')),
-		'untouched protocol and unrelated fields must not be written');
-}
+const shared = { proxy_username: 'fixture-shared-user', proxy_password: 'fixture-shared-secret' };
+const legacy = {
+	socks_username: 'fixture-socks-user', socks_password: 'fixture-socks-secret', socks_listen: '192.0.2.2',
+	http_username: 'fixture-http-user', http_password: 'fixture-http-secret', http_listen: '192.0.2.3'
+};
+const page = (main = {}, status) => renderPage('advanced', false, undefined, { data: { main }, status });
+const migrationCalls = h => h.calls.filter(c => /^(proxy_(username|password)|(socks|http)_(username|password|listen))$/.test(c[3]));
 
-test('T16.111: absent/disabled listeners stay off on render and unrelated save', async () => {
-	const page = await renderPage('advanced');
-	assert.deepEqual(page.calls, []);
-	await page.parse();
-	assert.deepEqual(page.calls, []);
-	input(page, 'log_level', 'debug');
-	await page.parse();
-	assert.deepEqual(page.calls, [['set', 'aetherproxy', 'main', 'log_level', 'debug']]);
+test('T16.112: render, unrelated save and native reset never backfill defaults or automatic LAN addresses', async () => {
+	const h = await page();
+	assert.deepEqual(h.calls, []);
+	await h.parse(); assert.deepEqual(h.calls, []);
+	input(h, 'log_level', 'debug'); await h.parse();
+	assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', 'log_level', 'debug']]);
+	assert.equal(get(h, 'socks_port').default, '1080');
+	assert.equal(get(h, 'http_port').default, '8080');
+	assert.equal(get(h, 'proxy_address'), undefined);
+	assert.match(get(h, '_proxy_lan').cfgvalue('main'), /lan.*192\.0\.2\.1/);
+	for (const method of ['handleReset', 'handleSave', 'handleSaveApply']) assert.equal(h.view[method], undefined);
+	for (const field of Object.keys(legacy)) assert.equal(get(h, field), undefined);
 });
 
-test('T16.111: independent off/one/both/off transitions preserve all other credentials', async () => {
-	for (const protocol of ['socks', 'http']) {
-		for (const otherEnabled of ['0', '1']) {
+test('T16.112: independent enable/disable flags retain one shared credential pair', async () => {
+	for (const protocol of ['socks', 'http'])
+		for (const otherEnabled of ['0', '1'])
 			for (const enabled of ['0', '1']) {
-				const page = await renderPage('advanced');
 				const other = protocol === 'socks' ? 'http' : 'socks';
-				saved(page, protocol, enabled);
-				saved(page, other, otherEnabled);
-				input(page, protocol + '_enabled', enabled === '0' ? '1' : '0');
-				await page.parse();
-				onlyProtocol(page, protocol);
-				assert.deepEqual(page.calls, [['set', 'aetherproxy', 'main', protocol + '_enabled', enabled === '0' ? '1' : '0']]);
+				const h = await page({ ...shared, [protocol + '_enabled']: enabled, [other + '_enabled']: otherEnabled });
+				input(h, protocol + '_enabled', enabled === '0' ? '1' : '0');
+				await h.parse();
+				assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', protocol + '_enabled', enabled === '0' ? '1' : '0']]);
 			}
+});
+
+test('T16.112: absent/failed status permits other settings when off, but either enabled proxy errors explicitly', async () => {
+	for (const status of [{ ok: false, code: 'RPC_FAILED' }, {}, { explicit_lan: { interface: 'lan', addresses: [] } },
+		async () => { throw new Error('fixture transport failure'); }]) {
+		const h = await page(shared, status);
+		input(h, 'log_level', 'debug'); await h.parse();
+		assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', 'log_level', 'debug']]);
+		for (const protocol of ['socks', 'http']) {
+			input(h, protocol + '_enabled', '1'); h.calls.length = 0;
+			assert.match(get(h, protocol + '_enabled').validate('main', '1'), /No usable IPv4/);
+			await assert.rejects(h.parse(), /No usable IPv4/); assert.deepEqual(h.calls, []);
+			input(h, protocol + '_enabled', '0');
 		}
 	}
 });
 
-test('T16.111: editing one protocol saves only its fields; discard/reload writes nothing', async () => {
-	const page = await renderPage('advanced');
-	saved(page, 'socks', '1'); saved(page, 'http', '1');
-	input(page, 'socks_port', '1081'); input(page, 'socks_password', 'replacement-fixture');
-	assert.deepEqual(page.calls, [], 'typing is not a UCI write');
-	// Reset is inherited from view: re-render saved UCI, no custom publish/reset path.
-	assert.equal(page.view.handleReset, undefined);
-	assert.equal(page.view.handleSave, undefined);
-	assert.equal(page.view.handleSaveApply, undefined);
-	const reset = await renderPage('advanced');
-	saved(reset, 'socks', '1'); saved(reset, 'http', '1');
-	await reset.parse(); assert.deepEqual(reset.calls, []);
-	await page.parse(); onlyProtocol(page, 'socks');
-	assert.deepEqual(page.calls.map(c => c[3]), ['socks_port', 'socks_password']);
+test('T16.112: CONFIG_INVALID retains live LAN candidates while unrelated fields are repaired', async () => {
+	const h = await page({ ...shared, socks_enabled: '1', boot_wait_timeout: '999' }, {
+		ok: false, code: 'CONFIG_INVALID',
+		explicit_lan: { interface: 'lan', addresses: ['192.0.2.1'] }
+	});
+	input(h, 'boot_wait_timeout', '120');
+	await h.parse();
+	assert.deepEqual(h.calls, [['unset', 'aetherproxy', 'main', 'boot_wait_timeout']]);
+	assert.equal(h.data.main.socks_enabled, '1');
 });
 
-test('T16.111: required/invalid fields are correctable and errors never echo input', async () => {
-	const page = await renderPage('advanced');
-	input(page, 'http_enabled', '1');
-	for (const suffix of ['listen', 'port', 'username', 'password'])
-		assert.notEqual(get(page, 'http_' + suffix).validate('main', ''), true);
-	await assert.rejects(page.parse(), /invalid input/);
-	for (const [suffix, bad] of [['listen', '127.0.0.1'], ['port', '31081'],
-		['username', 'fixture:invalid'], ['password', 'fixture\ninvalid']]) {
-		const result = get(page, 'http_' + suffix).validate('main', bad);
-		assert.notEqual(result, true); assert.ok(!result.includes(bad));
+test('T16.112: multiple candidates are used verbatim with exactly one shared selection; stale/free-form addresses rejected', async () => {
+	// Odd-looking fixture intentionally proves the UI has no second address filter.
+	const addresses = ['192.0.2.4', '198.51.100.9'];
+	const h = await page({ ...shared, socks_enabled: '1', http_enabled: '1' }, { explicit_lan: { interface: 'lan', addresses } });
+	assert.deepEqual(get(h, 'proxy_address').keylist, ['', ...addresses]);
+	assert.equal(h.options.filter(o => o.option === 'proxy_address').length, 1);
+	for (const invalid of ['', '192.0.2.99', '0.0.0.0']) {
+		input(h, 'proxy_address', invalid);
+		await assert.rejects(h.parse(), /Select one of/); assert.deepEqual(h.calls, []);
 	}
-	saved(page, 'http', '1');
-	for (const suffix of ['listen', 'port', 'username', 'password'])
-		assert.equal(get(page, 'http_' + suffix).validate('main', get(page, 'http_' + suffix).formvalue('main')), true);
-	input(page, 'http_port', '8081');
-	get(page, 'http_port').write = () => { throw new Error('fixture backend failure'); };
-	await assert.rejects(page.parse(), /fixture backend failure/);
+	input(h, 'proxy_address', addresses[1]); await h.parse();
+	assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', 'proxy_address', addresses[1]]]);
+	const singleton = await page({ ...shared, socks_enabled: '1', proxy_address: '192.0.2.99' });
+	await singleton.parse();
+	assert.deepEqual(singleton.calls, [['unset', 'aetherproxy', 'main', 'proxy_address']]);
+	const verbatim = await page({}, { explicit_lan: { interface: 'lan', addresses: ['127.0.0.1', '0.0.0.0'] } });
+	assert.deepEqual(get(verbatim, 'proxy_address').keylist, ['', '127.0.0.1', '0.0.0.0']);
 });
 
-test('T16.111: IPv4, integer, UTF-8 credentials and cross-protocol conflict boundaries', () => {
+test('T16.112: safe legacy pairs prefill only masked shared fields and migrate on valid save', async () => {
+	for (const old of [
+		{ ...legacy, http_username: legacy.socks_username, http_password: legacy.socks_password },
+		{ socks_username: legacy.socks_username, socks_password: legacy.socks_password },
+		{ http_username: legacy.socks_username, http_password: legacy.socks_password }
+	]) {
+		const h = await page({ ...old, socks_enabled: '1' });
+		assert.equal(get(h, '_proxy_credential_source'), undefined);
+		assert.equal(get(h, 'proxy_password').password, true);
+		assert.equal(get(h, 'proxy_password').formvalue('main'), legacy.socks_password);
+		assert.deepEqual(h.calls, [], 'loading/prefilling is read only');
+		await h.parse();
+		assert.deepEqual(h.calls.slice(0, 2), [
+			['set', 'aetherproxy', 'main', 'proxy_username', legacy.socks_username],
+			['set', 'aetherproxy', 'main', 'proxy_password', legacy.socks_password]
+		]);
+		assert.deepEqual(h.calls.slice(2).map(c => [c[0], c[3]]).sort(), Object.keys(old).map(k => ['unset', k]).sort());
+	}
+});
+
+test('T16.112: different/partial legacy pairs stay invisible and untouched while both proxies are off', async () => {
+	for (const old of [legacy, { socks_username: 'fixture-a', http_password: 'fixture-b' },
+		{ socks_username: 'fixture-a', http_username: 'fixture-b' }]) {
+		const h = await page(old);
+		assert.equal(get(h, 'proxy_username').formvalue('main'), '');
+		assert.equal(get(h, 'proxy_password').formvalue('main'), '');
+		const source = get(h, '_proxy_credential_source');
+		assert.deepEqual(source.keylist, ['', 'socks', 'http']);
+		for (const value of Object.values(old)) assert.ok(!source.vallist.join().includes(value));
+		input(h, 'log_level', 'debug'); await h.parse();
+		assert.deepEqual(migrationCalls(h), []);
+		input(h, 'socks_enabled', '1'); h.calls.length = 0;
+		await assert.rejects(h.parse(), /Legacy proxy credentials differ/);
+		assert.deepEqual(h.calls, []);
+	}
+});
+
+test('T16.112: choosing either complete old source or entering a new pair resolves conflict only on save', async () => {
+	for (const source of ['socks', 'http', '']) {
+		const h = await page({ ...legacy, socks_enabled: '1', http_enabled: '1' });
+		input(h, '_proxy_credential_source', source);
+		if (!source) {
+			input(h, 'proxy_username', shared.proxy_username);
+			input(h, 'proxy_password', shared.proxy_password);
+		}
+		assert.deepEqual(h.calls, [], 'selection/typing cannot migrate');
+		assert.equal(get(h, 'proxy_password').formvalue('main'), source ? '' : shared.proxy_password);
+		await h.parse();
+		assert.deepEqual(h.calls.slice(0, 2), ['username', 'password'].map(key =>
+			['set', 'aetherproxy', 'main', 'proxy_' + key, source ? legacy[source + '_' + key] : shared['proxy_' + key]]));
+		assert.deepEqual(h.calls.slice(2).map(c => c[3]).sort(), Object.keys(legacy).sort());
+		assert.ok(h.calls.slice(2).every(c => c[0] === 'unset'));
+	}
+});
+
+test('T16.112: partial replacement/source, credential errors or another tab failure never migrate', async () => {
+	for (const bad of ['incomplete', 'source-partial', 'username', 'password', 'other-tab']) {
+		const old = bad === 'source-partial' ? { socks_username: 'fixture-partial', http_username: 'fixture-other' } : legacy;
+		const h = await page({ ...old, socks_enabled: '1' });
+		if (bad === 'source-partial') input(h, '_proxy_credential_source', 'socks');
+		else {
+			input(h, 'proxy_username', bad === 'username' ? 'fixture:invalid' : shared.proxy_username);
+			if (bad !== 'incomplete') input(h, 'proxy_password', bad === 'password' ? 'fixture\ninvalid' : shared.proxy_password);
+		}
+		if (bad === 'other-tab') input(h, 'timeout', '31');
+		await assert.rejects(h.parse()); assert.deepEqual(migrationCalls(h), []);
+		assert.deepEqual(Object.fromEntries(Object.keys(old).map(k => [k, h.data.main[k]])), old);
+	}
+	const reset = await page(legacy);
+	await reset.parse(); assert.deepEqual(reset.calls, [], 'fresh/native revert view must not migrate unresolved pairs');
+});
+
+test('T16.112: common username/password byte limits, required fields and enabled-only port conflicts', async () => {
 	const m = model();
-	for (const value of ['0.1.2.3', '127.1.2.3', '224.0.0.1', '255.255.255.255', '::1', 'host', '192.0.2.1/24', '01.2.3.4'])
-		assert.notEqual(m.validate('socks_listen', value), true);
-	assert.equal(m.validate('socks_listen', '192.0.2.1'), true);
-	for (const value of ['0', '65536', '1.5', ' 1080', '+1080'])
-		assert.notEqual(m.validate('socks_port', value), true);
-	for (const value of ['1', '65535', '001080']) assert.equal(m.validate('socks_port', value), true);
-	for (const port of ['53', '31053', '31080', '31081', '31082', '31083', '8080'])
-		assert.notEqual(m.validate('socks_port', port, { socks_enabled: '1', http_enabled: '1', http_port: '8080' }), true);
-	for (const field of ['socks_username', 'socks_password', 'http_username', 'http_password']) {
+	for (const field of ['proxy_username', 'proxy_password']) {
+		assert.equal(m.validate(field, '', {}), true);
+		assert.notEqual(m.validate(field, '', { socks_enabled: '1' }), true);
 		assert.equal(m.validate(field, '测'.repeat(85)), true);
 		for (const value of ['测'.repeat(86), 'x'.repeat(256), '\0fixture', 'fixture\x7f', '\ud800']) {
-			const error = m.validate(field, value);
-			assert.notEqual(error, true); assert.ok(!error.includes(value));
+			const error = m.validate(field, value); assert.notEqual(error, true); assert.ok(!error.includes(value));
 		}
 	}
-	assert.equal(m.validate('socks_username', 'fixture:allowed'), true);
-	assert.notEqual(m.validate('http_username', 'fixture:invalid'), true);
+	assert.notEqual(m.validate('proxy_username', 'fixture:invalid'), true);
+	for (const port of ['53', '31053', '31080', '31081', '31082', '31083', '8080'])
+		assert.notEqual(m.validate('socks_port', port, { socks_enabled: '1', http_enabled: '1', http_port: '8080' }), true);
+	assert.equal(m.validate('socks_port', '8080', { socks_enabled: '1', http_enabled: '0', http_port: '8080' }), true);
+	const h = await page({ ...shared, socks_enabled: '1', http_enabled: '1' });
+	input(h, 'socks_port', '8080'); await assert.rejects(h.parse(), /Port conflicts/); assert.deepEqual(migrationCalls(h), []);
+	input(h, 'http_enabled', '0'); await h.parse(); assert.deepEqual(migrationCalls(h), []);
 });
 
-test('T16.111: native password masking and no new RPC/summary/footer handlers', async () => {
-	const page = await renderPage('advanced');
-	for (const protocol of ['socks', 'http']) {
-		const password = get(page, protocol + '_password');
-		assert.equal(password.password, true);
-		assert.equal(password.rmempty, false);
-		assert.deepEqual(password.deplist, [{ [protocol + '_enabled']: '1' }]);
-		assert.equal(get(page, protocol + '_enabled').default, '0');
+test('T16.112: partial new credentials never borrow old values, and closed proxies retain shared credentials', async () => {
+	const h = await page({ ...legacy, proxy_username: shared.proxy_username, socks_enabled: '1' });
+	assert.equal(get(h, 'proxy_password').formvalue('main'), '');
+	await assert.rejects(h.parse(), /Required/); assert.deepEqual(migrationCalls(h), []);
+	const closed = await page({ ...shared, socks_enabled: '1' });
+	input(closed, 'socks_enabled', '0'); await closed.parse();
+	assert.deepEqual(migrationCalls(closed), []);
+});
+
+test('T16.112: editing either shared field preserves the other, clearing enabled credentials fails without reviving storage', async () => {
+	for (const key of ['username', 'password']) {
+		const h = await page({ ...shared, socks_enabled: '1' });
+		input(h, 'proxy_' + key, 'fixture-replacement');
+		await h.parse();
+		assert.deepEqual(h.calls, [['set', 'aetherproxy', 'main', 'proxy_' + key, 'fixture-replacement']]);
 	}
-	const source = fs.readFileSync(path.join(RES, 'view/aether-proxy/advanced.js'), 'utf8');
-	assert.doesNotMatch(source, /rpc\.declare|ap\.call|console\.|addNotification|handleSave|handleReset/);
+	for (const fields of [['username'], ['password'], ['username', 'password']]) {
+		const h = await page({ ...shared, socks_enabled: '1' });
+		for (const key of fields) input(h, 'proxy_' + key, '');
+		await assert.rejects(h.parse(), /Required/);
+		assert.deepEqual(migrationCalls(h), []);
+	}
 });
 
-
-test('T16.111: plugin leaves native change rendering and session preload untouched', () => {
-	const source = fs.readFileSync(path.join(RES, 'aether-proxy/common.js'), 'utf8');
-	assert.doesNotMatch(source, /displayChanges|setLocalData\(['"]preload/);
+test('T16.112: reuse only existing status call; native handlers, credential visibility warning and LuCI summaries remain untouched', async () => {
+	const source = fs.readFileSync(path.join(RES, 'view/aether-proxy/advanced.js'), 'utf8');
+	assert.doesNotMatch(source, /rpc\.declare|console\.|addNotification|handleSave|handleReset/);
+	assert.deepEqual([...source.matchAll(/ap\.call\(([^)]+)\)/g)].map(m => m[1]), ["'status'"]);
+	assert.match(source, /After clicking Save, anyone authorized to view LuCI Pending Changes/);
+	const common = fs.readFileSync(path.join(RES, 'aether-proxy/common.js'), 'utf8');
+	assert.doesNotMatch(common, /displayChanges|setLocalData\(['"]preload/);
 });

@@ -187,6 +187,12 @@ function check_options(h, page) {
 			assert.equal(option.default, undefined, label + ': protocol default must not be materialized');
 		}
 		if (option.kind == h.form.Value && field.default != null && !Array.isArray(field.default)) {
+			// T16.112: enabled proxy ports start usable without typing; the
+			// change-aware save gate separately proves absent defaults stay absent.
+			if (page === 'advanced' && section === 'main' && /^(socks|http)_port$/.test(field.name)) {
+				assert.equal(option.default, widget_default(field.default), label + ': initial port matches schema');
+				continue;
+			}
 			assert.equal(option.default, undefined, label + ': Value fallback must be display-only');
 			assert.equal(option.placeholder,
 				field.name == 'user_agent' ? 'Default (' + field.default + ')' : widget_default(field.default),

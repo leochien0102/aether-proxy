@@ -10,7 +10,7 @@ import * as uci from 'uci';
 import * as C from 'aetherproxy.const';
 import * as log from 'aetherproxy.log';
 import * as sys from 'aetherproxy.sys';
-import { ipv4 } from 'aetherproxy.net';
+import { ipv4, explicit_ipv4 } from 'aetherproxy.net';
 import * as config from 'aetherproxy.config';
 import * as data from 'aetherproxy.data';
 import * as nft from 'aetherproxy.render.nft';
@@ -20,7 +20,7 @@ import * as xray from 'aetherproxy.render.xray';
 
 // Engine errors can quote parsed accounts, including escaped forms. Do not publish them.
 export function xray_validation_detail(snapshot, result) {
-	for (let field in [ 'socks_username', 'socks_password', 'http_username', 'http_password' ])
+	for (let field in [ 'proxy_username', 'proxy_password', 'socks_username', 'socks_password', 'http_username', 'http_password' ])
 		if (snapshot?.main?.[field] != null && snapshot.main[field] != '')
 			return `Xray validation failed (exit ${result.code}); engine output withheld for explicit proxy credentials`;
 	return trim(result.stderr ?? '') || trim(result.stdout ?? '');
@@ -97,20 +97,67 @@ export function wan_dns_from_dump(dump) {
 	return out;
 };
 
-export function read_wan_dns(opts) {
+// Status and apply share this source: only netifd's live logical LAN can authorize binds.
+export function explicit_lan_from_dump(dump) {
+	let addresses = [];
+	if (type(dump) != 'object' || type(dump.interface) != 'array')
+		return { interface: 'lan', addresses };
+	for (let iface in dump.interface) {
+		if (type(iface) != 'object' || iface.interface != 'lan' || type(iface.up) != 'bool' || iface.up != true || type(iface['ipv4-address']) != 'array')
+			continue;
+		for (let addr in iface['ipv4-address']) {
+			if (type(addr) != 'object' || explicit_ipv4(addr.address) == null || addr.valid == false)
+				continue;
+			let expired = false;
+			for (let key in [ 'valid_lft', 'valid-lifetime', 'valid_lifetime', 'valid-until' ])
+				if (addr[key] != null && (addr[key] == 0 || addr[key] == '0'))
+					expired = true;
+			if (!expired && index(addresses, addr.address) < 0)
+				push(addresses, addr.address);
+		}
+	}
+	return { interface: 'lan', addresses };
+};
+
+function read_interface_dump(opts) {
 	let bin = opts.bin_dir ? `${opts.bin_dir}/ubus` : 'ubus';
 	let result = sys.run([ bin, 'call', 'network.interface', 'dump' ],
 		{ timeout: C.WAN_DNS_TIMEOUT_SECS, quiet: true });
-	// No event on failure or timeout: the fallback exists specifically for WAN startup (03).
+	// Query failures are silent: status still works; each consumer decides its fallback.
 	if (result.code != 0)
-		return [];
+		return null;
 	try {
-		return wan_dns_from_dump(json(result.stdout));
+		return json(result.stdout);
 	}
 	catch (e) {
-		// A malformed dump is unavailable DNS, not a configuration error.
+		return null;
+	}
+};
+
+export function read_wan_dns(opts) {
+	return wan_dns_from_dump(read_interface_dump(opts));
+};
+
+export function read_explicit_lan(opts) {
+	return explicit_lan_from_dump(read_interface_dump(opts));
+};
+
+// Runtime-only; never trust or persist a previous address, even on a fresh apply.
+export function resolve_proxy_listen(main, lan) {
+	delete main.proxy_listen;
+	if (main.socks_enabled != true && main.http_enabled != true)
+		return [];
+	let addresses = lan.addresses;
+	if (length(addresses) == 1) {
+		main.proxy_listen = addresses[0];
 		return [];
 	}
+	if (length(addresses) > 1 && index(addresses, main.proxy_address) >= 0) {
+		main.proxy_listen = main.proxy_address;
+		return [];
+	}
+	return [ { field: 'main.proxy_address', code: length(addresses) ? 'selection_required' : 'no_lan_address',
+		detail: length(addresses) ? 'select a current logical LAN IPv4 address' : 'logical LAN has no usable local IPv4 address' } ];
 };
 
 // Read once before node resolution, including warning events and all six list paths.
@@ -125,6 +172,12 @@ export function read(opts) {
 			detail: `${length(cfg.errors)} configuration error(s)`, errors: cfg.errors
 		};
 	}
+
+	let main = cfg.snapshot.main;
+	let explicit_errors = resolve_proxy_listen(main,
+		main.socks_enabled == true || main.http_enabled == true ? read_explicit_lan(opts) : { addresses: [] });
+	if (length(explicit_errors))
+		return { ok: false, exit: 2, code: 'CONFIG_INVALID', detail: 'explicit proxy LAN address unavailable', errors: explicit_errors };
 
 	let warnings = cfg.warnings ?? [];
 

@@ -6,7 +6,7 @@ export const cases = [
 	{ name: 'legacy validator stderr retained', main: {}, expect: 'bad config' },
 	{ name: 'legacy validator stdout fallback retained', main: {}, stdout: true, expect: 'bad config' }
 ];
-for (let field in ['socks_username', 'socks_password', 'http_username', 'http_password'])
+for (let field in ['proxy_username', 'proxy_password', 'socks_username', 'socks_password', 'http_username', 'http_password'])
 	push(cases, { name: field + ' hides raw engine diagnostics even when disabled', field,
 		expect: 'Xray validation failed (exit 1); engine output withheld for explicit proxy credentials' });
 

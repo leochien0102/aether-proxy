@@ -62,19 +62,22 @@ function formDouble(uci, options, sections) {
 		constructor(config) { this.config = config; this.data = uci; this.children = []; }
 		section(kind, name) { const s = new kind(this, name); this.children.push(s); return s; }
 		lookupOption(field) { return this.children.flatMap(s => s.children).filter(o => o.option == field); }
+		parse() { return Promise.all(this.children.flatMap(s => s.children
+			.filter(o => o.kind !== form.DummyValue).map(o => o.parse(s.name)))); }
 		render() { return Promise.resolve(E('form')); }
 		renderContents() { return Promise.resolve(E('div')); }
 	};
 	return form;
 }
 
-function pageModules(form, uci, env, adapter) {
+function pageModules(form, uci, env, adapter, status) {
 	const modules = {
 		baseclass: { extend: o => o }, view: { extend: o => o }, form, uci,
 		ui: { createHandlerFn: () => () => {} },
 		dom: { content: (node, children) => contentChildren(node, children) },
 		network: {}, 'tools.widgets': { DeviceSelect: form.DynamicList },
-		'aether-proxy.common': { call: async () => ({ ok: true, version }) },
+		'aether-proxy.common': { call: async method => method === 'status' ?
+			(typeof status === 'function' ? status() : status) : { ok: true, version } },
 		'aether-proxy.subscriptions-block': {}
 	};
 	if (adapter)
@@ -142,7 +145,7 @@ function cloneModal(form, source, type) {
 	} };
 }
 
-async function renderPage(page, explicit = false, adapter) {
+async function renderPage(page, explicit = false, adapter, fixture = {}) {
 	globalThis._ = text => text;
 	globalThis.E = E;
 	String.prototype.format = function(...args) {
@@ -151,6 +154,8 @@ async function renderPage(page, explicit = false, adapter) {
 	};
 	const calls = [], options = [], sections = [];
 	const data = configData(explicit);
+	for (const [section, fields] of Object.entries(fixture.data || {}))
+		Object.assign(data[section] ??= {}, fields);
 	const uci = {
 		load: async () => {},
 		get: (config, id, field) => field == null ? data[id] : data[id]?.[field],
@@ -164,12 +169,17 @@ async function renderPage(page, explicit = false, adapter) {
 	};
 	const form = formDouble(uci, options, sections);
 	const env = { window: { setTimeout() {} }, document: {} };
-	const modules = pageModules(form, uci, env, adapter);
+	const modules = pageModules(form, uci, env, adapter, fixture.status ??
+		{ explicit_lan: { interface: 'lan', addresses: ['192.0.2.1'] } });
 	const view = loadModule(path.join(RES, page == 'subscriptions' ? 'aether-proxy/subscriptions-block.js'
 		: 'view/aether-proxy/' + page + '.js'), modules, env);
+	if (page === 'advanced')
+		await view.load();
 	await declarePage(view, page);
 	initialInputs(options, data);
 	const parse = async () => {
+		if (page === 'advanced')
+			return sections[0].map.parse();
 		for (const o of editable(options))
 			await o.parse(o.section.name);
 	};

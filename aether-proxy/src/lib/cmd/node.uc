@@ -93,6 +93,11 @@ function preflight_selection(cursor, opts, root, id, mode, port_scope) {
 	let validated = config.normalize(raw);
 	if (!validated.ok)
 		return { code: 'CONFIG_INVALID', detail: sprintf('%.J', validated.errors) };
+	let main = validated.snapshot.main;
+	let address_errors = pipeline.resolve_proxy_listen(main,
+		main.socks_enabled == true || main.http_enabled == true ? pipeline.read_explicit_lan(opts) : { addresses: [] });
+	if (length(address_errors))
+		return { code: 'CONFIG_INVALID', detail: sprintf('%.J', address_errors) };
 	let dir = opts.run_dir ?? (root + C.RUN_DIR);
 	if (!sys.mkdir_p(dir) && fs.stat(dir)?.type != 'directory')
 		return { code: 'FS_FAILED', detail: sys.error() };

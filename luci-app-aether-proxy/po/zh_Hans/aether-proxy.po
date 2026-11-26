@@ -3109,3 +3109,67 @@ msgstr "请输入 1–255 字节且不含控制字符的内容；HTTP 用户名�
 msgctxt "aether-proxy"
 msgid "After clicking Save, anyone authorized to view LuCI Pending Changes may see modified proxy usernames and passwords until you apply or revert the changes."
 msgstr "点击『保存』后、应用或撤销前，有权查看 LuCI『待应用更改』的人可能看到已修改的代理用户名和密码。"
+
+msgctxt "aether-proxy"
+msgid "Select one of the current LAN IPv4 addresses."
+msgstr "请选择当前可用的一个 LAN IPv4 地址。"
+
+msgctxt "aether-proxy"
+msgid "No usable IPv4 address is available on logical LAN. Disable both proxies or restore LAN connectivity."
+msgstr "逻辑 LAN 接口暂无可用 IPv4 地址。请关闭两项代理，或恢复 LAN 连接后再启用。"
+
+msgctxt "aether-proxy"
+msgid "Legacy proxy credentials differ. Choose a source or enter both shared credentials."
+msgstr "旧代理凭据不一致。请选择一组来源，或重新填写共用用户名和密码。"
+
+msgctxt "aether-proxy"
+msgid "LAN address source"
+msgstr "LAN 地址来源"
+
+msgctxt "aether-proxy"
+msgid "Logical interface: %s"
+msgstr "逻辑接口：%s"
+
+msgctxt "aether-proxy"
+msgid "No usable LAN IPv4 address"
+msgstr "暂无可用 LAN IPv4 地址"
+
+msgctxt "aether-proxy"
+msgid "Both proxies use this address. Only current backend LAN candidates can be selected."
+msgstr "两项代理共用此地址，仅可选择后端当前提供的 LAN 候选地址。"
+
+msgctxt "aether-proxy"
+msgid "Select a LAN address"
+msgstr "请选择 LAN 地址"
+
+msgctxt "aether-proxy"
+msgid "Resolve legacy credentials"
+msgstr "确认旧凭据来源"
+
+msgctxt "aether-proxy"
+msgid "The old credential pairs differ and are not displayed. Select a source, or leave it unselected and fill in both shared fields. Nothing is migrated until a valid save."
+msgstr "两组旧凭据不同，页面不展示其内容。请选择一组来源，或不选来源并填写两项新共用凭据；仅在有效保存时迁移。"
+
+msgctxt "aether-proxy"
+msgid "Enter new shared credentials or decide later while both proxies are off"
+msgstr "填写新共用凭据，或在两项代理均关闭时暂不处理"
+
+msgctxt "aether-proxy"
+msgid "Use the old SOCKS5 credentials"
+msgstr "使用旧 SOCKS5 凭据"
+
+msgctxt "aether-proxy"
+msgid "Use the old HTTP credentials"
+msgstr "使用旧 HTTP 凭据"
+
+msgctxt "aether-proxy"
+msgid "Shared username"
+msgstr "共用用户名"
+
+msgctxt "aether-proxy"
+msgid "Shared password"
+msgstr "共用密码"
+
+msgctxt "aether-proxy"
+msgid "Stored once and used by both SOCKS5 and HTTP. Turning a proxy off does not erase these credentials."
+msgstr "只存储一份，供 SOCKS5 和 HTTP 共用。关闭代理不会清空此凭据。"

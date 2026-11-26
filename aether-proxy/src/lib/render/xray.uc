@@ -4,7 +4,7 @@
 
 import * as C from 'aetherproxy.const';
 import { build_outbound } from 'aetherproxy.render.outbound';
-import { trust_dns_parts } from 'aetherproxy.net';
+import { trust_dns_parts, explicit_ipv4 } from 'aetherproxy.net';
 
 export function build(snapshot, ctx) {
 	let main = snapshot.main ?? {};
@@ -44,13 +44,15 @@ export function build(snapshot, ctx) {
 	for (let protocol in [ 'socks', 'http' ]) {
 		if (main[protocol + '_enabled'] != true)
 			continue;
+		if (explicit_ipv4(main.proxy_listen) == null)
+			die('explicit proxy requires a resolved logical LAN IPv4 address');
 		let tag = 'explicit-' + protocol;
-		let settings = { accounts: [ { user: main[protocol + '_username'], pass: main[protocol + '_password'] } ] };
+		let settings = { accounts: [ { user: main.proxy_username, pass: main.proxy_password } ] };
 		if (protocol == 'socks') {
 			settings.auth = 'password';
 			settings.udp = false;
 		}
-		push(inbounds, { tag, listen: main[protocol + '_listen'], port: main[protocol + '_port'], protocol, settings });
+		push(inbounds, { tag, listen: main.proxy_listen, port: main[protocol + '_port'], protocol, settings });
 		push(tags, tag);
 	}
 

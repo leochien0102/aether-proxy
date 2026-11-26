@@ -1070,5 +1070,9 @@ for kind in plain b64; do
 		|| bad "T16.87 >16 KiB total subscription ($kind) publishes 260th node"
 done
 
+# Credential migration decisions are not recoverable configuration corruption.
+python3 "$ROOT/tests/sub/config-recovery.py" \
+	&& ok 'T16.112 credential conflict recovery guard' || bad 'T16.112 credential conflict recovery guard'
+
 echo "sub: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
