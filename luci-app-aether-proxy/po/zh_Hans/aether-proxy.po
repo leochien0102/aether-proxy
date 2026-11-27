@@ -5,6 +5,22 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "User-Agent"
+msgstr "User-Agent"
+
+msgctxt "aether-proxy"
+msgid "Application default (%s)"
+msgstr "应用默认（%s）"
+
+msgctxt "aether-proxy"
+msgid "Custom User-Agent…"
+msgstr "自定义…"
+
+msgctxt "aether-proxy"
+msgid "Identifies subscription requests only; does not change direct or proxy fetching."
+msgstr "仅用于标识订阅请求，不改变直连或代理获取方式。"
+
+msgctxt "aether-proxy"
 msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping current IP (source: {source}, raw: {raw})"
 msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）"
 
@@ -1557,10 +1573,6 @@ msgstr "直连"
 msgctxt "aether-proxy"
 msgid "Proxy"
 msgstr "代理"
-
-msgctxt "aether-proxy"
-msgid "User agent"
-msgstr "用户代理"
 
 msgctxt "aether-proxy"
 msgid "Add"
