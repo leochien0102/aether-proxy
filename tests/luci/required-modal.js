@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const types = require('./form-sdk');
 const { loadModule, contentChildren } = require('./loader');
 const { modalElement: E } = require('./modal-dom');
+const { selectType, textWidget } = require('./subscription-select');
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 
 async function sdkSave(modalMap, ev) {
@@ -34,6 +35,11 @@ function widgetTypes() {
 			renderWidget(id, index, cfgvalue) {
 				const select = name === 'ListValue';
 				const value = cfgvalue ?? this.default ?? '';
+				if (this.option === 'user_agent' && name === 'Value') {
+					const widget = textWidget(E, value, this.placeholder);
+					this.input = widget.input;
+					return widget;
+				}
 				const input = E(select ? 'select' : name === 'TextValue' ? 'textarea' : 'input', {
 					value
 				}, select ? this.keylist.map((key, i) => E('option', { value: key }, this.vallist[i])) : []);
@@ -48,8 +54,9 @@ function widgetTypes() {
 			},
 			renderFrame(id, in_table, index, nodes) {
 				// Preserved-list render uses a temporary option; mounted widgets still belong to the real clone.
-				this.input = ['input', 'select', 'textarea'].includes(nodes.tag) ? nodes
-					: nodes.querySelector('input, select, textarea');
+				this.input = this.option === 'user_agent' ? nodes.querySelector('input')
+					: ['input', 'select', 'textarea'].includes(nodes.tag) ? nodes
+						: nodes.querySelector('input, select, textarea');
 				const frame = E('div', { class: this.deplist.length ? 'cbi-value hidden' : 'cbi-value' }, [
 					E('label', {}, this.title), E('div', {}, nodes)
 				]);
@@ -149,9 +156,10 @@ async function harness(page, saved = {}) {
 	const form = formDouble(h);
 	const modules = {
 		baseclass: { extend: object => object }, view: { extend: object => object }, form, uci: h.uci,
-		ui: { createHandlerFn: () => () => {},
+		ui: { Select: selectType(E), createHandlerFn: () => () => {},
 			addNotification: () => assert.fail('modal error must stay inside modal') },
-		dom: { content: (node, children) => contentChildren(node, children) },
+		dom: { content: (node, children) => contentChildren(node, children),
+			findClassInstance: node => node },
 		'aether-proxy.common': {}
 	};
 	const env = { window: { setTimeout() {} }, document: {} };

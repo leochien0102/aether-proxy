@@ -10,7 +10,7 @@ const path = require('node:path');
 const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader');
 const { loadNodesPage } = require('./nodes-page');
 const { actionRow, beforeTable, marginlessMessages, nowrapActions } = require('./button-layout');
-const { selectWidget } = require('./subscription-select');
+const { selectWidget, selectType, textWidget } = require('./subscription-select');
 const { renderFrame: sdkFlagFrame, checkboxWidget } = require('./flag-frame');
 const APP = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs/luci-static/resources');
@@ -51,6 +51,7 @@ function optionDouble(uci, kind, field, title) {
 			this.widgets = new Map();
 		}
 		depends() {}
+		cbid(id) { return `cbid.aetherproxy.${id}.${this.option}`; }
 		value(key, label) {
 			(this.keylist ??= []).push(String(key));
 			(this.vallist ??= []).push(label);
@@ -76,8 +77,9 @@ function optionDouble(uci, kind, field, title) {
 					? selectWidget(initial, Object.fromEntries((this.keylist ?? []).map((key, i) =>
 						[key, this.vallist[i]])), { sort: this.keylist, optional: this.optional,
 						placeholder: this.placeholder })
-					: { value: initial ?? '', placeholder: this.placeholder,
-						setPlaceholder(text) { this.placeholder = text; } };
+					: field === 'user_agent' ? textWidget(E, initial, this.placeholder)
+						: { value: initial ?? '', placeholder: this.placeholder,
+							setPlaceholder(text) { this.placeholder = text; } };
 			}
 			this.widgets.set(id, widget);
 			return widget;
@@ -105,6 +107,13 @@ function optionDouble(uci, kind, field, title) {
 	return new Option();
 }
 function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
+	// Product composite widgets call the base Value renderer directly.
+	function Value() {}
+	Value.prototype.renderWidget = function(id, index, value) {
+		const widget = textWidget(E, value ?? this.default, this.placeholder);
+		this.widgets.set(id, widget);
+		return widget;
+	};
 	async function renderSection(section) {
 		if (section.kind === 'NamedSection') {
 			const flags = [];
@@ -143,8 +152,8 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 		]);
 	}
 	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag', DummyValue: 'DummyValue',
-		ListValue: 'ListValue', Value: 'Value', Map: class {
-		constructor() { this.sections = []; maps.push(this); }
+		ListValue: 'ListValue', Value, Map: class {
+		constructor(config) { this.config = config; this.sections = []; maps.push(this); }
 		section(kind, type, sectionType, title) {
 			const section = {
 				kind, type, sectionType, title, map: this, options: [], modal: { value: 'unsaved modal input' },
@@ -156,7 +165,9 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 				render() { return renderSection(this); },
 				handleModalCancel() {},
 				option(kind, field, title) {
-					const option = optionDouble(uci, kind, field, title);
+					const option = optionDouble(uci, kind === Value ? 'Value' : kind, field, title);
+					option.map = this.map;
+					option.section = this;
 					this.options.push(option);
 					return option;
 				},
@@ -342,6 +353,7 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 	const { view, subscriptions } = loadNodesPage({
 		view: { extend: o => o }, form, uci,
 		ui: {
+			Select: selectType(E),
 			/* Same contract as luci-base ui.js: bound arguments first, the event
 			   last; the button is disabled until fn settles and nothing is returned. */
 			createHandlerFn: (self, fn, ...args) => (...rest) => {
@@ -363,7 +375,8 @@ async function harness(name, builtinKinds = name === 'nodes' ? ['remove'] : ['ed
 				return banner;
 			}
 		},
-		dom: { content: (target, content) => contentChildren(target, content) },
+		dom: { content: (target, content) => contentChildren(target, content),
+			findClassInstance: node => node },
 		'aether-proxy.common': ap, ['aether-proxy.model.' + name]: model
 	}, { window: {
 		setTimeout: (fn, delay) => {
@@ -432,6 +445,28 @@ function renderOption(o, id, value) {
 	return o.renderWidget(id, 0, value);
 }
 const intervalLabels = ['不自动更新', '12 小时', '1 天', '3 天', '7 天'];
+
+test('T16.124: UA mocks render both real controls and update dropdown labels on late version reads', async () => {
+	const h = await harness('subscriptions');
+	h.subs[0].user_agent = 'Legacy/1 (+spaces)';
+	await render(h);
+	const common = h.page.generalOptions.user_agent;
+	const generalWidget = renderOption(common, 'sub', undefined);
+	const labels = widget => find(widget, node => node.tag === 'option').map(text);
+	assert.deepEqual(labels(generalWidget), ['应用默认（读取中…）', 'v2rayN', '自定义…']);
+	assert.equal(find(generalWidget, node => node.tag === 'input')[0].value, '');
+	h.page.grid.renderMoreOptionsModal('s_a');
+	const single = subOption(h, 'user_agent');
+	assert.equal(find(single.widget, node => node.tag === 'select')[0].value, '@custom');
+	assert.equal(find(single.widget, node => node.tag === 'input')[0].value, 'Legacy/1 (+spaces)');
+	assert.equal(single.formvalue('s_a'), 'Legacy/1 (+spaces)', 'formvalue is the UA, never the mode');
+	h.versionRead.resolve({ ok: true, version: '0.2.0-r99' });
+	await flush();
+	assert.equal(labels(generalWidget)[0], '应用默认（aether-proxy/0.2.0-r99）');
+	assert.equal(labels(single.widget)[0], '跟随通用设置（aether-proxy/0.2.0-r99）');
+	assert.equal(single.formvalue('s_a'), 'Legacy/1 (+spaces)');
+	assert.deepEqual(h.uciCalls.filter(call => ['set', 'unset', 'save'].includes(call[0])), []);
+});
 
 for (const interval of ['0', '12', '24', '72', '168', '6']) {
 	for (const via of ['auto', 'direct', 'proxy']) {

@@ -27,6 +27,49 @@ const FAILOVER_MAX_NODES = 64; // Matches NODE_FAILOVER_MAX_NODES in const.uc.
 const failoverLimitText = () => _('Automatic failover supports at most %s nodes.', 'aether-proxy')
 	.format(FAILOVER_MAX_NODES);
 const REQUIRED_COLOR = 'var(--error-color-high, #c53030)';
+// The task-specific endpoint checks this UA with the supported URI format.
+const USER_AGENTS = ['v2rayN'];
+
+/* Keep the real Value widget as the only saved field. Hiding its text box must
+ * not deactivate SDK parse: a preset writes the UA, an empty choice removes it.
+ * State belongs to each rendered widget, including GridSection modal clones. */
+function renderUserAgent(id, index, value, inherited, block) {
+	const raw = value ?? '';
+	const custom = '@custom';
+	let selected = raw === '' || USER_AGENTS.includes(raw) ? raw : custom;
+	let draft = selected === custom ? raw : '';
+	const choices = { '': '', ...Object.fromEntries(USER_AGENTS.map(ua => [ua, ua])),
+		[custom]: _('Custom User-Agent…', 'aether-proxy') };
+	const select = new ui.Select(selected, choices, {
+		id: this.cbid(id) + '.choice',
+		sort: ['', ...USER_AGENTS, custom],
+		widget: 'select',
+		disabled: (this.readonly ?? this.map.readonly) || null
+	});
+	const text = form.Value.prototype.renderWidget.call(this, id, index, raw);
+	text.querySelector('input')?.setAttribute('aria-label', _('User-Agent', 'aether-proxy'));
+	const input = dom.findClassInstance(text);
+	const editor = E('div', { style: selected === custom ? 'margin-top:0.5em' : 'display:none' }, [text]);
+	const dropdown = select.render();
+	this.refreshUALabel = () => {
+		const label = inherited ? model.follow(block.general_values().user_agent)
+			: _('Application default (%s)', 'aether-proxy').format(block.defaultUA);
+		// A DOM text write preserves even historical UA strings containing markup.
+		dropdown.querySelector('option[value=""]').textContent = label;
+	};
+	this.refreshUALabel();
+	if (inherited)
+		block.uaModal = { option: this, id };
+	dropdown.addEventListener('widget-change', () => {
+		if (selected === custom)
+			draft = input.getValue();
+		selected = select.getValue();
+		input.setValue(selected === custom ? draft : selected);
+		editor.style.display = selected === custom ? '' : 'none';
+		input.triggerValidation();
+	});
+	return E('div', {}, [dropdown, editor]);
+}
 
 const failoverStyle = `
 .aether-warning { color: var(--warn-color-high, #e0a800); opacity: .85; }
@@ -270,10 +313,12 @@ return baseclass.extend({
 		const o = this.generalOptions.user_agent;
 		o.placeholder = _('Default (%s)', 'aether-proxy').format(this.defaultUA);
 		o.getUIElement('sub')?.setPlaceholder(o.placeholder);
+		o.refreshUALabel?.();
 		if (this.uaModal) {
 			const { option, id } = this.uaModal;
 			option.placeholder = model.follow(this.general_values().user_agent);
 			option.getUIElement(id)?.setPlaceholder(option.placeholder);
+			option.refreshUALabel?.();
 		}
 	},
 	general_values: function() {
@@ -525,8 +570,7 @@ return baseclass.extend({
 			if (field === 'user_agent') {
 				this.placeholder = inherited ? model.follow(common.user_agent)
 					: _('Default (%s)', 'aether-proxy').format(self.defaultUA);
-				if (inherited)
-					self.uaModal = { option: this, id };
+				return renderUserAgent.call(this, id, index, value, inherited, self);
 			}
 			else {
 				this.keylist = [];
@@ -541,6 +585,15 @@ return baseclass.extend({
 			}
 			return renderWidget.call(this, id, index, value);
 		};
+		if (field === 'user_agent') {
+			o.description = _('Identifies subscription requests only; does not change direct or proxy fetching.', 'aether-proxy');
+			const renderFrame = o.renderFrame;
+			o.renderFrame = function(id, inTable, index, nodes) {
+				const frame = renderFrame.call(this, id, inTable, index, nodes);
+				frame.querySelector('label')?.setAttribute('for', 'widget.' + this.cbid(id) + '.choice');
+				return frame;
+			};
+		}
 		return o;
 	},
 	general_settings: function(m) {
@@ -566,7 +619,7 @@ return baseclass.extend({
 		this.generalOptions = {
 			interval_hours: this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), false),
 			fetch_via: this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), false),
-			user_agent: this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), false)
+			user_agent: this.setting_option(s, 'user_agent', _('User-Agent', 'aether-proxy'), false)
 		};
 		const failover = s.option(form.Flag, 'failover', FAILOVER_TITLE);
 		failover.default = '0';
@@ -821,7 +874,7 @@ return baseclass.extend({
 		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.failover_modal(s);
-		this.setting_option(s, 'user_agent', _('User agent', 'aether-proxy'), true);
+		this.setting_option(s, 'user_agent', _('User-Agent', 'aether-proxy'), true);
 		form_defaults.section(s);
 		requiredOptions(s, model.required_fields);
 		return m.render().then(content => {
