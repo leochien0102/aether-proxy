@@ -1,0 +1,141 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "abd805925ba4cc67f10424ee0b97d587e0e746b56896c37272bc715bcaddec69",
+    "view/aether-proxy/advanced.js": "b215b32b9577b4ff8cf6ae5bbf754e1af5f5aee0b6165dc481dfbd4bc0301c31",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc"
+  },
+  "gateSHA256": "6899529cb83b45a01ac646fe58aa834a69e9a39ae1ce46cbab0f85166ca109ed",
+  "appRoot": "/tmp/t16122-r6",
+  "commit": "1132c2a96a7109dced4da246ddc8f30518d8f22e",
+  "dirty": "",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "visibility-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "visibility": [
+        {
+          "field": "proxy_username",
+          "state": "initial empty",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "rect": {
+            "x": 507,
+            "y": 455.421875,
+            "width": 28,
+            "height": 28,
+            "top": 455.421875,
+            "right": 535,
+            "bottom": 483.421875,
+            "left": 507
+          },
+          "hit": true,
+          "tabIndex": 0,
+          "disabled": false,
+          "painted": true
+        }
+      ],
+      "result": "FAIL",
+      "error": "initial empty: clear is painted\n\ntrue !== false\n"
+    },
+    {
+      "id": "visibility-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "visibility": [
+        {
+          "field": "proxy_username",
+          "state": "initial empty",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "rect": {
+            "x": 291,
+            "y": 625.03125,
+            "width": 28,
+            "height": 28,
+            "top": 625.03125,
+            "right": 319,
+            "bottom": 653.03125,
+            "left": 291
+          },
+          "hit": true,
+          "tabIndex": 0,
+          "disabled": false,
+          "painted": true
+        }
+      ],
+      "result": "FAIL",
+      "error": "initial empty: clear is painted\n\ntrue !== false\n"
+    },
+    {
+      "id": "visibility-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "visibility": [
+        {
+          "field": "proxy_username",
+          "state": "initial empty",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "rect": {
+            "x": 507,
+            "y": 455.421875,
+            "width": 28,
+            "height": 28,
+            "top": 455.421875,
+            "right": 535,
+            "bottom": 483.421875,
+            "left": 507
+          },
+          "hit": true,
+          "tabIndex": 0,
+          "disabled": false,
+          "painted": true
+        }
+      ],
+      "result": "FAIL",
+      "error": "initial empty: clear is painted\n\ntrue !== false\n"
+    },
+    {
+      "id": "visibility-light-360",
+      "mode": "light",
+      "width": 360,
+      "visibility": [
+        {
+          "field": "proxy_username",
+          "state": "initial empty",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "rect": {
+            "x": 291,
+            "y": 625.03125,
+            "width": 28,
+            "height": 28,
+            "top": 625.03125,
+            "right": 319,
+            "bottom": 653.03125,
+            "left": 291
+          },
+          "hit": true,
+          "tabIndex": 0,
+          "disabled": false,
+          "painted": true
+        }
+      ],
+      "result": "FAIL",
+      "error": "initial empty: clear is painted\n\ntrue !== false\n"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

@@ -226,8 +226,9 @@ var ap = baseclass.extend({
 		host.style.maxWidth = '100%';
 		input.style.gridArea = '1 / 1';
 		input.style.boxSizing = 'border-box';
-		input.style.paddingRight = (2 + inset) + 'rem';
-		const button = E('button', { type: 'button', click, style: 'grid-area:1/1;justify-self:end;align-self:center;position:relative;width:1.75rem;height:1.75rem;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;margin-right:' + inset + 'rem' });
+		input.style.paddingRight = Math.max((input.style.paddingRight || '').endsWith('rem') ? parseFloat(input.style.paddingRight) : 0, 2 + inset) + 'rem';
+		// Theme button defaults (including adjacent margins and hover transforms) must not enlarge the hit slots.
+		const button = E('button', { type: 'button', click, style: 'grid-area:1/1;justify-self:end;align-self:center;position:relative;box-sizing:border-box!important;width:1.75rem!important;min-width:1.75rem!important;max-width:1.75rem!important;height:1.75rem!important;min-height:1.75rem!important;max-height:1.75rem!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;transition:none!important;color:inherit;cursor:pointer;margin:0 ' + inset + 'rem 0 0!important;display:inline-flex;align-items:center;justify-content:center' });
 		const ns = 'http://www.w3.org/2000/svg';
 		const svg = document.createElementNS(ns, 'svg');
 		for (const [key, value] of Object.entries({ viewBox:'0 0 24 24', width:18, height:18, fill:'none', stroke:'currentColor', 'stroke-width':2, 'stroke-linecap':'round', 'stroke-linejoin':'round', 'aria-hidden':'true' })) svg.setAttribute(key, value);

@@ -160,6 +160,7 @@ async function scenario(browser, name, initial, exercise, view = 'advanced', ori
 		await scenario(browser, 'inline credential controls, keyboard, reset and save', shared, async h => {
 			const row = h.row('proxy_password'), field = h.input('proxy_password');
 			assert.equal(await row.locator('button').count(), 2);
+			await field.focus();
 			for (const colorScheme of ['light', 'dark']) {
 				await h.page.emulateMedia({colorScheme});
 				for (const button of await row.locator('button').all()) {
@@ -167,9 +168,11 @@ async function scenario(browser, name, initial, exercise, view = 'advanced', ori
 					assert.ok(b.x >= a.x && b.x+b.width <= a.x+a.width+1 && b.y >= a.y-1 && b.y+b.height <= a.y+a.height+1, 'button inside input');
 				}
 			}
+			await h.input('proxy_username').focus(); await h.page.keyboard.press('Tab');
 			await h.row('proxy_username').getByRole('button', {name:tr('Clear username')}).press('Enter');
 			assert.equal(await h.input('proxy_username').inputValue(), ''); assert.ok(await field.inputValue() === shared.proxy_password);
 			await h.reset();
+			await field.focus(); await h.page.keyboard.press('Tab'); await h.page.keyboard.press('Tab');
 			await row.getByRole('button', {name:tr('Clear password')}).press('Enter');
 			assert.equal(await field.inputValue(), ''); assert.ok(await field.evaluate(el => el === document.activeElement));
 			assert.equal(await h.input('proxy_username').inputValue(), shared.proxy_username);

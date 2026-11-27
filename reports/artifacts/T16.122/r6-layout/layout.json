@@ -1,0 +1,173 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "abd805925ba4cc67f10424ee0b97d587e0e746b56896c37272bc715bcaddec69",
+    "view/aether-proxy/advanced.js": "b215b32b9577b4ff8cf6ae5bbf754e1af5f5aee0b6165dc481dfbd4bc0301c31",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc"
+  },
+  "gateSHA256": "6899529cb83b45a01ac646fe58aa834a69e9a39ae1ce46cbab0f85166ca109ed",
+  "appRoot": "/tmp/t16122-r6",
+  "commit": "1132c2a96a7109dced4da246ddc8f30518d8f22e",
+  "dirty": "",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "layout-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 535,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 535,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 784
+      },
+      "clicks": {
+        "eye": {
+          "x": 549,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 549,
+          "y": 563.171875
+        }
+      },
+      "result": "FAIL",
+      "error": "clear and eye button hit boxes overlap\n\n784 !== 0\n"
+    },
+    {
+      "id": "layout-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 291,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 291,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 768.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 784
+      },
+      "clicks": {
+        "eye": {
+          "x": 305,
+          "y": 789.84375
+        },
+        "clear": {
+          "x": 305,
+          "y": 789.84375
+        }
+      },
+      "result": "FAIL",
+      "error": "clear and eye button hit boxes overlap\n\n784 !== 0\n"
+    },
+    {
+      "id": "layout-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 535,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 535,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 784
+      },
+      "clicks": {
+        "eye": {
+          "x": 549,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 549,
+          "y": 563.171875
+        }
+      },
+      "result": "FAIL",
+      "error": "clear and eye button hit boxes overlap\n\n784 !== 0\n"
+    },
+    {
+      "id": "layout-light-360",
+      "mode": "light",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 291,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 291,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 768.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 784
+      },
+      "clicks": {
+        "eye": {
+          "x": 305,
+          "y": 789.84375
+        },
+        "clear": {
+          "x": 305,
+          "y": 789.84375
+        }
+      },
+      "result": "FAIL",
+      "error": "clear and eye button hit boxes overlap\n\n784 !== 0\n"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

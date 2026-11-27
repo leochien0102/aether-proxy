@@ -1,0 +1,273 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "b26ad48ad14b2dc1d9f319bb19ab016199c7606cf6c7d8029dff8995579cc706",
+    "view/aether-proxy/advanced.js": "22bb3611802b943b254c090b8d5868a0a87d968cc05525dfe6dd588555057989",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc"
+  },
+  "gateSHA256": "6899529cb83b45a01ac646fe58aa834a69e9a39ae1ce46cbab0f85166ca109ed",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.122",
+  "commit": "2175172fd0be0332462047e236c20e6984968939",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/advanced.js\n M tests/luci/t16.117-optional-auth-preview.js\n?? reports/T16.122.md\n?? tests/luci/t16.122-input-actions-gate.js",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "layout-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 391.359375,
+          "width": 568,
+          "height": 40
+        },
+        "copy": {
+          "x": 815,
+          "y": 397.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 845,
+          "y": 391.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 775.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 768.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 789.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 789.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 775.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 587.8194580078125,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 591.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 585.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 395.2031555175781,
+          "width": 568,
+          "height": 40
+        },
+        "copy": {
+          "x": 815,
+          "y": 399.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 845,
+          "y": 393.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-light-360",
+      "mode": "light",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 938.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 959.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 959.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 945.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 590.5701904296875,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 593.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 587.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

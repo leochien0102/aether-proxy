@@ -219,8 +219,21 @@ return view.extend({
 					input.dispatchEvent(new Event('change', { bubbles:true }));
 					this.triggerValidation('main'); input.focus();
 				}, this.password ? 1.75 : 0);
-				const sync = () => { clear.hidden = !input.value; };
-				input.addEventListener('input', sync); sync();
+				const host = input.parentElement;
+				const sync = (focus = document.activeElement) => {
+					const visible = !!input.value && !input.readOnly && !input.disabled && host.contains(focus);
+					clear.hidden = !visible;
+					clear.disabled = !visible;
+					clear.tabIndex = visible ? 0 : -1;
+					// Author theme display rules can override the browser's default [hidden] rule.
+					clear.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
+				};
+				input.addEventListener('input', () => sync());
+				input.addEventListener('change', () => sync());
+				host.addEventListener('focusin', () => sync());
+				host.addEventListener('focusout', event => sync(event.relatedTarget));
+				new MutationObserver(() => sync()).observe(input, { attributes:true, attributeFilter:['disabled', 'readonly'] });
+				sync();
 				return node;
 			};
 			o.cfgvalue = () => model.credentials(main()).pair[index];
