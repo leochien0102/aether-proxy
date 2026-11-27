@@ -274,6 +274,7 @@ return view.extend({
 		// An untouched absent option still saves nothing; no default is backfilled.
 		for (const feature of features)
 			fallbacks[feature.option] = null;
+		ap.text_actions(s, form);
 		form_defaults.section(s, fallbacks);
 		const parse = m.parse;
 		m.parse = function() {

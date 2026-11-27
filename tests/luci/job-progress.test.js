@@ -78,7 +78,8 @@ function formDouble(uci) {
 				section.renderRowActions(s['.name'])
 			])));
 	}
-	return { Map: class {
+	// Declaration-only options still need distinct SDK type tokens for text_actions.
+	return { Value: 'Value', DynamicList: 'DynamicList', Map: class {
 		constructor() { this.sections = []; }
 		section(kind, name) {
 			const options = [];

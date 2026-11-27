@@ -35,7 +35,7 @@ const HINTS = { hosts: {
 
 function fixture(hosts = [], main = {}) {
 	const data = [ { '.name': 'main', mode: 'bypass_cn', unlisted_policy: 'follow', ...main }, ...hosts ];
-	const calls = { save: 0, reset: 0, apply: 0, hints: 0, closed: 0, notifications: [], writes: [],
+	const calls = { save: 0, reset: 0, apply: 0, hints: 0, closed: 0, notifications: [], writes: [], fieldActions: [],
 		tooltip: { opacity: 0, hides: [] } };
 	const inputs = {};
 	const uci = {
@@ -169,8 +169,11 @@ function fixture(hosts = [], main = {}) {
 			return this.root;
 		}
 	}
-	const form = { Map, NamedSection: Section, GridSection, Flag: Option, Value: Option,
-		DummyValue: Option, DynamicList: Option, ListValue: Option };
+	// Keep widget identities distinct like the SDK. One shared Option prototype
+	// would incorrectly classify selectors and flags as editable text fields.
+	const form = { Map, NamedSection: Section, GridSection,
+		Flag: class extends Option {}, Value: class extends Option {},
+		DummyValue: class extends Option {}, DynamicList: class extends Option {}, ListValue: class extends Option {} };
 	let hintReply = HINTS;
 	const page = loadModule(path.join(RES, 'view/aether-proxy/access.js'), {
 		view: { extend: (o) => o }, form, uci,
@@ -188,6 +191,13 @@ function fixture(hosts = [], main = {}) {
 				node, level, savedAt: calls.save, closedAt: calls.closed
 			})
 		},
+		// This fixture models pending/validation/save paths, not SVG/layout or
+		// focus ownership. Spy on decoration; required-modal and Chromium gates
+		// exercise the real field_actions/clear_input implementation.
+		'aether-proxy.common': { field_actions: (option, labels, selector) => {
+			calls.fieldActions.push({ option, labels, selector });
+			return option;
+		} },
 		network: { getHostHints: () => { calls.hints++; return Promise.resolve().then(() => {
 			if (hintReply instanceof Error) throw hintReply;
 			return hintReply;
@@ -279,6 +289,16 @@ function fixture(hosts = [], main = {}) {
 		}
 	};
 }
+
+test('T16.125 fixture: real text_actions selects only name and the two draft lists', async () => {
+	const f = fixture();
+	await f.start();
+	assert.deepEqual(f.calls.fieldActions.map(call => call.option.option), ['name', 'mac', 'ip']);
+	assert.equal(f.calls.fieldActions[0].selector, undefined);
+	for (const call of f.calls.fieldActions.slice(1))
+		assert.equal(call.selector, '.add-item > input[type="text"], .add-item .create-item-input');
+	assert.deepEqual(f.calls.writes, [], 'decoration must not stage configuration');
+});
 
 function host(id, policy, options = {}) {
 	return { '.name': id, policy, ip: [ '192.168.1.10' ], ...options };

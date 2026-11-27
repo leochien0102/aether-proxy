@@ -65,7 +65,7 @@ const HEATMAP_CSS = [
 	'.ap-quota-control select { width:8em }',
 	'.ap-quota-control > span { position:absolute; inset:0 1.5em 0 0; display:inline-flex; '
 		+ 'align-items:center; background:Field; color:FieldText }',
-	'.ap-quota-control input { width:calc(100% - 2em); min-width:0; box-sizing:border-box }',
+	'.ap-quota-control input { width:100%; min-width:0; box-sizing:border-box }',
 	'.ap-quota-control [hidden] { display:none }',
 	// 18 × 26px + 17 × 3px fixes the column width; five rows stay 142px tall without stretching.
 	'.ap-heat-grid { display:grid; grid-template-columns: repeat(18, minmax(0, 1fr)); gap:3px; '
@@ -563,7 +563,6 @@ return view.extend({
 		]);
 		this.quotaInput = E('input', { type: 'text', inputmode: 'numeric',
 			'aria-label': _('Monthly quota', 'aether-proxy'),
-			blur: () => this.commitQuotaInput(),
 			keydown: (ev) => {
 				if (ev.key === 'Enter') {
 					ev.preventDefault();
@@ -575,7 +574,16 @@ return view.extend({
 				}
 			} });
 		// Overlay only the select's text area: the native arrow stays usable in custom mode.
-		this.quotaCustom = E('span', { hidden: true }, [ this.quotaInput, ' ', _('GB', 'aether-proxy') ]);
+		const quotaCell = E('span', { style: 'width:calc(100% - 2em); min-width:0' }, [this.quotaInput]);
+		ap.clear_input(this.quotaInput);
+		this.quotaCustom = E('span', {
+			hidden: true,
+			// Tab onto the clear action is still inside this editor. Commit only on leaving.
+			focusout: event => {
+				if (!this.quotaCustom.contains(event.relatedTarget))
+					this.commitQuotaInput();
+			}
+		}, [ quotaCell, ' ', _('GB', 'aether-proxy') ]);
 		this.quotaControl = E('span', { 'class': 'ap-quota-control' }, [ this.quotaSelect, this.quotaCustom ]);
 		this.quotaErrorNode = E('p', { hidden: true, style: this.colorStyle('warn') });
 		this.heatmapCells = Array.from({ length: 90 }, () => E('div', { 'class': 'ap-heat-cell ap-heat-void' }));

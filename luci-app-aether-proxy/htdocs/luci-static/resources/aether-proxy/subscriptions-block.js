@@ -639,6 +639,7 @@ return baseclass.extend({
 		};
 		failover.onchange = () => this.refresh_failover();
 		this.generalOptions.failover = failover;
+		ap.text_actions(s, form);
 		form_defaults.section(s, { user_agent: () => this.defaultUA });
 	},
 	result_content: function(result) {
@@ -875,6 +876,7 @@ return baseclass.extend({
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.failover_modal(s);
 		this.setting_option(s, 'user_agent', _('User-Agent', 'aether-proxy'), true);
+		ap.text_actions(s, form);
 		form_defaults.section(s);
 		requiredOptions(s, model.required_fields);
 		return m.render().then(content => {

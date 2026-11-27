@@ -9,7 +9,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
+const { loadModule, parsePo, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
+const { modalElement: element, modalDocument } = require('./modal-dom');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
 const RES = path.join(APP, 'htdocs', 'luci-static', 'resources');
@@ -57,6 +58,8 @@ function dashboardModel() {
    or function of the params). `state.heatmap` is what UCI reports for
    stats.heatmap_enabled and can be flipped between refreshes. */
 function loadView({ replies = {}, state = { heatmap: '0' } } = {}) {
+	// Each fixture is a fresh page, not focus moving out of the previous test.
+	modalDocument.activeElement = null;
 	const calls = [];
 	const requests = [];
 	const ap = {
@@ -92,11 +95,17 @@ function loadView({ replies = {}, state = { heatmap: '0' } } = {}) {
 		setTimeout: () => 0, clearTimeout: () => {},
 		localStorage: { getItem: () => null, setItem: () => {} },
 		addEventListener() {}, removeEventListener() {}
-	}, document: { addEventListener() {}, removeEventListener() {} } });
+	}, document: modalDocument });
 	return { view, calls, requests, state };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+async function leaveQuota(view, relatedTarget = null) {
+	// DOM focusout does not return the asynchronous quota RPC promise. Drain
+	// its handlers just as the original tests awaited commitQuotaInput().
+	view.quotaCustom.attrs.focusout({ relatedTarget });
+	await tick();
+}
 
 /* 'YYYY-MM-DD' → unix ms, for date-arithmetic assertions. */
 function parse_local(date) {
@@ -394,7 +403,12 @@ test('T16.6 view: fitted top-aligned columns, quota-first caption and 18-column 
 	assert.equal(caption.children[0].children.at(-1), view.quotaControl);
 	assert.equal(caption.children[0].textContent.startsWith(tr('Monthly quota')), true);
 	assert.equal(caption.children[1].textContent, tr('Last 90 days · Redder = more usage'));
-	assert.equal(findAll(view.heatmapContainer, 'button').length, 0);
+	const clearActions = findAll(view.heatmapContainer, 'button');
+	assert.equal(clearActions.length, 1, 'only the new draft-clear action, no quota submit button');
+	assert.equal(clearActions[0].getAttribute('aria-label'), tr('Clear input'));
+	assert.equal(clearActions[0].hidden, true);
+	assert.equal(clearActions[0].disabled, true);
+	assert.equal(clearActions[0].tabIndex, -1);
 	assert.equal(view.heatmapGridNode.children.length, 90);
 	assert.ok(view.heatmapCells.every((n) => n.className === 'ap-heat-cell ap-heat-void'));
 	assert.ok(view.heatmapCells.every((n) => n.attrs.title === undefined));
@@ -622,17 +636,19 @@ test('T16.5 view: Escape restores preset or custom without RPC and blur commits 
 		view.quotaInput.value = '999';
 		const count = requests.length;
 		view.quotaInput.attrs.keydown({ key: 'Escape', preventDefault() {} });
-		await view.quotaInput.attrs.blur();
-		assert.equal(requests.length, count, 'Escape and subsequent blur send no RPC');
+		await leaveQuota(view);
+		assert.equal(requests.length, count, 'Escape and subsequently leaving the editor send no RPC');
 		assert.equal(view.quotaSelect.value, bytes === 100e9 ? '100' : 'custom');
 		assert.equal(view.quotaInput.value, String(bytes / 1e9));
 		assert.equal(view.quotaErrorNode.textContent, tr('Saving quota failed (%s)', 'CANCELLED'));
 		view.quotaSelect.value = 'custom';
 		view.quotaSelect.attrs.change();
 		view.quotaInput.value = '456';
-		await view.quotaInput.attrs.blur();
-		await view.quotaInput.attrs.blur();
-		assert.equal(requests.length, count + 1, 'blur submits once, repeated blur is a no-op');
+		await leaveQuota(view, view.quotaInput.apClearAction);
+		assert.equal(requests.length, count, 'focus onto the field action must not submit');
+		await leaveQuota(view);
+		await leaveQuota(view);
+		assert.equal(requests.length, count + 1, 'leaving submits once, repeated focusout is a no-op');
 		assert.deepEqual(requests.at(-1).params, { action: 'set', bytes: 456e9 });
 		assert.equal(view.quotaControl, control);
 	}
@@ -654,7 +670,7 @@ test('T16.5 view: rejected quota RPC preserves input, colours and enabled contro
 	view.quotaSelect.value = 'custom';
 	view.quotaSelect.attrs.change();
 	view.quotaInput.value = '456';
-	await view.quotaInput.attrs.blur();
+	await leaveQuota(view);
 	assert.equal(view.quotaInput.value, '456');
 	assert.equal(view.heatmapGood.quota, 100e9);
 	assert.equal(view.quotaInput.disabled, false);

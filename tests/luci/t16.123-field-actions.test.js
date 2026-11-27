@@ -37,15 +37,19 @@ test('T16.123 shared field assembly preserves SDK identity and uses the cloned s
   const option={password:true,write,validate:()=>true,renderWidget(id,index,value){
    const listeners={};
    const host={members:new Set(),addEventListener(type,fn){listeners['host:'+type]=fn;},contains(el){return this.members.has(el);}};
+   const password=this.password;
    const input={value,type:'text',readOnly:false,disabled:false,parentElement:host,
-    nextElementSibling:{remove(){input.externalRemoved=true;}},
+    classList:{contains:name=>name==='cbi-input-password' && password},
+    closest:()=>null,
+    nextElementSibling:{matches:selector=>selector==='button.cbi-button',remove(){input.externalRemoved=true;}},
     addEventListener(type,fn){listeners[type]=fn;},
     dispatchEvent(event){listeners[event.type]?.(event);},
     focus(){document.activeElement=input;listeners['host:focusin']?.();}};
    host.members.add(input);
-   const widget={querySelector:selector=>{selectors.push(selector);return input;}};
+   const widget={querySelectorAll:selector=>{selectors.push(selector);return [input];}};
    rendered.push({id,index,widget,input,listeners}); return widget;
   },triggerValidation(id){validated.push(id);}};
+  const renderRaw=option.renderWidget;
   assert.equal(ap.field_actions(option,{show:'Show field',hide:'Hide field',clear:'Clear field'}),option);
   // GridSection copies own methods to a new option; it does not bind the parent option.
   const clone={...option,password:true};
@@ -83,14 +87,19 @@ test('T16.123 shared field assembly preserves SDK identity and uses the cloned s
   assert.equal(buttons[4].inset,0);
   // A list caller supplies the add-input selector, not an assembled wrapper.
   const listRenderer={password:false,renderWidget(id,index,value){
-   return {querySelector(selector){
+   // Each SDK render owns a fresh input. Reusing the plain field above would
+   // correctly hit clear_input's duplicate guard instead of assembling a list.
+   const widget=renderRaw.call(this,id,index,value);
+   widget.querySelectorAll=selector=>{
     assert.equal(selector,'.add-item > input');
-    return rendered[2].input;
-   }};
+    return [rendered.at(-1).input];
+   };
+   return widget;
   },triggerValidation(id){validated.push(id);}};
   ap.field_actions(listRenderer,{clear:'Clear new item'},'.add-item > input');
   listRenderer.renderWidget('list',0,'');
-  assert.deepEqual(selectors,['input','input','input']);
+  const editable='input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])';
+  assert.deepEqual(selectors,[editable,editable,editable]);
   assert.equal(buttons.length,6,'selected list add input gets one clear action');
  } finally {
   if (oldObserver===undefined) delete globalThis.MutationObserver;

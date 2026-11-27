@@ -17,9 +17,18 @@ const appRoot = path.resolve(process.env.APP_ROOT || path.join(__dirname, '../..
 function required(name) { assert.ok(process.env[name], `${name} is required`); return process.env[name]; }
 const www = path.resolve(required('WWW_ROOT'));
 const theme = path.resolve(required('THEME_ROOT'));
+const themeName = process.env.THEME_NAME || 'proton2025';
+// Bootstrap installs cascade.css at its media root; Proton/Argon use css/.
+const themeCss = process.env.THEME_CSS || ['css/cascade.css','cascade.css']
+ .find(file=>fs.statSync(path.join(theme,file),{throwIfNoEntry:false})?.isFile());
+assert.ok(themeCss,'theme cascade.css not found; set THEME_CSS relative to THEME_ROOT');
+assert.ok(fs.statSync(path.join(theme,themeCss)).isFile(),'THEME_CSS must name a real stylesheet');
+// Argon's header.ut embeds this under prefers-color-scheme: dark in normal mode.
+const themeDarkCss = themeName === 'argon-plus' ? 'css/dark.css' : null;
+if (themeDarkCss) assert.ok(fs.statSync(path.join(theme,themeDarkCss)).isFile(),'Argon dark.css is required');
 const version = required('THEME_VERSION');
 const output = path.resolve(required('OUTPUT_DIR'));
-const control = path.resolve(process.env.THEME_CONTROL || path.join(www,'../usr/lib/opkg/info/luci-theme-proton2025.control'));
+const control = path.resolve(process.env.THEME_CONTROL || path.join(www,`../usr/lib/opkg/info/luci-theme-${themeName}.control`));
 assert.equal(fs.readFileSync(control,'utf8').match(/^Version:\s*(.+)$/m)?.[1],version,'theme package version mismatch');
 const app = path.join(appRoot, 'luci-app-aether-proxy');
 const messages = parsePo(fs.readFileSync(path.join(app, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
@@ -30,12 +39,13 @@ const git = (...args) => {
  assert.equal(result.status, 0, 'git metadata lookup failed'); return result.stdout.trim();
 };
 function shell(view, mode) {
- return `<!doctype html><html data-theme="${mode}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/luci-static/proton2025/css/cascade.css">
+ return `<!doctype html><html data-theme="${mode}" data-darkmode="${mode === 'dark'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/luci-static/${themeName}/${themeCss}">
+${themeDarkCss ? `<link rel="stylesheet" href="/luci-static/${themeName}/${themeDarkCss}" media="(prefers-color-scheme: dark)">` : ''}
 <script src="/luci-static/resources/cbi.js"></script><script src="/luci-static/resources/luci.js"></script></head>
 <body><div id="indicators"></div><main><div id="maincontent"><div id="view"></div></div></main><button id="outside" type="button">Outside field</button>
 <script>const messages=${JSON.stringify(messages).replace(/</g, '\\u003c')};window._=key=>messages[key]||key;
-window.L=new LuCI({scriptname:'/cgi-bin/luci',resource:'/luci-static/resources',base_url:'/luci-static/resources',media:'/luci-static/proton2025',ubuspath:'/ubus',sessionid:'00000000000000000000000000000000',nodespec:{satisfied:true,readonly:false}});
+window.L=new LuCI({scriptname:'/cgi-bin/luci',resource:'/luci-static/resources',base_url:'/luci-static/resources',media:'/luci-static/${themeName}',ubuspath:'/ubus',sessionid:'00000000000000000000000000000000',nodespec:{satisfied:true,readonly:false}});
 window.ready=L.require('view.aether-proxy.${view}');</script></body></html>`;
 }
 async function pageHarness(browser, mode, width, initial = {}, view = 'advanced', nodes = []) {
@@ -52,12 +62,18 @@ async function pageHarness(browser, mode, width, initial = {}, view = 'advanced'
   'uci.delete':({section,options})=>{ writes++; if (!options) delete values[section]; else for (const key of options) delete values[section][key]; return {}; },
   'uci.add':({type,name,values:incoming})=>{ writes++; const id = name || `cfg${Object.keys(values).length}`; values[id] = {'.name':id,'.type':type,'.index':Object.keys(values).length,...incoming}; return {section:id}; },
   'uci.order':({sections})=>{ writes++; sections.forEach((id,i)=>{ values[id]['.index']=i; }); return {}; },
+  'aetherproxy.stats_history':()=>({ok:true,enabled:true,days:[],quota:{bytes:100e9}}),
+  'aetherproxy.stats':()=>({ok:true}), 'aetherproxy.probe_sites':()=>({ok:true,sites:[]}),
+  'aetherproxy.components':()=>({ok:true,components:[]}),
+  'aetherproxy.events':()=>({ok:true,events:[]}),
+  'aetherproxy.data_status':()=>({ok:true}),
+  'aetherproxy.list_file':()=>({ok:true,content:''}),
   'aetherproxy.probe_results':()=>({ok:true,nodes:{},finished:true}),
   'aetherproxy.sub_status':()=>({ok:true,subscriptions:{}}),
   'aetherproxy.version':()=>({ok:true,version:'fictional-local-fixture',user_agent:'fictional-local-fixture'}),
   'aetherproxy.status':()=>({ok:true,explicit_lan:{interface:'lan',addresses:['192.0.2.1']}}),
   'network.get_proto_handlers':()=>({}), 'network.interface.dump':()=>({interface:[]}),
-  'luci-rpc.getBoardJSON':()=>({}), 'luci-rpc.getHostHints':()=>({}),
+  'luci-rpc.getBoardJSON':()=>({}), 'luci-rpc.getHostHints':()=>({'02:00:00:00:00:01':{name:'fixture-host',ipaddrs:['192.0.2.2']}}),
   'luci-rpc.getNetworkDevices':()=>({'br-lan':{name:'br-lan',devtype:'bridge',up:true,ipaddrs:[{address:'192.0.2.1',netmask:'255.255.255.0'}]}})
  };
  await context.route('**/*', async route => {
@@ -76,7 +92,7 @@ async function pageHarness(browser, mode, width, initial = {}, view = 'advanced'
   }
   if (url.pathname.startsWith('/luci-static/')) {
    const name = url.pathname.slice('/luci-static/'.length);
-   const files = name.startsWith('proton2025/') ? [path.join(theme,name.slice('proton2025/'.length))] :
+   const files = name.startsWith(themeName+'/') ? [path.join(theme,name.slice(themeName.length+1))] :
     [path.join(app,'htdocs/luci-static',name),path.join(www,'luci-static',name)];
    const file = files.find(file => fs.statSync(file,{throwIfNoEntry:false})?.isFile());
    if (file) return route.fulfill({path:file});
@@ -92,15 +108,23 @@ async function pageHarness(browser, mode, width, initial = {}, view = 'advanced'
  const input = field => row(field).locator('input').first();
  const button = (field,label) => row(field).getByRole('button',{name:tr(label),exact:true,includeHidden:true});
  const tab = () => page.locator('.cbi-tabmenu a').filter({hasText:tr('LAN explicit proxy')}).click();
- const open = async () => { await page.goto('http://luci.test'); await page.evaluate(()=>window.ready.then(()=>null)); if (view === 'advanced') await tab(); };
+ const open = async () => {
+  await page.goto('http://luci.test'); await page.evaluate(()=>window.ready.then(()=>null));
+  // L.require resolves the view module before LuCI finishes its async render.
+  // Wait for the mounted form, not an accidentally empty inventory snapshot.
+  await page.locator('#view .cbi-map').first().waitFor({state:'visible'});
+  if (view === 'advanced') await tab();
+ };
  const reset = async () => { await page.locator('.cbi-button-reset').click(); if (view === 'advanced') await tab(); };
  const save = async () => { await page.locator('.cbi-button-save').click(); await page.waitForFunction(()=>!document.querySelector('.cbi-button-save').disabled); };
  return {context,page,values,row,input,button,tab,open,reset,save,writes:()=>writes,unexpected};
 }
 async function matrix(name, initial, exercise, view = 'advanced', nodes = []) {
  fs.mkdirSync(output,{recursive:true});
- const metadata = {theme:'proton2025',version,themeRoot:theme,control,controlSHA256:sha256(control),cssSHA256:sha256(path.join(theme,'css/cascade.css')),
-  sourceSHA256:Object.fromEntries(['aether-proxy/common.js','view/aether-proxy/advanced.js','view/aether-proxy/updates.js','view/aether-proxy/nodes.js'].map(file=>[file,sha256(path.join(app,'htdocs/luci-static/resources',file))])),
+ const metadata = {theme:themeName,version,themeRoot:theme,control,controlSHA256:sha256(control),
+  cssPath:themeCss,cssSHA256:sha256(path.join(theme,themeCss)),
+  darkCssPath:themeDarkCss,darkCssSHA256:themeDarkCss ? sha256(path.join(theme,themeDarkCss)) : null,
+  sourceSHA256:Object.fromEntries(['aether-proxy/common.js','aether-proxy/subscriptions-block.js','view/aether-proxy/overview.js','view/aether-proxy/access.js','view/aether-proxy/rules.js','view/aether-proxy/advanced.js','view/aether-proxy/updates.js','view/aether-proxy/nodes.js','view/aether-proxy/logs.js'].map(file=>[file,sha256(path.join(app,'htdocs/luci-static/resources',file))])),
   gateSHA256:sha256(__filename),appRoot,commit:git('rev-parse','HEAD'),dirty:git('status','--porcelain'),scope:'real LuCI modules + actual theme CSS; simulated session RPC, no device',cases:[]};
  const browser = await chromium.launch();
  metadata.chromium = browser.version();
@@ -124,6 +148,7 @@ async function matrix(name, initial, exercise, view = 'advanced', nodes = []) {
     }
    } finally {
     if (h) {
+     record.modalClosures = h.modalClosures || [];
      try { await h.page.screenshot({path:path.join(output,`${id}-final.png`),fullPage:true}); }
      catch (error) { failures.push(`${id}: screenshot failed: ${error.message}`); }
      await h.context.close();
@@ -163,7 +188,7 @@ async function absent(h, field, label, record, state, traverse = true) {
  await h.page.locator('#outside').focus();
 }
 // Importing the local harness must not register unrelated gates.
-module.exports = { matrix, absent, tr, output, sha256, appRoot };
+module.exports = { matrix, absent, tr, output, sha256, appRoot, pageHarness, chromium };
 if (require.main === module) {
 test('T16.122 visibility: final rendering, hit testing and keyboard focus', async () => {
  await matrix('visibility',{},async (h,record,id) => {

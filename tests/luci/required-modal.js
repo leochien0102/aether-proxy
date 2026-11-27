@@ -43,14 +43,15 @@ function widgetTypes() {
 					return widget;
 				}
 				const input = E(select ? 'select' : name === 'TextValue' ? 'textarea' : 'input', {
-					value
+					value, type: !select && name !== 'TextValue' ? 'text' : undefined,
+					class: this.password ? 'cbi-input-password' : 'cbi-input-text'
 				}, select ? this.keylist.map((key, i) => E('option', { value: key }, this.vallist[i])) : []);
 				input.value = value;
 				this.input = input;
 				// SDK Textfield.render returns a host containing the input and optional reveal button.
 				// Returning the input itself makes querySelector('input') incorrectly return null.
 				return E('div', {}, [input, ...(this.password && !select && name !== 'TextValue'
-					? [E('button', { type: 'button' }, 'Reveal')] : [])]);
+					? [E('button', { type: 'button', class: 'cbi-button cbi-button-neutral' }, 'Reveal')] : [])]);
 			},
 			triggerValidation(id) { return this.isValid(id); },
 			formvalue(id) {

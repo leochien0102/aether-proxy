@@ -97,6 +97,8 @@ for (const destructive of [ true, false, undefined ]) {
  * call too, so losing this/section_id/event across await cannot go unnoticed. */
 function formDouble(effects, uci) {
 	return {
+		// This deletion fixture declares options but never renders text widgets.
+		Value: 'Value', DynamicList: 'DynamicList',
 		Map: class {
 			section() {
 				return this.grid ??= {

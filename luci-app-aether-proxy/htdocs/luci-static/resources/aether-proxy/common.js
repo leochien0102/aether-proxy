@@ -223,12 +223,38 @@ var ap = baseclass.extend({
 	input_action: function(input, icon, label, click, inset = 0) {
 		const host = input.parentElement;
 		host.style.display = 'inline-grid';
+		host.style.position = 'relative';
+		host.style.minWidth = '0';
 		host.style.maxWidth = '100%';
-		input.style.gridArea = '1 / 1';
+		input.style.gridArea = '1 / 1 / 2 / 2';
+		input.style.alignSelf = 'center';
+		// Percentage max-height refers to the grid containing block, not the
+		// input border box. Track that box once per input, shared by all actions.
+		if (!input.apActionSizeObserver) {
+			input.apActionSizeObserver = new ResizeObserver(entries => {
+				const box = entries[0].borderBoxSize;
+				const height = (box?.[0] || box)?.blockSize ?? input.getBoundingClientRect().height;
+				if (height > 0)
+					host.style.setProperty('--ap-input-action-height', height + 'px');
+			});
+			input.apActionSizeObserver.observe(input, { box: 'border-box' });
+		}
+		// DynamicList's + reads previousElementSibling: do not wrap or move the input.
+		if (input.nextElementSibling?.classList.contains('cbi-button-add')) {
+			host.style.gridTemplateColumns = 'minmax(0, 1fr) auto';
+			Object.assign(input.nextElementSibling.style, { gridArea: '1 / 2 / 2 / 3', marginInlineStart: '0' });
+		}
 		input.style.boxSizing = 'border-box';
 		input.style.paddingRight = Math.max((input.style.paddingRight || '').endsWith('rem') ? parseFloat(input.style.paddingRight) : 0, 2 + inset) + 'rem';
+		// Explicit end lines matter for absolute grid items: auto ends use the host's
+		// padding edge and can extend the action into DynamicList's + column.
 		// Theme button defaults (including adjacent margins and hover transforms) must not enlarge the hit slots.
-		const button = E('button', { type: 'button', click, style: 'grid-area:1/1;justify-self:end;align-self:center;position:relative;box-sizing:border-box!important;width:1.75rem!important;min-width:1.75rem!important;max-width:1.75rem!important;height:1.75rem!important;min-height:1.75rem!important;max-height:1.75rem!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;transition:none!important;color:inherit;cursor:pointer;margin:0 ' + inset + 'rem 0 0!important;display:inline-flex;align-items:center;justify-content:center' });
+		const button = E('button', { type: 'button', 'data-ap-action': icon === 'hidden' ? 'eye' : icon, click, style: 'grid-area:1/1/2/2;justify-self:end;align-self:center;position:absolute;box-sizing:border-box!important;width:1.75rem!important;min-width:1.75rem!important;max-width:1.75rem!important;height:min(1.75rem,var(--ap-input-action-height,1.75rem))!important;min-height:0!important;max-height:100%!important;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;transform:none!important;transition:none!important;color:inherit;cursor:pointer;margin:0 ' + inset + 'rem 0 0!important;display:inline-flex;align-items:center;justify-content:center' });
+		// A clear/copy action must not blur a commit-on-blur input before click.
+		button.addEventListener('pointerdown', event => event.preventDefault());
+		button.addEventListener('mousedown', event => event.preventDefault());
+		button.addEventListener('click', event => event.stopPropagation());
+		button.addEventListener('keydown', event => event.stopPropagation());
 		const ns = 'http://www.w3.org/2000/svg';
 		const svg = document.createElementNS(ns, 'svg');
 		for (const [key, value] of Object.entries({ viewBox:'0 0 24 24', width:18, height:18, fill:'none', stroke:'currentColor', 'stroke-width':2, 'stroke-linecap':'round', 'stroke-linejoin':'round', 'aria-hidden':'true' })) svg.setAttribute(key, value);
@@ -256,49 +282,99 @@ var ap = baseclass.extend({
 	 * A DynamicList caller selects its add-item input, never a saved list item.
 	 * Keep validation, formvalue and writers owned by LuCI, not a replacement input.
 	 */
-	field_actions: function(option, labels, selector = 'input') {
-		// ap is the LuCI constructor; retain this module instance across option cloning.
+	field_actions: function(option, labels, selector = 'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])') {
+		if (option.apFieldActions)
+			return option;
+		option.apFieldActions = true;
 		const actions = this;
 		const render = option.renderWidget;
 		option.renderWidget = function(section_id, ...args) {
 			const node = render.call(this, section_id, ...args);
-			const input = node.querySelector(selector);
-			if (this.password) {
-				input.nextElementSibling.remove(); // Replace SDK's external reveal button.
-				input.type = 'password';
-				const eye = actions.input_action(input, 'hidden', labels.show, () => {
-					const reveal = input.type === 'password';
-					input.type = reveal ? 'text' : 'password';
-					eye.setIcon(reveal ? 'eye' : 'hidden', reveal ? labels.hide : labels.show);
-				});
+			if (this.readonly ?? this.map?.readonly)
+				return node;
+			for (const input of node.querySelectorAll(selector)) {
+				// SDK combobox previews are clones, not editable source widgets.
+				if (!input.closest('ul.preview'))
+					actions.clear_input(input, labels, () => this.triggerValidation(section_id));
 			}
-			const clear = actions.input_action(input, 'clear', labels.clear, () => {
-				input.value = '';
-				input.dispatchEvent(new Event('input', { bubbles: true }));
-				input.dispatchEvent(new Event('change', { bubbles: true }));
-				this.triggerValidation(section_id);
-				input.focus();
-			}, this.password ? 1.75 : 0);
-			const host = input.parentElement;
-			const sync = (focus = document.activeElement) => {
-				const visible = !!input.value && !input.readOnly && !input.disabled && host.contains(focus);
-				clear.hidden = !visible;
-				clear.disabled = !visible;
-				clear.tabIndex = visible ? 0 : -1;
-				// Author theme display rules override the browser's default [hidden] rule.
-				clear.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
-			};
-			input.addEventListener('input', () => sync());
-			input.addEventListener('change', () => sync());
-			host.addEventListener('focusin', () => sync());
-			host.addEventListener('focusout', event => sync(event.relatedTarget));
-			new MutationObserver(() => sync()).observe(input, {
-				attributes: true, attributeFilter: ['disabled', 'readonly']
-			});
-			sync();
 			return node;
 		};
 		return option;
+	},
+	/* Explicitly called by plugin sections, never by LuCI prototypes or a document observer.
+	 * Exact widget types exclude ListValue, DeviceSelect, TextValue and DummyValue.
+	 * Custom Value renderers (UA and the two trust DNS rows) retain their SDK instances. */
+	text_actions: function(section, form) {
+		for (const option of section.children) {
+			const proto = Object.getPrototypeOf(option);
+			if (proto === form.Value.prototype || proto === form.DynamicList.prototype)
+				this.field_actions(option, null, proto === form.DynamicList.prototype
+					? '.add-item > input[type="text"], .add-item .create-item-input'
+					: undefined);
+		}
+	},
+	clear_input: function(input, labels, validate = () => {}, inset = 0) {
+		if (input.apClearAction)
+			return input.apClearAction;
+		// The SDK owns a combobox li's display/selection state. Grid only an inner
+		// cell, not the li itself (otherwise a closed dropdown may expose its draft).
+		if (input.classList.contains('create-item-input')) {
+			const cell = E('span', { style: 'width:100%; min-width:0' });
+			input.before(cell);
+			cell.append(input);
+		}
+		labels = labels || {
+			clear: _('Clear input', 'aether-proxy'),
+			show: _('Show password', 'aether-proxy'), hide: _('Hide password', 'aether-proxy')
+		};
+		const password = input.type === 'password' || input.classList.contains('cbi-input-password');
+		if (password) {
+			// Replace only the SDK reveal button, not an arbitrary sibling.
+			if (input.nextElementSibling?.matches('button.cbi-button'))
+				input.nextElementSibling.remove();
+			input.type = 'password';
+			const eye = this.input_action(input, 'hidden', labels.show, () => {
+				const reveal = input.type === 'password';
+				input.type = reveal ? 'text' : 'password';
+				eye.setIcon(reveal ? 'eye' : 'hidden', reveal ? labels.hide : labels.show);
+			});
+			inset = 1.75;
+		}
+		const clear = this.input_action(input, 'clear', labels.clear, () => {
+			if (input.readOnly || input.disabled || input.closest('[disabled]'))
+				return;
+			// Move keyboard focus before sync disables the now-empty clear button.
+			// Otherwise disabling a focused button can blur a commit-on-leave editor.
+			input.focus();
+			input.value = '';
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+			validate();
+			input.focus();
+		}, inset);
+		input.apClearAction = clear;
+		const host = input.parentElement;
+		const sync = (focus = document.activeElement) => {
+			const visible = !!input.value && !input.readOnly && !input.disabled
+				&& !input.closest('[disabled]') && host.contains(focus);
+			clear.hidden = !visible;
+			clear.disabled = !visible;
+			clear.tabIndex = visible ? 0 : -1;
+			// Theme display rules override the browser's default [hidden] rule.
+			clear.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
+		};
+		input.addEventListener('input', () => sync());
+		input.addEventListener('change', () => sync());
+		input.addEventListener('keyup', () => sync());
+		// SDK + / Enter clears the draft programmatically after its change event.
+		input.closest('.cbi-dynlist')?.addEventListener('cbi-dynlist-change', () => Promise.resolve().then(() => sync()));
+		host.addEventListener('focusin', () => sync());
+		host.addEventListener('focusout', event => sync(event.relatedTarget));
+		new MutationObserver(() => sync()).observe(input, {
+			attributes: true, attributeFilter: ['disabled', 'readonly']
+		});
+		sync();
+		return clear;
 	},
 	/* Shared with the module-level TIMEOUTS object, so tests can shrink the
 	   timeouts through the instance (docs/10 「公共模块与菜单」). */

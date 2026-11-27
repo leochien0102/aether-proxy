@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loadModule, parsePo, contentChildren } = require('./loader');
-const { modalElement: element } = require('./modal-dom');
+const { modalElement: element, modalDocument } = require('./modal-dom');
 const { Value: SdkValue } = require('./form-sdk');
 const { widgetTypes, inputOf } = require('./node-input-widgets');
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
@@ -193,7 +193,7 @@ async function harness() {
 		'aether-proxy.common': ap, 'aether-proxy.model.nodes': model,
 		// Isolate node modal staging; progressive-lists exercises the real subscription map.
 		'aether-proxy.subscriptions-block': { render: async () => E('div') }
-	}, { window: {
+	}, { document: modalDocument, window: {
 		setTimeout() {},
 		crypto: { getRandomValues: bytes => {
 			assert.equal(bytes.length, 16);

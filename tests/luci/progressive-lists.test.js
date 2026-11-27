@@ -152,7 +152,7 @@ function formDouble(uci, maps, uciCalls, builtins, builtinKinds) {
 		]);
 	}
 	return { NamedSection: 'NamedSection', GridSection: 'GridSection', Flag: 'Flag', DummyValue: 'DummyValue',
-		ListValue: 'ListValue', Value, Map: class {
+		ListValue: 'ListValue', DynamicList: 'DynamicList', Value, Map: class {
 		constructor(config) { this.config = config; this.sections = []; maps.push(this); }
 		section(kind, type, sectionType, title) {
 			const section = {

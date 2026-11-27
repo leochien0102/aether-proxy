@@ -130,8 +130,10 @@ return view.extend({
 		};
 		this.addMainOptions(m);
 		this.addHostOptions(m);
-		for (const section of m.children)
+		for (const section of m.children) {
+			ap.text_actions(section, form);
 			form_defaults.section(section, null, { udp: { clear_inactive: true } });
+		}
 		return m;
 	},
 

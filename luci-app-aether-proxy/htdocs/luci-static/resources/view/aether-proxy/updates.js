@@ -212,10 +212,13 @@ return view.extend({
 				button.setIcon('check', _('Copied', 'aether-proxy'));
 				timer = setTimeout(() => button.setIcon('copy', label), 1200);
 			});
+			// Copy stays at the right; clear has its own slot to the left.
+			ap.clear_input(input, null, () => this.triggerValidation(arguments[0]), 1.75);
 			return node;
 		};
 		// The optional add box is validated even while empty (docs/10 r14); it is not a URL item.
 		option.validate = function(section_id, value) { return value === '' ? true : model.validate_url(value); };
+		ap.text_actions(section, form);
 		form_defaults.section(section, {
 			data_hour: '4', data_minute: '30', channel_urls: [option.placeholder]
 		});

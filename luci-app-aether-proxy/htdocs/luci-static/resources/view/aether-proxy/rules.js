@@ -224,6 +224,7 @@ return view.extend({
 				return field[0] == 'dns_probe_domain' && value === '' ? true : model.validate(field[0], value);
 			};
 		});
+		ap.text_actions(section, form);
 		form_defaults.section(section, { dns_probe_domain: 'www.google.com' }, {
 			// The composite widget displays tcp://IP and bare IP identically.
 			trust_dns: { normalize: value => model.trust_values(model.trust_rows(value)) }

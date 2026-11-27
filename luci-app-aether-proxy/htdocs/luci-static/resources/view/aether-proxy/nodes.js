@@ -614,6 +614,7 @@ return view.extend({
 		o.validate = validateProxyCredential;
 
 		o = s.option(form.Value, 'password', _('Password', 'aether-proxy'));
+		o.password = true;
 		o.modalonly = true;
 		o.depends('protocol', 'trojan');
 		o.depends('protocol', 'shadowsocks');
@@ -840,6 +841,7 @@ return view.extend({
 				option.depends('protocol', 'hysteria');
 		}
 
+		ap.text_actions(s, form);
 		form_defaults.section(s, {
 			encryption: 'none'
 		/* Fields the backend checks for conflicts are deleted while hidden, like
@@ -912,9 +914,11 @@ return view.extend({
 			'type': 'text', 'class': 'cbi-input-text', 'value': added.uri
 		});
 		const error = E('div');
+		const cell = E('span', {}, [input]);
+		ap.clear_input(input);
 		return E('div', {}, [
 			E('div', { 'style': 'display:flex; align-items:center; gap:0.5em; flex-wrap:wrap' }, [
-				input,
+				cell,
 				E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'click': ui.createHandlerFn(this, () => this.handleParseNode(added, input, error))

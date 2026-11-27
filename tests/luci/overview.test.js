@@ -15,7 +15,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { loadModule, parsePo, element, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
+const { loadModule, parsePo, contentChildren, htmlWriteMark, htmlWritesSince } = require('./loader.js');
+const { modalElement: element, modalDocument } = require('./modal-dom');
 const { actionRow } = require('./button-layout');
 
 const APP = path.join(__dirname, '..', '..', 'luci-app-aether-proxy');
@@ -62,6 +63,7 @@ function build(status, version, labels, now, enabled, configuredNode, components
    the way T8.9b loads the updates view for its job-flow test. Each test sees
    the recorded rpc calls and the order of uci/ui operations. */
 function loadView(overrides = {}) {
+	modalDocument.activeElement = null;
 	const rpcCalls = overrides.rpcCalls ?? [];
 	const ap = overrides.ap ?? {
 		confirm: overrides.confirm ?? (async () => true),
@@ -112,9 +114,7 @@ function loadView(overrides = {}) {
 		setTimeout: () => {}, clearTimeout: () => {},
 		localStorage: { getItem: () => null, setItem: () => {} },
 		addEventListener() {}, removeEventListener() {}
-	}, overrides.window ?? {}), document: overrides.document ?? {
-		addEventListener() {}, removeEventListener() {}
-	} });
+	}, overrides.window ?? {}), document: overrides.document ?? modalDocument });
 }
 
 /* Expected text for a translated template with its %s filled in. */
@@ -968,9 +968,9 @@ test('T14.3: no-node fallback clears only its margin and keeps wrapping beside p
 	const fallback = row.children[0];
 	assert.equal(fallback.tag, 'p');
 	assert.equal(fallback.textContent, tr('There are no nodes yet. Add or import nodes on the Nodes page.'));
-	assert.equal(fallback.style, 'margin:0');
-	assert.match(row.style, /align-items:center/);
-	assert.match(row.style, /flex-wrap:wrap/);
+	assert.deepEqual({ ...fallback.style }, { margin: '0' }, 'only the fallback margin is cleared');
+	assert.equal(row.style.alignItems, 'center');
+	assert.equal(row.style.flexWrap, 'wrap');
 	assert.ok(row.children.length > 1, 'probe controls remain beside the fallback');
 });
 

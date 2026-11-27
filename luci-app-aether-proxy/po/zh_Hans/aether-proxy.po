@@ -5,6 +5,10 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 msgctxt "aether-proxy"
+msgid "Clear input"
+msgstr "清空输入"
+
+msgctxt "aether-proxy"
 msgid "User-Agent"
 msgstr "User-Agent"
 
