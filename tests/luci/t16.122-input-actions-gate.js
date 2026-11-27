@@ -38,17 +38,23 @@ function shell(view, mode) {
 window.L=new LuCI({scriptname:'/cgi-bin/luci',resource:'/luci-static/resources',base_url:'/luci-static/resources',media:'/luci-static/proton2025',ubuspath:'/ubus',sessionid:'00000000000000000000000000000000',nodespec:{satisfied:true,readonly:false}});
 window.ready=L.require('view.aether-proxy.${view}');</script></body></html>`;
 }
-async function pageHarness(browser, mode, width, initial = {}, view = 'advanced') {
+async function pageHarness(browser, mode, width, initial = {}, view = 'advanced', nodes = []) {
  const context = await browser.newContext({ viewport:{width,height:1000}, colorScheme:mode, serviceWorkers:'block' });
  const values = Object.fromEntries([['main','global',{lan_ifaces:['br-lan'],...initial}],['update','update',{}],['dns','dns',{}],['probe','probe',{}],['stats','stats',{}]]
   .map(([id,type,opts],i) => [id,{'.name':id,'.type':type,'.index':i,...opts}]));
+ for (const [i, node] of nodes.entries()) values[node['.name']] = {'.type':'node','.index':i+5,...node};
  let writes = 0;
  const unexpected = [];
  const fixtures = {
   'session.access':()=>({access:true}), 'luci.getFeatures':()=>({}), 'luci.getInitList':()=>({}),
   'uci.get':({config})=>({values:config === 'aetherproxy' ? values : {}}), 'uci.changes':()=>({changes:{}}),
   'uci.set':({section,values:incoming})=>{ writes++; Object.assign(values[section],incoming); return {}; },
-  'uci.delete':({section,options})=>{ writes++; for (const key of options || []) delete values[section][key]; return {}; },
+  'uci.delete':({section,options})=>{ writes++; if (!options) delete values[section]; else for (const key of options) delete values[section][key]; return {}; },
+  'uci.add':({type,name,values:incoming})=>{ writes++; const id = name || `cfg${Object.keys(values).length}`; values[id] = {'.name':id,'.type':type,'.index':Object.keys(values).length,...incoming}; return {section:id}; },
+  'uci.order':({sections})=>{ writes++; sections.forEach((id,i)=>{ values[id]['.index']=i; }); return {}; },
+  'aetherproxy.probe_results':()=>({ok:true,nodes:{},finished:true}),
+  'aetherproxy.sub_status':()=>({ok:true,subscriptions:{}}),
+  'aetherproxy.version':()=>({ok:true,version:'fictional-local-fixture',user_agent:'fictional-local-fixture'}),
   'aetherproxy.status':()=>({ok:true,explicit_lan:{interface:'lan',addresses:['192.0.2.1']}}),
   'network.get_proto_handlers':()=>({}), 'network.interface.dump':()=>({interface:[]}),
   'luci-rpc.getBoardJSON':()=>({}), 'luci-rpc.getHostHints':()=>({}),
@@ -80,7 +86,7 @@ async function pageHarness(browser, mode, width, initial = {}, view = 'advanced'
  const page = await context.newPage();
  page.setDefaultTimeout(8000);
  page.on('pageerror', error => {
-  if (!/invalid input value|Authentication requires both|共享用户名和密码/.test(error.message)) unexpected.push('SDK page error');
+  if (!/invalid input value|Authentication requires both|共享用户名和密码/.test(error.message)) unexpected.push(`SDK page error: ${error.message}`);
  });
  const row = field => page.locator(`[data-name="${field}"]`);
  const input = field => row(field).locator('input').first();
@@ -91,10 +97,10 @@ async function pageHarness(browser, mode, width, initial = {}, view = 'advanced'
  const save = async () => { await page.locator('.cbi-button-save').click(); await page.waitForFunction(()=>!document.querySelector('.cbi-button-save').disabled); };
  return {context,page,values,row,input,button,tab,open,reset,save,writes:()=>writes,unexpected};
 }
-async function matrix(name, initial, exercise) {
+async function matrix(name, initial, exercise, view = 'advanced', nodes = []) {
  fs.mkdirSync(output,{recursive:true});
  const metadata = {theme:'proton2025',version,themeRoot:theme,control,controlSHA256:sha256(control),cssSHA256:sha256(path.join(theme,'css/cascade.css')),
-  sourceSHA256:Object.fromEntries(['aether-proxy/common.js','view/aether-proxy/advanced.js','view/aether-proxy/updates.js'].map(file=>[file,sha256(path.join(app,'htdocs/luci-static/resources',file))])),
+  sourceSHA256:Object.fromEntries(['aether-proxy/common.js','view/aether-proxy/advanced.js','view/aether-proxy/updates.js','view/aether-proxy/nodes.js'].map(file=>[file,sha256(path.join(app,'htdocs/luci-static/resources',file))])),
   gateSHA256:sha256(__filename),appRoot,commit:git('rev-parse','HEAD'),dirty:git('status','--porcelain'),scope:'real LuCI modules + actual theme CSS; simulated session RPC, no device',cases:[]};
  const browser = await chromium.launch();
  metadata.chromium = browser.version();
@@ -104,13 +110,18 @@ async function matrix(name, initial, exercise) {
    const id = `${name}-${mode}-${width}`, record = {id,mode,width};
    let h;
    try {
-    h = await pageHarness(browser,mode,width,initial);
+    h = await pageHarness(browser,mode,width,initial,view,nodes);
     await h.open();
     await exercise(h,record,id,browser);
     assert.deepEqual(h.unexpected,[],'unexpected requests/errors');
     record.result = 'PASS';
    } catch (error) {
     record.result = 'FAIL'; record.error = error.message; failures.push(`${id}: ${error.message}`);
+    if (h) {
+     record.browserErrors = h.unexpected.slice();
+     const overlay = h.page.locator('#modal_overlay');
+     if (await overlay.count()) record.modalText = await overlay.innerText({timeout:1000}).catch(()=>'(unavailable)');
+    }
    } finally {
     if (h) {
      try { await h.page.screenshot({path:path.join(output,`${id}-final.png`),fullPage:true}); }
@@ -151,6 +162,9 @@ async function absent(h, field, label, record, state, traverse = true) {
  }
  await h.page.locator('#outside').focus();
 }
+// Importing the local harness must not register unrelated gates.
+module.exports = { matrix, absent, tr, output, sha256, appRoot };
+if (require.main === module) {
 test('T16.122 visibility: final rendering, hit testing and keyboard focus', async () => {
  await matrix('visibility',{},async (h,record,id) => {
   for (const [field,label] of [['proxy_username','Clear username'],['proxy_password','Clear password']]) {
@@ -248,3 +262,4 @@ test('T16.122 layout: zero button intersection and real coordinate clicks', asyn
   } finally { await updates.context.close(); }
  });
 });
+}

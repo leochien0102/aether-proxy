@@ -1,0 +1,36 @@
+✖ T16.122 layout: zero button intersection and real coordinate clicks (4447.53673ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4807.053922
+
+✖ failing tests:
+
+test at tests/luci/t16.122-input-actions-gate.js:204:1
+✖ T16.122 layout: zero button intersection and real coordinate clicks (4447.53673ms)
+  AssertionError [ERR_ASSERTION]: layout: each matrix entry must pass
+  + actual - expected
+
+  + [
+  +   'layout-dark-1280: clear and eye button hit boxes overlap\n\n784 !== 0\n',
+  +   'layout-dark-360: clear and eye button hit boxes overlap\n\n784 !== 0\n',
+  +   'layout-light-1280: clear and eye button hit boxes overlap\n\n784 !== 0\n',
+  +   'layout-light-360: clear and eye button hit boxes overlap\n\n784 !== 0\n'
+  + ]
+  - []
+
+      at matrix (/workspace/openwrt/aether-proxy-wt/T16.123/tests/luci/t16.122-input-actions-gate.js:138:9)
+      at async TestContext.<anonymous> (/workspace/openwrt/aether-proxy-wt/T16.123/tests/luci/t16.122-input-actions-gate.js:205:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'layout-dark-1280: clear and eye button hit boxes overlap\n\n784 !== 0\n', 'layout-dark-360: clear and eye button hit boxes overlap\n\n784 !== 0\n', 'layout-light-1280: clear and eye button hit boxes overlap\n\n784 !== 0\n', 'layout-light-360: clear and eye button hit boxes overlap\n\n784 !== 0\n' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

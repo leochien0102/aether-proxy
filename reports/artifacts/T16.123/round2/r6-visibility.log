@@ -1,0 +1,36 @@
+✖ T16.122 visibility: final rendering, hit testing and keyboard focus (3483.491878ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3852.373907
+
+✖ failing tests:
+
+test at tests/luci/t16.122-input-actions-gate.js:168:1
+✖ T16.122 visibility: final rendering, hit testing and keyboard focus (3483.491878ms)
+  AssertionError [ERR_ASSERTION]: visibility: each matrix entry must pass
+  + actual - expected
+
+  + [
+  +   'visibility-dark-1280: initial empty: clear is painted\n\ntrue !== false\n',
+  +   'visibility-dark-360: initial empty: clear is painted\n\ntrue !== false\n',
+  +   'visibility-light-1280: initial empty: clear is painted\n\ntrue !== false\n',
+  +   'visibility-light-360: initial empty: clear is painted\n\ntrue !== false\n'
+  + ]
+  - []
+
+      at matrix (/workspace/openwrt/aether-proxy-wt/T16.123/tests/luci/t16.122-input-actions-gate.js:138:9)
+      at async TestContext.<anonymous> (/workspace/openwrt/aether-proxy-wt/T16.123/tests/luci/t16.122-input-actions-gate.js:169:2)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ 'visibility-dark-1280: initial empty: clear is painted\n\ntrue !== false\n', 'visibility-dark-360: initial empty: clear is painted\n\ntrue !== false\n', 'visibility-light-1280: initial empty: clear is painted\n\ntrue !== false\n', 'visibility-light-360: initial empty: clear is painted\n\ntrue !== false\n' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

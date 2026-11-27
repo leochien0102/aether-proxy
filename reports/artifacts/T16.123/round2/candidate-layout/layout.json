@@ -1,0 +1,274 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "39f7f41c88474a0bce8c20ca54a13926a153dc06590d0f84ae36d04bd9d0db7a",
+    "view/aether-proxy/advanced.js": "8231868913821a03a5213b18b03e7af2d678e9cfe808ee32b73c4e0f95050402",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc",
+    "view/aether-proxy/nodes.js": "c543c7309ccb3f05864cc838cf08b268459d7d2d170e9a48ad8302a59f3d8754"
+  },
+  "gateSHA256": "58fb24e090bd956f48f967d67171eab74f8d3e6983396153b2d15a292be57bc1",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.123",
+  "commit": "7ad8553741be4c92a1adfa7863e9f44ae68a2a51",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/advanced.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js\n M luci-app-aether-proxy/po/zh_Hans/aether-proxy.po\n M tests/luci/loader.js\n M tests/luci/modal-dom.js\n M tests/luci/nodes-add.test.js\n M tests/luci/required-modal.js\n M tests/luci/t16.122-input-actions-gate.js\n?? reports/T16.123.md\n?? reports/artifacts/T16.123/\n?? tests/luci/t16.123-field-actions.test.js\n?? tests/luci/t16.123-node-mask-gate.js\n?? tests/luci/t16.123-run-local.sh",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "layout-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 393.8808898925781,
+          "width": 568,
+          "height": 40
+        },
+        "copy": {
+          "x": 815,
+          "y": 397.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 845,
+          "y": 391.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 938.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 959.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 959.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 945.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 588.1861572265625,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 591.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 585.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 396.24822998046875,
+          "width": 568,
+          "height": 40
+        },
+        "copy": {
+          "x": 815,
+          "y": 399.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 845,
+          "y": 393.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    },
+    {
+      "id": "layout-light-360",
+      "mode": "light",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 938.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 959.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 959.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 945.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 590.1849365234375,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 593.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 587.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}
