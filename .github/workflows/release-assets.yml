@@ -10,6 +10,10 @@ on:
         description: Existing formal tag (vVERSION-rN)
         required: true
         type: string
+      expected_count:
+        description: Optional assertion against the tagged package layout (blank = automatic)
+        required: false
+        type: string
       dry_run:
         description: Stage directly from gate artifacts without creating/updating a Release
         type: boolean
@@ -32,6 +36,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       TAG: ${{ inputs.tag || github.ref_name }}
+      EXPECTED_COUNT: ${{ inputs.expected_count }}
       DRY_RUN: ${{ inputs.dry_run || false }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -57,6 +62,9 @@ jobs:
           sha=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
           [[ $(git rev-parse HEAD) == "$sha" ]]
           echo "BUILD_SHA=$sha" >> "$GITHUB_ENV"
+          if [[ -n "$EXPECTED_COUNT" ]]; then
+            python3 ../workflow-source/tools/release/stage.py --layout-only --expected-count "$EXPECTED_COUNT"
+          fi
           if [[ "$DRY_RUN" == true ]]; then
             echo 'mode=direct' >> "$GITHUB_OUTPUT"
           else
@@ -78,7 +86,7 @@ jobs:
           artifact-ids: ${{ steps.gate.outputs.artifact_ids }}
           merge-multiple: false
           path: release-source/artifacts
-      - name: Stage the 18 formal package assets (direct)
+      - name: Stage the tagged formal package matrix (direct)
         if: steps.route.outputs.mode == 'direct'
         working-directory: release-source
         shell: bash

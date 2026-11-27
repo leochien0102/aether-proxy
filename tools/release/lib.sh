@@ -13,11 +13,20 @@ verify() { python3 "$RELEASE_TOOLS/verify.py" "$1" "$APP_REPO" "${@:2}"; }
 parse_args() {
     local usage=$1
     shift
-    [[ $# == 1 || ( $# == 2 && $2 == --dry-run ) ]] || die "Usage: $usage"
+    [[ $# -gt 0 ]] || die "Usage: $usage"
     [[ $1 != -* ]] || die "Usage: $usage"
     INPUT=$1
     DRY_RUN=false
-    [[ $# == 1 ]] || DRY_RUN=true
+    shift
+    COUNT_ARGS=()
+    while (($#)); do
+        case $1 in
+            --dry-run) "$DRY_RUN" && die "Usage: $usage"; DRY_RUN=true; shift ;;
+            --expected-count) [[ $# -ge 2 && $2 =~ ^[0-9]+$ && ${#COUNT_ARGS[@]} == 0 ]] || die "Usage: $usage"
+                COUNT_ARGS=(--expected-count "$2"); shift 2 ;;
+            *) die "Usage: $usage" ;;
+        esac
+    done
     cd "$RELEASE_TOOLS/../.."
     command -v gh >/dev/null || die 'gh is required'
     if ! "$DRY_RUN"; then
@@ -136,6 +145,7 @@ wait_workflow() {
 publish_channel() {
     local tag=$1 request_id
     local args=(gh workflow run publish-channel.yml -R "$CHANNEL_REPO" --ref main -f "release_tag=$tag")
+    if ((${#COUNT_ARGS[@]})); then args+=(-f "expected_count=${COUNT_ARGS[1]}"); fi
     if "$DRY_RUN"; then
         command_plan "${args[@]}" -f dry_run=true
     else

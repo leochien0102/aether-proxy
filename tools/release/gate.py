@@ -11,10 +11,12 @@ import re
 import subprocess
 
 
+SDKS = [('24.10.8', 'ipk'), ('25.12.5', 'apk')]
+ARCHES = ('aarch64_generic', 'x86_64')
 MATRIX = {
 	f'packages-{sdk}-{arch}': ext
-	for sdk, ext in [('24.10.8', 'ipk'), ('25.12.5', 'apk')]
-	for arch in ['aarch64_generic', 'x86_64']
+	for sdk, ext in SDKS
+	for arch in ARCHES
 }
 HINT = '先让门禁通过：在 tag 的同一 SHA 上运行 build.yml，确认四组 packages 和六组 smoke 成功且产物未过期。'
 

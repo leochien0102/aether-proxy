@@ -15,7 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 TOOLS = ROOT / 'tools/release'
 CHANNEL = Path(os.environ.get('CHANNEL_WORKTREE', ROOT.parents[1] / 'aether-proxy-channel-wt' / ROOT.name))
-TAG = 'v1.2.1-r1'
+TAG = 'v1.3.1-r5'
 COMMIT = 'a' * 40
 sys.path.insert(0, str(TOOLS))
 from stage import formal_name, reconcile, write_formal_metadata
@@ -27,13 +27,13 @@ def load(path):
     return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
 
-def packages():
+def packages(arch_all=verify.ARCH_ALL):
     for name in verify.NAMES:
-        version = '26.323.05013~470517b' if name == verify.ARCH_ALL[2] else TAG[1:]
-        for arch in ('all',) if name in verify.ARCH_ALL else verify.ARCHES:
+        version = '26.323.05013~470517b' if name == 'luci-i18n-aether-proxy-zh-cn' else TAG[1:]
+        for arch in ('all',) if name in arch_all else verify.ARCHES:
             for fmt in verify.FORMATS:
                 raw = f'{name}_{version}_{arch}.ipk' if fmt == 'ipk' else f'{name}-{version}.apk'
-                yield name, arch, fmt, raw, formal_name(name, arch, fmt, raw), version
+                yield name, arch, fmt, raw, formal_name(name, arch, fmt, raw, arch_all), version
 
 
 class ReleasePaths(unittest.TestCase):
@@ -70,7 +70,7 @@ class ReleasePaths(unittest.TestCase):
         self.check_shell_steps(steps)
 
     def test_release_entry_advertises_dry_run(self):
-        self.assertIn('$2 == --dry-run', (TOOLS / 'lib.sh').read_text())
+        self.assertIn('--dry-run)', (TOOLS / 'lib.sh').read_text())
         path = TOOLS / 'release.sh'
         self.assertTrue(os.access(path, os.X_OK))
         self.assertIn('[--dry-run]', path.read_text())
@@ -79,10 +79,52 @@ class ReleasePaths(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('Usage:', result.stderr)
 
+    def test_stage_current_matrix_with_historical_backend(self):
+        self.stage_matrix(verify.ARCH_ALL, 20)
+
+    def test_stage_historical_tag(self):
+        self.stage_matrix(('aether-proxy', *verify.ARCH_ALL), 18)
+
+    def stage_matrix(self, arch_all, count):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, slot, fmt, raw, filename, version in packages(arch_all):
+                pkg = root / name
+                pkg.mkdir(exist_ok=True)
+                (pkg / 'Makefile').write_text('PKG_VERSION:=1.3.1\nPKG_RELEASE:=5\n' +
+                    ('  PKGARCH:=all\n' if name in arch_all else ''))
+                sdk = '24.10.8' if fmt == 'ipk' else '25.12.5'
+                for arch in verify.ARCHES if slot == 'all' else (slot,):
+                    dest = root / 'artifacts' / f'packages-{sdk}-{arch}'
+                    dest.mkdir(parents=True, exist_ok=True)
+                    (dest / raw).write_bytes(f'{arch}/{raw}'.encode())
+            builder = root / 'tools/channel/build.py'
+            builder.parent.mkdir(parents=True)
+            builder.write_text(f'PACKAGE_NAMES = {verify.NAMES!r}\nARCH_ALL = {arch_all!r}\n')
+            manifest = root / 'old.json'
+            manifest.write_text(json.dumps({'packages': {'aether-proxy': {'current': {
+                'version': '1.2.0-r1', 'assets': {'all': {}}}}}}))
+            git = root / 'git'
+            git.write_text(f'#!/bin/sh\necho {COMMIT}\n')
+            git.chmod(0o755)
+            env = dict(os.environ, TAG=TAG, BUILD_SHA=COMMIT, CHANNEL_MANIFEST=str(manifest),
+                       PATH=f'{tmp}:{os.environ["PATH"]}')
+            bad = subprocess.run([sys.executable, TOOLS / 'stage.py', '--expected-count', str(count + 1)],
+                                 cwd=root, env=env, capture_output=True, text=True)
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertIn('differs from tagged layout', bad.stderr)
+            self.assertFalse((root / 'release-assets').exists())
+            subprocess.run([sys.executable, TOOLS / 'stage.py', '--expected-count', str(count)], cwd=root, env=env, check=True)
+            out = root / 'release-assets'
+            self.assertEqual(len(list(out.iterdir())), count)
+            for _, slot, _, raw, filename, _ in packages(arch_all):
+                arch = 'aarch64_generic' if slot == 'all' else slot
+                self.assertEqual((out / filename).read_bytes(), f'{arch}/{raw}'.encode())
+
     def test_channel_inputs_and_writes(self):
         workflow = self.channel_workflow()
         inputs = workflow['on']['workflow_dispatch']['inputs']
-        self.assertEqual(set(inputs), {'release_tag', 'dry_run', 'request_id'})
+        self.assertEqual(set(inputs), {'release_tag', 'dry_run', 'request_id', 'expected_count'})
         self.assertEqual(inputs['release_tag']['required'], 'true')
         self.assertEqual((inputs['dry_run']['type'], inputs['dry_run']['default']), ('boolean', 'false'))
         steps = workflow['jobs']['publish']['steps']
@@ -126,7 +168,7 @@ class ReleasePaths(unittest.TestCase):
                 self.assertEqual((Path(tmp) / 'called').exists(), tag == TAG)
                 self.assertFalse((Path(tmp) / 'download').exists())
 
-    def test_formal_inventory_preserves_18_bytes_and_raw_versions_through_preflight(self):
+    def test_formal_inventory_preserves_20_bytes_and_raw_versions_through_preflight(self):
         validate = self.channel_step('Download and validate')
         preview = self.channel_step('Preview stable')
         with tempfile.TemporaryDirectory() as tmp:
@@ -140,7 +182,7 @@ class ReleasePaths(unittest.TestCase):
             write_formal_metadata(out, COMMIT, versions)
             subprocess.run(['sha256sum', '--check', '--strict', '../SHA256SUMS'], cwd=out, check=True,
                            stdout=subprocess.DEVNULL)
-            self.assertEqual(len(list(out.iterdir())), 18)
+            self.assertEqual(len(list(out.iterdir())), 20)
             gh = root / 'gh'
             gh.write_text('''#!/usr/bin/env python3
 import json, os, shutil, sys
@@ -156,7 +198,8 @@ elif args[0] == 'api' and '/contents/' in args[-1]:
     path, ref = args[-1].split('/contents/', 1)[1].split('?ref=')
     assert ref == os.environ['COMMIT']
     if path.endswith('/Makefile'):
-        print('PKG_VERSION:=1.2.1\\nPKG_RELEASE:=1')
+        print('PKG_VERSION:=1.3.1\\nPKG_RELEASE:=5')
+        if path == 'luci-app-aether-proxy/Makefile': print('LUCI_PKGARCH:=all')
     else:
         sys.stdout.buffer.write((Path(os.environ['APP_ROOT']) / path).read_bytes())
 elif args[:2] == ['release', 'download'] and args[2] == os.environ['RELEASE_TAG']:
@@ -166,8 +209,8 @@ else:
 ''')
             gh.chmod(0o755)
             env = dict(os.environ, PATH=f'{tmp}:{os.environ["PATH"]}', APP_REPO='offline/app', RELEASE_TAG=TAG,
-                       GITHUB_REPOSITORY='offline/channel', APP_ROOT=str(ROOT), COMMIT=COMMIT)
-            for condition, reason in (('count', 'exactly 18'), ('commit', 'does not match tag commit'),
+                       GITHUB_REPOSITORY='offline/channel', APP_ROOT=str(ROOT), COMMIT=COMMIT, PYTHONPATH=str(CHANNEL))
+            for condition, reason in (('count', 'exactly 20'), ('commit', 'does not match tag commit'),
                                       ('hash', 'SHA-256 mismatch'), ('ok', None)):
                 with self.subTest(condition=condition):
                     work = root / condition
@@ -212,6 +255,19 @@ else:
                 compare.assert_not_called()
                 output.assert_called_once_with('mode=direct')
 
+    def test_native_tag_rejects_legacy_or_swapped_backend(self):
+        for arch_all in (('aether-proxy', *verify.ARCH_ALL), verify.ARCH_ALL):
+            manifest = {'packages': {}}
+            for name, arch, fmt, _, url, version in packages(arch_all):
+                record = manifest['packages'].setdefault(name, {'current': {'version': version, 'assets': {}}})
+                record['current']['assets'].setdefault(arch, {})[fmt] = dict(url=url, sha256='f' * 64)
+            self.assertEqual(len(list(verify.channel_packages(manifest, arch_all))), 24 - 2 * len(arch_all))
+            if arch_all == verify.ARCH_ALL:
+                slots = manifest['packages']['aether-proxy']['current']['assets']
+                slots['x86_64']['apk'] = slots['aarch64_generic']['apk']
+            with self.assertRaisesRegex(ValueError, 'architectures|identity'):
+                list(verify.channel_packages(manifest, verify.ARCH_ALL))
+
     def test_stable_rerun_requires_formal_release_and_identical_downloads(self):
         manifest = {'packages': {}}
         assets = {}
@@ -232,6 +288,7 @@ else:
 
                 with (patch.object(verify, 'stable_manifest', return_value=manifest),
                       patch.object(verify, 'commit_for', return_value='b' * 40 if condition == 'wrong-commit' else COMMIT),
+                      patch.object(verify, 'gh', return_value=(ROOT / 'tools/channel/build.py').read_text()),
                       patch.object(verify, 'published', return_value=release,
                                    side_effect=ValueError('Not published') if condition == 'unpublished' else None),
                       patch.object(verify, 'download', side_effect=download), patch('builtins.print') as output):
@@ -267,7 +324,7 @@ class ReconcilePublishedBytes(unittest.TestCase):
         return entry
 
     def published_asset(self, entry, content):
-        url = 'published/' + entry['asset']
+        url = entry['asset']
         self.published[(self.manifest_source.parent / url).as_uri()] = content
         return dict(url=url, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
 
@@ -323,8 +380,20 @@ class ReconcilePublishedBytes(unittest.TestCase):
         self.assertEqual(entry['source'], 'built')
         self.assertEqual(self.fetched, [self.manifest_source.as_uri()])
 
-    def test_three_noarch_packages_use_all_assets(self):
-        for name in ('aether-proxy', 'luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
+    def test_backend_migration_never_relabels_historical_all_bytes(self):
+        entry = self.stage_entry('aether-proxy')
+        asset = self.published_asset(entry, self.PUBLISHED)
+        old = self.package_record(entry, asset, arch='all', version='1.0.1-r1')
+        before = self.snapshot()
+        self.reconcile([entry], {'packages': {'aether-proxy': old}})
+        self.assertEqual(entry['source'], 'built')
+        old['current']['version'] = entry['version']
+        with self.assertRaisesRegex(SystemExit, 'Published reconciliation failed'):
+            self.reconcile([entry], {'packages': {'aether-proxy': old}})
+        self.assertEqual(self.snapshot(), before)
+
+    def test_two_noarch_packages_use_all_assets(self):
+        for name in ('luci-app-aether-proxy', 'luci-i18n-aether-proxy-zh-cn'):
             with self.subTest(package=name):
                 entry = self.stage_entry(name)
                 content = f'published {name}'.encode()

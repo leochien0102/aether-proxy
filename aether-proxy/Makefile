@@ -15,11 +15,10 @@ define Package/aether-proxy
   CATEGORY:=Network
   TITLE:=Transparent proxy manager (Xray, ChinaDNS-NG) for fw4
   URL:=https://github.com/leochien0102/aether-proxy
-  PKGARCH:=all
   DEPENDS:= \
 	+kmod-nft-tproxy +kmod-nft-socket +ip-full +curl +ca-bundle \
 	+firewall4 +resolveip +usign +dnsmasq \
-	+ucode +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
+	+ucode +libucode +libgcc +ucode-mod-fs +ucode-mod-uci +ucode-mod-uloop +ucode-mod-socket \
 	+ucode-mod-log +aether-xray +dns-engine
 endef
 
@@ -37,10 +36,16 @@ define Build/Prepare
 endef
 
 define Build/Compile
+	$(TARGET_CC) $(TARGET_CPPFLAGS) $(TARGET_CFLAGS) -fPIC -shared \
+		-o $(PKG_BUILD_DIR)/aetherproxy_guard.so \
+		$(PKG_BUILD_DIR)/native/fd-guard.c $(PKG_BUILD_DIR)/native/ucode-guard.c \
+		$(TARGET_LDFLAGS) -lucode
 endef
 
 # The placeholder in const.uc becomes "<PKG_VERSION>-<PKG_RELEASE>".
 define Package/aether-proxy/install
+	$(INSTALL_DIR) $(1)/usr/lib/aether-proxy
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aetherproxy_guard.so $(1)/usr/lib/aether-proxy/aetherproxy_guard.so
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/aether-proxy $(1)/usr/bin/aether-proxy
 	$(INSTALL_DIR) $(1)/usr/share/ucode/aetherproxy
