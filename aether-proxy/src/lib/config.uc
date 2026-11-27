@@ -621,6 +621,16 @@ export function validate_node(node) {
 // The copy is normalized below, so reading and validation cannot migrate persisted UCI.
 function explicit_proxy_main(raw, errors) {
 	let main = { ...(raw ?? {}) };
+	// Only an absent field is legacy. Empty/invalid values must not disable authentication.
+	if (main.proxy_auth_enabled == null) {
+		let retained = false;
+		for (let prefix in [ 'proxy', 'socks', 'http' ])
+			for (let key in [ 'username', 'password' ])
+				if (!unset(main[prefix + '_' + key])) retained = true;
+		if (retained) main.proxy_auth_enabled = '1';
+	}
+	else if (type(main.proxy_auth_enabled) != 'string' || (main.proxy_auth_enabled != '0' && main.proxy_auth_enabled != '1'))
+		push(errors, { field: 'main.proxy_auth_enabled', code: 'invalid_bool', detail: 'must be explicitly 0 or 1' });
 	if (!unset(main.proxy_username) && !unset(main.proxy_password))
 		return main;
 	let socks = [ unset(main.socks_username) ? null : main.socks_username, unset(main.socks_password) ? null : main.socks_password ];
@@ -628,7 +638,7 @@ function explicit_proxy_main(raw, errors) {
 	let socks_set = !unset(socks[0]) || !unset(socks[1]);
 	let http_set = !unset(http[0]) || !unset(http[1]);
 	if (socks_set && http_set && (socks[0] != http[0] || socks[1] != http[1])) {
-		if (main.socks_enabled == '1' || main.socks_enabled == true || main.http_enabled == '1' || main.http_enabled == true)
+		if (main.proxy_auth_enabled != '0')
 			push(errors, { field: 'main.proxy_credentials', code: 'migration_conflict',
 				detail: 'legacy credential pairs differ; configure a complete shared username and password' });
 		return main;
@@ -642,11 +652,11 @@ function explicit_proxy_main(raw, errors) {
 }
 
 function check_explicit_proxy(main, errors) {
-	let enabled = main.socks_enabled == true || main.http_enabled == true;
-	if (enabled && !length(filter(errors, e => e.field == 'main.proxy_credentials')))
+	if ((main.proxy_auth_enabled == true || main.proxy_username != null || main.proxy_password != null)
+		&& !length(filter(errors, e => e.field == 'main.proxy_credentials')))
 		for (let name in [ 'proxy_username', 'proxy_password' ])
 			if (main[name] == null)
-				push(errors, { field: 'main.' + name, code: 'required', detail: 'required when an explicit inbound is enabled' });
+				push(errors, { field: 'main.' + name, code: 'required', detail: 'both credentials are required when authentication is enabled; otherwise both must be set or both absent' });
 	let used = {};
 	let reserved = [ C.DNS_PORT, C.CHINADNS_PORT, C.TPROXY_PORT, C.HTTP_PORT, ...C.DNS_TUNNEL_PORTS ];
 	for (let protocol in [ 'socks', 'http' ]) {

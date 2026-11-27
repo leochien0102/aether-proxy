@@ -72,6 +72,7 @@ const main = [
 	{ name: 'failover_nodes', type: 'list', item: 'string', default: null, omit_unset: true },
 	{ name: 'socks_enabled', type: 'bool', default: null, omit_unset: true },
 	{ name: 'socks_port', type: 'int', min: 1, max: 65535, default: 1080 },
+	{ name: 'proxy_auth_enabled', type: 'bool', default: null, omit_unset: true },
 	{ name: 'proxy_username', type: 'string', default: null, omit_unset: true },
 	{ name: 'proxy_password', type: 'string', default: null, omit_unset: true },
 	{ name: 'proxy_address', type: 'string', default: null, omit_unset: true },

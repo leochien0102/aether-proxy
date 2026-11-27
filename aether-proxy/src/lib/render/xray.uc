@@ -47,9 +47,15 @@ export function build(snapshot, ctx) {
 		if (explicit_ipv4(main.proxy_listen) == null)
 			die('explicit proxy requires a resolved logical LAN IPv4 address');
 		let tag = 'explicit-' + protocol;
-		let settings = { accounts: [ { user: main.proxy_username, pass: main.proxy_password } ] };
+		let has_user = main.proxy_username != null && main.proxy_username != '';
+		let has_pass = main.proxy_password != null && main.proxy_password != '';
+		let authenticated = main.proxy_auth_enabled == true
+			|| (main.proxy_auth_enabled == null && (has_user || has_pass));
+		if (authenticated && (!has_user || !has_pass))
+			die('explicit proxy authentication requires both credentials');
+		let settings = authenticated ? { accounts: [ { user: main.proxy_username, pass: main.proxy_password } ] } : {};
 		if (protocol == 'socks') {
-			settings.auth = 'password';
+			settings.auth = authenticated ? 'password' : 'noauth';
 			settings.udp = false;
 		}
 		push(inbounds, { tag, listen: main.proxy_listen, port: main[protocol + '_port'], protocol, settings });

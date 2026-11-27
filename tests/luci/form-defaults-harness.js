@@ -66,6 +66,8 @@ function formDouble(uci, options, sections) {
 			.filter(o => o.kind !== form.DummyValue).map(o => o.parse(s.name)))); }
 		render() { return Promise.resolve(E('form')); }
 		renderContents() { return Promise.resolve(E('div')); }
+		// SDK Map.reset() redraws directly; it does not invoke load().
+		reset() { return this.renderContents(); }
 	};
 	return form;
 }

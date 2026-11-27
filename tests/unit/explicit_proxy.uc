@@ -11,6 +11,17 @@ const OLD = { socks_username: 'local-user', socks_password: 'local-secret', http
 export const cases = [
 	{ name: 'legacy disabled snapshot has defaults but no extra listeners', legacy: true, expect: true },
 	{ name: 'shared authenticated TCP LAN inbounds route proxy', render: true, expect: true },
+	{ name: 'explicit off retains credentials but emits no accounts', render: true, change: { proxy_auth_enabled: '0' }, expect: true },
+	{ name: 'explicit on with credentials', render: true, change: { proxy_auth_enabled: '1' }, expect: true },
+	{ name: 'auth on requires both fields even with listeners off', change: { proxy_auth_enabled: '1', socks_enabled: '0', http_enabled: '0', proxy_username: '', proxy_password: '' }, expect: ['main.proxy_username:required', 'main.proxy_password:required'] },
+	{ name: 'auth on cannot become noauth by emptying credentials', change: { proxy_auth_enabled: '1', proxy_username: '', proxy_password: '' }, expect: ['main.proxy_username:required', 'main.proxy_password:required'] },
+	{ name: 'empty auth flag cannot suppress legacy inference', change: { proxy_auth_enabled: '' }, invalid_auth: true, expect: true },
+	{ name: 'invalid auth flag cannot suppress legacy inference', change: { proxy_auth_enabled: 'false' }, invalid_auth: true, expect: true },
+	{ name: 'explicit off with unresolved conflict renders noauth', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_auth_enabled: '0' }, render: true, expect: true },
+	{ name: 'enabled without credentials is noauth for both protocols', render: true, change: { proxy_username: '', proxy_password: '' }, expect: true },
+	{ name: 'absent credentials are noauth', render: true, change: { proxy_username: null, proxy_password: null }, expect: true },
+	{ name: 'disabled partial credentials still fail', change: { socks_enabled: '0', http_enabled: '0', proxy_password: '' }, expect: ['main.proxy_password:required'] },
+	{ name: 'disabled incomplete legacy credentials still fail', old: { socks_password: 'local-secret' }, change: { socks_enabled: '0', http_enabled: '0' }, expect: ['main.proxy_username:required'] },
 	{ name: 'only SOCKS enabled', render: true, change: { http_enabled: '0' }, expect: true },
 	{ name: 'only HTTP enabled', render: true, change: { socks_enabled: '0' }, expect: true },
 	{ name: 'both disabled need neither addresses nor credentials', render: true, change: { socks_enabled: '0', http_enabled: '0', proxy_username: '', proxy_password: '' }, expect: true },
@@ -40,7 +51,7 @@ export const cases = [
 	{ name: 'partial new pair cannot resolve old conflict', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_username: 'new-user' }, expect: ['main.proxy_credentials:migration_conflict'] },
 	{ name: 'password-only new pair cannot resolve old conflict', old: { ...OLD, http_password: 'other-secret' }, change: { proxy_password: 'new-secret' }, expect: ['main.proxy_credentials:migration_conflict'] },
 	{ name: 'partial new pair never combines with old compatible pair', old: OLD, change: { proxy_username: 'new-user' }, expect: ['main.proxy_password:required'] },
-	{ name: 'both disabled allow unresolved legacy conflict', old: { ...OLD, http_password: 'other-secret' }, change: { socks_enabled: '0', http_enabled: '0' }, render: true, expect: true },
+	{ name: 'legacy conflict requires resolution even with both listeners disabled', old: { ...OLD, http_password: 'other-secret' }, change: { socks_enabled: '0', http_enabled: '0' }, expect: ['main.proxy_credentials:migration_conflict'] },
 	{ name: 'unresolved renderer fails closed rather than default wildcard', unresolved: true, expect: true }
 ];
 for (let proto in ['socks', 'http']) {
@@ -61,6 +72,8 @@ export function run(c) {
 	let raw = { main }, before = sprintf('%.J', raw);
 	let result = config.normalize(raw);
 	if (sprintf('%.J', raw) != before) return false;
+	if (c.invalid_auth)
+		return !result.ok && length(filter(result.errors, e => e.field == 'main.proxy_auth_enabled')) > 0;
 	if (c.invalid)
 		return !result.ok && index(sprintf('%.J', result), 'local-secret') < 0 && index(sprintf('%.J', result), 'other-secret') < 0;
 	if (c.legacy)
@@ -87,9 +100,13 @@ export function run(c) {
 		if (!main[proto + '_enabled']) continue;
 		count++;
 		let i = filter(explicit, i => i.tag == 'explicit-' + proto)[0];
-		if (i?.listen != '192.0.2.1' || i.port != main[proto + '_port'] || i.protocol != proto
-			|| i.settings.accounts[0].user != main.proxy_username || i.settings.accounts[0].pass != main.proxy_password) return false;
-		if (proto == 'socks' && (i.settings.auth != 'password' || i.settings.udp != false)) return false;
+		if (i?.listen != '192.0.2.1' || i.port != main[proto + '_port'] || i.protocol != proto) return false;
+		let auth = main.proxy_auth_enabled == true;
+		if (auth) {
+			if (i.settings.accounts?.[0].user != main.proxy_username || i.settings.accounts?.[0].pass != main.proxy_password) return false;
+		}
+		else if ('accounts' in i.settings) return false;
+		if (proto == 'socks' && (i.settings.auth != (auth ? 'password' : 'noauth') || i.settings.udp != false)) return false;
 		if (length(filter(built.routing.rules, r => r.outboundTag == 'proxy' && index(r.inboundTag, i.tag) >= 0)) != 1) return false;
 	}
 	return length(explicit) == count && length(built.inbounds) == 4 + count;

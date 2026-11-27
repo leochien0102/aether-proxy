@@ -69,6 +69,7 @@ return view.extend({
 		s.tab('intercept', _('Interception', 'aether-proxy'));
 		s.tab('explicit', _('LAN explicit proxy', 'aether-proxy'),
 			_('Clients must explicitly configure the router LAN IPv4 address and port. HTTP supports CONNECT to HTTPS destinations, not TLS to the proxy. Use only on controlled networks; reachability is determined by the existing firewall.', 'aether-proxy')
+			+ ' ' + _('Authentication is shared by both proxies. When disabled, any client that can reach the port can use the proxy. Clearing credentials does not disable authentication.', 'aether-proxy')
 			+ ' ' + _('After clicking Save, anyone authorized to view LuCI Pending Changes may see modified proxy usernames and passwords until you apply or revert the changes.', 'aether-proxy'));
 		s.tab('log', _('Logging', 'aether-proxy'));
 		s.tab('boot', _('Boot and health checks', 'aether-proxy'));
@@ -125,11 +126,24 @@ return view.extend({
 		const inputs = {};
 		const values = () => Object.fromEntries(Object.entries(inputs).map(([key, child]) => [key, child.formvalue('main')]));
 		const enabled = () => values().socks_enabled === '1' || values().http_enabled === '1';
+		let credentialsCleared = false;
+		// Map.reset() only calls renderContents(), not load(). Discard local intent
+		// at the native reset boundary as well as after a successful save reload.
+		for (const method of ['reset', 'load']) {
+			const original = m[method];
+			if (typeof original === 'function')
+				m[method] = function() {
+					credentialsCleared = false;
+					return original.apply(this, arguments);
+				};
+		}
 		const resolved = () => {
 			const v = values();
-			// An explicit old source selects the whole pair, not pieces of new input.
+			// Clear resets the source widget; a later explicit source choice wins.
 			if (v._proxy_credential_source === 'socks' || v._proxy_credential_source === 'http')
 				return ['username', 'password'].map(key => main()[v._proxy_credential_source + '_' + key] || '');
+			if (credentialsCleared)
+				return [v.proxy_username || '', v.proxy_password || ''];
 			if (model.credentials(main()).conflict && !(v.proxy_username && v.proxy_password))
 				return null;
 			return [v.proxy_username || '', v.proxy_password || ''];
@@ -138,7 +152,7 @@ return view.extend({
 			(addresses.length === 1 || (addresses.length > 1 && addresses.includes(values().proxy_address))) ? true :
 			addresses.length ? _('Select one of the current LAN IPv4 addresses.', 'aether-proxy') :
 				_('No usable IPv4 address is available on logical LAN. Disable both proxies or restore LAN connectivity.', 'aether-proxy');
-		const credentialError = () => enabled() && !resolved() ?
+		const credentialError = () => !resolved() && (values().proxy_auth_enabled === '1' || values().proxy_username || values().proxy_password) ?
 			_('Legacy proxy credentials differ. Choose a source or enter both shared credentials.', 'aether-proxy') : true;
 
 		o = s.taboption('explicit', form.DummyValue, '_proxy_lan', _('LAN address source', 'aether-proxy'));
@@ -166,10 +180,16 @@ return view.extend({
 			o.rmempty = false;
 			o.validate = (section_id, value) => model.validate(protocol + '_port', value, values());
 		}
+		o = inputs.proxy_auth_enabled = s.taboption('explicit', form.Flag, 'proxy_auth_enabled', _('Require authentication', 'aether-proxy'));
+		o.cfgvalue = () => model.authentication(main());
+		o.rmempty = false;
+		o.validate = (section_id, value) => model.validate('proxy_auth_enabled', value);
+		// Persist even 0 explicitly, after whole-page validation, to suppress legacy inference.
+		o.write = o.remove = function() {};
 		if (model.credentials(main()).conflict) {
 			o = inputs._proxy_credential_source = s.taboption('explicit', form.ListValue, '_proxy_credential_source', _('Resolve legacy credentials', 'aether-proxy'),
-				_('The old credential pairs differ and are not displayed. Select a source, or leave it unselected and fill in both shared fields. Nothing is migrated until a valid save.', 'aether-proxy'));
-			o.value('', _('Enter new shared credentials or decide later while both proxies are off', 'aether-proxy'));
+				_('The old credential pairs differ and are not displayed. Select an old source or enter both shared credentials. To remove all credentials, use Clear credentials and disable authentication before saving. Nothing is migrated until a valid save.', 'aether-proxy'));
+			o.value('', _('Enter new shared credentials or disable authentication', 'aether-proxy'));
 			o.value('socks', _('Use the old SOCKS5 credentials', 'aether-proxy'));
 			o.value('http', _('Use the old HTTP credentials', 'aether-proxy'));
 			o.validate = credentialError;
@@ -181,10 +201,31 @@ return view.extend({
 				_('Stored once and used by both SOCKS5 and HTTP. Turning a proxy off does not erase these credentials.', 'aether-proxy'));
 			o.password = key == 'password';
 			o.cfgvalue = () => model.credentials(main()).pair[index];
-			o.validate = () => credentialError() !== true ? credentialError() : model.validate(field, resolved()?.[index], values());
+			o.validate = () => {
+				if (credentialError() !== true) return credentialError();
+				const pair = resolved();
+				return model.validate(field, pair?.[index], {
+					proxy_username: pair?.[0], proxy_password: pair?.[1],
+					proxy_auth_enabled: values().proxy_auth_enabled
+				});
+			};
 			// Commit the pair and remove legacy fields only after every tab parses.
 			o.write = o.remove = function() {};
 		}
+
+		o = s.taboption('explicit', form.DummyValue, '_proxy_clear_credentials', _('Clear credentials', 'aether-proxy'));
+		o.renderWidget = () => E('button', {
+			type: 'button', class: 'cbi-button cbi-button-neutral',
+			click: () => {
+				credentialsCleared = true;
+				for (const key of ['proxy_username', 'proxy_password', '_proxy_credential_source']) {
+					const widget = inputs[key]?.getUIElement('main');
+					if (widget) widget.setValue('');
+				}
+				for (const key of ['proxy_username', 'proxy_password'])
+					inputs[key].triggerValidation('main');
+			}
+		}, _('Clear credentials', 'aether-proxy'));
 
 		o = option(s, 'log', form.RichListValue, 'log_level', _('Log level', 'aether-proxy'));
 		model.log_level_choices().forEach((c) => o.value(c.value, c.label, c.description));
@@ -237,11 +278,22 @@ return view.extend({
 				}
 			}
 			return Promise.resolve(parse.call(this)).then(() => {
+				const auth = values().proxy_auth_enabled;
 				const pair = resolved();
-				if (pair && pair.every(Boolean)) {
-					for (const [index, key] of [[0, 'username'], [1, 'password']])
-						if (main()['proxy_' + key] !== pair[index])
+				// Saving new credentials while off must not enable legacy inference on reload.
+				if (main().proxy_auth_enabled !== auth
+					&& (auth === '1' || model.authentication(main()) === '1'
+						|| main().proxy_auth_enabled != null || pair?.some(Boolean)))
+					uci.set('aetherproxy', 'main', 'proxy_auth_enabled', auth);
+				if (pair) {
+					for (const [index, key] of [[0, 'username'], [1, 'password']]) {
+						if (!pair[index]) {
+							if (main()['proxy_' + key] != null)
+								uci.unset('aetherproxy', 'main', 'proxy_' + key);
+						}
+						else if (main()['proxy_' + key] !== pair[index])
 							uci.set('aetherproxy', 'main', 'proxy_' + key, pair[index]);
+					}
 					for (const protocol of ['socks', 'http'])
 						for (const key of ['username', 'password', 'listen'])
 							if (main()[protocol + '_' + key] != null)

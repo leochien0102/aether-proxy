@@ -198,10 +198,12 @@ def assert_request(targets, scheme, protocol, port, credentials, success, label)
 
 
 def write_uci(confdir, enabled, ports, accounts, upstream_port, upstream_account,
-              address=None, lan_iface=IFACE, legacy=None, shared=True):
+              address=None, lan_iface=IFACE, legacy=None, shared=True, auth=None):
     lines = ["config main 'main'", " option enabled '1'", f" option node '{NODE}'",
              " option sniffing '0'", " option xray_log_level 'error'",
              f" list lan_ifaces '{lan_iface}'"]
+    if auth is not None:
+        lines.append(f" option proxy_auth_enabled '{auth}'")
     for index, field in enumerate(('username', 'password')):
         if shared is True or shared == field:
             lines.append(f" option proxy_{field} '{accounts['socks'][index]}'")
@@ -284,14 +286,27 @@ def main():
         upstream_path.write_text(json.dumps(upstream))
         upstream_path.chmod(0o600)
         legacy = None
-        for name, enabled in [('omitted', None), ('off', set()), ('socks', {'socks'}),
-                              ('http', {'http'}), ('both', {'socks', 'http'})]:
+        for name, enabled in [('omitted', None), ('off', set()),
+                              ('noauth-before', {'socks', 'http'}),
+                              ('socks', {'socks'}), ('http', {'http'}),
+                              ('both', {'socks', 'http'}),
+                              ('legacy-shared', {'socks', 'http'}),
+                              ('legacy-old', {'socks', 'http'}),
+                              ('off-retain-auth', set()),
+                              ('noauth-retain-credentials', {'socks', 'http'}),
+                              ('noauth-after-clear', {'socks', 'http'})]:
             case = work / name
             case.mkdir()
             confdir = case / 'config'
             confdir.mkdir()
+            authenticated = bool(enabled) and not name.startswith('noauth-')
+            # Exercise explicit on/off separately from absent-field legacy migration.
+            auth = None if name.startswith('legacy-') or name == 'omitted' else ('1' if authenticated else '0')
+            retained = name in ('off-retain-auth', 'noauth-retain-credentials')
+            old_pairs = {'socks': accounts['socks'], 'http': accounts['http']} if name == 'legacy-old' else None
             write_uci(confdir, enabled, ports, accounts, ports['upstream'], accounts['upstream'],
-                      shared=bool(enabled))
+                      shared=(authenticated or retained) and name != 'legacy-old',
+                      legacy=old_pairs, auth=auth)
             ubus_fixture(case / 'bin')
             cli_artifact = cli_render(confdir, case)
             rendered = case / 'xray.json'
@@ -305,6 +320,13 @@ def main():
             check(not result.stderr, name + ': unexpected renderer stderr (withheld)')
             loaded = json.loads(result.stdout)
             config, main_config = loaded['config'], loaded['main']
+            if enabled:
+                check(bool(main_config.get('proxy_auth_enabled')) == authenticated,
+                      name + ': authentication flag normalization/migration')
+            if name == 'noauth-retain-credentials':
+                check(main_config.get('proxy_username') == accounts['socks'][0]
+                      and main_config.get('proxy_password') == accounts['socks'][1],
+                      name + ': explicit off must retain stored credentials')
             check(stat.S_IMODE(rendered.stat().st_mode) == 0o600,
                   name + ': shared atomic writer did not produce mode 0600')
             check(cli_artifact == rendered.read_bytes(), name + ': CLI/render mismatch')
@@ -334,6 +356,12 @@ def main():
                 inbound = inbound_by_tag[tag]
                 check(inbound['listen'] == LAN and inbound['port'] == ports[protocol]
                       and inbound['protocol'] == protocol, name + ': explicit inbound binding')
+                settings = inbound['settings']
+                check(bool(settings.get('accounts')) == authenticated,
+                      name + ': unexpected authentication accounts')
+                if protocol == 'socks':
+                    check(settings['auth'] == ('password' if authenticated else 'noauth')
+                          and settings['udp'] is False, name + ': SOCKS auth/TCP-only')
                 routes = [rule for rule in config['routing']['rules'] if tag in rule.get('inboundTag', [])]
                 check(routes and all(rule.get('outboundTag') == 'proxy' for rule in routes),
                       name + ': explicit inbound is not routed exclusively to proxy')
@@ -357,7 +385,7 @@ def main():
                                                        ('bad user', ('wrong', password)),
                                                        ('bad password', (user, 'wrong'))]:
                                 assert_request(targets, scheme, protocol, ports[protocol], credentials,
-                                               False, name + ': ' + protocol + ' ' + scheme + ' ' + label)
+                                               not authenticated, name + ': ' + protocol + ' ' + scheme + ' ' + label)
                             assert_request(targets, scheme, protocol, ports[protocol], accounts[protocol],
                                            True, name + ': ' + protocol + ' ' + scheme + ' correct auth')
                 for protocol in sorted(active):

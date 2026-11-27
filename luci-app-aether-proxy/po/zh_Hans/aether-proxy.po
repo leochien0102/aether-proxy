@@ -9,6 +9,26 @@ msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping curr
 msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）"
 
 msgctxt "aether-proxy"
+msgid "Require authentication"
+msgstr "启用认证"
+
+msgctxt "aether-proxy"
+msgid "Clear credentials"
+msgstr "清空凭据"
+
+msgctxt "aether-proxy"
+msgid "Authentication requires both shared credentials. Disable authentication before saving an empty pair."
+msgstr "启用认证时必须填写共享用户名和密码。保存空凭据前请先关闭认证。"
+
+msgctxt "aether-proxy"
+msgid "Authentication is shared by both proxies. When disabled, any client that can reach the port can use the proxy. Clearing credentials does not disable authentication."
+msgstr "两种代理共用认证开关。关闭认证后，任何可达该端口的客户端均可使用代理。清空凭据不会关闭认证。"
+
+msgctxt "aether-proxy"
+msgid "The old credential pairs differ and are not displayed. Select an old source or enter both shared credentials. To remove all credentials, use Clear credentials and disable authentication before saving. Nothing is migrated until a valid save."
+msgstr "两套旧凭据不同，页面不显示其内容。请选择旧来源或填写完整共享凭据。若要删除全部凭据，请点击清空凭据并关闭认证后再保存。只有有效保存才会迁移。"
+
+msgctxt "aether-proxy"
 msgid "Clear logs"
 msgstr "清空日志"
 
@@ -3147,12 +3167,8 @@ msgid "Resolve legacy credentials"
 msgstr "确认旧凭据来源"
 
 msgctxt "aether-proxy"
-msgid "The old credential pairs differ and are not displayed. Select a source, or leave it unselected and fill in both shared fields. Nothing is migrated until a valid save."
-msgstr "两组旧凭据不同，页面不展示其内容。请选择一组来源，或不选来源并填写两项新共用凭据；仅在有效保存时迁移。"
-
-msgctxt "aether-proxy"
-msgid "Enter new shared credentials or decide later while both proxies are off"
-msgstr "填写新共用凭据，或在两项代理均关闭时暂不处理"
+msgid "Enter new shared credentials or disable authentication"
+msgstr "填写新共用凭据，或关闭认证"
 
 msgctxt "aether-proxy"
 msgid "Use the old SOCKS5 credentials"

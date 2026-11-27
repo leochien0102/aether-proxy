@@ -295,7 +295,7 @@ function build_form() {
 			this.ucisection = null;
 			this.validate = null;
 			this.depends = () => this;
-			this.formvalue = () => '';
+			this.formvalue = () => this.cfgvalue?.('main') ?? this.default ?? '';
 			this.isActive = () => true;
 			this.value = () => this;
 			created.push(this);
@@ -375,7 +375,7 @@ test('T10.47 scenario 3: advanced DynamicList and DeviceSelect validate items pl
 		assert.deepEqual(option.input.validationCalls, [...option.default, '']);
 		assert.equal(option.input.isValid(), true);
 	}
-	state.map.parse();
+	await state.map.parse();
 	assert.deepEqual(state.writes, []);
 });
 
@@ -385,6 +385,7 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const spy = {
 		validate: (field, value) => { calls.push([ field, value ]); return true; },
 		credentials: main => real.credentials(main),
+		authentication: main => real.authentication(main),
 		description: (field) => real.description(field),
 		default: (field) => real.default(field),
 		log_level_choices: () => real.log_level_choices(),
@@ -417,7 +418,8 @@ test('T8.11b scenario 5: form shape, field set, DeviceSelect, validators and wir
 	const expected = {
 		intercept: [ 'lan_ifaces', 'extra_ports', 'quic_block', 'dns_hijack', 'ipv6_filter', 'filter_https_rr',
 			'fail_open', 'degrade_gfw', 'sniffing' ],
-		explicit: ['_proxy_lan', 'socks_enabled', 'socks_port', 'http_enabled', 'http_port', 'proxy_username', 'proxy_password'],
+		explicit: [ '_proxy_lan', 'socks_enabled', 'socks_port', 'http_enabled', 'http_port',
+			'proxy_auth_enabled', 'proxy_username', 'proxy_password', '_proxy_clear_credentials' ],
 		log: [ 'log_level', 'xray_log_level' ],
 		boot: [ 'boot_wait_timeout', 'boot_check_targets', 'url', 'expect_code', 'timeout',
 			'fail_threshold', 'recover_threshold', 'node_timeout', 'node_concurrency' ],

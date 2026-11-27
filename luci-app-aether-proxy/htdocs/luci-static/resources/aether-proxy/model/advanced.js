@@ -160,6 +160,13 @@ function credentials(main) {
 	return { pair: shared.some(Boolean) ? shared : socks.some(Boolean) ? socks : http, conflict: false };
 }
 
+function authentication(main) {
+	if (main?.proxy_auth_enabled != null)
+		return main.proxy_auth_enabled;
+	return ['proxy', 'socks', 'http'].some(prefix =>
+		['username', 'password'].some(key => !!main?.[prefix + '_' + key])) ? '1' : '0';
+}
+
 /* Explicit listeners use the existing main.* fields; messages never include input. */
 function explicit_error(field, value, values) {
 	const [protocol, suffix] = field.split('_');
@@ -192,9 +199,13 @@ function explicit_error(field, value, values) {
 }
 
 function validate(field, value, values) {
+	if (field === 'proxy_auth_enabled')
+		return value === '0' || value === '1' ? true : _('Enter 0 or 1.', 'aether-proxy');
 	if (/^proxy_(username|password)$/.test(field)) {
-		const enabled = values?.socks_enabled === '1' || values?.http_enabled === '1';
-		return explicit_error(field.replace('proxy_', 'http_'), value, { http_enabled: enabled ? '1' : '0' });
+		const other = field === 'proxy_username' ? 'proxy_password' : 'proxy_username';
+		if (!value && (values?.proxy_auth_enabled === '1' || values?.[other]))
+			return _('Authentication requires both shared credentials. Disable authentication before saving an empty pair.', 'aether-proxy');
+		return explicit_error(field.replace('proxy_', 'http_'), value, { http_enabled: '0' });
 	}
 	if (/^(socks|http)_(enabled|listen|port|username|password)$/.test(field))
 		return explicit_error(field, value, values);
@@ -250,6 +261,7 @@ return baseclass.extend({
 
 	validate: validate,
 	credentials: credentials,
+	authentication: authentication,
 
 	default: function(field) {
 		return DEFAULTS[field] ?? null;
