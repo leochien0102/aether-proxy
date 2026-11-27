@@ -745,10 +745,6 @@ msgid "Last checked"
 msgstr "上次检查"
 
 msgctxt "aether-proxy"
-msgid "Channel address"
-msgstr "通道地址"
-
-msgctxt "aether-proxy"
 msgid "Lines"
 msgstr "行数"
 

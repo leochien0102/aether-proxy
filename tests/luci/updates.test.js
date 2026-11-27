@@ -90,7 +90,8 @@ test('T8.9b scenario 2: package state precedence and every action', () => {
 	assert.deepEqual(model.table(status(), false, 160).rows.map(r => r.name), names);
 	assert.equal(model.table(status(), true, 160).can_check, false);
 	assert.ok(model.table(status(), true, 160).rows.every(r => r.disabled));
-	assert.equal(model.table(status(), false, 160).url, 'https://channel/');
+	assert.equal(Object.hasOwn(model.table(status(), false, 160), 'url'), false,
+		'channel URLs are not part of the inventory view model');
 	assert.match(model.table(status(), false, 160).checked, /1/);
 });
 test('T8.9b scenario 3 / T10.46: Xray rollback confirmation includes both versions without restart warning', () => {
@@ -275,8 +276,8 @@ function load_view(config = {}) {
 		}
 		section(type, name, section_type, title) {
 			this.section_info = { type, name, section_type, title };
-			return { children: this.options, option: (kind, key, label) => {
-				const option = { kind, key, option: key, label, values: [], value(k, v) { this.values.push([ k, v ]); } };
+			return { children: this.options, option: (kind, key, label, description) => {
+				const option = { kind, key, option: key, label, description, values: [], value(k, v) { this.values.push([ k, v ]); } };
 				this.options.push(option);
 				return option;
 			} };
@@ -609,7 +610,9 @@ test('T16.33 Component updates keeps guidance in the heading and puts status bef
 	assert.equal(row.class, 'aether-update-status');
 	for (const style of ['display:flex', 'flex-wrap:wrap', 'align-items:center', 'justify-content:space-between', 'gap:0.5em 1em'])
 		assert.ok(row.style.includes(style));
-	assert.match(text(row.children[0]), /^上次检查: .+ · 通道地址$/);
+	assert.match(text(row.children[0]), /^上次检查: /);
+	assert.doesNotMatch(text(row), /https?:\/\/|通道地址| · /);
+	assert.equal(descendants(row).filter(n => n.tag === 'a').length, 0);
 	assert.equal(text(buttons(row)[0]), '检查更新');
 	assert.equal(h.page.summary.hidden, true);
 	assert.equal(h.page.progress.hidden, true);
@@ -646,22 +649,48 @@ test('T16.33 last checked, progress, summary and errors share the status row', a
 	assert.ok(row().children.some(n => text(n) === '签名校验失败'));
 });
 
-test('T16.33 channel address appears only when known and opens safely', async () => {
+test('T16.33 / T16.120 channel URLs never appear in the status row, even after discovery', async () => {
 	const h = load_view();
 	await h.page.render();
 	const row = () => h.page.inventory.children[0].children[1];
-	const links = () => descendants(row()).filter(n => n.tag === 'a');
+	const assertNoChannel = () => {
+		assert.equal(descendants(row()).filter(n => n.tag === 'a').length, 0);
+		assert.doesNotMatch(text(row()), /https?:\/\/|通道地址| · /);
+	};
 	assert.match(text(row()), /^上次检查: 尚未检查/);
-	assert.equal(links().length, 0);
+	assertNoChannel();
 	h.start();
 	h.calls[0].resolve({ updates_available: null });
 	await settle();
-	assert.equal(links().length, 0);
+	assertNoChannel();
 	assert.deepEqual(h.jobs, []);
 	h.page.status = status();
 	h.page.show_inventory();
-	assert.deepEqual(links().map(a => [text(a), a.href, a.target, a.rel, a.title]),
-		[['通道地址', 'https://channel/', '_blank', 'noopener noreferrer', 'https://channel/']]);
+	assertNoChannel();
+});
+
+test('T16.120 default channel is selectable plain text beside the editable list, not a saved default or link', async () => {
+	const defaultUrl = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
+	for (const config of [{}, { channel_urls: [] }, { channel_urls: ['https://custom.example/channel/'] }]) {
+		const h = load_view(config);
+		await h.page.render();
+		const option = h.maps[0].options.find(o => o.key === 'channel_urls');
+		assert.equal(option.kind, 'list', 'keep the native DynamicList editor for custom entries');
+		assert.equal(option.default, undefined, 'displaying the default must not pin it in UCI');
+		assert.equal(option.placeholder, defaultUrl);
+		const codes = descendants(option.description).filter(n => n.tag === 'code');
+		assert.equal(codes.length, 1);
+		assert.equal(text(codes[0]), defaultUrl);
+		assert.match(codes[0].style, /(?:^|;\s*)user-select:text(?:;|$)/);
+		assert.match(codes[0].style, /-webkit-user-select:text/);
+		assert.match(codes[0].style, /overflow-wrap:anywhere/);
+		assert.equal(codes[0].scalarHtml, false, 'URL is a text node, not HTML');
+		assert.equal(codes[0].childNodes[0].tag, '#text');
+		assert.equal(descendants(option.description).filter(n => n.tag === 'a').length, 0);
+		assert.deepEqual(option.input.value, config.channel_urls ?? [], 'custom entries stay in the list');
+		await h.maps[0].parse();
+		assert.deepEqual(h.writes, [], 'copyable description and untouched custom entries cause no UCI writes');
+	}
 });
 
 test('T8.9b scenario 7: view job wiring, rollback confirmation, validation and translations', () => {
@@ -1191,105 +1220,47 @@ test('T16.63: same-source status values along the status row and inventory stay 
 		'no external value containing < or & may hit innerHTML');
 });
 
-test('T16.63: channel link renders only for valid absolute http/https URLs without orphan separators', async () => {
+test('T16.63 / T16.120: cached channel values are never rendered, regardless of URL validity', async () => {
 	const h = load_view();
 	await h.page.render();
 	const row = () => h.page.inventory.children[0].children[1];
-	const statusSpan = () => row().children[0];
-	const links = () => descendants(row()).filter(n => n.tag === 'a');
-
-	for (const [raw, expectedHref] of [
-		['http://channel.example/stable/', 'http://channel.example/stable/'],
-		['https://channel.example:8443/path?a=1&b=2', 'https://channel.example:8443/path?a=1&b=2'],
-		['http://127.0.0.1:8080/mirror', 'http://127.0.0.1:8080/mirror']
+	for (const raw of [
+		'http://channel.example/stable/',
+		'https://channel.example:8443/path?a=1&b=2',
+		'http://127.0.0.1:8080/mirror',
+		undefined, null, '', '–', '/relative/channel', './channel',
+		'//channel.example/stable', 'channel.example/stable', 'http://',
+		'https:///path', 'https://\\path', 'http:channel.example', 'http://exa mple.com/',
+		'ftp://channel.example/stable', 'file:///tmp/channel', 'data:text/plain,channel',
+		'mailto:ops@example.com', 'javascript:void(0)', '<img src=x onerror=alert(1)>&'
 	]) {
 		const mark = htmlWriteMark();
-		h.page.status = { updates_available: { arch: 'test_arch', checked: 100, url: raw, packages: {} } };
+		const reply = { updates_available: { arch: 'test_arch', checked: 100, url: raw, packages: {} } };
+		h.page.status = reply;
 		h.page.show_inventory();
-		assert.equal(links().length, 1, 'valid URL produces one link: ' + raw);
-		const a = links()[0];
-		assert.equal(text(a), '通道地址');
-		assert.equal(a.href, expectedHref);
-		assert.equal(a.target, '_blank');
-		assert.equal(a.rel, 'noopener noreferrer');
-		assert.equal(a.title, expectedHref);
-		assert.equal(a.scalarHtml, false);
-		assert.equal(a.childNodes.length, 1);
-		assert.equal(a.childNodes[0].tag, '#text');
-		assert.match(text(statusSpan()), /^上次检查: .+ · 通道地址$/);
-		assert.deepEqual(htmlWritesSince(mark).filter(v => v.includes('通道地址')), []);
-	}
-
-	const rejected = [
-		undefined,
-		null,
-		'',
-		'–',
-		'/relative/channel',
-		'./channel',
-		'//channel.example/stable',
-		'channel.example/stable',
-		'http://',
-		'https:///path',
-		'https://\\path',
-		'http:channel.example',
-		'http://exa mple.com/',
-		'ftp://channel.example/stable',
-		'file:///tmp/channel',
-		'data:text/plain,channel',
-		'mailto:ops@example.com',
-		'javascript:void(0)'
-	];
-	for (const bad of rejected) {
-		h.page.status = { updates_available: { arch: 'test_arch', checked: 100, url: bad, packages: {} } };
-		h.page.show_inventory();
-		assert.equal(links().length, 0, 'invalid URL must not render a link: ' + JSON.stringify(bad));
-		assert.ok(!text(statusSpan()).includes(' · '),
-			'invalid URL must not leave an orphan separator: ' + JSON.stringify(bad));
-		assert.ok(!text(statusSpan()).includes('通道地址'),
-			'invalid URL must not render link text: ' + JSON.stringify(bad));
+		assert.equal(Object.hasOwn(model.table(reply, false, 160), 'url'), false);
+		assert.equal(descendants(row()).filter(n => n.tag === 'a').length, 0, JSON.stringify(raw));
+		assert.doesNotMatch(text(row()), /通道地址| · |channel|mirror|onerror/);
+		assert.equal(text(row().children[0]), '上次检查: ' + model.table(reply, false, Date.now() / 1000).checked);
+		if (raw)
+			assert.deepEqual(htmlWritesSince(mark).filter(value => value.includes(raw)), []);
 	}
 });
 
-test('T16.63: refreshing from a valid channel URL to an invalid or missing URL removes both link and separator', async () => {
-	const h = await ready_view({
-		updates_available: { arch: 'test_arch', checked: 100, url: 'https://channel.example/stable/', packages: {} }
-	});
-	const row = () => h.page.inventory.children[0].children[1];
-	const statusSpan = () => row().children[0];
-	const links = () => descendants(row()).filter(n => n.tag === 'a');
-
-	assert.equal(links().length, 1);
-	assert.equal(links()[0].href, 'https://channel.example/stable/');
-	assert.equal(links()[0].target, '_blank');
-	assert.equal(links()[0].rel, 'noopener noreferrer');
-	assert.match(text(statusSpan()), / · 通道地址$/);
-
-	// Refresh via an update_check job returning an invalid URL.
-	h.ap.call = async () => ({
-		updates_available: { arch: 'test_arch', checked: 120, url: 'ftp://channel.example/legacy', packages: {} }
-	});
-	await h.page.run('update_check');
-	assert.equal(links().length, 0);
-	assert.ok(!text(statusSpan()).includes(' · '));
-	assert.ok(!text(statusSpan()).includes('通道地址'));
-
-	// Refresh to a valid http URL, then to a missing URL.
-	h.ap.call = async () => ({
-		updates_available: { arch: 'test_arch', checked: 130, url: 'http://mirror.example/channel/', packages: {} }
-	});
-	await h.page.run('update_check');
-	assert.equal(links().length, 1);
-	assert.equal(links()[0].href, 'http://mirror.example/channel/');
-	assert.equal(links()[0].target, '_blank');
-	assert.equal(links()[0].rel, 'noopener noreferrer');
-	assert.match(text(statusSpan()), / · 通道地址$/);
-
-	h.ap.call = async () => ({
-		updates_available: { arch: 'test_arch', checked: 140, packages: {} }
-	});
-	await h.page.run('update_check');
-	assert.equal(links().length, 0);
-	assert.ok(!text(statusSpan()).includes(' · '));
-	assert.ok(!text(statusSpan()).includes('通道地址'));
+test('T16.63 / T16.120: update-check refreshes never restore a channel URL, link or separator', async () => {
+	const h = await ready_view(status());
+	const form = h.root.children[0];
+	form.children[4].value = ['https://unsaved.example/channel/'];
+	for (const url of ['https://channel.example/stable/', 'ftp://channel.example/legacy',
+		'http://mirror.example/channel/', undefined]) {
+		h.ap.call = async () => ({
+			updates_available: { arch: 'test_arch', checked: 120, url, packages: {} }
+		});
+		await h.page.run('update_check');
+		const row = h.page.inventory.children[0].children[1];
+		assert.equal(descendants(row).filter(n => n.tag === 'a').length, 0);
+		assert.doesNotMatch(text(row), /https?:\/\/|ftp:\/\/|通道地址| · /);
+		assert.equal(h.root.children[0], form, 'status refresh must not rebuild the channel editor');
+		assert.deepEqual(form.children[4].value, ['https://unsaved.example/channel/']);
+	}
 });

@@ -119,19 +119,6 @@ return view.extend({
 				]);
 			})
 		]);
-		const channelUrl = (value => {
-			if (typeof value !== 'string' || !/^https?:\/\/[^/\\\s]/i.test(value))
-				return null;
-			try {
-				const parsed = new URL(value);
-				return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname ? parsed.href : null;
-			}
-			catch (e) {
-				return null;
-			}
-		})(vm.url);
-		const link = (url, text) =>
-			E('a', { href: url, target: '_blank', rel: 'noopener noreferrer', title: url }, [ text ]);
 		this.summary.hidden = !this.summary.textContent;
 		this.progress.hidden = !this.busy;
 		const statusRow = E('div', { class: 'aether-update-status',
@@ -139,7 +126,6 @@ return view.extend({
 			E('span', { style: 'min-width:0' }, [
 				_('Last checked', 'aether-proxy'), ': ',
 				this.status === undefined ? _('Not checked yet', 'aether-proxy') : vm.checked,
-				...(channelUrl ? [ ' · ', link(channelUrl, _('Channel address', 'aether-proxy')) ] : []),
 			]),
 			this.summary,
 			this.progress,
@@ -196,10 +182,14 @@ return view.extend({
 		option = section.option(form.Value, 'data_minute', _('Update minute', 'aether-proxy'));
 		option.validate = form_defaults.integer(0, 59);
 		option.placeholder = '30';
+		const channelDefault = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
 		option = section.option(form.DynamicList, 'channel_urls', _('Channel URLs', 'aether-proxy'),
-			_('Leave empty to use the default release channel.', 'aether-proxy'));
+			E('span', {}, [
+				_('Leave empty to use the default release channel.', 'aether-proxy'), ' ',
+				E('code', { style: '-webkit-user-select:text; user-select:text; overflow-wrap:anywhere' }, [ channelDefault ])
+			]));
 		// Empty means the built-in channel; a default would pin today's URL on Save.
-		option.placeholder = 'https://github.com/leochien0102/aether-proxy-channel/releases/download/channel-stable/';
+		option.placeholder = channelDefault;
 		// The optional add box is validated even while empty (docs/10 r14); it is not a URL item.
 		option.validate = function(section_id, value) { return value === '' ? true : model.validate_url(value); };
 		form_defaults.section(section, {

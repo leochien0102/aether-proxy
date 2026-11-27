@@ -152,7 +152,7 @@ return baseclass.extend({
 		const updates = status?.updates_available;
 		return {
 			error: status?.ok === false ? failure(status) : null,
-			checked: pending ? loading : relative(updates?.checked, now), url: updates?.url ?? '–',
+			checked: pending ? loading : relative(updates?.checked, now),
 			can_check: !pending && !busy,
 			rows: PACKAGES.map(name => {
 				const p = updates?.packages?.[name];
