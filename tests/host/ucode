@@ -9,4 +9,4 @@ PREFIX="$HERE/prefix"
 export LD_LIBRARY_PATH="$PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # tests/host/modules/aetherproxy is a committed symlink to aether-proxy/src/lib, so the
 # glob below maps `aetherproxy.sys` -> aether-proxy/src/lib/sys.uc (dots become directories).
-exec "$PREFIX/bin/ucode" -L "$HERE/modules/*.uc" -L "$HERE/modules/*/*.uc" "$@"
+exec "$PREFIX/bin/ucode" -L "$PREFIX/rpcd-fixture/*.uc" -L "$HERE/modules/*.uc" -L "$HERE/modules/*/*.uc" "$@"

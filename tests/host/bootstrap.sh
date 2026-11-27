@@ -124,4 +124,19 @@ if ! done_already usign "$USIGN_REV"; then
 	echo "$USIGN_REV" > "$STAMP/usign"
 fi
 
+# Exercise the same native guard as the package, without installing into /usr/lib.
+app="$HERE/../../aether-proxy/src"
+fixture="$PREFIX/rpcd-fixture"
+mkdir -p "$fixture/aetherproxy"
+cc -O2 -fPIC -shared -I"$PREFIX/include" -L"$PREFIX/lib" \
+	"$app/native/fd-guard.c" "$app/native/ucode-guard.c" -lucode -o "$fixture/aetherproxy_guard.so"
+python3 - "$app/lib/const.uc" "$fixture" <<'PY'
+import json, sys
+from pathlib import Path
+src, fixture = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
+old = "'/usr/lib/aether-proxy/*.so'"
+assert src.count(old) == 1
+(fixture / 'aetherproxy/const.uc').write_text(src.replace(old, json.dumps(str(fixture / '*.so'))))
+PY
+"$HERE/ucode" -e 'import * as C from "aetherproxy.const"; REQUIRE_SEARCH_PATH = [ C.RPCD_GUARD_SEARCH_PATH ]; require("aetherproxy_guard").guard();'
 "$HERE/ucode" -e 'import * as uci from "uci"; import * as fs from "fs"; print("bootstrap: ready, ucode modules uci+fs load OK\n")'
