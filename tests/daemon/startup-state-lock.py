@@ -435,9 +435,14 @@ def run_normal_startup_control(base, label, instrumented_modules=None):
 			child=child, timeout=20.0, label=f'{label}: SERVICE_STARTED + running',
 			detail_fn=f.debug_summary,
 		)
-		check(
-			f'{label}: independent holder acquires C.LOCK_FILE while running',
-			try_flock_exclusive(f.lock_file),
+		# The daemon closes C.LOCK_FILE just after publishing `running`; on a slow
+		# runner the sample can land inside that window, so wait for the release
+		# instead of asserting on the first attempt (the lock must end up free).
+		wait_for(
+			lambda: try_flock_exclusive(f.lock_file),
+			child=child, timeout=5.0,
+			label=f'{label}: C.LOCK_FILE released for external holders',
+			detail_fn=f.debug_summary,
 		)
 		check(
 			f'{label}: daemon.lock remains held while running',
