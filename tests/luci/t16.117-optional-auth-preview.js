@@ -16,25 +16,24 @@ const app = path.resolve(__dirname, '../../luci-app-aether-proxy');
 const assets = path.join(app, 'htdocs/luci-static');
 const messages = parsePo(fs.readFileSync(path.join(app, 'po/zh_Hans/aether-proxy.po'), 'utf8'));
 const tr = key => messages[key] || key;
-const origin = 'http://luci.test';
 const shared = { proxy_username: 'fictional-user', proxy_password: 'fictional-secret' };
 const legacy = { socks_username: 'fictional-old-user', socks_password: 'fictional-old-secret',
 	http_username: 'fictional-other-user', http_password: 'fictional-other-secret' };
 const credentialKeys = ['proxy_username', 'proxy_password', ...Object.keys(legacy)];
 const sameCredentials = (a, b) => credentialKeys.every(k => a[k] === b[k]);
-function shell() {
+function shell(view) {
 	return `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="/luci-static/bootstrap/cascade.css">
 <script src="/luci-static/resources/cbi.js"></script><script src="/luci-static/resources/luci.js"></script></head>
 <body><div id="indicators"></div><main><div id="maincontent"><div id="view"></div></div></main>
 <script>const messages=${JSON.stringify(messages).replace(/</g, '\\u003c')};window._=key=>messages[key]||key;
 window.L=new LuCI({scriptname:'/cgi-bin/luci',resource:'/luci-static/resources',base_url:'/luci-static/resources',media:'/luci-static/bootstrap',ubuspath:'/ubus',sessionid:'00000000000000000000000000000000',nodespec:{satisfied:true,readonly:false}});
-window.ready=L.require('view.aether-proxy.advanced');</script></body></html>`;
+window.ready=L.require('view.aether-proxy.${view}');</script></body></html>`;
 }
-async function scenario(browser, name, initial, exercise) {
+async function scenario(browser, name, initial, exercise, view = 'advanced', origin = 'http://luci.test') {
 	const context = await browser.newContext({ viewport: { width: 1280, height: 1000 }, serviceWorkers: 'block' });
 	const values = Object.fromEntries([['main', 'global', { lan_ifaces: ['br-lan'], ...initial }],
-		['dns', 'dns', {}], ['probe', 'probe', {}], ['stats', 'stats', {}]]
+		['update', 'update', {}], ['dns', 'dns', {}], ['probe', 'probe', {}], ['stats', 'stats', {}]]
 		.map(([id, type, opts], i) => [id, { '.name': id, '.type': type, '.index': i, ...opts }]));
 	let writes = 0;
 	const unexpected = [];
@@ -54,7 +53,7 @@ async function scenario(browser, name, initial, exercise) {
 		await context.route('**/*', async route => {
 			const req = route.request(), url = new URL(req.url());
 			if (url.origin !== origin) { unexpected.push('external request'); return route.abort(); }
-			if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: shell() });
+			if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: shell(view) });
 			if (url.pathname === '/ubus') {
 				const reply = call => {
 					if (call.method === 'list') return { jsonrpc: '2.0', id: call.id, result: {} };
@@ -80,7 +79,7 @@ async function scenario(browser, name, initial, exercise) {
 				unexpected.push('unexpected SDK error');
 		});
 		const tab = () => page.locator('.cbi-tabmenu a').filter({ hasText: tr('LAN explicit proxy') }).click();
-		const open = async () => { await page.goto(origin); await page.evaluate(() => window.ready.then(() => null)); await tab(); };
+		const open = async () => { await page.goto(origin); await page.evaluate(() => window.ready.then(() => null)); if (view === 'advanced') await tab(); };
 		const row = f => page.locator(`[data-name="${f}"]`);
 		const input = f => row(f).locator('input').first();
 		const fill = async (f, v) => { await input(f).fill(v); await input(f).blur(); };
@@ -96,7 +95,7 @@ async function scenario(browser, name, initial, exercise) {
 			assert.ok(writes === before, 'invalid save made RPC writes');
 			await page.getByRole('button', { name: tr('Dismiss'), exact: true }).click();
 		};
-		const reset = async () => { await page.locator('.cbi-page-actions .cbi-button-reset').click(); await tab(); };
+		const reset = async () => { await page.locator('.cbi-page-actions .cbi-button-reset').click(); if (view === 'advanced') await tab(); };
 		const clear = async () => {
 			const before = writes;
 			const authBefore = await row('proxy_auth_enabled').locator('input[type="checkbox"]').isChecked();
@@ -109,8 +108,8 @@ async function scenario(browser, name, initial, exercise) {
 			assert.ok(writes === before, 'clear button must not save');
 		};
 		await open();
-		assert.equal(await input('proxy_password').getAttribute('type'), 'password');
-		assert.ok(await page.getByText(tr('Authentication is shared by both proxies. When disabled, any client that can reach the port can use the proxy. Clearing credentials does not disable authentication.'), { exact: false }).isVisible());
+		if (view === 'advanced') assert.equal(await input('proxy_password').getAttribute('type'), 'password');
+		if (view === 'advanced') assert.ok(await page.getByText(tr('Authentication is shared by both proxies. When disabled, any client that can reach the port can use the proxy. Clearing credentials does not disable authentication.'), { exact: false }).isVisible());
 		await exercise({ page, values, open, tab, row, input, fill, flag, save, badSave, reset, clear });
 		assert.ok(unexpected.length === 0, 'unexpected network or fixture call');
 		console.log('PASS ' + name);
@@ -125,6 +124,61 @@ async function scenario(browser, name, initial, exercise) {
 			assert.equal(h.values.main.proxy_auth_enabled, '0');
 			assert.ok(sameCredentials(h.values.main, shared));
 			assert.equal(await h.row('proxy_auth_enabled').locator('input[type="checkbox"]').isChecked(), false);
+		});
+		await scenario(browser, 'HTTP clipboard paste and native channel + / save', {}, async h => {
+			const row = h.row('channel_urls'), field = row.locator('.add-item > input');
+			const button = row.getByRole('button', {name:tr('Copy channel URL')});
+			assert.equal(await h.page.evaluate(() => window.isSecureContext), false);
+			for (const [colorScheme, width] of [['dark', 390], ['light', 1280]]) {
+				await h.page.emulateMedia({colorScheme}); await h.page.setViewportSize({width, height:900});
+				const a = await field.boundingBox(), b = await button.boundingBox(), plus = await row.locator('.cbi-button-add').boundingBox();
+				assert.ok(b.x >= a.x && b.x+b.width <= a.x+a.width+1 && plus.x >= a.x+a.width-1 && plus.x+plus.width <= width);
+			}
+			await button.focus(); await button.press('Enter');
+			await row.getByRole('button', {name:tr('Copied')}).waitFor();
+			assert.equal(await field.inputValue(), '');
+			await field.focus(); await field.press('Control+v');
+			assert.equal(await field.inputValue(), await field.getAttribute('placeholder'));
+			await field.fill(''); await h.save(); assert.equal(h.values.update.channel_urls, undefined);
+			const custom = 'https://example.test/channel/'; await field.fill(custom);
+			await button.click(); await field.fill(''); await field.press('Control+v');
+			assert.equal(await field.inputValue(), custom); await button.waitFor(); // successful checkmark expired
+			await h.page.evaluate(() => { document.execCommand = () => false; });
+			await button.click(); assert.equal(await row.getByRole('button', {name:tr('Copied')}).count(), 0);
+			await row.locator('.cbi-button-add').click();
+			assert.equal(await field.inputValue(), ''); await h.save(); assert.deepEqual(h.values.update.channel_urls, [custom]);
+		}, 'updates');
+		await scenario(browser, 'secure Clipboard API copies default without fallback', {}, async h => {
+			const row = h.row('channel_urls'), field = row.locator('.add-item > input');
+			await h.page.context().grantPermissions(['clipboard-read','clipboard-write']);
+			await h.page.evaluate(() => { document.execCommand = () => false; });
+			await row.getByRole('button', {name:tr('Copy channel URL')}).click();
+			await row.getByRole('button', {name:tr('Copied')}).waitFor();
+			await field.focus(); await field.press('Control+v');
+			assert.equal(await field.inputValue(), await field.getAttribute('placeholder'));
+		}, 'updates', 'https://luci.test');
+		await scenario(browser, 'inline credential controls, keyboard, reset and save', shared, async h => {
+			const row = h.row('proxy_password'), field = h.input('proxy_password');
+			assert.equal(await row.locator('button').count(), 2);
+			for (const colorScheme of ['light', 'dark']) {
+				await h.page.emulateMedia({colorScheme});
+				for (const button of await row.locator('button').all()) {
+					const a = await field.boundingBox(), b = await button.boundingBox();
+					assert.ok(b.x >= a.x && b.x+b.width <= a.x+a.width+1 && b.y >= a.y-1 && b.y+b.height <= a.y+a.height+1, 'button inside input');
+				}
+			}
+			await h.row('proxy_username').getByRole('button', {name:tr('Clear username')}).press('Enter');
+			assert.equal(await h.input('proxy_username').inputValue(), ''); assert.ok(await field.inputValue() === shared.proxy_password);
+			await h.reset();
+			await row.getByRole('button', {name:tr('Clear password')}).press('Enter');
+			assert.equal(await field.inputValue(), ''); assert.ok(await field.evaluate(el => el === document.activeElement));
+			assert.equal(await h.input('proxy_username').inputValue(), shared.proxy_username);
+			await row.getByRole('button', {name:tr('Show password')}).press('Space');
+			assert.equal(await field.getAttribute('type'), 'text'); await h.badSave();
+			await h.reset(); assert.equal(await field.getAttribute('type'), 'password');
+			assert.ok(await field.inputValue() === shared.proxy_password);
+			await h.fill('proxy_password', 'fictional-replacement'); await h.save(); await h.open();
+			assert.ok(await field.inputValue() === 'fictional-replacement');
 		});
 		for (const source of ['socks', 'http']) {
 			await scenario(browser, 'clear then select legacy ' + source + ' uses the last source', legacy, async h => {
@@ -206,4 +260,4 @@ async function scenario(browser, name, initial, exercise) {
 			assert.equal(await h.row('_proxy_credential_source').count(), 0);
 		});
 	} finally { await browser.close(); }
-})().catch(() => { console.error('FAIL T16.117 offline LuCI save regression (details withheld)'); process.exitCode = 1; });
+})().catch(error => { console.error('FAIL offline LuCI at ' + error.stack.split('\n').filter(line => line.includes(__filename)).slice(0, 2).join(';')); process.exitCode = 1; });

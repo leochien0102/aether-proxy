@@ -9,6 +9,30 @@ msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping curr
 msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）"
 
 msgctxt "aether-proxy"
+msgid "Copy channel URL"
+msgstr "复制通道 URL"
+
+msgctxt "aether-proxy"
+msgid "Copied"
+msgstr "已复制"
+
+msgctxt "aether-proxy"
+msgid "Clear username"
+msgstr "清空用户名"
+
+msgctxt "aether-proxy"
+msgid "Clear password"
+msgstr "清空密码"
+
+msgctxt "aether-proxy"
+msgid "Show password"
+msgstr "显示密码"
+
+msgctxt "aether-proxy"
+msgid "Hide password"
+msgstr "隐藏密码"
+
+msgctxt "aether-proxy"
 msgid "Require authentication"
 msgstr "启用认证"
 

@@ -200,6 +200,29 @@ return view.extend({
 			o = inputs[field] = s.taboption('explicit', form.Value, field, title,
 				_('Stored once and used by both SOCKS5 and HTTP. Turning a proxy off does not erase these credentials.', 'aether-proxy'));
 			o.password = key == 'password';
+			const renderField = o.renderWidget;
+			o.renderWidget = function() {
+				const node = renderField.apply(this, arguments);
+				const input = node.querySelector('input');
+				if (this.password) {
+					input.nextElementSibling.remove(); // Replace SDK's external reveal button.
+					input.type = 'password';
+					const show = _('Show password', 'aether-proxy'), hide = _('Hide password', 'aether-proxy');
+					const eye = ap.input_action(input, 'hidden', show, () => {
+						const reveal = input.type === 'password';
+						input.type = reveal ? 'text' : 'password';
+						eye.setIcon(reveal ? 'eye' : 'hidden', reveal ? hide : show);
+					});
+				}
+				const clear = ap.input_action(input, 'clear', this.password ? _('Clear password', 'aether-proxy') : _('Clear username', 'aether-proxy'), () => {
+					input.value = ''; input.dispatchEvent(new Event('input', { bubbles:true }));
+					input.dispatchEvent(new Event('change', { bubbles:true }));
+					this.triggerValidation('main'); input.focus();
+				}, this.password ? 1.75 : 0);
+				const sync = () => { clear.hidden = !input.value; };
+				input.addEventListener('input', sync); sync();
+				return node;
+			};
 			o.cfgvalue = () => model.credentials(main()).pair[index];
 			o.validate = () => {
 				if (credentialError() !== true) return credentialError();
@@ -220,7 +243,10 @@ return view.extend({
 				credentialsCleared = true;
 				for (const key of ['proxy_username', 'proxy_password', '_proxy_credential_source']) {
 					const widget = inputs[key]?.getUIElement('main');
-					if (widget) widget.setValue('');
+					if (widget) {
+						widget.setValue('');
+						widget.node?.querySelector('input')?.dispatchEvent(new Event('input', { bubbles:true }));
+					}
 				}
 				for (const key of ['proxy_username', 'proxy_password'])
 					inputs[key].triggerValidation('main');

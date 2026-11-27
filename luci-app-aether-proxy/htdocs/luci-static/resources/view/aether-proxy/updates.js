@@ -190,6 +190,30 @@ return view.extend({
 			]));
 		// Empty means the built-in channel; a default would pin today's URL on Save.
 		option.placeholder = channelDefault;
+		const renderList = option.renderWidget;
+		option.renderWidget = function() {
+			const node = renderList.apply(this, arguments);
+			const input = node.querySelector('.add-item > input');
+			// SDK + reads previousElementSibling; leave both native children in place.
+			Object.assign(input.nextElementSibling.style, { gridArea:'1 / 2', marginInlineStart:'0' });
+			const label = _('Copy channel URL', 'aether-proxy');
+			let timer;
+			const button = ap.input_action(input, 'copy', label, async () => {
+				const text = input.value || input.placeholder;
+				clearTimeout(timer); button.setIcon('copy', label);
+				try { await navigator.clipboard.writeText(text); }
+				catch (_) {
+					const field = E('textarea', { style:'position:fixed;opacity:0', readonly:true });
+					field.value = text; document.body.append(field); field.select();
+					try { if (!document.execCommand('copy')) return; }
+					catch (_) { return; }
+					finally { field.remove(); button.focus(); }
+				}
+				button.setIcon('check', _('Copied', 'aether-proxy'));
+				timer = setTimeout(() => button.setIcon('copy', label), 1200);
+			});
+			return node;
+		};
 		// The optional add box is validated even while empty (docs/10 r14); it is not a URL item.
 		option.validate = function(section_id, value) { return value === '' ? true : model.validate_url(value); };
 		form_defaults.section(section, {

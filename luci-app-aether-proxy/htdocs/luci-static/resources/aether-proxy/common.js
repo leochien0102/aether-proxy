@@ -219,6 +219,32 @@ function call(method, params) {
    call(), never `ap.TIMEOUTS` / `ap.call` (those are prototype members, absent
    on the class itself: the T8.13 device window failed on exactly that). */
 var ap = baseclass.extend({
+	// Overlay a native button in the input's grid cell, without changing SDK widget identity.
+	input_action: function(input, icon, label, click, inset = 0) {
+		const host = input.parentElement;
+		host.style.display = 'inline-grid';
+		host.style.maxWidth = '100%';
+		input.style.gridArea = '1 / 1';
+		input.style.boxSizing = 'border-box';
+		input.style.paddingRight = (2 + inset) + 'rem';
+		const button = E('button', { type: 'button', click, style: 'grid-area:1/1;justify-self:end;align-self:center;position:relative;width:1.75rem;height:1.75rem;padding:0;border:0;background:transparent;color:inherit;cursor:pointer;margin-right:' + inset + 'rem' });
+		const ns = 'http://www.w3.org/2000/svg';
+		const svg = document.createElementNS(ns, 'svg');
+		for (const [key, value] of Object.entries({ viewBox:'0 0 24 24', width:18, height:18, fill:'none', stroke:'currentColor', 'stroke-width':2, 'stroke-linecap':'round', 'stroke-linejoin':'round', 'aria-hidden':'true' })) svg.setAttribute(key, value);
+		const path = document.createElementNS(ns, 'path');
+		svg.append(path); button.append(svg); host.append(button);
+		const paths = {
+			copy:'M7 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2 M11 9h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z',
+			check:'M4 12l5 5L20 6', clear:'M6 6l12 12 M18 6L6 18',
+			eye:'M2 12Q12-3 22 12Q12 27 2 12Z M15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0Z'
+		};
+		button.setIcon = (name, text) => {
+			path.setAttribute('d', name === 'hidden' ? paths.eye + ' M3 3l18 18' : paths[name]);
+			button.title = text; button.setAttribute('aria-label', text);
+		};
+		button.setIcon(icon, label);
+		return button;
+	},
 	/* Shared with the module-level TIMEOUTS object, so tests can shrink the
 	   timeouts through the instance (docs/10 「公共模块与菜单」). */
 	TIMEOUTS: TIMEOUTS,
