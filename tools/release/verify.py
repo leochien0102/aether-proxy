@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only release verification and formal Release/stable byte checks."""
+import argparse
 import hashlib
 import json
 import re
@@ -8,12 +9,11 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from stage import ARCH_ALL
+from stage import ARCH_ALL, ARCHES, SDKS, formal_name, layout, slot_count
 
 CHANNEL = 'leochien0102/aether-proxy-channel'
-ARCHES = ('aarch64_generic', 'x86_64')
-FORMATS = ('ipk', 'apk')
-NAMES = (*ARCH_ALL, 'aether-xray', 'chinadns-ng', 'aether-dns')
+FORMATS = tuple(fmt for _, fmt in SDKS)
+NAMES = ('aether-proxy', *ARCH_ALL, 'aether-xray', 'chinadns-ng', 'aether-dns')
 FORMAL = r'v[0-9]+\.[0-9]+\.[0-9]+-r[0-9]+'
 
 
@@ -83,10 +83,10 @@ def matches_version(manifest, tag):
         tag[1:], tag[1:].replace('-r', '-'))
 
 
-def channel_packages(manifest):
-    for name in NAMES:
+def channel_packages(manifest, arch_all=ARCH_ALL, names=NAMES):
+    for name in names:
         release = manifest['packages'][name]['current']
-        arches = ('all',) if name in ARCH_ALL else ARCHES
+        arches = ('all',) if name in arch_all else ARCHES
         if set(release['assets']) != set(arches):
             raise ValueError(f'Invalid architectures for {name}')
         for arch in arches:
@@ -97,6 +97,10 @@ def channel_packages(manifest):
                 if (not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*\.' + fmt, asset['url'])
                         or '..' in asset['url'] or not re.fullmatch('[0-9a-f]{64}', asset['sha256'])):
                     raise ValueError(f'Invalid asset for {name}/{arch}/{fmt}')
+                version = release['version']
+                raw = f'{name}_{version}_{arch}.ipk' if fmt == 'ipk' else f'{name}-{version}.apk'
+                if asset['url'] != formal_name(name, arch, fmt, raw, arch_all):
+                    raise ValueError(f'Asset identity mismatch for {name}/{arch}/{fmt}')
                 yield name, arch, fmt, asset
 
 
@@ -131,14 +135,19 @@ def check_direct():
                             raise ValueError(f'Gate bytes conflict with published package {name}; bump its package release')
 
 
-def compare_bytes(repo, tag, root, manifest, log):
+def compare_bytes(repo, tag, root, manifest, log, expected_count=None):
     release = published(repo, tag)
     if not matches_version(manifest, tag):
         raise ValueError('Stable current version does not match the Release')
-    assets = {(n, a, f): item for n, a, f, item in channel_packages(manifest)}
+    source = gh('api', '-H', 'Accept: application/vnd.github.raw+json',
+                  f'repos/{repo}/contents/tools/channel/build.py?ref={tag}')
+    names, arch_all = layout(source)
+    if expected_count is not None and expected_count != slot_count(names, arch_all):
+        raise ValueError('Expected count differs from tagged layout')
+    assets = {(n, a, f): item for n, a, f, item in channel_packages(manifest, arch_all, names)}
     expected = {a['url']: a['sha256'] for a in assets.values()}
-    names = {a['name'] for a in release['assets']}
-    if len(expected) != 18 or names - {'SHA256SUMS'} != set(expected):
+    filenames = {a['name'] for a in release['assets']}
+    if len(expected) != len(assets) or filenames - {'SHA256SUMS'} != set(expected):
         raise ValueError('Formal Release/stable package set mismatch')
     out = root / 'formal'
     download(repo, tag, out, '*.ipk', '*.apk')
@@ -148,21 +157,21 @@ def compare_bytes(repo, tag, root, manifest, log):
     download(CHANNEL, 'channel-stable', channel, *sorted(expected))
     if {p.name: digest(p) for p in channel.iterdir()} != expected:
         raise ValueError('Published channel assets do not match its manifest')
-    for name in NAMES:
+    for name in names:
         item = manifest['packages'][name]
         print(f'{name}: current={item["current"]["version"]} previous={(item.get("previous") or {}).get("version", "-")}',
               file=log)
         for arch in ARCHES:
             for fmt in FORMATS:
-                asset = assets[name, 'all' if name in ARCH_ALL else arch, fmt]
+                asset = assets[name, 'all' if name in arch_all else arch, fmt]
                 print(f'  {arch}/{fmt}: {asset["sha256"]}  {asset["url"]}  (Release = channel)', file=log)
     print(release['html_url'], file=log)
 
 
-def compare(repo, tag):
+def compare(repo, tag, expected_count=None):
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
-        compare_bytes(repo, tag, root, stable_manifest(root), log=sys.stdout)
+        compare_bytes(repo, tag, root, stable_manifest(root), log=sys.stdout, expected_count=expected_count)
 
 
 if __name__ == '__main__':
@@ -173,9 +182,12 @@ if __name__ == '__main__':
         if action == 'publication-route':
             publication_route(repo, tag, *rest)
         elif action == 'compare':
-            if rest:
+            parser = argparse.ArgumentParser(add_help=False)
+            parser.add_argument('--expected-count', type=int)
+            args, unknown = parser.parse_known_args(rest)
+            if unknown:
                 raise ValueError('compare accepts only the app repository and formal tag')
-            compare(repo, tag)
+            compare(repo, tag, args.expected_count)
         elif action == 'check-direct':
             check_direct()
         elif action == 'stable-matches':

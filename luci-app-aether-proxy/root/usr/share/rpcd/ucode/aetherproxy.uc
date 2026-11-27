@@ -12,6 +12,26 @@ import * as uci from 'uci';
 import * as schema from 'aetherproxy.schema';
 import * as sys from 'aetherproxy.sys';
 
+// T16.119: run after static imports have opened their source fds, in rpcd itself.
+// Old backend + new LuCI can occur during upgrade or downgrade; do not make
+// the RPC object disappear in that intermediate state. New backends must work.
+if (C.RPCD_GUARD_SEARCH_PATH == null) {
+	warn('aether-proxy: legacy backend has no rpcd fd guard; protection inactive\n');
+}
+else {
+	let search_path = REQUIRE_SEARCH_PATH;
+	REQUIRE_SEARCH_PATH = [ C.RPCD_GUARD_SEARCH_PATH ];
+	try {
+		let native = require('aetherproxy_guard');
+		native.guard();
+	}
+	catch (e) {
+		REQUIRE_SEARCH_PATH = search_path;
+		die(`aether-proxy: rpcd fd guard failed: ${e}`);
+	}
+	REQUIRE_SEARCH_PATH = search_path;
+}
+
 // docs/10 "实现约定": check may need 30s (rendering + nft -c + xray -test); every
 // other forwarded command must finish fast, because rpcd handles calls serially
 // and long tasks must go through job_start instead.

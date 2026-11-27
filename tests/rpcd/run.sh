@@ -11,9 +11,31 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UCODE="$ROOT/tests/host/ucode"
 VIEW="$ROOT/luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/overview.js"
 
-T="$(mktemp -d)"
+T="$(mktemp -d)" || exit 1
 cleanup() { rm -rf "$T"; }
 trap cleanup EXIT
+
+# Match tests/host/ucode's ABI, not a system-installed ucode or target SDK.
+# Preload the real native module into ucode's module cache: the unmodified
+# plugin can require it even while using its production-only search path.
+HOST_PREFIX="$ROOT/tests/host/prefix"
+NATIVE="$ROOT/aether-proxy/src/native"
+if [ ! -x "$HOST_PREFIX/bin/ucode" ] || [ ! -f "$HOST_PREFIX/include/ucode/lib.h" ]; then
+	echo 'rpcd tests: run tests/host/bootstrap.sh first (host ucode and headers required)' >&2
+	exit 1
+fi
+mkdir -p "$T/native" || exit 1
+if ! "${HOSTCC:-cc}" -std=gnu99 -Wall -Wextra -fPIC -shared \
+	-I"$HOST_PREFIX/include" \
+	"$NATIVE/fd-guard.c" "$NATIVE/ucode-guard.c" \
+	-L"$HOST_PREFIX/lib" -Wl,-rpath,"$HOST_PREFIX/lib" -lucode \
+	-o "$T/native/aetherproxy_guard.so"; then
+	echo 'rpcd tests: failed to build the real guard against host ucode' >&2
+	exit 1
+fi
+
+"${HOSTCC:-cc}" -std=gnu99 -Wall -Wextra -Werror -I"$NATIVE" \
+	"$NATIVE/fd-guard.c" "$ROOT/tests/t16.119/fd-guard-test.c" -o "$T/test-guard" && "$T/test-guard" || exit 1
 
 pass=0
 fail=0
@@ -30,7 +52,7 @@ export AETHER_PROXY_TEST_RPCD_CLI="$ROOT/tests/rpcd/stub-cli.sh"
 export AETHER_PROXY_TEST_RPCD_INIT="$ROOT/tests/rpcd/stub-init.sh"
 
 # --- scenarios 1-13 ------------------------------------------------------------
-out="$("$UCODE" "$ROOT/tests/rpcd/test.uc" 2>&1)"; rc=$?
+out="$("$UCODE" -L "$T/native/*.so" -l aetherproxy_guard "$ROOT/tests/rpcd/test.uc" 2>&1)"; rc=$?
 printf '%s\n' "$out"
 pass=$((pass + "$(printf '%s\n' "$out" | grep -c '^PASS  ')"))
 fail=$((fail + "$(printf '%s\n' "$out" | grep -c '^FAIL  ')"))

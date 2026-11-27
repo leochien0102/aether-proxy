@@ -23,7 +23,7 @@ from typing import Any
 PACKAGE_NAMES = ("aether-xray", "chinadns-ng", "aether-dns", "aether-proxy", "luci-app-aether-proxy",
                  "luci-i18n-aether-proxy-zh-cn")
 # Architecture-independent packages: their apk file names carry no architecture at all.
-ARCH_ALL = ("aether-proxy", "luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
+ARCH_ALL = ("luci-app-aether-proxy", "luci-i18n-aether-proxy-zh-cn")
 DATA_NAMES = ("gfwlist", "chnlist", "apple", "chnroute4", "gfw_static4")
 
 

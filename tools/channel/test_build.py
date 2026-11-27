@@ -266,10 +266,10 @@ release_assets | sort > "$work/existing"
         self.assertTrue(manifest["generated"].endswith("Z"))
         self.assertEqual(set(manifest["packages"]), set(build.PACKAGE_NAMES))
         # noarch packages collapse to "all"; aether-xray keeps one entry per target
-        self.assertEqual(set(manifest["packages"]["aether-proxy"]["current"]["assets"]), {"all"})
+        self.assertEqual(set(manifest["packages"]["aether-proxy"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
         self.assertEqual(set(manifest["packages"]["aether-xray"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
         self.assertEqual(set(manifest["packages"]["chinadns-ng"]["current"]["assets"]), {"aarch64_generic", "x86_64"})
-        asset = manifest["packages"]["aether-proxy"]["current"]["assets"]["all"]["ipk"]
+        asset = manifest["packages"]["aether-proxy"]["current"]["assets"]["x86_64"]["ipk"]
         content = (self.out / asset["url"]).read_bytes()
         self.assertEqual(asset["size"], len(content))
         self.assertEqual(asset["sha256"], build.sha256(content))
@@ -277,7 +277,7 @@ release_assets | sort > "$work/existing"
         apks = {arch: a["apk"]["url"] for arch, a in manifest["packages"]["aether-xray"]["current"]["assets"].items()}
         self.assertEqual(apks, {"aarch64_generic": "aether-xray-1.0-r1_aarch64_generic.apk", "x86_64": "aether-xray-1.0-r1_x86_64.apk"})
         self.assertEqual((self.out / apks["x86_64"]).read_bytes(), b"apk:aether-xray:1.0-r1:x86_64:x86_64")
-        self.assertEqual(manifest["packages"]["aether-proxy"]["current"]["assets"]["all"]["apk"]["url"], "aether-proxy-1.0-r1.apk")
+        self.assertEqual(manifest["packages"]["aether-proxy"]["current"]["assets"]["x86_64"]["apk"]["url"], "aether-proxy-1.0-r1_x86_64.apk")
         # data: size/sha256 describe the downloaded .gz, content_sha256 the plain list
         datum = manifest["data"]["gfwlist"]
         compressed = (self.out / datum["url"]).read_bytes()

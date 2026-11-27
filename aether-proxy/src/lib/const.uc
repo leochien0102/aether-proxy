@@ -426,3 +426,6 @@ export const SUB_MAX_NODES = 1024;
 // T16.87 (M13 part 3): per-URI byte budget on the shared parser path (16 KiB).
 // Applies to each raw non-empty node line after line-delimiter removal, not to a full subscription body.
 export const URI_MAX_BYTES = 16384;
+
+// T16.119: capability marker also preserves mixed-version LuCI transactions.
+export const RPCD_GUARD_SEARCH_PATH = '/usr/lib/aether-proxy/*.so';
