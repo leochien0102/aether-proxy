@@ -219,8 +219,14 @@ function frozen_error(detail) {
 };
 
 function remove_generation(path) {
+	// An already absent generation is already cleaned; running `rm` on it would only add a
+	// bounded command round-trip to the publish step.
+	if (fs.stat(path) == null)
+		return true;
 	let removed = sys.run([ 'rm', '-rf', path ], { timeout: 10 });
-	return removed.code == 0;
+	// The publish step only needs the generation gone. A wrapper bookkeeping status must not
+	// turn a cleanup that actually removed the directory into a publish failure.
+	return removed.code == 0 || fs.stat(path) == null;
 };
 
 function applied_dir(ctx) {

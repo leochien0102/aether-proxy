@@ -92,6 +92,11 @@ export const cases = [
 		name: 'no grace needed: runner finishes normally while grace path is unread FIFO',
 		expect: 'PASS',
 		kind: 'no_grace_needed_fifo_no_reader'
+	},
+	{
+		name: 'timer kill status never becomes a handshake failure',
+		expect: 'PASS',
+		kind: 'timer_kill_after_runner_success'
 	}
 ];
 
@@ -971,6 +976,33 @@ function partial_control_frame_case(stage, exit_code, cut) {
 	});
 }
 
+// T16.118: the timer's final `kill -KILL "$runner"` must not decide the exit status of an
+// already completed command. Reproduce deterministically: the runner ignores TERM and exits 0
+// shortly after the timeout fires, and the grace child removes the completion marker before the
+// timer's own grace check, so the timer reaches its final kill with a reaped runner.
+// A command that ignores TERM and then completes with 0 while the timer is already in its
+// timeout branch: the timer's final `kill -KILL "$runner"` targets a reaped process and fails.
+// That bookkeeping status must not turn a finished command into a failure.
+function timer_kill_after_runner_success_case() {
+	return with_sandbox('kill-status', sb => {
+		let obs = run_isolated_case(sb, {
+			argv: [ REAL_SH, '-c', `trap '' TERM; ${REAL_SLEEP} 1.2; printf slow-ok` ],
+			opts: { timeout: 1, quiet: true },
+			guard_s: 12
+		});
+		let err = check_common_invariants('timer_kill_after_runner_success', obs);
+		if (err)
+			return err;
+		let r = obs.result;
+		// The command ran past its timeout and ignored TERM, so 124 stays honest; what must not
+		// happen is the timer's own bookkeeping status (a failed final kill) turning it into the
+		// -1 handshake failure that aborted publish on the device.
+		if (r.code == -1 || index(r.stderr, 'timer exited early') >= 0 || r.stdout != 'slow-ok')
+			return failed(`completed command reported as timer failure: ${sprintf('%.J', obs)}`);
+		return 'PASS';
+	});
+}
+
 export function run(c) {
 	if (match(c.kind, /^partial_frame_[sg]_[07]$/))
 		return partial_control_frame_case(index(c.kind, '_s_') >= 0 ? 'S' : 'G', +substr(c.kind, -1), c.cut ?? 'stage');
@@ -1002,5 +1034,7 @@ export function run(c) {
 		return pre_publish_grace_timer_exit_case();
 	if (c.kind == 'no_grace_needed_fifo_no_reader')
 		return no_grace_needed_fifo_no_reader_case();
+	if (c.kind == 'timer_kill_after_runner_success')
+		return timer_kill_after_runner_success_case();
 	return failed('unknown test kind');
 };
