@@ -1,0 +1,10 @@
+PASS fresh off plus newly stored credentials remains explicitly off after reload
+PASS HTTP clipboard paste and native channel + / save
+PASS secure Clipboard API copies default without fallback
+PASS inline credential controls, keyboard, reset and save
+PASS clear then select legacy socks uses the last source
+PASS clear then select legacy http uses the last source
+PASS default off -> auth required -> clear does not disable -> explicit off survives reopening
+PASS existing credentials retained without editing; explicit clearing survives reload
+PASS existing credentials retained without editing; explicit clearing survives reload
+PASS legacy conflict defaults to auth even while listeners off; clear/reset/failure preserve originals

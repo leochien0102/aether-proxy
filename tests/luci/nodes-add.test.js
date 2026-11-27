@@ -172,7 +172,8 @@ async function harness() {
 			h.sections = h.sections.filter(s => s['.name'] !== id);
 		}
 	};
-	const ap = { call: async (method, params) => {
+	// This harness tests staging/parsing, not field actions; those have their own unit and Chromium gates.
+	const ap = { field_actions: option => option, call: async (method, params) => {
 		h.rpc.push([method, params]);
 		return h.reply;
 	} };

@@ -244,7 +244,61 @@ var ap = baseclass.extend({
 			button.title = text; button.setAttribute('aria-label', text);
 		};
 		button.setIcon(icon, label);
+		// Shrink only the clear glyph, not its 1.75rem pointer/keyboard target.
+		if (icon === 'clear') {
+			svg.style.setProperty('width', '14px', 'important');
+			svg.style.setProperty('height', '14px', 'important');
+		}
 		return button;
+	},
+	/* Assemble actions on the SDK Value, including cloned GridSection options.
+	 * Call after setting option.password; labels belong to the caller's field.
+	 * A DynamicList caller selects its add-item input, never a saved list item.
+	 * Keep validation, formvalue and writers owned by LuCI, not a replacement input.
+	 */
+	field_actions: function(option, labels, selector = 'input') {
+		// ap is the LuCI constructor; retain this module instance across option cloning.
+		const actions = this;
+		const render = option.renderWidget;
+		option.renderWidget = function(section_id, ...args) {
+			const node = render.call(this, section_id, ...args);
+			const input = node.querySelector(selector);
+			if (this.password) {
+				input.nextElementSibling.remove(); // Replace SDK's external reveal button.
+				input.type = 'password';
+				const eye = actions.input_action(input, 'hidden', labels.show, () => {
+					const reveal = input.type === 'password';
+					input.type = reveal ? 'text' : 'password';
+					eye.setIcon(reveal ? 'eye' : 'hidden', reveal ? labels.hide : labels.show);
+				});
+			}
+			const clear = actions.input_action(input, 'clear', labels.clear, () => {
+				input.value = '';
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+				input.dispatchEvent(new Event('change', { bubbles: true }));
+				this.triggerValidation(section_id);
+				input.focus();
+			}, this.password ? 1.75 : 0);
+			const host = input.parentElement;
+			const sync = (focus = document.activeElement) => {
+				const visible = !!input.value && !input.readOnly && !input.disabled && host.contains(focus);
+				clear.hidden = !visible;
+				clear.disabled = !visible;
+				clear.tabIndex = visible ? 0 : -1;
+				// Author theme display rules override the browser's default [hidden] rule.
+				clear.style.setProperty('display', visible ? 'inline-flex' : 'none', 'important');
+			};
+			input.addEventListener('input', () => sync());
+			input.addEventListener('change', () => sync());
+			host.addEventListener('focusin', () => sync());
+			host.addEventListener('focusout', event => sync(event.relatedTarget));
+			new MutationObserver(() => sync()).observe(input, {
+				attributes: true, attributeFilter: ['disabled', 'readonly']
+			});
+			sync();
+			return node;
+		};
+		return option;
 	},
 	/* Shared with the module-level TIMEOUTS object, so tests can shrink the
 	   timeouts through the instance (docs/10 「公共模块与菜单」). */

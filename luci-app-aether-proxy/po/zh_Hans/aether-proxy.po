@@ -9,6 +9,30 @@ msgid "Node {node}: {address} candidate {ip}:{port} is unreachable; keeping curr
 msgstr "节点 {node}：{address} 的候选地址 {ip}:{port} 不可达，保留当前 IP（来源：{source}，原始输出：{raw}）"
 
 msgctxt "aether-proxy"
+msgid "Show UUID"
+msgstr "显示 UUID"
+
+msgctxt "aether-proxy"
+msgid "Hide UUID"
+msgstr "遮蔽 UUID"
+
+msgctxt "aether-proxy"
+msgid "Clear UUID"
+msgstr "清空 UUID"
+
+msgctxt "aether-proxy"
+msgid "Show REALITY public key"
+msgstr "显示 REALITY 公钥"
+
+msgctxt "aether-proxy"
+msgid "Hide REALITY public key"
+msgstr "遮蔽 REALITY 公钥"
+
+msgctxt "aether-proxy"
+msgid "Clear REALITY public key"
+msgstr "清空 REALITY 公钥"
+
+msgctxt "aether-proxy"
 msgid "Copy channel URL"
 msgstr "复制通道 URL"
 

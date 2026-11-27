@@ -7,7 +7,9 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const types = require('./form-sdk');
 const { loadModule, contentChildren } = require('./loader');
-const { modalElement: E } = require('./modal-dom');
+const { modalElement: E, modalDocument, ModalMutationObserver } = require('./modal-dom');
+// Unit-only DOM surface; Chromium gates use the browser's native observer and SVG DOM.
+globalThis.MutationObserver ??= ModalMutationObserver;
 const RES = path.resolve(__dirname, '../../luci-app-aether-proxy/htdocs/luci-static/resources');
 
 async function sdkSave(modalMap, ev) {
@@ -39,8 +41,12 @@ function widgetTypes() {
 				}, select ? this.keylist.map((key, i) => E('option', { value: key }, this.vallist[i])) : []);
 				input.value = value;
 				this.input = input;
-				return name === 'TextValue' ? E('div', {}, [input]) : input;
+				// SDK Textfield.render returns a host containing the input and optional reveal button.
+				// Returning the input itself makes querySelector('input') incorrectly return null.
+				return E('div', {}, [input, ...(this.password && !select && name !== 'TextValue'
+					? [E('button', { type: 'button' }, 'Reveal')] : [])]);
 			},
+			triggerValidation(id) { return this.isValid(id); },
 			formvalue(id) {
 				// SDK getUIElement cannot see a widget before its frame is mounted.
 				return this.map.frames[this.cbid(id)]?.parentNode ? this.input?.value
@@ -138,6 +144,7 @@ function formDouble(h) {
 
 async function harness(page, saved = {}) {
 	globalThis.E = E;
+	modalDocument.activeElement = null;
 	const h = { calls: [], sequence: [], data: { main: {}, sub: {}, row: { ...saved } } };
 	h.uci = {
 		get: (config, id, field) => field == null ? h.data[id] : h.data[id]?.[field],
@@ -154,7 +161,7 @@ async function harness(page, saved = {}) {
 		dom: { content: (node, children) => contentChildren(node, children) },
 		'aether-proxy.common': {}
 	};
-	const env = { window: { setTimeout() {} }, document: {} };
+	const env = { window: { setTimeout() {} }, document: modalDocument };
 	for (const name of ['nodes', 'subscriptions'])
 		modules['aether-proxy.model.' + name] = loadModule(
 			path.join(RES, 'aether-proxy/model', name + '.js'), modules, env);

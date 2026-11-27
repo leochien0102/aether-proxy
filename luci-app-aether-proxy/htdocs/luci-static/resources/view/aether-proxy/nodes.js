@@ -598,6 +598,11 @@ return view.extend({
 
 		o = s.option(form.Value, 'uuid', _('UUID', 'aether-proxy'));
 		o.modalonly = true;
+		o.password = true;
+		ap.field_actions(o, {
+			show: _('Show UUID', 'aether-proxy'), hide: _('Hide UUID', 'aether-proxy'),
+			clear: _('Clear UUID', 'aether-proxy')
+		});
 		o.validate = model.validate_uuid;
 		o.depends('protocol', 'vless');
 		o.depends('protocol', 'vmess');
@@ -752,6 +757,12 @@ return view.extend({
 
 		o = s.option(form.Value, 'reality_pbk', _('REALITY public key', 'aether-proxy'));
 		o.modalonly = true;
+		o.password = true;
+		ap.field_actions(o, {
+			show: _('Show REALITY public key', 'aether-proxy'),
+			hide: _('Hide REALITY public key', 'aether-proxy'),
+			clear: _('Clear REALITY public key', 'aether-proxy')
+		});
 		o.validate = model.validate_reality_pbk;
 		o.depends('security', 'reality');
 

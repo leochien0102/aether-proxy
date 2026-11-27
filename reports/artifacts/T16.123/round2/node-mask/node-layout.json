@@ -1,0 +1,434 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "39f7f41c88474a0bce8c20ca54a13926a153dc06590d0f84ae36d04bd9d0db7a",
+    "view/aether-proxy/advanced.js": "8231868913821a03a5213b18b03e7af2d678e9cfe808ee32b73c4e0f95050402",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc",
+    "view/aether-proxy/nodes.js": "c543c7309ccb3f05864cc838cf08b268459d7d2d170e9a48ad8302a59f3d8754"
+  },
+  "gateSHA256": "58fb24e090bd956f48f967d67171eab74f8d3e6983396153b2d15a292be57bc1",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.123",
+  "commit": "7ad8553741be4c92a1adfa7863e9f44ae68a2a51",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/advanced.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js\n M luci-app-aether-proxy/po/zh_Hans/aether-proxy.po\n M tests/luci/loader.js\n M tests/luci/modal-dom.js\n M tests/luci/nodes-add.test.js\n M tests/luci/required-modal.js\n M tests/luci/t16.122-input-actions-gate.js\n?? reports/T16.123.md\n?? reports/artifacts/T16.123/\n?? tests/luci/t16.123-field-actions.test.js\n?? tests/luci/t16.123-node-mask-gate.js\n?? tests/luci/t16.123-run-local.sh",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "node-layout-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "r6Glyph": {
+        "svg": {
+          "width": 18,
+          "height": 18
+        },
+        "target": {
+          "width": 28,
+          "height": 28
+        }
+      },
+      "boxes": [
+        {
+          "field": "uuid",
+          "clear": {
+            "x": 668,
+            "y": 476.296875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 696,
+            "y": 476.296875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 436,
+            "y": 470.796875,
+            "width": 290,
+            "height": 39
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 675,
+            "y": 483.296875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 710,
+            "y": 490.296875
+          },
+          "clearClick": {
+            "x": 682,
+            "y": 490.296875
+          },
+          "emptyEye": {
+            "x": 696,
+            "y": 476.296875,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "field": "reality_pbk",
+          "clear": {
+            "x": 668,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 696,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 436,
+            "y": 480.546875,
+            "width": 290,
+            "height": 39
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 675,
+            "y": 493.046875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 710,
+            "y": 500.046875
+          },
+          "clearClick": {
+            "x": 682,
+            "y": 500.046875
+          },
+          "emptyEye": {
+            "x": 696,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "node-layout-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "r6Glyph": {
+        "svg": {
+          "width": 18,
+          "height": 18
+        },
+        "target": {
+          "width": 28,
+          "height": 28
+        }
+      },
+      "boxes": [
+        {
+          "field": "uuid",
+          "clear": {
+            "x": 278.5,
+            "y": 728.421875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 306.5,
+            "y": 728.421875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 53,
+            "y": 721.421875,
+            "width": 283.5,
+            "height": 42
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 285.5,
+            "y": 735.421875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 320.5,
+            "y": 742.421875
+          },
+          "clearClick": {
+            "x": 292.5,
+            "y": 742.421875
+          },
+          "emptyEye": {
+            "x": 306.5,
+            "y": 728.421875,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "field": "reality_pbk",
+          "clear": {
+            "x": 278.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 306.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 53,
+            "y": 478.671875,
+            "width": 283.5,
+            "height": 42
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 285.5,
+            "y": 492.671875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 320.5,
+            "y": 499.671875
+          },
+          "clearClick": {
+            "x": 292.5,
+            "y": 499.671875
+          },
+          "emptyEye": {
+            "x": 306.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "node-layout-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "r6Glyph": {
+        "svg": {
+          "width": 18,
+          "height": 18
+        },
+        "target": {
+          "width": 28,
+          "height": 28
+        }
+      },
+      "boxes": [
+        {
+          "field": "uuid",
+          "clear": {
+            "x": 668,
+            "y": 480.296875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 696,
+            "y": 480.296875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 436,
+            "y": 474.796875,
+            "width": 290,
+            "height": 39
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 675,
+            "y": 487.296875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 710,
+            "y": 494.296875
+          },
+          "clearClick": {
+            "x": 682,
+            "y": 494.296875
+          },
+          "emptyEye": {
+            "x": 696,
+            "y": 480.296875,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "field": "reality_pbk",
+          "clear": {
+            "x": 668,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 696,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 436,
+            "y": 480.546875,
+            "width": 290,
+            "height": 39
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 675,
+            "y": 493.046875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 710,
+            "y": 500.046875
+          },
+          "clearClick": {
+            "x": 682,
+            "y": 500.046875
+          },
+          "emptyEye": {
+            "x": 696,
+            "y": 486.046875,
+            "width": 28,
+            "height": 28
+          }
+        }
+      ],
+      "result": "PASS"
+    },
+    {
+      "id": "node-layout-light-360",
+      "mode": "light",
+      "width": 360,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "r6Glyph": {
+        "svg": {
+          "width": 18,
+          "height": 18
+        },
+        "target": {
+          "width": 28,
+          "height": 28
+        }
+      },
+      "boxes": [
+        {
+          "field": "uuid",
+          "clear": {
+            "x": 278.5,
+            "y": 732.421875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 306.5,
+            "y": 732.421875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 53,
+            "y": 725.421875,
+            "width": 283.5,
+            "height": 42
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 285.5,
+            "y": 739.421875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 320.5,
+            "y": 746.421875
+          },
+          "clearClick": {
+            "x": 292.5,
+            "y": 746.421875
+          },
+          "emptyEye": {
+            "x": 306.5,
+            "y": 732.421875,
+            "width": 28,
+            "height": 28
+          }
+        },
+        {
+          "field": "reality_pbk",
+          "clear": {
+            "x": 278.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          },
+          "eye": {
+            "x": 306.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          },
+          "input": {
+            "x": 53,
+            "y": 478.671875,
+            "width": 283.5,
+            "height": 42
+          },
+          "intersection": 0,
+          "glyph": {
+            "x": 285.5,
+            "y": 492.671875,
+            "width": 14,
+            "height": 14
+          },
+          "eyeClick": {
+            "x": 320.5,
+            "y": 499.671875
+          },
+          "clearClick": {
+            "x": 292.5,
+            "y": 499.671875
+          },
+          "emptyEye": {
+            "x": 306.5,
+            "y": 485.671875,
+            "width": 28,
+            "height": 28
+          }
+        }
+      ],
+      "result": "PASS"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

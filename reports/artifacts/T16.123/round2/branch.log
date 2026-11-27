@@ -1,0 +1,15 @@
+## feat/t16.123-node-mask
+ M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js
+ M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/advanced.js
+ M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js
+ M luci-app-aether-proxy/po/zh_Hans/aether-proxy.po
+ M tests/luci/loader.js
+ M tests/luci/modal-dom.js
+ M tests/luci/nodes-add.test.js
+ M tests/luci/required-modal.js
+ M tests/luci/t16.122-input-actions-gate.js
+?? reports/T16.123.md
+?? reports/artifacts/T16.123/
+?? tests/luci/t16.123-field-actions.test.js
+?? tests/luci/t16.123-node-mask-gate.js
+?? tests/luci/t16.123-run-local.sh

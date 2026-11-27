@@ -1,0 +1,14 @@
+branch exit=0
+diff-check exit=0
+syntax-node-gate exit=0
+syntax-shared-gate exit=0
+syntax-shell exit=0
+luci exit=0
+r6-visibility exit=1 (expected 1; inspect JSON for assertion failure)
+candidate-visibility exit=0
+r6-layout exit=1 (expected 1; inspect JSON for assertion failure)
+candidate-layout exit=0
+node-mask exit=0
+optional-auth exit=0
+evidence-proof exit=0
+final-diff-check exit=0

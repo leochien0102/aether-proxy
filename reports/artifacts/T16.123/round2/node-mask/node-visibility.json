@@ -1,0 +1,1238 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "39f7f41c88474a0bce8c20ca54a13926a153dc06590d0f84ae36d04bd9d0db7a",
+    "view/aether-proxy/advanced.js": "8231868913821a03a5213b18b03e7af2d678e9cfe808ee32b73c4e0f95050402",
+    "view/aether-proxy/updates.js": "c19346a3126058e377218ac604f55ba7ebe3e8c1a31215791ee2739f22dc5adc",
+    "view/aether-proxy/nodes.js": "c543c7309ccb3f05864cc838cf08b268459d7d2d170e9a48ad8302a59f3d8754"
+  },
+  "gateSHA256": "58fb24e090bd956f48f967d67171eab74f8d3e6983396153b2d15a292be57bc1",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.123",
+  "commit": "7ad8553741be4c92a1adfa7863e9f44ae68a2a51",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/advanced.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js\n M luci-app-aether-proxy/po/zh_Hans/aether-proxy.po\n M tests/luci/loader.js\n M tests/luci/modal-dom.js\n M tests/luci/nodes-add.test.js\n M tests/luci/required-modal.js\n M tests/luci/t16.122-input-actions-gate.js\n?? reports/T16.123.md\n?? reports/artifacts/T16.123/\n?? tests/luci/t16.123-field-actions.test.js\n?? tests/luci/t16.123-node-mask-gate.js\n?? tests/luci/t16.123-run-local.sh",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "node-visibility-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "visibility": [
+        {
+          "field": "uuid",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        }
+      ],
+      "cancelRestoresExactValues": true,
+      "result": "PASS"
+    },
+    {
+      "id": "node-visibility-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "visibility": [
+        {
+          "field": "uuid",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        }
+      ],
+      "cancelRestoresExactValues": true,
+      "result": "PASS"
+    },
+    {
+      "id": "node-visibility-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "visibility": [
+        {
+          "field": "uuid",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        }
+      ],
+      "cancelRestoresExactValues": true,
+      "result": "PASS"
+    },
+    {
+      "id": "node-visibility-light-360",
+      "mode": "light",
+      "width": 360,
+      "nodeGateSHA256": "f90a77f5cf294a10018c2715041f26c61e4c834a3e3cd4d60dfea8bddf3217c6",
+      "visibility": [
+        {
+          "field": "uuid",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "uuid",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "nonempty blurred",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "empty",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "placeholder only",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "typed then erased",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "button cleared",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "readonly",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        },
+        {
+          "field": "reality_pbk",
+          "state": "disabled",
+          "display": "none",
+          "visibility": "visible",
+          "opacity": "0.5",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          },
+          "hit": false,
+          "tabIndex": -1,
+          "disabled": true,
+          "painted": false
+        }
+      ],
+      "cancelRestoresExactValues": true,
+      "result": "PASS"
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}
