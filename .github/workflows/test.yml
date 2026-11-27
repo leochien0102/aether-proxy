@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: leochien0102/aether-proxy-channel
-          ref: b064da02c5fc50a6fb71338ae8b19c420c121e08
+          ref: 6ddc117fca4d77d4edf24fb334e7738dcbfcf827
           path: .ci-channel
           persist-credentials: false
 
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           test -d "$CHANNEL_WORKTREE"
-          test "$(git -C "$CHANNEL_WORKTREE" rev-parse HEAD)" = b064da02c5fc50a6fb71338ae8b19c420c121e08
+          test "$(git -C "$CHANNEL_WORKTREE" rev-parse HEAD)" = 6ddc117fca4d77d4edf24fb334e7738dcbfcf827
           test -f "$CHANNEL_WORKTREE/.github/workflows/publish-channel.yml"
           python3 tests/ci/test_build_scope.py
           python3 tests/ci/test_component_assets.py
