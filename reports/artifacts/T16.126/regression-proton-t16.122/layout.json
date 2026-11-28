@@ -1,0 +1,286 @@
+{
+  "theme": "proton2025",
+  "version": "1.4.5-r1",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/proton2025",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-proton2025.control",
+  "controlSHA256": "df7970048d40f77027c60d3ea082d20dc97cf1b3493991d93e891d8c06b49111",
+  "cssPath": "css/cascade.css",
+  "cssSHA256": "c100f7abf1ee980ff38b1a55bdd9b086e2eb2fcbd51e68ab3409b8f92f795684",
+  "darkCssPath": null,
+  "darkCssSHA256": null,
+  "sourceSHA256": {
+    "aether-proxy/common.js": "3cc07d340b23d0bff2ac39e78feac5870808d54c8a8e9ff28bff24f8a668e60f",
+    "aether-proxy/subscriptions-block.js": "7e9c8248d037af9ae9447a073caeb2381938c4932d8c2619d4826d1c9c485b2f",
+    "view/aether-proxy/overview.js": "72c3edcd0495625b84b3cf658120381501bfaee9d9d0c5109aba259878f5b294",
+    "view/aether-proxy/access.js": "2f357342e8b6d13527b2c9bb672d717ca2df032af4d64e39aa1464d361da90ff",
+    "view/aether-proxy/rules.js": "b23f950615da04085c70ac5d1ef10377398311efa9948ca1a30e6a4a07cdb434",
+    "view/aether-proxy/advanced.js": "560cd2df9396ac861b49095357edecf366d666c53d7c91fe55ae1314503ff93b",
+    "view/aether-proxy/updates.js": "bfa5e9242151ef2b1c94efd4d0f6626b3b90ef2de2b79d98951f96201499d42b",
+    "view/aether-proxy/nodes.js": "9a43e825b07683f8425e3d16cba7606ea30067da908eba1685338c8a55c7f85c",
+    "view/aether-proxy/logs.js": "47acb6ef7e747d36dfdb438a2d67b09d8e534bd0377f34816bf87f50450a651f"
+  },
+  "gateSHA256": "2332749456a5881e944ee57f67af7b9d4a80ded22fec7bbeb90f1e502a83a9c4",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.126",
+  "commit": "0b4afb701c3fda73e47a292a99a7be27e61029b2",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/subscriptions-block.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js\n M tests/luci/loader.js\n M tests/luci/t16.123-node-mask-gate.js\n?? reports/T16.126.md\n?? reports/artifacts/T16.126/\n?? tests/luci/t16.126-width-gate.js",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "layout-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 393.5332946777344,
+          "width": 874,
+          "height": 40
+        },
+        "copy": {
+          "x": 1121,
+          "y": 397.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 1151,
+          "y": 391.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "layout-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 938.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 959.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 959.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 945.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 588.1851806640625,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 591.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 585.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "layout-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "boxes": {
+        "clear": {
+          "x": 509,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 537,
+          "y": 549.171875,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 277,
+          "y": 543.671875,
+          "width": 290,
+          "height": 39
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 551,
+          "y": 563.171875
+        },
+        "clear": {
+          "x": 523,
+          "y": 563.171875
+        }
+      },
+      "emptyEye": {
+        "x": 537,
+        "y": 549.171875,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 277,
+          "y": 396.2481689453125,
+          "width": 874,
+          "height": 40
+        },
+        "copy": {
+          "x": 1121,
+          "y": 399.359375,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 1151,
+          "y": 393.359375,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "layout-light-360",
+      "mode": "light",
+      "width": 360,
+      "boxes": {
+        "clear": {
+          "x": 265,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "eye": {
+          "x": 293,
+          "y": 945.84375,
+          "width": 28,
+          "height": 28
+        },
+        "input": {
+          "x": 37,
+          "y": 938.84375,
+          "width": 286,
+          "height": 42
+        },
+        "intersection": 0
+      },
+      "clicks": {
+        "eye": {
+          "x": 307,
+          "y": 959.84375
+        },
+        "clear": {
+          "x": 279,
+          "y": 959.84375
+        }
+      },
+      "emptyEye": {
+        "x": 293,
+        "y": 945.84375,
+        "width": 28,
+        "height": 28
+      },
+      "channelBoxes": {
+        "input": {
+          "x": 37,
+          "y": 590.5707397460938,
+          "width": 241,
+          "height": 40
+        },
+        "copy": {
+          "x": 248,
+          "y": 593.296875,
+          "width": 28,
+          "height": 28
+        },
+        "plus": {
+          "x": 279,
+          "y": 587.296875,
+          "width": 40,
+          "height": 40
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

@@ -606,6 +606,7 @@ return view.extend({
 		o.validate = model.validate_uuid;
 		o.depends('protocol', 'vless');
 		o.depends('protocol', 'vmess');
+		ap.wide_input(o, 27);
 
 		o = s.option(form.Value, 'username', _('Username', 'aether-proxy'));
 		o.modalonly = true;
@@ -766,6 +767,7 @@ return view.extend({
 		});
 		o.validate = model.validate_reality_pbk;
 		o.depends('security', 'reality');
+		ap.wide_input(o, 31);
 
 		o = s.option(form.Value, 'reality_sid', _('REALITY short ID', 'aether-proxy'));
 		o.modalonly = true;

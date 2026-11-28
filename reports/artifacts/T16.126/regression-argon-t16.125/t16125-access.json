@@ -1,0 +1,290 @@
+{
+  "theme": "argon-plus",
+  "version": "2.4.3-r3",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/argon-plus",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-argon-plus.control",
+  "controlSHA256": "65d74240f285d343a51322e05875dac9fe1a576e9d1da47d7ab5aa596189e66e",
+  "cssPath": "css/cascade.css",
+  "cssSHA256": "dddf556ed4b205c2773eb3b19a48dd90f999c5e11e20a848938cd96efb1446da",
+  "darkCssPath": "css/dark.css",
+  "darkCssSHA256": "807924782448c2cb4ebf7c28d19b5cda326febc4436d1ee47cef90c6d0b43ed3",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "3cc07d340b23d0bff2ac39e78feac5870808d54c8a8e9ff28bff24f8a668e60f",
+    "aether-proxy/subscriptions-block.js": "7e9c8248d037af9ae9447a073caeb2381938c4932d8c2619d4826d1c9c485b2f",
+    "view/aether-proxy/overview.js": "72c3edcd0495625b84b3cf658120381501bfaee9d9d0c5109aba259878f5b294",
+    "view/aether-proxy/access.js": "2f357342e8b6d13527b2c9bb672d717ca2df032af4d64e39aa1464d361da90ff",
+    "view/aether-proxy/rules.js": "b23f950615da04085c70ac5d1ef10377398311efa9948ca1a30e6a4a07cdb434",
+    "view/aether-proxy/advanced.js": "560cd2df9396ac861b49095357edecf366d666c53d7c91fe55ae1314503ff93b",
+    "view/aether-proxy/updates.js": "bfa5e9242151ef2b1c94efd4d0f6626b3b90ef2de2b79d98951f96201499d42b",
+    "view/aether-proxy/nodes.js": "9a43e825b07683f8425e3d16cba7606ea30067da908eba1685338c8a55c7f85c",
+    "view/aether-proxy/logs.js": "47acb6ef7e747d36dfdb438a2d67b09d8e534bd0377f34816bf87f50450a651f"
+  },
+  "gateSHA256": "2332749456a5881e944ee57f67af7b9d4a80ded22fec7bbeb90f1e502a83a9c4",
+  "appRoot": "/workspace/openwrt/aether-proxy-wt/T16.126",
+  "commit": "0b4afb701c3fda73e47a292a99a7be27e61029b2",
+  "dirty": "M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/subscriptions-block.js\n M luci-app-aether-proxy/htdocs/luci-static/resources/view/aether-proxy/nodes.js\n M tests/luci/loader.js\n M tests/luci/t16.123-node-mask-gate.js\n?? reports/T16.126.md\n?? reports/artifacts/T16.126/\n?? tests/luci/t16.126-width-gate.js",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "t16125-access-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "coverageGateSHA256": "f53bd72e770cc26ea3e3f2bbfefa2b2f5c2ea20d637d4c5bb84d02465efae363",
+      "result": "PASS",
+      "modalClosures": [
+        {
+          "active": false,
+          "inViewport": false,
+          "suppressed": false,
+          "dialog": {
+            "x": -9936,
+            "y": 70,
+            "width": 1152,
+            "height": 511,
+            "top": 70,
+            "right": -8784,
+            "bottom": 581,
+            "left": -9936
+          },
+          "overlay": {
+            "x": -10000,
+            "y": 0,
+            "width": 1280,
+            "height": 1000,
+            "top": 0,
+            "right": -8720,
+            "bottom": 1000,
+            "left": -10000
+          },
+          "ancestors": [
+            {
+              "tag": "DIV",
+              "id": "",
+              "display": "flex",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "DIV",
+              "id": "modal_overlay",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "BODY",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "HTML",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            }
+          ],
+          "hits": []
+        }
+      ]
+    },
+    {
+      "id": "t16125-access-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "coverageGateSHA256": "f53bd72e770cc26ea3e3f2bbfefa2b2f5c2ea20d637d4c5bb84d02465efae363",
+      "result": "PASS",
+      "modalClosures": [
+        {
+          "active": false,
+          "inViewport": false,
+          "suppressed": false,
+          "dialog": {
+            "x": -10000,
+            "y": 70,
+            "width": 360,
+            "height": 705.625,
+            "top": 70,
+            "right": -9640,
+            "bottom": 775.625,
+            "left": -10000
+          },
+          "overlay": {
+            "x": -10000,
+            "y": 0,
+            "width": 360,
+            "height": 1000,
+            "top": 0,
+            "right": -9640,
+            "bottom": 1000,
+            "left": -10000
+          },
+          "ancestors": [
+            {
+              "tag": "DIV",
+              "id": "",
+              "display": "flex",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "DIV",
+              "id": "modal_overlay",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "BODY",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "HTML",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            }
+          ],
+          "hits": []
+        }
+      ]
+    },
+    {
+      "id": "t16125-access-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "coverageGateSHA256": "f53bd72e770cc26ea3e3f2bbfefa2b2f5c2ea20d637d4c5bb84d02465efae363",
+      "result": "PASS",
+      "modalClosures": [
+        {
+          "active": false,
+          "inViewport": false,
+          "suppressed": false,
+          "dialog": {
+            "x": -9936,
+            "y": 70,
+            "width": 1152,
+            "height": 511,
+            "top": 70,
+            "right": -8784,
+            "bottom": 581,
+            "left": -9936
+          },
+          "overlay": {
+            "x": -10000,
+            "y": 0,
+            "width": 1280,
+            "height": 1000,
+            "top": 0,
+            "right": -8720,
+            "bottom": 1000,
+            "left": -10000
+          },
+          "ancestors": [
+            {
+              "tag": "DIV",
+              "id": "",
+              "display": "flex",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "DIV",
+              "id": "modal_overlay",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "BODY",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "HTML",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            }
+          ],
+          "hits": []
+        }
+      ]
+    },
+    {
+      "id": "t16125-access-light-360",
+      "mode": "light",
+      "width": 360,
+      "coverageGateSHA256": "f53bd72e770cc26ea3e3f2bbfefa2b2f5c2ea20d637d4c5bb84d02465efae363",
+      "result": "PASS",
+      "modalClosures": [
+        {
+          "active": false,
+          "inViewport": false,
+          "suppressed": false,
+          "dialog": {
+            "x": -10000,
+            "y": 70,
+            "width": 360,
+            "height": 705.625,
+            "top": 70,
+            "right": -9640,
+            "bottom": 775.625,
+            "left": -10000
+          },
+          "overlay": {
+            "x": -10000,
+            "y": 0,
+            "width": 360,
+            "height": 1000,
+            "top": 0,
+            "right": -9640,
+            "bottom": 1000,
+            "left": -10000
+          },
+          "ancestors": [
+            {
+              "tag": "DIV",
+              "id": "",
+              "display": "flex",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "DIV",
+              "id": "modal_overlay",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "BODY",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            },
+            {
+              "tag": "HTML",
+              "id": "",
+              "display": "block",
+              "visibility": "visible",
+              "opacity": "1"
+            }
+          ],
+          "hits": []
+        }
+      ]
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

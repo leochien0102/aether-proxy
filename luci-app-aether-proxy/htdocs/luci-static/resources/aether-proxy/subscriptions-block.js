@@ -872,6 +872,7 @@ return baseclass.extend({
 		o.modalonly = true;
 		o.rmempty = false;
 		o.validate = function(id, value) { return model.validate_url(value); };
+		ap.wide_input(o, 60);
 		this.setting_option(s, 'interval_hours', _('Update interval', 'aether-proxy'), true);
 		this.setting_option(s, 'fetch_via', _('Fetch method', 'aether-proxy'), true);
 		this.failover_modal(s);

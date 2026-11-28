@@ -301,6 +301,64 @@ var ap = baseclass.extend({
 		};
 		return option;
 	},
+	/* Give one long-value input more room than the theme's width cap, without
+	 * touching the SDK widget, its actions or validation. em sizes the box in
+	 * theme font units (the cap keeps it inside the field, so narrow screens
+	 * never scroll sideways); the width is only set after render, once the
+	 * modal is attached, and again whenever the field is resized or revealed.
+	 */
+	wide_input: function(option, em) {
+		if (option.apWideInput)
+			return option;
+		option.apWideInput = true;
+		const render = option.renderWidget;
+		// Doubles without a widget renderer keep their plain node fallback.
+		if (typeof render !== 'function')
+			return option;
+		option.renderWidget = function(section_id, ...args) {
+			const node = render.call(this, section_id, ...args);
+			// Test doubles return plain node trees; only a real element can be sized.
+			if (!node || typeof node.querySelector !== 'function')
+				return node;
+			const input = node.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])');
+			if (!input || typeof input.closest !== 'function')
+				return node;
+			const fit = function() {
+				if (!input.isConnected)
+					return;
+				const field = input.closest('.cbi-value-field');
+				const row = input.closest('.cbi-value');
+				let width = em * parseFloat(getComputedStyle(input).fontSize || '14');
+				// The theme caps the field at 400px, so size to the row instead: the
+				// field may be as wide as the row on themes that shrink-wrap it.
+				const box = row || field;
+				if (box && field) {
+					const style = getComputedStyle(box);
+					const fieldStyle = getComputedStyle(field);
+					// The input's own margins are part of the grid track, so they must
+					// fit inside the available space too; the right margin is forced
+					// to zero below, only the theme's left inset remains.
+					const inset = parseFloat(getComputedStyle(input).marginLeft) || 0;
+					const available = box.getBoundingClientRect().right - (parseFloat(style.paddingRight) || 0) -
+						field.getBoundingClientRect().left - (parseFloat(fieldStyle.paddingLeft) || 0) - inset;
+					if (available > 0 && available < width)
+						width = available;
+				}
+				input.style.width = width + 'px';
+				input.style.maxWidth = 'none';
+				// Themes inset the action host around the input; drop the right
+				// margin so the eye/clear buttons stay on the input's border.
+				input.style.setProperty('margin-right', '0px', 'important');
+			};
+			// The modal attaches after the section render promise settles.
+			setTimeout(fit, 0);
+			const field = input.closest('.cbi-value-field');
+			if (field && typeof ResizeObserver === 'function')
+				new ResizeObserver(fit).observe(field);
+			return node;
+		};
+		return option;
+	},
 	/* Explicitly called by plugin sections, never by LuCI prototypes or a document observer.
 	 * Exact widget types exclude ListValue, DeviceSelect, TextValue and DummyValue.
 	 * Custom Value renderers (UA and the two trust DNS rows) retain their SDK instances. */

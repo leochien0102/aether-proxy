@@ -176,7 +176,7 @@ function loadModule(file, modules, env) {
 		/* Page harnesses keep their RPC/UI doubles, but exercise the shipped
 		 * config helper against their own UCI double (not a success-only stub). */
 		const shared = ['load_config', 'section', 'section_actions', 'form_section', 'hint_icon',
-			'input_action', 'field_actions', 'text_actions', 'clear_input'];
+			'input_action', 'field_actions', 'text_actions', 'clear_input', 'wide_input'];
 		if (r.name == 'aether-proxy.common' && shared.some(method => !modules[r.name]?.[method])) {
 			modules[r.name] ??= {};
 			const common = loadModule(require('node:path').resolve(__dirname,

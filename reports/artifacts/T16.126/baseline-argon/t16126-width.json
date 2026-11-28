@@ -1,0 +1,2074 @@
+{
+  "theme": "argon-plus",
+  "version": "2.4.3-r3",
+  "themeRoot": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/www/luci-static/argon-plus",
+  "control": "/workspace/openwrt/openwrt-actions/build/rockchip/build_dir/target-aarch64_generic_musl/root-rockchip/usr/lib/opkg/info/luci-theme-argon-plus.control",
+  "controlSHA256": "65d74240f285d343a51322e05875dac9fe1a576e9d1da47d7ab5aa596189e66e",
+  "cssPath": "css/cascade.css",
+  "cssSHA256": "dddf556ed4b205c2773eb3b19a48dd90f999c5e11e20a848938cd96efb1446da",
+  "darkCssPath": "css/dark.css",
+  "darkCssSHA256": "807924782448c2cb4ebf7c28d19b5cda326febc4436d1ee47cef90c6d0b43ed3",
+  "sourceSHA256": {
+    "aether-proxy/common.js": "790f4ca17c98057fc778ce3f1b8b06148aee73df47e42431e45aa4c82c4f5cc8",
+    "aether-proxy/subscriptions-block.js": "63e095f4233ca109415d6f789734a994f67192134fc75718af6d4ceb7f37e49a",
+    "view/aether-proxy/overview.js": "72c3edcd0495625b84b3cf658120381501bfaee9d9d0c5109aba259878f5b294",
+    "view/aether-proxy/access.js": "2f357342e8b6d13527b2c9bb672d717ca2df032af4d64e39aa1464d361da90ff",
+    "view/aether-proxy/rules.js": "b23f950615da04085c70ac5d1ef10377398311efa9948ca1a30e6a4a07cdb434",
+    "view/aether-proxy/advanced.js": "560cd2df9396ac861b49095357edecf366d666c53d7c91fe55ae1314503ff93b",
+    "view/aether-proxy/updates.js": "bfa5e9242151ef2b1c94efd4d0f6626b3b90ef2de2b79d98951f96201499d42b",
+    "view/aether-proxy/nodes.js": "e3b4d0f6236f6ebe44c99f3707eb44a0a30313296551e127a8e75f45a83fb723",
+    "view/aether-proxy/logs.js": "47acb6ef7e747d36dfdb438a2d67b09d8e534bd0377f34816bf87f50450a651f"
+  },
+  "gateSHA256": "2332749456a5881e944ee57f67af7b9d4a80ded22fec7bbeb90f1e502a83a9c4",
+  "appRoot": "/tmp/t16126-before-wt",
+  "commit": "0b4afb701c3fda73e47a292a99a7be27e61029b2",
+  "dirty": "",
+  "scope": "real LuCI modules + actual theme CSS; simulated session RPC, no device",
+  "cases": [
+    {
+      "id": "t16126-width-dark-1280",
+      "mode": "dark",
+      "width": 1280,
+      "identity": {
+        "gateSHA256": "54f1bfc797378f155ce81919e245b753ab2c9c066940a4a67afd367f1f12f215",
+        "baseline": true,
+        "source": {
+          "aether-proxy/common.js": "790f4ca17c98057fc778ce3f1b8b06148aee73df47e42431e45aa4c82c4f5cc8",
+          "aether-proxy/subscriptions-block.js": "63e095f4233ca109415d6f789734a994f67192134fc75718af6d4ceb7f37e49a",
+          "view/aether-proxy/nodes.js": "e3b4d0f6236f6ebe44c99f3707eb44a0a30313296551e127a8e75f45a83fb723"
+        }
+      },
+      "other": {
+        "address": {
+          "type": "text",
+          "length": 9,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 45,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 261.90625,
+            "width": 256,
+            "height": 40,
+            "top": 261.90625,
+            "right": 592,
+            "bottom": 301.90625,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        },
+        "port": {
+          "type": "text",
+          "length": 3,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 15,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 346.90625,
+            "width": 256,
+            "height": 40,
+            "top": 346.90625,
+            "right": 592,
+            "bottom": 386.90625,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        },
+        "label": {
+          "type": "text",
+          "length": 14,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 70,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 153.5,
+            "width": 256,
+            "height": 40,
+            "top": 153.5,
+            "right": 592,
+            "bottom": 193.5,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        }
+      },
+      "uuid": {
+        "type": "password",
+        "length": 36,
+        "clientWidth": 204,
+        "scrollWidth": 204,
+        "offsetWidth": 278,
+        "computedWidth": "278px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 180,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 455.3125,
+          "width": 278,
+          "height": 40,
+          "top": 455.3125,
+          "right": 614,
+          "bottom": 495.3125,
+          "left": 336
+        },
+        "hostWidth": 278,
+        "rowWidth": 278,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 586,
+              "y": 461.3125,
+              "width": 28,
+              "height": 28,
+              "top": 461.3125,
+              "right": 614,
+              "bottom": 489.3125,
+              "left": 586
+            },
+            "label": "显示 UUID",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 558,
+              "y": 461.3125,
+              "width": 28,
+              "height": 28,
+              "top": 461.3125,
+              "right": 586,
+              "bottom": 489.3125,
+              "left": 558
+            },
+            "label": "清空 UUID",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "reality_pbk": {
+        "type": "password",
+        "length": 43,
+        "clientWidth": 204,
+        "scrollWidth": 215,
+        "offsetWidth": 278,
+        "computedWidth": "278px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 215,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 919.9375,
+          "width": 278,
+          "height": 40,
+          "top": 919.9375,
+          "right": 614,
+          "bottom": 959.9375,
+          "left": 336
+        },
+        "hostWidth": 278,
+        "rowWidth": 278,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 586,
+              "y": 925.9375,
+              "width": 28,
+              "height": 28,
+              "top": 925.9375,
+              "right": 614,
+              "bottom": 953.9375,
+              "left": 586
+            },
+            "label": "显示 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 558,
+              "y": 925.9375,
+              "width": 28,
+              "height": 28,
+              "top": 925.9375,
+              "right": 586,
+              "bottom": 953.9375,
+              "left": 558
+            },
+            "label": "清空 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "sni": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 559,
+        "rect": {
+          "x": 336,
+          "y": 757.53125,
+          "width": 256,
+          "height": 40,
+          "top": 757.53125,
+          "right": 592,
+          "bottom": 797.53125,
+          "left": 336
+        },
+        "hostWidth": 256,
+        "rowWidth": 256,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "reality_sid": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 559,
+        "rect": {
+          "x": 336,
+          "y": 973.9375,
+          "width": 256,
+          "height": 40,
+          "top": 973.9375,
+          "right": 592,
+          "bottom": 1013.9375,
+          "left": 336
+        },
+        "hostWidth": 256,
+        "rowWidth": 256,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "pageOverflow": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "bodyScrollWidth": 1280,
+        "bodyClientWidth": 1280
+      },
+      "url": {
+        "type": "password",
+        "length": 60,
+        "clientWidth": 204,
+        "scrollWidth": 300,
+        "offsetWidth": 278,
+        "computedWidth": "278px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 300,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 207.5,
+          "width": 278,
+          "height": 40,
+          "top": 207.5,
+          "right": 614,
+          "bottom": 247.5,
+          "left": 336
+        },
+        "hostWidth": 278,
+        "rowWidth": 278,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 586,
+              "y": 213.5,
+              "width": 28,
+              "height": 28,
+              "top": 213.5,
+              "right": 614,
+              "bottom": 241.5,
+              "left": 586
+            },
+            "label": "显示密码",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 558,
+              "y": 213.5,
+              "width": 28,
+              "height": 28,
+              "top": 213.5,
+              "right": 586,
+              "bottom": 241.5,
+              "left": 558
+            },
+            "label": "清空输入",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "t16126-width-dark-360",
+      "mode": "dark",
+      "width": 360,
+      "identity": {
+        "gateSHA256": "54f1bfc797378f155ce81919e245b753ab2c9c066940a4a67afd367f1f12f215",
+        "baseline": true,
+        "source": {
+          "aether-proxy/common.js": "790f4ca17c98057fc778ce3f1b8b06148aee73df47e42431e45aa4c82c4f5cc8",
+          "aether-proxy/subscriptions-block.js": "63e095f4233ca109415d6f789734a994f67192134fc75718af6d4ceb7f37e49a",
+          "view/aether-proxy/nodes.js": "e3b4d0f6236f6ebe44c99f3707eb44a0a30313296551e127a8e75f45a83fb723"
+        }
+      },
+      "other": {
+        "address": {
+          "type": "text",
+          "length": 9,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 45,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 375.125,
+            "width": 256,
+            "height": 40,
+            "top": 375.125,
+            "right": 286,
+            "bottom": 415.125,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        },
+        "port": {
+          "type": "text",
+          "length": 3,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 15,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 498.53125,
+            "width": 256,
+            "height": 40,
+            "top": 498.53125,
+            "right": 286,
+            "bottom": 538.53125,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        },
+        "label": {
+          "type": "text",
+          "length": 14,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 70,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 189.90625,
+            "width": 256,
+            "height": 40,
+            "top": 189.90625,
+            "right": 286,
+            "bottom": 229.90625,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        }
+      },
+      "uuid": {
+        "type": "password",
+        "length": 36,
+        "clientWidth": 226,
+        "scrollWidth": 226,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 180,
+        "contentRight": 269,
+        "rect": {
+          "x": 30,
+          "y": 683.75,
+          "width": 300,
+          "height": 40,
+          "top": 683.75,
+          "right": 330,
+          "bottom": 723.75,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 689.75,
+              "width": 28,
+              "height": 28,
+              "top": 689.75,
+              "right": 330,
+              "bottom": 717.75,
+              "left": 302
+            },
+            "label": "显示 UUID",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 689.75,
+              "width": 28,
+              "height": 28,
+              "top": 689.75,
+              "right": 302,
+              "bottom": 717.75,
+              "left": 274
+            },
+            "label": "清空 UUID",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "reality_pbk": {
+        "type": "password",
+        "length": 43,
+        "clientWidth": 226,
+        "scrollWidth": 226,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 215,
+        "contentRight": 269,
+        "rect": {
+          "x": 30,
+          "y": 479.625,
+          "width": 300,
+          "height": 40,
+          "top": 479.625,
+          "right": 330,
+          "bottom": 519.625,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 485.625,
+              "width": 28,
+              "height": 28,
+              "top": 485.625,
+              "right": 330,
+              "bottom": 513.625,
+              "left": 302
+            },
+            "label": "显示 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 485.625,
+              "width": 28,
+              "height": 28,
+              "top": 485.625,
+              "right": 302,
+              "bottom": 513.625,
+              "left": 274
+            },
+            "label": "清空 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "sni": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 253,
+        "rect": {
+          "x": 30,
+          "y": 202,
+          "width": 256,
+          "height": 40,
+          "top": 202,
+          "right": 286,
+          "bottom": 242,
+          "left": 30
+        },
+        "hostWidth": 256,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "reality_sid": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 253,
+        "rect": {
+          "x": 30,
+          "y": 572.03125,
+          "width": 256,
+          "height": 40,
+          "top": 572.03125,
+          "right": 286,
+          "bottom": 612.03125,
+          "left": 30
+        },
+        "hostWidth": 256,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "pageOverflow": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "bodyScrollWidth": 360,
+        "bodyClientWidth": 360
+      },
+      "modal": {
+        "scrollWidth": 362,
+        "clientWidth": 360,
+        "rect": {
+          "x": 0,
+          "y": 70,
+          "width": 360,
+          "height": 732.75,
+          "top": 70,
+          "right": 360,
+          "bottom": 802.75,
+          "left": 0
+        }
+      },
+      "url": {
+        "type": "password",
+        "length": 60,
+        "clientWidth": 226,
+        "scrollWidth": 300,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 300,
+        "contentRight": 269,
+        "rect": {
+          "x": 30,
+          "y": 282.3125,
+          "width": 300,
+          "height": 40,
+          "top": 282.3125,
+          "right": 330,
+          "bottom": 322.3125,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 288.3125,
+              "width": 28,
+              "height": 28,
+              "top": 288.3125,
+              "right": 330,
+              "bottom": 316.3125,
+              "left": 302
+            },
+            "label": "显示密码",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 288.3125,
+              "width": 28,
+              "height": 28,
+              "top": 288.3125,
+              "right": 302,
+              "bottom": 316.3125,
+              "left": 274
+            },
+            "label": "清空输入",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "t16126-width-light-1280",
+      "mode": "light",
+      "width": 1280,
+      "identity": {
+        "gateSHA256": "54f1bfc797378f155ce81919e245b753ab2c9c066940a4a67afd367f1f12f215",
+        "baseline": true,
+        "source": {
+          "aether-proxy/common.js": "790f4ca17c98057fc778ce3f1b8b06148aee73df47e42431e45aa4c82c4f5cc8",
+          "aether-proxy/subscriptions-block.js": "63e095f4233ca109415d6f789734a994f67192134fc75718af6d4ceb7f37e49a",
+          "view/aether-proxy/nodes.js": "e3b4d0f6236f6ebe44c99f3707eb44a0a30313296551e127a8e75f45a83fb723"
+        }
+      },
+      "other": {
+        "address": {
+          "type": "text",
+          "length": 9,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 45,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 261.90625,
+            "width": 256,
+            "height": 40,
+            "top": 261.90625,
+            "right": 592,
+            "bottom": 301.90625,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        },
+        "port": {
+          "type": "text",
+          "length": 3,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 15,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 346.90625,
+            "width": 256,
+            "height": 40,
+            "top": 346.90625,
+            "right": 592,
+            "bottom": 386.90625,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        },
+        "label": {
+          "type": "text",
+          "length": 14,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 70,
+          "contentRight": 559,
+          "rect": {
+            "x": 336,
+            "y": 153.5,
+            "width": 256,
+            "height": 40,
+            "top": 153.5,
+            "right": 592,
+            "bottom": 193.5,
+            "left": 336
+          },
+          "hostWidth": 256,
+          "rowWidth": 256,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          },
+          "body": {
+            "scrollWidth": 1280,
+            "clientWidth": 1280
+          }
+        }
+      },
+      "uuid": {
+        "type": "password",
+        "length": 36,
+        "clientWidth": 204,
+        "scrollWidth": 204,
+        "offsetWidth": 277,
+        "computedWidth": "277px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 180,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 455.3125,
+          "width": 277,
+          "height": 40,
+          "top": 455.3125,
+          "right": 613,
+          "bottom": 495.3125,
+          "left": 336
+        },
+        "hostWidth": 277,
+        "rowWidth": 277,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 585,
+              "y": 461.3125,
+              "width": 28,
+              "height": 28,
+              "top": 461.3125,
+              "right": 613,
+              "bottom": 489.3125,
+              "left": 585
+            },
+            "label": "显示 UUID",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 557,
+              "y": 461.3125,
+              "width": 28,
+              "height": 28,
+              "top": 461.3125,
+              "right": 585,
+              "bottom": 489.3125,
+              "left": 557
+            },
+            "label": "清空 UUID",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "reality_pbk": {
+        "type": "password",
+        "length": 43,
+        "clientWidth": 204,
+        "scrollWidth": 215,
+        "offsetWidth": 277,
+        "computedWidth": "277px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 215,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 919.9375,
+          "width": 277,
+          "height": 40,
+          "top": 919.9375,
+          "right": 613,
+          "bottom": 959.9375,
+          "left": 336
+        },
+        "hostWidth": 277,
+        "rowWidth": 277,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 585,
+              "y": 925.9375,
+              "width": 28,
+              "height": 28,
+              "top": 925.9375,
+              "right": 613,
+              "bottom": 953.9375,
+              "left": 585
+            },
+            "label": "显示 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 557,
+              "y": 925.9375,
+              "width": 28,
+              "height": 28,
+              "top": 925.9375,
+              "right": 585,
+              "bottom": 953.9375,
+              "left": 557
+            },
+            "label": "清空 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "sni": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 559,
+        "rect": {
+          "x": 336,
+          "y": 757.53125,
+          "width": 256,
+          "height": 40,
+          "top": 757.53125,
+          "right": 592,
+          "bottom": 797.53125,
+          "left": 336
+        },
+        "hostWidth": 256,
+        "rowWidth": 256,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "reality_sid": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 559,
+        "rect": {
+          "x": 336,
+          "y": 973.9375,
+          "width": 256,
+          "height": 40,
+          "top": 973.9375,
+          "right": 592,
+          "bottom": 1013.9375,
+          "left": 336
+        },
+        "hostWidth": 256,
+        "rowWidth": 256,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "pageOverflow": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280,
+        "bodyScrollWidth": 1280,
+        "bodyClientWidth": 1280
+      },
+      "url": {
+        "type": "password",
+        "length": 60,
+        "clientWidth": 204,
+        "scrollWidth": 300,
+        "offsetWidth": 277,
+        "computedWidth": "277px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 300,
+        "contentRight": 553,
+        "rect": {
+          "x": 336,
+          "y": 207.5,
+          "width": 277,
+          "height": 40,
+          "top": 207.5,
+          "right": 613,
+          "bottom": 247.5,
+          "left": 336
+        },
+        "hostWidth": 277,
+        "rowWidth": 277,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 585,
+              "y": 213.5,
+              "width": 28,
+              "height": 28,
+              "top": 213.5,
+              "right": 613,
+              "bottom": 241.5,
+              "left": 585
+            },
+            "label": "显示密码",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 557,
+              "y": 213.5,
+              "width": 28,
+              "height": 28,
+              "top": 213.5,
+              "right": 585,
+              "bottom": 241.5,
+              "left": 557
+            },
+            "label": "清空输入",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        },
+        "body": {
+          "scrollWidth": 1280,
+          "clientWidth": 1280
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    },
+    {
+      "id": "t16126-width-light-360",
+      "mode": "light",
+      "width": 360,
+      "identity": {
+        "gateSHA256": "54f1bfc797378f155ce81919e245b753ab2c9c066940a4a67afd367f1f12f215",
+        "baseline": true,
+        "source": {
+          "aether-proxy/common.js": "790f4ca17c98057fc778ce3f1b8b06148aee73df47e42431e45aa4c82c4f5cc8",
+          "aether-proxy/subscriptions-block.js": "63e095f4233ca109415d6f789734a994f67192134fc75718af6d4ceb7f37e49a",
+          "view/aether-proxy/nodes.js": "e3b4d0f6236f6ebe44c99f3707eb44a0a30313296551e127a8e75f45a83fb723"
+        }
+      },
+      "other": {
+        "address": {
+          "type": "text",
+          "length": 9,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 45,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 375.125,
+            "width": 256,
+            "height": 40,
+            "top": 375.125,
+            "right": 286,
+            "bottom": 415.125,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        },
+        "port": {
+          "type": "text",
+          "length": 3,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 15,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 498.53125,
+            "width": 256,
+            "height": 40,
+            "top": 498.53125,
+            "right": 286,
+            "bottom": 538.53125,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        },
+        "label": {
+          "type": "text",
+          "length": 14,
+          "clientWidth": 210,
+          "scrollWidth": 210,
+          "offsetWidth": 256,
+          "computedWidth": "256px",
+          "maxWidth": "none",
+          "paddingLeft": "12px",
+          "paddingRight": "32px",
+          "fontSize": "14px",
+          "inlineWidth": "",
+          "inlineMaxWidth": "",
+          "maskedWidth": 70,
+          "contentRight": 253,
+          "rect": {
+            "x": 30,
+            "y": 189.90625,
+            "width": 256,
+            "height": 40,
+            "top": 189.90625,
+            "right": 286,
+            "bottom": 229.90625,
+            "left": 30
+          },
+          "hostWidth": 256,
+          "rowWidth": 300,
+          "actions": [
+            {
+              "action": "clear",
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+              },
+              "label": "清空输入",
+              "hit": false,
+              "painted": false
+            }
+          ],
+          "doc": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          },
+          "body": {
+            "scrollWidth": 360,
+            "clientWidth": 360
+          }
+        }
+      },
+      "uuid": {
+        "type": "password",
+        "length": 36,
+        "clientWidth": 227,
+        "scrollWidth": 227,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 180,
+        "contentRight": 270,
+        "rect": {
+          "x": 30,
+          "y": 683.75,
+          "width": 300,
+          "height": 40,
+          "top": 683.75,
+          "right": 330,
+          "bottom": 723.75,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 689.75,
+              "width": 28,
+              "height": 28,
+              "top": 689.75,
+              "right": 330,
+              "bottom": 717.75,
+              "left": 302
+            },
+            "label": "显示 UUID",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 689.75,
+              "width": 28,
+              "height": 28,
+              "top": 689.75,
+              "right": 302,
+              "bottom": 717.75,
+              "left": 274
+            },
+            "label": "清空 UUID",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "reality_pbk": {
+        "type": "password",
+        "length": 43,
+        "clientWidth": 227,
+        "scrollWidth": 227,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 215,
+        "contentRight": 270,
+        "rect": {
+          "x": 30,
+          "y": 479.625,
+          "width": 300,
+          "height": 40,
+          "top": 479.625,
+          "right": 330,
+          "bottom": 519.625,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 485.625,
+              "width": 28,
+              "height": 28,
+              "top": 485.625,
+              "right": 330,
+              "bottom": 513.625,
+              "left": 302
+            },
+            "label": "显示 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 485.625,
+              "width": 28,
+              "height": 28,
+              "top": 485.625,
+              "right": 302,
+              "bottom": 513.625,
+              "left": 274
+            },
+            "label": "清空 REALITY 公钥",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "sni": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 253,
+        "rect": {
+          "x": 30,
+          "y": 202,
+          "width": 256,
+          "height": 40,
+          "top": 202,
+          "right": 286,
+          "bottom": 242,
+          "left": 30
+        },
+        "hostWidth": 256,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "reality_sid": {
+        "type": "text",
+        "length": 0,
+        "clientWidth": 210,
+        "scrollWidth": 210,
+        "offsetWidth": 256,
+        "computedWidth": "256px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "32px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 0,
+        "contentRight": 253,
+        "rect": {
+          "x": 30,
+          "y": 572.03125,
+          "width": 256,
+          "height": 40,
+          "top": 572.03125,
+          "right": 286,
+          "bottom": 612.03125,
+          "left": 30
+        },
+        "hostWidth": 256,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "clear",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            },
+            "label": "清空输入",
+            "hit": false,
+            "painted": false
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "pageOverflow": {
+        "scrollWidth": 360,
+        "clientWidth": 360,
+        "bodyScrollWidth": 360,
+        "bodyClientWidth": 360
+      },
+      "modal": {
+        "scrollWidth": 362,
+        "clientWidth": 360,
+        "rect": {
+          "x": 0,
+          "y": 70,
+          "width": 360,
+          "height": 732.75,
+          "top": 70,
+          "right": 360,
+          "bottom": 802.75,
+          "left": 0
+        }
+      },
+      "url": {
+        "type": "password",
+        "length": 60,
+        "clientWidth": 227,
+        "scrollWidth": 300,
+        "offsetWidth": 300,
+        "computedWidth": "300px",
+        "maxWidth": "none",
+        "paddingLeft": "12px",
+        "paddingRight": "60px",
+        "fontSize": "14px",
+        "inlineWidth": "",
+        "inlineMaxWidth": "",
+        "maskedWidth": 300,
+        "contentRight": 270,
+        "rect": {
+          "x": 30,
+          "y": 282.3125,
+          "width": 300,
+          "height": 40,
+          "top": 282.3125,
+          "right": 330,
+          "bottom": 322.3125,
+          "left": 30
+        },
+        "hostWidth": 300,
+        "rowWidth": 300,
+        "actions": [
+          {
+            "action": "eye",
+            "rect": {
+              "x": 302,
+              "y": 288.3125,
+              "width": 28,
+              "height": 28,
+              "top": 288.3125,
+              "right": 330,
+              "bottom": 316.3125,
+              "left": 302
+            },
+            "label": "显示密码",
+            "hit": true,
+            "painted": true
+          },
+          {
+            "action": "clear",
+            "rect": {
+              "x": 274,
+              "y": 288.3125,
+              "width": 28,
+              "height": 28,
+              "top": 288.3125,
+              "right": 302,
+              "bottom": 316.3125,
+              "left": 274
+            },
+            "label": "清空输入",
+            "hit": true,
+            "painted": true
+          }
+        ],
+        "doc": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        },
+        "body": {
+          "scrollWidth": 360,
+          "clientWidth": 360
+        }
+      },
+      "result": "PASS",
+      "modalClosures": []
+    }
+  ],
+  "chromium": "159.0.8154.6"
+}

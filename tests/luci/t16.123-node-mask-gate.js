@@ -60,6 +60,28 @@ async function pointer(h, button) {
  await h.page.mouse.click(point.x,point.y);
  return point;
 }
+/* Proton2025 animates input width and margin (`transition: all .25s`), so a
+ * width-only change settles later than the modal. Wait until the input has
+ * reached its inline target and two consecutive frames have identical boxes
+ * before measuring, so the layout assertions see the resting layout. */
+async function stable(h) {
+ await h.page.waitForFunction(() => {
+  const dialog=document.querySelector('#modal_overlay > .modal.cbi-modal');
+  if (!dialog || getComputedStyle(dialog).display==='none') return false;
+  const input=dialog.querySelector('[data-name="uuid"] input');
+  if (!input) return false;
+  const target=parseFloat(input.style.width);
+  if (!target) return false;
+  const settled=Math.abs(input.getBoundingClientRect().width-target)<1 &&
+   parseFloat(getComputedStyle(input).marginRight)<0.5;
+  const sig=[...dialog.querySelectorAll('[data-name="uuid"] input, [data-name="uuid"] button')]
+   .map(el=>{const r=el.getBoundingClientRect(); return [r.x,r.y,r.width,r.height].join(',');})
+   .join('|');
+  const same=sig===window.__t16123Signature;
+  window.__t16123Signature=sig;
+  return settled && same;
+ },null,{timeout:5000});
+}
 test('T16.123 visibility: node modal final rendering and keyboard actions', async () => {
  await matrix('node-visibility',{},async (base,record,id) => {
   const h = modalHarness(base);
@@ -108,6 +130,7 @@ test('T16.123 layout: independent reveals, smaller glyph and zero button overlap
  await matrix('node-layout',{},async (base,record,id) => {
   const h=modalHarness(base);
   await edit(h); await masked(h,original);
+  await stable(h);
   const r6root=process.env.R6_ROOT;
   assert.ok(r6root,'R6_ROOT is required to measure the formal r6 clear SVG');
   const r6source=fs.readFileSync(path.join(r6root,'luci-app-aether-proxy/htdocs/luci-static/resources/aether-proxy/common.js'),'utf8');
